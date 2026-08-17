@@ -15,19 +15,37 @@
       ]
     },
     "test": {
-      "outputs": ["coverage/**"],
       "dependsOn": []
     },
-    "lint": {
-      "dependsOn": ["^build", "^lint"]
+    "test:unit": {
+      "dependsOn": []
     },
-    "check-types": {
-      "dependsOn": ["^build", "^check-types"]
+    "test:int": {
+      "cache": false,
+      "dependsOn": []
     },
-    "dev": {
-      "dependsOn": ["^build"],
+    "test:watch": {
       "cache": false,
       "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "check-types": {
+      "dependsOn": ["^check-types"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
     }
   }
 }

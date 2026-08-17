@@ -19,6 +19,8 @@ export const config = defineConfig(
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
+      // ADR-0005: structured logging only, never console.*
+      "no-console": "error",
     },
   },
   {

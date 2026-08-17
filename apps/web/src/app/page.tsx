@@ -3,17 +3,17 @@ import { Link } from "@repo/ui/link";
 import { CounterButton } from "@repo/ui/counter-button";
 
 export const metadata = {
-  title: "Store | Kitchen Sink",
+  title: "Web | machxi",
 };
 
-export default function Store() {
-  log("Hey! This is the Store page.");
+export default function Web() {
+  log("Hey! This is the Web page.");
 
   return (
     <div className="container">
       <h1 className="title">
-        Store <br />
-        <span>Kitchen Sink</span>
+        Web <br />
+        <span>machxi</span>
       </h1>
       <CounterButton />
       <p className="description">

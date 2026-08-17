@@ -1,6 +1,6 @@
 import supertest from "supertest";
-import { describe, it, expect } from "@jest/globals";
-import { createServer } from "../server";
+import { describe, it, expect } from "vitest";
+import { createServer } from "../server.js";
 
 describe("Server", () => {
   it("health check returns 200", async () => {

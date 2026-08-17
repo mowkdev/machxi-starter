@@ -11,6 +11,9 @@ export const config = [
   pluginReact.configs.flat.recommended,
   pluginReact.configs.flat["jsx-runtime"],
   {
+    settings: {
+      react: { version: "detect" },
+    },
     languageOptions: {
       ...pluginReact.configs.flat.recommended.languageOptions,
       globals: {

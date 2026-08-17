@@ -1,21 +1,38 @@
 {
-  "name": "kitchen-sink",
+  "name": "machxi-starter",
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "clean": "turbo run clean",
     "dev": "turbo run dev",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "check-types": "turbo run check-types"
+    "test:unit": "turbo run test:unit",
+    "test:int": "turbo run test:int",
+    "test:watch": "turbo run test:watch",
+    "check-types": "turbo run check-types",
+    "docker:up": "docker compose --env-file .env -f docker/local/compose.yaml up -d --wait",
+    "docker:down": "docker compose --env-file .env -f docker/local/compose.yaml down",
+    "docker:reset": "docker compose --env-file .env -f docker/local/compose.yaml down -v && pnpm docker:up",
+    "docker:logs": "docker compose --env-file .env -f docker/local/compose.yaml logs -f",
+    "db:generate": "pnpm _db:todo db:generate",
+    "db:migrate": "pnpm _db:todo db:migrate",
+    "db:seed": "pnpm _db:todo db:seed",
+    "db:setup": "pnpm _db:todo db:setup",
+    "db:reset": "pnpm _db:todo db:reset",
+    "db:studio": "pnpm _db:todo db:studio",
+    "_db:todo": "node -e \"console.error(process.argv[1] + ' needs @repo/db (implementation-plan step 6); these become turbo run db:* aliases then'); process.exit(1)\""
   },
   "devDependencies": {
     "prettier": "^3.6.0",
     "turbo": "^2.10.10"
   },
-  "packageManager": "pnpm@8.15.6",
+  "packageManager": "pnpm@10.34.5",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

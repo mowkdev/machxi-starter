@@ -1,0 +1,10 @@
+{
+  "extends": "@repo/typescript-config/nextjs.json",
+  "include": [
+    "src",
+    "next.config.ts",
+    "next-env.d.ts",
+    "vitest.config.ts",
+    ".next/types/**/*.ts"
+  ]
+}

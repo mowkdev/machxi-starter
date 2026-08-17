@@ -2,10 +2,9 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./base.json",
   "compilerOptions": {
-    "lib": ["ES2015"],
+    "lib": ["DOM", "DOM.Iterable", "ES2023"],
     "module": "ESNext",
-    "target": "ES6",
-    "jsx": "react-jsx",
-    "noEmit": true
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx"
   }
 }

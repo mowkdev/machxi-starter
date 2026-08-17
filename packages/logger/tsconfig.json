@@ -1,11 +1,4 @@
 {
-  "extends": "@repo/typescript-config/base.json",
-  "compilerOptions": {
-    "lib": ["ES2015"],
-    "outDir": "./dist",
-    "types": ["jest", "node"],
-    "strictNullChecks": true
-  },
-  "include": ["."],
-  "exclude": ["node_modules", "dist"]
+  "extends": "@repo/typescript-config/node.json",
+  "include": ["src", "vitest.config.ts"]
 }

@@ -1,5 +1,5 @@
 {
-  "name": "storefront",
+  "name": "web",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -8,23 +8,29 @@
     "dev": "next dev -p 3002",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@repo/logger": "workspace:*",
     "@repo/ui": "workspace:*",
     "next": "16.3.0",
     "react": "^19.2.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.3.0",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
+    "@repo/vitest-config": "workspace:*",
     "@types/node": "^22.15.3",
-    "@types/react": "19.1.0",
-    "@types/react-dom": "19.1.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "eslint": "^9.39.0",
-    "typescript": "5.9.3"
+    "jsdom": "^30.0.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10"
   }
 }

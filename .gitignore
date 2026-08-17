@@ -7,6 +7,12 @@ dist
 dist-ssr
 *.local
 .env
+.env.*
+!.env.example
+!.env.test
 .cache
 server/dist
 public/dist
+coverage
+*.tsbuildinfo
+.claude/settings.local.json

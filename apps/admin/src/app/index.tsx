@@ -7,7 +7,7 @@ function App() {
     <div className="container">
       <h1 className="title">
         Admin <br />
-        <span>Kitchen Sink</span>
+        <span>machxi</span>
       </h1>
       <CounterButton />
       <p className="description">

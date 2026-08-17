@@ -7,21 +7,27 @@
     "build": "vite build",
     "dev": "vite --host 0.0.0.0 --port 3001 --clearScreen false",
     "check-types": "tsc --noEmit",
-    "lint": "eslint src/ --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@repo/ui": "workspace:*",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@repo/vitest-config": "workspace:*",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^9.39.0",
+    "jsdom": "^30.0.1",
     "typescript": "5.9.3",
-    "vite": "^5.4.14"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   }
 }
