@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Edit(**)",
+      "Write(**)",
+      "Bash(pnpm i)",
+      "Bash(pnpm install*)",
+      "Bash(pnpm lint*)",
+      "Bash(pnpm check-types*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm build*)",
+      "Bash(pnpm dev*)",
+      "Bash(pnpm format*)",
+      "Bash(pnpm db:generate*)",
+      "Bash(pnpm db:migrate*)",
+      "Bash(pnpm db:seed*)",
+      "Bash(pnpm db:setup*)",
+      "Bash(pnpm db:studio*)",
+      "Bash(pnpm docker:up*)",
+      "Bash(pnpm docker:down)",
+      "Bash(pnpm docker:logs*)",
+      "Bash(pnpm --filter *)",
+      "Bash(pnpm turbo *)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm dlx newman *)",
+      "Bash(docker compose *)",
+      "Bash(docker ps*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch*)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(ls*)",
+      "Bash(cat *)",
+      "Bash(curl http://localhost:*)"
+    ],
+    "ask": [
+      "Bash(pnpm db:reset*)",
+      "Bash(pnpm docker:reset*)",
+      "Bash(docker compose * down -v*)",
+      "Bash(git push*)",
+      "Bash(git rebase*)",
+      "Bash(git reset*)",
+      "Bash(rm -rf *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.production*)",
+      "Bash(git push --force*)",
+      "Bash(pnpm publish*)"
+    ]
+  }
+}
