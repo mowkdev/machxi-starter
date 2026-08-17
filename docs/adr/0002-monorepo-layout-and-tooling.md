@@ -1,0 +1,104 @@
+# ADR-0002: Monorepo layout and tooling
+
+- Status: accepted
+- Date: 2026-08-17
+
+## Context
+
+The repository was generated from the Turborepo `kitchen-sink` example. It ships four apps (`api`, `admin`, `storefront`, `blog`) and five packages (`config-eslint`, `config-typescript`, `jest-presets`, `logger`, `ui`) with several inconsistencies: `admin` is on React 18 / Vite 5 while `storefront` is on React 19 / Next 16, `pnpm` is pinned to 8.15.6, `engines.node` is `>=18`, the API uses Express 4 with `morgan`, `body-parser` and a `console.log` logger.
+
+The target is a blueprint with exactly three apps (`api`, `admin`, `web`), shared packages that hold cross-app contracts and infrastructure, and a `docker/` directory for local and future environments.
+
+## Decision
+
+### Workspace layout
+
+```
+.
+├── apps/
+│   ├── api/            # Express 5 REST API (ADR-0003)
+│   ├── admin/          # Vite + React SPA (ADR-0022)
+│   └── web/            # Next.js app, renamed from storefront (ADR-0022)
+├── packages/
+│   ├── config-eslint/       # shared ESLint flat configs (kept)
+│   ├── config-typescript/   # shared tsconfig bases (kept, tightened)
+│   ├── config-vitest/       # replaces jest-presets (ADR-0021)
+│   ├── logger/              # pino-based logger (ADR-0005)
+│   ├── db/                  # Drizzle schema, client, migrations, seeds (ADR-0006, ADR-0008)
+│   ├── crypto/              # password hashing (argon2id), token hashing, random tokens — shared by api and db seeds (ADR-0018)
+│   ├── contracts/           # API contracts shared with clients: zod schemas, envelope & error types, enums (ADR-0023)
+│   └── ui/                  # shared React UI (kept)
+├── docker/
+│   └── local/          # docker compose for local dev (ADR-0007)
+├── docs/
+│   ├── adr/
+│   └── postman/        # collection + environment for manual API testing (ADR-0021)
+├── package.json
+├── pnpm-workspace.yaml
+└── turbo.json
+```
+
+Removed: `apps/blog` (Remix) and `packages/jest-presets`.
+
+Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/contracts`, `@repo/logger`, …). Apps depend on packages with `workspace:*`.
+
+### Toolchain versions
+
+- Node **22 LTS** (`engines.node: ">=22"`, `.nvmrc` at root).
+- pnpm **10.x** via `packageManager` field; `corepack enable` is the documented setup step.
+- TypeScript 5.9, ESLint 9 flat config, Prettier 3.
+- Turborepo 2 with `turbo.json` tasks: `build`, `dev`, `lint`, `check-types`, `test`, plus `db:generate`, `db:migrate`, `db:seed` (non-cached, see ADR-0008).
+
+### TypeScript baseline
+
+`@repo/typescript-config/base.json` is tightened with:
+
+```json
+{
+  "strict": true,
+  "noUncheckedIndexedAccess": true,
+  "exactOptionalPropertyTypes": true,
+  "verbatimModuleSyntax": true,
+  "module": "ESNext",             // base default; node.json overrides to NodeNext
+  "moduleResolution": "Bundler",
+  "target": "ES2022",
+  "lib": ["ES2023"]
+}
+```
+
+`base.json` defaults to `Bundler` resolution so browser apps (`vite.json`, `nextjs.json`, `react-library.json`) inherit it directly. Node-side packages/apps extend `node.json`, which overrides `module`/`moduleResolution` to `NodeNext`.
+
+### Shared conventions
+
+- Every **code-bearing** package/app exposes the same script names (`dev`, `build`, `lint`, `check-types`, `test`) so Turbo tasks apply uniformly. Config-only packages (`config-typescript`, which ships JSON, and `config-eslint`) declare only the scripts that have something to do; Turbo skips the rest rather than running no-op stubs.
+- Internal packages (`@repo/db`, `@repo/crypto`, `@repo/logger`, `@repo/contracts`) are published as TypeScript source (`"exports": { ".": "./src/index.ts" }`) and compiled by the consuming app's bundler (`tsdown` for the API, Vite/Next for the frontends). This removes the per-package build step and the `dependsOn: ["^build"]` latency in dev. Packages that need a compiled artifact (`ui`, if published) may keep a build.
+- `.env` files are never committed; `.env.example` files are (ADR-0004).
+- Dependency direction between packages is one-way: `contracts` → nothing internal; `crypto` → nothing internal; `db` → `crypto`, `contracts`; `logger` → nothing internal; apps → any package. Enforced with `eslint-plugin-boundaries` or a `depcruise` check in CI.
+
+### Lint rules that enforce ADRs
+
+Collected here so they are implemented once in `@repo/eslint-config`:
+
+| Rule | Enforces |
+|---|---|
+| `no-restricted-syntax`: `res.json` / `res.send` outside `apps/api/src/core/http/**` | ADR-0012 envelope helpers only |
+| `no-restricted-imports`: `getContext` inside `modules/**/*.service.ts` | ADR-0010 explicit `ctx` param in services |
+| `no-restricted-imports`: `express` inside `*.service.ts`, `*.repository.ts` | ADR-0009 layer boundaries |
+| `no-restricted-imports`: `@repo/db` schema/tables inside `*.service.ts`, `*.controller.ts` | ADR-0009 SQL only in repositories |
+| `no-restricted-globals`: `process.env` outside `core/config/**`, `drizzle.config.ts`, seeds runner | ADR-0004 |
+| `no-restricted-syntax`: `ClassDeclaration`, `ClassExpression`, `ThisExpression` in `apps/api/src/**` | ADR-0009 functional style |
+| `@typescript-eslint/no-floating-promises`, `no-misused-promises` | ADR-0011 async handlers |
+| `no-console` (use logger) | ADR-0005 |
+
+## Consequences
+
+- Fewer moving parts (no Remix, no Jest/ts-jest, no per-package bundling); `turbo dev` starts faster.
+- `web` rename is a one-time cost; the ADRs already refer to `web`.
+- Aligning `admin` to React 19 / Vite 7 is required for `@repo/ui` to have a single React peer version.
+- Downstream projects get an opinionated but consistent baseline.
+
+## Alternatives considered
+
+- Keep the kitchen-sink apps as-is: leaves dead code (`blog`) and version drift in the blueprint.
+- Nx instead of Turborepo: more features than needed; Turborepo is already in place and sufficient.
+- Compile every package (`bunchee`/`tsup`) as before: adds latency and dist bookkeeping for packages with a single consumer.
