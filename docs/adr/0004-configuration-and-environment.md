@@ -35,7 +35,7 @@ export const envSchema = z.object({
   RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().default(300),   // per 15 min per IP
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().default(10),
   CORS_ORIGINS: z.string().transform(s => s.split(',').map(x => x.trim()).filter(Boolean)).default(''),
-  FEATURE_USER_REGISTRATION: z.coerce.boolean().default(true),  // POST /public/auth/register
+  FEATURE_USER_REGISTRATION: z.stringbool().default(true),      // POST /public/auth/register
   SEED_SUPER_ADMIN_EMAIL: z.string().email().optional(),
   SEED_SUPER_ADMIN_PASSWORD: z.string().min(12).optional(),
 });
@@ -44,6 +44,8 @@ export type Env = z.infer<typeof envSchema>;
 ```
 
 `loadConfig()` parses `process.env`, and on failure prints every offending key (never the values) and exits with code 1.
+
+**Amended 2026-08-18 (step 5).** Boolean variables use `z.stringbool()`, not `z.coerce.boolean()`. `z.coerce.boolean()` is `Boolean(value)`, and every environment variable is a string, so `FEATURE_USER_REGISTRATION=false` parsed to `true` — the flag could never be turned off, and only an *empty* value (`FEATURE_USER_REGISTRATION=`) produced `false`, which is the opposite of what a reader expects. `z.stringbool()` (zod 4, already pinned by `@repo/contracts` per ADR-0023) accepts `true/false`, `1/0`, `yes/no`, `on/off` and rejects anything else, so a typo fails startup instead of silently enabling the feature. The same rule applies to any boolean variable added later.
 
 - The config object is grouped, not flat, when handed to the app:
 
@@ -58,6 +60,13 @@ export type Env = z.infer<typeof envSchema>;
 .env                    # root: local, git-ignored — used by docker compose AND by the api / db tooling
 apps/api/.env.test      # committed; test DB URL and dummy secrets for the vitest integration run
 ```
+
+`DATABASE_URL_TEST` appears in both the root `.env` and `apps/api/.env.test`, so
+precedence is fixed here (added 2026-08-18, step 5): **`apps/api/.env.test` wins for
+the vitest run** — it is the file the integration `globalSetup` loads (ADR-0021), it is
+committed, and it is what CI gets. The root value exists so ad-hoc tooling (`psql`, a
+one-off migrate against the test DB) has the URL without loading a second file. Keep
+them pointing at the same database; if they disagree, the test run follows `.env.test`.
 
 A single root `.env` avoids duplicating DB credentials between Docker Compose (which reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`) and the API (`DATABASE_URL`). `.env.example` shows both and how they line up:
 

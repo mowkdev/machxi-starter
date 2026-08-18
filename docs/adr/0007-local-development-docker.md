@@ -58,7 +58,7 @@ networks:
     name: machxi-local
 ```
 
-- Credentials come from the **root `.env`** (ADR-0004); compose is invoked with `--env-file ../../.env` (wrapped in root scripts, below), so the same values feed `DATABASE_URL`.
+- Credentials come from the **root `.env`** (ADR-0004); compose is invoked from the repo root with `--env-file .env -f docker/local/compose.yaml` (wrapped in the root scripts, below), so the same values feed `DATABASE_URL`.
 - Named network `machxi-local` so future services (api container, mailhog, redis) join it by name.
 - Named volume so data survives `down`; `docker compose down -v` is the documented reset.
 - A second database `machxi_test` is created by the init script for integration tests (ADR-0021), keeping test data separate from dev data. Postgres extensions (`citext`) are **not** created by init scripts — the first migration does `CREATE EXTENSION IF NOT EXISTS citext;` so every environment (test DB, CI, production) gets them the same way.
