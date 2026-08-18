@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  changePasswordBody,
   createUserBody,
   listUsersQuery,
   MIN_PASSWORD_LENGTH,
@@ -86,45 +85,6 @@ describe("updateProfileBody", () => {
 
   it("rejects an empty patch", () => {
     expect(updateProfileBody.safeParse({}).success).toBe(false);
-  });
-});
-
-describe("changePasswordBody", () => {
-  it("accepts a current password that predates the policy", () => {
-    expect(
-      changePasswordBody.safeParse({
-        currentPassword: "short",
-        newPassword: password,
-      }).success,
-    ).toBe(true);
-  });
-
-  it("holds the new password to the policy", () => {
-    expect(
-      changePasswordBody.safeParse({
-        currentPassword: "short",
-        newPassword: "alsoshort",
-      }).success,
-    ).toBe(false);
-  });
-
-  it("refuses a no-op change and blames the new password", () => {
-    const result = changePasswordBody.safeParse({
-      currentPassword: password,
-      newPassword: password,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.path).toEqual(["newPassword"]);
-  });
-
-  it("requires both fields", () => {
-    expect(
-      changePasswordBody.safeParse({ newPassword: password }).success,
-    ).toBe(false);
-    expect(
-      changePasswordBody.safeParse({ currentPassword: password }).success,
-    ).toBe(false);
   });
 });
 

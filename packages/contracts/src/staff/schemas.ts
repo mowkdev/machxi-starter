@@ -69,6 +69,30 @@ export const updateStaffBody = z
 export type UpdateStaffBody = z.infer<typeof updateStaffBody>;
 
 /**
+ * `PATCH /api/v1/admin/profile` — what a staff member may change about
+ * themselves (ADR-0027).
+ *
+ * Names only, and the omissions are the decision: `roles` is absent so an
+ * `editor` cannot promote itself past the guard that keeps it out of
+ * `/admin/staff`, `status` is absent so a disabled operator cannot re-enable
+ * itself inside its access token's remaining life, and `email` is absent for
+ * the reason {@link updateStaffBody} omits it. There is no field to reject at
+ * runtime because there is no field.
+ *
+ * Unlike the user profile's, the names are not nullable: the `staff` columns
+ * are `NOT NULL` (ADR-0017), so "clear it" is not a legal request here.
+ */
+export const updateStaffProfileBody = z
+  .strictObject({
+    firstName: nameSchema.optional(),
+    lastName: nameSchema.optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    error: "Provide at least one field to update",
+  });
+export type UpdateStaffProfileBody = z.infer<typeof updateStaffProfileBody>;
+
+/**
  * `GET /api/v1/admin/staff` (ADR-0014).
  *
  * Roles are not filterable in v1: `staff_roles` is a join table, and every

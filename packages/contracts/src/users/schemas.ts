@@ -7,13 +7,17 @@ import {
   idSchema,
   nameSchema,
   passwordSchema,
-  presentedPasswordSchema,
 } from "../primitives.js";
 
 /**
  * Request schemas for the users module. One module serves two segments
  * (ADR-0009): `/api/v1/admin/users` for staff administration and
  * `/api/v1/user/profile` for a user acting on their own account.
+ *
+ * The two credential bodies these segments use — `changePasswordBody` and
+ * `setPasswordBody` — live in `auth/` and are re-exported by this module's
+ * barrel: both populations send the identical shapes, so ADR-0023 has them
+ * declared once (ADR-0027 §Contracts).
  */
 
 /** `:id` of any single-user admin route, including `/:id/sessions/revoke`. */
@@ -79,25 +83,6 @@ export const updateProfileBody = z
     error: "Provide at least one field to update",
   });
 export type UpdateProfileBody = z.infer<typeof updateProfileBody>;
-
-/**
- * `POST /api/v1/user/profile/change-password` — revokes the user's other
- * sessions on success (see the endpoint scope in `docs/plan/0001-api-foundation.md`).
- *
- * `currentPassword` is only bounded, not held to the policy: it is a
- * credential being verified, and an account whose password predates a policy
- * change must still be able to change it.
- */
-export const changePasswordBody = z
-  .strictObject({
-    currentPassword: presentedPasswordSchema,
-    newPassword: passwordSchema,
-  })
-  .refine((body) => body.newPassword !== body.currentPassword, {
-    path: ["newPassword"],
-    error: "The new password must differ from the current one",
-  });
-export type ChangePasswordBody = z.infer<typeof changePasswordBody>;
 
 /**
  * `GET /api/v1/admin/users` (ADR-0014). `q` searches email and name.

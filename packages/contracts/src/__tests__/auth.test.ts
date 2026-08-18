@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  changePasswordBody,
   loginBody,
   MAX_PASSWORD_LENGTH,
   MAX_REFRESH_TOKEN_LENGTH,
   MIN_PASSWORD_LENGTH,
   refreshBody,
   registerBody,
+  setPasswordBody,
 } from "../index.js";
 
 const password = "a".repeat(MIN_PASSWORD_LENGTH);
@@ -137,5 +139,86 @@ describe("registerBody", () => {
       "firstName",
       "lastName",
     ]);
+  });
+});
+
+describe("changePasswordBody", () => {
+  it("accepts a current password that predates the policy", () => {
+    expect(
+      changePasswordBody.safeParse({
+        currentPassword: "short",
+        newPassword: password,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("holds the new password to the policy", () => {
+    expect(
+      changePasswordBody.safeParse({
+        currentPassword: "short",
+        newPassword: "alsoshort",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("refuses a no-op change and blames the new password", () => {
+    const result = changePasswordBody.safeParse({
+      currentPassword: password,
+      newPassword: password,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["newPassword"]);
+  });
+
+  it("requires both fields", () => {
+    expect(
+      changePasswordBody.safeParse({ newPassword: password }).success,
+    ).toBe(false);
+    expect(
+      changePasswordBody.safeParse({ currentPassword: password }).success,
+    ).toBe(false);
+  });
+});
+
+describe("setPasswordBody", () => {
+  it("takes the subject's new password and the actor's own current one", () => {
+    expect(
+      setPasswordBody.safeParse({ password, currentPassword: "short" }).success,
+    ).toBe(true);
+  });
+
+  it("holds the new password to the policy", () => {
+    expect(
+      setPasswordBody.safeParse({
+        password: "alsoshort",
+        currentPassword: password,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires the actor to re-present their own password (ADR-0027)", () => {
+    // The step-up check the whole endpoint rests on: without this field a
+    // stolen admin access token is an account-takeover engine.
+    expect(setPasswordBody.safeParse({ password }).success).toBe(false);
+  });
+
+  it("allows the two values to be equal", () => {
+    // They belong to two different people, so a "must differ" rule would only
+    // report whether the actor and the subject share a password.
+    expect(
+      setPasswordBody.safeParse({ password, currentPassword: password })
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects an unknown field rather than ignoring it", () => {
+    expect(
+      setPasswordBody.safeParse({
+        password,
+        currentPassword: password,
+        newPassword: password,
+      }).success,
+    ).toBe(false);
   });
 });

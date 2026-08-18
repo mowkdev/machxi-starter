@@ -36,6 +36,7 @@ describe("ERROR_CODES", () => {
         "AUTH_INVALID_REFRESH_TOKEN",
         "AUTH_REFRESH_REUSED",
         "AUTH_ACCOUNT_DISABLED",
+        "AUTH_CURRENT_PASSWORD_INVALID",
       ]),
     );
   });
@@ -48,6 +49,14 @@ describe("ERROR_CODES", () => {
         "STAFF_LAST_SUPER_ADMIN",
       ]),
     );
+  });
+
+  it("names the failed re-presentation of the caller's own password (ADR-0027)", () => {
+    // An auth code, not a users-module one: four endpoints across both
+    // populations ask the same question about the same caller, and none of
+    // them is about the `users` aggregate.
+    expect(ERROR_CODES).toContain("AUTH_CURRENT_PASSWORD_INVALID");
+    expect(ERROR_CODES).not.toContain("USER_CURRENT_PASSWORD_INVALID");
   });
 
   it("keeps email conflicts per population — emails are unique within one, not across", () => {

@@ -65,6 +65,20 @@ const GENERIC_ERROR_CODES = [
  * | `AUTH_INVALID_REFRESH_TOKEN` | 401 | refresh token unknown or past `refresh_token_expires_at` | re-login |
  * | `AUTH_REFRESH_REUSED` | 401 | a rotated refresh token was replayed outside the grace window; the session is revoked | re-login and warn the user |
  * | `AUTH_ACCOUNT_DISABLED` | 403 | credentials are correct but `status != active` | show a support message |
+ * | `AUTH_CURRENT_PASSWORD_INVALID` | 403 | the caller re-presented their own password on a credential-setting endpoint and it did not verify | ask for the password again |
+ *
+ * `AUTH_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
+ * *is* authenticated — their session is fine and stays fine — so a `401` would
+ * be untrue about the request and would send every client interceptor that
+ * treats `401` as "the session died" to the login screen over a typo.
+ *
+ * It is an auth code rather than a users-module one because the condition it
+ * reports is a property of the credential check and not of any aggregate: all
+ * four of `/api/v1/{admin,user}/profile/change-password` and
+ * `POST /api/v1/admin/{staff,users}/:id/password` ask the same question about
+ * the same caller (ADR-0027 §Contracts). It was `USER_CURRENT_PASSWORD_INVALID`
+ * until D2.3 renamed it, while the only consumer was this repository's Postman
+ * collection.
  */
 const AUTH_ERROR_CODES = [
   "AUTH_INVALID_CREDENTIALS",
@@ -74,6 +88,7 @@ const AUTH_ERROR_CODES = [
   "AUTH_INVALID_REFRESH_TOKEN",
   "AUTH_REFRESH_REUSED",
   "AUTH_ACCOUNT_DISABLED",
+  "AUTH_CURRENT_PASSWORD_INVALID",
 ] as const;
 
 /**
@@ -82,14 +97,8 @@ const AUTH_ERROR_CODES = [
  * | Code | Status | Raised when |
  * |---|---|---|
  * | `USER_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/users` with an email already in the `users` table |
- * | `USER_CURRENT_PASSWORD_INVALID` | 403 | `POST /api/v1/user/profile/change-password` where `currentPassword` does not verify |
  * | `STAFF_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/staff` with an email already in the `staff` table |
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
- *
- * `USER_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
- * *is* authenticated — their session is fine and stays fine — so a `401` would
- * be untrue about the request and would send every client interceptor that
- * treats `401` as "the session died" to the login screen over a typo.
  *
  * Emails are unique **within** a population, so the two "taken" codes are
  * separate: the same person may hold both a staff and a user account.
@@ -104,7 +113,6 @@ const AUTH_ERROR_CODES = [
  */
 const DOMAIN_ERROR_CODES = [
   "USER_EMAIL_TAKEN",
-  "USER_CURRENT_PASSWORD_INVALID",
   "STAFF_EMAIL_TAKEN",
   "STAFF_LAST_SUPER_ADMIN",
 ] as const;

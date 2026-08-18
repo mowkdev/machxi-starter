@@ -68,3 +68,44 @@ export const registerBody = z.strictObject({
   lastName: nameSchema.optional(),
 });
 export type RegisterBody = z.infer<typeof registerBody>;
+
+/**
+ * `POST /api/v1/{admin,user}/profile/change-password` — an account changing
+ * its own password (ADR-0027).
+ *
+ * It lives here rather than in `users/` because it is a credential shape used
+ * by both populations, and ADR-0023's "defined once" rule puts a shape its
+ * consumers share above the module that happened to need it first.
+ *
+ * `currentPassword` is only bounded, not held to the policy: it is a
+ * credential being verified, and an account whose password predates a policy
+ * change must still be able to change it.
+ */
+export const changePasswordBody = z
+  .strictObject({
+    currentPassword: presentedPasswordSchema,
+    newPassword: passwordSchema,
+  })
+  .refine((body) => body.newPassword !== body.currentPassword, {
+    path: ["newPassword"],
+    error: "The new password must differ from the current one",
+  });
+export type ChangePasswordBody = z.infer<typeof changePasswordBody>;
+
+/**
+ * `POST /api/v1/admin/{staff,users}/:id/password` — a staff member setting
+ * somebody else's password (ADR-0027).
+ *
+ * The two fields belong to two different people: `password` is the subject's
+ * new credential and is held to the policy, while `currentPassword` is the
+ * **acting staff member's own** and is only bounded, for the reason
+ * `presentedPasswordSchema` exists. That is also why there is no "must differ"
+ * refinement here — the two values have no relationship worth asserting, and
+ * one that compared them would leak whether the actor and the subject share a
+ * password.
+ */
+export const setPasswordBody = z.strictObject({
+  password: passwordSchema,
+  currentPassword: presentedPasswordSchema,
+});
+export type SetPasswordBody = z.infer<typeof setPasswordBody>;

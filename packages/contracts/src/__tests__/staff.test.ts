@@ -6,6 +6,7 @@ import {
   MIN_PASSWORD_LENGTH,
   staffIdParams,
   updateStaffBody,
+  updateStaffProfileBody,
 } from "../index.js";
 
 const valid = {
@@ -104,6 +105,39 @@ describe("updateStaffBody", () => {
     expect(
       updateStaffBody.safeParse({ status: "pending_verification" }).success,
     ).toBe(false);
+  });
+});
+
+describe("updateStaffProfileBody", () => {
+  it("accepts a name change", () => {
+    expect(updateStaffProfileBody.safeParse({ firstName: "Ada" }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects an empty patch", () => {
+    expect(updateStaffProfileBody.safeParse({}).success).toBe(false);
+  });
+
+  it("has no field for roles, so an editor cannot promote itself", () => {
+    // `/api/v1/admin/profile` carries no `authorize` (ADR-0019 §3), so the
+    // absence of the field is what keeps every staff role out of its own role
+    // set — there is nothing to reject at runtime because there is no field.
+    expect(
+      updateStaffProfileBody.safeParse({ roles: ["super_admin"] }).success,
+    ).toBe(false);
+  });
+
+  it("has no field for status, so a disabled operator cannot re-enable itself", () => {
+    expect(updateStaffProfileBody.safeParse({ status: "active" }).success).toBe(
+      false,
+    );
+  });
+
+  it("does not accept null, unlike the user profile — the columns are NOT NULL", () => {
+    expect(updateStaffProfileBody.safeParse({ firstName: null }).success).toBe(
+      false,
+    );
   });
 });
 
