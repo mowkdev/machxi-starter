@@ -3,10 +3,7 @@ import type { Express } from "express";
 
 import { createApp } from "../../src/app.js";
 import { loadConfig, type AppConfig } from "../../src/core/config/index.js";
-import {
-  buildContainer,
-  type Container,
-} from "../../src/core/container.js";
+import { buildContainer, type Container } from "../../src/core/container.js";
 import { createDb, type DbClient } from "../../src/core/db/index.js";
 
 /**

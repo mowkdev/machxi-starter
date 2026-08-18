@@ -16,9 +16,7 @@ import type { AppError } from "./app-error.js";
  * message to the right field. It is omitted when the issue is about the object
  * as a whole.
  */
-export const toErrorDetails = (
-  issues: readonly ZodIssue[],
-): ErrorDetail[] =>
+export const toErrorDetails = (issues: readonly ZodIssue[]): ErrorDetail[] =>
   issues.map((issue): ErrorDetail => {
     const path = issue.path.join(".");
 

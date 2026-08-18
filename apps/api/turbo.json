@@ -1,22 +1,12 @@
 {
-  "extends": [
-    "//"
-  ],
+  "extends": ["//"],
   "tasks": {
     "build": {
-      "env": [
-        "APP_VERSION",
-        "GIT_SHA"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "env": ["APP_VERSION", "GIT_SHA"],
+      "outputs": ["dist/**"]
     },
     "test:int": {
-      "env": [
-        "DATABASE_URL",
-        "DATABASE_URL_TEST"
-      ]
+      "env": ["DATABASE_URL", "DATABASE_URL_TEST"]
     }
   }
 }

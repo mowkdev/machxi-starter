@@ -19,8 +19,10 @@ export interface ValidationSchemas {
   readonly body?: ZodType;
 }
 
-type Parsed<S extends ValidationSchemas, K extends keyof ValidationSchemas> =
-  S[K] extends ZodType ? output<S[K]> : undefined;
+type Parsed<
+  S extends ValidationSchemas,
+  K extends keyof ValidationSchemas,
+> = S[K] extends ZodType ? output<S[K]> : undefined;
 
 /** What `req.valid` holds for a route validated with `S`. */
 export interface Validated<S extends ValidationSchemas> {

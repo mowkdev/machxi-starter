@@ -75,9 +75,9 @@ describe("envSchema", () => {
       ["yes", true],
       ["no", false],
     ])("parses FEATURE_USER_REGISTRATION=%s as %s", (raw, expected) => {
-      expect(parse({ FEATURE_USER_REGISTRATION: raw }).FEATURE_USER_REGISTRATION).toBe(
-        expected,
-      );
+      expect(
+        parse({ FEATURE_USER_REGISTRATION: raw }).FEATURE_USER_REGISTRATION,
+      ).toBe(expected);
     });
 
     it("rejects a typo instead of silently enabling the feature", () => {
@@ -103,7 +103,10 @@ describe("envSchema", () => {
       // key sign production access tokens.
       expect(PLACEHOLDER_JWT_ACCESS_SECRET.length).toBeGreaterThan(32);
       expect(() =>
-        parse({ ...production, JWT_ACCESS_SECRET: PLACEHOLDER_JWT_ACCESS_SECRET }),
+        parse({
+          ...production,
+          JWT_ACCESS_SECRET: PLACEHOLDER_JWT_ACCESS_SECRET,
+        }),
       ).toThrow(/JWT_ACCESS_SECRET/);
     });
 

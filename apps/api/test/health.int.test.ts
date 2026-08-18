@@ -115,7 +115,10 @@ describe("readiness with an unreachable database", () => {
     harness = createTestApp({
       config: (config) => ({
         ...config,
-        db: { ...config.db, url: "postgres://nobody:nobody@127.0.0.1:1/machxi" },
+        db: {
+          ...config.db,
+          url: "postgres://nobody:nobody@127.0.0.1:1/machxi",
+        },
       }),
     });
   });
@@ -125,14 +128,18 @@ describe("readiness with an unreachable database", () => {
   });
 
   it("answers 503 with the standard error envelope", async () => {
-    const response = await supertest(harness.app).get("/health/ready").expect(503);
+    const response = await supertest(harness.app)
+      .get("/health/ready")
+      .expect(503);
 
     expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
     expect(response.body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("names the failing indicator without leaking the connection target", async () => {
-    const response = await supertest(harness.app).get("/health/ready").expect(503);
+    const response = await supertest(harness.app)
+      .get("/health/ready")
+      .expect(503);
 
     expect(response.body.error.details).toEqual([
       { code: "database", message: expect.stringContaining("unreachable") },

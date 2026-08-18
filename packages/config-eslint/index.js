@@ -38,5 +38,5 @@ export const config = defineConfig(
     plugins: {
       onlyWarn,
     },
-  }
+  },
 );

@@ -51,11 +51,8 @@ describe("resolveRequestId", () => {
  * `info` stream so an orchestrator cannot drown the log.
  */
 describe("accessLogLevel", () => {
-  const level = (
-    url: string,
-    statusCode: number,
-    failed = false,
-  ): string => accessLogLevel({ url, statusCode, failed });
+  const level = (url: string, statusCode: number, failed = false): string =>
+    accessLogLevel({ url, statusCode, failed });
 
   it("logs an ordinary success at info", () => {
     expect(level("/api/v1/admin/staff", 200)).toBe("info");
@@ -91,8 +88,8 @@ describe("accessLogLevel", () => {
   });
 
   it("falls back to info when the url is unknown", () => {
-    expect(accessLogLevel({ url: undefined, statusCode: 200, failed: false })).toBe(
-      "info",
-    );
+    expect(
+      accessLogLevel({ url: undefined, statusCode: 200, failed: false }),
+    ).toBe("info");
   });
 });

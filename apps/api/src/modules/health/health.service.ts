@@ -79,7 +79,10 @@ const withTimeout = async (
 
 /** `down` if a critical check failed, `degraded` if only a non-critical one did. */
 export const aggregateStatus = (
-  results: readonly { indicator: HealthIndicator; check: HealthCheckResource }[],
+  results: readonly {
+    indicator: HealthIndicator;
+    check: HealthCheckResource;
+  }[],
 ): HealthStatus => {
   let degraded = false;
 

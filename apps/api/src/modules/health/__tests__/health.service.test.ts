@@ -30,7 +30,10 @@ const okIndicator = (name = "database"): HealthIndicator => ({
   check: () => Promise.resolve({ status: "ok" }),
 });
 
-const downIndicator = (name = "database", critical = true): HealthIndicator => ({
+const downIndicator = (
+  name = "database",
+  critical = true,
+): HealthIndicator => ({
   name,
   critical,
   check: () => Promise.resolve({ status: "down", message: "unreachable" }),

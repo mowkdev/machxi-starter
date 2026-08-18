@@ -24,9 +24,9 @@ describe("successEnvelope", () => {
     const envelope = successEnvelope(requestId, resource);
 
     expect(
-      successEnvelopeSchema(z.object({ id: z.string(), email: z.string() })).safeParse(
-        envelope,
-      ).success,
+      successEnvelopeSchema(
+        z.object({ id: z.string(), email: z.string() }),
+      ).safeParse(envelope).success,
     ).toBe(true);
     expect(envelope).toEqual({
       success: true,

@@ -86,9 +86,12 @@ describe("toAppError", () => {
     // The safety net: a repository that recognises the constraint should raise
     // its own domain error first (ADR-0013).
     const mapped = toAppError(
-      Object.assign(new Error('duplicate key value violates "staff_email_key"'), {
-        code: "23505",
-      }),
+      Object.assign(
+        new Error('duplicate key value violates "staff_email_key"'),
+        {
+          code: "23505",
+        },
+      ),
     );
 
     expect(mapped.status).toBe(409);
@@ -99,9 +102,12 @@ describe("toAppError", () => {
     // The constraint name would tell a caller which value already exists
     // (ADR-0020 §Enumeration).
     const mapped = toAppError(
-      Object.assign(new Error('duplicate key value violates "staff_email_key"'), {
-        code: "23505",
-      }),
+      Object.assign(
+        new Error('duplicate key value violates "staff_email_key"'),
+        {
+          code: "23505",
+        },
+      ),
     );
 
     expect(mapped.message).toBe("Conflict");
@@ -130,7 +136,9 @@ describe("errorHandler", () => {
   });
 
   it("replaces a non-exposed message with a generic one", () => {
-    const { body } = handle(internal(new Error("connection string leaked here")));
+    const { body } = handle(
+      internal(new Error("connection string leaked here")),
+    );
 
     expect(JSON.stringify(body)).not.toContain("connection string leaked here");
     expect(body).toMatchObject({

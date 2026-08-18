@@ -131,7 +131,7 @@ export const envSchema = z
     {
       path: ["CORS_ORIGINS"],
       message:
-        "must not contain \"*\" in production; list the exact origins (ADR-0020)",
+        'must not contain "*" in production; list the exact origins (ADR-0020)',
     },
   );
 

@@ -22,7 +22,9 @@ export const sanitiseDbError = (error: unknown): string => {
       ? String((error as { code: unknown }).code)
       : undefined;
 
-  return code === undefined || code === "" ? "unreachable" : `unreachable (${code})`;
+  return code === undefined || code === ""
+    ? "unreachable"
+    : `unreachable (${code})`;
 };
 
 export const createDbIndicator = (client: DbClient): HealthIndicator => ({

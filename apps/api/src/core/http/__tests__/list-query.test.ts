@@ -39,7 +39,8 @@ const schema = listQuerySchema({
   defaultSort: "-createdAt",
 });
 
-const parse = (query: Record<string, unknown>): ListQuery => schema.parse(query);
+const parse = (query: Record<string, unknown>): ListQuery =>
+  schema.parse(query);
 
 describe("toCondition", () => {
   it.each([
@@ -78,7 +79,9 @@ describe("applyListQuery", () => {
   });
 
   it("leaves `where` undefined when nothing was filtered", () => {
-    expect(applyListQuery(parse({}), { columns, tiebreaker: staff.id }).where).toBeUndefined();
+    expect(
+      applyListQuery(parse({}), { columns, tiebreaker: staff.id }).where,
+    ).toBeUndefined();
   });
 
   it("appends the id tiebreaker so pages are stable", () => {
@@ -158,7 +161,11 @@ describe("toPage", () => {
   });
 
   it("keeps the operator in the key for a non-eq filter", () => {
-    const page = toPage(parse({ filter: { createdAt: { gte: "2026-01-01" } } }), [], 0);
+    const page = toPage(
+      parse({ filter: { createdAt: { gte: "2026-01-01" } } }),
+      [],
+      0,
+    );
 
     // The *parsed* value, not the raw query string: what is echoed is what
     // was applied. It serialises to an ISO-8601 instant (ADR-0012).

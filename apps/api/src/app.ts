@@ -63,9 +63,10 @@ export const createApp = (container: Container): Express => {
       // An empty allow-list means no browser origin is permitted, which is
       // what `false` says to `cors`. Non-browser clients are unaffected —
       // CORS is enforced by the browser, not by this middleware.
-      origin: config.http.corsOrigins.length === 0
-        ? false
-        : [...config.http.corsOrigins],
+      origin:
+        config.http.corsOrigins.length === 0
+          ? false
+          : [...config.http.corsOrigins],
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
       exposedHeaders: ["X-Request-Id"],

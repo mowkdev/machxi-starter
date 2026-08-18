@@ -50,9 +50,10 @@ describe("appError", () => {
   it("keeps the cause for the log line", () => {
     const cause = new Error("driver blew up");
 
-    expect(appError({ status: 500, code: "INTERNAL_ERROR", message: "x", cause }).cause).toBe(
-      cause,
-    );
+    expect(
+      appError({ status: 500, code: "INTERNAL_ERROR", message: "x", cause })
+        .cause,
+    ).toBe(cause);
   });
 });
 
@@ -142,7 +143,9 @@ describe("toErrorDetails", () => {
         expect.objectContaining({ path: "roles.0" }),
       ]),
     );
-    expect(details.every((detail) => typeof detail.code === "string")).toBe(true);
+    expect(details.every((detail) => typeof detail.code === "string")).toBe(
+      true,
+    );
   });
 
   it("omits `path` for an issue about the object as a whole", () => {

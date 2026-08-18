@@ -60,7 +60,9 @@ describe("createHttpLogger", () => {
 
     await supertest(app).get("/api/v1/thing").expect(200);
 
-    expect(lines.filter((line) => line.msg === "request completed")).toHaveLength(1);
+    expect(
+      lines.filter((line) => line.msg === "request completed"),
+    ).toHaveLength(1);
   });
 
   it("carries method, url, status, duration and the request id", async () => {

@@ -53,7 +53,9 @@ describe("startServer", () => {
   });
 
   it("ignores a second signal instead of starting a second drain", async () => {
-    const onShutdown = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const onShutdown = vi
+      .fn<() => Promise<void>>()
+      .mockResolvedValue(undefined);
     const { server, shutdown } = start(onShutdown);
 
     await new Promise((resolve) => server.once("listening", resolve));

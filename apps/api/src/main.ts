@@ -79,10 +79,7 @@ const main = async (): Promise<void> => {
     });
   }
 
-  logger.info(
-    { env: config.env, version: config.app.version },
-    "api started",
-  );
+  logger.info({ env: config.env, version: config.app.version }, "api started");
 };
 
 try {

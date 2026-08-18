@@ -18,7 +18,11 @@ const schemas = {
 
 const run = (
   req: Partial<Request>,
-): { request: Partial<Request>; next: ReturnType<typeof vi.fn>; error?: unknown } => {
+): {
+  request: Partial<Request>;
+  next: ReturnType<typeof vi.fn>;
+  error?: unknown;
+} => {
   const next = vi.fn();
   const request = { params: {}, query: {}, body: {}, ...req };
 
@@ -56,7 +60,11 @@ describe("validate", () => {
 
   it("leaves an unvalidated part undefined rather than copying the raw one", () => {
     const next = vi.fn();
-    const request = { params: {}, query: {}, body: { note: "raw" } } as unknown as Request;
+    const request = {
+      params: {},
+      query: {},
+      body: { note: "raw" },
+    } as unknown as Request;
 
     validate({ params: z.object({}) })(request, {} as Response, next);
 

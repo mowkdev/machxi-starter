@@ -23,126 +23,128 @@ import { config } from "./index.js";
  */
 export const apiConfig = ({ tsconfigRootDir }) =>
   defineConfig(
-  ...config,
+    ...config,
 
-  {
-    // Type-aware linting, for the two rules that cannot be decided
-    // syntactically. Express 5 forwards rejected promises to the error
-    // middleware (ADR-0003), which is only useful if the promise is actually
-    // returned or awaited — `no-floating-promises` is what catches the case
-    // where it is not and the request hangs or fails silently (ADR-0011).
-    //
-    // Only these two rules, not the whole `recommendedTypeChecked` set:
-    // ADR-0002 names them, and the `no-unsafe-*` family would mostly fire on
-    // supertest's `response.body`, which is `any` by design.
-    files: ["**/*.ts"],
-    languageOptions: {
-      parserOptions: { projectService: true, tsconfigRootDir },
-    },
-    rules: {
-      "@typescript-eslint/no-floating-promises": "error",
-      "@typescript-eslint/no-misused-promises": "error",
-    },
-  },
-
-  {
-    // The config files themselves are JavaScript and outside any tsconfig.
-    files: ["**/*.js", "**/*.mjs"],
-    extends: [tseslint.configs.disableTypeChecked],
-  },
-
-  {
-    files: ["src/**/*.ts"],
-    rules: {
-      // ADR-0009: functional style. No classes, no `this`, no decorators —
-      // every layer is a `create<Module><Layer>(deps)` factory returning a
-      // frozen object, and types come from `ReturnType`.
+    {
+      // Type-aware linting, for the two rules that cannot be decided
+      // syntactically. Express 5 forwards rejected promises to the error
+      // middleware (ADR-0003), which is only useful if the promise is actually
+      // returned or awaited — `no-floating-promises` is what catches the case
+      // where it is not and the request hangs or fails silently (ADR-0011).
       //
-      // ADR-0012: a controller may not write a response body itself. The
-      // envelope is produced by `respond.*` and by the error middleware, both
-      // of which live in `core/http` and are exempted below.
-      "no-restricted-syntax": ["error", ...functionalStyle, ...noRawResponse],
+      // Only these two rules, not the whole `recommendedTypeChecked` set:
+      // ADR-0002 names them, and the `no-unsafe-*` family would mostly fire on
+      // supertest's `response.body`, which is `any` by design.
+      files: ["**/*.ts"],
+      languageOptions: {
+        parserOptions: { projectService: true, tsconfigRootDir },
+      },
+      rules: {
+        "@typescript-eslint/no-floating-promises": "error",
+        "@typescript-eslint/no-misused-promises": "error",
+      },
     },
-  },
 
-  {
-    files: ["src/core/http/**/*.ts"],
-    rules: {
-      // Where the envelope is written; the functional-style ban still applies.
-      "no-restricted-syntax": ["error", ...functionalStyle],
+    {
+      // The config files themselves are JavaScript and outside any tsconfig.
+      files: ["**/*.js", "**/*.mjs"],
+      extends: [tseslint.configs.disableTypeChecked],
     },
-  },
 
-  {
-    files: ["src/**/*.ts"],
-    ignores: ["src/core/config/**"],
-    rules: {
-      // ADR-0004: one typed, validated config object per process, built once
-      // at startup. An ad hoc `process.env` read is untyped, silently
-      // defaulted and invisible to `.env.example`.
-      "no-restricted-properties": [
-        "error",
-        {
-          object: "process",
-          property: "env",
-          message:
-            "Read configuration through core/config (ADR-0004); add the variable to the zod schema and .env.example.",
-        },
-      ],
+    {
+      files: ["src/**/*.ts"],
+      rules: {
+        // ADR-0009: functional style. No classes, no `this`, no decorators —
+        // every layer is a `create<Module><Layer>(deps)` factory returning a
+        // frozen object, and types come from `ReturnType`.
+        //
+        // ADR-0012: a controller may not write a response body itself. The
+        // envelope is produced by `respond.*` and by the error middleware, both
+        // of which live in `core/http` and are exempted below.
+        "no-restricted-syntax": ["error", ...functionalStyle, ...noRawResponse],
+      },
     },
-  },
 
-  {
-    files: ["src/modules/**/*.service.ts"],
-    rules: {
-      // ADR-0010: services take `ctx` as their first parameter. Reaching for
-      // the ambient context hides a dependency that a signature should state,
-      // and forces every unit test to build a storage harness.
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["**/core/context", "**/core/context/*"],
-              importNames: ["getContext", "tryGetContext"],
-              message:
-                "Services receive `ctx` as their first argument (ADR-0010); getContext() is for infrastructure.",
-            },
-            ...noExpress,
-            ...noSchemaTables,
-          ],
-        },
-      ],
+    {
+      files: ["src/core/http/**/*.ts"],
+      rules: {
+        // Where the envelope is written; the functional-style ban still applies.
+        "no-restricted-syntax": ["error", ...functionalStyle],
+      },
     },
-  },
 
-  {
-    files: ["src/modules/**/*.repository.ts"],
-    rules: {
-      // ADR-0009: a repository knows Drizzle and the schema, never HTTP.
-      "no-restricted-imports": ["error", { patterns: noExpress }],
+    {
+      files: ["src/**/*.ts"],
+      ignores: ["src/core/config/**"],
+      rules: {
+        // ADR-0004: one typed, validated config object per process, built once
+        // at startup. An ad hoc `process.env` read is untyped, silently
+        // defaulted and invisible to `.env.example`.
+        "no-restricted-properties": [
+          "error",
+          {
+            object: "process",
+            property: "env",
+            message:
+              "Read configuration through core/config (ADR-0004); add the variable to the zod schema and .env.example.",
+          },
+        ],
+      },
     },
-  },
 
-  {
-    files: ["src/modules/**/*.controller.ts"],
-    rules: {
-      // ADR-0009: SQL lives in repositories. A controller that can reach a
-      // table can write a query, and the layering stops being checkable.
-      "no-restricted-imports": ["error", { patterns: noSchemaTables }],
+    {
+      files: ["src/modules/**/*.service.ts"],
+      rules: {
+        // ADR-0010: services take `ctx` as their first parameter. Reaching for
+        // the ambient context hides a dependency that a signature should state,
+        // and forces every unit test to build a storage harness.
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["**/core/context", "**/core/context/*"],
+                importNames: ["getContext", "tryGetContext"],
+                message:
+                  "Services receive `ctx` as their first argument (ADR-0010); getContext() is for infrastructure.",
+              },
+              ...noExpress,
+              ...noSchemaTables,
+            ],
+          },
+        ],
+      },
     },
-  },
+
+    {
+      files: ["src/modules/**/*.repository.ts"],
+      rules: {
+        // ADR-0009: a repository knows Drizzle and the schema, never HTTP.
+        "no-restricted-imports": ["error", { patterns: noExpress }],
+      },
+    },
+
+    {
+      files: ["src/modules/**/*.controller.ts"],
+      rules: {
+        // ADR-0009: SQL lives in repositories. A controller that can reach a
+        // table can write a query, and the layering stops being checkable.
+        "no-restricted-imports": ["error", { patterns: noSchemaTables }],
+      },
+    },
   );
 
 /** @type {import("eslint").Linter.RuleEntry[]} */
 const functionalStyle = [
   {
     selector: "ClassDeclaration",
-    message: "No classes (ADR-0009): export a create* factory returning an object.",
+    message:
+      "No classes (ADR-0009): export a create* factory returning an object.",
   },
   {
     selector: "ClassExpression",
-    message: "No classes (ADR-0009): export a create* factory returning an object.",
+    message:
+      "No classes (ADR-0009): export a create* factory returning an object.",
   },
   {
     selector: "ThisExpression",
@@ -151,7 +153,8 @@ const functionalStyle = [
   },
   {
     selector: "Decorator",
-    message: "No decorators (ADR-0009): wiring is explicit in core/container.ts.",
+    message:
+      "No decorators (ADR-0009): wiring is explicit in core/container.ts.",
   },
 ];
 

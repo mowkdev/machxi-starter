@@ -20,7 +20,9 @@ const logger = createLogger({ level: "silent" });
 
 describe("createRequestContext", () => {
   it("starts with no principal — authentication is what sets one", () => {
-    expect(createRequestContext({ requestId: "r1", logger }).principal).toBeNull();
+    expect(
+      createRequestContext({ requestId: "r1", logger }).principal,
+    ).toBeNull();
   });
 
   it("defaults the locale until i18n negotiation exists", () => {
