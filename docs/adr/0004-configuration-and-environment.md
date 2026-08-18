@@ -10,7 +10,7 @@ Configuration must be sourced from environment variables (12-factor), shared bet
 ## Decision
 
 - Environment variables are the only configuration source at runtime. Local development loads them from `.env` files; production injects them.
-- **One typed config object per process**, built once at startup with a `zod` schema and frozen. Nothing reads `process.env` outside `core/config`.
+- **One typed config object per process**, built once at startup with a `zod` schema and frozen. Nothing reads `process.env` outside `core/config` — except the database tooling, which cannot use it (below).
 
 ```ts
 // apps/api/src/core/config/schema.ts
@@ -44,6 +44,8 @@ export type Env = z.infer<typeof envSchema>;
 ```
 
 `loadConfig()` parses `process.env`, and on failure prints every offending key (never the values) and exits with code 1.
+
+**Amended 2026-08-18 (step 6).** The one reader outside `core/config` is **`packages/db/src/tooling/env.ts`**. `drizzle.config.ts`, `src/migrate.ts`, `src/reset.ts` and `seeds/run.ts` run as CLI scripts with no API process around them, so `loadConfig()` is not available to them; this ADR previously permitted `drizzle.config.ts` and the seed runner to read the environment ad hoc, and naming a single module instead is stricter — it is what gives ADR-0008's "print the target, never the credentials" rule one implementation (`describeTarget`), and it keeps `dotenv` off the library surface, so `import '@repo/db'` reads nothing. It also enforces the constraints this schema declares for variables the API never sees: `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD` are validated there (format, `min(12)`), because a seeder that bypassed `core/config` would otherwise create a super admin with a four-character password. The lint rule is `no-restricted-properties` on `process.env`, allowed in those two locations only.
 
 **Amended 2026-08-18 (step 5).** Boolean variables use `z.stringbool()`, not `z.coerce.boolean()`. `z.coerce.boolean()` is `Boolean(value)`, and every environment variable is a string, so `FEATURE_USER_REGISTRATION=false` parsed to `true` — the flag could never be turned off, and only an *empty* value (`FEATURE_USER_REGISTRATION=`) produced `false`, which is the opposite of what a reader expects. `z.stringbool()` (zod 4, already pinned by `@repo/contracts` per ADR-0023) accepts `true/false`, `1/0`, `yes/no`, `on/off` and rejects anything else, so a typo fails startup instead of silently enabling the feature. The same rule applies to any boolean variable added later.
 

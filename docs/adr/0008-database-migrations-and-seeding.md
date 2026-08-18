@@ -21,13 +21,18 @@ We need a repeatable way to (a) bring an empty Postgres to the current schema, (
 | script | purpose |
 |---|---|
 | `db:generate` | diff schema → new SQL migration |
-| `db:migrate` | apply pending migrations to `DATABASE_URL` |
+| `db:migrate` | apply pending migrations to `DATABASE_URL`; `-- --test` targets `DATABASE_URL_TEST` instead |
 | `db:seed` | run seeders (below) |
 | `db:setup` | `db:migrate` + `db:seed` — first-run helper |
-| `db:reset` | drop & recreate schema `public`, then `db:setup` — local only, guarded by `NODE_ENV !== 'production'` |
+| `db:reset` | drop schemas `public` **and `drizzle`**, recreate `public`, then `db:setup` — local only, guarded by `NODE_ENV !== 'production'` |
 | `db:studio` | drizzle studio |
 
 Turbo marks these `cache: false`.
+
+`db:reset` has to drop the `drizzle` schema too, not only `public`: that is where
+Drizzle keeps `__drizzle_migrations`. Dropping `public` alone leaves the journal
+claiming every migration is applied, so the next `db:migrate` reports "up to date"
+against an empty database and the failure surfaces at the first query instead.
 
 - The API does **not** auto-migrate on boot. Migrations are an explicit deploy step (or CI job). The API only verifies connectivity (ADR-0003). This keeps startup deterministic and avoids concurrent-migration races across replicas.
 
@@ -43,7 +48,7 @@ packages/db/seeds/
     └── 102-dev-users.ts     # a few customer users with known passwords
 ```
 
-- A seeder is `{ name: string; run(ctx: SeedContext): Promise<void> }` where `SeedContext = { db, log, env }`.
+- A seeder is `{ name: string; run(ctx: SeedContext): Promise<void> }` where `SeedContext = { db, hasher, log, env }`. **Amended 2026-08-18 (step 6):** `hasher` was added. It is built once by the runner from the `ARGON2_*` variables and handed to every seeder, rather than constructed per seeder — the seeded password must verify against the parameters the API uses (ADR-0018 §Password hashing), and one hasher per run is what makes that structurally true instead of a convention.
 - **Idempotent by construction**: every seeder uses `insert … on conflict do nothing` / upsert on a natural key (staff/user `email`). Running `db:seed` twice is safe.
 - **Super admin** is created from `SEED_SUPER_ADMIN_EMAIL` / `SEED_SUPER_ADMIN_PASSWORD` (ADR-0004). If the variables are absent the seeder logs a warning and skips — no hard-coded fallback credentials. Password is hashed with the same `PasswordHasher` the API uses (`createArgon2Hasher` from `@repo/crypto`, ADR-0018) so the algorithm never diverges. The seeder assigns the `super_admin` staff role and marks the account active.
 - Seeders are ordered by filename prefix; the runner logs each seeder's outcome.
@@ -53,7 +58,10 @@ packages/db/seeds/
 ### Environment guardrails
 
 - `db:reset` and `--dev` seeding refuse to run when `NODE_ENV=production`.
-- Every db script prints the target host/db name (never credentials) before acting.
+- Every db script prints the target host/db name (never credentials) before acting. The rendering is built by parsing the URL and re-emitting `host:port/database`, not by masking the original string — a substitution-based redaction fails on the password that happens to equal the host name — and an unparsable connection string is not echoed at all.
+- **Amended 2026-08-18 (step 6):** one narrow carve-out to "never credentials". The `--dev` seeders print the fixture password, which is a constant in a committed file (`seeds/dev/fixtures.ts`) behind the production refusal, so that a first run tells the developer how to sign in. **No value read from the environment is ever printed**, and that is the rule the carve-out does not touch.
+- Anything read from the environment is validated where it is read, because the seed path never passes through `core/config`: `SEED_SUPER_ADMIN_EMAIL` must look like an address and `SEED_SUPER_ADMIN_PASSWORD` must meet ADR-0004's `min(12)`, or the script fails instead of seeding an unusable or weak super admin.
+- A helper that resets a database for tests refuses any target whose name does not end in `_test`. `resetSchema()` takes whatever URL it is given and the `NODE_ENV` guard lives in the CLI wrapper, so the integration suite — which calls the function directly — carries its own check; a `DATABASE_URL_TEST` copy-pasted from `DATABASE_URL` is the realistic way to drop a developer's dev schema.
 
 ## Consequences
 

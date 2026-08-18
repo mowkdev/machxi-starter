@@ -19,13 +19,14 @@ run on the host so hot reload and the debugger stay native.
 ```sh
 cp .env.example .env      # edit if port 5432 is taken
 pnpm docker:up            # blocks until the healthcheck passes
-pnpm db:setup             # migrate + seed the super admin (ADR-0008) — arrives with @repo/db, plan step 6
+pnpm db:setup             # migrate + seed the super admin (ADR-0008)
 pnpm dev --filter api     # http://localhost:4000
 ```
 
-Until step 6 of the implementation plan lands `@repo/db`, `pnpm db:setup` is a stub
-that exits 1 — `docker:up` is the whole of the local stack today, and it gives you two
-empty databases.
+`docker:up` gives you two empty databases; `db:setup` applies the committed
+migrations to `machxi` and seeds the super admin from `SEED_SUPER_ADMIN_*`.
+Add `pnpm db:seed -- --dev` for the local fixture accounts. `machxi_test` is
+rebuilt by the integration suites themselves (ADR-0021), not by `db:setup`.
 
 `docker:up` passes `--wait`, so `pnpm docker:up && pnpm db:setup && pnpm dev`
 is a reliable one-liner — the next command only starts once Postgres accepts
@@ -33,12 +34,12 @@ connections.
 
 ### Scripts
 
-| Script              | What it does                                                                                                  |
-| ------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `pnpm docker:up`    | Starts the stack detached and waits for health.                                                               |
-| `pnpm docker:down`  | Stops and removes the containers. **Data survives.**                                                          |
-| `pnpm docker:reset` | `down -v` (drops the volume, so both databases and all data) then `up`. Follow with `pnpm db:setup` (step 6). |
-| `pnpm docker:logs`  | Tails the Postgres log.                                                                                       |
+| Script              | What it does                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `pnpm docker:up`    | Starts the stack detached and waits for health.                                                      |
+| `pnpm docker:down`  | Stops and removes the containers. **Data survives.**                                                 |
+| `pnpm docker:reset` | `down -v` (drops the volume, so both databases and all data) then `up`. Follow with `pnpm db:setup`. |
+| `pnpm docker:logs`  | Tails the Postgres log.                                                                              |
 
 Each is `docker compose --env-file .env -f docker/local/compose.yaml …`. Run
 those flags yourself if you need a subcommand the scripts do not wrap, e.g.
@@ -124,5 +125,5 @@ file-sharing configuration is needed.
 **Start over completely.**
 
 ```sh
-pnpm docker:reset && pnpm db:setup   # db:setup from step 6 onwards
+pnpm docker:reset && pnpm db:setup
 ```

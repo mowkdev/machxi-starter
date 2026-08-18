@@ -9,6 +9,10 @@ The starter has `@repo/logger` wrapping `console.log` and `morgan("dev")` for HT
 
 ## Decision
 
+### Scope
+
+**Added 2026-08-18 (step 6).** This ADR governs **long-running processes** — the API and anything else that serves requests. One-shot CLI scripts are out of scope: the `db:*` scripts (ADR-0008) are run by a person watching the terminal or by a deploy job capturing stdout, and a migration log is worse as JSON than as a line. They write plain lines through small `writeLine` / `writeErrorLine` helpers (`packages/db/src/tooling/report.ts`). Two rules still bind them: `no-console` stays on everywhere, so the helpers write to `process.stdout` / `process.stderr` directly; and the redaction rule below applies in spirit — a `db:*` script prints `host:port/database`, never a connection string (ADR-0008 §Environment guardrails). `@repo/db` may not depend on `@repo/logger` in any case, because ADR-0002 limits it to `@repo/contracts` and `@repo/crypto`.
+
 - **pino** as the logger. `@repo/logger` is rewritten to export a factory and types:
 
 ```ts

@@ -27,6 +27,7 @@ first deliverable is in [`docs/implementation-plan.md`](docs/implementation-plan
 - `@repo/logger` — structured logger (ADR-0005)
 - `@repo/crypto` — argon2id hashing and token generation (ADR-0018)
 - `@repo/contracts` — zod request schemas, resource types, envelope and error codes shared by the API and the frontends (ADR-0023)
+- `@repo/db` — Postgres schema, client, migrations and seeds (ADR-0006, ADR-0008)
 - `@repo/ui` — shared React components
 
 Internal packages ship TypeScript source and are compiled by the consuming app's
@@ -39,13 +40,18 @@ corepack enable
 pnpm install
 cp .env.example .env      # every variable is documented there (ADR-0004)
 pnpm docker:up            # local Postgres, waits until healthy (ADR-0007)
+pnpm db:setup             # migrations + super admin seed (ADR-0008)
 pnpm dev
 ```
 
 `docker/local/` holds the compose setup; see [`docker/README.md`](docker/README.md)
 for the scripts (`docker:up` / `down` / `reset` / `logs`), the two databases
-(`machxi` and `machxi_test`) and troubleshooting. Database migrations and seeds
-(`pnpm db:setup`) arrive with `@repo/db` in step 6 of the implementation plan.
+(`machxi` and `machxi_test`) and troubleshooting.
+
+`packages/db/` holds the schema, the committed migrations and the seeders; see
+[ADR-0008](docs/adr/0008-database-migrations-and-seeding.md) for the `db:*` scripts
+(`db:generate` / `db:migrate` / `db:seed` / `db:setup` / `db:reset` / `db:studio`).
+`pnpm db:seed -- --dev` adds the local fixture accounts.
 
 ## Tooling
 

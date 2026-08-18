@@ -86,8 +86,8 @@ Collected here so they are implemented once in `@repo/eslint-config`:
 | `no-restricted-syntax`: `res.json` / `res.send` outside `apps/api/src/core/http/**` | ADR-0012 envelope helpers only |
 | `no-restricted-imports`: `getContext` inside `modules/**/*.service.ts` | ADR-0010 explicit `ctx` param in services |
 | `no-restricted-imports`: `express` inside `*.service.ts`, `*.repository.ts` | ADR-0009 layer boundaries |
-| `no-restricted-imports`: `@repo/db` schema/tables inside `*.service.ts`, `*.controller.ts` | ADR-0009 SQL only in repositories |
-| `no-restricted-globals`: `process.env` outside `core/config/**`, `drizzle.config.ts`, seeds runner | ADR-0004 |
+| `no-restricted-imports`: `@repo/db` schema/tables inside `*.service.ts`, `*.controller.ts` — both the `@repo/db/schema` specifier **and** `importNames` on `@repo/db`, which re-exports the tables from its root | ADR-0009 SQL only in repositories |
+| `no-restricted-properties`: `process.env` outside `apps/api/src/core/config/**` and `packages/db/src/tooling/env.ts` | ADR-0004 |
 | `no-restricted-syntax`: `ClassDeclaration`, `ClassExpression`, `ThisExpression` in `apps/api/src/**` | ADR-0009 functional style |
 | `@typescript-eslint/no-floating-promises`, `no-misused-promises` | ADR-0011 async handlers |
 | `no-console` (use logger) | ADR-0005 |
