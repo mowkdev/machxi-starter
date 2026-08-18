@@ -1,0 +1,226 @@
+import { getTableConfig } from "drizzle-orm/pg-core";
+import { describe, expect, it } from "vitest";
+
+import {
+  POPULATIONS,
+  STAFF_ROLES,
+  STAFF_STATUSES,
+  USER_ROLES,
+  USER_STATUSES,
+} from "@repo/contracts";
+
+import {
+  principalTypeEnum,
+  sessions,
+  staff,
+  staffRoleEnum,
+  staffRoles,
+  staffStatusEnum,
+  userRoleEnum,
+  userRoles,
+  users,
+  userStatusEnum,
+} from "../index.js";
+
+/**
+ * Structural assertions on the schema (ADR-0006, ADR-0017, ADR-0018).
+ *
+ * These check the shape a migration would be generated from, not a live
+ * database — `schema.int.test.ts` does that against real Postgres. The
+ * division matters: a nullability or enum-order mistake caught here never
+ * reaches a migration, and once a migration is committed it is never edited
+ * (ADR-0008).
+ */
+
+const columnsOf = (table: Parameters<typeof getTableConfig>[0]) =>
+  new Map(getTableConfig(table).columns.map((column) => [column.name, column]));
+
+describe("enums", () => {
+  it.each([
+    ["staff_role", staffRoleEnum, STAFF_ROLES],
+    ["staff_status", staffStatusEnum, STAFF_STATUSES],
+    ["user_role", userRoleEnum, USER_ROLES],
+    ["user_status", userStatusEnum, USER_STATUSES],
+    ["principal_type", principalTypeEnum, POPULATIONS],
+  ])(
+    "%s mirrors its @repo/contracts tuple, in order",
+    (name, pgEnum, contractValues) => {
+      expect(pgEnum.enumName).toBe(name);
+      // Order, not just membership: Postgres sorts an enum column by label
+      // position, so this is what pins what `ORDER BY status` returns
+      // (ADR-0014). Reordering the tuple in @repo/contracts is a schema change.
+      expect(pgEnum.enumValues).toEqual([...contractValues]);
+    },
+  );
+});
+
+describe("staff", () => {
+  const columns = columnsOf(staff);
+
+  it("is the table the admin segment administers", () => {
+    expect(getTableConfig(staff).name).toBe("staff");
+  });
+
+  it("stores email as citext, unique and not null (ADR-0017)", () => {
+    const email = columns.get("email");
+
+    expect(email?.getSQLType()).toBe("citext");
+    expect(email?.notNull).toBe(true);
+    expect(email?.isUnique).toBe(true);
+  });
+
+  it("requires a password hash and both names", () => {
+    expect(columns.get("passwordHash")?.notNull).toBe(true);
+    expect(columns.get("firstName")?.notNull).toBe(true);
+    expect(columns.get("lastName")?.notNull).toBe(true);
+  });
+
+  it("defaults status to active and leaves lastLoginAt null", () => {
+    expect(columns.get("status")?.default).toBe("active");
+    expect(columns.get("lastLoginAt")?.notNull).toBe(false);
+  });
+
+  it("has no soft-delete column — only users do (ADR-0006)", () => {
+    expect(columns.has("deletedAt")).toBe(false);
+  });
+});
+
+describe("users", () => {
+  const columns = columnsOf(users);
+
+  it("allows a null password hash for the future passwordless path (ADR-0018)", () => {
+    expect(columns.get("passwordHash")?.notNull).toBe(false);
+  });
+
+  it("allows null names, unlike staff (ADR-0017)", () => {
+    expect(columns.get("firstName")?.notNull).toBe(false);
+    expect(columns.get("lastName")?.notNull).toBe(false);
+  });
+
+  it("is soft-deletable", () => {
+    expect(columns.get("deletedAt")?.notNull).toBe(false);
+    expect(columns.has("deletedAt")).toBe(true);
+  });
+});
+
+describe("role join tables", () => {
+  it("key staff_roles on (staff_id, role) so a repeated grant is a no-op", () => {
+    const [primaryKey] = getTableConfig(staffRoles).primaryKeys;
+
+    expect(primaryKey?.columns.map((column) => column.name)).toEqual([
+      "staffId",
+      "role",
+    ]);
+  });
+
+  it("key user_roles on (user_id, role)", () => {
+    const [primaryKey] = getTableConfig(userRoles).primaryKeys;
+
+    expect(primaryKey?.columns.map((column) => column.name)).toEqual([
+      "userId",
+      "role",
+    ]);
+  });
+
+  it("cascade a grant away with its account, but keep it when the granter goes", () => {
+    const byColumn = new Map(
+      getTableConfig(staffRoles)
+        .foreignKeys.map((fk) => fk.reference())
+        .map((reference) => [
+          reference.columns[0]?.name,
+          reference.foreignTable,
+        ]),
+    );
+
+    expect(byColumn.has("staffId")).toBe(true);
+    expect(byColumn.has("grantedBy")).toBe(true);
+
+    const onDelete = getTableConfig(staffRoles).foreignKeys.map(
+      (fk) => fk.onDelete,
+    );
+
+    expect(new Set(onDelete)).toEqual(new Set(["cascade", "set null"]));
+  });
+});
+
+describe("sessions", () => {
+  const config = getTableConfig(sessions);
+  const columns = columnsOf(sessions);
+
+  it("carries no foreign key on principal_id (ADR-0018)", () => {
+    // Postgres cannot express "references staff or users depending on
+    // principal_type"; the discriminator plus the service's revoke-on-delete
+    // is the substitute, and a FK appearing here would mean somebody picked a
+    // single population by accident.
+    expect(config.foreignKeys).toHaveLength(0);
+  });
+
+  it("stores only the hash of a refresh token, uniquely", () => {
+    expect(columns.has("refreshToken")).toBe(false);
+    expect(columns.get("refreshTokenHash")?.notNull).toBe(true);
+    expect(columns.get("refreshTokenHash")?.isUnique).toBe(true);
+  });
+
+  it("keeps the rotated-out hash nullable, for the grace window and reuse detection", () => {
+    expect(columns.get("previousRefreshTokenHash")?.notNull).toBe(false);
+    expect(columns.get("rotatedAt")?.notNull).toBe(false);
+  });
+
+  it("indexes the principal, the previous hash and the expiry", () => {
+    expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      "sessions_previous_refresh_token_hash_idx",
+      "sessions_principal_idx",
+      "sessions_refresh_token_expires_at_idx",
+    ]);
+  });
+
+  it("records revocation as a timestamp plus a reason, not a boolean", () => {
+    expect(columns.get("revokedAt")?.notNull).toBe(false);
+    expect(columns.get("revokedReason")?.notNull).toBe(false);
+  });
+});
+
+describe("shared column helpers", () => {
+  it.each([
+    ["staff", staff],
+    ["users", users],
+    ["sessions", sessions],
+  ])("gives %s created_at and updated_at, both defaulted", (_name, table) => {
+    const columns = columnsOf(table);
+
+    for (const name of ["createdAt", "updatedAt"]) {
+      expect(columns.get(name)?.notNull).toBe(true);
+      expect(columns.get(name)?.hasDefault).toBe(true);
+      expect(columns.get(name)?.getSQLType()).toBe("timestamp with time zone");
+    }
+  });
+
+  it.each([
+    ["staff", staff],
+    ["users", users],
+    ["sessions", sessions],
+  ])("gives %s a uuid primary key generated app-side as v7", (_name, table) => {
+    const id = columnsOf(table).get("id");
+
+    expect(id?.primary).toBe(true);
+    expect(id?.getSQLType()).toBe("uuid");
+
+    const generated = id?.defaultFn?.() as string;
+
+    // Version nibble 7 (ADR-0006): time-ordered, so inserts append to the
+    // index instead of scattering it. `crypto.randomUUID` would be v4 here.
+    expect(generated).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it("orders generated ids monotonically, which is the point of v7", () => {
+    const id = columnsOf(staff).get("id");
+    const generated = Array.from(
+      { length: 20 },
+      () => id?.defaultFn?.() as string,
+    );
+
+    expect([...generated].sort()).toEqual(generated);
+  });
+});

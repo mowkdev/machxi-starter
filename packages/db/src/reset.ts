@@ -6,14 +6,21 @@ import { isProduction, readDatabaseUrl, readNodeEnv } from "./tooling/env.js";
 import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
 
 /**
- * Drops and recreates the `public` schema, discarding **everything** including
- * the `__drizzle_migrations` journal, so the following `db:setup` replays the
- * migrations from scratch (ADR-0008).
+ * Drops and recreates the schema, discarding **everything** including the
+ * migration journal, so the following `db:setup` replays the migrations from
+ * scratch (ADR-0008).
  *
  * `DROP SCHEMA … CASCADE` rather than `DROP DATABASE`: the connection would
  * have to be to a different database to drop the current one, and it leaves
  * the database's owner, extensions-in-other-schemas and grants alone.
  * `CREATE EXTENSION citext` is idempotent, so migration `0000` re-runs happily.
+ *
+ * **Both schemas, not just `public`.** Drizzle puts `__drizzle_migrations` in
+ * its own `drizzle` schema, so dropping `public` alone leaves the journal
+ * claiming every migration is applied: the next `db:migrate` reports "up to
+ * date" against an empty database, and the failure only surfaces at the first
+ * query. ADR-0008 says "drop & recreate schema `public`" — that is the intent,
+ * and this is what it takes.
  *
  * Local only. Refused when `NODE_ENV=production`.
  */
@@ -22,6 +29,7 @@ export const resetSchema = async (url: string): Promise<void> => {
 
   try {
     await client.db.execute(raw`drop schema if exists public cascade`);
+    await client.db.execute(raw`drop schema if exists drizzle cascade`);
     await client.db.execute(raw`create schema public`);
   } finally {
     await client.close();
