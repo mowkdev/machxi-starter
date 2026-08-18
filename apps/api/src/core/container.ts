@@ -24,8 +24,18 @@ import {
   createHealthController,
   createHealthService,
 } from "../modules/health/index.js";
-import { createStaffRepository } from "../modules/staff/index.js";
-import { createUsersRepository } from "../modules/users/index.js";
+import {
+  createStaffController,
+  createStaffRepository,
+  createStaffService,
+} from "../modules/staff/index.js";
+import {
+  createUserProfileController,
+  createUsersController,
+  createUsersRepository,
+  createUsersService,
+} from "../modules/users/index.js";
+import { createLimitedHasher } from "./auth/index.js";
 
 /**
  * The composition root (ADR-0009).
@@ -109,6 +119,30 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
 
   const authenticate = createAuthenticate({ tokens, sessions });
 
+  // Hashing with the ADR-0020 cap already applied. The feature services get
+  // *this* and never the raw hasher, so they cannot bypass the cap by
+  // forgetting to wrap a call; the auth service keeps the raw one because
+  // login also needs `needsRehash` and `dummyHash`.
+  const limitedHasher = createLimitedHasher({ hasher, limiter: hashLimiter });
+
+  // Each takes the auth service of its own population, narrowed to
+  // `revokeSessionsFor`: `sessions` is the auth module's aggregate, so
+  // "disable this account and end its sessions" crosses modules through a
+  // service rather than through a repository (ADR-0009).
+  const staffService = createStaffService({
+    repository: staffRepository,
+    hasher: limitedHasher,
+    sessions: staffAuth,
+    transaction,
+  });
+
+  const usersService = createUsersService({
+    repository: usersRepository,
+    hasher: limitedHasher,
+    sessions: userAuth,
+    transaction,
+  });
+
   // Built **here**, not in the route factories, because a limiter holds the
   // counter: constructing one per mount would give the same IP+email a fresh
   // budget on every segment, so ADR-0020's "10 per 15 minutes on login" would
@@ -133,11 +167,24 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       users: usersRepository,
       sessions,
     } as const,
-    services: { health, staffAuth, userAuth } as const,
+    services: {
+      health,
+      staffAuth,
+      userAuth,
+      staff: staffService,
+      users: usersService,
+    } as const,
     controllers: {
       health: createHealthController(health),
       staffAuth: createAuthController(staffAuth),
       userAuth: createAuthController(userAuth),
+      staff: createStaffController(staffService),
+      users: createUsersController(usersService),
+      // The same service behind a second controller: `/api/v1/user/profile`
+      // exposes only the functions that read their subject from
+      // `ctx.principal`, so the admin handlers are not reachable from the user
+      // segment even by a routing mistake (ADR-0019).
+      userProfile: createUserProfileController(usersService),
     } as const,
 
     /**

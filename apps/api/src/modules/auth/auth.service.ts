@@ -48,7 +48,27 @@ export const REVOKE_REASONS = {
   refreshReuse: "refresh_reuse",
   accountDisabled: "account_disabled",
   principalMissing: "principal_missing",
+  /** `POST /api/v1/admin/{staff,users}/:id/sessions/revoke` (step 9). */
+  adminRevoke: "admin_revoke",
+  /** `POST /api/v1/user/profile/change-password` (step 9). */
+  passwordChanged: "password_changed",
 } as const;
+
+export type RevokeReason = (typeof REVOKE_REASONS)[keyof typeof REVOKE_REASONS];
+
+/** What {@link AuthService.revokeSessionsFor} acts on. */
+export interface RevokeSessionsForInput {
+  /** The account whose sessions end — **not** necessarily `ctx.principal`. */
+  readonly principalId: string;
+  readonly reason: RevokeReason;
+  /** Spared, for a password change that must not log the caller out. */
+  readonly exceptSessionId?: string | undefined;
+  /**
+   * Joins the caller's transaction, so "the account is disabled" and "its
+   * sessions are gone" commit together (ADR-0018).
+   */
+  readonly tx?: DbExecutor | undefined;
+}
 
 /**
  * Longest user agent stored. The header is attacker-controlled and the column
@@ -427,6 +447,48 @@ export const createAuthService = ({
       }
 
       return principal.resource;
+    },
+
+    /**
+     * Ends every live session of one account of this population.
+     *
+     * The one session operation whose subject is somebody *other* than the
+     * caller, which is why it takes a `principalId` and does not consult
+     * `ctx.principal`: an admin revoking a staff member's sessions and a user
+     * changing their own password are the same write, and authorising them is
+     * the calling service's job, not this one's (ADR-0019 §3).
+     *
+     * It lives here rather than in the staff and users services because
+     * `sessions` is the auth module's aggregate. Those services depend on this
+     * one function — `Pick<AuthService, "revokeSessionsFor">` — which is the
+     * "a module may depend on another module's service" rule of ADR-0009
+     * narrowed to exactly what they need.
+     *
+     * @returns how many sessions were revoked.
+     */
+    revokeSessionsFor: async (
+      ctx: RequestContext,
+      { principalId, reason, exceptSessionId, tx }: RevokeSessionsForInput,
+    ): Promise<number> => {
+      const revoked = await sessions.revokeAllForPrincipal(
+        {
+          principalType: population,
+          principalId,
+          reason,
+          at: now(),
+          exceptSessionId,
+        },
+        tx,
+      );
+
+      if (revoked > 0) {
+        ctx.logger.info(
+          { population, principalId, revoked, reason },
+          "sessions revoked",
+        );
+      }
+
+      return revoked;
     },
 
     /**

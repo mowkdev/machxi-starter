@@ -17,6 +17,7 @@ import {
   isNull,
   lt,
   lte,
+  or,
   type SQL,
 } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
@@ -55,6 +56,20 @@ export {
  * when the query is built, not when it is run.
  */
 export type ColumnMap = Readonly<Record<string, PgColumn>>;
+
+/**
+ * What a repository's `list` returns: the rows of the requested page and the
+ * total the same `where` matches without `limit`/`offset`.
+ *
+ * Deliberately not a `Page<T>`: the page echoes the resolved query back for
+ * `meta` (ADR-0012), and it is the **service** that owns that assembly, via
+ * {@link toPage}, after mapping rows to resources. A repository that built one
+ * would be deciding what the response looks like.
+ */
+export interface ListResult<T> {
+  readonly rows: readonly T[];
+  readonly total: number;
+}
 
 /** What a repository spreads over its Drizzle query. */
 export interface ListQueryPlan {
@@ -158,6 +173,38 @@ export const applyListQuery = (
     limit: query.limit,
     offset: query.offset,
   };
+};
+
+/** `%`, `_` and the escape character itself, which `q` must not smuggle in. */
+const LIKE_METACHARACTERS = /[\\%_]/g;
+
+/**
+ * Escapes a free-text term so a `LIKE`/`ILIKE` pattern matches it literally.
+ *
+ * `q` is a search term, not a pattern: a client typing `100%` means the four
+ * characters, and an unescaped `%` would turn a prefix search into a full scan
+ * that matches everything. `\` is Postgres' default escape character, so it has
+ * to be escaped first — the single character class does both in one pass.
+ */
+export const escapeLikePattern = (term: string): string =>
+  term.replace(LIKE_METACHARACTERS, (character) => `\\${character}`);
+
+/**
+ * The `q` parameter of ADR-0014 as a condition: case-insensitive containment
+ * across the columns the endpoint declares searchable, ORed together.
+ *
+ * Returns `undefined` when there is no term, so it drops straight into
+ * `extraWhere` without the caller branching.
+ */
+export const toSearchCondition = (
+  columns: readonly PgColumn[],
+  term: string | undefined,
+): SQL | undefined => {
+  if (term === undefined || columns.length === 0) return undefined;
+
+  const pattern = `%${escapeLikePattern(term)}%`;
+
+  return or(...columns.map((column) => ilike(column, pattern)));
 };
 
 /**

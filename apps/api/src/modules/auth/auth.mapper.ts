@@ -6,8 +6,8 @@ import {
   type UserPrincipalResource,
 } from "@repo/contracts";
 
-import type { StaffAuthRecord } from "../staff/staff.repository.js";
-import type { UserAuthRecord } from "../users/users.repository.js";
+import type { StaffRecord } from "../staff/staff.repository.js";
+import type { UserRecord } from "../users/users.repository.js";
 
 /**
  * Storage row → wire resource (ADR-0012).
@@ -23,7 +23,7 @@ import type { UserAuthRecord } from "../users/users.repository.js";
  */
 
 export const toStaffPrincipalResource = (
-  record: StaffAuthRecord,
+  record: StaffRecord,
 ): StaffPrincipalResource => ({
   kind: "staff",
   id: record.id,
@@ -34,7 +34,7 @@ export const toStaffPrincipalResource = (
 });
 
 export const toUserPrincipalResource = (
-  record: UserAuthRecord,
+  record: UserRecord,
 ): UserPrincipalResource => ({
   kind: "user",
   id: record.id,

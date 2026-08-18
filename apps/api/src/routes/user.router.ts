@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import type { Container } from "../core/container.js";
 import { createAuthRouter } from "../modules/auth/index.js";
+import { createUserProfileRouter } from "../modules/users/index.js";
 
 /**
  * `/api/v1/user/*` (ADR-0015) — requires a user principal.
@@ -10,15 +11,16 @@ import { createAuthRouter } from "../modules/auth/index.js";
  * client obtains a token, so they cannot sit behind one, while `logout`,
  * `logout-all` and `me` are guarded inside the auth router.
  *
- * Step 9 adds the profile endpoints below a segment-wide guard:
+ * Everything registered *after* `authenticate("user")` requires one. The guard
+ * goes on the router, not on each route, so a new endpoint is protected by
+ * where it is mounted rather than by somebody remembering a decorator
+ * (ADR-0019 §1).
  *
- * ```ts
- * router.use(authenticate("user"));
- * router.use("/profile", createUserProfileRouter(c));
- * ```
- *
- * The guard goes on the router, not on each route, so a new endpoint is
- * protected by where it is mounted rather than by remembering a decorator.
+ * There is no `authorize` in this segment and that is not an omission:
+ * `customer` is the only user role in v1, so authentication already implies
+ * it, and the profile endpoints address `ctx.principal` rather than an `:id`
+ * — the ownership question ADR-0019 §3 asks has no way to be answered wrongly
+ * when there is no id to compare.
  */
 export const createUserRouter = (container: Container): Router => {
   const router = Router();
@@ -32,6 +34,13 @@ export const createUserRouter = (container: Container): Router => {
       loginRateLimiter: container.rateLimiters.login,
       refreshRateLimiter: container.rateLimiters.refresh,
     }),
+  );
+
+  router.use(container.authenticate("user"));
+
+  router.use(
+    "/profile",
+    createUserProfileRouter(container.controllers.userProfile),
   );
 
   return router;

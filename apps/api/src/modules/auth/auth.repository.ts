@@ -1,6 +1,6 @@
 import type { Population } from "@repo/contracts";
 import { sessions, type DbExecutor } from "@repo/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 
 import { internal } from "../../core/errors/index.js";
 
@@ -61,6 +61,12 @@ export interface RevokeAllInput {
   readonly principalId: string;
   readonly reason: string;
   readonly at: Date;
+  /**
+   * A session to leave alone — the caller's own, when a password change
+   * revokes every *other* device (step 9). Omitted, nothing is spared, which
+   * is what `logout-all` and the admin forced logout want.
+   */
+  readonly exceptSessionId?: string | undefined;
 }
 
 /** Selected by every read, so a caller cannot depend on a column by accident. */
@@ -222,6 +228,9 @@ export const createSessionsRepository = (db: DbExecutor) =>
             eq(sessions.principalType, input.principalType),
             eq(sessions.principalId, input.principalId),
             isNull(sessions.revokedAt),
+            ...(input.exceptSessionId === undefined
+              ? []
+              : [ne(sessions.id, input.exceptSessionId)]),
           ),
         )
         .returning({ id: sessions.id });

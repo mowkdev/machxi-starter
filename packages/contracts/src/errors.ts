@@ -74,13 +74,20 @@ const AUTH_ERROR_CODES = [
  * | Code | Status | Raised when |
  * |---|---|---|
  * | `USER_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/users` with an email already in the `users` table |
+ * | `USER_CURRENT_PASSWORD_INVALID` | 403 | `POST /api/v1/user/profile/change-password` where `currentPassword` does not verify |
  * | `STAFF_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/staff` with an email already in the `staff` table |
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
+ *
+ * `USER_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
+ * *is* authenticated — their session is fine and stays fine — so a `401` would
+ * be untrue about the request and would send every client interceptor that
+ * treats `401` as "the session died" to the login screen over a typo.
  *
  * Emails are unique **within** a population, so the two "taken" codes are
  * separate: the same person may hold both a staff and a user account.
  *
- * Both are **authenticated staff** endpoints, which is why they may name the
+ * Both "taken" codes belong to **authenticated staff** endpoints, which is why
+ * they may name the
  * conflict. Public self-registration must not: ADR-0020 §Enumeration defaults
  * registration to a generic answer, so `POST /api/v1/public/auth/register`
  * answers an existing email with plain `CONFLICT` and a message that does not
@@ -89,6 +96,7 @@ const AUTH_ERROR_CODES = [
  */
 const DOMAIN_ERROR_CODES = [
   "USER_EMAIL_TAKEN",
+  "USER_CURRENT_PASSWORD_INVALID",
   "STAFF_EMAIL_TAKEN",
   "STAFF_LAST_SUPER_ADMIN",
 ] as const;

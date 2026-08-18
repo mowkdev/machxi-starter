@@ -1,6 +1,34 @@
 export {
+  createUserProfileController,
+  createUsersController,
+  type UserProfileController,
+  type UsersController,
+} from "./users.controller.js";
+export {
+  currentPasswordInvalid,
+  userEmailTaken,
+  userNotFound,
+} from "./users.errors.js";
+export { toUserResource } from "./users.mapper.js";
+export {
   createUsersRepository,
   type NewUserInput,
-  type UserAuthRecord,
+  type UserColumnPatch,
+  type UserRecord,
   type UsersRepository,
 } from "./users.repository.js";
+export { createUserProfileRouter, createUsersRouter } from "./users.routes.js";
+export {
+  changePasswordSchema,
+  createUserSchema,
+  getUserSchema,
+  listUsersSchema,
+  revokeUserSessionsSchema,
+  updateProfileSchema,
+  updateUserSchema,
+} from "./users.schemas.js";
+export {
+  createUsersService,
+  type UsersService,
+  type UsersServiceDeps,
+} from "./users.service.js";

@@ -1,0 +1,253 @@
+import type {
+  CreateStaffBody,
+  ListStaffQuery,
+  Page,
+  StaffResource,
+  UpdateStaffBody,
+} from "@repo/contracts";
+import type { DbExecutor } from "@repo/db";
+
+import type { LimitedHasher } from "../../core/auth/index.js";
+import { requirePopulation } from "../../core/auth/index.js";
+import type { RequestContext } from "../../core/context/index.js";
+import { toPage } from "../../core/http/index.js";
+import { REVOKE_REASONS, type AuthService } from "../auth/index.js";
+import {
+  lastSuperAdmin,
+  staffEmailTaken,
+  staffNotFound,
+} from "./staff.errors.js";
+import { toStaffResource } from "./staff.mapper.js";
+import type { StaffRecord, StaffRepository } from "./staff.repository.js";
+
+/**
+ * Staff administration — `/api/v1/admin/staff` (ADR-0009).
+ *
+ * Everything the router mounts behind `authorize("admin")` is here; the guard
+ * answers "may this caller manage staff at all?", and this layer answers the
+ * questions a guard cannot see, which in v1 is exactly one: the ADR-0017
+ * invariant that an active `super_admin` must survive every edit.
+ *
+ * No Express, no SQL. `ctx` is the first parameter of every function
+ * (ADR-0010), and every failure is an `AppError` the error middleware renders.
+ */
+
+export interface StaffServiceDeps {
+  readonly repository: StaffRepository;
+  /** Already wrapped in the process-wide concurrency cap (ADR-0020). */
+  readonly hasher: LimitedHasher;
+  /**
+   * The auth module's session revocation, bound to the `staff` population by
+   * the container. Narrowed to the one function this service may call: a
+   * module depends on another module's *service*, never its repository
+   * (ADR-0009), and it should not be handed login while it is at it.
+   */
+  readonly sessions: Pick<AuthService, "revokeSessionsFor">;
+  /** Runs `fn` inside one database transaction (ADR-0006). */
+  readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
+  readonly now?: () => Date;
+}
+
+export const createStaffService = ({
+  repository,
+  hasher,
+  sessions,
+  transaction,
+  now = () => new Date(),
+}: StaffServiceDeps) => {
+  /** The acting staff member, for `staff_roles.granted_by` (ADR-0017). */
+  const actorId = (ctx: RequestContext): string =>
+    requirePopulation(ctx, "staff").id;
+
+  const read = async (id: string, tx?: DbExecutor): Promise<StaffRecord> => {
+    const record = await repository.findById(id, tx);
+
+    if (record === undefined) throw staffNotFound();
+
+    return record;
+  };
+
+  /**
+   * Refuses an edit that would leave no active `super_admin` (ADR-0017).
+   *
+   * Only an account that *is* one right now can be the last one, so the check
+   * costs a query exclusively on the edits that could break the invariant.
+   */
+  const assertSuperAdminSurvives = async (
+    current: StaffRecord,
+    patch: UpdateStaffBody,
+    tx: DbExecutor,
+  ): Promise<void> => {
+    const isActiveSuperAdmin =
+      current.status === "active" && current.roles.includes("super_admin");
+
+    if (!isActiveSuperAdmin) return;
+
+    const losesRole =
+      patch.roles !== undefined && !patch.roles.includes("super_admin");
+    const losesActive = patch.status !== undefined && patch.status !== "active";
+
+    if (!losesRole && !losesActive) return;
+
+    const others = await repository.countOtherActiveSuperAdmins(current.id, tx);
+
+    if (others === 0) throw lastSuperAdmin();
+  };
+
+  return {
+    /**
+     * `GET /api/v1/admin/staff` (ADR-0014).
+     *
+     * `_ctx` is unused and still declared: ADR-0010 fixes the context as every
+     * service function's first parameter, so a reader — and a caller — sees one
+     * shape whether or not this particular function has something to log.
+     */
+    list: async (
+      _ctx: RequestContext,
+      query: ListStaffQuery,
+    ): Promise<Page<StaffResource>> => {
+      const { rows, total } = await repository.list(query);
+
+      return toPage(query, rows.map(toStaffResource), total);
+    },
+
+    /** `GET /api/v1/admin/staff/:id`. */
+    getById: async (_ctx: RequestContext, id: string): Promise<StaffResource> =>
+      toStaffResource(await read(id)),
+
+    /**
+     * `POST /api/v1/admin/staff` (ADR-0018 §Staff onboarding).
+     *
+     * The account and its grants are one transaction: a staff member who
+     * exists with no role can sign in and do nothing, which is a support
+     * ticket rather than a state worth being able to reach.
+     *
+     * The password is hashed **outside** the transaction. argon2 holds a libuv
+     * thread for ~130 ms, and holding a database connection open across that
+     * for no reason is how a burst of creates exhausts the pool.
+     */
+    create: async (
+      ctx: RequestContext,
+      body: CreateStaffBody,
+    ): Promise<StaffResource> => {
+      const grantedBy = actorId(ctx);
+      const passwordHash = await hasher.hash(body.password);
+
+      const created = await transaction(async (tx) => {
+        const record = await repository.create(
+          {
+            email: body.email,
+            passwordHash,
+            firstName: body.firstName,
+            lastName: body.lastName,
+          },
+          tx,
+        );
+
+        if (record === undefined) return undefined;
+
+        await repository.replaceRoles(record.id, body.roles, grantedBy, tx);
+
+        return { ...record, roles: body.roles };
+      });
+
+      if (created === undefined) throw staffEmailTaken();
+
+      ctx.logger.info(
+        { staffId: created.id, roles: created.roles, grantedBy },
+        "staff member created",
+      );
+
+      return toStaffResource(created);
+    },
+
+    /**
+     * `PATCH /api/v1/admin/staff/:id` — profile, roles and status.
+     *
+     * Everything happens in one transaction because the three writes are one
+     * decision: the invariant is checked against the same snapshot the update
+     * lands on, and an account being disabled loses its sessions in the same
+     * commit. ADR-0018 requires that pairing — `sessions` has no foreign key
+     * to `staff`, so nothing else would enforce it, and a gap between the two
+     * writes is a window in which a disabled account still holds a valid
+     * access token.
+     */
+    update: async (
+      ctx: RequestContext,
+      id: string,
+      body: UpdateStaffBody,
+    ): Promise<StaffResource> => {
+      const grantedBy = actorId(ctx);
+      const at = now();
+
+      const { updated, revoked } = await transaction(async (tx) => {
+        const current = await read(id, tx);
+
+        await assertSuperAdminSurvives(current, body, tx);
+
+        await repository.updateColumns(
+          id,
+          {
+            firstName: body.firstName,
+            lastName: body.lastName,
+            status: body.status,
+          },
+          at,
+          tx,
+        );
+
+        if (body.roles !== undefined) {
+          await repository.replaceRoles(id, body.roles, grantedBy, tx);
+        }
+
+        const deactivated =
+          body.status !== undefined &&
+          body.status !== "active" &&
+          current.status === "active";
+
+        const revokedCount = deactivated
+          ? await sessions.revokeSessionsFor(ctx, {
+              principalId: id,
+              reason: REVOKE_REASONS.accountDisabled,
+              tx,
+            })
+          : 0;
+
+        // Re-read rather than assemble: the roles may have been replaced and
+        // `updatedAt` was written by the update above, so the row is the only
+        // honest source for what the client is about to be told.
+        return { updated: await read(id, tx), revoked: revokedCount };
+      });
+
+      ctx.logger.info(
+        { staffId: id, status: updated.status, roles: updated.roles, revoked },
+        "staff member updated",
+      );
+
+      return toStaffResource(updated);
+    },
+
+    /**
+     * `POST /api/v1/admin/staff/:id/sessions/revoke` — the forced logout.
+     *
+     * The account is read first so an unknown id answers `404` instead of a
+     * silent success; a revoke of an account with no live session is otherwise
+     * legitimately a no-op, and the two must not look the same.
+     */
+    revokeSessions: async (ctx: RequestContext, id: string): Promise<void> => {
+      const record = await read(id);
+
+      const revoked = await sessions.revokeSessionsFor(ctx, {
+        principalId: record.id,
+        reason: REVOKE_REASONS.adminRevoke,
+      });
+
+      ctx.logger.info(
+        { staffId: record.id, revoked, by: actorId(ctx) },
+        "staff sessions revoked by an admin",
+      );
+    },
+  } as const;
+};
+
+export type StaffService = ReturnType<typeof createStaffService>;

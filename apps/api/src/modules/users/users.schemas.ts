@@ -1,0 +1,32 @@
+import {
+  changePasswordBody,
+  createUserBody,
+  listUsersQuery,
+  updateProfileBody,
+  updateUserBody,
+  userIdParams,
+} from "@repo/contracts";
+
+/**
+ * The route schemas of the users module (ADR-0011).
+ *
+ * Re-exported from `@repo/contracts` rather than declared here (ADR-0023), so
+ * the admin panel and the web app validate the same forms against the same
+ * objects. One module serves two segments (ADR-0009): the `…User…` schemas
+ * belong to `/api/v1/admin/users`, the `…Profile…` ones to
+ * `/api/v1/user/profile`, and the difference between them — no `status`, no
+ * `roles` — is the reason a user cannot promote themselves by editing their
+ * own profile.
+ */
+
+export const listUsersSchema = { query: listUsersQuery } as const;
+export const getUserSchema = { params: userIdParams } as const;
+export const createUserSchema = { body: createUserBody } as const;
+export const updateUserSchema = {
+  params: userIdParams,
+  body: updateUserBody,
+} as const;
+export const revokeUserSessionsSchema = { params: userIdParams } as const;
+
+export const updateProfileSchema = { body: updateProfileBody } as const;
+export const changePasswordSchema = { body: changePasswordBody } as const;
