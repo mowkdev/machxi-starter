@@ -11,6 +11,7 @@
     "test:unit": "turbo run test:unit",
     "test:int": "turbo run test:int --concurrency=1",
     "test:watch": "turbo run test:watch",
+    "test:postman": "node --no-deprecation scripts/postman.mjs",
     "check-types": "turbo run check-types",
     "docker:up": "docker compose --env-file .env -f docker/local/compose.yaml up -d --wait",
     "docker:down": "docker compose --env-file .env -f docker/local/compose.yaml down",
@@ -25,6 +26,7 @@
     "db:studio": "turbo run db:studio"
   },
   "devDependencies": {
+    "newman": "^6.2.2",
     "prettier": "^3.6.0",
     "turbo": "^2.10.10"
   },
