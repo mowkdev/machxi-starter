@@ -110,6 +110,21 @@ variables to drive the real seeders (ADR-0021). The rule that matters is
 unchanged and is what the lint rule enforces: no `process.env` under
 `apps/api/src`.
 
+**Amended 2026-08-18 (step 10):** a fourth reader, **`scripts/postman.mjs`**. It
+is repo tooling rather than an app — `pnpm test:postman` (ADR-0021) — and it uses
+`process.loadEnvFile('.env')` plus `SEED_SUPER_ADMIN_EMAIL` /
+`SEED_SUPER_ADMIN_PASSWORD` / `PORT` to hand newman the credentials the committed
+Postman environment deliberately does not carry. It is outside every lint rule's
+scope for the same reason the harness is (`scripts/` is not a workspace,
+ADR-0002), so it is named here rather than left to be discovered by whoever next
+audits who reads the environment.
+
+It validates nothing, and that is the point of listing it: unlike
+`packages/db/src/tooling/env.ts`, it enforces no constraint on what it reads,
+because it only forwards two values to a smoke check that fails visibly if they
+are wrong. Anything in `scripts/` that grows a real config surface belongs behind
+a schema, not behind this exemption.
+
 _The grouped object below is out of date on one point:_ `auth` carries
 `accessTtlSec`/`refreshTtlSec` (numbers) rather than `accessTtl`/`refreshTtl`
 (strings), plus `refreshRotationGraceSec`, `maxConcurrentHashes` and `argon2`.
