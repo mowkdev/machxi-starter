@@ -1,0 +1,11 @@
+# Numbered ADRs are immutable records (ADR-0024 §Lifecycle rule 1) and are
+# written in house style by hand. Their snippets are aligned to be read as
+# tables: prettier turns ADR-0013's seven-line factory list into twenty lines of
+# wrapped arrow functions, which is correct and unreadable. The index, the
+# template and everything else stay formatted.
+docs/adr/[0-9][0-9][0-9][0-9]-*.md
+
+# Generated
+.turbo/
+dist/
+.next/

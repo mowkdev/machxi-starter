@@ -2,11 +2,11 @@
 
 Shared ESLint flat configurations for the monorepo.
 
-| Export | Use for |
-| --- | --- |
-| `@repo/eslint-config` | Node packages and apps (`api`, `@repo/logger`, …) |
-| `@repo/eslint-config/react` | React libraries and SPAs (`@repo/ui`, `admin`) |
-| `@repo/eslint-config/next` | Next.js apps (`web`) |
+| Export                      | Use for                                           |
+| --------------------------- | ------------------------------------------------- |
+| `@repo/eslint-config`       | Node packages and apps (`api`, `@repo/logger`, …) |
+| `@repo/eslint-config/react` | React libraries and SPAs (`@repo/ui`, `admin`)    |
+| `@repo/eslint-config/next`  | Next.js apps (`web`)                              |
 
 `eslint-plugin-only-warn` downgrades every rule to a warning, so **every `lint`
 script must pass `--max-warnings 0`** — without it, rules such as `no-console`

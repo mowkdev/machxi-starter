@@ -44,7 +44,7 @@ Use the Grep/Glob tools to search this repo; never `grep -r`, `find` or `rg` thr
 
 ## Workflow expectations
 
-1. Before implementing: identify the ADRs involved; if a change conflicts with one, stop and propose an ADR amendment/supersession instead of diverging.
+1. Before implementing: identify the ADRs involved; if a change conflicts with one, stop and propose a superseding ADR instead of diverging (ADR-0024 — amending an accepted ADR in place is no longer an option).
 2. Use the project skills (`/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/new-adr`, `/plan-step`, `/postman-sync`, `/local-dev`, `/api-conventions`) — they encode the ADR checklists.
 3. Every change ends green on `pnpm lint && pnpm check-types && pnpm test`; new endpoints get integration tests (ADR-0021) and Postman requests.
 4. Keep docs in sync: new env var → ADR-0004 + `.env.example`; new endpoint → `docs/implementation-plan.md` scope + Postman; new decision → ADR + index.

@@ -8,6 +8,7 @@ description: Step-by-step checklist to create a new API feature module (routes/c
 Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/users`) for exact style.
 
 ## 1. Contracts (`packages/contracts/src/<module>/`)
+
 - [ ] `schemas.ts`: zod for params (`idParams`), bodies (`.strict()`, max lengths), list query (`listQuerySchema({ sortable: [...] as const, filterable: {...}, defaultSort: '-createdAt' })`).
 - [ ] `types.ts`: `<X>Resource` (wire shape; no DB types), inferred DTOs.
 - [ ] Export from `packages/contracts/src/index.ts`. Add new enums as `as const` arrays + unions.
@@ -15,6 +16,7 @@ Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/
 ## 2. DB (only if a new aggregate) — run `/db-schema-change`.
 
 ## 3. Module files (`apps/api/src/modules/<module>/`)
+
 - [ ] `<m>.schemas.ts` — re-export contracts schemas.
 - [ ] `<m>.errors.ts` — domain factories built on `core/errors` (`conflict('…', 'X_CODE')`), add codes to contracts `ErrorCode`.
 - [ ] `<m>.mapper.ts` — `to<X>Resource(row)`, pure; strips internals.
@@ -25,15 +27,18 @@ Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/
 - [ ] `index.ts` (optional) exporting factories + types.
 
 ## 4. Wiring
+
 - [ ] `core/container.ts`: repo → service → controller in dependency order; add to `services`/`controllers`.
 - [ ] Mount in `routes/admin.router.ts` (`r.use('/<plural>', authorize('admin', ...), create<X>Router(c.controllers.<x>))`) and/or `user.router.ts` / `public.router.ts`.
 
 ## 5. Tests (ADR-0021)
+
 - [ ] `__tests__/<m>.service.test.ts` — fake repository literals; success + each error path.
 - [ ] `__tests__/<m>.mapper.test.ts` — strips internals.
 - [ ] `__tests__/<m>.int.test.ts` — supertest per endpoint: happy, 400 validation, 401 no token, 403 wrong role/population, 404; list: pagination/sort/filter/invalid sort.
 
 ## 6. Docs & tooling
+
 - [ ] `/postman-sync` — add folder + requests + tests.
 - [ ] `docs/implementation-plan.md` endpoint scope (if new), env vars → ADR-0004 + `.env.example`.
 - [ ] `pnpm lint && pnpm check-types && pnpm test --filter api` green.

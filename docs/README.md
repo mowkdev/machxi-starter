@@ -10,7 +10,7 @@
 
 ## Where to look for what
 
-- **"Why is it built this way?"** → the ADR. `docs/adr/README.md` indexes all 23.
+- **"Why is it built this way?"** → the ADR. `docs/adr/README.md` indexes all 24, and [ADR-0024](adr/0024-adr-lifecycle.md) governs how they change.
 - **"What does the API answer for X?"** → the Postman collection; the requests that turn on a decision name the ADR that made it.
 - **"How do I run it?"** → the root [`README.md`](../README.md) quick-start, or [`docker/README.md`](../docker/README.md) when Postgres is the problem.
 - **"How do I add an endpoint / a module / a migration?"** → the skills in [`.claude/skills/`](../.claude/README.md); they encode the ADR checklists.

@@ -7,12 +7,10 @@ The repository is a Turborepo/pnpm monorepo intended as a bootstrap for projects
 ## Conventions
 
 - One decision per file, numbered sequentially: `NNNN-short-kebab-title.md`.
-- Format follows [ADR-0001](0001-record-architecture-decisions.md) (MADR-lite: Context, Decision, Consequences, Alternatives).
-- Status is one of `proposed`, `accepted`, `deprecated`, `superseded by ADR-XXXX`. "Implemented" is not a status — it is the _Implemented_ column below, which names the [implementation-plan](../implementation-plan.md) step that built the decision and where the code lives.
-- ADRs are immutable once accepted **and implemented**. Until the first deliverable ships, accepted ADRs may still be amended in place (the code does not exist yet, so there is nothing to supersede); after that, change is expressed by a superseding ADR.
-
-  **The first deliverable shipped on 2026-08-18, so that window is closed.** Every ADR below now has code standing on it (ADR-0022 only in part — the two frontend apps exist and are configured, but building them was never in scope). The amendments dated _2026-08-18 (step N)_ inside the accepted ADRs were made under the pre-deliverable exception and are the last of their kind: from here, a decision changes by writing a new ADR that supersedes the old one.
-
+- Format follows [ADR-0024](0024-adr-lifecycle.md) (MADR-lite: Context, Decision, Consequences, Alternatives — unchanged from the superseded ADR-0001).
+- **The lifecycle is [ADR-0024](0024-adr-lifecycle.md)** — statuses, when an ADR may be amended in place and when it must be superseded. In short: status is one of `proposed`, `accepted`, `deprecated`, `superseded by ADR-XXXX`; an accepted ADR with code standing on it is immutable, and change is expressed by a superseding ADR that carries the whole decision.
+- **The first deliverable shipped on 2026-08-18**, so the window in which accepted ADRs could still be amended in place is closed for ADRs 0001–0023. The amendments dated _2026-08-18 (step N)_ inside them were made under that exception and are the last of their kind. ADR-0024 §Lifecycle rule 2 keeps the exception available to decisions written ahead of their code, which none of these now are.
+- "Implemented" is not a status — it is the _Implemented_ column below, which names the [implementation-plan](../implementation-plan.md) step that built the decision and where the code lives (ADR-0024 §Lifecycle rule 4).
 - Code snippets in ADRs are illustrative of shape and naming; the implementation is the source of truth for details.
 
 ## Index
@@ -21,13 +19,14 @@ _Implemented_ names the build-order step from [`docs/implementation-plan.md`](..
 
 ### Foundation
 
-| #                                              | Title                                             | Status   | Implemented                                                                                                                   |
-| ---------------------------------------------- | ------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [0001](0001-record-architecture-decisions.md)  | Record architecture decisions                     | accepted | in force — this directory                                                                                                     |
-| [0002](0002-monorepo-layout-and-tooling.md)    | Monorepo layout and tooling                       | accepted | step 1 — workspace layout, shared configs; the bundling rules came from step 7 and the root `scripts/` carve-out from step 10 |
-| [0003](0003-api-runtime-express-typescript.md) | API runtime: Express 5 on Node 22, TypeScript ESM | accepted | step 7 — `apps/api` (`main.ts` startup sequence, `app.ts`, `server.ts` drain)                                                 |
-| [0004](0004-configuration-and-environment.md)  | Configuration and environment validation          | accepted | step 7 — `apps/api/src/core/config` (`.env.example` itself dates from step 5)                                                 |
-| [0005](0005-logging.md)                        | Structured logging with pino                      | accepted | step 2 — `@repo/logger`; step 7 — `pino-http` + the context-bound child logger                                                |
+| #                                              | Title                                                      | Status                                          | Implemented                                                                                                                   |
+| ---------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [0001](0001-record-architecture-decisions.md)  | Record architecture decisions                              | superseded by [ADR-0024](0024-adr-lifecycle.md) | superseded 2026-08-18 — practice and format carried forward unchanged                                                         |
+| [0002](0002-monorepo-layout-and-tooling.md)    | Monorepo layout and tooling                                | accepted                                        | step 1 — workspace layout, shared configs; the bundling rules came from step 7 and the root `scripts/` carve-out from step 10 |
+| [0003](0003-api-runtime-express-typescript.md) | API runtime: Express 5 on Node 22, TypeScript ESM          | accepted                                        | step 7 — `apps/api` (`main.ts` startup sequence, `app.ts`, `server.ts` drain)                                                 |
+| [0004](0004-configuration-and-environment.md)  | Configuration and environment validation                   | accepted                                        | step 7 — `apps/api/src/core/config` (`.env.example` itself dates from step 5)                                                 |
+| [0005](0005-logging.md)                        | Structured logging with pino                               | accepted                                        | step 2 — `@repo/logger`; step 7 — `pino-http` + the context-bound child logger                                                |
+| [0024](0024-adr-lifecycle.md)                  | ADR lifecycle: format, statuses and how a decision changes | accepted                                        | step 11 — this index and its _Implemented_ column; supersedes ADR-0001                                                        |
 
 ### Data
 
