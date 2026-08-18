@@ -14,14 +14,25 @@ The starter has `@repo/logger` wrapping `console.log` and `morgan("dev")` for HT
 ```ts
 // packages/logger/src/index.ts
 export type Logger = pino.Logger;
-export function createLogger(opts: { level: string; pretty?: boolean; name?: string; redact?: string[] }): Logger
+export type LogLevel = 'fatal'|'error'|'warn'|'info'|'debug'|'trace'|'silent';
+export function createLogger(opts: {
+  level: LogLevel; pretty?: boolean; name?: string;
+  redact?: readonly string[];        // added to the defaults, never replacing them
+  destination?: DestinationStream;   // defaults to stdout; test seam
+}): Logger
+export function shouldPrettyPrint(input: { nodeEnv: string; isTty: boolean }): boolean
 export const defaultRedactPaths = [
   'req.headers.authorization', 'req.headers.cookie',
+  'password', 'passwordHash', 'refreshToken', 'accessToken', 'token',
   '*.password', '*.passwordHash', '*.refreshToken', '*.accessToken', '*.token',
 ];
 ```
 
-Pretty printing (`pino-pretty`) is enabled only when `NODE_ENV=development` and stdout is a TTY. Everything else emits newline-delimited JSON.
+`silent` is a factory-only level (tests); the `LOG_LEVEL` env enum (ADR-0004) stays at the six real levels.
+
+`pino-pretty` is a dev dependency of `@repo/logger`: it is only reachable through the `development` branch of `shouldPrettyPrint()`, so production installs do not carry it. An explicit `destination` takes precedence over `pretty` — pino cannot combine a transport with a passed stream.
+
+Pretty printing (`pino-pretty`) is enabled only when `NODE_ENV=development` and stdout is a TTY. That rule is the `shouldPrettyPrint()` predicate: `NODE_ENV` is read by `core/config` (ADR-0004) and the resolved boolean is handed to `createLogger`, so the logger package never touches `process.env`. Everything else emits newline-delimited JSON.
 
 - **HTTP access logging** via `pino-http`, mounted first in the middleware chain (ADR-0011). It:
   - generates the request id (UUIDv7) or honours an inbound `X-Request-Id` only if it matches `^[A-Za-z0-9_-]{8,64}$` (otherwise it is replaced) — stored on the request context (ADR-0010) and echoed in the response header;
@@ -35,12 +46,12 @@ Pretty printing (`pino-pretty`) is enabled only when `NODE_ENV=development` and 
 
 - **Levels**: `error` for unexpected failures (5xx), `warn` for expected client-side failures worth noticing (auth failures, rate limits), `info` for lifecycle and access logs, `debug` for developer detail. Default `LOG_LEVEL=info`, `debug` in local `.env.example`.
 
-- **Redaction** is applied at the logger level via pino `redact` (paths above), so a careless `log.info({ body })` cannot leak a password.
+- **Redaction** is applied at the logger level via pino `redact` (paths above). Each credential key is listed both at the top level and one level deep, so neither a careless `log.info({ body })` nor `log.info({ password })` can leak a secret. The `redact` option adds paths; it cannot remove a default.
 
 ## Consequences
 
 - Log lines are machine-parsable and correlate by `requestId`; ready for Loki/ELK/Datadog without changes.
-- `morgan` and the console logger are removed.
+- `morgan` and the console logger are removed. `@repo/logger` is Node-only (pino), so `apps/web` no longer depends on it; browser-side logging is out of scope.
 - Slight learning curve: "message first, fields second" discipline.
 
 ## Alternatives considered
