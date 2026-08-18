@@ -79,6 +79,34 @@ rather than silently:
 - Repositories translate `ListQuery` to Drizzle with a shared helper `applyListQuery(qb, query, columnMap)` (maps API field → column, applies `where`, `orderBy`, `limit/offset`) and run `count(*)` for `total` in the same transaction (or a single query with a window function `count(*) over()` — implementation detail, helper hides it).
 - Services return `Page<T>`; controllers call `respond.list(res, page)` (ADR-0012), which emits `meta.pagination = { offset, limit, total }`, `meta.sort`, `meta.filters` so the client can render state without re-parsing its own query.
 
+**Amended 2026-08-18 (step 9), by the first two list endpoints.** Three things
+the decision left to "the endpoint defines which columns".
+
+- **`q` is a term, not a pattern.** It is applied as an OR of case-insensitive
+  containment (`ILIKE`) over the columns the module declares searchable —
+  `email`, `first_name`, `last_name` for both `staff` and `users` — and the term is run
+  through `escapeLikePattern` first, so `%`, `_` and `\` match themselves. A
+  client searching for `100%` means the four characters; leaving the `%`
+  unescaped would silently turn that request into "match every row", which is
+  the difference between a filter and no filter. `like` filters are the
+  opposite and are **not** escaped: `filter[email][like]=%40acme.com` is a
+  pattern the client wrote on purpose.
+- **A default scope steps aside when the client asks about it.**
+  `GET /api/v1/admin/users` hides soft-deleted rows, because "the account is
+  gone" has to be true on the screen where it matters most. But `deletedAt` is
+  an allow-listed filter, so an unconditional exclusion would make
+  `filter[deletedAt][null]=false` return nothing forever. The repository
+  therefore drops its own `deleted_at is null` as soon as the parsed query
+  carries a `deletedAt` filter. The rule generalises: a module-supplied
+  `extraWhere` that shadows a filterable field must yield to that field.
+- **`total` comes from a second query on the same executor**, not from a window
+  function. The rows are fetched through Drizzle's relational API, which is what
+  loads each account's roles in one round trip; a `count(*) over()` would mean
+  hand-writing that join. The two statements run on whatever executor the
+  repository is given, so a caller that needs them to agree exactly passes a
+  transaction — and no caller in the first deliverable does, because an admin
+  table showing a count one insert stale is not a correctness problem.
+
 ### Determinism
 
 - Sort always appends `id asc` as a tiebreaker so pages are stable.

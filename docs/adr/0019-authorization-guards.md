@@ -63,6 +63,31 @@ caller that the route exists and is broken. `assertOwnerOrRole`, the ownership
 helper sketched above, lands with step 9's `/user/profile` endpoints, which are
 the first resources that have an owner.
 
+**Amended 2026-08-18 (implementation step 9).** `assertOwnerOrRole` did **not**
+ship, and the sentence above is what this amendment corrects.
+
+`/user/profile` turned out not to be an ownership check at all. The three
+endpoints carry no `:id`: `getProfile`, `updateProfile` and `changePassword`
+read their subject from `ctx.principal` and take no identifier argument, so
+there is no claimed owner to compare against a real one. Ownership is
+_structural_ rather than asserted — a caller cannot name somebody else's
+account, so the check has nothing to check and adding one would be a line that
+can only ever pass.
+
+The helper therefore waits for the first `:id`-addressed resource that has an
+owner distinct from the caller — an order, a document, an upload — which is
+where the `assertOwnerOrRole(ctx, resource.ownerId, ['admin'])` shape earns its
+keep. Writing it now would mean an unused export and a test proving a tautology,
+which is the same reason step 8 declined to leave an unused `rolesOf` behind
+(ADR-0017, amended).
+
+What the step _did_ add is the other half of the rule: `/api/v1/admin/users` is
+the first router whose guard is not uniform. It mounts with
+`authorize("admin", "manager")` — a manager may read the customer base — and its
+three writing routes narrow back to `authorize("admin")`. Refinement composes in
+that direction only: both guards run, so a route may narrow the mount's guard
+and can never widen it.
+
 ### Path to permissions
 
 When permissions arrive, `authorize` gains an overload `authorize({ permissions: ['users:write'] })`; roles → permissions resolution happens at token issuance (claims) or via a cached lookup. Existing role-based calls keep working.

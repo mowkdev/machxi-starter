@@ -208,6 +208,40 @@ Rules:
   translation, and the container is what wires it (see the example above).
 - Modules export nothing to the outside except factories, schemas, mappers and types.
 
+**Amended 2026-08-18 (step 9).** Three corrections the first two resource
+modules forced.
+
+_A repository's `list` returns `{ rows, total }`, not `Page<T>`._ The sketch
+above has `list(query): Promise<Page<UserRow>>`. A `Page` echoes the resolved
+query back so `respond.list` can fill `meta` (ADR-0012, ADR-0014), which makes
+it a statement about the _response_, and deciding what the response looks like
+is not a repository's job. The repository returns a `ListResult<T>` — the rows
+of the page and the total the same `where` matches unpaged — and the service
+maps the rows and calls `toPage`. That also keeps the mapper on the service
+side of the boundary, where every other row-to-resource conversion already is.
+
+_Cross-module service dependencies are declared as a `Pick`._ The rule above
+says a module may depend on another module's service. Both feature services
+need one function from the auth module — `revokeSessionsFor`, because
+`sessions` is that module's aggregate and "disable this account and end its
+sessions" must commit together (ADR-0018) — and they declare it as
+`Pick<AuthService, "revokeSessionsFor">`. Structural typing means the real
+service satisfies it, the container is what supplies it, and a service that
+only needs to revoke a session is not also handed `login` and `register`. The
+narrowing is free and the deps object states exactly what the module can do.
+
+_`core/auth/` gained `limited-hasher.ts`._ Step 8's amendment above says
+`core/auth/` holds policy helpers only. It now also holds
+`createLimitedHasher`, which pairs the `PasswordHasher` with the ADR-0020
+concurrency cap and hands out only `{ hash, verify }`. It is framework
+infrastructure rather than an auth-module rule: the cap protects the libuv
+thread pool, which belongs to the process, and three services now hash
+passwords. It takes the limiter **structurally** — `{ run: <T>(work) =>
+Promise<T> }` — rather than importing `HashLimiter` from `modules/auth`, so
+`core` still imports no module, which is the direction this ADR exists to fix.
+Feature services receive the wrapper and never the raw hasher, so they cannot
+bypass the cap by forgetting to wrap a call.
+
 ### Naming
 
 - Files: `<module>.<layer>.ts`; factories: `create<Module><Layer>` (`createUsersService`); types: `UsersService`, `UsersRepository`.
