@@ -101,6 +101,62 @@ describe("segment isolation", () => {
       .expect(200);
   });
 
+  describe("unknown paths inside a guarded segment", () => {
+    /**
+     * Since step 9 the guarded segments mount `authenticate()` as router-level
+     * middleware, above the resource routers. Express runs that for every
+     * request entering the router — matched or not — so an unmatched path
+     * answers the guard rather than the not-found handler.
+     *
+     * That is the behaviour we want, and it is the same rule as the rest of
+     * this file: the API does not tell an unauthenticated caller which admin
+     * paths exist. The diagnostic is not lost, only earned — a caller who has
+     * proved who they are still gets `ROUTE_NOT_FOUND`.
+     *
+     * The unguarded `/api/v1/public` segment answers `404` to everyone, which
+     * `envelope.int.test.ts` asserts.
+     */
+    it.each(["admin", "user"])(
+      "answers an anonymous caller 401 on /%s, not 404",
+      async (segment) => {
+        const response = await request()
+          .get(`/api/v1/${segment}/does-not-exist`)
+          .expect(401);
+
+        // Not `ROUTE_NOT_FOUND`, and deliberately the same answer a bad token
+        // gets: neither says whether the path is real.
+        expect(response.body.error.code).not.toBe("ROUTE_NOT_FOUND");
+      },
+    );
+
+    it("answers an authenticated staff caller ROUTE_NOT_FOUND", async () => {
+      const response = await request()
+        .get("/api/v1/admin/does-not-exist")
+        .set("Authorization", `Bearer ${staffTokens.accessToken}`)
+        .expect(404);
+
+      expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
+    });
+
+    it("answers an authenticated user caller ROUTE_NOT_FOUND", async () => {
+      const response = await request()
+        .get("/api/v1/user/does-not-exist")
+        .set("Authorization", `Bearer ${userTokens.accessToken}`)
+        .expect(404);
+
+      expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
+    });
+
+    it("still answers the wrong population 401, not 404", async () => {
+      // Both mechanisms point the same way: an unknown path and a wrong-
+      // population token are indistinguishable from outside.
+      await request()
+        .get("/api/v1/admin/does-not-exist")
+        .set("Authorization", `Bearer ${userTokens.accessToken}`)
+        .expect(401);
+    });
+  });
+
   it("does not let a staff account log in on the user segment", async () => {
     // Separate tables, so the address simply is not there — and the answer is
     // the same one a wrong password gets (ADR-0017 §Invariants).

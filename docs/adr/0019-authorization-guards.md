@@ -81,6 +81,25 @@ keep. Writing it now would mean an unused export and a test proving a tautology,
 which is the same reason step 8 declined to leave an unused `rolesOf` behind
 (ADR-0017, amended).
 
+_A guarded segment answers an anonymous caller `401` even for a path that does
+not exist._ `authenticate()` is mounted with `router.use()` above the resource
+routers, and Express runs router-level middleware for every request that enters
+the router, matched or not. So `GET /api/v1/admin/does-not-exist` without
+credentials is `401`, not the `404 ROUTE_NOT_FOUND` that ADR-0013's table
+implies and that a step-7 test asserted (step 8's plan note predicted the change
+and scheduled it here).
+
+This is kept rather than worked around, because it is level 1 of this ADR
+applied consistently: the reason a wrong-population token gets `401` instead of
+`403` is that the API must not reveal which paths exist to somebody not entitled
+to know, and "no credentials at all" is not a stronger entitlement than "the
+wrong population's credentials". The diagnostic is not lost, only earned — an
+authenticated principal of the right population still gets `404
+ROUTE_NOT_FOUND` for an unknown path, and the unguarded `/api/v1/public`
+segment answers `404` to everyone. Restoring `404` for anonymous callers would
+mean guarding each resource router individually and leaving the segment open,
+which is precisely the arrangement rule 1 exists to prevent.
+
 What the step _did_ add is the other half of the rule: `/api/v1/admin/users` is
 the first router whose guard is not uniform. It mounts with
 `authorize("admin", "manager")` — a manager may read the customer base — and its

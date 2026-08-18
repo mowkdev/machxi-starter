@@ -20,6 +20,14 @@
  * | `FORBIDDEN` | 403 | authenticated, but the principal lacks the required role |
  * | `NOT_FOUND` | 404 | the addressed resource does not exist |
  * | `ROUTE_NOT_FOUND` | 404 | no route matched the path at all (`notFoundHandler`) |
+ *
+ * `ROUTE_NOT_FOUND` reaches a caller only where nothing intercepted first. Under
+ * `/api/v1/{user,admin}` the segment's `authenticate()` runs for every request
+ * entering the router, matched or not, so an unknown path there answers `401` to
+ * anyone who is not an authenticated principal of that population — the API does
+ * not disclose which admin paths exist (ADR-0019, amended step 9). An
+ * authenticated caller of the right population, and any caller of
+ * `/api/v1/public`, gets the `404`.
  * | `CONFLICT` | 409 | a constraint violation that must **not** name what conflicted, plus anything not mapped to a domain code |
  *
  * A token for the wrong population is `AUTH_TOKEN_INVALID`, not

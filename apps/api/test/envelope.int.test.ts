@@ -34,11 +34,18 @@ describe("error envelope", () => {
   });
 
   it("answers an unknown route under /api/v1 the same way", async () => {
-    // The segment routers are mounted but empty until step 8; an unmatched
-    // path must still fall through to the same handler, not to Express's
-    // HTML default page.
+    // An unmatched path under a segment must still fall through to the same
+    // handler, not to Express's HTML default page.
+    //
+    // The `public` segment, not `admin`: since step 9 the guarded segments
+    // mount `authenticate()` as router-level middleware, which runs for every
+    // request that enters them, matched or not — so an anonymous caller gets
+    // `401` there and never reaches the not-found handler. That is deliberate
+    // (ADR-0019, amended step 9) and is asserted in `auth-segments.int.test.ts`
+    // alongside the authenticated case. What *this* file is about is the
+    // middleware order, so it probes the segment where nothing intercepts.
     const response = await request()
-      .get("/api/v1/admin/does-not-exist")
+      .get("/api/v1/public/does-not-exist")
       .expect(404);
 
     expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
