@@ -1063,6 +1063,44 @@ describe("createStaffService", () => {
       expect(sessions.revocations).toEqual([]);
     });
 
+    it("serialises the rank decision against a concurrent promotion", async () => {
+      // The rank rule is decided twice: cheaply outside the transaction so a
+      // refusal costs no hash, and again inside it, after
+      // `lockRoleInvariant`, because a decision made against a snapshot the
+      // write does not share is not a decision (ADR-0017 §Serialising).
+      const { repo, sessions } = build([actorRow(), adminRow()]);
+      const hasher = createFakeHasher();
+
+      // Stands in for a super admin promoting the target while the actor is
+      // paying for argon2: the row changes after the first read, before the
+      // second.
+      const promoting = createStaffService({
+        repository: repo.repository,
+        hasher: {
+          hash: (password) => {
+            const row = repo.rows.get(ADMIN_ID);
+
+            if (row !== undefined) row.roles = ["super_admin"];
+
+            return hasher.hasher.hash(password);
+          },
+          verify: hasher.hasher.verify,
+        },
+        sessions: sessions.sessions,
+        transaction: (fn) => fn(undefined as never),
+        now: () => NOW,
+      });
+
+      await expectAppError(
+        () => promoting.setPassword(ctx(), ADMIN_ID, body),
+        "FORBIDDEN",
+        403,
+      );
+
+      expect(repo.rows.get(ADMIN_ID)?.passwordHash).toBe("hashed:secret");
+      expect(sessions.revocations).toEqual([]);
+    });
+
     it("lets a super admin set another super admin's password", async () => {
       const { service, repo } = build([actorRow(), superAdminRow()]);
 
@@ -1083,13 +1121,17 @@ describe("createStaffService", () => {
       ).resolves.toBeUndefined();
     });
 
-    it("refuses a caller whose own row has gone", async () => {
+    it("answers a caller whose own row has gone the same 403, not a 404", async () => {
+      // The caller cannot prove anything either way, so the two answers must
+      // not differ — and this runs from the users module too, where a "Staff
+      // member not found" would read as a statement about the subject of
+      // `POST /admin/users/:id/password` and be exactly wrong.
       const { service } = build([adminRow()]);
 
       await expectAppError(
         () => service.verifyActorPassword(ctx(), ACTOR_PASSWORD),
-        "NOT_FOUND",
-        404,
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
       );
     });
   });

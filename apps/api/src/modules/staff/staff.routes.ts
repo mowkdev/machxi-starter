@@ -86,12 +86,21 @@ export const createStaffRouter = (controller: StaffController): Router => {
  * neither belongs in a shared proxy's cache or on its disk (ADR-0020).
  *
  * `change-password` gets no limiter of its own beyond the global one, for the
- * reason `/user/profile/change-password` gives: nothing here is
- * brute-forceable — the caller already holds a valid session for the account
- * whose password they are "guessing" — but each call still buys argon2
- * operations from the `AUTH_MAX_CONCURRENT_HASHES` pool that login shares.
- * ADR-0027 §Consequences adds this route and both `/:id/password` routes to
- * the list the missing per-principal budget for expensive routes will cover.
+ * reason `/user/profile/change-password` gives: the caller already holds a
+ * valid session for the account whose password they are "guessing", so what a
+ * successful guess buys is the plaintext rather than the account. Each call
+ * still buys argon2 operations from the `AUTH_MAX_CONCURRENT_HASHES` pool that
+ * login shares, and ADR-0027 §Consequences adds this route to the list the
+ * missing per-principal budget for expensive routes will cover.
+ *
+ * **That reasoning does not extend to `POST /admin/{staff,users}/:id/password`,
+ * and the D2.3 security review is where that was noticed.** There the caller
+ * presents a password they may well not know, so the `403` those endpoints
+ * answer is a guessing oracle against the one credential ADR-0027 rule 1 leans
+ * on, bounded only by the global `300 / 15 min / IP`. It is recorded in
+ * ADR-0027 §Consequences, amended D2.3, rather than half-closed with a fifth
+ * limiter here: rate limiting is ADR-0020's, and ADR-0020 belongs to shipped
+ * D1.
  */
 export const createStaffProfileRouter = (
   controller: StaffProfileController,

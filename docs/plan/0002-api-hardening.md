@@ -49,9 +49,30 @@ Three small divergences, none of which needed a decision — the decisions exist
 
 **Done when:** the three CORS cases are asserted by tests; `pnpm check-types` twice in a row leaves `git status` clean; no `eslint.config.mjs` remains.
 
-### 3. Credential self-service and administrative password reset
+### 3. ~~Credential self-service and administrative password reset~~ — **done 2026-08-19**
 
 **ADRs:** [0027](../adr/0027-credential-self-service-and-reset.md), [0017](../adr/0017-identity-model-populations-and-roles.md) §Invariants, [0018](../adr/0018-authentication-sessions-and-tokens.md) §Staff onboarding, [0019](../adr/0019-authorization-guards.md), [0023](../adr/0023-shared-contracts-package.md)
+
+**Closed.** The four endpoints exist and the two populations are symmetric about credentials: `GET|PATCH /api/v1/admin/profile` and `POST /api/v1/admin/profile/change-password` behind `authenticate("staff")` with no `authorize`, and `POST /api/v1/admin/{staff,users}/:id/password` behind `authorize("admin")`. `apps/api/test/staff-profile.int.test.ts` is new (23 tests); the two admin files gained the reset endpoints and their guard-matrix rows. 402 unit and 303 integration tests, and 77 Postman requests green on two consecutive runs.
+
+Three things the step decided that the plan above left open, all recorded in ADR-0027, **amended 2026-08-19 (D2.3)**:
+
+- **`POST /admin/users/:id/password` has a staff actor and a user subject.** `usersService` is bound to the `user` population, so it cannot verify the caller's own password — the caller is not one of its accounts. `staffService` exposes `verifyActorPassword`, the function its own reset already uses, and `usersService` takes it as `actors` from the container. That is the first cross-module service dependency in `core/container.ts`, and it is the direction ADR-0009 allows: through a service, never a repository.
+- **The error factory follows the code out of the users module.** The plan said "a renamed error factory" per module; a copy in each would have reproduced, in the error layer, the exact asymmetry ADR-0027 exists to remove. `currentPasswordInvalid` is declared once in `modules/auth/auth.errors.ts` — the same reasoning that made the code `AUTH_`-prefixed.
+- **`updateStaffProfileBody` was missing from the contracts list.** `PATCH /admin/profile` is "names only" and no such body existed; `updateStaffBody` carries the two fields it must not have. Not nullable, unlike the user profile's: the `staff` columns are `NOT NULL`. This is what makes the unguarded router safe — an `editor` sending `roles` is refused as an unknown key, so the escalation fails on the schema rather than on a rule somebody has to remember.
+
+One ordering choice worth keeping: **the actor is verified before the subject is read.** ADR-0027 rule 1 fixes that the actor re-presents their password, not when. First means a wrong actor password answers the same `403` whether or not the id exists — so a caller who cannot use the endpoint cannot use it to enumerate accounts either — and a refused request buys no argon2 hash of a new password it is about to discard.
+
+The rank rule was checked rather than assumed: with `assertMayActOnSuperAdmin` removed from `setPassword`, "refuses an admin who aims it at a super admin" fails, and it fails loudly — the reset lands, the super admin's sessions die, and three later tests fall over with it.
+
+**What the two reviews changed.** `adr-reviewer` found no divergence from any ADR — including the three calls above, two of which it read as more correct than this plan's prose — and one factually wrong comment in `core/container.ts`, since fixed. `security-reviewer` produced three changes and one thing this step deliberately did not do:
+
+- **The rank decision was taken outside the transaction that writes the hash.** `update` takes `lockRoleInvariant` and reads inside its transaction precisely so the invariant is decided against the snapshot the write shares; the reset did not, so a target promoted to `super_admin` between the read and the commit had its credential rewritten by a plain `admin`. It now checks twice — cheaply outside so a refusal costs no argon2 hash, and again inside the transaction after the lock. ADR-0027 §Consequences, amended, carries the general form.
+- **A missing actor row answered `404 NOT_FOUND` with "Staff member not found"** — from `POST /api/v1/admin/users/:id/password`, where that message describes the wrong account entirely. `verifyActorPassword` now answers the same `403` a wrong password does: the caller cannot prove anything either way. Unreachable until D2.4 can delete a staff account.
+- **The router comment claiming "nothing here is brute-forceable" was true of `change-password` and false of the resets,** which is the finding rather than the comment: on `/:id/password` the caller presents a password they may not know, so the `403` is a guessing oracle against the credential ADR-0027 rule 1 leans on, bounded only by the global `300 / 15 min / IP`.
+- **No fifth limiter was built, and that is not a deferral by preference.** ADR-0027 §Consequences already refused to half-close the missing per-principal budget, and rate limiting belongs to ADR-0020 — D1, frozen — so building one here would mean diverging from a shipped ADR instead of superseding it (ADR-0024 rule 1). The ADR is amended with the corrected reasoning so that whoever writes that ADR knows it is closing a brute-force gap and not only a cost one. **This is the one thing D2.3 leaves open that somebody has to decide.**
+
+Two findings were left alone on purpose: a reset writes a credential onto a soft-deleted user (D2.4 refuses it with `USER_DELETED`, so it is scheduled rather than missed), and a login already in flight can straddle a reset's revocation — closing that needs a `password_changed_at` column compared against `sessions.created_at`, which is a schema decision.
 
 Staff have no way to change their own password and nobody has a way to reset one. `staffRepository.updatePasswordHash` already exists (built for the login-time argon2 upgrade), so this adds routes, not capability.
 

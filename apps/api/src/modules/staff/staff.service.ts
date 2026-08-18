@@ -200,9 +200,22 @@ export const createStaffService = ({
     currentPassword: string,
   ): Promise<void> => {
     const principal = actor(ctx);
-    const record = await read(principal.id);
+    const record = await repository.findById(principal.id);
 
-    if (await hasher.verify(record.passwordHash, currentPassword)) return;
+    // A missing actor row answers the same `403` a wrong password does, rather
+    // than `read`'s `404`. Two reasons: the caller cannot prove anything either
+    // way, so the answers should not differ; and this function is called from
+    // the *users* module too, where "Staff member not found" would read as a
+    // statement about the subject of `POST /admin/users/:id/password` and be
+    // exactly wrong (ADR-0013 — the message is developer-facing, but it must
+    // not describe the wrong thing). Reachable once D2.4 can delete a staff
+    // account inside its access token's remaining life.
+    if (
+      record !== undefined &&
+      (await hasher.verify(record.passwordHash, currentPassword))
+    ) {
+      return;
+    }
 
     ctx.logger.warn(
       { staffId: principal.id },
@@ -423,6 +436,15 @@ export const createStaffService = ({
      * 3. **Then the write**, with the hash computed outside the transaction
      *    for the reason `create` gives.
      *
+     * The rank rule is checked **twice**, and the second one is the check that
+     * counts. The first runs on the pooled client and exists to refuse cheaply
+     * — before an argon2 hash is bought for a request that is about to be
+     * thrown away. But a decision made against a snapshot the write does not
+     * share is not a decision: a target promoted to `super_admin` between the
+     * read and the commit would have its credential rewritten by a plain
+     * `admin`. So the transaction takes `lockRoleInvariant` and re-reads, which
+     * is exactly what `update` does and for exactly the same reason.
+     *
      * Every session of the subject goes, with no exception for anybody: the
      * self-service case spares the caller because the caller proved ownership,
      * and here the subject proved nothing.
@@ -436,24 +458,33 @@ export const createStaffService = ({
 
       await verifyActorPassword(ctx, body.currentPassword);
 
-      const target = await read(id);
-
-      assertMayActOnSuperAdmin(ctx, target);
+      // The cheap refusal: an unknown id or an out-of-rank target costs no
+      // hash. Authority belongs to the re-read inside the transaction.
+      assertMayActOnSuperAdmin(ctx, await read(id));
 
       const passwordHash = await hasher.hash(body.password);
 
-      const revoked = await transaction(async (tx) => {
+      const { revoked, targetId } = await transaction(async (tx) => {
+        await repository.lockRoleInvariant(tx);
+
+        const target = await read(id, tx);
+
+        assertMayActOnSuperAdmin(ctx, target);
+
         await repository.updatePasswordHash(target.id, passwordHash, at, tx);
 
-        return sessions.revokeSessionsFor(ctx, {
-          principalId: target.id,
-          reason: REVOKE_REASONS.passwordReset,
-          tx,
-        });
+        return {
+          targetId: target.id,
+          revoked: await sessions.revokeSessionsFor(ctx, {
+            principalId: target.id,
+            reason: REVOKE_REASONS.passwordReset,
+            tx,
+          }),
+        };
       });
 
       ctx.logger.info(
-        { staffId: target.id, revoked, by: actor(ctx).id },
+        { staffId: targetId, revoked, by: actor(ctx).id },
         "staff password reset by an admin",
       );
     },

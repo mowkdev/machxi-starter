@@ -141,10 +141,11 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     repository: usersRepository,
     hasher: limitedHasher,
     sessions: userAuth,
-    // Built above, and the only cross-module service dependency in this file:
-    // `POST /api/v1/admin/users/:id/password` is a *staff* member acting, so
-    // the actor's own password is verified by the module that owns the staff
-    // aggregate (ADR-0027 rule 1, ADR-0009).
+    // Built above, and the only dependency between two *feature* modules in
+    // this file — the `sessions` lines are feature-to-auth, which is the edge
+    // ADR-0009 was amended about. `POST /api/v1/admin/users/:id/password` has a
+    // *staff* member acting, so the actor's own password is verified by the
+    // module that owns the staff aggregate (ADR-0027 rule 1, ADR-0009).
     actors: staffService,
     transaction,
   });
