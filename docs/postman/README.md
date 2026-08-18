@@ -2,7 +2,7 @@
 
 The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
-`../implementation-plan.md`).
+`../plan/0001-api-foundation.md`).
 
 - `machxi-api.postman_collection.json` — 66 requests in 10 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,

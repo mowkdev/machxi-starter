@@ -1,6 +1,8 @@
 # machxi-starter — guidance for Claude
 
-Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin panel and a web app. **Architecture is decided in `docs/adr/` — read the relevant ADR before changing anything it covers.** Index: `docs/adr/README.md`. Build order and endpoint scope: `docs/implementation-plan.md`.
+Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin panel and a web app. **Architecture is decided in `docs/adr/` — read the relevant ADR before changing anything it covers.** Index: `docs/adr/README.md`. Build order and endpoint scope: the deliverable plans in `docs/plan/`, starting from the ledger `docs/plan/README.md`.
+
+Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18; D2 (API hardening) is in progress** — `docs/plan/0002-api-hardening.md`.
 
 ## Non-negotiables (from the ADRs)
 
@@ -15,6 +17,8 @@ Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin pa
 - **DB** (ADR-0006/0008): schema in `packages/db/src/schema`, migrations generated with `drizzle-kit generate` and committed, never `push`; API never auto-migrates; seeds are idempotent.
 - **Logging** (ADR-0005): pino via `ctx.logger`; fields object first, short static message second; no `console.*`.
 - **Contracts** (ADR-0023): `@repo/contracts` depends only on `zod`; enums are defined once there and consumed by `pgEnum` and zod.
+- **Deliverables and the ADR window** (ADR-0025): an ADR may be amended in place only while the deliverable it belongs to is `in progress` in `docs/plan/README.md`. ADRs 0001–0024 belong to shipped D1 and are frozen — diverging from one means writing a superseding ADR, never editing it.
+- **Task caching** (ADR-0026): a task whose result depends on anything outside the repo is never cached and declares its `env`. `pnpm test` includes the integration tier, so it is `cache: false` and runs `--concurrency=1`; `pnpm test:unit` is the cached fast loop.
 
 ## Commands
 
@@ -25,8 +29,9 @@ pnpm docker:up                 # Postgres 16 (docker/local/compose.yaml)
 pnpm db:setup                  # migrate + seed super admin (from SEED_SUPER_ADMIN_* in .env)
 pnpm db:seed -- --dev          # dev fixtures (manager/editor staff, customer users)
 pnpm dev --filter api          # http://localhost:4000
-pnpm lint && pnpm check-types && pnpm test
-pnpm test:int --filter api     # integration tests against DATABASE_URL_TEST
+pnpm test:unit                 # cached fast loop, no database
+pnpm lint && pnpm check-types && pnpm test   # the gate: test includes integration, needs Postgres up
+pnpm test:int --filter api     # integration tests only, against DATABASE_URL_TEST
 pnpm test:postman              # newman over docs/postman
 ```
 
@@ -44,10 +49,10 @@ Use the Grep/Glob tools to search this repo; never `grep -r`, `find` or `rg` thr
 
 ## Workflow expectations
 
-1. Before implementing: identify the ADRs involved; if a change conflicts with one, stop and propose a superseding ADR instead of diverging (ADR-0024 — amending an accepted ADR in place is no longer an option).
+1. Before implementing: identify the ADRs involved; if a change conflicts with one, check its deliverable in `docs/plan/README.md`. In progress → amend in place, labelled `**Amended YYYY-MM-DD (D<n>.<step>).**`. Shipped → stop and propose a superseding ADR instead of diverging (ADR-0024 rule 1, ADR-0025 rule 2).
 2. Use the project skills (`/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/new-adr`, `/plan-step`, `/postman-sync`, `/local-dev`, `/api-conventions`) — they encode the ADR checklists.
 3. Every change ends green on `pnpm lint && pnpm check-types && pnpm test`; new endpoints get integration tests (ADR-0021) and Postman requests.
-4. Keep docs in sync: new env var → ADR-0004 + `.env.example`; new endpoint → `docs/implementation-plan.md` scope + Postman; new decision → ADR + index.
+4. Keep docs in sync: new env var → ADR-0004 + `.env.example` + `turbo.json` `env` if a task reads it (ADR-0026); new endpoint → the current plan's scope + Postman; new decision → ADR + index (with its `D<n>.<step>` in the _Implemented_ column).
 5. Commit messages: conventional commits (`feat(api): …`, `chore(db): …`, `docs(adr): …`).
 6. Ask before: deleting migrations, changing the envelope/error shape, adding a runtime dependency to `@repo/contracts`, or introducing any auth library.
 

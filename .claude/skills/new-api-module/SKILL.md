@@ -40,7 +40,7 @@ Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/
 ## 6. Docs & tooling
 
 - [ ] `/postman-sync` — add folder + requests + tests.
-- [ ] `docs/implementation-plan.md` endpoint scope (if new), env vars → ADR-0004 + `.env.example`.
+- [ ] the current deliverable plan in `docs/plan/` endpoint scope (if new), env vars → ADR-0004 + `.env.example`.
 - [ ] `pnpm lint && pnpm check-types && pnpm test --filter api` green.
 
 Report created files and open questions (e.g. role assignments not specified).

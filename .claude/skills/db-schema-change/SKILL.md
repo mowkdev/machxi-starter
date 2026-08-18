@@ -12,7 +12,7 @@ description: Workflow for changing the Postgres schema with Drizzle — edit sch
 5. **Apply** — `pnpm db:migrate` (dev) and against `DATABASE_URL_TEST` (test globalSetup does this; or run once manually). Print target DB name only.
 6. **Code** — update repositories (`packages`/`apps/api`), mappers, contracts resource types, seeds (idempotent upserts), fixtures.
 7. **Tests** — repository/int tests; `pnpm test:int --filter api`; seed twice → still idempotent.
-8. **Docs** — if the change is architectural (new aggregate, new population concept), `/new-adr` or amend ADR-0017; note in `docs/implementation-plan.md` if scope changes.
+8. **Docs** — if the change is architectural (new aggregate, new population concept), `/new-adr` or amend ADR-0017; note in the current deliverable plan in `docs/plan/` if scope changes.
 9. Commit schema + migration + code together (`feat(db): …`).
 
 Ask before: dropping columns/tables, `db:reset`, anything touching `sessions` semantics (ADR-0018).

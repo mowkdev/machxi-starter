@@ -15,5 +15,5 @@ Read `/api-conventions`. Then:
 6. **Errors** — new codes → `<m>.errors.ts` + contracts `ErrorCode`.
 7. **Tests** — unit (service) + integration (happy, 400, 401, 403, 404 as applicable; list checks if list).
 8. **Postman** — `/postman-sync`.
-9. **Docs** — `docs/implementation-plan.md` scope; env vars if any.
+9. **Docs** — the current deliverable plan in `docs/plan/` scope; env vars if any.
 10. `pnpm lint && pnpm check-types && pnpm test --filter api`.

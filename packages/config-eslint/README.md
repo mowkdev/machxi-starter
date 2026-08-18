@@ -14,4 +14,4 @@ script must pass `--max-warnings 0`** — without it, rules such as `no-console`
 
 Rules that enforce the ADRs (envelope helpers, layer boundaries, `process.env`
 containment, functional style) are listed in ADR-0002 and are added to the base
-config alongside the API core (implementation-plan step 7).
+config alongside the API core (D1.7).

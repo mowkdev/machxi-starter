@@ -7,8 +7,10 @@ two authenticated populations (staff and users) with roles, a unified response
 envelope, and a Postman collection that proves the whole surface works.
 
 Architecture is decided in [`docs/adr/`](docs/adr/README.md) — read the relevant
-ADR before changing anything it covers. The build order that produced the current
-state is in [`docs/implementation-plan.md`](docs/implementation-plan.md).
+ADR before changing anything it covers. Work is staged into numbered deliverables
+(ADR-0025); the ledger is [`docs/plan/README.md`](docs/plan/README.md), and the
+build order that produced the current state is
+[`docs/plan/0001-api-foundation.md`](docs/plan/0001-api-foundation.md).
 
 ## Requirements
 
@@ -82,7 +84,7 @@ Authentication is a JWT access token (15 minutes by default) plus an opaque
 rotating refresh token stored hashed in `sessions` (ADR-0018); `authorize()`
 guards the admin resources by role and `super_admin` bypasses those checks
 (ADR-0019). The full endpoint list is in
-[`docs/implementation-plan.md`](docs/implementation-plan.md), and every endpoint
+[`docs/plan/0001-api-foundation.md`](docs/plan/0001-api-foundation.md), and every endpoint
 has a Postman request — most carry a description of why the API answers the way
 it does, and the ones that turn on a decision name the ADR.
 

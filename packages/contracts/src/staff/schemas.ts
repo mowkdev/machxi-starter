@@ -51,7 +51,7 @@ export type CreateStaffBody = z.infer<typeof createStaffBody>;
 
 /**
  * `PATCH /api/v1/admin/staff/:id` — profile, roles and status (see the endpoint
- * scope in `docs/implementation-plan.md`). Email is absent by design: changing
+ * scope in `docs/plan/0001-api-foundation.md`). Email is absent by design: changing
  * the identifier a session was established with is its own flow, not a field
  * edit. Refusing to disable or demote the last `super_admin` is an invariant of
  * the service, not of the schema (ADR-0017).

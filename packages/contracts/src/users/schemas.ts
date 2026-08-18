@@ -82,7 +82,7 @@ export type UpdateProfileBody = z.infer<typeof updateProfileBody>;
 
 /**
  * `POST /api/v1/user/profile/change-password` — revokes the user's other
- * sessions on success (see the endpoint scope in `docs/implementation-plan.md`).
+ * sessions on success (see the endpoint scope in `docs/plan/0001-api-foundation.md`).
  *
  * `currentPassword` is only bounded, not held to the policy: it is a
  * credential being verified, and an account whose password predates a policy
