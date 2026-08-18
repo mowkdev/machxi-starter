@@ -35,8 +35,18 @@ const environment = path.join(
 );
 const envFile = path.join(root, ".env");
 
+/**
+ * `process.stderr` rather than `console.error`: `no-console` is on everywhere,
+ * CLI scripts included (ADR-0005 §Scope), and this file sits outside every lint
+ * rule's reach, so the rule has to be kept by hand. Same shape as the `db:*`
+ * scripts' `writeErrorLine` (`packages/db/src/tooling/report.ts`).
+ */
+const writeErrorLine = (text) => {
+  process.stderr.write(`${text}\n`);
+};
+
 const fail = (...lines) => {
-  console.error(["", ...lines, ""].join("\n"));
+  writeErrorLine(["", ...lines, ""].join("\n"));
   process.exitCode = 1;
 };
 
@@ -45,7 +55,7 @@ const run = (options) =>
   new Promise((resolve) => {
     newman.run(options, (error, summary) => {
       if (error) {
-        console.error(error);
+        writeErrorLine(error.stack ?? String(error));
         process.exitCode = 1;
         resolve();
         return;
@@ -54,7 +64,7 @@ const run = (options) =>
       const failures = summary.run.failures.length;
 
       if (failures > 0) {
-        console.error(
+        writeErrorLine(
           `\nnewman: ${String(failures)} assertion(s) failed. Stale dev fixtures are the ` +
             "usual cause — re-seed with `pnpm db:seed -- --dev`.\n",
         );

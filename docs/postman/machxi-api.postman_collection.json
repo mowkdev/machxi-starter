@@ -39,6 +39,13 @@
           "    .to.be.a(\"string\")",
           "    .that.is.not.empty;",
           "",
+          "  // The same id the response header carries, so an operator handed a failing",
+          "  // response can find the log line from either half of it (ADR-0010).",
+          "  pm.expect(",
+          "    pm.response.headers.get(\"X-Request-Id\"),",
+          "    \"X-Request-Id echoes meta.requestId\",",
+          "  ).to.eql(body.meta.requestId);",
+          "",
           "  if (body.success) {",
           "    pm.expect(body, \"a success envelope carries data\").to.have.property(\"data\");",
           "    pm.expect(body, \"success and error are mutually exclusive\").to.not.have.property(\"error\");",
@@ -224,8 +231,8 @@
                   "  pm.expect(auth.refreshToken, \"refreshToken\").to.be.a(\"string\").that.is.not.empty;",
                   "  pm.expect(Date.parse(auth.accessTokenExpiresAt), \"the access token is not born expired\")",
                   "    .to.be.greaterThan(Date.now());",
-                  "  pm.expect(Date.parse(auth.refreshTokenExpiresAt), \"the refresh token outlives the access token\")",
-                  "    .to.be.greaterThan(Date.parse(auth.accessTokenExpiresAt));",
+                  "  pm.expect(Date.parse(auth.refreshTokenExpiresAt), \"the refresh token is not born expired\")",
+                  "    .to.be.greaterThan(Date.now());",
                   "});",
                   "",
                   "pm.test(\"the principal is the seeded super admin\", function () {",
@@ -270,7 +277,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "auth", "login"]
             },
-            "description": "Hands every request below its token. The credentials come from `SEED_SUPER_ADMIN_EMAIL` / `SEED_SUPER_ADMIN_PASSWORD` in your `.env`; `pnpm test:postman` passes them in, and in the Postman app you fill them into the environment yourself."
+            "description": "Hands every request below its token. The credentials come from `SEED_SUPER_ADMIN_EMAIL` / `SEED_SUPER_ADMIN_PASSWORD` in your `.env`; `pnpm test:postman` passes them in, and in the Postman app you fill them into the environment yourself. Note what is *not* asserted: that the refresh token outlives the access token. It does under every sane configuration, but nothing in `core/config` refuses a `JWT_ACCESS_TTL` longer than `REFRESH_TOKEN_TTL`, and a test may only assert what the API guarantees."
           }
         },
         {
@@ -2268,7 +2275,9 @@
                   "  pm.expect(auth.principal.kind).to.eql(\"user\");",
                   "  pm.expect(auth.principal.roles).to.eql([\"customer\"]);",
                   "  pm.expect(auth.principal.email).to.eql(pm.environment.get(\"newRegisteredEmail\"));",
-                  "});"
+                  "});",
+                  "",
+                  "pm.environment.set(\"lastRegisteredId\", pm.response.json().data.principal.id);"
                 ]
               }
             }
@@ -2642,6 +2651,141 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "auth", "logout"]
             }
+          }
+        },
+        {
+          "name": "Disable the staff account this run created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the account can no longer sign in\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.status).to.eql(\"disabled\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"disabled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{lastStaffId}}"]
+            },
+            "description": "v1 has no delete endpoint, so the run cannot remove what it creates — but it can leave it unable to sign in. That matters because the account was granted `manager` and its password is committed in this collection: against a shared environment, a live account with a public password is a way in. Runs against a local dev database accumulate disabled rows; `pnpm db:reset` clears them."
+          }
+        },
+        {
+          "name": "Disable the user account this run created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the account can no longer sign in\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.status).to.eql(\"disabled\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"disabled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
+            },
+            "description": "The same reasoning for the customer account, whose password this run also changed to a committed value."
+          }
+        },
+        {
+          "name": "Disable the account this run registered",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the account can no longer sign in\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.status).to.eql(\"disabled\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"disabled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastRegisteredId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastRegisteredId}}"]
+            },
+            "description": "And the self-registered one, which reached the same table through the public door and holds the same committed password."
           }
         },
         {

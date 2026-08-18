@@ -45,13 +45,26 @@ Removed: `apps/blog` (Remix) and `packages/jest-presets`.
 tooling that is about the repository rather than about any package in it — today
 only `postman.mjs`, the newman runner behind `pnpm test:postman` (ADR-0021).
 
-It sits outside the workspaces on purpose, and that has one consequence worth
-stating: nothing in `scripts/` is covered by `turbo run lint` or `check-types`,
-because both only visit workspace packages. Anything that grows past a runner —
-logic worth testing, types worth checking — belongs in a package instead, not
-here. The alternative, a `@repo/scripts` package, buys lint coverage at the cost
-of a workspace, a `package.json` and a tsconfig for one file that exists to be
-invoked by a root script.
+It sits outside the workspaces on purpose, and that has three consequences worth
+stating rather than discovering:
+
+- **Nothing in `scripts/` is covered by `turbo run lint` or `check-types`**,
+  because both only visit workspace packages. This is not theoretical: the very
+  first file here shipped with `console.error`, which ADR-0005 §Scope forbids
+  even in CLI scripts, and no rule was in a position to say so. Rules that bind
+  this directory have to be kept by hand, and a comment saying which rule and why
+  is the only enforcement available.
+- **It cannot import `@repo/*`** without becoming a dependency of the root
+  package, which is why `postman.mjs` reads `.env` itself rather than reusing
+  `packages/db/src/tooling/env.ts` (ADR-0004).
+- **Prettier does reach it** — the root `format` / `format:check` globs were
+  widened to include `mjs` in step 10, since `.mjs` was outside them and this is
+  now the second such file.
+
+Anything that grows past a runner — logic worth testing, types worth checking —
+belongs in a package instead. The alternative, a `@repo/scripts` package, buys
+lint coverage at the cost of a workspace, a `package.json` and a tsconfig for one
+file that exists to be invoked by a root script.
 
 Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/contracts`, `@repo/logger`, …). Apps depend on packages with `workspace:*`.
 

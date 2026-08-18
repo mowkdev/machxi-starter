@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../implementation-plan.md`).
 
-- `machxi-api.postman_collection.json` — 63 requests in 10 folders: `Health`,
+- `machxi-api.postman_collection.json` — 66 requests in 10 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `User Auth`, `User › Profile`, `Public`, `Errors & routing`, `Teardown`.
 - `local.postman_environment.json` — `baseUrl` and the dev fixture addresses.
@@ -39,9 +39,15 @@ invariants for free.
 
 **It is repeatable.** The accounts it creates carry a timestamped address, so a
 second run does not collide with the first; the one password it changes belongs
-to an account the same run created, never to a fixture. What it leaves behind is
-one staff account, one user and one self-registered user per run — v1 has no
-delete endpoint. `pnpm db:reset` clears them.
+to an account the same run created, never to a fixture.
+
+**It disables what it creates.** One staff account, one user and one
+self-registered user per run — v1 has no delete endpoint, so the teardown
+`PATCH`es all three to `disabled` instead. That is a security step, not
+housekeeping: one of them holds `manager`, and all three have a password
+committed in this repository. `pnpm test:postman` can only be aimed at
+`localhost`; the Postman app can be aimed anywhere. `pnpm db:reset` clears the
+rows.
 
 **Negative paths are deliberate, not accidental.** `403` for a manager writing to
 `/admin/users`, `409 CONFLICT` (never `USER_EMAIL_TAKEN`) for a duplicate public
@@ -49,8 +55,10 @@ registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Ea
 of those requests carries a description saying which ADR decided it.
 
 **Rate limits bound how often it runs** (ADR-0020). One pass spends 1 of the 5
-failed refreshes per 15 minutes per IP, and ~63 of the 300 global requests —
-roughly five consecutive runs per window against one API process. A `429
+failed refreshes per 15 minutes per IP, and 63 of the 300 global requests (the
+three health probes sit outside every limiter) —
+roughly four consecutive runs per window against one API process (the global
+limiter binds first). A `429
 RATE_LIMITED` in the middle of a run means the window, not a regression.
 
 ## Changing it
