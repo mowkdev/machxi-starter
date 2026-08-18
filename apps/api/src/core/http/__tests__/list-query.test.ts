@@ -5,7 +5,13 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { applyListQuery, toCondition, toPage } from "../index.js";
+import {
+  applyListQuery,
+  escapeLikePattern,
+  toCondition,
+  toPage,
+  toSearchCondition,
+} from "../index.js";
 
 /**
  * ADR-0014: the Drizzle half of the list machinery. The parser is tested in
@@ -173,5 +179,58 @@ describe("toPage", () => {
     expect(JSON.parse(JSON.stringify(page.filters))).toEqual({
       "createdAt[gte]": "2026-01-01T00:00:00.000Z",
     });
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it.each([
+    ["100%", String.raw`100\%`],
+    ["a_b", String.raw`a\_b`],
+    [String.raw`back\slash`, String.raw`back\\slash`],
+    // Not `String.raw` here: a template literal may not end in a backslash.
+    ["%_\\", "\\%\\_\\\\"],
+  ])("escapes %j", (term, expected) => {
+    expect(escapeLikePattern(term)).toBe(expected);
+  });
+
+  it("leaves an ordinary term alone", () => {
+    expect(escapeLikePattern("anna@acme.com")).toBe("anna@acme.com");
+  });
+});
+
+describe("toSearchCondition", () => {
+  it("ORs a containment match across the searchable columns", () => {
+    const condition = toSearchCondition([staff.email, staff.firstName], "anna");
+
+    expect(condition).toBeDefined();
+    expect(render(condition!).toLowerCase()).toMatch(
+      /"email" ilike .* or .*"first_name" ilike/,
+    );
+  });
+
+  it("binds the term wrapped in wildcards", () => {
+    const condition = toSearchCondition([staff.email], "anna");
+
+    expect(dialect.sqlToQuery(condition!).params).toEqual(["%anna%"]);
+  });
+
+  it("treats `%` and `_` in the term as literal characters", () => {
+    // `q` is a search term, not a pattern (ADR-0014). An unescaped `%` would
+    // turn "find the accounts mentioning a percent sign" into "match
+    // everything", which is the difference between a filter and no filter.
+    expect(
+      dialect.sqlToQuery(toSearchCondition([staff.email], "50%")!).params,
+    ).toEqual([String.raw`%50\%%`]);
+    expect(
+      dialect.sqlToQuery(toSearchCondition([staff.email], "a_b")!).params,
+    ).toEqual([String.raw`%a\_b%`]);
+  });
+
+  it("is undefined without a term, so it drops into `extraWhere` unbranched", () => {
+    expect(toSearchCondition([staff.email], undefined)).toBeUndefined();
+  });
+
+  it("is undefined when the endpoint declares no searchable columns", () => {
+    expect(toSearchCondition([], "anna")).toBeUndefined();
   });
 });
