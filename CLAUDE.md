@@ -37,6 +37,10 @@ pnpm test:postman              # newman over docs/postman
 - `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
 - `docker/local` — compose for local dev; `docs/` — ADRs, plan, Postman
 
+## Search
+
+Use the Grep/Glob tools to search this repo; never `grep -r`, `find` or `rg` through Bash. Those ignore `.gitignore` and walk `node_modules` and `.turbo`, which is slow and floods the context — `.claude/settings.json` denies them for that reason. Single-file reads (`cat`, `sed -n`) are fine.
+
 ## Workflow expectations
 
 1. Before implementing: identify the ADRs involved; if a change conflicts with one, stop and propose an ADR amendment/supersession instead of diverging.

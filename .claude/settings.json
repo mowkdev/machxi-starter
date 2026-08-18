@@ -54,7 +54,11 @@
       "Read(**/.env.local)",
       "Read(**/.env.production*)",
       "Bash(git push --force*)",
-      "Bash(pnpm publish*)"
+      "Bash(pnpm publish*)",
+      "Bash(grep -r:*)",
+      "Bash(grep -R:*)",
+      "Bash(find:*)",
+      "Bash(rg:*)"
     ]
   }
 }
