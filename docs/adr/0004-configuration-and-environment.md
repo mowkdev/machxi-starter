@@ -70,6 +70,17 @@ committed, and it is what CI gets. The root value exists so ad-hoc tooling (`psq
 one-off migrate against the test DB) has the URL without loading a second file. Keep
 them pointing at the same database; if they disagree, the test run follows `.env.test`.
 
+**Amended 2026-08-18 (step 7).** `apps/api/.env.test` carries `DATABASE_URL_TEST`
+and **not** `DATABASE_URL`: the test setup file derives the second from the first
+and overwrites whatever the environment held. The direction is the point — a
+developer whose shell exports `DATABASE_URL` for `psql`, or a CI job that exports
+it for a deploy step, must not have the integration suite migrate and truncate
+that database. With one URL in the file there is nothing to keep in sync, and the
+only database the vitest process can reach is the test one. The file is loaded by
+both the `globalSetup` process and each forked worker, because with
+`pool: 'forks'` they are separate processes and inheriting a mutated
+`process.env` from the parent is a vitest implementation detail, not a contract.
+
 A single root `.env` avoids duplicating DB credentials between Docker Compose (which reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`) and the API (`DATABASE_URL`). `.env.example` shows both and how they line up:
 
 ```
@@ -83,6 +94,29 @@ DATABASE_URL_TEST=postgres://machxi:machxi@localhost:5432/machxi_test
 
 - Loading: `tsx --env-file=../../.env` (Node's native `--env-file`) in the `dev` script; `drizzle.config.ts` and seed scripts load the same file with `dotenv`. No `dotenv` in production builds.
 - Turbo: variables that affect build outputs are declared in `turbo.json` `env`/`globalEnv`; `.env*` are already in `build.inputs`.
+
+**Amended 2026-08-18 (step 7), three points the schema above settled in code:**
+
+- **Two of the constraints are cross-field, and live in `.refine()`, not in a
+  field.** With `NODE_ENV=production` the schema rejects the `JWT_ACCESS_SECRET`
+  committed in `.env.example` — it is 41 characters, so `min(32)` alone would let
+  a signing key that is public in the repository mint access tokens for a
+  deployment — and it rejects `*` in `CORS_ORIGINS` (ADR-0020). Neither can be
+  expressed as a field rule, because both are only violations in one environment.
+- **`SEED_SUPER_ADMIN_*` are validated here but deliberately absent from
+  `AppConfig`.** The API never uses them; only the seed runner does (ADR-0008),
+  which validates them again where it reads them. Parsing them here turns a
+  deployment with unusable seed credentials into a startup failure, and dropping
+  them from the grouped object means nothing in the request path can reach a
+  credential it has no business holding — including anything that logs the
+  config.
+- **Only build-affecting variables go into `turbo.json`.** `APP_VERSION` and
+  `GIT_SHA` can be baked into `dist/main.js`; everything else in this schema is
+  read at boot by `core/config`, so it belongs to the deployment environment and
+  not to turbo's cache key. Listing it all would make every environment change
+  invalidate a build that does not depend on it. `test:int` declares
+  `DATABASE_URL` / `DATABASE_URL_TEST`, which is what keeps the
+  `turbo/no-undeclared-env-vars` lint rule satisfied for the test harness.
 - Secrets never go into logs (ADR-0005 redaction) or ADRs.
 
 ## Consequences

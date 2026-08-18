@@ -55,6 +55,26 @@ Three behaviours the decision above did not settle, fixed by the implementation:
 - A configuration that contradicts itself — `defaultSort` naming a non-sortable field, `maxLimit` above the hard cap of 100, `defaultLimit` above `maxLimit` — throws a `TypeError` when the schema is built, i.e. when the router is wired, rather than failing on the first request.
 - The `id asc` tiebreaker is **not** added to the parsed `sort` and therefore never appears in `meta.sort`. It is a statement about SQL determinism, not about what the client asked for, so it belongs to `applyListQuery`.
 
+**Amended 2026-08-18 (step 7), on the API side of the seam.** `applyListQuery`
+returns the *parts* of the query — `{ where, orderBy, limit, offset }` — rather
+than taking a query builder and handing one back: Drizzle's builder is chained
+and its type changes at every step, so passing it through a helper is what loses
+the row type. The repository spreads the parts over its own `select()`.
+
+Two constraints on the pairing a module declares, both of which fail loudly
+rather than silently:
+
+- A field that the query schema admits but the module's column map omits throws
+  when the request is built. It is not a client error — the allow-list already
+  rejected anything outside it — so it surfaces as a `500` with a stack, which is
+  what a wiring bug deserves.
+- A filter's `value` schema must parse to the **column's TypeScript type**, not
+  to a string. Drizzle binds a parameter through the column's own driver mapper,
+  so a `timestamp` column needs `value: z.coerce.date()`; leaving it as the
+  default string throws inside the mapper. The value echoed in `meta.filters` is
+  therefore the parsed one — the ISO-8601 instant that was applied, not the raw
+  query string that produced it, which is also what ADR-0012 asks for.
+
 - Each module declares its allow-lists once in `<module>.schemas.ts` (`sortable: ['createdAt','email','status'] as const`) and derives its query schema with `listQuerySchema`. Unknown sort/filter fields → `VALIDATION_ERROR`.
 - Repositories translate `ListQuery` to Drizzle with a shared helper `applyListQuery(qb, query, columnMap)` (maps API field → column, applies `where`, `orderBy`, `limit/offset`) and run `count(*)` for `total` in the same transaction (or a single query with a window function `count(*) over()` — implementation detail, helper hides it).
 - Services return `Page<T>`; controllers call `respond.list(res, page)` (ADR-0012), which emits `meta.pagination = { offset, limit, total }`, `meta.sort`, `meta.filters` so the client can render state without re-parsing its own query.

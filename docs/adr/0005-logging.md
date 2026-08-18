@@ -46,6 +46,26 @@ Pretty printing (`pino-pretty`) is enabled only when `NODE_ENV=development` and 
   - uses level by status: `< 400` info, `4xx` warn, `5xx` error;
   - skips `/health/*` at info level (logged at debug only) to keep noise down.
 
+**Amended 2026-08-18 (step 7).** The access line is built from **explicit
+serialisers** that emit exactly the fields listed above (`req: { id, method, url }`,
+`res: { statusCode }`, plus `responseTime` and the principal), not from pino's
+defaults. The defaults dump every request and response header, which is both
+noise and a standing obligation: the redact list would have to keep pace with
+every header that might one day carry a credential, and a header nobody thought
+about is logged by default. Naming the fields inverts that — a new header is not
+logged unless someone adds it here — and it is why the `req.headers.*` redact
+paths, which still apply to anything that logs a request object deliberately, are
+no longer what protects the access log.
+
+The URL those serialisers and the level rule read is **`req.originalUrl`**, not
+`req.url`. Express rewrites `req.url` to the mount-relative path while a
+sub-router dispatches (`/health/ready` becomes `/ready`) and restores it when the
+stack unwinds, so a handler that responds asynchronously completes at a moment
+when the stripped form may still be in place. Keying the "health checks log at
+debug" rule on `req.url` made it work or not depending on whether the route
+happened to await something — which is exactly the kind of failure that does not
+show up in a unit test of the rule itself.
+
 - **Context-bound logger**: the request context (ADR-0010) carries a child logger pre-bound with `{ requestId }` (and later `{ principalId, population }`). Services and repositories obtain it from the context rather than importing a global — this is what makes logs correlate without argument threading.
 
 - **Field conventions**: `msg` is a short, static, human-readable string; variable data goes in fields (`log.info({ userId, sessionId }, 'session revoked')`, not template strings). Errors are logged with `err` so pino serialises stack traces.

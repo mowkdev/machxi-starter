@@ -76,6 +76,9 @@ Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/c
 - Dependency direction between packages is one-way: `contracts` → nothing internal; `crypto` → nothing internal; `db` → `crypto`, `contracts`; `logger` → nothing internal; apps → any package. Enforced with `eslint-plugin-boundaries` or a `depcruise` check in CI.
 - **Node-only packages must not reach a browser bundle** (amended 2026-08-18). `@repo/logger` (pino) and `@repo/crypto` (argon2) are Node-only; `apps/web` and `apps/admin` may depend on neither, and the boundaries/`depcruise` check enforces it. This is why `apps/web` dropped `@repo/logger` in step 1.
 - **Native dependencies are allowlisted explicitly** (amended 2026-08-18). pnpm 10 blocks install scripts by default, so a package with a native addon must be listed in the root `pnpm.onlyBuiltDependencies` or it installs broken. Current entries: `esbuild`, `argon2`. `argon2` resolves from the prebuilt binaries in its own `prebuilds/` directory, so a clean clone needs no local C++ toolchain. It is also CJS-only (`main: argon2.cjs`) and native, so the API bundler (`tsdown`) must mark it **external** rather than attempt to inline it.
+- **A package the bundler inlines brings its own external dependencies with it** (amended 2026-08-18, step 7). Because internal packages ship source, `tsdown` must be told to inline them (`noExternal: [/^@repo\//]`) — it treats everything in `dependencies` as external by default, and `dist/main.js` would otherwise `import '@repo/contracts'` at runtime and hand node a `.ts` file. Two consequences, both discovered by running the built bundle rather than by review:
+  - **An inlined package's own external imports must resolve from the app.** `argon2` and `pino` are dependencies of `@repo/crypto` and `@repo/logger`; once those are inlined, the import sits in `apps/api/dist/main.js` and pnpm's non-flat `node_modules` will not resolve it from there. Both are therefore direct dependencies of `apps/api` as well.
+  - **A shared library must not end up bundled on one side and external on the other.** `pino-http` is a direct dependency of the API and stays external, and it reaches into a pino logger through pino's *private* symbols. With `pino` inlined via `@repo/logger` there were two pino instances, the symbols did not match, and the first completed request crashed the process — with no type error and no failing test, because in dev and under vitest both sides resolve to the same file. Declaring `pino` in the app is what makes it external on both sides. The general rule: any package that two bundled-and-external halves must *share an instance of* has to be a direct dependency of the app.
 
 ### Lint rules that enforce ADRs
 
@@ -91,6 +94,12 @@ Collected here so they are implemented once in `@repo/eslint-config`:
 | `no-restricted-syntax`: `ClassDeclaration`, `ClassExpression`, `ThisExpression` in `apps/api/src/**` | ADR-0009 functional style |
 | `@typescript-eslint/no-floating-promises`, `no-misused-promises` | ADR-0011 async handlers |
 | `no-console` (use logger) | ADR-0005 |
+
+**Implemented 2026-08-18 (step 7)** as `@repo/eslint-config/api`, an `apiConfig({ tsconfigRootDir })` function that `apps/api/eslint.config.js` applies; a second Express app would apply the same export rather than a copy. Two notes on the implementation:
+
+- The last two rows need type information, so the config turns on `parserOptions.projectService`. It takes **only those two rules** from `tseslint.configs.recommendedTypeChecked` and not the set: the `no-unsafe-*` family fires mostly on supertest's `response.body`, which is `any` by design, and silencing it file by file would cost more than it catches.
+- `no-restricted-syntax` cannot be split across two config objects for the same file, because a later config replaces the rule rather than extending it. The class/`this`/decorator selectors and the `res.json` selectors are therefore assembled together for `src/**`, and `src/core/http/**` re-declares the list without the response selectors.
+- The base config also gained `@typescript-eslint/no-unused-vars` with `argsIgnorePattern: "^_"`, so ESLint and the shared tsconfig's `noUnusedParameters` stop disagreeing about the same line.
 
 ## Consequences
 

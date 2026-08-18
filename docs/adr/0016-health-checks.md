@@ -40,10 +40,39 @@ On failure, readiness returns `503` with the **error envelope** (`SERVICE_UNAVAI
 
 Implementation:
 
-- `modules/health`: `createHealthService(indicators)` takes an array of indicator objects (`{ name, check: () => Promise<{ status, latencyMs, message? }> }`) and runs them with a per-check timeout; `dbIndicator(db)` is the first one. Adding Redis/queue later = adding another indicator function to the array in `container.ts`.
+- `modules/health`: `createHealthService({ indicators, config })` takes an array of indicator objects and runs them, each bounded by a per-check timeout; `createDbIndicator(client)` is the first one. Adding Redis/queue later = adding another indicator function to the array in `container.ts`.
 - Only the database indicator is registered for the first deliverable.
 - `/health/live` does not touch any dependency (a bad DB must not cause a restart loop; readiness handles traffic).
 - Cache-Control: `no-store`.
+
+**Amended 2026-08-18 (step 7).** Three points the prose above left to the
+implementation, settled where the code disagreed with it:
+
+- An indicator is `{ name, critical?, check: () => Promise<{ status, message? }> }`.
+  It does **not** report `latencyMs`: the service measures it. The service has to
+  synthesise a duration anyway for a check that times out — it is the side that
+  gave up, so it is the side that knows how long it waited — and measuring in one
+  place also means the number is the wall time an operator actually waited for,
+  not the part of it an indicator chose to time.
+- `critical` (default `true`) is what separates `down` from `degraded`. A failing
+  critical indicator makes the report `down` and readiness answers `503`; a
+  failing non-critical one makes it `degraded` and readiness still answers `200`,
+  which is what the `degraded` status in the table above is for. The default is
+  `true` so a dependency nobody classified is assumed to matter.
+- `GET /health` answers exactly what `GET /health/ready` answers. The resource
+  already carries version, uptime and every check, so the "aggregate" view in the
+  table is the readiness view; a second shape would only be a second thing to
+  keep in sync. The distinction that carries weight is `live` (touches nothing)
+  versus `ready` (touches everything).
+
+**Sanitisation is by error code, not by filtering the message.** `ping()` rejects
+with the driver's own error so the log can carry it, but the response is
+unauthenticated: `connect ECONNREFUSED 10.0.3.12:5432` names an internal host and
+`password authentication failed for user "machxi"` names a role. The indicator
+therefore echoes only the error *code* — `unreachable (ECONNREFUSED)`,
+`unreachable (28P01)` — which carries the operational signal and nothing else.
+Building the message by removing the sensitive parts of the driver's would mean
+guessing, in advance, every shape a driver message can take.
 
 Container / orchestration mapping: `livenessProbe → /health/live`, `readinessProbe → /health/ready`, `startupProbe → /health/ready` with a longer window.
 
