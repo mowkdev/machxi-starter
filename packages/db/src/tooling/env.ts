@@ -10,15 +10,15 @@ import { defaultArgon2Params, type Argon2Params } from "@repo/crypto";
  * The only place in `@repo/db` that reads `process.env` (ADR-0004).
  *
  * The API has `core/config` for this; the package's CLI entry points —
- * `src/migrate.ts`, `seeds/run.ts`, `seeds/reset.ts` and `drizzle.config.ts` —
+ * `src/migrate.ts`, `src/reset.ts`, `seeds/run.ts` and `drizzle.config.ts` —
  * have this. The library surface takes its connection string as an argument,
  * so `import '@repo/db'` never touches the environment and never loads dotenv,
  * which is what keeps dotenv out of the API's production bundle.
  *
- * ADR-0004 permits `drizzle.config.ts` and the seed runner to read the
- * environment directly; funnelling all four through one module is stricter
- * than that and gives the "never print credentials" rule (ADR-0008
- * §Environment guardrails) a single implementation.
+ * ADR-0004 names this module as the one reader outside `core/config`: it gives
+ * the "print the target, never the credentials" rule (ADR-0008 §Environment
+ * guardrails) a single implementation, and it is where the constraints the
+ * API's schema declares are enforced for variables the API never sees.
  */
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -112,14 +112,45 @@ export const readArgon2Params = (): Argon2Params => ({
   parallelism: readInt("ARGON2_PARALLELISM", defaultArgon2Params.parallelism),
 });
 
-/** The super-admin credentials (ADR-0008). Absent means "skip the seeder". */
+/** The shortest password ADR-0018 accepts anywhere, mirrored from ADR-0004's `min(12)`. */
+const minSuperAdminPasswordLength = 12;
+
+/**
+ * The super-admin credentials (ADR-0008). Absent means "skip the seeder";
+ * **present but invalid is an error**, not a silently weak account.
+ *
+ * ADR-0004 constrains these two variables (`z.string().email()`,
+ * `z.string().min(12)`), but the seed runner never passes through
+ * `core/config` — so the constraint has to be enforced here or not at all.
+ * Without it a four-character password seeds happily and then logs in fine,
+ * because the length policy is only applied on register and change-password.
+ * Same argument that put the argon2 floor inside `@repo/crypto`: check where
+ * the value is read, not where one consumer happens to look.
+ */
 export const readSuperAdminCredentials = (): {
   email: string | undefined;
   password: string | undefined;
-} => ({
-  email: read("SEED_SUPER_ADMIN_EMAIL"),
-  password: read("SEED_SUPER_ADMIN_PASSWORD"),
-});
+} => {
+  const email = read("SEED_SUPER_ADMIN_EMAIL");
+  const password = read("SEED_SUPER_ADMIN_PASSWORD");
+
+  // Deliberately not a full RFC 5322 parse — that belongs to the zod schema in
+  // `@repo/contracts`, which this package may not import for a CLI check. This
+  // catches the realistic mistake: a name or a shell-mangled value.
+  if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error(
+      "SEED_SUPER_ADMIN_EMAIL is not an email address (ADR-0004). The account it would create can never sign in.",
+    );
+  }
+
+  if (password !== undefined && password.length < minSuperAdminPasswordLength) {
+    throw new Error(
+      `SEED_SUPER_ADMIN_PASSWORD must be at least ${String(minSuperAdminPasswordLength)} characters (ADR-0004); it is ${String(password.length)}.`,
+    );
+  }
+
+  return { email, password };
+};
 
 /** Absolute path of the committed migrations folder. */
 export const migrationsFolder = resolve(packageRoot, "migrations");

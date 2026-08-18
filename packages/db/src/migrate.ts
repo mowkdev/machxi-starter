@@ -7,7 +7,7 @@ import {
   readTestDatabaseUrl,
 } from "./tooling/env.js";
 import { isEntryPoint } from "./tooling/entrypoint.js";
-import { describeTarget, writeLine } from "./tooling/report.js";
+import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
 
 /**
  * Applies pending migrations (ADR-0008).
@@ -42,7 +42,17 @@ export const runMigrations = async (url: string): Promise<void> => {
 if (isEntryPoint(import.meta.url)) {
   const useTestDatabase = process.argv.slice(2).includes("--test");
 
-  await runMigrations(
-    useTestDatabase ? readTestDatabaseUrl() : readDatabaseUrl(),
-  );
+  try {
+    await runMigrations(
+      useTestDatabase ? readTestDatabaseUrl() : readDatabaseUrl(),
+    );
+  } catch (error) {
+    // The message, not the stack, for the reason `seeds/run.ts` gives: a
+    // connection error from postgres.js can carry the connection string, and
+    // an unhandled rejection would print exactly that.
+    writeErrorLine(
+      `db:migrate ✗ ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+  }
 }

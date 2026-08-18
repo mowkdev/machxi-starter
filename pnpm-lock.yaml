@@ -294,6 +294,9 @@ importers:
       '@repo/crypto':
         specifier: workspace:*
         version: link:../crypto
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(postgres@3.4.9)
@@ -316,9 +319,6 @@ importers:
       '@types/node':
         specifier: ^22.15.3
         version: 22.20.1
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10

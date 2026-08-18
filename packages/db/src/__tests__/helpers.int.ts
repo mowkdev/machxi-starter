@@ -17,9 +17,27 @@ import { readTestDatabaseUrl } from "../tooling/env.js";
  * this package predates that file and follows the root `.env` (ADR-0004).
  */
 
-/** Drops schema `public` and replays every migration onto the empty result. */
+/**
+ * The suffix a database must carry before this file will drop its schema.
+ *
+ * `resetSchema` is destructive and takes whatever URL it is given; the
+ * `NODE_ENV=production` refusal lives in `src/reset.ts`'s CLI `main()`, which
+ * this path does not go through. A root `.env` where `DATABASE_URL_TEST` was
+ * copy-pasted from `DATABASE_URL` — the likeliest way to get this wrong —
+ * would otherwise drop the developer's dev schema on `pnpm test:int`.
+ */
+const testDatabaseSuffix = "_test";
+
+/** Drops schemas `public` and `drizzle`, then replays every migration onto the empty result. */
 export const migrateFreshTestDatabase = async (): Promise<DbClient> => {
   const url = readTestDatabaseUrl();
+  const database = new URL(url).pathname.replace(/^\//, "");
+
+  if (!database.endsWith(testDatabaseSuffix)) {
+    throw new Error(
+      `Refusing to reset "${database}": DATABASE_URL_TEST must point at a database whose name ends in "${testDatabaseSuffix}" (ADR-0007 creates machxi_test for exactly this).`,
+    );
+  }
 
   await resetSchema(url);
   await runMigrations(url);
