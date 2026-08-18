@@ -4,9 +4,10 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 66 requests in 10 folders: `Health`,
+- `machxi-api.postman_collection.json` — 77 requests in 11 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
-  `User Auth`, `User › Profile`, `Public`, `Errors & routing`, `Teardown`.
+  `Admin › Profile`, `User Auth`, `User › Profile`, `Public`,
+  `Errors & routing`, `Teardown`.
 - `local.postman_environment.json` — `baseUrl` and the dev fixture addresses.
   `superAdminEmail` / `superAdminPassword` are **empty on purpose**: they come
   from `SEED_SUPER_ADMIN_*` in your `.env` and are not committed.
@@ -38,8 +39,18 @@ request then asserts only what is specific to it, and a new request inherits the
 invariants for free.
 
 **It is repeatable.** The accounts it creates carry a timestamped address, so a
-second run does not collide with the first; the one password it changes belongs
-to an account the same run created, never to a fixture.
+second run does not collide with the first; every password it changes or resets
+belongs to an account the same run created, never to a fixture. The one password
+a fixture contributes is the super admin's, and it is only ever _presented_ —
+`POST /admin/{staff,users}/:id/password` requires the caller to re-present their
+own, which is what stops a stolen admin token from being an account-takeover
+engine (ADR-0027).
+
+**The credential endpoints are asserted as one chain.** `Admin › Staff` resets the
+staff account it created, `Admin › Profile` then signs in with that new password
+and changes it again; `Admin › Users` resets the user it created, and
+`User › Profile` signs in with that. A reset that silently did nothing would fail
+at the next login rather than pass quietly.
 
 **It disables what it creates.** One staff account, one user and one
 self-registered user per run — v1 has no delete endpoint, so the teardown

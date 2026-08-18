@@ -89,6 +89,12 @@
       "description": "What `POST /user/profile/change-password` moves to."
     },
     {
+      "key": "qaPasswordReset",
+      "value": "QaPassword!123-reset",
+      "type": "string",
+      "description": "What `POST /admin/{staff,users}/:id/password` sets. Distinct from `qaPasswordRotated` so a run can tell an administrative reset apart from a self-service change."
+    },
+    {
       "key": "absentStaffId",
       "value": "018f0000-0000-7000-8000-000000000000",
       "type": "string",
@@ -964,6 +970,109 @@
           }
         },
         {
+          "name": "Reset the staff member's password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{qaPasswordReset}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/password",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "password"
+              ]
+            },
+            "description": "`currentPassword` here is the **caller's own**, not the subject's (ADR-0027 rule 1): the id in the path says whose password is being set, and the body says who is asking. Without it, a stolen admin access token would be enough to take over every operator it outranks.\n\nA sub-resource rather than a field on `PATCH /:id`, so no request exists that can rotate a credential while editing a name. Every session of the subject ends, with no exception — the 'Admin › Profile' folder logs in with the new password, which is what proves this landed."
+          }
+        },
+        {
+          "name": "Reset it with the wrong actor password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{qaPasswordRotated}}\",\n  \"currentPassword\": \"not-the-callers-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/password",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "password"
+              ]
+            },
+            "description": "`403`, not `401`: the caller's session is valid and stays valid. The same code answers all four credential endpoints of both populations, which is why it is `AUTH_`-prefixed rather than named after a module."
+          }
+        },
+        {
           "name": "Get a staff member that does not exist",
           "event": [
             {
@@ -1413,6 +1522,109 @@
           }
         },
         {
+          "name": "Reset the user's password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{qaPasswordReset}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/password",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{lastUserId}}",
+                "password"
+              ]
+            },
+            "description": "`admin`, never `manager`: reading the customer base is a manager's job and rewriting a customer's credential is not.\n\nThe 'User › Profile' folder signs in with `{{qaPasswordReset}}` afterwards, so this request and that login together assert the whole reset."
+          }
+        },
+        {
+          "name": "Reset it with the wrong actor password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{qaPasswordRotated}}\",\n  \"currentPassword\": \"not-the-callers-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/password",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{lastUserId}}",
+                "password"
+              ]
+            },
+            "description": "Refused before the subject is even read, so the same `403` comes back whether or not the id exists — a caller who cannot use this endpoint cannot use it to learn which ids are real either."
+          }
+        },
+        {
           "name": "Create the same user again",
           "event": [
             {
@@ -1754,6 +1966,288 @@
               "path": ["api", "v1", "admin", "staff"]
             }
           }
+        },
+        {
+          "name": "Editor reads its own profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and it is the editor's own record\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.email).to.eql(pm.environment.get(\"editorEmail\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profile"]
+            },
+            "description": "The one route in the `admin` segment an `editor` reaches. `/admin/profile` is mounted after `authenticate(\"staff\")` and deliberately **without** `authorize`: every handler under it reads its subject from `ctx.principal`, so there is no id to point elsewhere, and every staff role may read its own account and change its own password (ADR-0019 §3, ADR-0027)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin › Profile",
+      "description": "`/api/v1/admin/profile` — the staff mirror of `/api/v1/user/profile` (ADR-0027).\n\nUntil D2.3 a staff password was written once, at creation, and never again: an operator could not change it and nobody could reset it. This folder acts as the staff account 'Admin › Staff' created and whose password 'Admin › Staff' then reset, never as a seeded fixture, so the run stays repeatable.",
+      "item": [
+        {
+          "name": "Login with the password the admin reset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, and the reset password is the one that works\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.principal.id).to.eql(pm.environment.get(\"lastStaffId\"));",
+                  "});",
+                  "",
+                  "pm.environment.set(\"staffProfileAccessToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newStaffEmail}}\",\n  \"password\": \"{{qaPasswordReset}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            },
+            "description": "The assertion that `POST /admin/staff/:id/password` did what it said: this account was created with `{{qaPassword}}` and signs in here with `{{qaPasswordReset}}`."
+          }
+        },
+        {
+          "name": "Get my profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and it is my own record\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const me = pm.response.json().data;",
+                  "",
+                  "  pm.expect(me.id).to.eql(pm.environment.get(\"lastStaffId\"));",
+                  "  pm.expect(me).to.not.have.property(\"passwordHash\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffProfileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profile"]
+            },
+            "description": "The same `StaffResource` `/admin/staff/:id` returns, so a client learns one shape."
+          }
+        },
+        {
+          "name": "Update my profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the updated profile\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.lastName).to.eql(\"Renamed\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffProfileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Quinn\",\n  \"lastName\": \"Renamed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profile"]
+            },
+            "description": "Names only. `roles`, `status` and `email` are absent from the schema by construction, which is what makes an unguarded router safe: an `editor` sending `roles` gets `400 VALIDATION_ERROR` on an unknown key, not an escalation."
+          }
+        },
+        {
+          "name": "Change my password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffProfileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordReset}}\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profile/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profile", "change-password"]
+            },
+            "description": "The current password is required even though the caller holds a valid session: a stolen access token is worth fifteen minutes, and one that can set a new password is worth the account.\n\nEvery **other** session is revoked and this one is not, which is why the request below still works — and it is the difference between `password_changed` and the `password_reset` an administrative reset records."
+          }
+        },
+        {
+          "name": "Change my password with the old one",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffProfileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordReset}}\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profile/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profile", "change-password"]
+            },
+            "description": "Proves the change landed: the password this sends is the one that worked a moment ago."
+          }
+        },
+        {
+          "name": "My session survived my own password change",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffProfileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profile"]
+            },
+            "description": "Logging somebody out of the device in their hand would be a worse experience for no security gain — that session is the one they just proved they own."
+          }
         }
       ]
     },
@@ -1998,7 +2492,7 @@
     },
     {
       "name": "User › Profile",
-      "description": "`/api/v1/user/profile` — every handler addresses `ctx.principal`, so there is no `:id` and no ownership check to get wrong (ADR-0019 §3).\n\nThe folder signs in as the account 'Admin › Users' created rather than as the `customer` fixture, because it changes a password: doing that to a fixture would break the next run.",
+      "description": "`/api/v1/user/profile` — every handler addresses `ctx.principal`, so there is no `:id` and no ownership check to get wrong (ADR-0019 §3).\n\nThe folder signs in as the account 'Admin › Users' created rather than as the `customer` fixture, because it changes a password: doing that to a fixture would break the next run.\n\nSince D2.3 it signs in with `{{qaPasswordReset}}` — the password 'Admin › Users' set through `POST /admin/users/:id/password` — so the administrative reset and the self-service change are asserted in one chain.",
       "item": [
         {
           "name": "Login as the account this run created",
@@ -2028,7 +2522,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPasswordReset}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2153,7 +2647,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"{{qaPassword}}\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordReset}}\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2176,9 +2670,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"403 USER_CURRENT_PASSWORD_INVALID\", function () {",
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
                   "  pm.response.to.have.status(403);",
-                  "  pm.expect(pm.response.json().error.code).to.eql(\"USER_CURRENT_PASSWORD_INVALID\");",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
                   "});"
                 ]
               }
@@ -2210,7 +2704,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "user", "profile", "change-password"]
             },
-            "description": "Proves the change landed. `403` and not `401` on purpose: the caller *is* authenticated and their session is fine, so a `401` would send every client interceptor that treats it as 'the session died' to the login screen over a typo."
+            "description": "Proves the change landed. `403` and not `401` on purpose: the caller *is* authenticated and their session is fine, so a `401` would send every client interceptor that treats it as 'the session died' to the login screen over a typo.\n\nThe code was `USER_CURRENT_PASSWORD_INVALID` until D2.3: the condition is a property of the credential check rather than of the users module, and four endpoints across both populations now raise it (ADR-0027)."
           }
         },
         {
