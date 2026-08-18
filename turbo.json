@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "globalEnv": ["NODE_ENV"],
   "tasks": {
     "build": {
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
@@ -15,14 +16,17 @@
       ]
     },
     "test": {
-      "dependsOn": []
+      "cache": false,
+      "dependsOn": [],
+      "env": ["DATABASE_URL", "DATABASE_URL_TEST"]
     },
     "test:unit": {
       "dependsOn": []
     },
     "test:int": {
       "cache": false,
-      "dependsOn": []
+      "dependsOn": [],
+      "env": ["DATABASE_URL", "DATABASE_URL_TEST"]
     },
     "test:watch": {
       "cache": false,
@@ -39,26 +43,33 @@
       "persistent": true
     },
     "db:generate": {
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     },
     "db:migrate": {
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     },
     "db:seed": {
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     },
     "db:sessions:prune": {
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     },
     "db:setup": {
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     },
     "db:reset": {
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     },
     "db:studio": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
     }
   }
 }

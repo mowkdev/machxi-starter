@@ -61,6 +61,18 @@ This decision also has a deadline attached to it that nothing else does: CI is a
 
 - `pnpm test` stops being cacheable, so a green from it is always a run that happened. That is the point, and it costs the unit tiers their cache on the gate path — recovered by `test:unit`, which is where the fast loop belongs anyway.
 - `pnpm test` becomes serial across packages and therefore slower than it looks today. It is measurably slower than a lie, which is the comparison that matters.
+
+  **Amended 2026-08-18 (D2.1).** The measurement, now that it exists: `pnpm test` runs 50s–1m48s cold, against a former ~1.3s warm-cache "pass" that executed nothing. `pnpm test:unit` stays fully cached and returns in about a second on a second run, so the fast loop is unaffected. The spread in the gate's own timing is the serialisation — whichever suite Turbo starts first no longer overlaps the others.
+
+  Three things the implementation settled that this ADR did not spell out:
+
+  - **The `env` declarations live at the root only.** `apps/api/turbo.json` had declared `test:int`'s `env` since D1; once the root declares it for both `test` and `test:int`, the package-level copy is the same list in a second place, so it was removed. One declaration, in the file that states the rule.
+  - **`.env` is not added to either task's `inputs`.** `@repo/db`'s integration suite reads `DATABASE_URL_TEST` from the git-ignored root `.env` rather than from a committed file, so it is neither repository content nor hashed. That would matter if the task were cached; both DB-touching tasks are `cache: false`, so it does not. The rule above is what makes this a non-question rather than an oversight.
+  - **The `db:*` row was under-specified here, and the gap was not cosmetic.** The table below says `DATABASE_URL`; the tasks actually declare `["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]`, which is what `packages/db/src/tooling/env.ts` reads. The general rule at the top of §The rule was already right — "a task that reads an environment variable declares it in `env`" — and the table simply did not enumerate it.
+
+    What made this worth finding rather than tidying: **turbo runs in strict env mode, so an undeclared variable is a silently stripped one.** `DATABASE_URL=… pnpm db:migrate` — the usage `tooling/env.ts` documents in its own comment, and the one an operator reaches for to point a migration at a database that is not the one in `.env` — did not override anything. Turbo dropped the variable, dotenv supplied the local value, and the task migrated the developer's own database while reporting success. Verified before and after: with a bogus URL the task now prints `db:migrate → 127.0.0.1:59999/nope` and exits non-zero, where before it printed `up to date` against the real database.
+
+    The general lesson is the one worth keeping: under strict env mode, an undeclared variable does not fail loudly, it defaults quietly. That makes "declare what you read" a correctness rule for every uncached task, not only a hashing rule for cached ones.
 - CI can be written against these tasks without a special case: cache `test:unit`, `lint`, `check-types` and `build`; never cache `test` or `test:int`; provide Postgres for the latter two.
 - The `env` declarations close the D1.5 hand-off that ADR-0004 §Turbo has been owed since `core/config` landed.
 - A future task is a decision only about the rule above, not about caching in general. "Does its result depend on anything outside the tree?" is the whole question.

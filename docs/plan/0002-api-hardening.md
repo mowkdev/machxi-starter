@@ -12,9 +12,15 @@ Each step names the ADRs that govern it. Read them before implementing — they 
 
 ## Build order
 
-### 1. Task graph, caching and serialisation
+### 1. ~~Task graph, caching and serialisation~~ — **done 2026-08-18**
 
 **ADRs:** [0026](../adr/0026-task-graph-caching-and-serialisation.md), [0021](../adr/0021-testing-strategy.md) §Runner, [0004](../adr/0004-configuration-and-environment.md) §Turbo, [0002](../adr/0002-monorepo-layout-and-tooling.md) §Toolchain versions
+
+**Closed.** `turbo.json` (`globalEnv: ["NODE_ENV"]`; `test` and `test:int` both `cache: false` with `env: ["DATABASE_URL", "DATABASE_URL_TEST"]`), the root `test` script, and `@repo/db`'s `test` script. `apps/api/turbo.json`'s `test:int` `env` was removed as redundant once the root declares it — recorded in ADR-0026 §Consequences, amended D2.1, along with the measured serial cost.
+
+The failure mode is gone and was verified by reproducing it in both directions: with Postgres stopped, `pnpm test` now exits `1`, and the suite that fails first is `@repo/db:test` — the one this step pulled back into `test`. Before the step, that suite was unit-only and `api:test` was served from cache, so a warm cache made the whole gate green with no database at all.
+
+**Found while checking the diff against ADR-0026's task table:** the `db:*` tasks declared no `env` at all, and turbo runs in strict env mode. `DATABASE_URL=… pnpm db:migrate` therefore silently migrated the database in `.env` instead of the one the operator named — the variable was stripped before the task saw it, and the run reported success. All seven `db:*` tasks now declare `["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]`, matching what `packages/db/src/tooling/env.ts` reads. ADR-0026 §Consequences is amended with the finding and with the general form of it: under strict env mode an undeclared variable defaults quietly rather than failing loudly, which makes "declare what you read" a correctness rule for uncached tasks too, not only a hashing rule for cached ones.
 
 First, because it is the step that makes every later step's green mean something. `apps/api`'s `test` script runs unit **and** integration (ADR-0021 §Runner), and `turbo.json` marks `test` cacheable with no `env`, so the gate replays a cached pass for a suite that never opened a database connection. Verified on 2026-08-18: `pnpm test` reported `Cached: 6 cached, 8 total` with `api:test` among them.
 

@@ -3,9 +3,6 @@
   "tasks": {
     "build": {
       "outputs": ["dist/**"]
-    },
-    "test:int": {
-      "env": ["DATABASE_URL", "DATABASE_URL_TEST"]
     }
   }
 }
