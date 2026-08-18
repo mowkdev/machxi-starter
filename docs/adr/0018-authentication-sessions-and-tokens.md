@@ -69,9 +69,18 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 
 ### Password hashing
 
-- **argon2id** (`argon2` package): memoryCost 64 MiB, timeCost 3, parallelism 1 (tunable via config); `PasswordHasher` type `{ hash(pw), verify(hash, pw), needsRehash(hash) }`, produced by `createArgon2Hasher(params)`. On successful login, if `needsRehash` → rehash and store (transparent parameter upgrades).
+- **argon2id** (`argon2` package): memoryCost 64 MiB, timeCost 3, parallelism 1 (tunable via config); `PasswordHasher` type `{ hash(pw), verify(hash, pw), needsRehash(hash), dummyHash() }`, produced by `createArgon2Hasher(params)`. On successful login, if `needsRehash` → rehash and store (transparent parameter upgrades).
 - Password policy v1: min 12 chars, checked by zod on register/change; breached-password check is a later addition.
 - The same `PasswordHasher` implementation is used by the seed (ADR-0008); it lives in **`@repo/crypto`** (`packages/crypto`: `createArgon2Hasher(params)`, `sha256Base64url(input)`, `randomToken(bytes)`), so seeds and the API share one implementation without a seed→api dependency.
+
+**Amended 2026-08-18 (implementation step 3).** Building the package surfaced four points the decision above did not settle. The behaviour is now:
+
+- `dummyHash()` belongs to the hasher, not to the auth service. The login flow's equal-timing rule (**Login**, step 2 above) only holds if the dummy carries the *same* cost parameters as a real verify, and only the hasher knows them. It is memoised, and a rejection is deliberately **not** memoised — caching a failed promise would make every later unknown-email login fail instantly, a louder oracle than the one it closes. **The container must warm it (`await hasher.dummyHash()`) before the server binds**, or the first unknown-email login pays hash + verify while a known-email login pays verify alone.
+- `verify` returns `false` for a stored value that is not a readable argon2 digest, so a corrupt row fails the login rather than 500-ing it. Every other failure (native binding unavailable, out of memory under load) is **rethrown** — swallowing those would silently degrade the whole deployment to "wrong password" while ADR-0020's login rate limiter locked real users out.
+- `needsRehash` also returns `true` for a digest that is not argon2id or is unreadable. `argon2.needsRehash` compares only `v`/`m`/`t`/`p`, and `argon2.verify` accepts argon2i and argon2d digests — so without the explicit algorithm check an imported non-argon2id hash would verify happily and never be upgraded.
+- `createArgon2Hasher` **rejects parameters below a floor** (`minArgon2Params`: 19456 KiB / t=2 / p=1, the OWASP argon2id second-choice profile), because libargon2 itself only rejects `m < 8*p` and `t < 1`. The check lives in the package rather than only in the ADR-0004 config schema because the seeders build a hasher directly and never pass through `core/config`. Tests opt out with `allowWeakParams: true`; no production call site sets it.
+
+The package therefore exports `createArgon2Hasher`, `defaultArgon2Params` (the single source for the ADR-0004 `ARGON2_*` defaults — `core/config` should reference it rather than re-typing the literals), `minArgon2Params`, `sha256Base64url`, `randomToken` and its `minTokenBytes`/`maxTokenBytes` bounds. `hashLength` is pinned at 32; the 16-byte salt is not configurable in argon2 0.45 and is covered by a test instead.
 
 ### Token transport
 

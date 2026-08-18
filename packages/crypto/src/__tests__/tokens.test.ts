@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { randomToken } from "../index.js";
+import { maxTokenBytes, minTokenBytes, randomToken } from "../index.js";
 
 describe("randomToken", () => {
   it("defaults to 32 bytes — 256 bits, 43 base64url characters (ADR-0018)", () => {
@@ -17,7 +17,7 @@ describe("randomToken", () => {
   });
 
   it("never emits padding or non-url-safe characters", () => {
-    for (let bytes = 1; bytes <= 24; bytes += 1) {
+    for (let bytes = minTokenBytes; bytes <= 48; bytes += 1) {
       expect(randomToken(bytes)).toMatch(/^[A-Za-z0-9_-]+$/);
     }
   });
@@ -28,10 +28,27 @@ describe("randomToken", () => {
     expect(new Set(draws).size).toBe(draws.length);
   });
 
-  it("rejects byte counts that would weaken the token", () => {
+  it("rejects byte counts that would make the token guessable", () => {
+    expect(() => randomToken(minTokenBytes - 1)).toThrow(RangeError);
+    expect(() => randomToken(1)).toThrow(RangeError);
     expect(() => randomToken(0)).toThrow(RangeError);
     expect(() => randomToken(-1)).toThrow(RangeError);
-    expect(() => randomToken(1.5)).toThrow(RangeError);
+  });
+
+  it("rejects byte counts that would block the event loop", () => {
+    // randomBytes is synchronous, so an unbounded argument is a DoS vector.
+    expect(() => randomToken(maxTokenBytes + 1)).toThrow(RangeError);
+    expect(() => randomToken(1e9)).toThrow(RangeError);
+  });
+
+  it("rejects non-integers", () => {
+    expect(() => randomToken(32.5)).toThrow(RangeError);
     expect(() => randomToken(Number.NaN)).toThrow(RangeError);
+    expect(() => randomToken(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+  });
+
+  it("accepts both ends of the permitted range", () => {
+    expect(() => randomToken(minTokenBytes)).not.toThrow();
+    expect(() => randomToken(maxTokenBytes)).not.toThrow();
   });
 });

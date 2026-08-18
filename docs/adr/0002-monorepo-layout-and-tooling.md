@@ -70,10 +70,12 @@ Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/c
 
 ### Shared conventions
 
-- Every **code-bearing** package/app exposes the same script names (`dev`, `build`, `lint`, `check-types`, `test`) so Turbo tasks apply uniformly. Config-only packages (`config-typescript`, which ships JSON, and `config-eslint`) declare only the scripts that have something to do; Turbo skips the rest rather than running no-op stubs.
+- Every **code-bearing** package/app exposes the same script names (`dev`, `build`, `lint`, `check-types`, `test`) so Turbo tasks apply uniformly. Config-only packages (`config-typescript`, which ships JSON, and `config-eslint`) declare only the scripts that have something to do; Turbo skips the rest rather than running no-op stubs. **Source-published packages are the same case** (amended 2026-08-18): `@repo/logger` and `@repo/crypto` have no build step by the rule below, so they declare `lint`, `check-types` and `test` only — adding no-op `build`/`dev` stubs would buy nothing.
 - Internal packages (`@repo/db`, `@repo/crypto`, `@repo/logger`, `@repo/contracts`) are published as TypeScript source (`"exports": { ".": "./src/index.ts" }`) and compiled by the consuming app's bundler (`tsdown` for the API, Vite/Next for the frontends). This removes the per-package build step and the `dependsOn: ["^build"]` latency in dev. Packages that need a compiled artifact (`ui`, if published) may keep a build.
 - `.env` files are never committed; `.env.example` files are (ADR-0004).
 - Dependency direction between packages is one-way: `contracts` → nothing internal; `crypto` → nothing internal; `db` → `crypto`, `contracts`; `logger` → nothing internal; apps → any package. Enforced with `eslint-plugin-boundaries` or a `depcruise` check in CI.
+- **Node-only packages must not reach a browser bundle** (amended 2026-08-18). `@repo/logger` (pino) and `@repo/crypto` (argon2) are Node-only; `apps/web` and `apps/admin` may depend on neither, and the boundaries/`depcruise` check enforces it. This is why `apps/web` dropped `@repo/logger` in step 1.
+- **Native dependencies are allowlisted explicitly** (amended 2026-08-18). pnpm 10 blocks install scripts by default, so a package with a native addon must be listed in the root `pnpm.onlyBuiltDependencies` or it installs broken. Current entries: `esbuild`, `argon2`. `argon2` resolves from the prebuilt binaries in its own `prebuilds/` directory, so a clean clone needs no local C++ toolchain. It is also CJS-only (`main: argon2.cjs`) and native, so the API bundler (`tsdown`) must mark it **external** rather than attempt to inline it.
 
 ### Lint rules that enforce ADRs
 
