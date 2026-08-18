@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { validate } from "../../core/middleware/index.js";
+import { noStore, validate } from "../../core/middleware/index.js";
 import type { StaffController } from "./staff.controller.js";
 import {
   createStaffSchema,
@@ -21,9 +21,19 @@ import {
  *
  * The order within a route is the one ADR-0011 fixes:
  * `rateLimit → authenticate → authorize → validate → controller`.
+ *
+ * `no-store` covers the whole resource. Every response here is a directory of
+ * operators — addresses, names, roles, last sign-in — and a shared proxy that
+ * kept a page of it would be holding the org chart of everyone who can reach
+ * the admin panel. RFC 9111 already stops a shared cache storing a response to
+ * a request carrying `Authorization`, so this is the belt to that suspenders,
+ * and it is the same directive the auth router applies for the same reason
+ * (ADR-0020).
  */
 export const createStaffRouter = (controller: StaffController): Router => {
   const router = Router();
+
+  router.use(noStore);
 
   router.get("/", validate(listStaffSchema), controller.list);
   router.post("/", validate(createStaffSchema), controller.create);

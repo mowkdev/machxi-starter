@@ -1,6 +1,6 @@
 import { staff, staffRoles, type DbExecutor } from "@repo/db";
 import type { ListQuery, StaffRole, StaffStatus } from "@repo/contracts";
-import { and, count, eq, notInArray } from "drizzle-orm";
+import { and, count, eq, ne, notInArray } from "drizzle-orm";
 
 import { internal } from "../../core/errors/index.js";
 import {
@@ -325,7 +325,7 @@ export const createStaffRepository = (db: DbExecutor) =>
           and(
             eq(staffRoles.role, "super_admin"),
             eq(staff.status, "active"),
-            notInArray(staff.id, [id]),
+            ne(staff.id, id),
           ),
         );
 

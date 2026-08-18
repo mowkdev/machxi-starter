@@ -26,9 +26,15 @@ import {
  *
  * Refining per route is what the ADR calls for and is safe in this direction
  * only: a route may narrow the mount's guard, never widen it, because both run.
+ *
+ * `no-store` covers the whole resource, for the reason it covers the staff one:
+ * these responses are the customer list, and a page of it sitting in a shared
+ * proxy is a data breach with a cache key (ADR-0020).
  */
 export const createUsersRouter = (controller: UsersController): Router => {
   const router = Router();
+
+  router.use(noStore);
 
   router.get("/", validate(listUsersSchema), controller.list);
   router.post(
