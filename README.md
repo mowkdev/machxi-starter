@@ -25,6 +25,8 @@ first deliverable is in [`docs/implementation-plan.md`](docs/implementation-plan
 - `@repo/typescript-config` — shared tsconfig bases
 - `@repo/vitest-config` — shared Vitest presets (`node`, `react`)
 - `@repo/logger` — structured logger (ADR-0005)
+- `@repo/crypto` — argon2id hashing and token generation (ADR-0018)
+- `@repo/contracts` — zod request schemas, resource types, envelope and error codes shared by the API and the frontends (ADR-0023)
 - `@repo/ui` — shared React components
 
 Internal packages ship TypeScript source and are compiled by the consuming app's
@@ -35,8 +37,15 @@ bundler, so there is no per-package build step (ADR-0002).
 ```sh
 corepack enable
 pnpm install
+cp .env.example .env      # every variable is documented there (ADR-0004)
+pnpm docker:up            # local Postgres, waits until healthy (ADR-0007)
 pnpm dev
 ```
+
+`docker/local/` holds the compose setup; see [`docker/README.md`](docker/README.md)
+for the scripts (`docker:up` / `down` / `reset` / `logs`), the two databases
+(`machxi` and `machxi_test`) and troubleshooting. Database migrations and seeds
+(`pnpm db:setup`) arrive with `@repo/db` in step 6 of the implementation plan.
 
 ## Tooling
 

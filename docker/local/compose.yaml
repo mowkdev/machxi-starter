@@ -1,0 +1,45 @@
+# Local development infrastructure (ADR-0007).
+#
+# Only Postgres runs in Docker for the first deliverable — the api, admin and
+# web apps run on the host so hot reload and the debugger stay native.
+#
+# Credentials come from the ROOT .env (ADR-0004), which is also what the API and
+# the drizzle tooling read, so there is one source of truth. Always invoke this
+# file through the root scripts (`pnpm docker:up`, `docker:down`, `docker:reset`,
+# `docker:logs`) — they pass `--env-file .env`; a bare `docker compose up` from
+# this directory has no values to substitute.
+name: machxi-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: machxi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Runs once, only when the data volume is empty. Extensions are NOT
+      # created here — migration 0000 does `CREATE EXTENSION citext` so every
+      # environment (dev, test, CI, production) gets them identically (ADR-0008).
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [machxi]
+
+volumes:
+  # Named, so `down` keeps the data and `down -v` (pnpm docker:reset) is the
+  # single documented way to wipe it.
+  postgres-data:
+
+networks:
+  # Named, so future services (api container, mailhog, redis) can join by name.
+  machxi:
+    name: machxi-local
