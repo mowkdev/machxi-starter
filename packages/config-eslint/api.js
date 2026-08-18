@@ -66,9 +66,13 @@ export const apiConfig = ({ tsconfigRootDir }) =>
     },
 
     {
-      files: ["src/core/http/**/*.ts"],
+      // Where the envelope is written, and the test fixtures that stand in for
+      // a controller: a probe route in a test has no service to call and no
+      // resource to envelope, and forcing `respond.*` on it would only mean
+      // testing the helper with itself. The functional-style ban still applies
+      // to both.
+      files: ["src/core/http/**/*.ts", "src/**/__tests__/**/*.ts"],
       rules: {
-        // Where the envelope is written; the functional-style ban still applies.
         "no-restricted-syntax": ["error", ...functionalStyle],
       },
     },

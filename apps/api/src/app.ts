@@ -74,12 +74,19 @@ export const createApp = (container: Container): Express => {
   );
 
   app.use(express.json({ limit: JSON_BODY_LIMIT, strict: true }));
-  app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
+  // `extended: false`, which body-parser maps to a flat parse with `depth: 0`
+  // and no `allowPrototypes`. `extended: true` would hand form bodies to `qs`
+  // with `depth: 32`, `parameterLimit: 1000` and prototype keys allowed —
+  // bounds an order of magnitude looser than the query parser above, for a
+  // content type this API never consumes (it answers JSON only, ADR-0012).
+  // The parser stays mounted so that a form post fails as a validation error
+  // rather than as an empty body.
+  app.use(express.urlencoded({ extended: false, limit: JSON_BODY_LIMIT }));
 
   app.use(createRoutes(container));
 
   app.use(notFoundHandler);
-  app.use(createErrorHandler({ includeDebug: config.isDevelopment }));
+  app.use(createErrorHandler({ includeDebug: config.isDevelopment, logger }));
 
   return app;
 };

@@ -85,6 +85,25 @@ Usage: `throw notFound('User not found')`; tests assert with `expect(isAppError(
 - Repositories translate known DB errors into domain errors where the intent is clear (unique email → `emailTaken()`); the generic `23505 → CONFLICT` mapping is a safety net.
 - `notFoundHandler` throws `notFound('Route not found', 'ROUTE_NOT_FOUND')`.
 
+**Amended 2026-08-18 (step 7), two points about the middleware itself:**
+
+- **The table above is not the whole body-parser story.** `entity.parse.failed`
+  and `entity.too.large` are two of nine failure types; the rest
+  (`entity.verify.failed`, `parameters.too.many`, `charset.unsupported`,
+  `encoding.unsupported`, `stream.encoding.set`, `stream.not.readable`,
+  `request.aborted`) are equally the client's doing, and any one left unmapped
+  falls through to `INTERNAL_ERROR` — which lets an unauthenticated caller drive
+  the server-error rate and, in development, get a stack trace back for a bad
+  request. All nine map to a 4xx, and the wire message is **ours** in every case:
+  the library's own text is not echoed, so the mapping cannot start leaking
+  library internals if body-parser rewords an error.
+- **The error handler must not be able to fail.** It reads `req.ctx`
+  defensively and falls back to the container logger and a placeholder request
+  id. The context middleware is second in the chain, so the window is narrow —
+  but if anything above it throws, an unguarded read makes *this* handler throw,
+  and Express's `finalhandler` answers with the raw stack. The one path that must
+  never fail is the one that exists to stop failures from leaking.
+
 ### Rules
 
 - Services throw `AppError`s created via factories; they never return `{ error }` objects and never define new error classes.

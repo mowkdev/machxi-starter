@@ -31,6 +31,14 @@ app.set('query parser', (str: string) => qs.parse(str, { depth: 3, arrayLimit: 2
 
 Express 5 changed the default from `extended` to `simple`, and `simple` does not build nested objects — `?filter[status][in]=active` would arrive as the single key `"filter[status][in]"`, which every list schema rejects as an unknown parameter. ADR-0014's bracket filter syntax therefore depends on this line. The explicit `qs` options rather than the bare `'extended'` string are the ADR-0020 §Input bound: `depth: 3` is one level more than `filter[field][op]` needs, and it is what stops a crafted deeply-nested query string from burning CPU in the parser.
 
+The body parsers are `express.json({ limit: '1mb', strict: true })` and
+`express.urlencoded({ extended: false, limit: '1mb' })`. **`extended: false` is
+deliberate** (added 2026-08-18, step 7): `extended: true` hands form bodies to
+`qs` with `depth: 32`, `parameterLimit: 1000` and prototype keys allowed —
+bounds an order of magnitude looser than the query parser two lines above, for a
+content type this API never consumes. The parser stays mounted so a form post
+fails as a validation error rather than as an empty body.
+
 Route-level (per router / per route):
 
 ```
@@ -53,6 +61,24 @@ export const validate = <P, Q, B>(s: { params?: ZodType<P>; query?: ZodType<Q>; 
 ```
 
 - Parsed values go to `req.valid.{params,query,body}` (typed via a generic `Request` alias, e.g. `ValidatedRequest<typeof schema>`); controllers never read raw `req.body`.
+
+  **Amended 2026-08-18 (step 7).** `valid` is declared as `any` on the base
+  `Express.Request`, and that is a decision rather than an oversight. A
+  controller is written as `(req: ValidatedRequest<typeof schema>, res) => …` so
+  it can read `req.valid.body.email` with full types; Express's `RequestHandler`
+  checks its parameter contravariantly under `strictFunctionTypes`, so any
+  narrower base type (`unknown`, a union) makes every such controller
+  unassignable to `Router.post`. The alternative — casting inside each
+  controller — moves the same unsoundness somewhere easier to forget. The
+  consequence to hold on to: **the only thing keeping `req.valid` honest is that
+  the controller declares the schema its route mounted.** Reading `req.valid`
+  through a bare `Request` compiles and is meaningless.
+
+  `validate()` parses all three parts even after one fails and throws a single
+  `VALIDATION_ERROR` carrying every issue, so a client that sent a bad id and a
+  bad body learns both from one response. Issue paths are not prefixed with
+  `params`/`query`/`body`: ADR-0013 defines `details[].path` as the field path
+  the client itself used.
 - Schemas live in `<module>.schemas.ts` and are also exported from `@repo/contracts` when clients need them (ADR-0002).
 - Zod errors are caught by the error handler and rendered as `VALIDATION_ERROR` with a field-level `details` array (ADR-0013). Because Express 5 forwards thrown errors, `validate` doesn't need try/catch.
 - Query schemas use `z.coerce` for numbers/booleans and `.strict()` where unknown keys should be rejected; body schemas default to `.strict()` to surface typos.

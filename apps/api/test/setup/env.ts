@@ -32,7 +32,13 @@ let loaded = false;
  */
 export const loadTestEnv = (): { databaseUrl: string } => {
   if (!loaded) {
-    loadDotenv({ path: envFile, quiet: true });
+    // `override: true`, against dotenv's default. ADR-0004 fixes this file as
+    // the winner for the test run, and what loses the race here is a
+    // `DROP SCHEMA`: `globalSetup` hands the URL to `migrateFreshDatabase`, so
+    // a `DATABASE_URL_TEST` exported in a shell or by a CI job would decide
+    // which database gets rebuilt. A CI environment that needs a different
+    // host gets its own `.env.test`, not an exported variable.
+    loadDotenv({ path: envFile, quiet: true, override: true });
     loaded = true;
   }
 

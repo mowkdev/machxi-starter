@@ -41,7 +41,10 @@ const handle = (
     logger: createLogger({ level: "silent" }),
   });
 
-  createErrorHandler({ includeDebug })(
+  createErrorHandler({
+    includeDebug,
+    logger: createLogger({ level: "silent" }),
+  })(
     error,
     { ctx } as Request,
     res as unknown as Response,
@@ -74,7 +77,16 @@ describe("toAppError", () => {
 
   it.each([
     ["entity.parse.failed", 400, "MALFORMED_JSON"],
+    ["entity.verify.failed", 400, "MALFORMED_JSON"],
+    ["charset.unsupported", 400, "MALFORMED_JSON"],
+    ["encoding.unsupported", 400, "MALFORMED_JSON"],
+    ["stream.encoding.set", 400, "MALFORMED_JSON"],
+    ["stream.not.readable", 400, "MALFORMED_JSON"],
+    // The client hung up mid-body. Nothing can be delivered; what matters is
+    // that it is not counted and alerted on as a server failure.
+    ["request.aborted", 400, "MALFORMED_JSON"],
     ["entity.too.large", 413, "PAYLOAD_TOO_LARGE"],
+    ["parameters.too.many", 413, "PAYLOAD_TOO_LARGE"],
   ])("maps the body-parser %s error", (type, status, code) => {
     const mapped = toAppError(Object.assign(new Error("bad body"), { type }));
 
@@ -111,6 +123,39 @@ describe("toAppError", () => {
     );
 
     expect(mapped.message).toBe("Conflict");
+  });
+
+  it("does not echo the body parser's own message", () => {
+    // The wire message is ours, so the mapping cannot start leaking library
+    // internals if body-parser rewords its errors.
+    const mapped = toAppError(
+      Object.assign(new Error('unsupported charset "utf-32"'), {
+        type: "charset.unsupported",
+      }),
+    );
+
+    expect(mapped.message).toBe("Unsupported body charset");
+  });
+
+  it("leaves no body-parser failure to become a 500", () => {
+    // Every one of them is the client's doing. A type that fell through would
+    // let an unauthenticated caller drive the server-error rate — and, in
+    // development, get a stack trace back for a bad request.
+    for (const type of [
+      "entity.parse.failed",
+      "entity.verify.failed",
+      "entity.too.large",
+      "parameters.too.many",
+      "charset.unsupported",
+      "encoding.unsupported",
+      "stream.encoding.set",
+      "stream.not.readable",
+      "request.aborted",
+    ]) {
+      expect(
+        toAppError(Object.assign(new Error("x"), { type })).status,
+      ).toBeLessThan(500);
+    }
   });
 
   it("maps anything else to a non-exposed 500", () => {
@@ -174,14 +219,12 @@ describe("errorHandler", () => {
   it("delegates to Express when the response already started", () => {
     const res = fakeResponse();
     const next = vi.fn();
-    const ctx = createRequestContext({
-      requestId,
-      logger: createLogger({ level: "silent" }),
-    });
+    const logger = createLogger({ level: "silent" });
+    const ctx = createRequestContext({ requestId, logger });
 
     res.headersSent = true;
 
-    createErrorHandler({ includeDebug: false })(
+    createErrorHandler({ includeDebug: false, logger })(
       new Error("late"),
       { ctx } as Request,
       res as unknown as Response,
@@ -197,7 +240,7 @@ describe("errorHandler", () => {
     const error = vi.spyOn(logger, "error");
     const warn = vi.spyOn(logger, "warn");
     const ctx = createRequestContext({ requestId, logger });
-    const handler = createErrorHandler({ includeDebug: false });
+    const handler = createErrorHandler({ includeDebug: false, logger });
 
     handler(
       internal(new Error("boom")),

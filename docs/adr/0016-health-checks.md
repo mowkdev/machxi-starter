@@ -9,7 +9,7 @@ Orchestrators (Docker `--wait`, Kubernetes, load balancers) and humans need to d
 
 ## Decision
 
-Three endpoints under `/health` (outside `/api/v1`, no auth, no rate limit, access-logged at `debug` only):
+Three endpoints under `/health` (outside `/api/v1`, no auth, no rate limit; a *successful* poll is access-logged at `debug`, and a failing one keeps its real level — corrected 2026-08-18, step 7: a probe that fails is the only time the line is worth reading):
 
 | Path | Purpose | Checks | Success | Failure |
 |---|---|---|---|---|
@@ -48,7 +48,11 @@ Implementation:
 **Amended 2026-08-18 (step 7).** Three points the prose above left to the
 implementation, settled where the code disagreed with it:
 
-- An indicator is `{ name, critical?, check: () => Promise<{ status, message? }> }`.
+- An indicator is `{ name, critical?, check: () => Promise<{ status: 'ok' | 'down', message? }> }`.
+  Its status is deliberately narrower than the report's: `degraded` is a property
+  of the *report*, derived from `critical`, and an indicator that returned
+  `degraded` would be aggregated as a failure — answering `503` for a dependency
+  that said it was still working.
   It does **not** report `latencyMs`: the service measures it. The service has to
   synthesise a duration anyway for a check that times out — it is the side that
   gave up, so it is the side that knows how long it waited — and measuring in one

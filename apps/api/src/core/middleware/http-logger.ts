@@ -27,7 +27,15 @@ export const REQUEST_ID_HEADER = "x-request-id";
  */
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
-const HEALTH_PATH_PREFIX = "/health";
+const HEALTH_PATH = "/health";
+
+/**
+ * `/health` and everything under it — not every path that merely starts with
+ * the string, which would quietly demote a future `/health-report` endpoint to
+ * `debug` and hide it from the access log.
+ */
+const isHealthPath = (url: string | undefined): boolean =>
+  url === HEALTH_PATH || url?.startsWith(`${HEALTH_PATH}/`) === true;
 
 /** Reuses a valid inbound id, otherwise mints a UUIDv7 (time-ordered, ADR-0006). */
 export const resolveRequestId = (inbound: unknown): string => {
@@ -61,7 +69,7 @@ export const accessLogLevel = ({
   if (failed || statusCode >= 500) return "error";
   if (statusCode >= 400) return "warn";
 
-  return url?.startsWith(HEALTH_PATH_PREFIX) === true ? "debug" : "info";
+  return isHealthPath(url) ? "debug" : "info";
 };
 
 /**
@@ -77,7 +85,7 @@ const serializers = {
   req: (req: LoggedRequest) => ({
     id: req.id,
     method: req.method,
-    url: requestUrl(req),
+    url: requestPath(req),
   }),
   res: (res: ServerResponse) => ({ statusCode: res.statusCode }),
 };
@@ -105,6 +113,19 @@ type LoggedRequest = IncomingMessage & {
  */
 const requestUrl = (req: LoggedRequest): string | undefined =>
   req.originalUrl ?? req.url;
+
+/**
+ * The path, with the query string removed.
+ *
+ * Redaction (ADR-0005) matches object *keys*; a credential inside a URL string
+ * is invisible to it, so a future `?token=`, `?code=` or `?email=` would be
+ * written verbatim into every access line and kept for the whole log retention
+ * period. Dropping the query at the source is the only place that is certain,
+ * and the parameters an endpoint actually accepts are already described by its
+ * schema (ADR-0011).
+ */
+const requestPath = (req: LoggedRequest): string | undefined =>
+  requestUrl(req)?.split("?")[0];
 
 /**
  * `principal` on the access line once the request is authenticated (ADR-0005).
@@ -138,7 +159,7 @@ export const createHttpLogger = (logger: Logger): RequestHandler =>
 
     customLogLevel: (req, res, err) =>
       accessLogLevel({
-        url: requestUrl(req),
+        url: requestPath(req),
         statusCode: res.statusCode,
         failed: err != null,
       }),

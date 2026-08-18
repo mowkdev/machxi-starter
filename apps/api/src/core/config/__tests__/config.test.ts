@@ -2,6 +2,7 @@ import { defaultArgon2Params, minArgon2Params } from "@repo/crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  KNOWN_PUBLIC_SECRETS,
   PLACEHOLDER_JWT_ACCESS_SECRET,
   envSchema,
   formatConfigIssues,
@@ -16,6 +17,7 @@ import {
  */
 
 const validEnv = {
+  NODE_ENV: "development",
   DATABASE_URL: "postgres://machxi:machxi@localhost:5432/machxi",
   JWT_ACCESS_SECRET: "a".repeat(32),
 } as const;
@@ -24,11 +26,22 @@ const parse = (overrides: Record<string, string> = {}) =>
   envSchema.parse({ ...validEnv, ...overrides });
 
 describe("envSchema", () => {
+  it("requires NODE_ENV to be stated, never assumed", () => {
+    // Every production guard below branches on it, as does `error.debug` in
+    // the error middleware — a default of "development" would mean a
+    // deployment that never set the variable silently gets all of them.
+    expect(() =>
+      envSchema.parse({
+        DATABASE_URL: validEnv.DATABASE_URL,
+        JWT_ACCESS_SECRET: validEnv.JWT_ACCESS_SECRET,
+      }),
+    ).toThrow(/NODE_ENV/);
+  });
+
   it("fills every optional variable with a default", () => {
     const env = parse();
 
     expect(env).toMatchObject({
-      NODE_ENV: "development",
       PORT: 4000,
       LOG_LEVEL: "info",
       APP_VERSION: "0.0.0",
@@ -87,8 +100,18 @@ describe("envSchema", () => {
 
   it("splits and trims CORS_ORIGINS, dropping empties", () => {
     expect(
-      parse({ CORS_ORIGINS: " http://a , ,http://b " }).CORS_ORIGINS,
-    ).toEqual(["http://a", "http://b"]);
+      parse({
+        CORS_ORIGINS: " http://a.test , ,http://b.test ",
+      }).CORS_ORIGINS,
+    ).toEqual(["http://a.test", "http://b.test"]);
+  });
+
+  it("rejects a CORS entry that is not a URL", () => {
+    // `credentials: true` makes every entry a credential-bearing cross-origin
+    // grant, so a typo must fail at startup, not become a dead entry.
+    expect(() => parse({ CORS_ORIGINS: "localhost:3001" })).toThrow(
+      /CORS_ORIGINS/,
+    );
   });
 
   it("requires a signing key of at least 32 characters", () => {
@@ -98,16 +121,32 @@ describe("envSchema", () => {
   describe("production guards", () => {
     const production = { NODE_ENV: "production" } as const;
 
-    it("refuses the placeholder signing key committed in .env.example", () => {
-      // It is 41 characters, so `min(32)` alone would let a publicly known
-      // key sign production access tokens.
-      expect(PLACEHOLDER_JWT_ACCESS_SECRET.length).toBeGreaterThan(32);
+    it.each(KNOWN_PUBLIC_SECRETS)(
+      "refuses the signing key committed as %s",
+      (secret) => {
+        // Each is 32+ characters, so `min(32)` alone would let a key that is
+        // public in this repository sign production access tokens.
+        expect(secret.length).toBeGreaterThanOrEqual(32);
+        expect(() =>
+          parse({ ...production, JWT_ACCESS_SECRET: secret }),
+        ).toThrow(/JWT_ACCESS_SECRET/);
+      },
+    );
+
+    it('refuses TRUST_PROXY="true"', () => {
+      // Express then takes the left-most X-Forwarded-For entry verbatim, which
+      // makes `req.ip` attacker-controlled — and with it the login rate limit
+      // and the session audit trail (ADR-0020).
+      expect(() => parse({ ...production, TRUST_PROXY: "true" })).toThrow(
+        /TRUST_PROXY/,
+      );
+    });
+
+    it("allows a hop count or a named proxy set", () => {
+      expect(() => parse({ ...production, TRUST_PROXY: "2" })).not.toThrow();
       expect(() =>
-        parse({
-          ...production,
-          JWT_ACCESS_SECRET: PLACEHOLDER_JWT_ACCESS_SECRET,
-        }),
-      ).toThrow(/JWT_ACCESS_SECRET/);
+        parse({ ...production, TRUST_PROXY: "loopback" }),
+      ).not.toThrow();
     });
 
     it("allows the placeholder outside production", () => {

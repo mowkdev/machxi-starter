@@ -14,6 +14,7 @@ import type { HealthIndicator } from "../health.types.js";
  */
 
 const config = loadConfig({
+  NODE_ENV: "test",
   DATABASE_URL: "postgres://u:p@localhost:5432/db",
   JWT_ACCESS_SECRET: "a".repeat(32),
   APP_VERSION: "1.4.2",

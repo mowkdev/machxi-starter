@@ -1,5 +1,6 @@
 import { runMigrations } from "./migrate.js";
 import { resetSchema } from "./reset.js";
+import { isProduction } from "./tooling/env.js";
 
 /**
  * Test-database helpers (ADR-0021).
@@ -40,6 +41,17 @@ export const assertTestDatabase = (url: string): void => {
  * onto the empty result.
  */
 export const migrateFreshDatabase = async (url: string): Promise<void> => {
+  // Both guards, not one. The suffix check is the primary one, but this entry
+  // point exists to be called from a test harness whose URL comes from the
+  // environment, and the `NODE_ENV` refusal it routes around (`db:reset`'s CLI
+  // wrapper has it) is one line and fails for a different reason — a database
+  // called `app_test` on a production host passes the suffix check.
+  if (isProduction()) {
+    throw new Error(
+      "migrateFreshDatabase drops every table and refuses to run when NODE_ENV=production.",
+    );
+  }
+
   assertTestDatabase(url);
 
   await resetSchema(url);

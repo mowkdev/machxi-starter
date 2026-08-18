@@ -23,7 +23,16 @@ export interface HealthIndicator {
   readonly check: () => Promise<HealthCheckOutcome>;
 }
 
+/**
+ * What one indicator reports.
+ *
+ * `ok` or `down` only — deliberately narrower than `HealthStatus`. `degraded`
+ * is a property of the *report*, derived from whether the failing indicator was
+ * critical; an indicator that returned `degraded` would be treated as a failure
+ * by the aggregation and, if critical, would answer 503 for a dependency that
+ * said it was still working (ADR-0016).
+ */
 export interface HealthCheckOutcome {
-  readonly status: HealthStatus;
+  readonly status: Extract<HealthStatus, "ok" | "down">;
   readonly message?: string;
 }

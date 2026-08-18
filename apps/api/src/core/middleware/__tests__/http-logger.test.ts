@@ -83,9 +83,12 @@ describe("accessLogLevel", () => {
     expect(level("/health/ready", 503)).toBe("error");
   });
 
-  it("does not drop an ordinary route that merely starts similarly", () => {
-    expect(level("/api/v1/user/healthcheck", 200)).toBe("info");
-  });
+  it.each(["/health-report", "/healthz-admin", "/api/v1/user/healthcheck"])(
+    "does not drop %s, which merely starts similarly",
+    (url) => {
+      expect(level(url, 200)).toBe("info");
+    },
+  );
 
   it("falls back to info when the url is unknown", () => {
     expect(

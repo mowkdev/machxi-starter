@@ -73,7 +73,7 @@ export const respond = {
 };
 ```
 
-- `Page<T> = { items: T[]; total: number; offset: number; limit: number; sort?; filters? }` is what services return for lists (ADR-0014). `respond.list` maps it into `data` + `meta.pagination`.
+- `Page<T> = { items: T[]; total: number | null; offset: number; limit: number; sort; filters }` is what services return for lists (ADR-0014). `total` is nullable because ADR-0014 §Determinism reserves `null` for endpoints that opt out of the `count(*)` on very large tables; every v1 endpoint returns a number (corrected 2026-08-18, step 7 — the type in `@repo/contracts` and the envelope builder already allowed it). `respond.list` maps it into `data` + `meta.pagination`.
 - `ctx(res)` above reads `res.req.ctx` (ADR-0010) for `requestId`; the helpers take only `res` so controllers stay one-liners.
 - Controllers **only** use `respond.*`. An ESLint rule (`no-restricted-syntax` on `res.json` / `res.send` outside `core/http`) enforces it.
 - Error responses are produced exclusively by the error middleware (ADR-0013); controllers throw.

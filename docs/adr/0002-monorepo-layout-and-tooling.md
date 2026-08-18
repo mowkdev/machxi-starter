@@ -90,7 +90,7 @@ Collected here so they are implemented once in `@repo/eslint-config`:
 | `no-restricted-imports`: `getContext` inside `modules/**/*.service.ts` | ADR-0010 explicit `ctx` param in services |
 | `no-restricted-imports`: `express` inside `*.service.ts`, `*.repository.ts` | ADR-0009 layer boundaries |
 | `no-restricted-imports`: `@repo/db` schema/tables inside `*.service.ts`, `*.controller.ts` — both the `@repo/db/schema` specifier **and** `importNames` on `@repo/db`, which re-exports the tables from its root | ADR-0009 SQL only in repositories |
-| `no-restricted-properties`: `process.env` outside `apps/api/src/core/config/**` and `packages/db/src/tooling/env.ts` | ADR-0004 |
+| `no-restricted-properties`: `process.env` outside `apps/api/src/core/config/**` and `packages/db/src/tooling/env.ts` (the integration harness `apps/api/test/setup/env.ts` sits outside `src/**` and outside the rule — ADR-0004) | ADR-0004 |
 | `no-restricted-syntax`: `ClassDeclaration`, `ClassExpression`, `ThisExpression` in `apps/api/src/**` | ADR-0009 functional style |
 | `@typescript-eslint/no-floating-promises`, `no-misused-promises` | ADR-0011 async handlers |
 | `no-console` (use logger) | ADR-0005 |
@@ -98,7 +98,7 @@ Collected here so they are implemented once in `@repo/eslint-config`:
 **Implemented 2026-08-18 (step 7)** as `@repo/eslint-config/api`, an `apiConfig({ tsconfigRootDir })` function that `apps/api/eslint.config.js` applies; a second Express app would apply the same export rather than a copy. Two notes on the implementation:
 
 - The last two rows need type information, so the config turns on `parserOptions.projectService`. It takes **only those two rules** from `tseslint.configs.recommendedTypeChecked` and not the set: the `no-unsafe-*` family fires mostly on supertest's `response.body`, which is `any` by design, and silencing it file by file would cost more than it catches.
-- `no-restricted-syntax` cannot be split across two config objects for the same file, because a later config replaces the rule rather than extending it. The class/`this`/decorator selectors and the `res.json` selectors are therefore assembled together for `src/**`, and `src/core/http/**` re-declares the list without the response selectors.
+- `no-restricted-syntax` cannot be split across two config objects for the same file, because a later config replaces the rule rather than extending it. The class/`this`/decorator selectors and the `res.json` selectors are therefore assembled together for `src/**`, and `src/core/http/**` and `src/**/__tests__/**` re-declare the list without the response selectors — a probe route in a test has no service to call and no resource to envelope, so forcing `respond.*` on it would only mean testing the helper with itself.
 - The base config also gained `@typescript-eslint/no-unused-vars` with `argsIgnorePattern: "^_"`, so ESLint and the shared tsconfig's `noUnusedParameters` stop disagreeing about the same line.
 
 ## Consequences

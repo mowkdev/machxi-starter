@@ -47,6 +47,15 @@ export type Env = z.infer<typeof envSchema>;
 
 **Amended 2026-08-18 (step 6).** The one reader outside `core/config` is **`packages/db/src/tooling/env.ts`**. `drizzle.config.ts`, `src/migrate.ts`, `src/reset.ts` and `seeds/run.ts` run as CLI scripts with no API process around them, so `loadConfig()` is not available to them; this ADR previously permitted `drizzle.config.ts` and the seed runner to read the environment ad hoc, and naming a single module instead is stricter — it is what gives ADR-0008's "print the target, never the credentials" rule one implementation (`describeTarget`), and it keeps `dotenv` off the library surface, so `import '@repo/db'` reads nothing. It also enforces the constraints this schema declares for variables the API never sees: `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD` are validated there (format, `min(12)`), because a seeder that bypassed `core/config` would otherwise create a super admin with a four-character password. The lint rule is `no-restricted-properties` on `process.env`, allowed in those two locations only.
 
+**Amended 2026-08-18 (step 7):** a third, narrower exemption —
+**`apps/api/test/setup/env.ts`**, the integration harness. It is outside `src/`
+and is not the application: it loads `apps/api/.env.test` and derives
+`DATABASE_URL` from `DATABASE_URL_TEST` so that the suite has no way to reach the
+development database. The API lint rule is scoped to `apps/api/src/**`, which is
+what leaves the harness outside it; the rule that matters for the deliverable is
+the one in ADR-0021's definition of done — no `process.env` outside `core/config`
+in `apps/api/src`.
+
 **Amended 2026-08-18 (step 5).** Boolean variables use `z.stringbool()`, not `z.coerce.boolean()`. `z.coerce.boolean()` is `Boolean(value)`, and every environment variable is a string, so `FEATURE_USER_REGISTRATION=false` parsed to `true` — the flag could never be turned off, and only an *empty* value (`FEATURE_USER_REGISTRATION=`) produced `false`, which is the opposite of what a reader expects. `z.stringbool()` (zod 4, already pinned by `@repo/contracts` per ADR-0023) accepts `true/false`, `1/0`, `yes/no`, `on/off` and rejects anything else, so a typo fails startup instead of silently enabling the feature. The same rule applies to any boolean variable added later.
 
 - The config object is grouped, not flat, when handed to the app:
@@ -95,7 +104,32 @@ DATABASE_URL_TEST=postgres://machxi:machxi@localhost:5432/machxi_test
 - Loading: `tsx --env-file=../../.env` (Node's native `--env-file`) in the `dev` script; `drizzle.config.ts` and seed scripts load the same file with `dotenv`. No `dotenv` in production builds.
 - Turbo: variables that affect build outputs are declared in `turbo.json` `env`/`globalEnv`; `.env*` are already in `build.inputs`.
 
-**Amended 2026-08-18 (step 7), three points the schema above settled in code:**
+**Amended 2026-08-18 (step 7), five points the schema above settled in code:**
+
+- **`NODE_ENV` has no default.** The schema above wrote
+  `.default('development')`; the implementation requires it, because every
+  production guard below — and `error.debug` in the error middleware (ADR-0013)
+  — branches on this one value. A default of `development` means a deployment
+  that simply never sets the variable (a Dockerfile, a systemd unit, a PaaS that
+  injects only secrets) silently accepts the committed signing key, accepts `*`
+  as a CORS origin, and returns stack traces to clients — without anyone ever
+  typing "development". The general rule this fixes: **permissive behaviour must
+  be asked for explicitly; an absent or unrecognised environment is a startup
+  failure.** Every env file in the repository already sets it, so nothing local
+  changes.
+- **Committed signing keys are enumerated, not compared one at a time.**
+  `KNOWN_PUBLIC_SECRETS` holds the value in `.env.example` *and* the one in
+  `apps/api/.env.test`, and production startup refuses any of them. The test key
+  is 45 characters and just as public as the placeholder, and `.env.test` is the
+  file someone copies when they want something that already runs. A unit test
+  reads both files and asserts each value appears in the list, so a third dummy
+  key cannot be added without being listed.
+- **`TRUST_PROXY=true` is refused in production.** Express then takes the
+  left-most `X-Forwarded-For` entry verbatim, which makes `req.ip`
+  attacker-controlled — and with it the login rate limit keyed on IP+email and
+  the session audit trail (ADR-0020). A hop count, a CIDR list or `loopback` is
+  what a real deployment behind a load balancer wants; `.env.example` documents
+  the difference.
 
 - **Two of the constraints are cross-field, and live in `.refine()`, not in a
   field.** With `NODE_ENV=production` the schema rejects the `JWT_ACCESS_SECRET`
@@ -110,13 +144,15 @@ DATABASE_URL_TEST=postgres://machxi:machxi@localhost:5432/machxi_test
   them from the grouped object means nothing in the request path can reach a
   credential it has no business holding — including anything that logs the
   config.
-- **Only build-affecting variables go into `turbo.json`.** `APP_VERSION` and
-  `GIT_SHA` can be baked into `dist/main.js`; everything else in this schema is
-  read at boot by `core/config`, so it belongs to the deployment environment and
-  not to turbo's cache key. Listing it all would make every environment change
-  invalidate a build that does not depend on it. `test:int` declares
-  `DATABASE_URL` / `DATABASE_URL_TEST`, which is what keeps the
-  `turbo/no-undeclared-env-vars` lint rule satisfied for the test harness.
+- **`turbo.json` declares no build variables, because there are none.**
+  `tsdown` performs no `define` substitution, so not even `APP_VERSION` or
+  `GIT_SHA` is baked into `dist/main.js` — every variable in this schema is read
+  at boot by `core/config` and belongs to the deployment environment, not to
+  turbo's cache key. (If a build ever *does* inject one, the `define` and the
+  `build.env` entry are added together, or the declaration is a claim the build
+  does not honour.) `test:int` declares `DATABASE_URL` / `DATABASE_URL_TEST`,
+  which is what keeps the `turbo/no-undeclared-env-vars` lint rule satisfied for
+  the test harness.
 - Secrets never go into logs (ADR-0005 redaction) or ADRs.
 
 ## Consequences

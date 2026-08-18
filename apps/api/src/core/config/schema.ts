@@ -31,21 +31,58 @@ export const NODE_ENVS = ["development", "test", "production"] as const;
  *
  * It is 41 characters, so `min(32)` alone would let a publicly known signing
  * key reach production: anyone with the repository could mint access tokens
- * for that deployment. The value is therefore rejected outright when
- * `NODE_ENV=production` (see the refinement below). Keeping a *working*
- * placeholder is deliberate — a fresh clone must run without a key-generation
- * step (ADR-0021 acceptance checklist).
+ * for that deployment. Keeping a *working* placeholder is deliberate — a fresh
+ * clone must run without a key-generation step (ADR-0021 acceptance checklist).
  */
 export const PLACEHOLDER_JWT_ACCESS_SECRET =
   "dev-only-insecure-access-secret-change-me";
+
+/** The `JWT_ACCESS_SECRET` shipped in `apps/api/.env.test`. */
+export const TEST_JWT_ACCESS_SECRET =
+  "test-only-signing-key-do-not-use-anywhere-else";
+
+/**
+ * Every signing key that exists in the repository, and is therefore public.
+ *
+ * A list rather than one comparison, because the placeholder is not the only
+ * one: `.env.test` carries a second working key, and `.env.test` is the file
+ * someone copies when they want something that already runs. Both are 32+
+ * characters, so length cannot tell them apart from a real key — only
+ * enumeration can. A unit test reads both files and asserts their values appear
+ * here, so a third dummy key cannot be added without being listed.
+ */
+export const KNOWN_PUBLIC_SECRETS: readonly string[] = [
+  PLACEHOLDER_JWT_ACCESS_SECRET,
+  TEST_JWT_ACCESS_SECRET,
+];
 
 /** Shortest accepted signing key, in characters. */
 const MIN_JWT_SECRET_LENGTH = 32;
 
 /**
+ * A browser origin: scheme, host and optional port, and nothing else.
+ *
+ * Not `z.url()` on its own — `new URL("localhost:3001")` succeeds, reading
+ * `localhost:` as the scheme, so the most likely typo would pass. `cors`
+ * compares the `Origin` header against these strings exactly, so a trailing
+ * slash or a path makes an entry that can never match; failing at startup is
+ * better than a CORS rule that silently does nothing.
+ */
+const originSchema = () =>
+  z
+    .url({ protocol: /^https?$/ })
+    .refine((value) => URL.parse(value)?.origin === value, {
+      message: "must be a bare origin, e.g. https://admin.example.com",
+    });
+
+/**
  * A comma-separated allow-list, e.g. `CORS_ORIGINS=http://a,http://b`.
+ *
  * An empty or absent value yields `[]` — "no browser origin allowed" — rather
- * than `['']`, which `cors` would treat as an origin (ADR-0020).
+ * than `['']`, which `cors` would treat as an origin (ADR-0020). Each entry
+ * must parse as a URL: `credentials: true` makes every one of them a
+ * credential-bearing cross-origin grant, and a typo would otherwise become a
+ * silently dead entry rather than a startup failure.
  */
 const csvSchema = z
   .string()
@@ -55,11 +92,19 @@ const csvSchema = z
       .split(",")
       .map((entry) => entry.trim())
       .filter((entry) => entry !== ""),
-  );
+  )
+  .pipe(z.array(z.union([z.literal("*"), originSchema()])));
 
 export const envSchema = z
   .object({
-    NODE_ENV: z.enum(NODE_ENVS).default("development"),
+    // No default, on purpose. Every production hardening below branches on
+    // this value, as does `error.debug` in the error middleware (ADR-0013), so
+    // a default of "development" would mean a deployment that simply never set
+    // the variable — a Dockerfile, a systemd unit, a PaaS that only injects
+    // secrets — silently accepts the committed signing key, accepts `*` as a
+    // CORS origin and returns stack traces to clients. Permissive behaviour has
+    // to be asked for explicitly; an absent NODE_ENV is a startup failure.
+    NODE_ENV: z.enum(NODE_ENVS),
     PORT: z.coerce.number().int().positive().max(65535).default(4000),
     LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
     APP_VERSION: z.string().default("0.0.0"),
@@ -119,11 +164,11 @@ export const envSchema = z
   .refine(
     (env) =>
       env.NODE_ENV !== "production" ||
-      env.JWT_ACCESS_SECRET !== PLACEHOLDER_JWT_ACCESS_SECRET,
+      !KNOWN_PUBLIC_SECRETS.includes(env.JWT_ACCESS_SECRET),
     {
       path: ["JWT_ACCESS_SECRET"],
       message:
-        "is the placeholder committed in .env.example and must not be used in production",
+        "is a value committed in this repository and must not be used in production",
     },
   )
   .refine(
@@ -132,6 +177,14 @@ export const envSchema = z
       path: ["CORS_ORIGINS"],
       message:
         'must not contain "*" in production; list the exact origins (ADR-0020)',
+    },
+  )
+  .refine(
+    (env) => env.NODE_ENV !== "production" || env.TRUST_PROXY.trim() !== "true",
+    {
+      path: ["TRUST_PROXY"],
+      message:
+        'must not be "true" in production; Express then takes the left-most X-Forwarded-For entry verbatim, which makes req.ip attacker-controlled and the login rate limit bypassable (ADR-0020). Use a hop count, a CIDR list, or "loopback"',
     },
   );
 

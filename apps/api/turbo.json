@@ -2,7 +2,6 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "env": ["APP_VERSION", "GIT_SHA"],
       "outputs": ["dist/**"]
     },
     "test:int": {
