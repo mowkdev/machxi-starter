@@ -1,0 +1,11 @@
+-- Custom migration (ADR-0008): the case-insensitive text type used by
+-- `staff.email` and `users.email` (ADR-0017).
+--
+-- It lives in a migration rather than in the Docker init script so that every
+-- environment gets it from the same place: the local database, the
+-- `machxi_test` database the integration suite uses, CI, and production.
+--
+-- Requires a role with CREATE on the database — true for the compose superuser
+-- and for CI. In a managed environment where the DBA pre-creates extensions,
+-- `IF NOT EXISTS` makes this a no-op rather than a failed deploy.
+CREATE EXTENSION IF NOT EXISTS citext;

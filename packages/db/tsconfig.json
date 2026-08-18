@@ -1,0 +1,10 @@
+{
+  "extends": "@repo/typescript-config/node.json",
+  "include": [
+    "src",
+    "seeds",
+    "drizzle.config.ts",
+    "vitest.config.ts",
+    "vitest.int.config.ts"
+  ]
+}

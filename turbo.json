@@ -46,6 +46,16 @@
     },
     "db:seed": {
       "cache": false
+    },
+    "db:setup": {
+      "cache": false
+    },
+    "db:reset": {
+      "cache": false
+    },
+    "db:studio": {
+      "cache": false,
+      "persistent": true
     }
   }
 }
