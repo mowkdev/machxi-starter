@@ -1,21 +1,42 @@
 import { Router } from "express";
 
 import type { Container } from "../core/container.js";
+import {
+  createLoginRateLimiter,
+  createRefreshRateLimiter,
+} from "../core/middleware/index.js";
+import { createAuthRouter } from "../modules/auth/index.js";
 
 /**
  * `/api/v1/user/*` (ADR-0015) — requires a user principal.
  *
- * The shape step 8 fills in:
+ * `/auth` is mounted first and guards itself: `login` and `refresh` are how a
+ * client obtains a token, so they cannot sit behind one, while `logout`,
+ * `logout-all` and `me` are guarded inside the auth router.
+ *
+ * Step 9 adds the profile endpoints below a segment-wide guard:
  *
  * ```ts
- * router.use("/auth", createUserAuthRouter(c));   // login/refresh are the entry point
- * router.use(authenticate("user"));               // everything below needs a principal
+ * router.use(authenticate("user"));
  * router.use("/profile", createUserProfileRouter(c));
  * ```
  *
- * The guard sits on the router, not on each route, so a new endpoint is
+ * The guard goes on the router, not on each route, so a new endpoint is
  * protected by where it is mounted rather than by remembering a decorator.
  */
-export const createUserRouter = (_container: Container): Router => {
-  return Router();
+export const createUserRouter = (container: Container): Router => {
+  const router = Router();
+
+  router.use(
+    "/auth",
+    createAuthRouter({
+      controller: container.controllers.userAuth,
+      authenticate: container.authenticate,
+      population: "user",
+      loginRateLimiter: createLoginRateLimiter(container.config),
+      refreshRateLimiter: createRefreshRateLimiter(container.config),
+    }),
+  );
+
+  return router;
 };

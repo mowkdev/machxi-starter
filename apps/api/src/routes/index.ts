@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import type { Container } from "../core/container.js";
+import { createGlobalRateLimiter } from "../core/middleware/index.js";
 import { createHealthRouter } from "../modules/health/index.js";
 import { createAdminRouter } from "./admin.router.js";
 import { createPublicRouter } from "./public.router.js";
@@ -19,7 +20,13 @@ export const API_V1_PREFIX = "/api/v1";
 export const createRoutes = (container: Container): Router => {
   const router = Router();
 
+  // Before the `/api/v1` mounts and after `/health`, which is the whole point
+  // of the position: a probe that gets rate-limited takes a working instance
+  // out of rotation, so health is deliberately outside every limiter
+  // (ADR-0016, ADR-0020 §Residual risks).
   router.use("/health", createHealthRouter(container.controllers.health));
+
+  router.use(API_V1_PREFIX, createGlobalRateLimiter(container.config));
 
   router.use(`${API_V1_PREFIX}/public`, createPublicRouter(container));
   router.use(`${API_V1_PREFIX}/user`, createUserRouter(container));

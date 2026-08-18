@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./seeds": "./seeds/run.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
@@ -18,6 +19,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx seeds/run.ts",
+    "db:sessions:prune": "tsx src/prune-sessions.ts",
     "db:setup": "pnpm db:migrate && pnpm db:seed",
     "db:reset": "tsx src/reset.ts && pnpm db:setup",
     "db:studio": "drizzle-kit studio"

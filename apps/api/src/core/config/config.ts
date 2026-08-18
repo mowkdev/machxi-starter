@@ -57,14 +57,18 @@ export interface AppConfig {
   readonly auth: {
     readonly issuer: string;
     readonly accessSecret: string;
-    readonly accessTtl: string;
-    readonly refreshTtl: string;
+    /** Access-token lifetime in seconds, parsed from `JWT_ACCESS_TTL`. */
+    readonly accessTtlSec: number;
+    /** Refresh-token lifetime in seconds, parsed from `REFRESH_TOKEN_TTL`. */
+    readonly refreshTtlSec: number;
     readonly refreshRotationGraceSec: number;
+    readonly maxConcurrentHashes: number;
     readonly argon2: Argon2Params;
   };
   readonly rateLimit: {
     readonly globalMax: number;
     readonly loginMax: number;
+    readonly refreshMax: number;
   };
   readonly features: {
     readonly userRegistration: boolean;
@@ -103,9 +107,10 @@ export const toAppConfig = (env: Env): AppConfig =>
     auth: Object.freeze({
       issuer: env.JWT_ISSUER,
       accessSecret: env.JWT_ACCESS_SECRET,
-      accessTtl: env.JWT_ACCESS_TTL,
-      refreshTtl: env.REFRESH_TOKEN_TTL,
+      accessTtlSec: env.JWT_ACCESS_TTL,
+      refreshTtlSec: env.REFRESH_TOKEN_TTL,
       refreshRotationGraceSec: env.REFRESH_ROTATION_GRACE_SEC,
+      maxConcurrentHashes: env.AUTH_MAX_CONCURRENT_HASHES,
       argon2: Object.freeze({
         memoryKib: env.ARGON2_MEMORY_KIB,
         timeCost: env.ARGON2_TIME_COST,
@@ -115,6 +120,7 @@ export const toAppConfig = (env: Env): AppConfig =>
     rateLimit: Object.freeze({
       globalMax: env.RATE_LIMIT_GLOBAL_MAX,
       loginMax: env.RATE_LIMIT_LOGIN_MAX,
+      refreshMax: env.RATE_LIMIT_REFRESH_MAX,
     }),
     features: Object.freeze({
       userRegistration: env.FEATURE_USER_REGISTRATION,

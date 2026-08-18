@@ -1,6 +1,8 @@
 import { defaultArgon2Params, minArgon2Params } from "@repo/crypto";
 import { z } from "zod";
 
+import { parseDurationSeconds } from "./duration.js";
+
 /**
  * The environment contract of the API process (ADR-0004).
  *
@@ -95,6 +97,33 @@ const csvSchema = z
   )
   .pipe(z.array(z.union([z.literal("*"), originSchema()])));
 
+/**
+ * A duration written the way an operator writes it (`15m`, `30d`), stored as
+ * seconds.
+ *
+ * The message names the accepted form and never echoes the rejected value
+ * (ADR-0004): a TTL is not a secret, but "config errors report keys and
+ * constraints, not values" has no useful exceptions.
+ */
+const durationSchema = z
+  .string()
+  .min(1)
+  .transform((value, ctx) => {
+    const seconds = parseDurationSeconds(value);
+
+    if (seconds === null) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "must be a duration like 15m, 12h or 30d (positive integer followed by s, m, h or d; at most 365d)",
+      });
+
+      return z.NEVER;
+    }
+
+    return seconds;
+  });
+
 export const envSchema = z
   .object({
     // No default, on purpose. Every production hardening below branches on
@@ -120,9 +149,23 @@ export const envSchema = z
 
     JWT_ISSUER: z.string().min(1).default("machxi-api"),
     JWT_ACCESS_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
-    JWT_ACCESS_TTL: z.string().min(1).default("15m"),
-    REFRESH_TOKEN_TTL: z.string().min(1).default("30d"),
+    // Seconds, not the string: the JWT's `exp`, the `accessTokenExpiresAt`
+    // field of the response and the session's `refresh_token_expires_at` all
+    // have to be derived from one number, and an unparseable duration must
+    // fail at startup rather than on the first login of a deployment.
+    // The defaults are the *parsed* form, because `.default()` in zod 4
+    // supplies the output of the pipe: 15m and 30d, in seconds.
+    JWT_ACCESS_TTL: durationSchema.default(15 * 60),
+    REFRESH_TOKEN_TTL: durationSchema.default(30 * 86400),
     REFRESH_ROTATION_GRACE_SEC: z.coerce.number().int().min(0).default(30),
+    /**
+     * How many argon2 hashes may run at once (ADR-0020 §Hashing cost vs.
+     * liveness). Each occupies one libuv thread and 64 MiB for ~130 ms and the
+     * default pool is 4, so an uncapped login endpoint starves DNS and
+     * filesystem work process-wide at a request rate far below the global
+     * limit. Raise it together with `UV_THREADPOOL_SIZE`, never alone.
+     */
+    AUTH_MAX_CONCURRENT_HASHES: z.coerce.number().int().positive().default(4),
 
     // Defaults and the floor both come from `@repo/crypto`, so the OWASP
     // parameters are stated once (ADR-0018). `createArgon2Hasher` rejects
@@ -146,6 +189,9 @@ export const envSchema = z
 
     RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().positive().default(300),
     RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(10),
+    // Counts **failed** refreshes only (ADR-0020): a client whose access token
+    // expires every 15 minutes must not spend its budget on succeeding.
+    RATE_LIMIT_REFRESH_MAX: z.coerce.number().int().positive().default(5),
     CORS_ORIGINS: csvSchema,
 
     // `z.stringbool()`, never `z.coerce.boolean()`: the latter is

@@ -19,6 +19,7 @@
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
     "db:seed": "turbo run db:seed",
+    "db:sessions:prune": "turbo run db:sessions:prune",
     "db:setup": "turbo run db:setup",
     "db:reset": "turbo run db:reset",
     "db:studio": "turbo run db:studio"

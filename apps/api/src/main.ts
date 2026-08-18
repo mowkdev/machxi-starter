@@ -65,6 +65,13 @@ const main = async (): Promise<void> => {
   }
 
   const container = buildContainer({ config, db, logger });
+
+  // Before the port opens, not after: the dummy password hash has to exist by
+  // the time the first login can arrive, or that request pays hash + verify
+  // while a known-email login pays verify alone — the timing oracle
+  // `dummyHash` exists to close (ADR-0018 §Password hashing).
+  await container.warmup();
+
   const { shutdown } = startServer({
     app: createApp(container),
     port: config.http.port,

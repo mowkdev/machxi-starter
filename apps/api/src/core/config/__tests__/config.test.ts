@@ -49,11 +49,15 @@ describe("envSchema", () => {
       DB_POOL_MAX: 10,
       DB_CONNECT_RETRIES: 10,
       JWT_ISSUER: "machxi-api",
-      JWT_ACCESS_TTL: "15m",
-      REFRESH_TOKEN_TTL: "30d",
+      // Durations are parsed to seconds by the schema, so a typo fails at
+      // startup rather than at the first login (ADR-0004).
+      JWT_ACCESS_TTL: 15 * 60,
+      REFRESH_TOKEN_TTL: 30 * 86400,
       REFRESH_ROTATION_GRACE_SEC: 30,
+      AUTH_MAX_CONCURRENT_HASHES: 4,
       RATE_LIMIT_GLOBAL_MAX: 300,
       RATE_LIMIT_LOGIN_MAX: 10,
+      RATE_LIMIT_REFRESH_MAX: 5,
       FEATURE_USER_REGISTRATION: true,
     });
     expect(env.CORS_ORIGINS).toEqual([]);

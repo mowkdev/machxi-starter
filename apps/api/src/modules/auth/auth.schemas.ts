@@ -1,0 +1,20 @@
+import { loginBody, refreshBody, registerBody } from "@repo/contracts";
+
+/**
+ * The route schemas of the auth module (ADR-0011).
+ *
+ * They are re-exported from `@repo/contracts` rather than declared here
+ * (ADR-0023): the admin panel and the web app validate the same login form
+ * against the same object, so a field the server rejects is a field the client
+ * never sends. A server-only refinement — one a client could not evaluate —
+ * would be added on top of the imported schema, in this file.
+ *
+ * Grouped as `{ params?, query?, body? }` because that is what `validate()`
+ * takes and what `ValidatedRequest<typeof schema>` reads to type `req.valid`.
+ * `logout`, `logout-all` and `me` take no input at all and therefore mount no
+ * validator.
+ */
+
+export const loginSchema = { body: loginBody } as const;
+export const refreshSchema = { body: refreshBody } as const;
+export const registerSchema = { body: registerBody } as const;

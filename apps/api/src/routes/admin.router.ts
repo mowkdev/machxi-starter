@@ -1,19 +1,40 @@
 import { Router } from "express";
 
 import type { Container } from "../core/container.js";
+import {
+  createLoginRateLimiter,
+  createRefreshRateLimiter,
+} from "../core/middleware/index.js";
+import { createAuthRouter } from "../modules/auth/index.js";
 
 /**
  * `/api/v1/admin/*` (ADR-0015) — requires a staff principal.
  *
- * The shape step 8 and step 9 fill in:
+ * `/auth` is mounted first because `login` and `refresh` are how staff obtain
+ * a token; everything inside it that needs one guards itself.
+ *
+ * Step 9 adds the resource routers, each with its own role guard at the mount
+ * point (ADR-0019 §Rules — a router without one is a review failure):
  *
  * ```ts
- * router.use("/auth", createStaffAuthRouter(c));
  * router.use(authenticate("staff"));
- * router.use("/staff", authorize("super_admin", "admin"), createStaffRouter(c));
- * router.use("/users", authorize("super_admin", "admin", "manager"), createUsersRouter(c));
+ * router.use("/staff", authorize("admin"), createStaffRouter(c));
+ * router.use("/users", authorize("admin", "manager"), createUsersRouter(c));
  * ```
  */
-export const createAdminRouter = (_container: Container): Router => {
-  return Router();
+export const createAdminRouter = (container: Container): Router => {
+  const router = Router();
+
+  router.use(
+    "/auth",
+    createAuthRouter({
+      controller: container.controllers.staffAuth,
+      authenticate: container.authenticate,
+      population: "staff",
+      loginRateLimiter: createLoginRateLimiter(container.config),
+      refreshRateLimiter: createRefreshRateLimiter(container.config),
+    }),
+  );
+
+  return router;
 };

@@ -1,12 +1,26 @@
+import { createArgon2Hasher } from "@repo/crypto";
+import type { DbExecutor } from "@repo/db";
 import type { Logger } from "@repo/logger";
 
 import type { AppConfig } from "./config/index.js";
 import type { DbClient } from "./db/index.js";
 import {
+  createAuthController,
+  createAuthenticate,
+  createAuthService,
+  createHashLimiter,
+  createSessionsRepository,
+  createStaffPrincipalAdapter,
+  createTokenService,
+  createUserPrincipalAdapter,
+} from "../modules/auth/index.js";
+import {
   createDbIndicator,
   createHealthController,
   createHealthService,
 } from "../modules/health/index.js";
+import { createStaffRepository } from "../modules/staff/index.js";
+import { createUsersRepository } from "../modules/users/index.js";
 
 /**
  * The composition root (ADR-0009).
@@ -35,12 +49,92 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     config,
   });
 
+  // One hasher for the process, built from the validated `ARGON2_*` values.
+  // The seeders build their own from the same variables (ADR-0008), which is
+  // what makes a seeded password verify against what the API expects.
+  const hasher = createArgon2Hasher(config.auth.argon2);
+
+  // One limiter shared by both populations: the constraint it protects is the
+  // libuv thread pool, which is per process, not per population (ADR-0020
+  // §Hashing cost vs. liveness).
+  const hashLimiter = createHashLimiter({
+    maxConcurrent: config.auth.maxConcurrentHashes,
+  });
+
+  const tokens = createTokenService({
+    secret: config.auth.accessSecret,
+    issuer: config.auth.issuer,
+    accessTtlSec: config.auth.accessTtlSec,
+  });
+
+  const staffRepository = createStaffRepository(db.db);
+  const usersRepository = createUsersRepository(db.db);
+  const sessions = createSessionsRepository(db.db);
+
+  // The one place that knows how to open a transaction. Repositories take a
+  // `DbExecutor` (ADR-0006), so a service composes them without ever importing
+  // the client.
+  const transaction = <T>(
+    fn: (tx: DbExecutor) => Promise<T>,
+  ): Promise<T> => db.db.transaction(fn);
+
+  const authDeps = {
+    sessions,
+    hasher,
+    tokens,
+    hashLimiter,
+    refreshTtlSec: config.auth.refreshTtlSec,
+    rotationGraceSec: config.auth.refreshRotationGraceSec,
+    transaction,
+  } as const;
+
+  // The same service, twice. Everything population-specific is behind the
+  // adapter (ADR-0017 §Principal abstraction in code), so login, rotation,
+  // reuse detection and revocation exist once.
+  const staffAuth = createAuthService({
+    ...authDeps,
+    population: "staff",
+    principals: createStaffPrincipalAdapter(staffRepository),
+  });
+
+  const userAuth = createAuthService({
+    ...authDeps,
+    population: "user",
+    principals: createUserPrincipalAdapter(usersRepository),
+  });
+
+  const authenticate = createAuthenticate({ tokens, sessions });
+
   return {
     config,
     db,
     logger,
-    services: { health } as const,
-    controllers: { health: createHealthController(health) } as const,
+    hasher,
+    authenticate,
+    repositories: {
+      staff: staffRepository,
+      users: usersRepository,
+      sessions,
+    } as const,
+    services: { health, staffAuth, userAuth } as const,
+    controllers: {
+      health: createHealthController(health),
+      staffAuth: createAuthController(staffAuth),
+      userAuth: createAuthController(userAuth),
+    } as const,
+
+    /**
+     * Work that must finish before the port is bound (ADR-0003).
+     *
+     * Right now that is exactly one thing: computing the dummy password hash.
+     * It is memoised inside the hasher, so warming it here means an
+     * unknown-email login pays a verify like every other login. Left cold, the
+     * first one pays hash *plus* verify — measurably longer, and the timing
+     * oracle `dummyHash` exists to close (ADR-0018 §Password hashing).
+     */
+    warmup: async (): Promise<void> => {
+      await hasher.dummyHash();
+    },
   } as const;
 };
 

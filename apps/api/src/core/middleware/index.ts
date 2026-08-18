@@ -1,3 +1,4 @@
+export { authorize } from "./authorize.js";
 export { createContextMiddleware } from "./context.js";
 export {
   createErrorHandler,
@@ -11,6 +12,12 @@ export {
 } from "./http-logger.js";
 export { noStore } from "./no-store.js";
 export { notFoundHandler } from "./not-found.js";
+export {
+  RATE_LIMIT_WINDOW_MS,
+  createGlobalRateLimiter,
+  createLoginRateLimiter,
+  createRefreshRateLimiter,
+} from "./rate-limit.js";
 export {
   validate,
   type Validated,

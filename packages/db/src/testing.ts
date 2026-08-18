@@ -1,3 +1,6 @@
+import { sql as raw } from "drizzle-orm";
+
+import type { DbExecutor } from "./client.js";
 import { runMigrations } from "./migrate.js";
 import { resetSchema } from "./reset.js";
 import { isProduction } from "./tooling/env.js";
@@ -56,4 +59,39 @@ export const migrateFreshDatabase = async (url: string): Promise<void> => {
 
   await resetSchema(url);
   await runMigrations(url);
+};
+
+/**
+ * Every table an integration test may write, in one list.
+ *
+ * Named explicitly rather than discovered from `information_schema`: a
+ * discovered list would also truncate `__drizzle_migrations` the moment
+ * someone changed the schema Drizzle keeps it in, and rebuilding the journal
+ * is a `migrateFreshDatabase` away — but only if the suite notices, and it
+ * would not.
+ */
+export const TRUNCATED_TABLES = [
+  "sessions",
+  "staff_roles",
+  "user_roles",
+  "staff",
+  "users",
+] as const;
+
+/**
+ * Empties every application table (ADR-0021).
+ *
+ * Used between integration files so fixtures one test mutates cannot leak into
+ * the next. One statement with `cascade`, so declaration order does not
+ * matter, and `restart identity` for the day a sequence appears — every id
+ * today is an app-generated UUIDv7 (ADR-0006).
+ *
+ * It does **not** re-run migrations: the schema is built once per run by
+ * {@link migrateFreshDatabase}, and rebuilding it per file would cost seconds
+ * for no isolation a truncate does not already give.
+ */
+export const truncateAll = async (db: DbExecutor): Promise<void> => {
+  await db.execute(
+    raw`truncate table ${raw.raw(TRUNCATED_TABLES.join(", "))} restart identity cascade`,
+  );
 };

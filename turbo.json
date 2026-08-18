@@ -47,6 +47,9 @@
     "db:seed": {
       "cache": false
     },
+    "db:sessions:prune": {
+      "cache": false
+    },
     "db:setup": {
       "cache": false
     },
