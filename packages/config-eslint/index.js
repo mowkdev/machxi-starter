@@ -21,6 +21,17 @@ export const config = defineConfig(
       "turbo/no-undeclared-env-vars": "warn",
       // ADR-0005: structured logging only, never console.*
       "no-console": "error",
+      // Match `noUnusedLocals` / `noUnusedParameters` in the shared tsconfig
+      // (ADR-0002), which treat a leading underscore as "deliberately unused".
+      // Without this the two tools disagree about the same line.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
   {

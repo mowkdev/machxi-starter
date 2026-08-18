@@ -6,7 +6,8 @@
   "exports": {
     ".": "./index.js",
     "./next": "./next.js",
-    "./react": "./react.js"
+    "./react": "./react.js",
+    "./api": "./api.js"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0"
