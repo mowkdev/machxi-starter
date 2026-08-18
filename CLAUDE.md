@@ -8,7 +8,7 @@ Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin pa
 - **Layers** (ADR-0009): `*.routes.ts` → `*.controller.ts` → `*.service.ts` → `*.repository.ts`. Services never import Express or SQL; repositories hold all Drizzle queries; controllers only parse `req.valid`, call the service with `req.ctx` first, and respond via `respond.*`.
 - **Envelope** (ADR-0012): controllers use only `respond.ok / created / list / noContent`; never `res.json` outside `apps/api/src/core/http`.
 - **Errors** (ADR-0013): one branded `AppError`; throw via factories (`notFound()`, `forbidden()`, module `*.errors.ts`); check with `isAppError(e)` + `e.code`; never `instanceof`, never new error classes.
-- **Config** (ADR-0004): `process.env` only in `core/config`, `drizzle.config.ts`, and the seed runner. Every new variable → zod schema + `.env.example`.
+- **Config** (ADR-0004): `process.env` only in `core/config`, `packages/db/src/tooling/env.ts`, `scripts/postman.mjs` and the `apps/api/test/` harness. Every new variable → zod schema + `.env.example`.
 - **Context** (ADR-0010): services take `ctx: RequestContext` as first parameter; `getContext()` is for infrastructure only.
 - **Validation** (ADR-0011): zod schemas live in `@repo/contracts` and are re-exported by `<module>.schemas.ts`; controllers read `req.valid.{params,query,body}` only.
 - **Auth** (ADR-0017–0019): two populations (`staff`, `user`), separate tables, separate segments `/api/v1/{public,user,admin}`; `authenticate()` at router level, `authorize()` at mount; `super_admin` bypasses staff role checks.

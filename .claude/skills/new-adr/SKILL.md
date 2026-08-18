@@ -11,7 +11,7 @@ description: Write a new or superseding Architecture Decision Record in docs/adr
    - Header: `# ADR-NNNN: Title`, `- Status: accepted` (or `proposed`), `- Date: YYYY-MM-DD`.
    - **Context** (forces, why now), **Decision** (imperative; concrete shapes — trees, table sketches, function signatures in functional style per ADR-0009), **Consequences** (easier/harder/follow-ups), **Alternatives considered** (short, with why rejected).
    - Cross-reference `ADR-XXXX`. Keep project-agnostic. No secrets.
-4. If superseding: change old ADR `Status` to `superseded by ADR-NNNN` (body untouched); explain delta in the new one. Pre-first-deliverable, amending in place is allowed (see README conventions).
+4. If superseding: change old ADR `Status` to `superseded by ADR-NNNN` (body untouched); explain delta in the new one. Always supersede: the pre-first-deliverable window in which accepted ADRs could be amended in place closed on 2026-08-18, when the first deliverable shipped (see the conventions in `docs/adr/README.md`).
 5. Update `docs/adr/README.md` index (right section, status); remove from "Planned" if fulfilled.
 6. If it changes rules or scope: update `CLAUDE.md` non-negotiables, `docs/implementation-plan.md`, `.claude/skills/api-conventions/SKILL.md`.
 7. Commit `docs(adr): ADR-NNNN <title>`.
