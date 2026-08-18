@@ -30,11 +30,18 @@ First, because it is the step that makes every later step's green mean something
 
 **Done when:** `pnpm test` run twice in a row reports no cache hit for any `test` task both times; `pnpm test:unit` run twice does hit cache the second time; `pnpm test` is green with Postgres up and fails (rather than passing from cache) with Postgres down.
 
-### 2. Conformance and hygiene fixes
+### 2. ~~Conformance and hygiene fixes~~ — **done 2026-08-19**
 
 **ADRs:** [0020](../adr/0020-security-baseline.md) §CORS, [0002](../adr/0002-monorepo-layout-and-tooling.md)
 
-Three small divergences, none of which needs a decision — the decisions exist and the code does not match them.
+**Closed.** `apps/api/src/app.ts` gains an exported `corsOrigin(origins)` that maps a list containing `"*"` to `cors`'s `origin: true`; `.gitignore` covers `apps/web/next-env.d.ts`, which is untracked; `packages/ui/eslint.config.mjs` is renamed `.js`. `apps/api/test/cors.int.test.ts` — 7 tests through the real `createApp`, using the config-override seam in `test/support/app.ts`.
+
+Two things worth keeping from the doing of it:
+
+- **The fix is reflection, not a literal `*`,** and that corrected an ADR. `origin: true` makes `cors` echo the request's `Origin` back, which is what lets a wildcard coexist with `credentials: true` — a literal `*` on a credentialed response is refused by browsers. ADR-0029 §Consequences had asserted the opposite ("a wildcard origin now fails in the browser… `*` is unusable anywhere"), which was wrong about this implementation and is **amended 2026-08-19 (D2.2)**. The corrected reading matters: reflecting any origin on an API that will set a credential cookie is as open as it sounds, and the only thing preventing it is ADR-0004's production refusal of `*` — a guard this makes more load-bearing, not less.
+- **One assertion was written badly and rewritten.** `expect(header).not.toBe("*")` passes against an absent header, which is precisely the bug under test. Verified by stashing the fix and re-running: 2 of 7 fail against the old code with `expected undefined to be 'http://localhost:3001'`, and the weak assertion was changed to an equality so it fails too.
+
+Three small divergences, none of which needed a decision — the decisions existed and the code did not match them.
 
 - **`CORS_ORIGINS=*` silently blocks every origin.** `apps/api/src/core/config/schema.ts` accepts `z.literal("*")` as an allow-list entry and a `.refine` rejects it only when `NODE_ENV=production`, which is ADR-0020 §CORS ("No `*` in production") implemented faithfully. But `apps/api/src/app.ts` passes the array straight to `cors({ origin: [...] })`, and `cors` does exact-string matching on array entries, so `"*"` matches no `Origin` header ever: setting it produces the exact opposite of intent, with no error. Map a list containing `"*"` to `origin: true` before handing it to `cors`. Cover it with a test that asserts `Access-Control-Allow-Origin` for a wildcard config, an allow-listed origin, and an empty list.
 - **`apps/web/next-env.d.ts` is committed and rewritten by `check-types`.** `web`'s `check-types` runs `next typegen`, which rewrites the file (`.next/types` → `.next/dev/types` depending on which build ran last), so the documented gate dirties the working tree on every run — it is dirty in the repository right now. Add it to `.gitignore` and `git rm --cached` it. `.next` is already ignored.

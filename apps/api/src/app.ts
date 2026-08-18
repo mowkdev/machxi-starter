@@ -42,6 +42,41 @@ const JSON_BODY_LIMIT = "1mb";
 export const queryParser = (raw: string): unknown =>
   qs.parse(raw, { depth: 3, arrayLimit: 20, parameterLimit: 50 });
 
+/** The one `CORS_ORIGINS` entry that is not an origin (ADR-0004, ADR-0020). */
+const WILDCARD_ORIGIN = "*";
+
+/**
+ * Translates the validated allow-list into what `cors` actually understands
+ * (ADR-0020 §CORS).
+ *
+ * The translation is the point, because the two are not the same language.
+ * `cors` compares an array's entries to the `Origin` header **by exact string**,
+ * so a literal `"*"` in the array matches no origin that has ever existed:
+ * `CORS_ORIGINS=*` used to mean "allow every origin" to whoever set it and
+ * "allow none" to the middleware, silently and in the more permissive-looking
+ * direction. ADR-0020 says "No `*` in production", which is only a meaningful
+ * thing to say if `*` does something everywhere else.
+ *
+ * `true` rather than the string: `cors` reflects the request's `Origin` back,
+ * and reflection is what makes a wildcard work at all alongside
+ * `credentials: true` — the CORS specification forbids a literal `*` on a
+ * credentialed response, so a browser would reject it. Reflecting any origin
+ * on a credentialed API is exactly as open as it sounds, which is why the
+ * config schema refuses `*` outright when `NODE_ENV=production` (ADR-0004);
+ * that refusal is the control, and this function is only honest about what the
+ * value means everywhere else.
+ *
+ * An empty list stays `false` — "no browser origin is permitted". Non-browser
+ * clients are unaffected either way: CORS is enforced by the browser, not here.
+ */
+export const corsOrigin = (origins: readonly string[]): boolean | string[] => {
+  // Before the emptiness check, and before any exact match: a list that
+  // contains the wildcard is a wildcard, whatever else it lists.
+  if (origins.includes(WILDCARD_ORIGIN)) return true;
+
+  return origins.length === 0 ? false : [...origins];
+};
+
 export const createApp = (container: Container): Express => {
   const { config, logger } = container;
   const app = express();
@@ -60,13 +95,7 @@ export const createApp = (container: Container): Express => {
   app.use(helmet());
   app.use(
     cors({
-      // An empty allow-list means no browser origin is permitted, which is
-      // what `false` says to `cors`. Non-browser clients are unaffected —
-      // CORS is enforced by the browser, not by this middleware.
-      origin:
-        config.http.corsOrigins.length === 0
-          ? false
-          : [...config.http.corsOrigins],
+      origin: corsOrigin(config.http.corsOrigins),
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
       exposedHeaders: ["X-Request-Id"],
