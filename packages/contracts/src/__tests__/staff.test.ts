@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   createStaffBody,
   listStaffQuery,
-  minPasswordLength,
+  MIN_PASSWORD_LENGTH,
   staffIdParams,
   updateStaffBody,
 } from "../index.js";
 
 const valid = {
   email: "anna@acme.com",
-  password: "a".repeat(minPasswordLength),
+  password: "a".repeat(MIN_PASSWORD_LENGTH),
   firstName: "Anna",
   lastName: "Meyer",
   roles: ["admin"],
@@ -95,7 +95,7 @@ describe("updateStaffBody", () => {
 
   it("does not accept a password — changing another account's password is not a profile edit", () => {
     expect(
-      updateStaffBody.safeParse({ password: "a".repeat(minPasswordLength) })
+      updateStaffBody.safeParse({ password: "a".repeat(MIN_PASSWORD_LENGTH) })
         .success,
     ).toBe(false);
   });

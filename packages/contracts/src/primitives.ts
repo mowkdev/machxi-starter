@@ -20,7 +20,7 @@ export type IsoDateTime = string;
 export const idSchema = z.uuid();
 
 /** Longest email accepted, per the RFC 5321 path limit. */
-export const maxEmailLength = 254;
+export const MAX_EMAIL_LENGTH = 254;
 
 /**
  * An email address, trimmed and lower-cased before validation.
@@ -33,17 +33,17 @@ export const emailSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .pipe(z.email().max(maxEmailLength));
+  .pipe(z.email().max(MAX_EMAIL_LENGTH));
 
 /** Password policy v1 (ADR-0018): at least 12 characters. */
-export const minPasswordLength = 12;
+export const MIN_PASSWORD_LENGTH = 12;
 
 /**
  * Upper bound on a password. argon2id itself has no meaningful length limit,
  * but an unbounded input is a cheap way to make the server do expensive work
  * (ADR-0020), and 128 characters is far beyond any real passphrase.
  */
-export const maxPasswordLength = 128;
+export const MAX_PASSWORD_LENGTH = 128;
 
 /**
  * A new password: the v1 policy (ADR-0018). Never trimmed — leading and
@@ -52,8 +52,8 @@ export const maxPasswordLength = 128;
  */
 export const passwordSchema = z
   .string()
-  .min(minPasswordLength)
-  .max(maxPasswordLength);
+  .min(MIN_PASSWORD_LENGTH)
+  .max(MAX_PASSWORD_LENGTH);
 
 /**
  * A password being *presented* for verification (login, change-password).
@@ -63,10 +63,13 @@ export const passwordSchema = z
  * any credential check, which both leaks the policy and turns a wrong-password
  * `401` into a different status. It only bounds the work (ADR-0020).
  */
-export const presentedPasswordSchema = z.string().min(1).max(maxPasswordLength);
+export const presentedPasswordSchema = z
+  .string()
+  .min(1)
+  .max(MAX_PASSWORD_LENGTH);
 
 /** Longest accepted person name component. */
-export const maxNameLength = 100;
+export const MAX_NAME_LENGTH = 100;
 
 /** A first or last name: trimmed, non-empty, bounded. */
-export const nameSchema = z.string().trim().min(1).max(maxNameLength);
+export const nameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH);

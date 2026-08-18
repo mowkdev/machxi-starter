@@ -1,6 +1,6 @@
 export {
+  MAX_REFRESH_TOKEN_LENGTH,
   loginBody,
-  maxRefreshTokenLength,
   refreshBody,
   refreshTokenSchema,
   registerBody,

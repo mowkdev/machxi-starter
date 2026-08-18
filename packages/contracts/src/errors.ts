@@ -16,11 +16,16 @@
  * | `VALIDATION_ERROR` | 400 | zod rejected params/query/body; `details` carries the field paths |
  * | `MALFORMED_JSON` | 400 | the body was not parseable JSON (`entity.parse.failed`) |
  * | `PAYLOAD_TOO_LARGE` | 413 | the body exceeded the configured JSON limit |
- * | `UNAUTHENTICATED` | 401 | no credentials, or credentials for the wrong population (ADR-0019) |
+ * | `UNAUTHENTICATED` | 401 | no credentials were presented at all |
  * | `FORBIDDEN` | 403 | authenticated, but the principal lacks the required role |
  * | `NOT_FOUND` | 404 | the addressed resource does not exist |
  * | `ROUTE_NOT_FOUND` | 404 | no route matched the path at all (`notFoundHandler`) |
- * | `CONFLICT` | 409 | generic constraint violation not mapped to a domain code |
+ * | `CONFLICT` | 409 | a constraint violation that must **not** name what conflicted, plus anything not mapped to a domain code |
+ *
+ * A token for the wrong population is `AUTH_TOKEN_INVALID`, not
+ * `UNAUTHENTICATED`: ADR-0019 fixes the *status* at 401 so that the wrong
+ * population cannot probe for route existence, and leaves the code to the
+ * token-shaped failure that actually occurred.
  * | `RATE_LIMITED` | 429 | rate limiter tripped; `details` carries `retryAfter` seconds (ADR-0020) |
  * | `INTERNAL_ERROR` | 500 | anything unexpected; the message is always generic |
  * | `SERVICE_UNAVAILABLE` | 503 | a dependency is down — readiness failure (ADR-0016) |
@@ -68,12 +73,19 @@ const AUTH_ERROR_CODES = [
  *
  * | Code | Status | Raised when |
  * |---|---|---|
- * | `USER_EMAIL_TAKEN` | 409 | registering or creating a user with an email already in the `users` table |
- * | `STAFF_EMAIL_TAKEN` | 409 | creating a staff member with an email already in the `staff` table |
+ * | `USER_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/users` with an email already in the `users` table |
+ * | `STAFF_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/staff` with an email already in the `staff` table |
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
  *
  * Emails are unique **within** a population, so the two "taken" codes are
  * separate: the same person may hold both a staff and a user account.
+ *
+ * Both are **authenticated staff** endpoints, which is why they may name the
+ * conflict. Public self-registration must not: ADR-0020 §Enumeration defaults
+ * registration to a generic answer, so `POST /api/v1/public/auth/register`
+ * answers an existing email with plain `CONFLICT` and a message that does not
+ * confirm the address — telling an anonymous caller `USER_EMAIL_TAKEN` would
+ * turn the endpoint into an account-existence oracle.
  */
 const DOMAIN_ERROR_CODES = [
   "USER_EMAIL_TAKEN",

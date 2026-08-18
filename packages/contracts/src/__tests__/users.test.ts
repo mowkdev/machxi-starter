@@ -4,12 +4,12 @@ import {
   changePasswordBody,
   createUserBody,
   listUsersQuery,
-  minPasswordLength,
+  MIN_PASSWORD_LENGTH,
   updateProfileBody,
   updateUserBody,
 } from "../index.js";
 
-const password = "a".repeat(minPasswordLength);
+const password = "a".repeat(MIN_PASSWORD_LENGTH);
 
 describe("createUserBody", () => {
   it("needs only an email and a password", () => {

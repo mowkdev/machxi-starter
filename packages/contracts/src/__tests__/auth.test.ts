@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   loginBody,
-  maxPasswordLength,
-  maxRefreshTokenLength,
-  minPasswordLength,
+  MAX_PASSWORD_LENGTH,
+  MAX_REFRESH_TOKEN_LENGTH,
+  MIN_PASSWORD_LENGTH,
   refreshBody,
   registerBody,
 } from "../index.js";
 
-const password = "a".repeat(minPasswordLength);
+const password = "a".repeat(MIN_PASSWORD_LENGTH);
 
 describe("loginBody", () => {
   it("normalises the email so a stored value stays canonical", () => {
@@ -32,7 +32,7 @@ describe("loginBody", () => {
   });
 
   it("still bounds the password, so an unbounded body cannot buy argon2 work", () => {
-    const tooLong = "a".repeat(maxPasswordLength + 1);
+    const tooLong = "a".repeat(MAX_PASSWORD_LENGTH + 1);
 
     expect(
       loginBody.safeParse({ email: "anna@acme.com", password: tooLong })
@@ -76,7 +76,7 @@ describe("refreshBody", () => {
     expect(refreshBody.safeParse({ refreshToken: "  " }).success).toBe(false);
     expect(
       refreshBody.safeParse({
-        refreshToken: "a".repeat(maxRefreshTokenLength + 1),
+        refreshToken: "a".repeat(MAX_REFRESH_TOKEN_LENGTH + 1),
       }).success,
     ).toBe(false);
   });
@@ -94,13 +94,13 @@ describe("registerBody", () => {
     expect(
       registerBody.safeParse({
         email: "anna@acme.com",
-        password: "a".repeat(minPasswordLength - 1),
+        password: "a".repeat(MIN_PASSWORD_LENGTH - 1),
       }).success,
     ).toBe(false);
     expect(
       registerBody.safeParse({
         email: "anna@acme.com",
-        password: "a".repeat(maxPasswordLength + 1),
+        password: "a".repeat(MAX_PASSWORD_LENGTH + 1),
       }).success,
     ).toBe(false);
   });

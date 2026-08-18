@@ -33,7 +33,7 @@ export const loginBody = z.strictObject({
 export type LoginBody = z.infer<typeof loginBody>;
 
 /** Upper bound on a submitted refresh token. */
-export const maxRefreshTokenLength = 512;
+export const MAX_REFRESH_TOKEN_LENGTH = 512;
 
 /**
  * The opaque refresh token as the client sends it back.
@@ -47,7 +47,7 @@ export const refreshTokenSchema = z
   .string()
   .trim()
   .min(1)
-  .max(maxRefreshTokenLength);
+  .max(MAX_REFRESH_TOKEN_LENGTH);
 
 /** `POST /api/v1/{admin,user}/auth/refresh`. */
 export const refreshBody = z.strictObject({

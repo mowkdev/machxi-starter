@@ -10,6 +10,12 @@
  *
  * Adding a value is therefore a migration (`ALTER TYPE … ADD VALUE`) plus an
  * edit here, and nothing else (ADR-0017).
+ *
+ * **Declaration order is load-bearing.** Postgres sorts an enum column by the
+ * position of each label in its type, so `ORDER BY status` on a list endpoint
+ * (ADR-0014) follows the order below, and `ALTER TYPE … ADD VALUE` appends
+ * unless told otherwise. Reordering an array here is a schema change, not a
+ * cosmetic edit: it silently changes what a sorted page returns.
  */
 
 /**

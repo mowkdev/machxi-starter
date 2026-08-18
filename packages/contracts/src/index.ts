@@ -75,12 +75,12 @@ export {
 } from "./list-query.js";
 
 export {
+  MAX_EMAIL_LENGTH,
+  MAX_NAME_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
   emailSchema,
   idSchema,
-  maxEmailLength,
-  maxNameLength,
-  maxPasswordLength,
-  minPasswordLength,
   nameSchema,
   passwordSchema,
   presentedPasswordSchema,

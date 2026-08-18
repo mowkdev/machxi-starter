@@ -30,8 +30,10 @@ export interface TokenPair {
 /**
  * The authenticated staff member, as `GET /api/v1/admin/auth/me` returns it.
  *
- * `roles` are the roles at authentication time; they come from the access
- * token's claims, so a role granted in the last few minutes may not appear yet
+ * `roles` here are read fresh from the database — `me` exists precisely so a
+ * client can resynchronise (ADR-0018 §Me). They may therefore differ from the
+ * roles the same principal is *authorised* with on an ordinary request, which
+ * come from the access token's claims and are up to one token lifetime stale
  * (ADR-0018 §Authenticated request).
  */
 export interface StaffPrincipalResource {
@@ -73,7 +75,10 @@ export type PrincipalResource = StaffPrincipalResource | UserPrincipalResource;
  *
  * Registration returns it too (`201`), so a newly registered user is signed in
  * without a second round trip; `FEATURE_USER_REGISTRATION` gates the endpoint
- * itself (ADR-0004).
+ * itself (ADR-0004). That means registration creates a session row and is
+ * subject to the same rate limits as login (ADR-0020). A registration that
+ * collides with an existing email answers `409 CONFLICT` without naming the
+ * conflict, per ADR-0020 §Enumeration — never `USER_EMAIL_TAKEN`.
  */
 export interface AuthResource extends TokenPair {
   readonly principal: PrincipalResource;
