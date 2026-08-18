@@ -12,7 +12,7 @@ import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
-import type { Principal, RequestContext } from "../../core/context/index.js";
+import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
 import { REVOKE_REASONS, type AuthService } from "../auth/index.js";
 import {
@@ -41,6 +41,17 @@ import type { UserRecord, UsersRepository } from "./users.repository.js";
 /** v1 has exactly one user role, and an account with none can do nothing. */
 const DEFAULT_USER_ROLES: readonly UserRole[] = ["customer"];
 
+/** Whether two role sets are the same set, order and duplicates aside. */
+const sameRoles = (
+  next: readonly UserRole[],
+  current: readonly UserRole[],
+): boolean => {
+  const a = new Set(next);
+  const b = new Set(current);
+
+  return a.size === b.size && [...a].every((role) => b.has(role));
+};
+
 export interface UsersServiceDeps {
   readonly repository: UsersRepository;
   /** Already wrapped in the process-wide concurrency cap (ADR-0020). */
@@ -64,9 +75,15 @@ export const createUsersService = ({
   transaction,
   now = () => new Date(),
 }: UsersServiceDeps) => {
-  /** The account acting on itself — `/api/v1/user/profile` (ADR-0019 §3). */
-  const self = (ctx: RequestContext): Principal =>
-    requirePopulation(ctx, "user");
+  /**
+   * The account acting on itself — `/api/v1/user/profile` (ADR-0019 §3).
+   *
+   * Unannotated on purpose: `requirePopulation` is generic and returns the
+   * *narrowed* member, so this is a user principal with `UserRole[]` rather
+   * than the union. Writing `: Principal` here would throw that away and cost
+   * the first user-role rule a cast.
+   */
+  const self = (ctx: RequestContext) => requirePopulation(ctx, "user");
 
   /** The admin view: soft-deleted rows included, because an admin may open one. */
   const readAny = async (id: string, tx?: DbExecutor): Promise<UserRecord> => {
@@ -197,13 +214,27 @@ export const createUsersService = ({
           body.status !== "active" &&
           current.status === "active";
 
-        const revokedCount = deactivated
-          ? await sessions.revokeSessionsFor(ctx, {
-              principalId: id,
-              reason: REVOKE_REASONS.accountDisabled,
-              tx,
-            })
-          : 0;
+        // Roles ride in the access token's claims (ADR-0018), so a role that
+        // is changed but not revoked does not take effect until the token
+        // expires. `customer` is the only user role in v1 and gates nothing,
+        // so today this changes no outcome — it is here because the staff
+        // module needs the same rule for a reason that *is* live (a demoted
+        // admin can otherwise re-promote themselves), and a rule that holds in
+        // one module and silently not the other is the kind of difference that
+        // is only noticed once `premium` or `vendor` arrives (ADR-0017).
+        const rolesChanged =
+          body.roles !== undefined && !sameRoles(body.roles, current.roles);
+
+        const revokedCount =
+          deactivated || rolesChanged
+            ? await sessions.revokeSessionsFor(ctx, {
+                principalId: id,
+                reason: deactivated
+                  ? REVOKE_REASONS.accountDisabled
+                  : REVOKE_REASONS.rolesChanged,
+                tx,
+              })
+            : 0;
 
         // Re-read rather than assemble: roles may have been replaced and
         // `updatedAt` was written by the update above, so the row is the only

@@ -76,7 +76,7 @@ rather than silently:
   query string that produced it, which is also what ADR-0012 asks for.
 
 - Each module declares its allow-lists once in `<module>.schemas.ts` (`sortable: ['createdAt','email','status'] as const`) and derives its query schema with `listQuerySchema`. Unknown sort/filter fields → `VALIDATION_ERROR`.
-- Repositories translate `ListQuery` to Drizzle with a shared helper `applyListQuery(qb, query, columnMap)` (maps API field → column, applies `where`, `orderBy`, `limit/offset`) and run `count(*)` for `total` in the same transaction (or a single query with a window function `count(*) over()` — implementation detail, helper hides it).
+- Repositories translate `ListQuery` to Drizzle with a shared helper `applyListQuery(qb, query, columnMap)` (maps API field → column, applies `where`, `orderBy`, `limit/offset`) and run `count(*)` for `total`. _How_ that count is issued is settled by the step-9 amendment below — a second query on whatever executor the repository is given, not a window function and not necessarily a transaction._
 - Services return `Page<T>`; controllers call `respond.list(res, page)` (ADR-0012), which emits `meta.pagination = { offset, limit, total }`, `meta.sort`, `meta.filters` so the client can render state without re-parsing its own query.
 
 **Amended 2026-08-18 (step 9), by the first two list endpoints.** Three things

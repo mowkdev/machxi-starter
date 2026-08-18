@@ -6,6 +6,8 @@ export {
   lastSuperAdmin,
   staffEmailTaken,
   staffNotFound,
+  superAdminGrantForbidden,
+  superAdminTargetForbidden,
 } from "./staff.errors.js";
 export { toStaffResource } from "./staff.mapper.js";
 export {

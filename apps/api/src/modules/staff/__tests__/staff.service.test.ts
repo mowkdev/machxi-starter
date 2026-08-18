@@ -147,6 +147,12 @@ const createFakeRepository = (seed: FakeStaffRow[]) => {
         ).length,
       ),
 
+    // A no-op: the fakes are single-threaded, so there is nothing to
+    // serialise. That the *real* service takes the lock before it reads is a
+    // property only the database can demonstrate, and the integration suite
+    // is where it is exercised.
+    lockRoleInvariant: () => Promise.resolve(),
+
     updateLastLoginAt: () => Promise.resolve(),
     updatePasswordHash: () => Promise.resolve(),
   };
@@ -446,8 +452,11 @@ describe("createStaffService", () => {
       it("refuses to disable the only active super admin", async () => {
         const { service } = build([superAdminRow()]);
 
+        // `superCtx`, because an `admin` is stopped earlier and by a different
+        // rule — see "protecting a super admin" below.
         await expectAppError(
-          () => service.update(ctx(), SUPER_ADMIN_ID, { status: "disabled" }),
+          () =>
+            service.update(superCtx(), SUPER_ADMIN_ID, { status: "disabled" }),
           "STAFF_LAST_SUPER_ADMIN",
           409,
         );
@@ -459,7 +468,7 @@ describe("createStaffService", () => {
         const { service, repo } = build([superAdminRow()]);
 
         await expect(
-          service.update(ctx(), SUPER_ADMIN_ID, {
+          service.update(superCtx(), SUPER_ADMIN_ID, {
             status: "disabled",
             firstName: "Renamed",
           }),
@@ -610,6 +619,134 @@ describe("createStaffService", () => {
             roles: ["super_admin"],
           }),
         ).resolves.toMatchObject({ roles: ["super_admin"] });
+      });
+    });
+
+    describe("protecting a super admin (ADR-0017 §Invariants)", () => {
+      it("refuses an admin who tries to disable one", async () => {
+        // The escalation the role rule alone did not close: an `admin` cannot
+        // take the role away, but could neutralise its holder.
+        const { service, repo } = build([superAdminRow(), adminRow()]);
+        const second = {
+          ...superAdminRow(),
+          id: "aaaaaaaa-0000-7000-8000-aaaaaaaaaaaa",
+        };
+
+        repo.rows.set(second.id, second);
+
+        await expectAppError(
+          () => service.update(ctx(), SUPER_ADMIN_ID, { status: "disabled" }),
+          "FORBIDDEN",
+          403,
+        );
+        expect(repo.rows.get(SUPER_ADMIN_ID)?.status).toBe("active");
+      });
+
+      it("refuses an admin who tries to revoke one's sessions", async () => {
+        // Without this an `admin` could keep every super admin permanently
+        // logged out by calling this on a loop.
+        const { service, sessions } = build([superAdminRow(), adminRow()]);
+
+        await expectAppError(
+          () => service.revokeSessions(ctx(), SUPER_ADMIN_ID),
+          "FORBIDDEN",
+          403,
+        );
+        expect(sessions.revocations).toEqual([]);
+      });
+
+      it("lets a super admin do both", async () => {
+        const second = {
+          ...adminRow(),
+          roles: ["super_admin"] as StaffRole[],
+        };
+        const { service } = build([superAdminRow(), second]);
+
+        await expect(
+          service.update(superCtx(), ADMIN_ID, { status: "disabled" }),
+        ).resolves.toMatchObject({ status: "disabled" });
+        await expect(
+          service.revokeSessions(superCtx(), SUPER_ADMIN_ID),
+        ).resolves.toBeUndefined();
+      });
+
+      it("lets an admin rename one, which removes no standing", async () => {
+        const { service } = build([superAdminRow()]);
+
+        await expect(
+          service.update(ctx(), SUPER_ADMIN_ID, { firstName: "Renamed" }),
+        ).resolves.toMatchObject({ firstName: "Renamed" });
+      });
+
+      it("lets an admin re-activate one", async () => {
+        // Restoring standing is not removing it, so the rule stays out of it.
+        const dormant = {
+          ...superAdminRow(),
+          status: "disabled" as StaffStatus,
+        };
+        const { service } = build([dormant, adminRow()]);
+
+        await expect(
+          service.update(ctx(), SUPER_ADMIN_ID, { status: "active" }),
+        ).resolves.toMatchObject({ status: "active" });
+      });
+
+      it("does not fire for a target who is not a super admin", async () => {
+        const { service } = build([superAdminRow(), adminRow()]);
+
+        await expect(
+          service.revokeSessions(ctx(), ADMIN_ID),
+        ).resolves.toBeUndefined();
+      });
+    });
+
+    describe("a role change ends the account's sessions", () => {
+      // `authorize` reads roles from the token's claims (ADR-0018), so a
+      // demotion that leaves the sessions alive does not take effect for up to
+      // `JWT_ACCESS_TTL` — long enough for its subject to call this endpoint
+      // and undo it. Revoking is what makes the change real.
+      it("revokes when the role set changes", async () => {
+        const { service, sessions } = build([superAdminRow(), adminRow()]);
+
+        await service.update(ctx(), ADMIN_ID, { roles: ["editor"] });
+
+        expect(sessions.revocations).toEqual([
+          { principalId: ADMIN_ID, reason: REVOKE_REASONS.rolesChanged },
+        ]);
+      });
+
+      it("does not revoke when the same set is re-sent in another order", async () => {
+        const both = {
+          ...adminRow(),
+          roles: ["admin", "editor"] as StaffRole[],
+        };
+        const { service, sessions } = build([superAdminRow(), both]);
+
+        await service.update(ctx(), ADMIN_ID, { roles: ["editor", "admin"] });
+
+        expect(sessions.revocations).toEqual([]);
+      });
+
+      it("does not revoke when the patch leaves the roles alone", async () => {
+        const { service, sessions } = build([adminRow()]);
+
+        await service.update(ctx(), ADMIN_ID, { firstName: "Adelaide" });
+
+        expect(sessions.revocations).toEqual([]);
+      });
+
+      it("reports a disable as a disable when both change at once", async () => {
+        // One revocation, and the audit trail should name the stronger reason.
+        const { service, sessions } = build([superAdminRow(), adminRow()]);
+
+        await service.update(ctx(), ADMIN_ID, {
+          roles: ["editor"],
+          status: "disabled",
+        });
+
+        expect(sessions.revocations).toEqual([
+          { principalId: ADMIN_ID, reason: REVOKE_REASONS.accountDisabled },
+        ]);
       });
     });
 

@@ -487,11 +487,16 @@ describe("admin user administration", () => {
   });
 
   describe("a soft-deleted account (ADR-0017)", () => {
-    it("is still readable by id", async () => {
+    it("is still readable by id, and says that it is deleted", async () => {
       // `findAnyById`, not `findById`: an admin who can list deleted accounts
       // must be able to open one, and answering 404 for a row they were just
-      // shown would be the worse lie. The marker itself stays off the wire —
-      // the resource has no `deletedAt` field to carry it.
+      // shown would be the worse lie.
+      //
+      // `deletedAt` rides along on the resource (ADR-0012, amended step 9).
+      // It was excluded at first, but `USER_STATUSES` has no `deleted` member,
+      // so with the field withheld this response was indistinguishable from a
+      // live account — the admin screen `findAnyById` exists for could not be
+      // built.
       const target = await createUserAccount(
         harness.app,
         adminTokens.accessToken,
@@ -509,7 +514,19 @@ describe("admin user administration", () => {
 
       expect(userEnvelope.safeParse(response.body).success).toBe(true);
       expect(response.body.data.id).toBe(target.id);
-      expect(response.body.data.deletedAt).toBeUndefined();
+      expect(response.body.data.deletedAt).toEqual(expect.any(String));
+    });
+
+    it("is reported as live by a resource that is not deleted", async () => {
+      const target = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "still.here@machxi.local" },
+      );
+
+      const response = await asAdmin(`${USERS_BASE}/${target.id}`).expect(200);
+
+      expect(response.body.data.deletedAt).toBeNull();
     });
   });
 });

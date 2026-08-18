@@ -57,6 +57,7 @@ const toRecord = (row: FakeUserRow): UserRecord => ({
   lastLoginAt: null,
   createdAt: NOW,
   updatedAt: NOW,
+  deletedAt: row.deleted ? NOW : null,
 });
 
 /**
@@ -451,6 +452,30 @@ describe("createUsersService — the admin segment", () => {
         {
           principalId: USER_ID,
           reason: REVOKE_REASONS.accountDisabled,
+          exceptSessionId: undefined,
+        },
+      ]);
+    });
+
+    it("revokes when the role set changes", async () => {
+      // Roles ride in the token's claims, so revoking is what makes the change
+      // take effect rather than waiting out `JWT_ACCESS_TTL` (ADR-0018).
+      const { service, sessions } = build([userRow()]);
+
+      await service.update(adminCtx(), USER_ID, { roles: ["customer"] });
+
+      expect(sessions.revocations).toEqual([]);
+
+      const cleared = build([userRow({ roles: [] })]);
+
+      await cleared.service.update(adminCtx(), USER_ID, {
+        roles: ["customer"],
+      });
+
+      expect(cleared.sessions.revocations).toEqual([
+        {
+          principalId: USER_ID,
+          reason: REVOKE_REASONS.rolesChanged,
           exceptSessionId: undefined,
         },
       ]);

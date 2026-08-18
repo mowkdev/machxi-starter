@@ -43,6 +43,10 @@ export const userResourceSchema = z.strictObject({
   status: z.enum(USER_STATUSES),
   roles: z.array(z.enum(USER_ROLES)),
   ...timestamps,
+  // On the wire since step 9: the admin endpoints return soft-deleted accounts
+  // on purpose, and `USER_STATUSES` has no `deleted` member, so without this a
+  // deleted account renders exactly like a live one (ADR-0012, amended).
+  deletedAt: z.iso.datetime().nullable(),
 });
 
 /**

@@ -39,6 +39,8 @@ export interface UserRecord {
   readonly lastLoginAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** The soft-delete marker itself, which the resource now reports (ADR-0012). */
+  readonly deletedAt: Date | null;
 }
 
 /** What self-registration and `POST /api/v1/admin/users` insert. */
@@ -80,6 +82,7 @@ const recordColumns = {
   lastLoginAt: true,
   createdAt: true,
   updatedAt: true,
+  deletedAt: true,
 } as const;
 
 const withRoles = { roles: { columns: { role: true } } } as const;
@@ -94,6 +97,7 @@ type UserRowWithRoles = {
   readonly lastLoginAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly deletedAt: Date | null;
   readonly roles: readonly { readonly role: UserRole }[];
 };
 
@@ -107,6 +111,7 @@ const toRecord = (row: UserRowWithRoles): UserRecord => ({
   lastLoginAt: row.lastLoginAt,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
+  deletedAt: row.deletedAt,
   roles: row.roles.map((grant) => grant.role),
 });
 
@@ -260,6 +265,7 @@ export const createUsersRepository = (db: DbExecutor) =>
           lastLoginAt: users.lastLoginAt,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
+          deletedAt: users.deletedAt,
         });
 
       if (created === undefined) return undefined;

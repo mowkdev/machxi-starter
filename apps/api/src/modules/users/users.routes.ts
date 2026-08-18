@@ -74,11 +74,20 @@ export const createUsersRouter = (controller: UsersController): Router => {
  * change-password request carries two passwords in its body; neither belongs
  * in a shared proxy's cache or on its disk (ADR-0020).
  *
- * `change-password` gets no limiter of its own beyond the global one: the only
- * caller who can reach it already holds a valid session for the account whose
- * password is being guessed, so there is nothing left to brute-force. What it
- * does cost is two argon2 operations, and those are bounded by the process-wide
- * hash limiter rather than per client.
+ * `change-password` gets no limiter of its own beyond the global one, and the
+ * open question there is cost rather than guessing. Nothing is left to
+ * brute-force — the caller already holds a valid session for the account whose
+ * password they are "guessing" — but each call still buys up to two argon2
+ * operations from a pool of `AUTH_MAX_CONCURRENT_HASHES` that login shares, and
+ * the global `300 / 15 min / IP` is a per-IP budget rather than a per-account
+ * one. A determined set of authenticated clients can therefore make the hash
+ * limiter shed, and what it sheds is *login*, for everybody.
+ *
+ * Accepted for now: reaching it at all requires a valid session per client, the
+ * global limiter caps each one, and the shedding is a `503` with `Retry-After`
+ * rather than a failure (ADR-0020 §Residual risks). A per-principal budget for
+ * expensive routes is the missing category, and it is recorded there rather
+ * than half-built here.
  */
 export const createUserProfileRouter = (
   controller: UserProfileController,

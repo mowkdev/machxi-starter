@@ -71,6 +71,22 @@ The rows above are now live. Four points the table did not state:
 
 ## Residual risks (recorded 2026-08-18, step 7)
 
+- **Nothing budgets an argon2 operation *per principal*** (recorded
+  2026-08-18, step 9). The limiters here bound login and refresh by
+  guessability, keyed on IP and email. Step 9 adds
+  `POST /api/v1/user/profile/change-password`, where guessing is not the issue —
+  the caller already holds a session for the account — but cost is: each call
+  buys up to two argon2 operations from the `AUTH_MAX_CONCURRENT_HASHES` pool
+  that login shares, under nothing tighter than the global `300 / 15 min / IP`.
+  A set of authenticated clients spread across IPs can therefore keep the hash
+  limiter saturated, and what it sheds is _login_, for everybody. Accepted for
+  now — every caller needs a valid session, the global limiter caps each one,
+  and shedding is a `503` with `Retry-After` rather than a failure — but "a
+  per-principal budget for expensive routes" is a missing category rather than
+  a missing limiter, and the same gap will apply to password reset and to any
+  future endpoint that hashes. The same argument covers deep `offset` and a
+  leading-wildcard `q`, which are bounded by no ceiling at all (ADR-0014).
+
 - **`err` is not redacted.** ADR-0005 already states that pino's error serialiser
   is outside the redact paths. `postgres.js` attaches `parameters` and `query` to
   a query error and keeps them non-enumerable only because `debug` is off by

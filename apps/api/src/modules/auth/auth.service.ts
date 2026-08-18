@@ -52,6 +52,12 @@ export const REVOKE_REASONS = {
   adminRevoke: "admin_revoke",
   /** `POST /api/v1/user/profile/change-password` (step 9). */
   passwordChanged: "password_changed",
+  /**
+   * A role grant changed (step 9). Roles ride in the access token's claims
+   * (ADR-0018), so ending the sessions is what makes the new set take effect
+   * rather than waiting out `JWT_ACCESS_TTL`.
+   */
+  rolesChanged: "roles_changed",
 } as const;
 
 export type RevokeReason = (typeof REVOKE_REASONS)[keyof typeof REVOKE_REASONS];

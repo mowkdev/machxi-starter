@@ -25,6 +25,11 @@ export const defaultRedactPaths: readonly string[] = [
   "req.headers.authorization",
   "req.headers.cookie",
   "password",
+  // Exact-key matching is why these two are listed at all: `changePasswordBody`
+  // (ADR-0018) names its fields `currentPassword` / `newPassword`, and
+  // `password` does not cover either of them.
+  "currentPassword",
+  "newPassword",
   "passwordHash",
   "refreshToken",
   "accessToken",
@@ -32,6 +37,8 @@ export const defaultRedactPaths: readonly string[] = [
   "refreshTokenHash",
   "previousRefreshTokenHash",
   "*.password",
+  "*.currentPassword",
+  "*.newPassword",
   "*.passwordHash",
   "*.refreshToken",
   "*.accessToken",

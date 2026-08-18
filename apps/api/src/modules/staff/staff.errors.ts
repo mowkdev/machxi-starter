@@ -57,3 +57,16 @@ export const lastSuperAdmin = (): AppError =>
  */
 export const superAdminGrantForbidden = (): AppError =>
   forbidden("Only a super admin may grant or revoke the super admin role");
+
+/**
+ * An action aimed at a `super_admin` by somebody who is not one.
+ *
+ * The sibling of {@link superAdminGrantForbidden}: that one protects the role,
+ * this one protects the account holding it. Guarding only the role left the
+ * hierarchy inverted from below — an `admin` could not take `super_admin`
+ * away, but could disable its holder, or call `sessions/revoke` on them in a
+ * loop and keep them permanently logged out. A privilege that everyone it
+ * outranks can neutralise is not a privilege (ADR-0017 §Invariants).
+ */
+export const superAdminTargetForbidden = (): AppError =>
+  forbidden("Only a super admin may disable or sign out a super admin");

@@ -1,6 +1,6 @@
 import { staff, staffRoles, type DbExecutor } from "@repo/db";
 import type { ListQuery, StaffRole, StaffStatus } from "@repo/contracts";
-import { and, count, eq, ne, notInArray } from "drizzle-orm";
+import { and, count, eq, ne, notInArray, sql } from "drizzle-orm";
 
 import { internal } from "../../core/errors/index.js";
 import {
@@ -123,6 +123,16 @@ const listColumns: ColumnMap = {
 
 /** What `q` searches. Roles are not here: they are rows in another table. */
 const searchColumns = [staff.email, staff.firstName, staff.lastName];
+
+/**
+ * The advisory-lock key that serialises the ADR-0017 super-admin invariant.
+ *
+ * An arbitrary constant; what matters is only that nothing else in the
+ * database uses it. It is a `bigint` key in a namespace shared by the whole
+ * cluster, so it is written out here rather than derived from a string hash
+ * that a future refactor could silently change.
+ */
+const STAFF_ROLE_INVARIANT_LOCK = 8_913_001;
 
 export const createStaffRepository = (db: DbExecutor) =>
   ({
@@ -330,6 +340,33 @@ export const createStaffRepository = (db: DbExecutor) =>
         );
 
       return counted?.total ?? 0;
+    },
+
+    /**
+     * Serialises the edits that have to reason about *other* staff rows.
+     *
+     * "At least one active super admin must exist" (ADR-0017) is checked by
+     * counting the rows that are not being edited, and a count sees no
+     * uncommitted sibling. Under the default READ COMMITTED isolation, two
+     * concurrent requests disabling two *different* super admins therefore
+     * each count the other as the survivor, both pass, and both commit — and
+     * the deployment is left with no super admin at all and no way back
+     * through the API.
+     *
+     * Row locks cannot fix that: the two transactions touch different rows and
+     * never conflict. What has to be serialised is the *decision*, so this
+     * takes a transaction-scoped advisory lock before the read that informs
+     * it. The second transaction then blocks until the first commits and
+     * re-reads a world in which its survivor is gone.
+     *
+     * It is a whole-table gate on staff edits, which is affordable precisely
+     * because it guards an endpoint a handful of operators use, and it is
+     * released with the transaction whether that commits or rolls back.
+     */
+    lockRoleInvariant: async (tx: DbExecutor): Promise<void> => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${STAFF_ROLE_INVARIANT_LOCK})`,
+      );
     },
 
     /** ADR-0018 login step 5. */

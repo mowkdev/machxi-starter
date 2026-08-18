@@ -19,6 +19,7 @@ import {
   staffEmailTaken,
   staffNotFound,
   superAdminGrantForbidden,
+  superAdminTargetForbidden,
 } from "./staff.errors.js";
 import { toStaffResource } from "./staff.mapper.js";
 import type { StaffRecord, StaffRepository } from "./staff.repository.js";
@@ -34,6 +35,24 @@ import type { StaffRecord, StaffRepository } from "./staff.repository.js";
  * No Express, no SQL. `ctx` is the first parameter of every function
  * (ADR-0010), and every failure is an `AppError` the error middleware renders.
  */
+
+/**
+ * Whether two role sets are the same set, order and duplicates aside.
+ *
+ * A `PATCH` that re-sends the roles an account already holds is a no-op, and
+ * must not cost the account its sessions — the revocation below exists to make
+ * a *change* take effect, not to punish a client that sends the whole
+ * resource back.
+ */
+const sameRoles = (
+  next: readonly StaffRole[],
+  current: readonly StaffRole[],
+): boolean => {
+  const a = new Set(next);
+  const b = new Set(current);
+
+  return a.size === b.size && [...a].every((role) => b.has(role));
+};
 
 export interface StaffServiceDeps {
   readonly repository: StaffRepository;
@@ -61,6 +80,9 @@ export const createStaffService = ({
   /** The acting staff member — `staff_roles.granted_by`, and the role rules below. */
   const actor = (ctx: RequestContext) => requirePopulation(ctx, "staff");
 
+  const isSuperAdmin = (ctx: RequestContext): boolean =>
+    actor(ctx).roles.includes(SUPER_ADMIN_ROLE);
+
   /**
    * Refuses a change to `super_admin` membership made by somebody who is not
    * one (ADR-0017 §Invariants).
@@ -86,9 +108,35 @@ export const createStaffService = ({
       currentRoles.includes(SUPER_ADMIN_ROLE);
 
     if (!changes) return;
-    if (actor(ctx).roles.includes(SUPER_ADMIN_ROLE)) return;
+    if (isSuperAdmin(ctx)) return;
 
     throw superAdminGrantForbidden();
+  };
+
+  /**
+   * Refuses an action *aimed at* a super admin by somebody who is not one
+   * (ADR-0017 §Invariants).
+   *
+   * The sibling of the rule above, and the reason it is a separate one:
+   * `assertMaySetSuperAdmin` protects the *role*, and this protects the
+   * *account holding it*. Guarding only the role left the hierarchy inverted
+   * from below — an `admin` could not take `super_admin` away, but could
+   * `PATCH` a super admin to `disabled`, or call `sessions/revoke` on them in
+   * a loop and keep them logged out for as long as they liked. A privilege
+   * that can be neutralised by everyone it outranks is not a privilege.
+   *
+   * Only actions that *remove* standing are refused. An admin may still edit a
+   * super admin's name, and may re-activate one — nothing is protected by
+   * preventing that.
+   */
+  const assertMayActOnSuperAdmin = (
+    ctx: RequestContext,
+    target: StaffRecord,
+  ): void => {
+    if (!target.roles.includes(SUPER_ADMIN_ROLE)) return;
+    if (isSuperAdmin(ctx)) return;
+
+    throw superAdminTargetForbidden();
   };
 
   const read = async (id: string, tx?: DbExecutor): Promise<StaffRecord> => {
@@ -218,11 +266,22 @@ export const createStaffService = ({
       const at = now();
 
       const { updated, revoked } = await transaction(async (tx) => {
+        // Before the read, because the read is what the invariant check below
+        // reasons about and a count cannot see an uncommitted sibling.
+        await repository.lockRoleInvariant(tx);
+
         const current = await read(id, tx);
 
         // Privilege first, then the invariant: "you may not do this at all"
         // outranks "the system will not let anyone do this right now".
         assertMaySetSuperAdmin(ctx, body.roles, current.roles);
+
+        // Disabling a super admin is removing their standing, so it needs the
+        // same rank as demoting them. Re-activating one does not.
+        if (body.status !== undefined && body.status !== "active") {
+          assertMayActOnSuperAdmin(ctx, current);
+        }
+
         await assertSuperAdminSurvives(current, body, tx);
 
         await repository.updateColumns(
@@ -245,13 +304,27 @@ export const createStaffService = ({
           body.status !== "active" &&
           current.status === "active";
 
-        const revokedCount = deactivated
-          ? await sessions.revokeSessionsFor(ctx, {
-              principalId: id,
-              reason: REVOKE_REASONS.accountDisabled,
-              tx,
-            })
-          : 0;
+        // A role change has to end the account's sessions, and this is not
+        // housekeeping — it is what makes the change take effect at all.
+        // `authorize` reads roles from the access token's claims (ADR-0018),
+        // which are up to `JWT_ACCESS_TTL` stale. That was harmless while
+        // roles were immutable at runtime; now a demoted admin keeps admin
+        // for the rest of the token's life, which is long enough to call this
+        // very endpoint and put the role back. Left unrevoked, a demotion is
+        // not slow — it is reversible by its own subject.
+        const rolesChanged =
+          body.roles !== undefined && !sameRoles(body.roles, current.roles);
+
+        const revokedCount =
+          deactivated || rolesChanged
+            ? await sessions.revokeSessionsFor(ctx, {
+                principalId: id,
+                reason: deactivated
+                  ? REVOKE_REASONS.accountDisabled
+                  : REVOKE_REASONS.rolesChanged,
+                tx,
+              })
+            : 0;
 
         // Re-read rather than assemble: the roles may have been replaced and
         // `updatedAt` was written by the update above, so the row is the only
@@ -276,6 +349,11 @@ export const createStaffService = ({
      */
     revokeSessions: async (ctx: RequestContext, id: string): Promise<void> => {
       const record = await read(id);
+
+      // Ending somebody's sessions is removing their standing, so it carries
+      // the same rank requirement as disabling them. Without this an `admin`
+      // could keep every super admin permanently logged out.
+      assertMayActOnSuperAdmin(ctx, record);
 
       const revoked = await sessions.revokeSessionsFor(ctx, {
         principalId: record.id,

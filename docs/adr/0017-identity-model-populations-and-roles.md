@@ -74,6 +74,56 @@ ways, each because the sketch would have cost a query or a cast:
 - Staff cannot self-register; they are invited/created by an admin. Users may self-register if the project enables `/public/auth/register`.
 - Emails are unique within a population, not across (the same person may be both a staff member and a user).
 
+**Amended 2026-08-18 (step 9).** The list above had one invariant about
+`super_admin` — that the last one survives — and that turned out to be the
+weaker half of what the role needs. `super_admin` bypasses every staff role
+check (ADR-0019), which means the only guard standing between an `admin` and
+that bypass is what the staff service refuses. Two rules are added, both
+enforced in `staff.service.ts` and both plain `403 FORBIDDEN` — the caller is
+authenticated and simply lacks the standing:
+
+- **Only a `super_admin` may grant or revoke `super_admin`.** `authorize("admin")`
+  is what lets a caller reach `PATCH /api/v1/admin/staff/:id`, and their own id
+  is a legal `:id`, so without this the role is self-service. Only a _change_ to
+  membership is refused; re-sending a set that already contains it, or editing a
+  super admin's profile, is not an escalation. The check runs **before** the
+  last-super-admin check: "you may not do this at all" outranks "nobody may do
+  this right now".
+- **Only a `super_admin` may disable or sign out a `super_admin`.** Protecting
+  the role without protecting its holder left the hierarchy inverted from below:
+  an `admin` could not take the role away, but could set its holder to
+  `disabled` (legal for any super admin but the last) or call
+  `POST /:id/sessions/revoke` on them in a loop and keep them permanently signed
+  out. A privilege that everyone it outranks can neutralise is not a privilege.
+  Only actions that _remove_ standing are refused — renaming and re-activating
+  are not.
+
+The general form of the second rule — "a target that outranks you is protected
+from you" — will also cover password reset and deletion when those arrive, and
+belongs here rather than being restated in each service.
+
+**Every role write ends the subject's sessions.** Roles ride in the access
+token's claims and are not re-read per request (ADR-0018, ADR-0019 §Rules),
+which was harmless while roles were immutable at runtime. Once they are
+editable, a demotion that leaves the sessions alive does not take effect for up
+to `JWT_ACCESS_TTL` — long enough for its subject to call the same endpoint and
+put the role back, indefinitely. So a `PATCH` that changes the role _set_
+revokes that account's sessions inside the same transaction, with reason
+`roles_changed`. Re-sending an unchanged set does not. This is the cheaper of
+the two available fixes; the other, a `roles_version` claim compared per
+request, stays available if per-request freshness is ever needed for something
+other than roles.
+
+**Serialising the invariant.** "At least one active `super_admin` must exist" is
+checked by counting the _other_ super admins, and under the default READ
+COMMITTED isolation a count cannot see an uncommitted sibling: two concurrent
+requests disabling two different super admins each count the other as the
+survivor, and both commit. Row locks do not help, because the two transactions
+touch different rows and never conflict. `staff.repository.lockRoleInvariant`
+therefore takes a transaction-scoped advisory lock at the top of every staff
+update, before the read the decision rests on. It is a whole-table gate on staff
+edits, which is affordable precisely because a handful of operators use them.
+
 ## Consequences
 
 - No accidental cross-population access: different tables, different `Principal.kind`, different token audience (ADR-0018).

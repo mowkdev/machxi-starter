@@ -625,6 +625,172 @@ describe("admin staff administration", () => {
   });
 
   /**
+   * Protecting the *account*, not just the role (ADR-0017 §Invariants).
+   *
+   * Guarding role membership alone left the hierarchy inverted from below: an
+   * `admin` could not take `super_admin` away, but could disable its holder,
+   * or call `sessions/revoke` on them in a loop and keep them permanently
+   * signed out. A privilege that everyone it outranks can neutralise is not a
+   * privilege, so the same rank requirement covers both.
+   */
+  describe("protecting a super admin", () => {
+    let superAdminId: string;
+    /**
+     * A dedicated `admin`, not the shared fixture.
+     *
+     * The blocks above change the shared admin's roles, and a role change now
+     * ends that account's sessions — see the next describe. Borrowing its
+     * token here would make these cases depend on the order the file happens
+     * to run in.
+     */
+    let attacker: Tokens;
+
+    beforeAll(async () => {
+      const me = await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(superAdminTokens.accessToken))
+        .expect(200);
+
+      superAdminId = me.body.data.id as string;
+
+      await createStaffMember(harness.app, superAdminTokens.accessToken, {
+        email: "rank.test@machxi.local",
+        firstName: "Rank",
+        lastName: "Test",
+        roles: ["admin"],
+      });
+
+      attacker = await login(harness.app, "staff", {
+        email: "rank.test@machxi.local",
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+    });
+
+    it("refuses an admin who tries to disable one", async () => {
+      const response = await request()
+        .patch(`${STAFF_BASE}/${superAdminId}`)
+        .set("Authorization", bearer(attacker.accessToken))
+        .send({ status: "disabled" })
+        .expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+    });
+
+    it("refuses an admin who tries to revoke one's sessions", async () => {
+      const response = await request()
+        .post(`${STAFF_BASE}/${superAdminId}/sessions/revoke`)
+        .set("Authorization", bearer(attacker.accessToken))
+        .expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+    });
+
+    it("leaves the super admin signed in after both refusals", async () => {
+      // The point of the rule, stated as an outcome rather than a status code.
+      await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(superAdminTokens.accessToken))
+        .expect(200);
+    });
+
+    it("lets an admin rename one, which removes no standing", async () => {
+      await request()
+        .patch(`${STAFF_BASE}/${superAdminId}`)
+        .set("Authorization", bearer(attacker.accessToken))
+        .send({ firstName: "Renamed" })
+        .expect(200);
+    });
+  });
+
+  /**
+   * A role change ends the subject's sessions.
+   *
+   * Not housekeeping — it is what makes the change take effect. `authorize`
+   * reads roles from the access token's claims (ADR-0018), which are up to
+   * `JWT_ACCESS_TTL` stale. That was harmless while roles were immutable at
+   * runtime; now, without this, a demoted admin keeps `admin` for the rest of
+   * the token's life, which is long enough to call this very endpoint and put
+   * the role back. An unrevoked demotion is not slow, it is reversible by the
+   * person being demoted.
+   */
+  describe("a role change signs the account out", () => {
+    it("kills the demoted account's access and refresh tokens", async () => {
+      const target = await createStaffMember(
+        harness.app,
+        superAdminTokens.accessToken,
+        {
+          email: "demote.me@machxi.local",
+          firstName: "Demo",
+          lastName: "Tion",
+          roles: ["admin"],
+        },
+      );
+
+      const targetTokens = await login(harness.app, "staff", {
+        email: "demote.me@machxi.local",
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(targetTokens.accessToken))
+        .expect(200);
+
+      await request()
+        .patch(`${STAFF_BASE}/${target.id}`)
+        .set("Authorization", bearer(superAdminTokens.accessToken))
+        .send({ roles: ["editor"] })
+        .expect(200);
+
+      // Without the revocation this would still be 200, and the token would
+      // still claim `admin` — enough to re-grant itself the role.
+      const refused = await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(targetTokens.accessToken))
+        .expect(401);
+
+      expect(refused.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      // The refresh token dies with it, so the demotion cannot be waited out.
+      await request()
+        .post("/api/v1/admin/auth/refresh")
+        .send({ refreshToken: targetTokens.refreshToken })
+        .expect(401);
+    });
+
+    it("leaves the session alone when the same role set is re-sent", async () => {
+      const target = await createStaffMember(
+        harness.app,
+        superAdminTokens.accessToken,
+        {
+          email: "unchanged.roles@machxi.local",
+          firstName: "Un",
+          lastName: "Changed",
+          roles: ["editor", "manager"],
+        },
+      );
+
+      const targetTokens = await login(harness.app, "staff", {
+        email: "unchanged.roles@machxi.local",
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      // Same set, different order: a client sending the whole resource back
+      // must not cost the account its session.
+      await request()
+        .patch(`${STAFF_BASE}/${target.id}`)
+        .set("Authorization", bearer(superAdminTokens.accessToken))
+        .send({ roles: ["manager", "editor"] })
+        .expect(200);
+
+      await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(targetTokens.accessToken))
+        .expect(200);
+    });
+  });
+
+  /**
    * The ADR-0017 invariant: at least one active `super_admin` must survive
    * every edit. It is a property of the *system*, not of the request, so it is
    * a 409 rather than a 403 — the caller has the privilege; the state refuses.
