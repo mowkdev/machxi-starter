@@ -8,6 +8,7 @@ import type {
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,
+  setUserPasswordSchema,
   updateProfileSchema,
   updateUserSchema,
 } from "./users.schemas.js";
@@ -63,6 +64,19 @@ export const createUsersController = (service: UsersService) =>
       res: Response,
     ): Promise<void> => {
       await service.revokeSessions(req.ctx, req.valid.params.id);
+      respond.noContent(res);
+    },
+
+    /**
+     * `204`: the password is set and every session of the subject is gone.
+     * Reporting how many were revoked would tell the caller how many devices
+     * the account was signed in on, which is of no use to them.
+     */
+    setPassword: async (
+      req: ValidatedRequest<typeof setUserPasswordSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.setPassword(req.ctx, req.valid.params.id, req.valid.body);
       respond.noContent(res);
     },
   }) as const;

@@ -26,6 +26,7 @@ import {
 } from "../modules/health/index.js";
 import {
   createStaffController,
+  createStaffProfileController,
   createStaffRepository,
   createStaffService,
 } from "../modules/staff/index.js";
@@ -140,6 +141,11 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     repository: usersRepository,
     hasher: limitedHasher,
     sessions: userAuth,
+    // Built above, and the only cross-module service dependency in this file:
+    // `POST /api/v1/admin/users/:id/password` is a *staff* member acting, so
+    // the actor's own password is verified by the module that owns the staff
+    // aggregate (ADR-0027 rule 1, ADR-0009).
+    actors: staffService,
     transaction,
   });
 
@@ -185,6 +191,11 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       // `ctx.principal`, so the admin handlers are not reachable from the user
       // segment even by a routing mistake (ADR-0019).
       userProfile: createUserProfileController(usersService),
+      // The same pairing on the staff side since D2.3: `/api/v1/admin/profile`
+      // exposes only the functions that read their subject from
+      // `ctx.principal`, so no handler taking an `:id` is reachable from it
+      // (ADR-0027).
+      staffProfile: createStaffProfileController(staffService),
     } as const,
 
     /**

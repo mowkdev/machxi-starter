@@ -61,7 +61,7 @@ const toRecord = (row: FakeStaffRow): StaffRecord => ({
  */
 const createFakeRepository = (seed: FakeStaffRow[]) => {
   const rows = new Map(seed.map((row) => [row.id, { ...row }]));
-  const calls = { replaceRoles: 0, updateColumns: 0 };
+  const calls = { replaceRoles: 0, updateColumns: 0, updatePasswordHash: 0 };
   /** Every `replaceRoles`, so `granted_by` can be asserted (ADR-0017). */
   const grants: { staffId: string; grantedBy: string | null }[] = [];
   let sequence = 0;
@@ -154,7 +154,16 @@ const createFakeRepository = (seed: FakeStaffRow[]) => {
     lockRoleInvariant: () => Promise.resolve(),
 
     updateLastLoginAt: () => Promise.resolve(),
-    updatePasswordHash: () => Promise.resolve(),
+    // A no-op until D2.3, when the staff module gained endpoints that write a
+    // password rather than only the login-time argon2 upgrade.
+    updatePasswordHash: (id: string, passwordHash: string) => {
+      calls.updatePasswordHash += 1;
+      const row = rows.get(id);
+
+      if (row !== undefined) row.passwordHash = passwordHash;
+
+      return Promise.resolve();
+    },
   };
 
   return { repository, rows, calls, grants } as const;
@@ -178,18 +187,29 @@ const createFakeHasher = () => {
 };
 
 const createFakeSessions = () => {
-  const revocations: { principalId: string; reason: string }[] = [];
+  const revocations: {
+    principalId: string;
+    reason: string;
+    exceptSessionId?: string | undefined;
+  }[] = [];
 
   return {
     revocations,
     sessions: {
       revokeSessionsFor: (
         _ctx: RequestContext,
-        input: { principalId: string; reason: string },
+        input: {
+          principalId: string;
+          reason: string;
+          exceptSessionId?: string | undefined;
+        },
       ) => {
+        // `exceptSessionId` is recorded because it is the whole difference
+        // between a self-service change and an administrative reset (ADR-0027).
         revocations.push({
           principalId: input.principalId,
           reason: input.reason,
+          exceptSessionId: input.exceptSessionId,
         });
 
         return Promise.resolve(1);
@@ -240,6 +260,26 @@ const adminRow = (): FakeStaffRow => ({
   status: "active",
   roles: ["admin"],
 });
+
+/**
+ * The acting `admin`'s own row.
+ *
+ * Needed since D2.3 because the credential endpoints read the actor back and
+ * verify the password they present, so a context alone no longer describes a
+ * caller — `ACTOR_ID` has to exist in the table too.
+ */
+const actorRow = (): FakeStaffRow => ({
+  id: ACTOR_ID,
+  email: "actor@machxi.local",
+  passwordHash: "hashed:actor-secret",
+  firstName: "Alex",
+  lastName: "Actor",
+  status: "active",
+  roles: ["admin"],
+});
+
+/** What {@link actorRow} presents on a credential endpoint. */
+const ACTOR_PASSWORD = "actor-secret";
 
 const build = (seed: FakeStaffRow[]) => {
   const repo = createFakeRepository(seed);
@@ -809,7 +849,11 @@ describe("createStaffService", () => {
       await service.revokeSessions(ctx(), ADMIN_ID);
 
       expect(sessions.revocations).toEqual([
-        { principalId: ADMIN_ID, reason: REVOKE_REASONS.adminRevoke },
+        {
+          principalId: ADMIN_ID,
+          reason: REVOKE_REASONS.adminRevoke,
+          exceptSessionId: undefined,
+        },
       ]);
     });
 
@@ -825,6 +869,228 @@ describe("createStaffService", () => {
         404,
       );
       expect(sessions.revocations).toEqual([]);
+    });
+  });
+
+  /* -- D2.3: credential self-service and administrative reset (ADR-0027) --- */
+
+  describe("getProfile", () => {
+    it("reads the caller's own account, with no id to pass", async () => {
+      const { service } = build([actorRow(), adminRow()]);
+
+      const profile = await service.getProfile(ctx());
+
+      expect(profile.id).toBe(ACTOR_ID);
+      expect(profile.email).toBe("actor@machxi.local");
+    });
+
+    it("answers NOT_FOUND when the caller's own row is gone", async () => {
+      // Reachable only inside the access token's life, since `authenticate`
+      // verifies the session and not the account (ADR-0018).
+      const { service } = build([adminRow()]);
+
+      await expectAppError(() => service.getProfile(ctx()), "NOT_FOUND", 404);
+    });
+  });
+
+  describe("updateProfile", () => {
+    it("writes the caller's own names and returns the re-read row", async () => {
+      const { service, repo } = build([actorRow()]);
+
+      const updated = await service.updateProfile(ctx(), {
+        firstName: "Alexandra",
+      });
+
+      expect(updated.firstName).toBe("Alexandra");
+      expect(updated.lastName).toBe("Actor");
+      expect(repo.rows.get(ACTOR_ID)?.firstName).toBe("Alexandra");
+    });
+
+    it("cannot touch another account, because it takes no id", async () => {
+      // The ADR-0019 section 3 ownership rule made structural: there is no
+      // argument for a caller to tamper with.
+      const { service, repo } = build([actorRow(), adminRow()]);
+
+      await service.updateProfile(ctx(), { firstName: "Alexandra" });
+
+      expect(repo.rows.get(ADMIN_ID)?.firstName).toBe("Ada");
+    });
+  });
+
+  describe("changePassword", () => {
+    it("rotates the password and spares the caller's own session", async () => {
+      const { service, repo, sessions } = build([actorRow()]);
+
+      await service.changePassword(ctx(), {
+        currentPassword: ACTOR_PASSWORD,
+        newPassword: "BrandNewPassword!1",
+      });
+
+      expect(repo.rows.get(ACTOR_ID)?.passwordHash).toBe(
+        "hashed:BrandNewPassword!1",
+      );
+      // Every other session ends - that is what a password change is for -
+      // and this one does not, because the caller just proved they own it.
+      expect(sessions.revocations).toEqual([
+        {
+          principalId: ACTOR_ID,
+          reason: REVOKE_REASONS.passwordChanged,
+          exceptSessionId: "session-1",
+        },
+      ]);
+    });
+
+    it("refuses a wrong current password with 403 and writes nothing", async () => {
+      const { service, repo, sessions } = build([actorRow()]);
+
+      await expectAppError(
+        () =>
+          service.changePassword(ctx(), {
+            currentPassword: "not-the-password",
+            newPassword: "BrandNewPassword!1",
+          }),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+
+      expect(repo.rows.get(ACTOR_ID)?.passwordHash).toBe("hashed:actor-secret");
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("buys no hash for a request it is going to refuse", async () => {
+      // The verify happens before the new password is hashed, which is one
+      // argon2 operation not taken from the pool login shares (ADR-0020).
+      const { service, hasher } = build([actorRow()]);
+
+      await expect(
+        service.changePassword(ctx(), {
+          currentPassword: "not-the-password",
+          newPassword: "BrandNewPassword!1",
+        }),
+      ).rejects.toBeDefined();
+
+      expect(hasher.calls.hash).toBe(0);
+    });
+  });
+
+  describe("setPassword", () => {
+    const body = {
+      password: "ResetByAdmin!2026",
+      currentPassword: ACTOR_PASSWORD,
+    };
+
+    it("sets the subject's password and ends every one of their sessions", async () => {
+      const { service, repo, sessions } = build([actorRow(), adminRow()]);
+
+      await service.setPassword(ctx(), ADMIN_ID, body);
+
+      expect(repo.rows.get(ADMIN_ID)?.passwordHash).toBe(
+        "hashed:ResetByAdmin!2026",
+      );
+      // No exception for anybody: the subject proved nothing, and the
+      // plausible reason for a reset is that the account is compromised
+      // (ADR-0027 rule 3). The reason is distinct from a self-service change
+      // so the audit trail can tell the two apart.
+      expect(sessions.revocations).toEqual([
+        {
+          principalId: ADMIN_ID,
+          reason: REVOKE_REASONS.passwordReset,
+          exceptSessionId: undefined,
+        },
+      ]);
+    });
+
+    it("refuses an actor who cannot re-present their own password", async () => {
+      // ADR-0027 rule 1: without this, fifteen minutes of a compromised admin
+      // token is enough to set a new password on every operator it outranks.
+      const { service, repo, sessions } = build([actorRow(), adminRow()]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(ctx(), ADMIN_ID, {
+            ...body,
+            currentPassword: "not-the-password",
+          }),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+
+      expect(repo.rows.get(ADMIN_ID)?.passwordHash).toBe("hashed:secret");
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("checks the actor before the subject, so it cannot be used to probe ids", async () => {
+      // A wrong actor password answers the same 403 whether or not the id
+      // exists; checking the subject first would make the endpoint an
+      // account-existence oracle for somebody who cannot use it at all.
+      const { service } = build([actorRow()]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(ctx(), SUPER_ADMIN_ID, {
+            ...body,
+            currentPassword: "not-the-password",
+          }),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+    });
+
+    it("answers NOT_FOUND for an unknown subject once the actor verifies", async () => {
+      const { service, sessions } = build([actorRow()]);
+
+      await expectAppError(
+        () => service.setPassword(ctx(), ADMIN_ID, body),
+        "NOT_FOUND",
+        404,
+      );
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses an admin setting a super admin's password", async () => {
+      // Rewriting somebody's credential is removing their standing in the most
+      // complete way available, so it carries the same rank rule as disabling
+      // or signing them out (ADR-0017 Invariants, ADR-0027 rule 2).
+      const { service, repo, sessions } = build([actorRow(), superAdminRow()]);
+
+      await expectAppError(
+        () => service.setPassword(ctx(), SUPER_ADMIN_ID, body),
+        "FORBIDDEN",
+        403,
+      );
+
+      expect(repo.rows.get(SUPER_ADMIN_ID)?.passwordHash).toBe("hashed:secret");
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("lets a super admin set another super admin's password", async () => {
+      const { service, repo } = build([actorRow(), superAdminRow()]);
+
+      await service.setPassword(superCtx(), SUPER_ADMIN_ID, body);
+
+      expect(repo.rows.get(SUPER_ADMIN_ID)?.passwordHash).toBe(
+        "hashed:ResetByAdmin!2026",
+      );
+    });
+  });
+
+  describe("verifyActorPassword", () => {
+    it("resolves for the caller's own password", async () => {
+      const { service } = build([actorRow()]);
+
+      await expect(
+        service.verifyActorPassword(ctx(), ACTOR_PASSWORD),
+      ).resolves.toBeUndefined();
+    });
+
+    it("refuses a caller whose own row has gone", async () => {
+      const { service } = build([adminRow()]);
+
+      await expectAppError(
+        () => service.verifyActorPassword(ctx(), ACTOR_PASSWORD),
+        "NOT_FOUND",
+        404,
+      );
     });
   });
 });

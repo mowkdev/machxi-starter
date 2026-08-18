@@ -50,8 +50,18 @@ export const REVOKE_REASONS = {
   principalMissing: "principal_missing",
   /** `POST /api/v1/admin/{staff,users}/:id/sessions/revoke` (step 9). */
   adminRevoke: "admin_revoke",
-  /** `POST /api/v1/user/profile/change-password` (step 9). */
+  /** `POST /api/v1/{admin,user}/profile/change-password` (step 9, D2.3). */
   passwordChanged: "password_changed",
+  /**
+   * `POST /api/v1/admin/{staff,users}/:id/password` (D2.3).
+   *
+   * Distinct from `passwordChanged`, and the distinction is the point: the
+   * audit trail has to tell "the holder changed it" apart from "somebody else
+   * changed it for them" (ADR-0027 §Decision rule 3). It is also why this one
+   * spares no session — the subject proved nothing, and the plausible reason
+   * for a reset is that the account is compromised.
+   */
+  passwordReset: "password_reset",
   /**
    * A role grant changed (step 9). Roles ride in the access token's claims
    * (ADR-0018), so ending the sessions is what makes the new set take effect

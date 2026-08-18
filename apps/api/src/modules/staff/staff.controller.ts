@@ -1,18 +1,31 @@
-import type { Response } from "express";
+import type { Request, Response } from "express";
 
 import { respond } from "../../core/http/index.js";
 import type { ValidatedRequest } from "../../core/middleware/index.js";
 import type {
+  changeStaffPasswordSchema,
   createStaffSchema,
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,
+  setStaffPasswordSchema,
+  updateStaffProfileSchema,
   updateStaffSchema,
 } from "./staff.schemas.js";
 import type { StaffService } from "./staff.service.js";
 
 /**
- * HTTP adapters for `/api/v1/admin/staff` (ADR-0009).
+ * HTTP adapters for the staff module (ADR-0009).
+ *
+ * Two factories over one service since D2.3, for the reason the users module
+ * has had two since step 9: they are mounted on two paths with different
+ * guards, and keeping them apart means `/api/v1/admin/profile` cannot reach a
+ * handler that takes an id from the URL — {@link createStaffProfileController}
+ * does not have one.
+ */
+
+/**
+ * `/api/v1/admin/staff` — a staff member acting on somebody else's account.
  *
  * Each is one line: read `req.ctx` and `req.valid`, call the service, respond
  * through the envelope. No branching and no error handling — a failure is an
@@ -65,6 +78,54 @@ export const createStaffController = (service: StaffService) =>
       await service.revokeSessions(req.ctx, req.valid.params.id);
       respond.noContent(res);
     },
+
+    /**
+     * `204`: the password is set and every session of the subject is gone.
+     * Reporting how many were revoked would tell the caller how many devices
+     * the account was signed in on, which is of no use to them and is not
+     * their business.
+     */
+    setPassword: async (
+      req: ValidatedRequest<typeof setStaffPasswordSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.setPassword(req.ctx, req.valid.params.id, req.valid.body);
+      respond.noContent(res);
+    },
   }) as const;
 
 export type StaffController = ReturnType<typeof createStaffController>;
+
+/** `/api/v1/admin/profile` — a staff member acting on their own account. */
+export const createStaffProfileController = (service: StaffService) =>
+  ({
+    /** No `:id` and no schema: the account is `ctx.principal` (ADR-0019 §3). */
+    get: async (req: Request, res: Response): Promise<void> => {
+      respond.ok(res, await service.getProfile(req.ctx));
+    },
+
+    update: async (
+      req: ValidatedRequest<typeof updateStaffProfileSchema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.ok(res, await service.updateProfile(req.ctx, req.valid.body));
+    },
+
+    /**
+     * `204`: the password changed and the other sessions ended. Returning how
+     * many were revoked would tell a caller who just proved they hold the
+     * password how many devices to expect to be signed out — true, but of no
+     * use to the legitimate owner and a hint to anybody else.
+     */
+    changePassword: async (
+      req: ValidatedRequest<typeof changeStaffPasswordSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.changePassword(req.ctx, req.valid.body);
+      respond.noContent(res);
+    },
+  }) as const;
+
+export type StaffProfileController = ReturnType<
+  typeof createStaffProfileController
+>;

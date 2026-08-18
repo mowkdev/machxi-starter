@@ -250,7 +250,9 @@ describe("user profile", () => {
         newPassword: "SomethingElse!2026",
       }).expect(403);
 
-      expect(response.body.error.code).toBe("USER_CURRENT_PASSWORD_INVALID");
+      // Renamed in D2.3: the condition is a property of the credential check
+      // and occurs in four endpoints across both populations (ADR-0027).
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
 
       // Refused, not partially applied: the old password still works.
       await request()

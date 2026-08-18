@@ -1,5 +1,6 @@
 export {
   accountDisabled,
+  currentPasswordInvalid,
   invalidCredentials,
   invalidRefreshToken,
   refreshReused,

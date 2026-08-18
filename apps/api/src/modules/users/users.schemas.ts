@@ -2,6 +2,7 @@ import {
   changePasswordBody,
   createUserBody,
   listUsersQuery,
+  setPasswordBody,
   updateProfileBody,
   updateUserBody,
   userIdParams,
@@ -27,6 +28,19 @@ export const updateUserSchema = {
   body: updateUserBody,
 } as const;
 export const revokeUserSessionsSchema = { params: userIdParams } as const;
+
+/**
+ * `POST /api/v1/admin/users/:id/password` — the administrative reset
+ * (ADR-0027).
+ *
+ * `currentPassword` here is the **acting staff member's**, not the subject's:
+ * the id in the path says whose password is being set, and the body says who
+ * is asking.
+ */
+export const setUserPasswordSchema = {
+  params: userIdParams,
+  body: setPasswordBody,
+} as const;
 
 export const updateProfileSchema = { body: updateProfileBody } as const;
 export const changePasswordSchema = { body: changePasswordBody } as const;

@@ -9,7 +9,7 @@ import {
   type RequestContext,
 } from "../../../core/context/index.js";
 import { isAppError } from "../../../core/errors/index.js";
-import { REVOKE_REASONS } from "../../auth/index.js";
+import { currentPasswordInvalid, REVOKE_REASONS } from "../../auth/index.js";
 import type {
   NewUserInput,
   UserColumnPatch,
@@ -31,6 +31,8 @@ import { createUsersService } from "../users.service.js";
 const USER_ID = "44444444-4444-7444-8444-444444444444";
 const OTHER_ID = "55555555-5555-7555-8555-555555555555";
 const SESSION_ID = "session-1";
+/** What the acting staff member presents on `POST /:id/password` (D2.3). */
+const ACTOR_PASSWORD = "actor-secret";
 const NOW = new Date("2026-08-18T12:00:00.000Z");
 
 /* ── fakes ────────────────────────────────────────────────────────────────── */
@@ -220,6 +222,33 @@ const createFakeSessions = () => {
   } as const;
 };
 
+/**
+ * The staff service, narrowed to the question this module cannot answer about
+ * itself: on `POST /api/v1/admin/users/:id/password` the actor is a staff
+ * member re-presenting their own password (ADR-0027 rule 1).
+ *
+ * A fake rather than the real service, because what is under test here is the
+ * *order* the users service calls it in and what it does with a rejection —
+ * the check itself is exercised in `staff.service.test.ts` and against a real
+ * database in the integration suite.
+ */
+const createFakeActors = () => {
+  const calls = { verifyActorPassword: 0 };
+
+  return {
+    calls,
+    actors: {
+      verifyActorPassword: (_ctx: RequestContext, currentPassword: string) => {
+        calls.verifyActorPassword += 1;
+
+        return currentPassword === ACTOR_PASSWORD
+          ? Promise.resolve()
+          : Promise.reject(currentPasswordInvalid());
+      },
+    },
+  } as const;
+};
+
 /* ── harness ──────────────────────────────────────────────────────────────── */
 
 const userPrincipal = (id: string): Principal => ({
@@ -263,16 +292,18 @@ const build = (seed: FakeUserRow[]) => {
   const repo = createFakeRepository(seed);
   const hasher = createFakeHasher();
   const sessions = createFakeSessions();
+  const actors = createFakeActors();
 
   const service = createUsersService({
     repository: repo.repository,
     hasher: hasher.hasher,
     sessions: sessions.sessions,
+    actors: actors.actors,
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
   });
 
-  return { service, repo, hasher, sessions } as const;
+  return { service, repo, hasher, sessions, actors } as const;
 };
 
 /** The admin segment: a staff principal acting on somebody else's account. */
@@ -635,7 +666,7 @@ describe("createUsersService — the user segment", () => {
       ]);
     });
 
-    it("answers USER_CURRENT_PASSWORD_INVALID when the current password is wrong", async () => {
+    it("answers AUTH_CURRENT_PASSWORD_INVALID when the current password is wrong", async () => {
       const { service } = build([userRow()]);
 
       await expectAppError(
@@ -644,7 +675,7 @@ describe("createUsersService — the user segment", () => {
             currentPassword: "NotThePassword!9",
             newPassword: body.newPassword,
           }),
-        "USER_CURRENT_PASSWORD_INVALID",
+        "AUTH_CURRENT_PASSWORD_INVALID",
         403,
       );
     });
@@ -670,7 +701,7 @@ describe("createUsersService — the user segment", () => {
 
       await expectAppError(
         () => service.changePassword(selfCtx(), body),
-        "USER_CURRENT_PASSWORD_INVALID",
+        "AUTH_CURRENT_PASSWORD_INVALID",
         403,
       );
       expect(hasher.calls.verify).toBe(0);
@@ -683,6 +714,113 @@ describe("createUsersService — the user segment", () => {
         () => service.changePassword(adminCtx(), body),
         "UNAUTHENTICATED",
         401,
+      );
+    });
+  });
+
+  /* -- D2.3: the administrative reset (ADR-0027) --------------------------- */
+
+  describe("setPassword", () => {
+    const body = {
+      password: "ResetByAdmin!2026",
+      currentPassword: ACTOR_PASSWORD,
+    };
+
+    it("sets the password and ends every one of the subject's sessions", async () => {
+      // No exception for anybody, unlike `changePassword`: the subject proved
+      // nothing here, and the plausible reason for a reset is that the account
+      // is compromised (ADR-0027 rule 3).
+      const { service, repo, sessions } = build([userRow()]);
+
+      await service.setPassword(adminCtx(), USER_ID, body);
+
+      expect(repo.rows.get(USER_ID)?.passwordHash).toBe(
+        "hashed:ResetByAdmin!2026",
+      );
+      expect(sessions.revocations).toEqual([
+        {
+          principalId: USER_ID,
+          reason: REVOKE_REASONS.passwordReset,
+          exceptSessionId: undefined,
+        },
+      ]);
+    });
+
+    it("requires the acting staff member's own password", async () => {
+      const { service, repo, sessions } = build([userRow()]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(adminCtx(), USER_ID, {
+            ...body,
+            currentPassword: "not-the-password",
+          }),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+
+      expect(repo.calls.updatePasswordHash).toBe(0);
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("asks the staff service, because the actor is not of this population", async () => {
+      // `ctx.principal` here is staff, so this service cannot verify the
+      // credential itself; it reaches the staff module through its service
+      // rather than reading the `staff` table (ADR-0009, ADR-0027 rule 1).
+      const { service, actors } = build([userRow()]);
+
+      await service.setPassword(adminCtx(), USER_ID, body);
+
+      expect(actors.calls.verifyActorPassword).toBe(1);
+    });
+
+    it("checks the actor before the subject, so it cannot be used to probe ids", async () => {
+      const { service } = build([]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(adminCtx(), OTHER_ID, {
+            ...body,
+            currentPassword: "not-the-password",
+          }),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+    });
+
+    it("answers NOT_FOUND for an unknown id once the actor verifies", async () => {
+      const { service, sessions } = build([userRow()]);
+
+      await expectAppError(
+        () => service.setPassword(adminCtx(), OTHER_ID, body),
+        "NOT_FOUND",
+        404,
+      );
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("buys no hash for a request it is going to refuse", async () => {
+      const { service, hasher } = build([userRow()]);
+
+      await expect(
+        service.setPassword(adminCtx(), USER_ID, {
+          ...body,
+          currentPassword: "not-the-password",
+        }),
+      ).rejects.toBeDefined();
+
+      expect(hasher.calls.hash).toBe(0);
+    });
+
+    it("takes no `currentPassword` of the subject, so a null hash is no obstacle", async () => {
+      // The subject is not being asked to prove anything, so an account with
+      // no password login (ADR-0017) can still be given one.
+      const { service, repo } = build([userRow({ passwordHash: null })]);
+
+      await service.setPassword(adminCtx(), USER_ID, body);
+
+      expect(repo.rows.get(USER_ID)?.passwordHash).toBe(
+        "hashed:ResetByAdmin!2026",
       );
     });
   });

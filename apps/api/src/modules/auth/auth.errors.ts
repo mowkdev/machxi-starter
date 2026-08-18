@@ -62,6 +62,27 @@ export const refreshReused = (): AppError =>
   );
 
 /**
+ * The caller re-presented their **own** current password and it did not
+ * verify (ADR-0027).
+ *
+ * Raised by all four credential-setting endpoints — both
+ * `profile/change-password` routes, where the caller is the subject, and both
+ * `POST /admin/{staff,users}/:id/password`, where they are not. It lives in
+ * the auth module rather than in either feature module because the question is
+ * about the credential check and not about an aggregate; a copy per module
+ * would be the same asymmetry ADR-0027 was written to remove.
+ *
+ * `403`, not `401`: the caller's session is valid and stays valid, so a `401`
+ * would be untrue about the request and would send every client interceptor
+ * that reads `401` as "the session died" to the login screen over a typo.
+ */
+export const currentPasswordInvalid = (): AppError =>
+  forbidden(
+    "The current password is incorrect",
+    "AUTH_CURRENT_PASSWORD_INVALID",
+  );
+
+/**
  * A registration whose email is already taken.
  *
  * Plain `CONFLICT`, never `USER_EMAIL_TAKEN`: this endpoint is anonymous, and

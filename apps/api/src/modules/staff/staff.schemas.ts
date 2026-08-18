@@ -1,8 +1,11 @@
 import {
+  changePasswordBody,
   createStaffBody,
   listStaffQuery,
+  setPasswordBody,
   staffIdParams,
   updateStaffBody,
+  updateStaffProfileBody,
 } from "@repo/contracts";
 
 /**
@@ -26,3 +29,26 @@ export const updateStaffSchema = {
   body: updateStaffBody,
 } as const;
 export const revokeStaffSessionsSchema = { params: staffIdParams } as const;
+
+/**
+ * `POST /api/v1/admin/staff/:id/password` — the administrative reset
+ * (ADR-0027).
+ *
+ * `currentPassword` in this body is the **acting** staff member's, not the
+ * subject's: the id in the path says who is being changed, and the body says
+ * who is asking.
+ */
+export const setStaffPasswordSchema = {
+  params: staffIdParams,
+  body: setPasswordBody,
+} as const;
+
+/**
+ * `/api/v1/admin/profile` — the same staff aggregate seen by its own account
+ * (ADR-0027). No `params`: the subject is `ctx.principal`, so there is no id
+ * for a caller to tamper with (ADR-0019 §3).
+ */
+export const updateStaffProfileSchema = {
+  body: updateStaffProfileBody,
+} as const;
+export const changeStaffPasswordSchema = { body: changePasswordBody } as const;

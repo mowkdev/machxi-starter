@@ -1,10 +1,13 @@
 import type {
+  ChangePasswordBody,
   CreateStaffBody,
   ListStaffQuery,
   Page,
+  SetPasswordBody,
   StaffResource,
   StaffRole,
   UpdateStaffBody,
+  UpdateStaffProfileBody,
 } from "@repo/contracts";
 import { SUPER_ADMIN_ROLE } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
@@ -13,7 +16,11 @@ import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
-import { REVOKE_REASONS, type AuthService } from "../auth/index.js";
+import {
+  currentPasswordInvalid,
+  REVOKE_REASONS,
+  type AuthService,
+} from "../auth/index.js";
 import {
   lastSuperAdmin,
   staffEmailTaken,
@@ -174,7 +181,40 @@ export const createStaffService = ({
     if (others === 0) throw lastSuperAdmin();
   };
 
+  /**
+   * The acting staff member re-presents their own password (ADR-0027 rule 1).
+   *
+   * The cheapest step-up authentication available in a repository that has no
+   * re-authentication category, and what stops a stolen access token from
+   * being an account-takeover engine: without it, fifteen minutes of a
+   * compromised admin token is enough to set a new password on every
+   * non-super-admin operator and every customer.
+   *
+   * Exported on the service because the *users* module needs the same check
+   * for `POST /api/v1/admin/users/:id/password` — the actor there is a staff
+   * member, so the question belongs to this aggregate, and a module reaches
+   * another module through its service rather than its repository (ADR-0009).
+   */
+  const verifyActorPassword = async (
+    ctx: RequestContext,
+    currentPassword: string,
+  ): Promise<void> => {
+    const principal = actor(ctx);
+    const record = await read(principal.id);
+
+    if (await hasher.verify(record.passwordHash, currentPassword)) return;
+
+    ctx.logger.warn(
+      { staffId: principal.id },
+      "credential change refused, the actor's current password did not verify",
+    );
+
+    throw currentPasswordInvalid();
+  };
+
   return {
+    verifyActorPassword,
+
     /**
      * `GET /api/v1/admin/staff` (ADR-0014).
      *
@@ -363,6 +403,135 @@ export const createStaffService = ({
       ctx.logger.info(
         { staffId: record.id, revoked, by: actor(ctx).id },
         "staff sessions revoked by an admin",
+      );
+    },
+
+    /**
+     * `POST /api/v1/admin/staff/:id/password` — an admin sets somebody else's
+     * password (ADR-0027 §Administrative reset).
+     *
+     * The order of the three checks is the decision worth reading:
+     *
+     * 1. **The actor's own password first**, before the subject is even read.
+     *    A wrong one therefore answers the same `403` whether or not the id
+     *    exists, so the endpoint cannot be used to enumerate accounts by
+     *    somebody who cannot use it at all — and it costs no argon2 hash of a
+     *    new password that is about to be thrown away.
+     * 2. **Then the rank rule.** Setting a super admin's password is removing
+     *    their standing in the most complete way available, so it carries the
+     *    same guard as disabling or signing them out (ADR-0017 §Invariants).
+     * 3. **Then the write**, with the hash computed outside the transaction
+     *    for the reason `create` gives.
+     *
+     * Every session of the subject goes, with no exception for anybody: the
+     * self-service case spares the caller because the caller proved ownership,
+     * and here the subject proved nothing.
+     */
+    setPassword: async (
+      ctx: RequestContext,
+      id: string,
+      body: SetPasswordBody,
+    ): Promise<void> => {
+      const at = now();
+
+      await verifyActorPassword(ctx, body.currentPassword);
+
+      const target = await read(id);
+
+      assertMayActOnSuperAdmin(ctx, target);
+
+      const passwordHash = await hasher.hash(body.password);
+
+      const revoked = await transaction(async (tx) => {
+        await repository.updatePasswordHash(target.id, passwordHash, at, tx);
+
+        return sessions.revokeSessionsFor(ctx, {
+          principalId: target.id,
+          reason: REVOKE_REASONS.passwordReset,
+          tx,
+        });
+      });
+
+      ctx.logger.info(
+        { staffId: target.id, revoked, by: actor(ctx).id },
+        "staff password reset by an admin",
+      );
+    },
+
+    /** `GET /api/v1/admin/profile` — the caller's own account. */
+    getProfile: async (ctx: RequestContext): Promise<StaffResource> =>
+      toStaffResource(await read(actor(ctx).id)),
+
+    /**
+     * `PATCH /api/v1/admin/profile` — names only.
+     *
+     * `status` and `roles` are absent from `updateStaffProfileBody` by
+     * construction, so this cannot re-enable or promote an account however the
+     * body is crafted. That is what lets the route carry no `authorize`: an
+     * `editor` reaching it can change nothing an `editor` may not change.
+     */
+    updateProfile: async (
+      ctx: RequestContext,
+      body: UpdateStaffProfileBody,
+    ): Promise<StaffResource> => {
+      const principal = actor(ctx);
+      const at = now();
+
+      // Refuses an account that is no longer there before writing, rather
+      // than letting `updateColumns` quietly match no row.
+      await read(principal.id);
+
+      await repository.updateColumns(
+        principal.id,
+        { firstName: body.firstName, lastName: body.lastName },
+        at,
+      );
+
+      ctx.logger.info({ staffId: principal.id }, "staff profile updated");
+
+      return toStaffResource(await read(principal.id));
+    },
+
+    /**
+     * `POST /api/v1/admin/profile/change-password` (ADR-0027).
+     *
+     * The staff half of the rule `/api/v1/user/profile/change-password`
+     * already applied, and the asymmetry ADR-0027 exists to remove: until now
+     * an operator's initial password was permanent. The current password is
+     * required even though the caller holds a valid session, and every session
+     * **except this one** ends — a password change is how somebody ends a
+     * session they no longer control, and logging them out of the device in
+     * their hand would be worse for no gain.
+     *
+     * There is no "account with no password" case here, unlike `users`:
+     * `staff.password_hash` is `NOT NULL` (ADR-0017), so the record type has
+     * no `null` to check for.
+     */
+    changePassword: async (
+      ctx: RequestContext,
+      body: ChangePasswordBody,
+    ): Promise<void> => {
+      const principal = actor(ctx);
+      const at = now();
+
+      await verifyActorPassword(ctx, body.currentPassword);
+
+      const passwordHash = await hasher.hash(body.newPassword);
+
+      const revoked = await transaction(async (tx) => {
+        await repository.updatePasswordHash(principal.id, passwordHash, at, tx);
+
+        return sessions.revokeSessionsFor(ctx, {
+          principalId: principal.id,
+          reason: REVOKE_REASONS.passwordChanged,
+          exceptSessionId: principal.sessionId,
+          tx,
+        });
+      });
+
+      ctx.logger.info(
+        { staffId: principal.id, revoked },
+        "staff password changed",
       );
     },
   } as const;

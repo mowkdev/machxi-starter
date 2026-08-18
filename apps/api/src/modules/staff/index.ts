@@ -1,6 +1,8 @@
 export {
   createStaffController,
+  createStaffProfileController,
   type StaffController,
+  type StaffProfileController,
 } from "./staff.controller.js";
 export {
   lastSuperAdmin,
@@ -17,12 +19,15 @@ export {
   type StaffRecord,
   type StaffRepository,
 } from "./staff.repository.js";
-export { createStaffRouter } from "./staff.routes.js";
+export { createStaffProfileRouter, createStaffRouter } from "./staff.routes.js";
 export {
+  changeStaffPasswordSchema,
   createStaffSchema,
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,
+  setStaffPasswordSchema,
+  updateStaffProfileSchema,
   updateStaffSchema,
 } from "./staff.schemas.js";
 export {

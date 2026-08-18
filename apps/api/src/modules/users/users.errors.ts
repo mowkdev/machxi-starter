@@ -1,9 +1,4 @@
-import {
-  conflict,
-  forbidden,
-  notFound,
-  type AppError,
-} from "../../core/errors/index.js";
+import { conflict, notFound, type AppError } from "../../core/errors/index.js";
 
 /**
  * The users module's error factories (ADR-0013).
@@ -25,17 +20,3 @@ export const userNotFound = (): AppError => notFound("User not found");
  */
 export const userEmailTaken = (): AppError =>
   conflict("A user with this email already exists", "USER_EMAIL_TAKEN");
-
-/**
- * `POST /api/v1/user/profile/change-password` where `currentPassword` does not
- * verify.
- *
- * `403`, not `401`: the caller's session is valid and stays valid, so a `401`
- * would be untrue about the request and would send every client interceptor
- * that reads `401` as "the session died" to the login screen over a typo.
- */
-export const currentPasswordInvalid = (): AppError =>
-  forbidden(
-    "The current password is incorrect",
-    "USER_CURRENT_PASSWORD_INVALID",
-  );

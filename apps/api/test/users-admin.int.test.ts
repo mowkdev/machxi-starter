@@ -116,6 +116,7 @@ describe("admin user administration", () => {
       { method: "post", path: USERS_BASE },
       { method: "patch", path: `${USERS_BASE}/${UNKNOWN_ID}` },
       { method: "post", path: `${USERS_BASE}/${UNKNOWN_ID}/sessions/revoke` },
+      { method: "post", path: `${USERS_BASE}/${UNKNOWN_ID}/password` },
     ] as const;
 
     const ROUTES = [...READ_ROUTES, ...WRITE_ROUTES];
@@ -527,6 +528,147 @@ describe("admin user administration", () => {
       const response = await asAdmin(`${USERS_BASE}/${target.id}`).expect(200);
 
       expect(response.body.data.deletedAt).toBeNull();
+    });
+  });
+
+  /**
+   * `POST /api/v1/admin/users/:id/password` — the administrative reset
+   * (ADR-0027 §Administrative reset).
+   *
+   * The acting staff member's own password is in the body, and the subject's
+   * is in nothing at all: that asymmetry is the endpoint. What is asserted
+   * here is the pair of properties a unit test cannot show — that the new
+   * credential really signs in, and that every session the subject held is
+   * gone by the time the response arrives.
+   */
+  describe("POST /api/v1/admin/users/:id/password", () => {
+    const RESET_PASSWORD = "ResetByAnAdmin!2026";
+
+    const setPassword = (id: string, body: object) =>
+      request()
+        .post(`${USERS_BASE}/${id}/password`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send(body);
+
+    /** A customer nobody else in the file touches, already signed in. */
+    const freshCustomer = async (email: string) => {
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      return {
+        id: created.id,
+        tokens: await login(harness.app, "user", {
+          email,
+          password: NEW_ACCOUNT_PASSWORD,
+        }),
+      };
+    };
+
+    it("sets the password, ends every session, and the new one signs in", async () => {
+      const email = "reset.me@machxi.local";
+      const { id, tokens } = await freshCustomer(email);
+
+      const response = await setPassword(id, {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      expect(response.body).toEqual({});
+      expect(response.text).toBe("");
+
+      // No exception for anybody: the subject proved nothing, and the
+      // plausible reason for a reset is that the account is compromised.
+      const after = await request()
+        .get("/api/v1/user/profile")
+        .set("Authorization", bearer(tokens.accessToken))
+        .expect(401);
+
+      expect(after.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      await login(harness.app, "user", { email, password: RESET_PASSWORD });
+
+      const withOldPassword = await request()
+        .post("/api/v1/user/auth/login")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(401);
+
+      expect(withOldPassword.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("refuses an actor who cannot re-present their own password", async () => {
+      // ADR-0027 rule 1, and the reason the endpoint has a body at all: a
+      // stolen admin access token must not be enough to take over an account.
+      const email = "reset.refused@machxi.local";
+      const { id } = await freshCustomer(email);
+
+      const response = await setPassword(id, {
+        password: RESET_PASSWORD,
+        currentPassword: "not-the-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+
+      // Refused, not partially applied.
+      await login(harness.app, "user", {
+        email,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+    });
+
+    it("answers the same 403 for an id that does not exist", async () => {
+      // The actor is checked before the subject, so a caller who cannot use
+      // the endpoint cannot use it to learn which ids are real either.
+      const response = await setPassword(UNKNOWN_ID, {
+        password: RESET_PASSWORD,
+        currentPassword: "not-the-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+    });
+
+    it("answers 404 for an unknown id once the actor verifies", async () => {
+      const response = await setPassword(UNKNOWN_ID, {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(404);
+
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+
+    it("holds the new password to the policy and the actor's only to a bound", async () => {
+      const response = await setPassword(customerId, {
+        password: "short",
+        currentPassword: "x",
+      }).expect(400);
+
+      const paths = response.body.error.details.map(
+        (detail: { path: string }) => detail.path,
+      );
+
+      expect(paths).toContain("password");
+      expect(paths).not.toContain("currentPassword");
+    });
+
+    it("rejects an unknown field rather than ignoring it", async () => {
+      const response = await setPassword(customerId, {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+        newPassword: RESET_PASSWORD,
+      }).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("answers 400 for an id that is not a uuid", async () => {
+      const response = await setPassword("not-a-uuid", {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
     });
   });
 });

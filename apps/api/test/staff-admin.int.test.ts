@@ -116,6 +116,7 @@ describe("admin staff administration", () => {
       { method: "get", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
       { method: "patch", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/sessions/revoke` },
+      { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/password` },
     ] as const;
 
     const call = (route: (typeof ROUTES)[number]) =>
@@ -492,6 +493,136 @@ describe("admin staff administration", () => {
 
     it("answers 400 for an id that is not a uuid", async () => {
       const response = await revoke("not-a-uuid").expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+  });
+
+  /**
+   * `POST /api/v1/admin/staff/:id/password` — the administrative reset
+   * (ADR-0027 §Administrative reset).
+   *
+   * The endpoint that makes a forgotten operator password recoverable without
+   * writing an argon2 digest into Postgres by hand. Two rules carry it: the
+   * actor re-presents their own password, and the ADR-0017 rank rule protects
+   * a super admin from everybody it outranks — rewriting somebody's credential
+   * is removing their standing in the most complete way available.
+   */
+  describe("POST /api/v1/admin/staff/:id/password", () => {
+    const RESET_PASSWORD = "ResetByAnAdmin!2026";
+
+    const setPassword = (token: string, id: string, body: object) =>
+      request()
+        .post(`${STAFF_BASE}/${id}/password`)
+        .set("Authorization", bearer(token))
+        .send(body);
+
+    it("sets the password, ends every session, and the new one signs in", async () => {
+      const email = "reset.staff@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email, roles: ["editor"] },
+      );
+      const tokens = await login(harness.app, "staff", {
+        email,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      const response = await setPassword(adminTokens.accessToken, target.id, {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      expect(response.body).toEqual({});
+      expect(response.text).toBe("");
+
+      const after = await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(tokens.accessToken))
+        .expect(401);
+
+      expect(after.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      await login(harness.app, "staff", { email, password: RESET_PASSWORD });
+
+      const withOldPassword = await request()
+        .post("/api/v1/admin/auth/login")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(401);
+
+      expect(withOldPassword.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("refuses an actor who cannot re-present their own password", async () => {
+      const email = "reset.staff.refused@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email, roles: ["editor"] },
+      );
+
+      const response = await setPassword(adminTokens.accessToken, target.id, {
+        password: RESET_PASSWORD,
+        currentPassword: "not-the-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+
+      await login(harness.app, "staff", {
+        email,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+    });
+
+    it("refuses an admin who aims it at a super admin", async () => {
+      // A privilege everyone it outranks can seize by rewriting its credential
+      // is not a privilege (ADR-0017 §Invariants, ADR-0027 rule 2).
+      const me = await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(superAdminTokens.accessToken))
+        .expect(200);
+
+      const response = await setPassword(
+        adminTokens.accessToken,
+        me.body.data.id as string,
+        {
+          password: RESET_PASSWORD,
+          currentPassword: NEW_ACCOUNT_PASSWORD,
+        },
+      ).expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+
+      // The super admin's own credential is untouched, which is the assertion
+      // the 403 alone would not make.
+      await login(harness.app, "staff", superAdmin());
+    });
+
+    it("answers 404 for an unknown id once the actor verifies", async () => {
+      const response = await setPassword(adminTokens.accessToken, UNKNOWN_ID, {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(404);
+
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+
+    it("answers the same 403 for an unknown id when the actor's password is wrong", async () => {
+      const response = await setPassword(adminTokens.accessToken, UNKNOWN_ID, {
+        password: RESET_PASSWORD,
+        currentPassword: "not-the-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+    });
+
+    it("rejects an unknown field rather than ignoring it", async () => {
+      const response = await setPassword(adminTokens.accessToken, adminId, {
+        password: RESET_PASSWORD,
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+        roles: ["super_admin"],
+      }).expect(400);
 
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
     });

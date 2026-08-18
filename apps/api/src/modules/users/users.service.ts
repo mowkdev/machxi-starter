@@ -3,6 +3,7 @@ import type {
   CreateUserBody,
   ListUsersQuery,
   Page,
+  SetPasswordBody,
   UpdateProfileBody,
   UpdateUserBody,
   UserResource,
@@ -14,12 +15,13 @@ import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
-import { REVOKE_REASONS, type AuthService } from "../auth/index.js";
 import {
   currentPasswordInvalid,
-  userEmailTaken,
-  userNotFound,
-} from "./users.errors.js";
+  REVOKE_REASONS,
+  type AuthService,
+} from "../auth/index.js";
+import type { StaffService } from "../staff/index.js";
+import { userEmailTaken, userNotFound } from "./users.errors.js";
 import { toUserResource } from "./users.mapper.js";
 import type { UserRecord, UsersRepository } from "./users.repository.js";
 
@@ -63,6 +65,15 @@ export interface UsersServiceDeps {
    * (ADR-0009).
    */
   readonly sessions: Pick<AuthService, "revokeSessionsFor">;
+  /**
+   * The staff service, narrowed to the one question this module cannot answer
+   * about itself: on `POST /api/v1/admin/users/:id/password` the *actor* is a
+   * staff member re-presenting their own password, and this service is bound
+   * to the `user` population (ADR-0027 rule 1). Asking the staff module
+   * through its service, rather than reading the `staff` table here, is what
+   * ADR-0009 requires.
+   */
+  readonly actors: Pick<StaffService, "verifyActorPassword">;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
@@ -72,6 +83,7 @@ export const createUsersService = ({
   repository,
   hasher,
   sessions,
+  actors,
   transaction,
   now = () => new Date(),
 }: UsersServiceDeps) => {
@@ -268,6 +280,49 @@ export const createUsersService = ({
       ctx.logger.info(
         { userId: record.id, revoked },
         "user sessions revoked by staff",
+      );
+    },
+
+    /**
+     * `POST /api/v1/admin/users/:id/password` — staff set a customer's
+     * password (ADR-0027 §Administrative reset).
+     *
+     * The actor's own password is verified **first**, before the subject is
+     * read: a wrong one then answers the same `403` whether or not the id
+     * exists, and no argon2 hash is bought for a request that is about to be
+     * refused. There is no rank rule to apply — the `users` population has no
+     * role that outranks staff — so what remains is the write and the
+     * revocation, in one transaction.
+     *
+     * Every session of the subject ends, with no exception: the self-service
+     * case below spares the caller because the caller proved ownership, and
+     * here the subject proved nothing.
+     */
+    setPassword: async (
+      ctx: RequestContext,
+      id: string,
+      body: SetPasswordBody,
+    ): Promise<void> => {
+      const at = now();
+
+      await actors.verifyActorPassword(ctx, body.currentPassword);
+
+      const record = await readAny(id);
+      const passwordHash = await hasher.hash(body.password);
+
+      const revoked = await transaction(async (tx) => {
+        await repository.updatePasswordHash(record.id, passwordHash, at, tx);
+
+        return sessions.revokeSessionsFor(ctx, {
+          principalId: record.id,
+          reason: REVOKE_REASONS.passwordReset,
+          tx,
+        });
+      });
+
+      ctx.logger.info(
+        { userId: record.id, revoked },
+        "user password reset by staff",
       );
     },
 

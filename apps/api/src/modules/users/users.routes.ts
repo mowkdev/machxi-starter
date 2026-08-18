@@ -11,6 +11,7 @@ import {
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,
+  setUserPasswordSchema,
   updateProfileSchema,
   updateUserSchema,
 } from "./users.schemas.js";
@@ -20,7 +21,7 @@ import {
  *
  * Unlike the staff router, this resource is not uniformly `admin`: the segment
  * mounts it behind `authorize("admin", "manager")` because a manager may
- * *read* the customer base, and the three writing routes refine that to
+ * *read* the customer base, and the four writing routes refine that to
  * `authorize("admin")` (ADR-0019 §2). `super_admin` bypasses both, on the one
  * line in `authorize` where that is stated.
  *
@@ -57,6 +58,17 @@ export const createUsersRouter = (controller: UsersController): Router => {
     authorize("admin"),
     validate(revokeUserSessionsSchema),
     controller.revokeSessions,
+  );
+
+  // `admin`, never `manager`: reading the customer base is a manager's job,
+  // and rewriting a customer's credential is not. A sub-resource rather than a
+  // field on `PATCH /:id`, so no code path exists where a profile edit can
+  // silently rotate a password (ADR-0027).
+  router.post(
+    "/:id/password",
+    authorize("admin"),
+    validate(setUserPasswordSchema),
+    controller.setPassword,
   );
 
   return router;
