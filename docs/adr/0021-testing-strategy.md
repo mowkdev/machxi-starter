@@ -83,6 +83,63 @@ are actually met, now that there are fixtures to seed:
 - `local.postman_environment.json` — `baseUrl=http://localhost:4000`, seeded super admin credentials placeholders (values come from `.env`, not committed).
 - Runnable headless with `newman` (`pnpm test:postman`) as an optional smoke check.
 
+**Amended 2026-08-18 (implementation step 10).** What was built, where it went
+past the sketch above, and the one place the checklist below turned out to be
+ambiguous:
+
+- **Ten folders, not five.** `Health`, `Admin Auth`, `Admin › Staff`,
+  `Admin › Users`, `Admin › Role guards`, `User Auth`, `User › Profile`,
+  `Public`, `Errors & routing`, `Teardown` — 63 requests, 193 assertions. The
+  five added ones are the surfaces that did not exist when this ADR was written:
+  the role guards of ADR-0019, the profile endpoints of step 9, public
+  registration, the failure branch of the envelope, and a teardown that logs
+  every session out so a second run starts where the first did.
+- **The envelope is asserted once, at collection level, for every response.**
+  `success`, `data`/`error` exclusivity and `meta.requestId` (ADR-0012), plus
+  `Cache-Control: no-store` on every 2xx (ADR-0020). Per-request tests then state
+  only what is specific to them. Repeating the envelope assertions in 63 places
+  would have meant 63 places to update and 62 chances to forget one.
+- **"Old refresh → 401" needed a third rotation to be true.** Taken literally,
+  step 4 of the checklist below describes a request that answers `200`: replaying
+  the immediately previous refresh token inside `REFRESH_ROTATION_GRACE_SEC` is a
+  legitimate retry by design (ADR-0018 §Refresh), and outside that window it
+  answers `AUTH_REFRESH_REUSED` and revokes the session. Neither is what a smoke
+  test should depend on — the first is a clock race, the second poisons every
+  request after it. The collection therefore rotates **twice** and then presents
+  the token the login issued: two rotations on, it is neither the session's
+  current nor its previous token, so it is `AUTH_INVALID_REFRESH_TOKEN` with no
+  reference to the clock. The checklist item is met; the reading that made it
+  time-dependent is not the one to implement.
+- **Repeatability was a design constraint, not a nicety.** Accounts the run
+  creates carry a timestamped address, so a second run does not collide with the
+  first; the only password it changes belongs to an account the same run created,
+  never to a seeded fixture — changing `customer@machxi.local`'s password would
+  make the collection pass once and fail forever after. What it leaves behind is
+  three accounts per run, because v1 has no delete endpoint.
+- **The rate limits (ADR-0020) bound how often it can run**, and that is stated
+  in `docs/postman/README.md` rather than discovered. One pass spends exactly one
+  of the five failed refreshes per 15 minutes — which is why there is one
+  deliberate refresh failure and not four — and ~63 of the 300 global requests.
+  Roughly five consecutive runs per window against one process.
+- **`pnpm test:postman` is `scripts/postman.mjs`**, not a bare `newman run` line.
+  It reads `SEED_SUPER_ADMIN_*` from `.env` and passes them as `--env-var`, which
+  is what keeps the committed environment file free of credentials; a `$VAR` in
+  the package script would expand in bash and not in the shell pnpm uses on
+  Windows. It probes `/health/ready` first, so a stopped API produces one
+  sentence naming the command that starts it rather than 63 connection errors,
+  and it sets `process.exitCode` rather than calling `process.exit()` — killing
+  the process while that probe still holds a socket trips a libuv assertion on
+  Windows and replaces the exit code with a native crash code, which would make
+  the script useless as a CI step. See ADR-0002 for why `scripts/` sits outside
+  the workspaces.
+- **`newman` is a root devDependency, and it is not cheap**: 108 transitive
+  packages on every clone of a blueprint, for a check ADR-0021 itself calls
+  optional. `pnpm dlx newman` would keep the lockfile clean, and it is the
+  reasonable alternative if install time starts to matter. It was not chosen
+  because an unpinned tool fetched at run time is exactly the kind of drift a
+  lockfile exists to prevent, and because the smoke check should still work on a
+  machine that is offline after `pnpm i`.
+
 ### Acceptance checklist for the first deliverable
 
 1. `pnpm i && cp .env.example .env && pnpm docker:up` — Postgres healthy.

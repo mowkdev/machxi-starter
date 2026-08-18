@@ -33,12 +33,25 @@ The target is a blueprint with exactly three apps (`api`, `admin`, `web`), share
 ├── docs/
 │   ├── adr/
 │   └── postman/        # collection + environment for manual API testing (ADR-0021)
+├── scripts/            # repo-level tooling that belongs to no workspace (added step 10)
 ├── package.json
 ├── pnpm-workspace.yaml
 └── turbo.json
 ```
 
 Removed: `apps/blog` (Remix) and `packages/jest-presets`.
+
+**Amended 2026-08-18 (implementation step 10): `scripts/`.** A root directory for
+tooling that is about the repository rather than about any package in it — today
+only `postman.mjs`, the newman runner behind `pnpm test:postman` (ADR-0021).
+
+It sits outside the workspaces on purpose, and that has one consequence worth
+stating: nothing in `scripts/` is covered by `turbo run lint` or `check-types`,
+because both only visit workspace packages. Anything that grows past a runner —
+logic worth testing, types worth checking — belongs in a package instead, not
+here. The alternative, a `@repo/scripts` package, buys lint coverage at the cost
+of a workspace, a `package.json` and a tsconfig for one file that exists to be
+invoked by a root script.
 
 Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/contracts`, `@repo/logger`, …). Apps depend on packages with `workspace:*`.
 
@@ -59,7 +72,7 @@ Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/c
   "noUncheckedIndexedAccess": true,
   "exactOptionalPropertyTypes": true,
   "verbatimModuleSyntax": true,
-  "module": "ESNext",             // base default; node.json overrides to NodeNext
+  "module": "ESNext", // base default; node.json overrides to NodeNext
   "moduleResolution": "Bundler",
   "target": "ES2022",
   "lib": ["ES2023"]
@@ -78,22 +91,22 @@ Package naming: all internal packages are scoped `@repo/*` (`@repo/db`, `@repo/c
 - **Native dependencies are allowlisted explicitly** (amended 2026-08-18). pnpm 10 blocks install scripts by default, so a package with a native addon must be listed in the root `pnpm.onlyBuiltDependencies` or it installs broken. Current entries: `esbuild`, `argon2`. `argon2` resolves from the prebuilt binaries in its own `prebuilds/` directory, so a clean clone needs no local C++ toolchain. It is also CJS-only (`main: argon2.cjs`) and native, so the API bundler (`tsdown`) must mark it **external** rather than attempt to inline it.
 - **A package the bundler inlines brings its own external dependencies with it** (amended 2026-08-18, step 7). Because internal packages ship source, `tsdown` must be told to inline them (`noExternal: [/^@repo\//]`) — it treats everything in `dependencies` as external by default, and `dist/main.js` would otherwise `import '@repo/contracts'` at runtime and hand node a `.ts` file. Two consequences, both discovered by running the built bundle rather than by review:
   - **An inlined package's own external imports must resolve from the app.** `argon2` and `pino` are dependencies of `@repo/crypto` and `@repo/logger`; once those are inlined, the import sits in `apps/api/dist/main.js` and pnpm's non-flat `node_modules` will not resolve it from there. Both are therefore direct dependencies of `apps/api` as well.
-  - **A shared library must not end up bundled on one side and external on the other.** `pino-http` is a direct dependency of the API and stays external, and it reaches into a pino logger through pino's *private* symbols. With `pino` inlined via `@repo/logger` there were two pino instances, the symbols did not match, and the first completed request crashed the process — with no type error and no failing test, because in dev and under vitest both sides resolve to the same file. Declaring `pino` in the app is what makes it external on both sides. The general rule: any package that two bundled-and-external halves must *share an instance of* has to be a direct dependency of the app.
+  - **A shared library must not end up bundled on one side and external on the other.** `pino-http` is a direct dependency of the API and stays external, and it reaches into a pino logger through pino's _private_ symbols. With `pino` inlined via `@repo/logger` there were two pino instances, the symbols did not match, and the first completed request crashed the process — with no type error and no failing test, because in dev and under vitest both sides resolve to the same file. Declaring `pino` in the app is what makes it external on both sides. The general rule: any package that two bundled-and-external halves must _share an instance of_ has to be a direct dependency of the app.
 
 ### Lint rules that enforce ADRs
 
 Collected here so they are implemented once in `@repo/eslint-config`:
 
-| Rule | Enforces |
-|---|---|
-| `no-restricted-syntax`: `res.json` / `res.send` outside `apps/api/src/core/http/**` | ADR-0012 envelope helpers only |
-| `no-restricted-imports`: `getContext` inside `modules/**/*.service.ts` | ADR-0010 explicit `ctx` param in services |
-| `no-restricted-imports`: `express` inside `*.service.ts`, `*.repository.ts` | ADR-0009 layer boundaries |
-| `no-restricted-imports`: `@repo/db` schema/tables inside `*.service.ts`, `*.controller.ts` — both the `@repo/db/schema` specifier **and** `importNames` on `@repo/db`, which re-exports the tables from its root | ADR-0009 SQL only in repositories |
-| `no-restricted-properties`: `process.env` outside `apps/api/src/core/config/**` and `packages/db/src/tooling/env.ts` (the integration harness `apps/api/test/setup/env.ts` sits outside `src/**` and outside the rule — ADR-0004) | ADR-0004 |
-| `no-restricted-syntax`: `ClassDeclaration`, `ClassExpression`, `ThisExpression` in `apps/api/src/**` | ADR-0009 functional style |
-| `@typescript-eslint/no-floating-promises`, `no-misused-promises` | ADR-0011 async handlers |
-| `no-console` (use logger) | ADR-0005 |
+| Rule                                                                                                                                                                                                                              | Enforces                                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `no-restricted-syntax`: `res.json` / `res.send` outside `apps/api/src/core/http/**`                                                                                                                                               | ADR-0012 envelope helpers only            |
+| `no-restricted-imports`: `getContext` inside `modules/**/*.service.ts`                                                                                                                                                            | ADR-0010 explicit `ctx` param in services |
+| `no-restricted-imports`: `express` inside `*.service.ts`, `*.repository.ts`                                                                                                                                                       | ADR-0009 layer boundaries                 |
+| `no-restricted-imports`: `@repo/db` schema/tables inside `*.service.ts`, `*.controller.ts` — both the `@repo/db/schema` specifier **and** `importNames` on `@repo/db`, which re-exports the tables from its root                  | ADR-0009 SQL only in repositories         |
+| `no-restricted-properties`: `process.env` outside `apps/api/src/core/config/**` and `packages/db/src/tooling/env.ts` (the integration harness `apps/api/test/setup/env.ts` sits outside `src/**` and outside the rule — ADR-0004) | ADR-0004                                  |
+| `no-restricted-syntax`: `ClassDeclaration`, `ClassExpression`, `ThisExpression` in `apps/api/src/**`                                                                                                                              | ADR-0009 functional style                 |
+| `@typescript-eslint/no-floating-promises`, `no-misused-promises`                                                                                                                                                                  | ADR-0011 async handlers                   |
+| `no-console` (use logger)                                                                                                                                                                                                         | ADR-0005                                  |
 
 **Implemented 2026-08-18 (step 7)** as `@repo/eslint-config/api`, an `apiConfig({ tsconfigRootDir })` function that `apps/api/eslint.config.js` applies; a second Express app would apply the same export rather than a copy. Two notes on the implementation:
 

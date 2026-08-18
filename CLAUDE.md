@@ -36,6 +36,7 @@ pnpm test:postman              # newman over docs/postman
 - `apps/admin` (Vite + React), `apps/web` (Next.js) — out of scope until the API deliverable is done
 - `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
 - `docker/local` — compose for local dev; `docs/` — ADRs, plan, Postman
+- `scripts/` — repo-level tooling outside the workspaces, so **not** covered by `turbo run lint` / `check-types` (ADR-0002); today only `postman.mjs`
 
 ## Search
 
