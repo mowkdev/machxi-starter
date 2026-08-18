@@ -92,11 +92,11 @@ Postman: the teardown folder deletes the accounts each run creates instead of di
 
 **Done when:** a deleted user's address can be re-registered; two rows may share an address with at most one live; writes to a deleted user answer `409 USER_DELETED` while `GET` still answers `200`; deleting the last active super admin is refused; deleting a staff member revokes their sessions in the same transaction; `pnpm db:reset` replays cleanly from migration `0000`.
 
-### 5. Browser token transport — **gated**
+### 5. Browser token transport
 
-**ADRs:** [0029](../adr/0029-browser-token-transport.md) (`proposed`), [0018](../adr/0018-authentication-sessions-and-tokens.md) §Token transport, [0020](../adr/0020-security-baseline.md) §CORS
+**ADRs:** [0029](../adr/0029-browser-token-transport.md), [0018](../adr/0018-authentication-sessions-and-tokens.md) §Token transport, [0020](../adr/0020-security-baseline.md) §CORS
 
-> **Do not start this step until ADR-0029 is `accepted`.** It changes `AuthResource`, a published contract, and moves a security boundary. If the proposal is rejected or altered, this step is rewritten from whatever replaces it.
+ADR-0029 was accepted on 2026-08-18, which un-gates this step. It changes `AuthResource`, a published contract, so it lands **before** any D3 client code is written and not alongside it.
 
 Implements ADR-0029 as written: `X-Auth-Transport` opt-in; the refresh token in a `__Secure-machxi.refresh` cookie scoped per segment; a double-submit CSRF token on `refresh`, `logout` and `logout-all`; `AuthResource.refreshToken` and `refreshBody.refreshToken` become optional; `CSRF_TOKEN_INVALID` (403) joins the error codes; `logout` clears both cookies. New middleware at `apps/api/src/core/middleware/csrf.ts`.
 

@@ -1,9 +1,9 @@
 # ADR-0029: Browser token transport: httpOnly refresh cookie and CSRF
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-18
 
-> **This ADR is `proposed` and needs a decision before any D2 frontend code is written.** It changes a published contract (`AuthResource`) and moves a security boundary, and [ADR-0025](0025-deliverables.md) rule 3 says an ADR that is not agreed and an ADR that is not built are different facts. Everything below is a complete proposal, written to be accepted or rejected in one read rather than discovered in pieces during implementation.
+> Written as `proposed` and **accepted the same day**. It changes a published contract (`AuthResource`) and moves a security boundary, so it was put up for a decision rather than assumed; [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts, and this is now agreed and not yet built — `D2.5` implements it. It stays amendable in place while D2 is in progress (ADR-0025 rule 2); once D2 ships it changes only by supersession.
 
 ## Context
 

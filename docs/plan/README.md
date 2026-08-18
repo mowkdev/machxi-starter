@@ -23,7 +23,7 @@ Read this file first; open a plan only when you are working in it.
 
 ## What blocks D3
 
-D3 is not scheduled because two decisions it depends on are not made:
+D3 is not scheduled because of one open decision and one dependency:
 
-- **[ADR-0029](../adr/0029-browser-token-transport.md) is `proposed`.** The `admin` app cannot be built without knowing where its refresh token lives, and the answer changes `apps/api` and `packages/contracts`, not only the frontend. `D2.5` implements it and is gated on acceptance.
 - **There is no ADR for `packages/ui`.** It is still Turborepo template scaffolding (`counter-button`, `link`), both apps already depend on it, and no decision covers styling, component conventions or whether it survives at all. This is a product and design decision rather than an engineering one, so no ADR is drafted for it here; it is listed under _Planned_ in the [ADR index](../adr/README.md) and is D3's first step.
+- **D2.5 must land first.** [ADR-0029](../adr/0029-browser-token-transport.md) is `accepted` as of 2026-08-18, so the decision is made — but the `admin` app cannot be built against a contract that has not shipped, and it changes `apps/api` and `packages/contracts` rather than only the frontend. This is sequencing, not a blocker on a decision.
