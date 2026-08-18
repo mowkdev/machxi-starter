@@ -1,0 +1,212 @@
+import { errorEnvelopeSchema } from "@repo/contracts";
+import { createLogger } from "@repo/logger";
+import type { NextFunction, Request, Response } from "express";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+
+import { createRequestContext } from "../../context/index.js";
+import { forbidden, internal, notFound } from "../../errors/index.js";
+import { createErrorHandler, toAppError } from "../error-handler.js";
+
+/**
+ * ADR-0013: one place decides the status, one place writes the body, and an
+ * unexpected failure never reaches the client as a stack trace or a SQL string.
+ */
+
+const requestId = "01J0000000000000000000000A";
+
+const fakeResponse = () => {
+  const res = {
+    headersSent: false,
+    statusCode: 200,
+    status: vi.fn((code: number) => {
+      res.statusCode = code;
+
+      return res;
+    }),
+    json: vi.fn((_body: unknown) => res),
+  };
+
+  return res;
+};
+
+const handle = (
+  error: unknown,
+  { includeDebug = false }: { includeDebug?: boolean } = {},
+) => {
+  const res = fakeResponse();
+  const next = vi.fn();
+  const ctx = createRequestContext({
+    requestId,
+    logger: createLogger({ level: "silent" }),
+  });
+
+  createErrorHandler({ includeDebug })(
+    error,
+    { ctx } as Request,
+    res as unknown as Response,
+    next as unknown as NextFunction,
+  );
+
+  return { res, next, body: res.json.mock.calls[0]?.[0] as unknown };
+};
+
+describe("toAppError", () => {
+  it("passes an AppError through untouched", () => {
+    const error = forbidden();
+
+    expect(toAppError(error)).toBe(error);
+  });
+
+  it("maps a ZodError to 400 VALIDATION_ERROR with details", () => {
+    const result = z.object({ email: z.email() }).safeParse({ email: "x" });
+
+    expect(result.success).toBe(false);
+
+    if (result.success) return;
+
+    const mapped = toAppError(result.error);
+
+    expect(mapped.status).toBe(400);
+    expect(mapped.code).toBe("VALIDATION_ERROR");
+    expect(mapped.details?.[0]?.path).toBe("email");
+  });
+
+  it.each([
+    ["entity.parse.failed", 400, "MALFORMED_JSON"],
+    ["entity.too.large", 413, "PAYLOAD_TOO_LARGE"],
+  ])("maps the body-parser %s error", (type, status, code) => {
+    const mapped = toAppError(Object.assign(new Error("bad body"), { type }));
+
+    expect(mapped.status).toBe(status);
+    expect(mapped.code).toBe(code);
+  });
+
+  it("maps an untranslated Postgres unique violation to 409 CONFLICT", () => {
+    // The safety net: a repository that recognises the constraint should raise
+    // its own domain error first (ADR-0013).
+    const mapped = toAppError(
+      Object.assign(new Error('duplicate key value violates "staff_email_key"'), {
+        code: "23505",
+      }),
+    );
+
+    expect(mapped.status).toBe(409);
+    expect(mapped.code).toBe("CONFLICT");
+  });
+
+  it("does not name the conflicting constraint", () => {
+    // The constraint name would tell a caller which value already exists
+    // (ADR-0020 §Enumeration).
+    const mapped = toAppError(
+      Object.assign(new Error('duplicate key value violates "staff_email_key"'), {
+        code: "23505",
+      }),
+    );
+
+    expect(mapped.message).toBe("Conflict");
+  });
+
+  it("maps anything else to a non-exposed 500", () => {
+    const mapped = toAppError(new TypeError("cannot read properties of null"));
+
+    expect(mapped.status).toBe(500);
+    expect(mapped.code).toBe("INTERNAL_ERROR");
+    expect(mapped.expose).toBe(false);
+  });
+});
+
+describe("errorHandler", () => {
+  it("writes the standard error envelope", () => {
+    const { res, body } = handle(notFound("User not found"));
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(errorEnvelopeSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
+      success: false,
+      error: { code: "NOT_FOUND", message: "User not found" },
+      meta: { requestId },
+    });
+  });
+
+  it("replaces a non-exposed message with a generic one", () => {
+    const { body } = handle(internal(new Error("connection string leaked here")));
+
+    expect(JSON.stringify(body)).not.toContain("connection string leaked here");
+    expect(body).toMatchObject({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+  });
+
+  it("never sends a stack trace outside development", () => {
+    const { body } = handle(new Error("boom"), { includeDebug: false });
+
+    expect(JSON.stringify(body)).not.toContain("boom");
+    expect(body).not.toHaveProperty("error.debug");
+  });
+
+  it("adds error.debug in development only", () => {
+    const { body } = handle(new Error("boom"), { includeDebug: true });
+
+    expect(body).toMatchObject({
+      error: { debug: { name: "Error", message: "boom" } },
+    });
+  });
+
+  it("does not add debug to an exposed 4xx, which has nothing to hide", () => {
+    const { body } = handle(notFound(), { includeDebug: true });
+
+    expect(body).not.toHaveProperty("error.debug");
+  });
+
+  it("omits an empty details array", () => {
+    expect(handle(notFound()).body).not.toHaveProperty("error.details");
+  });
+
+  it("delegates to Express when the response already started", () => {
+    const res = fakeResponse();
+    const next = vi.fn();
+    const ctx = createRequestContext({
+      requestId,
+      logger: createLogger({ level: "silent" }),
+    });
+
+    res.headersSent = true;
+
+    createErrorHandler({ includeDebug: false })(
+      new Error("late"),
+      { ctx } as Request,
+      res as unknown as Response,
+      next as unknown as NextFunction,
+    );
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it("logs a 5xx with the error and a 4xx without a stack", () => {
+    const logger = createLogger({ level: "silent" });
+    const error = vi.spyOn(logger, "error");
+    const warn = vi.spyOn(logger, "warn");
+    const ctx = createRequestContext({ requestId, logger });
+    const handler = createErrorHandler({ includeDebug: false });
+
+    handler(
+      internal(new Error("boom")),
+      { ctx } as Request,
+      fakeResponse() as unknown as Response,
+      vi.fn() as unknown as NextFunction,
+    );
+    handler(
+      notFound(),
+      { ctx } as Request,
+      fakeResponse() as unknown as Response,
+      vi.fn() as unknown as NextFunction,
+    );
+
+    expect(error).toHaveBeenCalledOnce();
+    expect(error.mock.calls[0]?.[0]).toHaveProperty("err");
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).not.toHaveProperty("err");
+  });
+});
