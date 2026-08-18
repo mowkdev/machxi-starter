@@ -54,7 +54,14 @@ const main = async (): Promise<void> => {
     logger.fatal({ err: error }, "database unreachable, refusing to start");
     await db.close();
 
-    throw error;
+    // The driver's error goes to the log line above, where the stack and the
+    // `cause` chain are useful. What reaches stderr is a sentence, because a
+    // deploy log that ends in `Failed query: select 1` does not tell an
+    // operator that the API never started or why (ADR-0021 acceptance step 3).
+    // It names no host and no credential — the log line has the detail.
+    throw new Error(
+      `Database unreachable after ${String(config.db.connectRetries)} attempt(s); refusing to start. See the preceding log line for the driver error.`,
+    );
   }
 
   const container = buildContainer({ config, db, logger });
