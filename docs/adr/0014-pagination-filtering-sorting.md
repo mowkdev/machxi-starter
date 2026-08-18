@@ -34,7 +34,7 @@ Example: `GET /api/v1/admin/users?offset=20&limit=20&sort=-createdAt,email&filte
 ### Server-side building blocks
 
 ```ts
-// core/http/list-query.ts
+// packages/contracts/src/list-query.ts   (amended 2026-08-18, see below)
 export const listQuerySchema = (opts: { sortable: readonly string[]; filterable: FilterSpec; maxLimit?: number; defaultSort: string }) =>
   z.object({ offset, limit, sort, filter, q }) // returns a zod schema producing ListQuery
 
@@ -44,8 +44,16 @@ export interface ListQuery {
   filters: Filter[];        // { field, op, value }
   q?: string;
 }
-export interface Page<T> { items: T[]; total: number; offset: number; limit: number; sort: SortSpec[]; filters: Record<string, unknown> }
+export interface Page<T> { items: T[]; total: number | null; offset: number; limit: number; sort: SortSpec[]; filters: Record<string, unknown> }
 ```
+
+**Amended 2026-08-18 (implementation step 4).** This section originally placed `listQuerySchema` in `apps/api/src/core/http/list-query.ts`. It lives in **`@repo/contracts`** instead, because ADR-0023 puts `listStaffQuery` / `listUsersQuery` in that package and a per-module query schema cannot be built without the builder. Nothing is lost: the builder is pure zod, and the seam stays where it matters — `applyListQuery`, the column map and the `id asc` tiebreaker are Drizzle-side and remain in `apps/api/src/core/http/list-query.ts`, which re-exports the builder so module code has one import. `ListQuery`, `Filter`, `FilterOp`, `FilterSpec`, `Page<T>` and `filtersToRecord` ship from contracts for the same reason: an admin table needs them to type a list response, and none of them touches an ORM.
+
+Three behaviours the decision above did not settle, fixed by the implementation:
+
+- `defaultLimit` defaults to `min(20, maxLimit)`, so an endpoint that lowers its ceiling does not also have to restate its page size.
+- A configuration that contradicts itself — `defaultSort` naming a non-sortable field, `maxLimit` above the hard cap of 100, `defaultLimit` above `maxLimit` — throws a `TypeError` when the schema is built, i.e. when the router is wired, rather than failing on the first request.
+- The `id asc` tiebreaker is **not** added to the parsed `sort` and therefore never appears in `meta.sort`. It is a statement about SQL determinism, not about what the client asked for, so it belongs to `applyListQuery`.
 
 - Each module declares its allow-lists once in `<module>.schemas.ts` (`sortable: ['createdAt','email','status'] as const`) and derives its query schema with `listQuerySchema`. Unknown sort/filter fields → `VALIDATION_ERROR`.
 - Repositories translate `ListQuery` to Drizzle with a shared helper `applyListQuery(qb, query, columnMap)` (maps API field → column, applies `where`, `orderBy`, `limit/offset`) and run `count(*)` for `total` in the same transaction (or a single query with a window function `count(*) over()` — implementation detail, helper hides it).

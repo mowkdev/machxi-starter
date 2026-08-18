@@ -23,6 +23,14 @@ Middleware order in Express determines correctness (a validator after the contro
 9. errorHandler                   AppError/Zod/unknown → envelope    (ADR-0013)
 ```
 
+**Amended 2026-08-18 (step 4).** `createApp` must also set the query parser before mounting any router:
+
+```ts
+app.set('query parser', (str: string) => qs.parse(str, { depth: 3, arrayLimit: 20, parameterLimit: 50 }));
+```
+
+Express 5 changed the default from `extended` to `simple`, and `simple` does not build nested objects — `?filter[status][in]=active` would arrive as the single key `"filter[status][in]"`, which every list schema rejects as an unknown parameter. ADR-0014's bracket filter syntax therefore depends on this line. The explicit `qs` options rather than the bare `'extended'` string are the ADR-0020 §Input bound: `depth: 3` is one level more than `filter[field][op]` needs, and it is what stops a crafted deeply-nested query string from burning CPU in the parser.
+
 Route-level (per router / per route):
 
 ```

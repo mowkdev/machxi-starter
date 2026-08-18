@@ -32,6 +32,14 @@ Rules:
 - Versioning: contracts are versioned with the API (`v1/` subfolder is introduced only when a `v2` API exists).
 - Published as TS source like the other internal packages (ADR-0002); browser bundlers tree-shake unused schemas.
 
+**Amended 2026-08-18 (implementation step 4).** The tree above is what was built, plus three files it did not anticipate, and one rule the "In" list left ambiguous:
+
+- `primitives.ts` — the field-level schemas every request body reuses (`emailSchema`, `passwordSchema`, `presentedPasswordSchema`, `idSchema`, `nameSchema`) so "what a valid email is" is decided once rather than per module. The password split is deliberate: a password being *set* carries the ADR-0018 policy, a password being *presented* for verification is only bounded, because applying the policy at login would answer "is this one of ours?" with a `400` before any credential check.
+- `health.ts` — `HealthResource` (ADR-0016). It travels in the normal envelope and is consumed by clients, so it is squarely inside the "In" rule; the original file listing was illustrative, not exhaustive.
+- `list-query.ts` — carries the `listQuerySchema` builder and `Page<T>` as well as the operator constants. See the ADR-0014 amendment for why the builder cannot live in the API.
+- **Requests get zod schemas; responses get hand-written types.** The "In" list allowed resource types to be "derived from zod response schemas"; they are not. A response schema plus a mapper is two descriptions of the same shape that drift independently, and the mapper is the one that runs. The single exception is `envelope.ts`, which does ship runtime schemas (`successEnvelopeSchema`, `listEnvelopeSchema`, `errorEnvelopeSchema`) for the ADR-0021 envelope-conformance tests and for clients validating what they receive. Those are deliberately **not** strict — unknown keys are stripped, not rejected — so that adding a `meta` field stays the additive change ADR-0015 says it is.
+- zod **v4** (`^4.4.3`) is the pinned and only dependency. A lint rule in the package forbids importing `node:*` or `@repo/*`: `@types/node` has to be in scope for `vitest.config.ts` to type-check, so TypeScript alone would not keep the package browser-safe.
+
 ## Consequences
 
 - Clients get exact request/response types and validation for free, without ORM or server dependencies.

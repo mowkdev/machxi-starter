@@ -58,7 +58,7 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 2. Not found → `AUTH_INVALID_REFRESH_TOKEN` (401).
 3. Found but `revoked_at` set or expired → 401.
 4. Found via **previous** hash outside grace → **reuse detected**: revoke the session (`revoked_reason='refresh_reuse'`), log at `warn`, return `AUTH_REFRESH_REUSED` (401). (Optionally revoke all sessions of the principal — configurable, default off.)
-5. Otherwise rotate: new refresh token + hash, move old hash to `previous_…`, `rotated_at=now`, extend `refresh_token_expires_at` (sliding), issue new access token, return same body as login (minus `principal` optional).
+5. Otherwise rotate: new refresh token + hash, move old hash to `previous_…`, `rotated_at=now`, extend `refresh_token_expires_at` (sliding), issue new access token, return the same body as login — **`principal` included** (amended 2026-08-18, step 4: the contract type `AuthResource` makes it required). Step 6 below already loads the principal to re-check `active`, so the field is free, and it saves a client restoring a session from a stored refresh token the extra `me` call. A required field also cannot be dropped later without a version bump, which is the direction ADR-0015 wants.
 6. Principal must still be `active`; otherwise revoke and 403.
 
 **Logout** `POST /auth/logout` (authenticated) — revoke current session (`sid` from token) → `204`. `POST /auth/logout-all` revokes all sessions of the principal.
@@ -96,6 +96,8 @@ The package therefore exports `createArgon2Hasher`, `defaultArgon2Params` (the s
 ### Staff onboarding (v1)
 
 Staff accounts are created by an admin via `POST /admin/staff` with an initial password (status `active`); the invite-by-email flow (status `invited`, set-password link) is a later feature. Users self-register via `POST /public/auth/register` when `FEATURE_USER_REGISTRATION` is on (default on) and start `active` (email verification is a later feature).
+
+**Amended 2026-08-18 (step 4).** Registration returns `201` with the same `AuthResource` as login, so the new account is signed in without a second round trip. Two consequences follow and are accepted: the endpoint **creates a session row**, so it is rate-limited like login and shares its argon2 threadpool cost (ADR-0020 §Rate limiting, §Hashing cost vs. liveness); and a duplicate email is answered with a plain `409 CONFLICT` whose message does not confirm the address — **never** `USER_EMAIL_TAKEN`, which is reserved for the authenticated `POST /admin/users`. That is ADR-0020 §Enumeration's stated default ("generic"), and it is the only mitigation available while there is no email verification to hide behind.
 
 ### Cleanup
 
