@@ -3,8 +3,10 @@ import type {
   ListStaffQuery,
   Page,
   StaffResource,
+  StaffRole,
   UpdateStaffBody,
 } from "@repo/contracts";
+import { SUPER_ADMIN_ROLE } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
@@ -16,6 +18,7 @@ import {
   lastSuperAdmin,
   staffEmailTaken,
   staffNotFound,
+  superAdminGrantForbidden,
 } from "./staff.errors.js";
 import { toStaffResource } from "./staff.mapper.js";
 import type { StaffRecord, StaffRepository } from "./staff.repository.js";
@@ -55,9 +58,38 @@ export const createStaffService = ({
   transaction,
   now = () => new Date(),
 }: StaffServiceDeps) => {
-  /** The acting staff member, for `staff_roles.granted_by` (ADR-0017). */
-  const actorId = (ctx: RequestContext): string =>
-    requirePopulation(ctx, "staff").id;
+  /** The acting staff member — `staff_roles.granted_by`, and the role rules below. */
+  const actor = (ctx: RequestContext) => requirePopulation(ctx, "staff");
+
+  /**
+   * Refuses a change to `super_admin` membership made by somebody who is not
+   * one (ADR-0017 §Invariants).
+   *
+   * `authorize("admin")` is what lets a caller reach these endpoints at all,
+   * so without this an `admin` could `PATCH` their own id with
+   * `roles: ["super_admin"]` and promote themselves. The role that bypasses
+   * every other role check must not be reachable from below it.
+   *
+   * Only a *change* is refused: an admin editing a super admin's name, or
+   * re-sending a role set that already contains it, is not an escalation and
+   * the last-super-admin invariant is what guards the removal side.
+   */
+  const assertMaySetSuperAdmin = (
+    ctx: RequestContext,
+    nextRoles: readonly StaffRole[] | undefined,
+    currentRoles: readonly StaffRole[],
+  ): void => {
+    if (nextRoles === undefined) return;
+
+    const changes =
+      nextRoles.includes(SUPER_ADMIN_ROLE) !==
+      currentRoles.includes(SUPER_ADMIN_ROLE);
+
+    if (!changes) return;
+    if (actor(ctx).roles.includes(SUPER_ADMIN_ROLE)) return;
+
+    throw superAdminGrantForbidden();
+  };
 
   const read = async (id: string, tx?: DbExecutor): Promise<StaffRecord> => {
     const record = await repository.findById(id, tx);
@@ -130,7 +162,12 @@ export const createStaffService = ({
       ctx: RequestContext,
       body: CreateStaffBody,
     ): Promise<StaffResource> => {
-      const grantedBy = actorId(ctx);
+      const grantedBy = actor(ctx).id;
+
+      // A brand-new account holds nothing yet, so any `super_admin` in the
+      // body is a grant.
+      assertMaySetSuperAdmin(ctx, body.roles, []);
+
       const passwordHash = await hasher.hash(body.password);
 
       const created = await transaction(async (tx) => {
@@ -177,12 +214,15 @@ export const createStaffService = ({
       id: string,
       body: UpdateStaffBody,
     ): Promise<StaffResource> => {
-      const grantedBy = actorId(ctx);
+      const grantedBy = actor(ctx).id;
       const at = now();
 
       const { updated, revoked } = await transaction(async (tx) => {
         const current = await read(id, tx);
 
+        // Privilege first, then the invariant: "you may not do this at all"
+        // outranks "the system will not let anyone do this right now".
+        assertMaySetSuperAdmin(ctx, body.roles, current.roles);
         await assertSuperAdminSurvives(current, body, tx);
 
         await repository.updateColumns(
@@ -243,7 +283,7 @@ export const createStaffService = ({
       });
 
       ctx.logger.info(
-        { staffId: record.id, revoked, by: actorId(ctx) },
+        { staffId: record.id, revoked, by: actor(ctx).id },
         "staff sessions revoked by an admin",
       );
     },

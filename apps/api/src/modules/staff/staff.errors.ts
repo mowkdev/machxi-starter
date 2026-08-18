@@ -1,4 +1,9 @@
-import { conflict, notFound, type AppError } from "../../core/errors/index.js";
+import {
+  conflict,
+  forbidden,
+  notFound,
+  type AppError,
+} from "../../core/errors/index.js";
 
 /**
  * The staff module's error factories (ADR-0013).
@@ -37,3 +42,18 @@ export const lastSuperAdmin = (): AppError =>
     "The last active super admin cannot be demoted or disabled",
     "STAFF_LAST_SUPER_ADMIN",
   );
+
+/**
+ * Only a `super_admin` may grant or revoke `super_admin`.
+ *
+ * Without this rule the role is self-service: `authorize("admin")` lets an
+ * `admin` reach `PATCH /api/v1/admin/staff/:id`, and nothing else would stop
+ * them from sending their own id with `roles: ["super_admin"]`. The role that
+ * bypasses every other role check must not be reachable from below it
+ * (ADR-0017 §Invariants, ADR-0019 §3).
+ *
+ * Plain `FORBIDDEN`: the caller is authenticated and simply lacks the standing
+ * for this particular change, which is exactly what `403` means (ADR-0013).
+ */
+export const superAdminGrantForbidden = (): AppError =>
+  forbidden("Only a super admin may grant or revoke the super admin role");

@@ -31,6 +31,13 @@ export const requirePrincipal = (ctx: RequestContext): Principal => {
   return ctx.principal;
 };
 
+/** Narrows the principal union to one population, without a cast. */
+const isPopulation = <P extends Population>(
+  principal: Principal,
+  population: P,
+): principal is Extract<Principal, { kind: P }> =>
+  principal.kind === population;
+
 /**
  * The authenticated principal of one population.
  *
@@ -38,14 +45,19 @@ export const requirePrincipal = (ctx: RequestContext): Principal => {
  * come from a router mounted with the wrong guard. It is answered as an
  * invalid token, never as `403`: ADR-0019 fixes the status at 401 so the wrong
  * population cannot use the difference to probe for route existence.
+ *
+ * The return type is the *narrowed* member, not the union, which is what lets
+ * a staff-side service read `principal.roles` as `StaffRole[]` — needed the
+ * moment a service has a rule about a specific role, as step 9's
+ * "only a super admin may grant `super_admin`" does.
  */
-export const requirePopulation = (
+export const requirePopulation = <P extends Population>(
   ctx: RequestContext,
-  population: Population,
-): Principal => {
+  population: P,
+): Extract<Principal, { kind: P }> => {
   const principal = requirePrincipal(ctx);
 
-  if (principal.kind !== population) throw unauthenticated();
+  if (!isPopulation(principal, population)) throw unauthenticated();
 
   return principal;
 };

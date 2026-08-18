@@ -253,7 +253,11 @@ const build = (seed: FakeStaffRow[]) => {
   return { service, repo, hasher, sessions } as const;
 };
 
+/** An `admin` caller — enough for every endpoint, per `authorize("admin")`. */
 const ctx = () => contextFor(staffPrincipal(ACTOR_ID, ["admin"]));
+/** A `super_admin` caller, needed for any change to `super_admin` membership. */
+const superCtx = () =>
+  contextFor(staffPrincipal(ACTOR_ID, ["admin", "super_admin"]));
 
 const expectAppError = async (
   run: () => Promise<unknown>,
@@ -432,7 +436,8 @@ describe("createStaffService", () => {
         const { service } = build([superAdminRow(), adminRow()]);
 
         await expectAppError(
-          () => service.update(ctx(), SUPER_ADMIN_ID, { roles: ["admin"] }),
+          () =>
+            service.update(superCtx(), SUPER_ADMIN_ID, { roles: ["admin"] }),
           "STAFF_LAST_SUPER_ADMIN",
           409,
         );
@@ -471,7 +476,7 @@ describe("createStaffService", () => {
         const { service } = build([superAdminRow(), second]);
 
         await expect(
-          service.update(ctx(), SUPER_ADMIN_ID, { roles: ["admin"] }),
+          service.update(superCtx(), SUPER_ADMIN_ID, { roles: ["admin"] }),
         ).resolves.toMatchObject({ roles: ["admin"] });
       });
 
@@ -484,7 +489,8 @@ describe("createStaffService", () => {
         const { service } = build([superAdminRow(), dormant]);
 
         await expectAppError(
-          () => service.update(ctx(), SUPER_ADMIN_ID, { roles: ["admin"] }),
+          () =>
+            service.update(superCtx(), SUPER_ADMIN_ID, { roles: ["admin"] }),
           "STAFF_LAST_SUPER_ADMIN",
           409,
         );
@@ -504,6 +510,106 @@ describe("createStaffService", () => {
         await expect(
           service.update(ctx(), ADMIN_ID, { status: "disabled" }),
         ).resolves.toMatchObject({ status: "disabled" });
+      });
+    });
+
+    describe("granting super_admin (ADR-0017 §Invariants)", () => {
+      it("refuses an admin who tries to promote somebody to super admin", async () => {
+        const { service } = build([superAdminRow(), adminRow()]);
+
+        await expectAppError(
+          () =>
+            service.update(ctx(), ADMIN_ID, {
+              roles: ["admin", "super_admin"],
+            }),
+          "FORBIDDEN",
+          403,
+        );
+      });
+
+      it("refuses an admin who tries to promote themselves", async () => {
+        // The escalation the rule exists for: `authorize("admin")` is what
+        // lets them reach this endpoint, and their own id is a legal `:id`.
+        const own = { ...adminRow(), id: ACTOR_ID };
+        const { service, repo } = build([superAdminRow(), own]);
+
+        await expectAppError(
+          () => service.update(ctx(), ACTOR_ID, { roles: ["super_admin"] }),
+          "FORBIDDEN",
+          403,
+        );
+        expect(repo.rows.get(ACTOR_ID)?.roles).toEqual(["admin"]);
+      });
+
+      it("refuses an admin who tries to revoke it from somebody else", async () => {
+        const second = { ...adminRow(), roles: ["super_admin"] as StaffRole[] };
+        const { service } = build([superAdminRow(), second]);
+
+        await expectAppError(
+          () => service.update(ctx(), ADMIN_ID, { roles: ["admin"] }),
+          "FORBIDDEN",
+          403,
+        );
+      });
+
+      it("lets a super admin grant it", async () => {
+        const { service } = build([superAdminRow(), adminRow()]);
+
+        await expect(
+          service.update(superCtx(), ADMIN_ID, { roles: ["super_admin"] }),
+        ).resolves.toMatchObject({ roles: ["super_admin"] });
+      });
+
+      it("lets an admin edit a super admin without touching the roles", async () => {
+        // Only a *change* to the membership is refused; an ordinary edit of a
+        // super admin's profile is not an escalation.
+        const { service } = build([superAdminRow()]);
+
+        await expect(
+          service.update(ctx(), SUPER_ADMIN_ID, { firstName: "Renamed" }),
+        ).resolves.toMatchObject({ firstName: "Renamed" });
+      });
+
+      it("lets an admin re-send a role set that already holds it", async () => {
+        const { service } = build([superAdminRow()]);
+
+        await expect(
+          service.update(ctx(), SUPER_ADMIN_ID, {
+            roles: ["super_admin", "editor"],
+          }),
+        ).resolves.toMatchObject({ roles: ["super_admin", "editor"] });
+      });
+
+      it("refuses an admin who creates a staff member as super admin", async () => {
+        const { service, repo } = build([]);
+
+        await expectAppError(
+          () =>
+            service.create(ctx(), {
+              email: "new@machxi.local",
+              password: "InitialPassword!1",
+              firstName: "Nina",
+              lastName: "New",
+              roles: ["super_admin"],
+            }),
+          "FORBIDDEN",
+          403,
+        );
+        expect(repo.rows.size).toBe(0);
+      });
+
+      it("lets a super admin create one", async () => {
+        const { service } = build([]);
+
+        await expect(
+          service.create(superCtx(), {
+            email: "new@machxi.local",
+            password: "InitialPassword!1",
+            firstName: "Nina",
+            lastName: "New",
+            roles: ["super_admin"],
+          }),
+        ).resolves.toMatchObject({ roles: ["super_admin"] });
       });
     });
 
