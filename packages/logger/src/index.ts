@@ -14,6 +14,12 @@ export type LogLevel =
  * Paths pino redacts on every logger (ADR-0005). Both the top-level key and
  * the one-level-nested form are listed so that neither `log.info({ password })`
  * nor `log.info({ body })` can leak a credential.
+ *
+ * `refreshTokenHash` / `previousRefreshTokenHash` are the `sessions` column
+ * names (ADR-0018) and need their own entries: pino matches redact paths by
+ * exact key, so `refreshToken` does not cover them. Note that redaction does
+ * not reach pino's `err` serialiser — never build an error message containing
+ * a credential or digest.
  */
 export const defaultRedactPaths: readonly string[] = [
   "req.headers.authorization",
@@ -23,11 +29,15 @@ export const defaultRedactPaths: readonly string[] = [
   "refreshToken",
   "accessToken",
   "token",
+  "refreshTokenHash",
+  "previousRefreshTokenHash",
   "*.password",
   "*.passwordHash",
   "*.refreshToken",
   "*.accessToken",
   "*.token",
+  "*.refreshTokenHash",
+  "*.previousRefreshTokenHash",
 ];
 
 export interface CreateLoggerOptions {

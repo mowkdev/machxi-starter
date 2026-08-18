@@ -69,6 +69,7 @@ These will get their own ADRs when the corresponding features are implemented:
 - Internationalization (message catalogs, `Accept-Language`, localized validation errors) — groundwork is already in ADR-0013 (machine-readable error codes).
 - Browser token transport (httpOnly cookies for `web`/`admin`, CSRF) — see ADR-0018 §Consequences.
 - Fine-grained permissions (permission table / policies) — see ADR-0017.
+- **Secret management and key rotation** — a `kid` scheme for `JWT_ACCESS_SECRET` when moving to asymmetric signing, and an argon2 **pepper** (`argon2`'s `secret` option). Both need the same key-id/overlap machinery, and rotating a pepper forces rehash-on-next-login, so they are one decision — see ADR-0018 §Consequences.
 - Background jobs, email delivery, file storage.
 - Mobile app.
 - CI pipeline and deployment (Dockerfiles for `api`, `web`, `admin`).

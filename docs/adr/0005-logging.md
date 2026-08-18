@@ -24,7 +24,9 @@ export function shouldPrettyPrint(input: { nodeEnv: string; isTty: boolean }): b
 export const defaultRedactPaths = [
   'req.headers.authorization', 'req.headers.cookie',
   'password', 'passwordHash', 'refreshToken', 'accessToken', 'token',
+  'refreshTokenHash', 'previousRefreshTokenHash',          // added 2026-08-18
   '*.password', '*.passwordHash', '*.refreshToken', '*.accessToken', '*.token',
+  '*.refreshTokenHash', '*.previousRefreshTokenHash',
 ];
 ```
 
@@ -47,6 +49,10 @@ Pretty printing (`pino-pretty`) is enabled only when `NODE_ENV=development` and 
 - **Levels**: `error` for unexpected failures (5xx), `warn` for expected client-side failures worth noticing (auth failures, rate limits), `info` for lifecycle and access logs, `debug` for developer detail. Default `LOG_LEVEL=info`, `debug` in local `.env.example`.
 
 - **Redaction** is applied at the logger level via pino `redact` (paths above). Each credential key is listed both at the top level and one level deep, so neither a careless `log.info({ body })` nor `log.info({ password })` can leak a secret. The `redact` option adds paths; it cannot remove a default.
+
+- **Session token hashes are redacted too** (amended 2026-08-18). `refreshTokenHash` and `previousRefreshTokenHash` are the `sessions` column names (ADR-0018), and pino matches redact paths by exact key — `refreshToken` does **not** cover `refreshTokenHash`. A SHA-256 digest is not directly usable as a credential, but it is the lookup key for a live session, so it stays out of logs. Anything that logs a session row (`log.debug({ session })`) is covered by the one-level-deep form.
+
+- **Redaction does not reach `err`.** pino's error serialiser is not path-redacted, so a third-party exception that interpolates a secret into its `message` would be logged in full — and echoed to the client in `error.debug` under `NODE_ENV=development` (ADR-0013). The rule is therefore upstream: **never construct an error message containing a credential, digest or token**, and prefer wrapping a third-party error over rethrowing it when its message may embed input. `@repo/crypto` follows this — it never throws with the digest or password in the message.
 
 ## Consequences
 

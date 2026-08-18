@@ -80,6 +80,8 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 - `needsRehash` also returns `true` for a digest that is not argon2id or is unreadable. `argon2.needsRehash` compares only `v`/`m`/`t`/`p`, and `argon2.verify` accepts argon2i and argon2d digests — so without the explicit algorithm check an imported non-argon2id hash would verify happily and never be upgraded.
 - `createArgon2Hasher` **rejects parameters below a floor** (`minArgon2Params`: 19456 KiB / t=2 / p=1, the OWASP argon2id second-choice profile), because libargon2 itself only rejects `m < 8*p` and `t < 1`. The check lives in the package rather than only in the ADR-0004 config schema because the seeders build a hasher directly and never pass through `core/config`. Tests opt out with `allowWeakParams: true`; no production call site sets it.
 
+- **Known residual (accepted, not fixed).** The dummy hash always uses the *current* parameters, while an account whose password has not been rehashed yet verifies at the *old* cost. Between an `ARGON2_*` increase and a given account's next successful login, "account with a legacy cheaper hash" stays timing-distinguishable from "no such account". This is inherent to transparent parameter upgrades — the alternative is rehashing every row offline, which requires the plaintext. Accepted.
+
 The package therefore exports `createArgon2Hasher`, `defaultArgon2Params` (the single source for the ADR-0004 `ARGON2_*` defaults — `core/config` should reference it rather than re-typing the literals), `minArgon2Params`, `sha256Base64url`, `randomToken` and its `minTokenBytes`/`maxTokenBytes` bounds. `hashLength` is pinned at 32; the 16-byte salt is not configurable in argon2 0.45 and is covered by a test instead.
 
 ### Token transport
@@ -105,6 +107,7 @@ Staff accounts are created by an admin via `POST /admin/staff` with an initial p
 - One DB lookup per authenticated request (by primary key) — negligible for the foreseeable scale, and removable later by trusting the JWT with a short TTL + revocation cache.
 - No external auth dependency; the whole flow is ~4 files and fully testable.
 - Secrets management: `JWT_ACCESS_SECRET` rotation requires a key-id (`kid`) scheme — planned when moving to asymmetric keys.
+- **No pepper in v1** (recorded 2026-08-18). `argon2` supports a `secret` (keyed hashing); using it would make a database-only compromise useless without the application key, which is a real gain over cost parameters alone. It is deferred rather than dismissed because it needs exactly the key-id/rotation machinery the `kid` scheme above needs, and because rotating a pepper invalidates every stored hash — the only migration path is rehash-on-next-login with both keys held during the overlap. Both belong in the same future **secret management and key rotation** ADR; `createArgon2Hasher` would gain a `secret` parameter at that point, and the `PasswordHasher` port already isolates every call site from the change.
 
 ## Alternatives considered
 

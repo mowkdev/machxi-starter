@@ -147,6 +147,37 @@ describe("redaction", () => {
     });
   });
 
+  it("redacts session refresh-token hashes (ADR-0018 columns)", () => {
+    // pino matches redact paths by exact key, so "refreshToken" does NOT
+    // cover "refreshTokenHash" — these need their own entries. The digest is
+    // the lookup key for a live session, so it stays out of logs.
+    const [logger, capture] = capturing({ level: "info" });
+
+    logger.info(
+      {
+        refreshTokenHash: "sha-of-current",
+        previousRefreshTokenHash: "sha-of-previous",
+        session: {
+          id: "01930000-0000-7000-8000-000000000000",
+          refreshTokenHash: "nested-sha",
+        },
+      },
+      "session rotated",
+    );
+
+    expect(capture.raw()).not.toContain("sha-of-current");
+    expect(capture.raw()).not.toContain("sha-of-previous");
+    expect(capture.raw()).not.toContain("nested-sha");
+    expect(capture.lines()[0]).toMatchObject({
+      refreshTokenHash: "[Redacted]",
+      previousRefreshTokenHash: "[Redacted]",
+      session: {
+        id: "01930000-0000-7000-8000-000000000000",
+        refreshTokenHash: "[Redacted]",
+      },
+    });
+  });
+
   it("redacts the authorization and cookie request headers", () => {
     const [logger, capture] = capturing({ level: "info" });
 
