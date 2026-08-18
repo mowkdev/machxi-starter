@@ -18,14 +18,14 @@ We need a repeatable way to (a) bring an empty Postgres to the current schema, (
 - Migration files are edited never; a wrong migration is fixed by a new one. Hand-written SQL (data backfills, complex indexes) goes in a `drizzle-kit generate --custom` migration.
 - Scripts (in `packages/db/package.json`, aliased at root via Turbo):
 
-| script | purpose |
-|---|---|
-| `db:generate` | diff schema → new SQL migration |
-| `db:migrate` | apply pending migrations to `DATABASE_URL`; `-- --test` targets `DATABASE_URL_TEST` instead |
-| `db:seed` | run seeders (below) |
-| `db:setup` | `db:migrate` + `db:seed` — first-run helper |
-| `db:reset` | drop schemas `public` **and `drizzle`**, recreate `public`, then `db:setup` — local only, guarded by `NODE_ENV !== 'production'` |
-| `db:studio` | drizzle studio |
+| script        | purpose                                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `db:generate` | diff schema → new SQL migration                                                                                                  |
+| `db:migrate`  | apply pending migrations to `DATABASE_URL`; `-- --test` targets `DATABASE_URL_TEST` instead                                      |
+| `db:seed`     | run seeders (below)                                                                                                              |
+| `db:setup`    | `db:migrate` + `db:seed` — first-run helper                                                                                      |
+| `db:reset`    | drop schemas `public` **and `drizzle`**, recreate `public`, then `db:setup` — local only, guarded by `NODE_ENV !== 'production'` |
+| `db:studio`   | drizzle studio                                                                                                                   |
 
 Turbo marks these `cache: false`.
 
@@ -61,7 +61,37 @@ packages/db/seeds/
 - Every db script prints the target host/db name (never credentials) before acting. The rendering is built by parsing the URL and re-emitting `host:port/database`, not by masking the original string — a substitution-based redaction fails on the password that happens to equal the host name — and an unparsable connection string is not echoed at all.
 - **Amended 2026-08-18 (step 6):** one narrow carve-out to "never credentials". The `--dev` seeders print the fixture password, which is a constant in a committed file (`seeds/dev/fixtures.ts`) behind the production refusal, so that a first run tells the developer how to sign in. **No value read from the environment is ever printed**, and that is the rule the carve-out does not touch.
 - Anything read from the environment is validated where it is read, because the seed path never passes through `core/config`: `SEED_SUPER_ADMIN_EMAIL` must look like an address and `SEED_SUPER_ADMIN_PASSWORD` must meet ADR-0004's `min(12)`, or the script fails instead of seeding an unusable or weak super admin.
-- A helper that resets a database for tests refuses any target whose name does not end in `_test`. **Amended 2026-08-18 (step 7):** that helper is `migrateFreshDatabase(url)` in `packages/db/src/testing.ts`, published as **`@repo/db/testing`** so this package's own suite and the API's integration `globalSetup` (ADR-0021) share one implementation instead of a copy free to drift from the committed migrations. It is a separate subpath rather than part of the package root because it is destructive and nothing that merely imports `@repo/db` should be able to reach it. It carries **both** guards — the `_test` suffix *and* the `NODE_ENV=production` refusal that `db:reset`'s CLI wrapper has — because it exists to be called from a test harness whose URL comes from the environment, and a database called `app_test` on a production host passes the suffix check on its own. `resetSchema()` takes whatever URL it is given and the `NODE_ENV` guard lives in the CLI wrapper, so the integration suite — which calls the function directly — carries its own check; a `DATABASE_URL_TEST` copy-pasted from `DATABASE_URL` is the realistic way to drop a developer's dev schema.
+- A helper that resets a database for tests refuses any target whose name does not end in `_test`. **Amended 2026-08-18 (step 7):** that helper is `migrateFreshDatabase(url)` in `packages/db/src/testing.ts`, published as **`@repo/db/testing`** so this package's own suite and the API's integration `globalSetup` (ADR-0021) share one implementation instead of a copy free to drift from the committed migrations. It is a separate subpath rather than part of the package root because it is destructive and nothing that merely imports `@repo/db` should be able to reach it. It carries **both** guards — the `_test` suffix _and_ the `NODE_ENV=production` refusal that `db:reset`'s CLI wrapper has — because it exists to be called from a test harness whose URL comes from the environment, and a database called `app_test` on a production host passes the suffix check on its own. `resetSchema()` takes whatever URL it is given and the `NODE_ENV` guard lives in the CLI wrapper, so the integration suite — which calls the function directly — carries its own check; a `DATABASE_URL_TEST` copy-pasted from `DATABASE_URL` is the realistic way to drop a developer's dev schema.
+
+**Amended 2026-08-18 (step 8).** Three additions, all in service of ADR-0021's
+"tests exercise the real seed path".
+
+- **`truncateAll(db)` joins `@repo/db/testing`.** It empties every application
+  table between integration files. It carries the `NODE_ENV=production`
+  refusal for the same reason `migrateFreshDatabase` does — more so, in fact:
+  it takes a _DbExecutor_, so there is no URL to apply the `_test`-suffix rule
+  to, and the production refusal is the only guard available. The truncated
+  tables are an explicit list rather than a query over `information_schema`,
+  which would also wipe Drizzle's migration journal.
+- **`@repo/db/seeds` is a new subpath**, exporting `runSeeders`, `baseSeeders`
+  and `devSeeders` so the API's integration suite runs the same seeders
+  `pnpm db:seed` does instead of test-only inserts. It is _not_ as dangerous as
+  `@repo/db/testing` — seeders are idempotent and create rather than destroy —
+  but it does expose `devSeeders`, whose production refusal lives in
+  `selectSeeders` (the CLI path). A caller that assembles its own list, as the
+  test harness does, is responsible for not doing that in production; the
+  harness passes `nodeEnv: "test"` explicitly and says so.
+- **`SEED_SUPER_ADMIN_PASSWORD` is refused in production when it is one of the
+  values committed to this repository** (`.env.example`, `apps/api/.env.test`),
+  enforced in `tooling/env.ts` because the seed runner never passes through
+  `core/config`. See ADR-0004 and ADR-0020 §Known-public secrets: the account
+  this seeder creates holds `super_admin`, so a committed password reaching
+  production is worse than a committed signing key, not better.
+- **`db:sessions:prune`** (ADR-0018 §Cleanup) is declared in this package,
+  deleting sessions expired or revoked more than 30 days ago. Unlike `db:reset`
+  and `db:seed --dev` it is **not** refused in production — pruning is what a
+  production database needs, and it can only remove rows that are already
+  unusable.
 
 ## Consequences
 

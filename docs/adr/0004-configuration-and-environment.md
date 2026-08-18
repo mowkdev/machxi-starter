@@ -15,27 +15,41 @@ Configuration must be sourced from environment variables (12-factor), shared bet
 ```ts
 // apps/api/src/core/config/schema.ts
 export const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
-  LOG_LEVEL: z.enum(['fatal','error','warn','info','debug','trace']).default('info'),
-  APP_VERSION: z.string().default('0.0.0'),   // injected at build; falls back to package.json version
+  LOG_LEVEL: z
+    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
+    .default("info"),
+  APP_VERSION: z.string().default("0.0.0"), // injected at build; falls back to package.json version
   GIT_SHA: z.string().optional(),
-  TRUST_PROXY: z.string().default('false'),   // express 'trust proxy' value: 'false' | 'true' | number | cidr list
-  DATABASE_URL: z.string().url(),            // postgres://user:pass@host:5432/db
+  TRUST_PROXY: z.string().default("false"), // express 'trust proxy' value: 'false' | 'true' | number | cidr list
+  DATABASE_URL: z.string().url(), // postgres://user:pass@host:5432/db
   DB_POOL_MAX: z.coerce.number().int().default(10),
   DB_CONNECT_RETRIES: z.coerce.number().int().default(10),
-  JWT_ISSUER: z.string().default('machxi-api'),
+  JWT_ISSUER: z.string().default("machxi-api"),
   JWT_ACCESS_SECRET: z.string().min(32),
-  JWT_ACCESS_TTL: z.string().default('15m'),          // parsed with `ms`-style durations
-  REFRESH_TOKEN_TTL: z.string().default('30d'),
+  JWT_ACCESS_TTL: durationSchema.default(15 * 60), // '15m' in, seconds out (step 8)
+  REFRESH_TOKEN_TTL: durationSchema.default(30 * 86400),
   REFRESH_ROTATION_GRACE_SEC: z.coerce.number().int().default(30),
+  AUTH_MAX_CONCURRENT_HASHES: z.coerce.number().int().positive().default(4),
   ARGON2_MEMORY_KIB: z.coerce.number().int().default(65536),
   ARGON2_TIME_COST: z.coerce.number().int().default(3),
   ARGON2_PARALLELISM: z.coerce.number().int().default(1),
-  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().default(300),   // per 15 min per IP
+  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().default(300), // per 15 min per IP
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().default(10),
-  CORS_ORIGINS: z.string().transform(s => s.split(',').map(x => x.trim()).filter(Boolean)).default(''),
-  FEATURE_USER_REGISTRATION: z.stringbool().default(true),      // POST /public/auth/register
+  RATE_LIMIT_REFRESH_MAX: z.coerce.number().int().default(5), // failed refreshes only
+  CORS_ORIGINS: z
+    .string()
+    .transform((s) =>
+      s
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    )
+    .default(""),
+  FEATURE_USER_REGISTRATION: z.stringbool().default(true), // POST /public/auth/register
   SEED_SUPER_ADMIN_EMAIL: z.string().email().optional(),
   SEED_SUPER_ADMIN_PASSWORD: z.string().min(12).optional(),
 });
@@ -56,7 +70,51 @@ what leaves the harness outside it; the rule that matters for the deliverable is
 the one in ADR-0021's definition of done — no `process.env` outside `core/config`
 in `apps/api/src`.
 
-**Amended 2026-08-18 (step 5).** Boolean variables use `z.stringbool()`, not `z.coerce.boolean()`. `z.coerce.boolean()` is `Boolean(value)`, and every environment variable is a string, so `FEATURE_USER_REGISTRATION=false` parsed to `true` — the flag could never be turned off, and only an *empty* value (`FEATURE_USER_REGISTRATION=`) produced `false`, which is the opposite of what a reader expects. `z.stringbool()` (zod 4, already pinned by `@repo/contracts` per ADR-0023) accepts `true/false`, `1/0`, `yes/no`, `on/off` and rejects anything else, so a typo fails startup instead of silently enabling the feature. The same rule applies to any boolean variable added later.
+**Amended 2026-08-18 (step 8).** Three points the auth step settled.
+
+_Durations are parsed by the schema, not by their consumers._ `JWT_ACCESS_TTL`
+and `REFRESH_TOKEN_TTL` are still written the way an operator writes them
+(`15m`, `30d`), but `durationSchema` (`core/config/duration.ts`) turns them into
+**seconds** at startup, so `config.auth` exposes `accessTtlSec` and
+`refreshTtlSec`. Two reasons, both from ADR-0018: the JWT's `exp`, the
+`accessTokenExpiresAt` field on the wire and the session's
+`refresh_token_expires_at` must derive from one number or a client's idea of
+when its token dies differs from the server's; and an unparseable duration has
+to fail at startup rather than on the first login of a deployment. Accepted
+forms are a positive integer plus `s`, `m`, `h` or `d`, up to `365d`; there is
+deliberately no month or year unit, both being ambiguous.
+
+_Two new variables._ `AUTH_MAX_CONCURRENT_HASHES` (default 4) caps in-flight
+argon2 hashes — the liveness control ADR-0020 §Hashing cost vs. liveness asks
+for; raise it together with `UV_THREADPOOL_SIZE`, never alone.
+`RATE_LIMIT_REFRESH_MAX` (default 5) is the ADR-0020 refresh limit, which was
+in that table but had no variable. Both are in `.env.example`.
+
+_The known-public rule now covers the seeded super admin's password, not only
+signing keys._ `KNOWN_PUBLIC_SEED_PASSWORDS` enumerates the
+`SEED_SUPER_ADMIN_PASSWORD` values committed in `.env.example` and
+`apps/api/.env.test`, and production startup refuses them, exactly as it refuses
+`KNOWN_PUBLIC_SECRETS`. The consequence of missing this one is worse than a
+leaked signing key: the account it creates holds `super_admin`, which bypasses
+every staff role check (ADR-0019), and `pnpm db:setup` is the documented deploy
+step. The seed runner never passes through this schema, so
+`packages/db/src/tooling/env.ts` enforces the same list — the same
+validate-where-you-read reasoning that put the argon2 floor in `@repo/crypto` —
+and a test in each package reads the committed files and asserts its list covers
+them.
+
+_The harness exemption is a directory, not a file._ The step-7 amendment above
+names `apps/api/test/setup/env.ts`; the exemption is now **the harness modules
+under `apps/api/test/`**, because `test/support/seed.ts` reads the same two seed
+variables to drive the real seeders (ADR-0021). The rule that matters is
+unchanged and is what the lint rule enforces: no `process.env` under
+`apps/api/src`.
+
+_The grouped object below is out of date on one point:_ `auth` carries
+`accessTtlSec`/`refreshTtlSec` (numbers) rather than `accessTtl`/`refreshTtl`
+(strings), plus `refreshRotationGraceSec`, `maxConcurrentHashes` and `argon2`.
+
+**Amended 2026-08-18 (step 5).** Boolean variables use `z.stringbool()`, not `z.coerce.boolean()`. `z.coerce.boolean()` is `Boolean(value)`, and every environment variable is a string, so `FEATURE_USER_REGISTRATION=false` parsed to `true` — the flag could never be turned off, and only an _empty_ value (`FEATURE_USER_REGISTRATION=`) produced `false`, which is the opposite of what a reader expects. `z.stringbool()` (zod 4, already pinned by `@repo/contracts` per ADR-0023) accepts `true/false`, `1/0`, `yes/no`, `on/off` and rejects anything else, so a typo fails startup instead of silently enabling the feature. The same rule applies to any boolean variable added later.
 
 - The config object is grouped, not flat, when handed to the app:
 
@@ -118,7 +176,7 @@ DATABASE_URL_TEST=postgres://machxi:machxi@localhost:5432/machxi_test
   failure.** Every env file in the repository already sets it, so nothing local
   changes.
 - **Committed signing keys are enumerated, not compared one at a time.**
-  `KNOWN_PUBLIC_SECRETS` holds the value in `.env.example` *and* the one in
+  `KNOWN_PUBLIC_SECRETS` holds the value in `.env.example` _and_ the one in
   `apps/api/.env.test`, and production startup refuses any of them. The test key
   is 45 characters and just as public as the placeholder, and `.env.test` is the
   file someone copies when they want something that already runs. A unit test
@@ -148,7 +206,7 @@ DATABASE_URL_TEST=postgres://machxi:machxi@localhost:5432/machxi_test
   `tsdown` performs no `define` substitution, so not even `APP_VERSION` or
   `GIT_SHA` is baked into `dist/main.js` — every variable in this schema is read
   at boot by `core/config` and belongs to the deployment environment, not to
-  turbo's cache key. (If a build ever *does* inject one, the `define` and the
+  turbo's cache key. (If a build ever _does_ inject one, the `define` and the
   `build.env` entry are added together, or the declaration is a claim the build
   does not honour.) `test:int` declares `DATABASE_URL` / `DATABASE_URL_TEST`,
   which is what keeps the `turbo/no-undeclared-env-vars` lint rule satisfied for

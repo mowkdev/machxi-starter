@@ -15,6 +15,11 @@ import {
   createUserPrincipalAdapter,
 } from "../modules/auth/index.js";
 import {
+  createGlobalRateLimiter,
+  createLoginRateLimiter,
+  createRefreshRateLimiter,
+} from "./middleware/index.js";
+import {
   createDbIndicator,
   createHealthController,
   createHealthService,
@@ -104,12 +109,25 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
 
   const authenticate = createAuthenticate({ tokens, sessions });
 
+  // Built **here**, not in the route factories, because a limiter holds the
+  // counter: constructing one per mount would give the same IP+email a fresh
+  // budget on every segment, so ADR-0020's "10 per 15 minutes on login" would
+  // really be ten per login endpoint. Stateful components belong to the
+  // composition root (ADR-0009), and this is why.
+  const rateLimiters = {
+    global: createGlobalRateLimiter(config),
+    /** Shared by both segments' `login` and by `register` (ADR-0018). */
+    login: createLoginRateLimiter(config),
+    refresh: createRefreshRateLimiter(config),
+  } as const;
+
   return {
     config,
     db,
     logger,
     hasher,
     authenticate,
+    rateLimiters,
     repositories: {
       staff: staffRepository,
       users: usersRepository,

@@ -173,17 +173,7 @@ export const createUsersRepository = (db: DbExecutor) =>
         .where(eq(users.id, id));
     },
 
-    rolesOf: async (
-      id: string,
-      tx: DbExecutor = db,
-    ): Promise<readonly UserRole[]> => {
-      const rows = await tx
-        .select({ role: userRoles.role })
-        .from(userRoles)
-        .where(eq(userRoles.userId, id));
-
-      return rows.map((row) => row.role);
-    },
+    // No standalone `rolesOf` — see the note in `staff.repository.ts`.
   }) as const;
 
 export type UsersRepository = ReturnType<typeof createUsersRepository>;

@@ -116,6 +116,24 @@ export const readArgon2Params = (): Argon2Params => ({
 const minSuperAdminPasswordLength = 12;
 
 /**
+ * The `SEED_SUPER_ADMIN_PASSWORD` values committed to this repository, in
+ * `.env.example` and `apps/api/.env.test`.
+ *
+ * Mirrored from `apps/api/src/core/config/schema.ts`
+ * (`KNOWN_PUBLIC_SEED_PASSWORDS`), which cannot be imported here —
+ * `@repo/db` must not depend on the API (ADR-0002). It is duplicated rather
+ * than dropped because **this** is the path that matters: the seed runner is a
+ * CLI and never passes through `core/config`, so a production `pnpm db:setup`
+ * assembled by copying a committed env file would otherwise create a
+ * `super_admin` whose password is public. A test in each package reads both
+ * files and asserts its own list covers them.
+ */
+const knownPublicSeedPasswords: readonly string[] = [
+  "ChangeMe123!local",
+  "TestSuperAdmin!123",
+];
+
+/**
  * The super-admin credentials (ADR-0008). Absent means "skip the seeder";
  * **present but invalid is an error**, not a silently weak account.
  *
@@ -146,6 +164,19 @@ export const readSuperAdminCredentials = (): {
   if (password !== undefined && password.length < minSuperAdminPasswordLength) {
     throw new Error(
       `SEED_SUPER_ADMIN_PASSWORD must be at least ${String(minSuperAdminPasswordLength)} characters (ADR-0004); it is ${String(password.length)}.`,
+    );
+  }
+
+  // The account this seeds holds `super_admin`, which bypasses every staff role
+  // check (ADR-0019). Length cannot distinguish a committed dummy from a real
+  // credential; enumeration can (ADR-0020 §Known-public secrets).
+  if (
+    password !== undefined &&
+    isProduction() &&
+    knownPublicSeedPasswords.includes(password)
+  ) {
+    throw new Error(
+      "SEED_SUPER_ADMIN_PASSWORD is a value committed in this repository and must not seed a production super admin (ADR-0020).",
     );
   }
 

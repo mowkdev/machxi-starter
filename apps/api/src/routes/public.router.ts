@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import type { Container } from "../core/container.js";
-import { createLoginRateLimiter } from "../core/middleware/index.js";
 import { createRegisterRouter } from "../modules/auth/index.js";
 
 /**
@@ -26,8 +25,9 @@ export const createPublicRouter = (container: Container): Router => {
       createRegisterRouter({
         controller: container.controllers.userAuth,
         // Registration hashes a password and creates a session exactly like
-        // login does, so it shares login's limit (ADR-0018, amended step 4).
-        rateLimiter: createLoginRateLimiter(container.config),
+        // login does, so it shares login's limiter — the same instance, and
+        // therefore the same counter (ADR-0018, amended step 4).
+        rateLimiter: container.rateLimiters.login,
       }),
     );
   }

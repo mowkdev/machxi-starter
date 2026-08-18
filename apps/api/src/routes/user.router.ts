@@ -1,10 +1,6 @@
 import { Router } from "express";
 
 import type { Container } from "../core/container.js";
-import {
-  createLoginRateLimiter,
-  createRefreshRateLimiter,
-} from "../core/middleware/index.js";
 import { createAuthRouter } from "../modules/auth/index.js";
 
 /**
@@ -33,8 +29,8 @@ export const createUserRouter = (container: Container): Router => {
       controller: container.controllers.userAuth,
       authenticate: container.authenticate,
       population: "user",
-      loginRateLimiter: createLoginRateLimiter(container.config),
-      refreshRateLimiter: createRefreshRateLimiter(container.config),
+      loginRateLimiter: container.rateLimiters.login,
+      refreshRateLimiter: container.rateLimiters.refresh,
     }),
   );
 

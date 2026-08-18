@@ -1,4 +1,4 @@
-import { staff, staffRoles, type DbExecutor } from "@repo/db";
+import { staff, type DbExecutor } from "@repo/db";
 import type { StaffRole, StaffStatus } from "@repo/contracts";
 import { eq } from "drizzle-orm";
 
@@ -121,18 +121,10 @@ export const createStaffRepository = (db: DbExecutor) =>
         .where(eq(staff.id, id));
     },
 
-    /** Role grants of one account, for the "is this still an admin?" re-read. */
-    rolesOf: async (
-      id: string,
-      tx: DbExecutor = db,
-    ): Promise<readonly StaffRole[]> => {
-      const rows = await tx
-        .select({ role: staffRoles.role })
-        .from(staffRoles)
-        .where(eq(staffRoles.staffId, id));
-
-      return rows.map((row) => row.role);
-    },
+    // No standalone `rolesOf`: the two reads above already return the grants
+    // from the same query, and a separate one would be a second round trip on
+    // the login path (ADR-0017, amended step 8). Step 9's role management adds
+    // the write queries it needs.
   }) as const;
 
 export type StaffRepository = ReturnType<typeof createStaffRepository>;

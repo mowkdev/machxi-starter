@@ -86,6 +86,25 @@ describe("login rate limit", () => {
   it("does not throttle a successful login of a different account", async () => {
     await supertest(harness.app).post(LOGIN).send(superAdmin()).expect(200);
   });
+
+  it("shares one budget across both segments and registration", async () => {
+    // The limiter is built once in the container, not per route factory: a
+    // limiter *holds* the counter, so one instance per mount would silently
+    // turn ADR-0020's "10 per 15 minutes" into ten per login endpoint.
+    const email = "shared-budget@machxi.local";
+    const body = { email, password: "wrong-guess" };
+
+    await supertest(harness.app).post(LOGIN).send(body).expect(401);
+    await supertest(harness.app)
+      .post("/api/v1/user/auth/login")
+      .send(body)
+      .expect(401);
+
+    await supertest(harness.app)
+      .post("/api/v1/public/auth/register")
+      .send({ email, password: "a-perfectly-fine-password" })
+      .expect(429);
+  });
 });
 
 describe("refresh rate limit", () => {

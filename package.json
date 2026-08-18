@@ -9,7 +9,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:unit": "turbo run test:unit",
-    "test:int": "turbo run test:int",
+    "test:int": "turbo run test:int --concurrency=1",
     "test:watch": "turbo run test:watch",
     "check-types": "turbo run check-types",
     "docker:up": "docker compose --env-file .env -f docker/local/compose.yaml up -d --wait",

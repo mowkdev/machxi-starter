@@ -26,13 +26,12 @@ apps/api/src/
 │   ├── errors/                  # ADR-0013
 │   ├── http/                    # envelope helpers, pagination parsing (ADR-0012, ADR-0014)
 │   ├── middleware/              # ADR-0011
-│   ├── auth/                    # token functions, password hashing, guards (ADR-0018, ADR-0019)
+│   ├── auth/                    # policy helpers only, see the step-8 amendment (ADR-0019)
 │   ├── db/                      # thin re-export of @repo/db + DbExecutor type
 │   └── container.ts             # composition root
 ├── modules/
 │   ├── health/                  # ADR-0016
-│   ├── staff-auth/              # login/refresh/logout/me for staff population
-│   ├── user-auth/               # same for users population
+│   ├── auth/                    # one module, instantiated per population (step 8)
 │   ├── staff/                   # staff CRUD (admin segment)
 │   └── users/                   # users CRUD (admin segment) + self endpoints (user segment)
 └── routes/
@@ -41,6 +40,23 @@ apps/api/src/
     ├── user.router.ts           # /api/v1/user/*     (requires user principal)
     └── admin.router.ts          # /api/v1/admin/*    (requires staff principal)
 ```
+
+**Amended 2026-08-18 (step 8).** Two corrections to the tree above, both
+forced by decisions in other ADRs:
+
+- **`modules/auth/`, not `staff-auth/` + `user-auth/`.** ADR-0017 §Principal
+  abstraction requires one `createAuthService` called once per population
+  behind a `PrincipalAdapter`; two modules would be two copies of rotation,
+  reuse detection and revocation.
+- **`core/auth/` holds policy helpers only** (`requirePrincipal`,
+  `requirePopulation`, and later `assertOwnerOrRole`). The token service lives
+  in `modules/auth/auth.tokens.ts` and password hashing in `@repo/crypto`
+  (ADR-0018), because both are auth-module concerns rather than framework
+  ones. `authenticate` also lives in the module: it depends on the token
+  service _and_ the sessions repository, and `core` importing a module would
+  invert the direction this ADR exists to fix. `authorize` does stay in
+  `core/middleware` — it reads nothing but `ctx.principal` and has no
+  dependencies at all.
 
 Each module has a fixed internal shape:
 
@@ -58,12 +74,12 @@ modules/users/
 
 ### Layer responsibilities
 
-| Layer | Knows about | Must not |
-|---|---|---|
-| **routes** | Express Router, middleware, controller handlers | contain logic |
-| **controller** | `req`, `res`, request context, zod-validated DTOs, service | touch DB, throw non-`AppError` on purpose, format ad hoc responses |
-| **service** | domain rules, repositories, other services, context principal | import Express types, build HTTP responses |
-| **repository** | Drizzle, schema, `DbExecutor` | contain business rules, decide HTTP status |
+| Layer          | Knows about                                                   | Must not                                                           |
+| -------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **routes**     | Express Router, middleware, controller handlers               | contain logic                                                      |
+| **controller** | `req`, `res`, request context, zod-validated DTOs, service    | touch DB, throw non-`AppError` on purpose, format ad hoc responses |
+| **service**    | domain rules, repositories, other services, context principal | import Express types, build HTTP responses                         |
+| **repository** | Drizzle, schema, `DbExecutor`                                 | contain business rules, decide HTTP status                         |
 
 Services throw `AppError`s (ADR-0013); controllers never catch them — the error middleware maps them to responses.
 
@@ -121,26 +137,50 @@ Pure helpers (mappers, policies, list-query builders, token encoding) are plain 
 `core/container.ts` builds everything once, in dependency order, by calling the factories:
 
 ```ts
-export const buildContainer = ({ config, db, logger }: { config: AppConfig; db: Db; logger: Logger }) => {
+export const buildContainer = ({
+  config,
+  db,
+  logger,
+}: {
+  config: AppConfig;
+  db: Db;
+  logger: Logger;
+}) => {
   const hasher = createArgon2Hasher(config.auth.argon2);
   const tokens = createTokenService(config.auth);
 
-  const staffRepo    = createStaffRepository(db);
-  const usersRepo    = createUsersRepository(db);
+  const staffRepo = createStaffRepository(db);
+  const usersRepo = createUsersRepository(db);
   const sessionsRepo = createSessionsRepository(db);
 
-  const staffAuth = createAuthService({ population: 'staff', principals: staffPrincipalAdapter(staffRepo), sessionsRepo, hasher, tokens, db });
-  const userAuth  = createAuthService({ population: 'user',  principals: userPrincipalAdapter(usersRepo),  sessionsRepo, hasher, tokens, db });
-  const usersSvc  = createUsersService({ usersRepo, hasher, db });
+  const staffAuth = createAuthService({
+    population: "staff",
+    principals: staffPrincipalAdapter(staffRepo),
+    sessionsRepo,
+    hasher,
+    tokens,
+    db,
+  });
+  const userAuth = createAuthService({
+    population: "user",
+    principals: userPrincipalAdapter(usersRepo),
+    sessionsRepo,
+    hasher,
+    tokens,
+    db,
+  });
+  const usersSvc = createUsersService({ usersRepo, hasher, db });
 
   return {
-    config, db, logger,
-    services:    { staffAuth, userAuth, users: usersSvc /* … */ },
+    config,
+    db,
+    logger,
+    services: { staffAuth, userAuth, users: usersSvc /* … */ },
     controllers: {
       staffAuth: createAuthController(staffAuth),
-      userAuth:  createAuthController(userAuth),
-      users:     createUsersController(usersSvc),
-      health:    createHealthController(createHealthService([dbIndicator(db)])),
+      userAuth: createAuthController(userAuth),
+      users: createUsersController(usersSvc),
+      health: createHealthController(createHealthService([dbIndicator(db)])),
     },
   } as const;
 };
@@ -157,6 +197,15 @@ Rules:
 - Repositories accept `DbExecutor` (db or transaction) as the **last, optional** parameter for transactional composition (ADR-0006).
 - Controllers are thin: parse validated input, call service with `req.ctx` first, respond via `respond.*` (ADR-0012).
 - One module may depend on another module's **service**, never its repository.
+  **Amended 2026-08-18 (step 8):** with one stated exception — a **principal
+  adapter**. `auth.principals.ts` takes `StaffRepository` and `UsersRepository`
+  and translates them into the `PrincipalAdapter` that ADR-0017 §Principal
+  abstraction requires. Going through a service instead would mean a
+  `StaffService` whose only caller is authentication and whose methods are
+  `findByEmail`/`findById` — a pass-through layer that adds a file and hides
+  nothing. The adapter is where the exception is confined: it is the only file
+  in `modules/auth` that imports another module, it holds no logic beyond the
+  translation, and the container is what wires it (see the example above).
 - Modules export nothing to the outside except factories, schemas, mappers and types.
 
 ### Naming

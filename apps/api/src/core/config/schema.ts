@@ -58,6 +58,31 @@ export const KNOWN_PUBLIC_SECRETS: readonly string[] = [
   TEST_JWT_ACCESS_SECRET,
 ];
 
+/** The `SEED_SUPER_ADMIN_PASSWORD` shipped in `.env.example`. */
+export const PLACEHOLDER_SEED_SUPER_ADMIN_PASSWORD = "ChangeMe123!local";
+
+/** The `SEED_SUPER_ADMIN_PASSWORD` shipped in `apps/api/.env.test`. */
+export const TEST_SEED_SUPER_ADMIN_PASSWORD = "TestSuperAdmin!123";
+
+/**
+ * Committed passwords for the seeded super admin (ADR-0008).
+ *
+ * The same problem as {@link KNOWN_PUBLIC_SECRETS} and a worse consequence: the
+ * account these create holds `super_admin`, which bypasses every staff role
+ * check (ADR-0019). `pnpm db:setup` is the documented deploy step, so a
+ * production environment assembled by copying one of the committed env files
+ * would seed an account whose password is in the repository. Length rules
+ * cannot tell a public dummy from a real credential — only enumeration can.
+ *
+ * The seed runner never passes through this schema, so `@repo/db`'s
+ * `tooling/env.ts` enforces the same list; a test in each package reads the
+ * committed files and asserts both lists cover them.
+ */
+export const KNOWN_PUBLIC_SEED_PASSWORDS: readonly string[] = [
+  PLACEHOLDER_SEED_SUPER_ADMIN_PASSWORD,
+  TEST_SEED_SUPER_ADMIN_PASSWORD,
+];
+
 /** Shortest accepted signing key, in characters. */
 const MIN_JWT_SECRET_LENGTH = 32;
 
@@ -215,6 +240,17 @@ export const envSchema = z
       path: ["JWT_ACCESS_SECRET"],
       message:
         "is a value committed in this repository and must not be used in production",
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      env.SEED_SUPER_ADMIN_PASSWORD === undefined ||
+      !KNOWN_PUBLIC_SEED_PASSWORDS.includes(env.SEED_SUPER_ADMIN_PASSWORD),
+    {
+      path: ["SEED_SUPER_ADMIN_PASSWORD"],
+      message:
+        "is a value committed in this repository and must not seed a production super admin",
     },
   )
   .refine(

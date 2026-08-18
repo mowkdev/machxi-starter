@@ -2,6 +2,8 @@ import type { Population } from "@repo/contracts";
 import { sessions, type DbExecutor } from "@repo/db";
 import { and, eq, isNull } from "drizzle-orm";
 
+import { internal } from "../../core/errors/index.js";
+
 /**
  * Every query against `sessions` (ADR-0009, ADR-0018).
  *
@@ -93,8 +95,10 @@ export const createSessionsRepository = (db: DbExecutor) =>
 
       if (created === undefined) {
         // Unreachable: a plain insert either returns its row or throws. Stated
-        // rather than asserted so the type is honest without a non-null `!`.
-        throw new Error("sessions.create inserted no row");
+        // rather than asserted so the type is honest without a non-null `!`,
+        // and raised through the factory because `AppError` is the only error
+        // type this code base has (ADR-0013).
+        throw internal(new Error("sessions.create inserted no row"));
       }
 
       return created;
@@ -225,21 +229,14 @@ export const createSessionsRepository = (db: DbExecutor) =>
       return revoked.length;
     },
 
-    /**
-     * Audit trail only, written on refresh — never on the authenticated hot
-     * path, where it would turn a primary-key read into a write per request.
-     *
-     * Retention is deliberately **not** here: deleting dead sessions is a
-     * tooling concern (`pnpm db:sessions:prune`, ADR-0018 §Cleanup) and lives
-     * in `@repo/db`, so the retention rule has one implementation rather than
-     * one per caller.
-     */
-    touch: async (id: string, at: Date, tx: DbExecutor = db): Promise<void> => {
-      await tx
-        .update(sessions)
-        .set({ lastUsedAt: at, updatedAt: at })
-        .where(eq(sessions.id, id));
-    },
+    // `last_used_at` is written by `rotate` above and nowhere else: refresh is
+    // the only event that touches it, because doing so per authenticated
+    // request would turn a primary-key read into a write on the hottest path
+    // the API has (ADR-0018, amended step 8).
+    //
+    // Retention is absent for a different reason: deleting dead sessions is a
+    // tooling concern (`pnpm db:sessions:prune`, ADR-0018 §Cleanup) and lives
+    // in `@repo/db`, so the retention rule has one implementation.
   }) as const;
 
 export type SessionsRepository = ReturnType<typeof createSessionsRepository>;

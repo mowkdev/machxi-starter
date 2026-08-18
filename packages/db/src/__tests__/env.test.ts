@@ -64,4 +64,47 @@ describe("readSuperAdminCredentials", () => {
 
     expect(readSuperAdminCredentials().password).toBe("123456789012");
   });
+
+  /**
+   * The account this creates holds `super_admin`, which bypasses every staff
+   * role check (ADR-0019), and `pnpm db:setup` is the documented deploy step —
+   * so a committed password reaching production is worse than a committed
+   * signing key, not better (ADR-0020 §Known-public secrets).
+   */
+  describe("committed passwords in production", () => {
+    it.each([
+      [".env.example", "ChangeMe123!local"],
+      ["apps/api/.env.test", "TestSuperAdmin!123"],
+    ])("refuses the value committed in %s", (_label, password) => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("SEED_SUPER_ADMIN_EMAIL", "admin@example.com");
+      vi.stubEnv("SEED_SUPER_ADMIN_PASSWORD", password);
+
+      expect(() => readSuperAdminCredentials()).toThrow(
+        /committed in this repository/,
+      );
+      // The message names the variable and the reason, never the value.
+      expect(() => readSuperAdminCredentials()).not.toThrow(
+        new RegExp(password.replace(/[!]/g, "\\!")),
+      );
+    });
+
+    it("accepts them outside production, which is what they are for", () => {
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("SEED_SUPER_ADMIN_EMAIL", "admin@machxi.local");
+      vi.stubEnv("SEED_SUPER_ADMIN_PASSWORD", "ChangeMe123!local");
+
+      expect(readSuperAdminCredentials().password).toBe("ChangeMe123!local");
+    });
+
+    it("accepts a real password in production", () => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("SEED_SUPER_ADMIN_EMAIL", "admin@example.com");
+      vi.stubEnv("SEED_SUPER_ADMIN_PASSWORD", "a-genuinely-private-value");
+
+      expect(readSuperAdminCredentials().password).toBe(
+        "a-genuinely-private-value",
+      );
+    });
+  });
 });

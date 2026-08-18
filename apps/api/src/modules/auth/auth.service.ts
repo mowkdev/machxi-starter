@@ -235,6 +235,21 @@ export const createAuthService = ({
 
         if (rotated === undefined) throw invalidRefreshToken();
 
+        // Both of these run **before** the reuse branch, because that branch
+        // has a side effect.
+        //
+        // Population: a session of the other population must be
+        // indistinguishable from an unknown token (ADR-0019 §1). Revoking it
+        // and answering `AUTH_REFRESH_REUSED` from the wrong segment would be
+        // both a distinguishable code and a cross-segment state change.
+        if (rotated.principalType !== population) throw invalidRefreshToken();
+
+        // Already revoked: the ordinary "logged out, then a stale tab retried"
+        // case. It is not theft, and logging it as theft is how a `warn` that
+        // is supposed to mean "a token was stolen" stops meaning anything
+        // (ADR-0020 §Audit trail).
+        if (rotated.revokedAt !== null) throw sessionRevoked();
+
         const withinGrace =
           rotated.rotatedAt !== null &&
           at.getTime() - rotated.rotatedAt.getTime() <= rotationGraceSec * 1000;

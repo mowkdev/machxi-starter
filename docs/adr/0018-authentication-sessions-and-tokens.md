@@ -16,6 +16,7 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
   ```json
   { "sub": "<principal id>", "pop": "staff" | "user", "sid": "<session id>", "roles": ["admin"], "iat": …, "exp": …, "iss": "machxi-api", "aud": "machxi-staff" | "machxi-user", "jti": "<uuid>" }
   ```
+
   `aud` differs per population so a token cannot be replayed on the other segment even if the middleware were misconfigured.
 
 - **Refresh token**: opaque, 32 random bytes base64url (`crypto.randomBytes`), long-lived (`REFRESH_TOKEN_TTL=30d`, sliding). Only its **SHA-256 hash** is stored. Sent to the client once; on use it is **rotated** (new refresh token, old one marked used).
@@ -42,6 +43,7 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 ### Flows (per population; paths under `/api/v1/{user|admin}/auth`, ADR-0015)
 
 **Login** `POST /auth/login` `{ email, password }`
+
 1. Rate-limited per IP + email (ADR-0020).
 2. Find principal by email in the population's table; **always** run the password verifier (against a dummy hash if not found) to equalise timing.
 3. Reject if not found / wrong password → `AUTH_INVALID_CREDENTIALS` (401, same message either way). Reject if `status != active` → `AUTH_ACCOUNT_DISABLED` (403).
@@ -54,6 +56,7 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 **Authenticated request** — `Authorization: Bearer <access>`; middleware verifies JWT (signature, `exp`, `iss`, `aud` matches segment population), then **loads the session by `sid`** and checks `revoked_at is null`. Yes, this is one indexed PK lookup per request — accepted deliberately so revocation is immediate (logout / admin disable). Principal roles are taken from the JWT claims for v1 (fresh at most 15 min); a `roles_version`/re-fetch can be added if role changes must apply instantly.
 
 **Refresh** `POST /auth/refresh` `{ refreshToken }`
+
 1. Hash, look up session by hash (also match `previous_refresh_token_hash` inside a short grace window ≤ 30 s to tolerate concurrent refreshes from the same client).
 2. Not found → `AUTH_INVALID_REFRESH_TOKEN` (401).
 3. Found but `revoked_at` set or expired → 401.
@@ -67,6 +70,52 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 
 **Admin forced logout** — `POST /admin/users/:id/sessions/revoke` (staff) revokes all sessions of a user; same for staff by super_admin. Disabling an account revokes its sessions in the same transaction.
 
+**Amended 2026-08-18 (implementation step 8).** Implementing the flows above
+settled six points the decision left open. The behaviour is now:
+
+- **A refresh inside the grace window rotates again.** Step 1 says a hit on
+  `previous_refresh_token_hash` within the window is tolerated, but not what to
+  answer with. The plaintext of the _current_ token is not stored — only its
+  digest — so it cannot be re-sent; the session therefore rotates from its
+  current hash and the caller gets a fresh pair. The pair issued by the first
+  call keeps working for another window as the new previous hash, which is what
+  makes two concurrent refreshes both succeed instead of one logging the other
+  out.
+- **Rotation is guarded on the hash it replaces.** The `UPDATE` matches on
+  `id AND refresh_token_hash = <the hash we read> AND revoked_at IS NULL`. Two
+  refreshes racing on one session would otherwise both succeed, and the loser
+  would hand its client a token no row references. Zero rows updated is answered
+  as `AUTH_INVALID_REFRESH_TOKEN`.
+- **A revoked session and an expired one answer differently.** Step 3 groups
+  them as "401". They are `AUTH_SESSION_REVOKED` and
+  `AUTH_INVALID_REFRESH_TOKEN` respectively, matching the code table in
+  `@repo/contracts`. The population check runs _first_, so a token belonging to
+  the other segment is always `AUTH_INVALID_REFRESH_TOKEN` — indistinguishable
+  from an unknown token, per ADR-0019 §1.
+- **`last_used_at` is written on refresh, not on every authenticated request.**
+  §Authenticated request describes a primary-key read; touching the row per
+  request would make it a write per request, on the hottest path the API has.
+  The audit trail keeps refresh granularity, which is what a per-device session
+  record is actually asked about.
+- **`GET /auth/me` revokes when the principal is gone or inactive.** Refusing
+  alone would leave the refresh token alive to mint a new access token minutes
+  later. Same for refresh (step 6): an inactive principal has _all_ its sessions
+  revoked, not just the one presented.
+- **Population and revocation are checked before the reuse branch.** That
+  branch has a side effect — it revokes — so ordering is not cosmetic. A
+  rotated-out token of the _other_ population must answer
+  `AUTH_INVALID_REFRESH_TOKEN` without touching that session (ADR-0019 §1), and
+  a token whose session was already revoked is the ordinary "a stale tab
+  retried after logout" case, answered `AUTH_SESSION_REVOKED`. Reporting that
+  as reuse would fire the `warn` that ADR-0020 §Audit trail reserves for token
+  theft on the commonest client bug there is, which is how such a signal stops
+  being worth alerting on.
+- **`db:sessions:prune` exists** (see §Cleanup), in `@repo/db`, deleting
+  sessions whose refresh token expired or which were revoked more than
+  `RETENTION_DAYS` (30) ago. It is deliberately not refused in production —
+  pruning is what a production database needs, and it can only delete rows that
+  are already unusable.
+
 ### Password hashing
 
 - **argon2id** (`argon2` package): memoryCost 64 MiB, timeCost 3, parallelism 1 (tunable via config); `PasswordHasher` type `{ hash(pw), verify(hash, pw), needsRehash(hash), dummyHash() }`, produced by `createArgon2Hasher(params)`. On successful login, if `needsRehash` → rehash and store (transparent parameter upgrades).
@@ -75,12 +124,12 @@ Authentication must be implemented in-house (no Passport/Auth.js/Lucia/etc.), wi
 
 **Amended 2026-08-18 (implementation step 3).** Building the package surfaced four points the decision above did not settle. The behaviour is now:
 
-- `dummyHash()` belongs to the hasher, not to the auth service. The login flow's equal-timing rule (**Login**, step 2 above) only holds if the dummy carries the *same* cost parameters as a real verify, and only the hasher knows them. It is memoised, and a rejection is deliberately **not** memoised — caching a failed promise would make every later unknown-email login fail instantly, a louder oracle than the one it closes. **The container must warm it (`await hasher.dummyHash()`) before the server binds**, or the first unknown-email login pays hash + verify while a known-email login pays verify alone.
+- `dummyHash()` belongs to the hasher, not to the auth service. The login flow's equal-timing rule (**Login**, step 2 above) only holds if the dummy carries the _same_ cost parameters as a real verify, and only the hasher knows them. It is memoised, and a rejection is deliberately **not** memoised — caching a failed promise would make every later unknown-email login fail instantly, a louder oracle than the one it closes. **The container must warm it (`await hasher.dummyHash()`) before the server binds**, or the first unknown-email login pays hash + verify while a known-email login pays verify alone.
 - `verify` returns `false` for a stored value that is not a readable argon2 digest, so a corrupt row fails the login rather than 500-ing it. Every other failure (native binding unavailable, out of memory under load) is **rethrown** — swallowing those would silently degrade the whole deployment to "wrong password" while ADR-0020's login rate limiter locked real users out.
 - `needsRehash` also returns `true` for a digest that is not argon2id or is unreadable. `argon2.needsRehash` compares only `v`/`m`/`t`/`p`, and `argon2.verify` accepts argon2i and argon2d digests — so without the explicit algorithm check an imported non-argon2id hash would verify happily and never be upgraded.
 - `createArgon2Hasher` **rejects parameters below a floor** (`minArgon2Params`: 19456 KiB / t=2 / p=1, the OWASP argon2id second-choice profile), because libargon2 itself only rejects `m < 8*p` and `t < 1`. The check lives in the package rather than only in the ADR-0004 config schema because the seeders build a hasher directly and never pass through `core/config`. Tests opt out with `allowWeakParams: true`; no production call site sets it.
 
-- **Known residual (accepted, not fixed).** The dummy hash always uses the *current* parameters, while an account whose password has not been rehashed yet verifies at the *old* cost. Between an `ARGON2_*` increase and a given account's next successful login, "account with a legacy cheaper hash" stays timing-distinguishable from "no such account". This is inherent to transparent parameter upgrades — the alternative is rehashing every row offline, which requires the plaintext. Accepted.
+- **Known residual (accepted, not fixed).** The dummy hash always uses the _current_ parameters, while an account whose password has not been rehashed yet verifies at the _old_ cost. Between an `ARGON2_*` increase and a given account's next successful login, "account with a legacy cheaper hash" stays timing-distinguishable from "no such account". This is inherent to transparent parameter upgrades — the alternative is rehashing every row offline, which requires the plaintext. Accepted.
 
 The package therefore exports `createArgon2Hasher`, `defaultArgon2Params` (the single source for the ADR-0004 `ARGON2_*` defaults — `core/config` should reference it rather than re-typing the literals), `minArgon2Params`, `sha256Base64url`, `randomToken` and its `minTokenBytes`/`maxTokenBytes` bounds. `hashLength` is pinned at 32; the 16-byte salt is not configurable in argon2 0.45 and is covered by a test instead.
 
@@ -109,6 +158,17 @@ Staff accounts are created by an admin via `POST /admin/staff` with an initial p
 - One DB lookup per authenticated request (by primary key) — negligible for the foreseeable scale, and removable later by trusting the JWT with a short TTL + revocation cache.
 - No external auth dependency; the whole flow is ~4 files and fully testable.
 - Secrets management: `JWT_ACCESS_SECRET` rotation requires a key-id (`kid`) scheme — planned when moving to asymmetric keys.
+- **Reuse detection is probabilistic, not deterministic** (recorded 2026-08-18,
+  step 8). A session remembers exactly **one** previous hash, and a refresh
+  served through the grace window rotates from the _current_ hash and resets
+  `rotated_at` — so the token that was actually presented is dropped from the
+  row, and the window renews. A stolen token replayed inside the window
+  therefore becomes the live credential, and an attacker who keeps refreshing
+  inside it keeps renewing. Detection still fires the moment the legitimate
+  holder refreshes, because that request will be outside the window, so the
+  exposure is bounded rather than open-ended. Making it exact needs either a
+  generation counter or a short ring of previous hashes; both change the schema
+  and the flow, so they belong in a superseding ADR rather than in a patch.
 - **No pepper in v1** (recorded 2026-08-18). `argon2` supports a `secret` (keyed hashing); using it would make a database-only compromise useless without the application key, which is a real gain over cost parameters alone. It is deferred rather than dismissed because it needs exactly the key-id/rotation machinery the `kid` scheme above needs, and because rotating a pepper invalidates every stored hash — the only migration path is rehash-on-next-login with both keys held during the overlap. Both belong in the same future **secret management and key rotation** ADR; `createArgon2Hasher` would gain a `secret` parameter at that point, and the `PasswordHasher` port already isolates every call site from the change.
 
 ## Alternatives considered

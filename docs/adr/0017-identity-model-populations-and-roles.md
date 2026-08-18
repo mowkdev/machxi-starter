@@ -41,6 +41,28 @@ pk (staff_id, role)      pk (user_id, role)
 
 `Principal` (ADR-0010) is a discriminated union on `kind: 'staff' | 'user'`. Auth and guards are generic over population via a small `PrincipalAdapter` type (`{ findByEmail, findById, rolesOf, isActive }`) produced by `staffPrincipalAdapter(staffRepo)` and `userPrincipalAdapter(usersRepo)`, so `createAuthService` is written once and called per population (`createAuthService({ population: 'staff', principals: staffPrincipalAdapter(staffRepo), … })`, likewise for `'user'`).
 
+**Amended 2026-08-18 (implementation step 8).** The adapter that shipped differs
+from the `{ findByEmail, findById, rolesOf, isActive }` sketch above in three
+ways, each because the sketch would have cost a query or a cast:
+
+- **`rolesOf` and `isActive` are folded into the record.** `findByEmail` and
+  `findById` return a `PrincipalRecord` that already carries `roles` (loaded in
+  the same query, via the join) and `active: boolean`. Calling `rolesOf` after
+  `findByEmail` would be a second round trip on the login path for data the
+  first query can return; and `active` rather than the raw `status` keeps "which
+  enum values count as active" inside the adapter, where the two populations'
+  enums differ. The repositories do not carry a standalone `rolesOf` either —
+  step 9 adds the role queries its own endpoints need, rather than this step
+  leaving an unused one behind.
+- **The record carries its own wire resource.** Staff names are `not null` and
+  user names are nullable, so one flat record cannot type both; each adapter
+  maps its row with its own mapper and puts the `PrincipalResource` on the
+  record. That is what lets `createAuthService` be non-generic.
+- **`create` is optional and absent on the staff adapter.** "Staff cannot
+  self-register" is an invariant, not a missing feature, so it is expressed by
+  the adapter having no such function rather than by a runtime flag. The public
+  register route is mounted from the user service only.
+
 ### Roles vs. permissions
 
 - **v1**: role-based guards only (`authorize('admin','manager')`, ADR-0019). `super_admin` implicitly passes every staff role check.

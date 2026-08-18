@@ -91,6 +91,16 @@ export const TRUNCATED_TABLES = [
  * for no isolation a truncate does not already give.
  */
 export const truncateAll = async (db: DbExecutor): Promise<void> => {
+  // The same refusal `migrateFreshDatabase` carries, for the same reason: this
+  // is exported from a package entry point and takes an *executor*, so it
+  // deletes every row of whatever database it is handed — there is no URL here
+  // to apply the `_test`-suffix rule to (ADR-0008 §Environment guardrails).
+  if (isProduction()) {
+    throw new Error(
+      "truncateAll deletes every row and refuses to run when NODE_ENV=production.",
+    );
+  }
+
   await db.execute(
     raw`truncate table ${raw.raw(TRUNCATED_TABLES.join(", "))} restart identity cascade`,
   );

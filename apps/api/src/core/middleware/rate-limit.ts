@@ -55,11 +55,22 @@ const retryAfterSeconds = (req: Request, windowMs: number): number => {
  * 429 has the same shape, the same `requestId` and the same log line as every
  * other failure.
  */
+/**
+ * The client address, as the context middleware validated it.
+ *
+ * Not `req.ip` directly: behind a proxy that value can be an arbitrary string
+ * (see `context.ts`), and an unbounded attacker-chosen string is a poor key for
+ * an in-memory store. `ipKeyGenerator` then groups IPv6 addresses by /64, so
+ * one client cannot rotate through its own subnet for a fresh budget.
+ */
+const ipKey = (req: Request): string => ipKeyGenerator(req.ctx.ip ?? "");
+
 const baseOptions = (windowMs: number) =>
   ({
     windowMs,
     standardHeaders: "draft-8",
     legacyHeaders: false,
+    keyGenerator: ipKey,
     handler: (req: Request, res: Response, next: NextFunction) => {
       const seconds = retryAfterSeconds(req, windowMs);
 
@@ -95,7 +106,7 @@ export const createLoginRateLimiter = (config: AppConfig): RequestHandler =>
   rateLimit({
     ...baseOptions(RATE_LIMIT_WINDOW_MS),
     limit: config.rateLimit.loginMax,
-    keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? "")}:${keyEmail(req)}`,
+    keyGenerator: (req) => `${ipKey(req)}:${keyEmail(req)}`,
   });
 
 /**

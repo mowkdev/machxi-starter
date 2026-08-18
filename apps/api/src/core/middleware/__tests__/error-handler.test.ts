@@ -5,7 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { createRequestContext } from "../../context/index.js";
-import { forbidden, internal, notFound } from "../../errors/index.js";
+import {
+  forbidden,
+  internal,
+  notFound,
+  rateLimited,
+  unavailable,
+} from "../../errors/index.js";
 import { createErrorHandler, toAppError } from "../error-handler.js";
 
 /**
@@ -16,15 +22,24 @@ import { createErrorHandler, toAppError } from "../error-handler.js";
 const requestId = "01J0000000000000000000000A";
 
 const fakeResponse = () => {
+  const headers = new Map<string, string>();
+
   const res = {
     headersSent: false,
     statusCode: 200,
+    headers,
     status: vi.fn((code: number) => {
       res.statusCode = code;
 
       return res;
     }),
     json: vi.fn((_body: unknown) => res),
+    hasHeader: vi.fn((name: string) => headers.has(name.toLowerCase())),
+    setHeader: vi.fn((name: string, value: string) => {
+      headers.set(name.toLowerCase(), value);
+
+      return res;
+    }),
   };
 
   return res;
@@ -189,6 +204,52 @@ describe("errorHandler", () => {
     expect(body).toMatchObject({
       error: { code: "INTERNAL_ERROR", message: "Internal server error" },
     });
+  });
+
+  it("sets Retry-After from a retryAfter detail", () => {
+    // Load shedding under the argon2 cap throws a 503 from inside a service
+    // and has nowhere else to put the hint (ADR-0020 §Hashing cost vs.
+    // liveness); a 503 with no `Retry-After` tells a client nothing about
+    // whether to come back in a second or in an hour.
+    const { res, body } = handle(
+      unavailable([{ code: "retryAfter", message: "1" }]),
+    );
+
+    expect(res.statusCode).toBe(503);
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "1");
+    expect(body).toMatchObject({
+      error: { code: "SERVICE_UNAVAILABLE", details: [{ code: "retryAfter" }] },
+    });
+  });
+
+  it("leaves a Retry-After the rate limiter already set alone", () => {
+    // The limiter knows the window; the handler must not overwrite it with a
+    // hint meant for a different failure.
+    const res = fakeResponse();
+
+    res.setHeader("Retry-After", "900");
+    createErrorHandler({
+      includeDebug: false,
+      logger: createLogger({ level: "silent" }),
+    })(
+      rateLimited(30),
+      {
+        ctx: createRequestContext({
+          requestId,
+          logger: createLogger({ level: "silent" }),
+        }),
+      } as Request,
+      res as unknown as Response,
+      vi.fn() as unknown as NextFunction,
+    );
+
+    expect(res.headers.get("retry-after")).toBe("900");
+  });
+
+  it("sets no Retry-After on an error that carries no hint", () => {
+    const { res } = handle(notFound());
+
+    expect(res.setHeader).not.toHaveBeenCalled();
   });
 
   it("never sends a stack trace outside development", () => {

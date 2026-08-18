@@ -16,12 +16,12 @@ The starter uses Jest + ts-jest, which needs extra configuration for ESM/`NodeNe
 
 ### Test pyramid for the API
 
-| Level | What | How | DB |
-|---|---|---|---|
-| Unit | services, mappers, envelope/error helpers, guards, token service, list-query parser | fake repositories (in-memory implementations of repository interfaces), no Express | none |
-| Integration | repositories, auth flows, middleware order, envelope conformance | `supertest` against `createApp(buildContainer({ db: testDb }))` | `machxi_test` (ADR-0007) |
-| Contract (later) | OpenAPI conformance | generated schema vs responses | test |
-| Manual / smoke | end-to-end via Postman | collection in `docs/postman/` | dev |
+| Level            | What                                                                                | How                                                                                | DB                       |
+| ---------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------ |
+| Unit             | services, mappers, envelope/error helpers, guards, token service, list-query parser | fake repositories (in-memory implementations of repository interfaces), no Express | none                     |
+| Integration      | repositories, auth flows, middleware order, envelope conformance                    | `supertest` against `createApp(buildContainer({ db: testDb }))`                    | `machxi_test` (ADR-0007) |
+| Contract (later) | OpenAPI conformance                                                                 | generated schema vs responses                                                      | test                     |
+| Manual / smoke   | end-to-end via Postman                                                              | collection in `docs/postman/`                                                      | dev                      |
 
 Integration test rules:
 
@@ -38,6 +38,42 @@ Minimum integration coverage for the first deliverable:
 - Segment isolation: user token on `/admin/auth/me` → 401; staff without role on `/admin/staff` → 403; super admin → 200.
 - List endpoint (`/admin/users`): pagination meta, sort, filter, invalid sort field → 400.
 - Seed idempotency: running seeders twice yields one super admin.
+
+**Amended 2026-08-18 (implementation step 8).** How the integration rules above
+are actually met, now that there are fixtures to seed:
+
+- **Seeding is per file, through the real seeders.** `globalSetup` still rebuilds
+  the schema once; each file then calls `truncateAll` (`@repo/db/testing`) and
+  `runSeeders([...baseSeeders, ...devSeeders])` (`@repo/db/seeds`) in its
+  `beforeAll`. Both entry points were added for this. Running the real seeders
+  rather than test-only inserts is what makes a broken seeder fail the suite
+  instead of only a developer's first login.
+- **The rate limits are effectively off in `.env.test`** and are covered by a
+  dedicated file that builds apps with real limits. The memory store lives
+  inside a limiter instance, which lives inside one app, so a count can never
+  leak between files — but the auth suite logs in dozens of times from one
+  address, which the production limit would correctly refuse.
+- **Refresh-reuse detection gets its own app** with `refreshRotationGraceSec: 0`.
+  Asserting it against the default 30-second window would mean sleeping, and a
+  suite that sleeps is a suite people delete. The grace window's _own_ behaviour
+  is asserted separately, with the default config.
+- **The population parameterisation is `describe.each`** over a case object
+  (segment base path, an active account, and a way to obtain a disabled one).
+  The staff fixtures are all active by design, so the staff case disables one —
+  which is also the state step 9's `PATCH /admin/staff/:id` will produce.
+- **The root `test:int` runs with `--concurrency=1`.** `@repo/db` and `api` both
+  point their integration suites at `DATABASE_URL_TEST` and both rebuild it in
+  `globalSetup`, so running them in parallel means one suite drops the schema
+  while the other is mid-run. This was always true and was hidden only by the
+  API suite being short enough to finish first; step 8's suite is not. Turbo
+  parallelises by default, so the serialisation has to be stated. The
+  alternative — a second test database — buys parallelism the suites do not
+  need and adds a variable to every environment.
+- **Role-guard coverage waits for step 9.** ADR-0019 asks for a test that
+  enumerates admin routes and asserts 401/403 for an unprivileged principal;
+  step 8 has no role-guarded route to enumerate, so `authorize` is unit-tested
+  and segment isolation is covered end to end. Adding a probe route to
+  `createApp` to test it earlier would put a test seam in production wiring.
 
 ### Postman
 

@@ -146,6 +146,18 @@ export const createErrorHandler = ({
 
     const details: readonly ErrorDetail[] | undefined = appError.details;
 
+    // Any error carrying a `retryAfter` hint also gets the header, unless
+    // something already set one. The rate limiter sets its own (it knows the
+    // window); load shedding under the argon2 cap (ADR-0020 §Hashing cost vs.
+    // liveness) throws a 503 from deep inside a service and has nowhere else to
+    // put it — and a 503 without `Retry-After` tells a client nothing about
+    // whether to come back in a second or in an hour.
+    const retryAfter = details?.find((detail) => detail.code === "retryAfter");
+
+    if (retryAfter !== undefined && !res.hasHeader("Retry-After")) {
+      res.setHeader("Retry-After", retryAfter.message);
+    }
+
     const body: ApiError = {
       code: appError.code,
       message: exposed ? appError.message : "Internal server error",

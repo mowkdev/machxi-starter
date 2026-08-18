@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import type { Container } from "../core/container.js";
-import { createGlobalRateLimiter } from "../core/middleware/index.js";
 import { createHealthRouter } from "../modules/health/index.js";
 import { createAdminRouter } from "./admin.router.js";
 import { createPublicRouter } from "./public.router.js";
@@ -26,7 +25,7 @@ export const createRoutes = (container: Container): Router => {
   // (ADR-0016, ADR-0020 §Residual risks).
   router.use("/health", createHealthRouter(container.controllers.health));
 
-  router.use(API_V1_PREFIX, createGlobalRateLimiter(container.config));
+  router.use(API_V1_PREFIX, container.rateLimiters.global);
 
   router.use(`${API_V1_PREFIX}/public`, createPublicRouter(container));
   router.use(`${API_V1_PREFIX}/user`, createUserRouter(container));
