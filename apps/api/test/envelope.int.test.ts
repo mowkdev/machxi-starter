@@ -72,6 +72,39 @@ describe("error envelope", () => {
     expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
 
+  it("answers a schema rejection with VALIDATION_ERROR and field paths", async () => {
+    // Deferred from step 7, which had no validated endpoint to route through:
+    // `validate` and the ZodError mapping were unit-tested there, but the 400
+    // envelope had never travelled the real chain (ADR-0021 §Envelope).
+    const response = await request()
+      .post("/api/v1/admin/auth/login")
+      .send({ email: "not-an-email", password: "" })
+      .expect(400);
+
+    expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+
+    const paths = response.body.error.details.map(
+      (detail: { path: string }) => detail.path,
+    );
+
+    // Both parts are reported from one response — `validate` parses every
+    // section even after one fails — and the paths are the client's own field
+    // names, not `body.email` (ADR-0013).
+    expect(paths).toEqual(expect.arrayContaining(["email", "password"]));
+  });
+
+  it("never echoes a rejected credential back in the details", async () => {
+    // `details[].message` comes from zod and describes the constraint; the
+    // value must not travel back out, least of all a password (ADR-0005).
+    const response = await request()
+      .post("/api/v1/admin/auth/login")
+      .send({ email: "someone@machxi.local", password: "" })
+      .expect(400);
+
+    expect(JSON.stringify(response.body)).not.toContain("someone@machxi.local");
+  });
+
   it("never sends a stack trace in the test environment", async () => {
     const response = await request()
       .post("/api/v1/public/anything")

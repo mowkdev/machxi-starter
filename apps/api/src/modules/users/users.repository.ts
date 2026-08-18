@@ -147,10 +147,7 @@ export const createUsersRepository = (db: DbExecutor) =>
       role: UserRole,
       tx: DbExecutor = db,
     ): Promise<void> => {
-      await tx
-        .insert(userRoles)
-        .values({ userId, role })
-        .onConflictDoNothing();
+      await tx.insert(userRoles).values({ userId, role }).onConflictDoNothing();
     },
 
     updateLastLoginAt: async (

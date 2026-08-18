@@ -3,11 +3,7 @@ import { Router, type RequestHandler } from "express";
 
 import { noStore, validate } from "../../core/middleware/index.js";
 import type { AuthController } from "./auth.controller.js";
-import {
-  loginSchema,
-  refreshSchema,
-  registerSchema,
-} from "./auth.schemas.js";
+import { loginSchema, refreshSchema, registerSchema } from "./auth.schemas.js";
 
 /**
  * `/api/v1/{admin,user}/auth/*` and `/api/v1/public/auth/register`
@@ -48,7 +44,12 @@ export const createAuthRouter = ({
   router.use(noStore);
 
   // Unauthenticated by definition: these are how a client *gets* a token.
-  router.post("/login", loginRateLimiter, validate(loginSchema), controller.login);
+  router.post(
+    "/login",
+    loginRateLimiter,
+    validate(loginSchema),
+    controller.login,
+  );
   router.post(
     "/refresh",
     refreshRateLimiter,

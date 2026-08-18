@@ -356,7 +356,11 @@ export const createAuthService = ({
       });
 
       ctx.logger.info(
-        { population, principalId: principal.id, sessionId: principal.sessionId },
+        {
+          population,
+          principalId: principal.id,
+          sessionId: principal.sessionId,
+        },
         "logged out",
       );
     },

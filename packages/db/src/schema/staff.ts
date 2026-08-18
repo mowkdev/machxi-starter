@@ -79,17 +79,35 @@ export const staffRoles = pgTable(
   ],
 );
 
+/**
+ * `staff_roles` points at `staff` **twice** — once as the holder of the grant
+ * and once as whoever issued it — so both relations must be named.
+ *
+ * Without `relationName`, `db.query.staff.findFirst({ with: { roles: true } })`
+ * fails at query-build time with "there are multiple relations between
+ * staffRoles and staff": Drizzle cannot tell which of the two foreign keys the
+ * `many` side means. Nothing about the SQL changes, so this is not a
+ * migration — `relations()` is a TypeScript-level description of joins the
+ * relational query API may take.
+ */
+const ROLE_HOLDER = "staffRoleHolder";
+const ROLE_GRANTER = "staffRoleGranter";
+
 export const staffRelations = relations(staff, ({ many }) => ({
-  roles: many(staffRoles),
+  roles: many(staffRoles, { relationName: ROLE_HOLDER }),
+  /** Grants this staff member issued to others — the audit direction. */
+  grantedRoles: many(staffRoles, { relationName: ROLE_GRANTER }),
 }));
 
 export const staffRolesRelations = relations(staffRoles, ({ one }) => ({
   staff: one(staff, {
     fields: [staffRoles.staffId],
     references: [staff.id],
+    relationName: ROLE_HOLDER,
   }),
   grantedByStaff: one(staff, {
     fields: [staffRoles.grantedBy],
     references: [staff.id],
+    relationName: ROLE_GRANTER,
   }),
 }));

@@ -1,9 +1,4 @@
-import type {
-  NextFunction,
-  Request,
-  RequestHandler,
-  Response,
-} from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 
 import type { AppConfig } from "../config/index.js";

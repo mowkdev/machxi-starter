@@ -78,13 +78,17 @@ export interface ResetAndSeedOptions {
   readonly hasher: PasswordHasher;
 }
 
-/** Empties every table, then runs the base and `--dev` seeders in order. */
-export const resetAndSeed = async ({
+/**
+ * Runs the base and `--dev` seeders in order, **without** truncating first.
+ *
+ * Exported separately from {@link resetAndSeed} because "running it twice
+ * changes nothing" is the property ADR-0008 asks for, and a truncate in
+ * between would make that trivially true and prove nothing.
+ */
+export const seed = async ({
   db,
   hasher,
 }: ResetAndSeedOptions): Promise<void> => {
-  await truncateAll(db.db);
-
   const { email, password } = superAdmin();
 
   await runSeeders([...baseSeeders, ...devSeeders], {
@@ -98,4 +102,12 @@ export const resetAndSeed = async ({
       superAdminPassword: password,
     },
   });
+};
+
+/** Empties every table, then seeds. What each integration file starts from. */
+export const resetAndSeed = async (
+  options: ResetAndSeedOptions,
+): Promise<void> => {
+  await truncateAll(options.db.db);
+  await seed(options);
 };

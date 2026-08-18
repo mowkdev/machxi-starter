@@ -234,11 +234,7 @@ export const createSessionsRepository = (db: DbExecutor) =>
      * in `@repo/db`, so the retention rule has one implementation rather than
      * one per caller.
      */
-    touch: async (
-      id: string,
-      at: Date,
-      tx: DbExecutor = db,
-    ): Promise<void> => {
+    touch: async (id: string, at: Date, tx: DbExecutor = db): Promise<void> => {
       await tx
         .update(sessions)
         .set({ lastUsedAt: at, updatedAt: at })

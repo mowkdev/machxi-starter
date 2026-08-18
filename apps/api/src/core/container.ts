@@ -74,9 +74,8 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
   // The one place that knows how to open a transaction. Repositories take a
   // `DbExecutor` (ADR-0006), so a service composes them without ever importing
   // the client.
-  const transaction = <T>(
-    fn: (tx: DbExecutor) => Promise<T>,
-  ): Promise<T> => db.db.transaction(fn);
+  const transaction = <T>(fn: (tx: DbExecutor) => Promise<T>): Promise<T> =>
+    db.db.transaction(fn);
 
   const authDeps = {
     sessions,
