@@ -1,0 +1,2716 @@
+{
+  "info": {
+    "_postman_id": "6f1b0a4e-2c9d-4a71-9a8e-3d5f0c7b1a20",
+    "name": "machxi API",
+    "description": "Smoke and documentation collection for the machxi API (ADR-0021).\n\nRun it top to bottom — with the Collection Runner or `pnpm test:postman` —\nagainst a local stack (`pnpm docker:up && pnpm db:setup && pnpm db:seed -- --dev`\nand `pnpm dev --filter api`). Every request stores what the next one needs, so\nthe folders below are an ordered flow rather than a menu:\n\n1. **Health** — liveness and readiness (ADR-0016).\n2. **Admin Auth** — the seeded super admin logs in, reads `me`, rotates its\n   refresh token twice and proves the rotated-out token is dead (ADR-0018).\n3. **Admin › Staff** and **Admin › Users** — the list machinery (pagination,\n   sort, filters — ADR-0014) and the create/read/update/revoke flow.\n4. **Admin › Role guards** — the same endpoints as a manager and an editor,\n   which is where `403` lives (ADR-0019).\n5. **User Auth**, **User › Profile**, **Public** — the second population.\n6. **Errors & routing** — the envelope's failure branch (ADR-0012, ADR-0013).\n7. **Teardown** — logs every session out and clears the tokens.\n\nA collection-level test asserts the envelope on *every* response, so each\nrequest below only states what is specific to it.\n\nThe run creates one staff account, one user account and one self-registered\nuser, each with a timestamped address, and leaves them behind — v1 has no\ndelete endpoint. `pnpm db:reset` clears them.\n\nRate limits (ADR-0020) bound how often the whole collection can run against\none API process: it spends 1 of the 5 failed refreshes per 15 minutes, and\n~60 of the 300 global requests. Roughly five runs per window.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Envelope conformance, asserted on every response in the run (ADR-0012).",
+          "//",
+          "// Individual requests state only what is specific to them; the two invariants",
+          "// below hold for all of them, and a new request inherits them for free.",
+          "const status = pm.response.code;",
+          "",
+          "pm.test(\"envelope: the response has the documented shape\", function () {",
+          "  if (status === 204) {",
+          "    pm.expect(pm.response.text(), \"a 204 carries no body\").to.eql(\"\");",
+          "    return;",
+          "  }",
+          "",
+          "  pm.expect(",
+          "    pm.response.headers.get(\"Content-Type\") || \"\",",
+          "    \"Content-Type\",",
+          "  ).to.include(\"application/json\");",
+          "",
+          "  const body = pm.response.json();",
+          "",
+          "  pm.expect(body.success, \"success\").to.be.a(\"boolean\");",
+          "  pm.expect(body.meta, \"meta\").to.be.an(\"object\");",
+          "  pm.expect(body.meta.requestId, \"meta.requestId\")",
+          "    .to.be.a(\"string\")",
+          "    .that.is.not.empty;",
+          "",
+          "  if (body.success) {",
+          "    pm.expect(body, \"a success envelope carries data\").to.have.property(\"data\");",
+          "    pm.expect(body, \"success and error are mutually exclusive\").to.not.have.property(\"error\");",
+          "    pm.expect(status, \"a success envelope rides a 2xx\").to.be.below(400);",
+          "  } else {",
+          "    pm.expect(body, \"success and error are mutually exclusive\").to.not.have.property(\"data\");",
+          "    pm.expect(body.error.code, \"error.code\").to.be.a(\"string\").that.is.not.empty;",
+          "    pm.expect(body.error.message, \"error.message\").to.be.a(\"string\").that.is.not.empty;",
+          "    pm.expect(status, \"an error envelope never rides a 2xx\").to.be.at.least(400);",
+          "  }",
+          "});",
+          "",
+          "pm.test(\"no successful response in this deliverable is cacheable\", function () {",
+          "  // Every route in the first deliverable either issues a credential, consumes",
+          "  // one, or returns personal data, so every router mounts `noStore`",
+          "  // (ADR-0020). Failures are excluded because an unmatched path never reaches",
+          "  // a router. If this ever fails, the question to answer is whether the new",
+          "  // endpoint really is safe to cache — not whether to delete the assertion.",
+          "  if (status >= 400) return;",
+          "",
+          "  pm.expect(",
+          "    pm.response.headers.get(\"Cache-Control\"),",
+          "    \"Cache-Control on \" + pm.request.url.getPath(),",
+          "  ).to.eql(\"no-store\");",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "qaPassword",
+      "value": "QaPassword!123",
+      "type": "string",
+      "description": "Initial password of the accounts this collection creates. Meets the ADR-0018 policy (12+ characters); the accounts exist only in a dev database."
+    },
+    {
+      "key": "qaPasswordRotated",
+      "value": "QaPassword!123-rotated",
+      "type": "string",
+      "description": "What `POST /user/profile/change-password` moves to."
+    },
+    {
+      "key": "absentStaffId",
+      "value": "018f0000-0000-7000-8000-000000000000",
+      "type": "string",
+      "description": "A well-formed UUIDv7 that no row holds — the difference between `404 NOT_FOUND` and `400 VALIDATION_ERROR`."
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Unversioned, unauthenticated and outside every rate limiter (ADR-0016), so a probe never depends on the API layer.",
+      "item": [
+        {
+          "name": "Liveness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, ok, and no dependency was touched\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const health = pm.response.json().data;",
+                  "",
+                  "  pm.expect(health.status).to.eql(\"ok\");",
+                  "  pm.expect(health.checks, \"liveness runs no checks\").to.eql({});",
+                  "  pm.expect(health.version, \"version\").to.be.a(\"string\").that.is.not.empty;",
+                  "  pm.expect(health.uptimeSeconds).to.be.a(\"number\");",
+                  "  pm.expect(Date.parse(health.timestamp), \"timestamp is ISO-8601\").to.not.be.NaN;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/live",
+              "host": ["{{baseUrl}}"],
+              "path": ["health", "live"]
+            },
+            "description": "Answers from the process alone. A database outage must not make this fail — restarting the process would not fix it (ADR-0016)."
+          }
+        },
+        {
+          "name": "Readiness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the database indicator answered\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const health = pm.response.json().data;",
+                  "",
+                  "  pm.expect(health.status).to.eql(\"ok\");",
+                  "  pm.expect(health.checks.database.status).to.eql(\"ok\");",
+                  "  pm.expect(health.checks.database.latencyMs).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": ["{{baseUrl}}"],
+              "path": ["health", "ready"]
+            },
+            "description": "Runs every indicator. With Postgres stopped this answers `503 SERVICE_UNAVAILABLE` in the ordinary error envelope, with `details[].code` naming the indicator."
+          }
+        },
+        {
+          "name": "Health (human view)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the readiness resource\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.checks.database.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "The same resource readiness returns — a second shape would only be a second thing to keep in sync (ADR-0016)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Auth",
+      "description": "`/api/v1/admin/auth/*` (ADR-0018). Login and refresh are unauthenticated by definition; `me` is not. The refresh requests below rotate twice on purpose — see 'A rotated-out refresh token is dead'.",
+      "item": [
+        {
+          "name": "Login (seeded super admin)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"superAdminEmail\") || !pm.environment.get(\"superAdminPassword\")) {",
+                  "  throw new Error(",
+                  "    \"superAdminEmail / superAdminPassword are empty. Fill them from SEED_SUPER_ADMIN_* in your .env, \" +",
+                  "      \"or run the collection with `pnpm test:postman`, which reads .env for you.\",",
+                  "  );",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a token pair\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const auth = pm.response.json().data;",
+                  "",
+                  "  pm.expect(auth.tokenType).to.eql(\"Bearer\");",
+                  "  pm.expect(auth.accessToken, \"accessToken\").to.be.a(\"string\").that.is.not.empty;",
+                  "  pm.expect(auth.refreshToken, \"refreshToken\").to.be.a(\"string\").that.is.not.empty;",
+                  "  pm.expect(Date.parse(auth.accessTokenExpiresAt), \"the access token is not born expired\")",
+                  "    .to.be.greaterThan(Date.now());",
+                  "  pm.expect(Date.parse(auth.refreshTokenExpiresAt), \"the refresh token outlives the access token\")",
+                  "    .to.be.greaterThan(Date.parse(auth.accessTokenExpiresAt));",
+                  "});",
+                  "",
+                  "pm.test(\"the principal is the seeded super admin\", function () {",
+                  "  const principal = pm.response.json().data.principal;",
+                  "",
+                  "  pm.expect(principal.kind).to.eql(\"staff\");",
+                  "  pm.expect(principal.roles).to.include(\"super_admin\");",
+                  "  pm.expect(principal, \"no password material on the wire\").to.not.have.property(\"passwordHash\");",
+                  "});",
+                  "",
+                  "const auth = pm.response.json().data;",
+                  "",
+                  "pm.environment.set(\"staffAccessToken\", auth.accessToken);",
+                  "pm.environment.set(\"staffRefreshToken\", auth.refreshToken);",
+                  "// Kept aside so a later request can present a token that two rotations have",
+                  "// left behind (ADR-0018 §Refresh).",
+                  "pm.environment.set(\"staffRefreshTokenInitial\", auth.refreshToken);",
+                  "pm.environment.set(\"staffId\", auth.principal.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            },
+            "description": "Hands every request below its token. The credentials come from `SEED_SUPER_ADMIN_EMAIL` / `SEED_SUPER_ADMIN_PASSWORD` in your `.env`; `pnpm test:postman` passes them in, and in the Postman app you fill them into the environment yourself."
+          }
+        },
+        {
+          "name": "Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the same principal the login returned\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const principal = pm.response.json().data;",
+                  "",
+                  "  pm.expect(principal.kind).to.eql(\"staff\");",
+                  "  pm.expect(principal.id).to.eql(pm.environment.get(\"staffId\"));",
+                  "  pm.expect(principal.roles).to.include(\"super_admin\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "me"]
+            },
+            "description": "Roles here are read from the database rather than from the token's claims, which is what makes `me` the way a client resynchronises after a role change (ADR-0018 §Me)."
+          }
+        },
+        {
+          "name": "Refresh (rotate)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const presented = pm.environment.get(\"staffRefreshToken\");",
+                  "",
+                  "pm.test(\"200 and a rotated pair\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const auth = pm.response.json().data;",
+                  "",
+                  "  pm.expect(auth.refreshToken, \"the refresh token rotates\").to.not.eql(presented);",
+                  "  pm.expect(auth.accessToken, \"accessToken\").to.be.a(\"string\").that.is.not.empty;",
+                  "  pm.expect(auth.principal.id).to.eql(pm.environment.get(\"staffId\"));",
+                  "});",
+                  "",
+                  "const auth = pm.response.json().data;",
+                  "",
+                  "pm.environment.set(\"staffAccessToken\", auth.accessToken);",
+                  "pm.environment.set(\"staffRefreshToken\", auth.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{staffRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "refresh"]
+            },
+            "description": "Every refresh rotates: the presented token becomes the session's *previous* token and a new pair is issued. The response carries the principal too, so a client restoring a session from storage needs one call rather than a refresh followed by `me`."
+          }
+        },
+        {
+          "name": "Refresh again (rotate a second time)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const presented = pm.environment.get(\"staffRefreshToken\");",
+                  "",
+                  "pm.test(\"200 and a rotated pair\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.refreshToken).to.not.eql(presented);",
+                  "});",
+                  "",
+                  "const auth = pm.response.json().data;",
+                  "",
+                  "pm.environment.set(\"staffAccessToken\", auth.accessToken);",
+                  "pm.environment.set(\"staffRefreshToken\", auth.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{staffRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "refresh"]
+            },
+            "description": "The second rotation is what makes the next request deterministic: after it, the token the login issued is neither the session's current nor its previous one, so it is simply unknown — no dependence on `REFRESH_ROTATION_GRACE_SEC` having elapsed."
+          }
+        },
+        {
+          "name": "A rotated-out refresh token is dead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_INVALID_REFRESH_TOKEN\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_INVALID_REFRESH_TOKEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{staffRefreshTokenInitial}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "refresh"]
+            },
+            "description": "Presents the token the login issued, two rotations ago. Note what this is *not*: replaying the immediately previous token inside `REFRESH_ROTATION_GRACE_SEC` is a legitimate retry and answers `200`, and outside that window it answers `AUTH_REFRESH_REUSED` and revokes the session (ADR-0018 §Refresh). This token predates both, so it is `AUTH_INVALID_REFRESH_TOKEN` whenever you run it.\n\nThis is the run's one deliberate failed refresh, and the refresh limiter counts only those — 5 per 15 minutes per IP (ADR-0020)."
+          }
+        },
+        {
+          "name": "Login with an unknown address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_INVALID_CREDENTIALS\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_INVALID_CREDENTIALS\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            },
+            "description": "An unknown email and a wrong password are deliberately indistinguishable — same code, same status, same timing, because the service hashes a dummy when no account matches (ADR-0018 §Login). Using an address that exists in no table keeps the seeded admin's login budget for the next run."
+          }
+        },
+        {
+          "name": "Login with a malformed email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR naming the field\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const error = pm.response.json().error;",
+                  "",
+                  "  pm.expect(error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(error.details.map((detail) => detail.path)).to.include(\"email\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            },
+            "description": "Validation runs before any credential comparison, and `details` carries the field path the client itself used (ADR-0013). The password is only bounded here, never held to the policy — a policy check would answer 'too short to be one of ours' before checking anything."
+          }
+        },
+        {
+          "name": "Me without a token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "me"]
+            },
+            "description": "No credentials at all is `UNAUTHENTICATED`; credentials that fail to verify are `AUTH_TOKEN_INVALID` (next request). Both are 401 — the codes differ because the client's next move does."
+          }
+        },
+        {
+          "name": "Me with a token that does not verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_TOKEN_INVALID\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_TOKEN_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer not.a.real.token"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "me"]
+            },
+            "description": "Signature, `exp`, `iss` and the segment's `aud` are all checked inside jose before any claim of ours is read."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin › Staff",
+      "description": "`/api/v1/admin/staff` — `admin` throughout, which `super_admin` bypasses (ADR-0019). Managing operators is not a manager's job.",
+      "item": [
+        {
+          "name": "List staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a page of staff\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.data).to.be.an(\"array\");",
+                  "  pm.expect(body.data.length, \"no more than the requested limit\").to.be.at.most(5);",
+                  "  pm.expect(body.meta.pagination.offset).to.eql(0);",
+                  "  pm.expect(body.meta.pagination.limit).to.eql(5);",
+                  "  pm.expect(body.meta.pagination.total, \"total is a second query, not an estimate\").to.be.a(\"number\");",
+                  "});",
+                  "",
+                  "pm.test(\"meta.sort is the resolved order, without the id tiebreaker\", function () {",
+                  "  // The repository appends `id asc` to make the page deterministic; that is an",
+                  "  // implementation detail of ordering, not something the client asked for",
+                  "  // (ADR-0014).",
+                  "  pm.expect(pm.response.json().meta.sort).to.eql([",
+                  "    { field: \"createdAt\", direction: \"desc\" },",
+                  "  ]);",
+                  "});",
+                  "",
+                  "pm.test(\"a staff resource is not a staff row\", function () {",
+                  "  const rows = pm.response.json().data;",
+                  "",
+                  "  pm.expect(rows.length, \"the seeded super admin is in here\").to.be.at.least(1);",
+                  "",
+                  "  rows.forEach(function (row) {",
+                  "    pm.expect(row, \"passwordHash has no wire representation\").to.not.have.property(\"passwordHash\");",
+                  "    pm.expect(row.roles).to.be.an(\"array\");",
+                  "    pm.expect(row.status).to.be.a(\"string\");",
+                  "    pm.expect(row).to.have.property(\"lastLoginAt\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff?limit=5&sort=-createdAt",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                },
+                {
+                  "key": "sort",
+                  "value": "-createdAt"
+                }
+              ]
+            },
+            "description": "`meta` echoes the *resolved* query — defaults included — so a client can render its table state from the response alone (ADR-0014)."
+          }
+        },
+        {
+          "name": "List staff — filter and search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and meta echoes the filters as the client wrote them\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const filters = pm.response.json().meta.filters;",
+                  "",
+                  "  pm.expect(filters).to.have.property(\"status[in]\");",
+                  "  pm.expect(filters[\"status[in]\"]).to.eql([\"active\", \"invited\"]);",
+                  "  pm.expect(filters, \"q is a search, not a filter\").to.not.have.property(\"q\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff?filter[status][in]=active,invited&q=machxi&limit=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"],
+              "query": [
+                {
+                  "key": "filter[status][in]",
+                  "value": "active,invited"
+                },
+                {
+                  "key": "q",
+                  "value": "machxi"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Filters are an allow-list per field and operator (ADR-0014); `q` searches email and name. `meta.filters` keys keep the operator exactly as the query string wrote it, and `q` is deliberately not among them — it is a search, not a filter."
+          }
+        },
+        {
+          "name": "List staff — an unsortable field is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR on sort\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const error = pm.response.json().error;",
+                  "",
+                  "  pm.expect(error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(error.details.map((detail) => detail.path)).to.include(\"sort\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff?sort=passwordHash",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "passwordHash"
+                }
+              ]
+            },
+            "description": "The sortable allow-list is what keeps clients off non-indexed and sensitive columns; the message names the fields that do work."
+          }
+        },
+        {
+          "name": "Create a staff member",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// One address per run: v1 has no delete endpoint, so a fixed one would answer",
+                  "// STAFF_EMAIL_TAKEN on the second run.",
+                  "pm.environment.set(\"newStaffEmail\", \"qa-staff-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 with the created staff member\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const staff = pm.response.json().data;",
+                  "",
+                  "  pm.expect(staff.email).to.eql(pm.environment.get(\"newStaffEmail\"));",
+                  "  pm.expect(staff.status, \"v1 creates staff active\").to.eql(\"active\");",
+                  "  pm.expect(staff.roles).to.eql([\"editor\"]);",
+                  "  pm.expect(staff.lastLoginAt, \"never signed in\").to.eql(null);",
+                  "  pm.expect(staff, \"passwordHash has no wire representation\").to.not.have.property(\"passwordHash\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"lastStaffId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newStaffEmail}}\",\n  \"password\": \"{{qaPassword}}\",\n  \"firstName\": \"Quinn\",\n  \"lastName\": \"Quality\",\n  \"roles\": [\n    \"editor\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"]
+            },
+            "description": "An admin creates staff with an initial password; there is no staff self-registration (ADR-0018 §Staff onboarding). The address is timestamped so the run is repeatable — and so the duplicate-email request at the end of this folder has something real to collide with."
+          }
+        },
+        {
+          "name": "Get the staff member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the same account\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const staff = pm.response.json().data;",
+                  "",
+                  "  pm.expect(staff.id).to.eql(pm.environment.get(\"lastStaffId\"));",
+                  "  pm.expect(staff.email).to.eql(pm.environment.get(\"newStaffEmail\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{lastStaffId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update the staff member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the updated resource\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const staff = pm.response.json().data;",
+                  "",
+                  "  pm.expect(staff.lastName).to.eql(\"Quality-Assured\");",
+                  "  pm.expect(staff.roles).to.eql([\"manager\"]);",
+                  "  pm.expect(staff.firstName, \"an absent field is left alone\").to.eql(\"Quinn\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lastName\": \"Quality-Assured\",\n  \"roles\": [\n    \"manager\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{lastStaffId}}"]
+            },
+            "description": "Profile, roles and status in one endpoint; email is absent by design, because changing the identifier a session was established with is its own flow. A change to the *role set* revokes that account's sessions in the same transaction — `authorize` reads roles from the token's claims, so a demotion that left the old token alive would be reversible by its own subject (ADR-0019, amended step 9)."
+          }
+        },
+        {
+          "name": "Revoke the staff member's sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 with no body\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/sessions/revoke",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "sessions",
+                "revoke"
+              ]
+            },
+            "description": "A sub-resource rather than a field of the staff member: ending somebody else's sessions is an action with a side effect, and `POST` is what says so. `204` — the sessions are gone and there is nothing to say about them."
+          }
+        },
+        {
+          "name": "Get a staff member that does not exist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{absentStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{absentStaffId}}"]
+            },
+            "description": "A well-formed id that no row holds. The caller is an authenticated admin, so `404` discloses nothing they could not learn from the list endpoint."
+          }
+        },
+        {
+          "name": "Get a staff member with a malformed id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR on id\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const error = pm.response.json().error;",
+                  "",
+                  "  pm.expect(error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(error.details.map((detail) => detail.path)).to.include(\"id\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/not-a-uuid",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "not-a-uuid"]
+            },
+            "description": "Params are validated like everything else, and the path segment name is what `details[].path` reports."
+          }
+        },
+        {
+          "name": "Create the same staff member again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 STAFF_EMAIL_TAKEN\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"STAFF_EMAIL_TAKEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newStaffEmail}}\",\n  \"password\": \"{{qaPassword}}\",\n  \"firstName\": \"Quinn\",\n  \"lastName\": \"Quality\",\n  \"roles\": [\n    \"editor\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"]
+            },
+            "description": "Emails are unique within a population, and this endpoint may name the conflict because its caller is authenticated staff. Public self-registration must not — see 'Register the same address again' (ADR-0020 §Enumeration)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin › Users",
+      "description": "`/api/v1/admin/users` — `admin` **or** `manager` to read, `admin` to write (ADR-0019). The user created here is the account the 'User › Profile' folder signs in as.",
+      "item": [
+        {
+          "name": "List users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a page of users\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.data).to.be.an(\"array\");",
+                  "  pm.expect(body.meta.pagination.limit).to.eql(5);",
+                  "  pm.expect(body.meta.pagination.total).to.be.a(\"number\");",
+                  "  pm.expect(body.meta.sort, \"the default sort is resolved and echoed\").to.eql([",
+                  "    { field: \"createdAt\", direction: \"desc\" },",
+                  "  ]);",
+                  "  pm.expect(body.meta, \"nothing was filtered, so the key is absent\").to.not.have.property(\"filters\");",
+                  "});",
+                  "",
+                  "pm.test(\"the dev fixtures are here and carry no password material\", function () {",
+                  "  const rows = pm.response.json().data;",
+                  "",
+                  "  rows.forEach(function (row) {",
+                  "    pm.expect(row).to.not.have.property(\"passwordHash\");",
+                  "    pm.expect(row).to.have.property(\"deletedAt\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "With no `sort` the endpoint's default applies and is echoed, so the client never has to reproduce it."
+          }
+        },
+        {
+          "name": "List users — filter by status, sort by email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, every row active, sorted ascending by email\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.meta.filters.status).to.eql(\"active\");",
+                  "  pm.expect(body.meta.sort).to.eql([{ field: \"email\", direction: \"asc\" }]);",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row.status).to.eql(\"active\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?filter[status]=active&sort=email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "filter[status]",
+                  "value": "active"
+                },
+                {
+                  "key": "sort",
+                  "value": "email"
+                }
+              ]
+            },
+            "description": "A bare `filter[field]=value` means `eq`, and an `eq` filter keeps its plain field name in `meta.filters`."
+          }
+        },
+        {
+          "name": "List users — soft-deleted accounts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and every returned row is deleted\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.meta.filters[\"deletedAt[null]\"]).to.eql(false);",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row.deletedAt, \"asked for deleted rows only\").to.not.eql(null);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?filter[deletedAt][null]=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "filter[deletedAt][null]",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "The list hides soft-deleted rows *unless the query mentions `deletedAt`* — otherwise this allow-listed filter would be dead on arrival (ADR-0014, amended step 9). Expect an empty page on a fresh database: nothing in the deliverable deletes a user."
+          }
+        },
+        {
+          "name": "Create a user",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"newUserEmail\", \"qa-user-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 with the created user\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const user = pm.response.json().data;",
+                  "",
+                  "  pm.expect(user.email).to.eql(pm.environment.get(\"newUserEmail\"));",
+                  "  pm.expect(user.status, \"the default status\").to.eql(\"active\");",
+                  "  pm.expect(user.roles, \"v1 has exactly one user role\").to.eql([\"customer\"]);",
+                  "  pm.expect(user.deletedAt).to.eql(null);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"lastUserId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPassword}}\",\n  \"firstName\": \"Robin\",\n  \"lastName\": \"Reader\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"]
+            },
+            "description": "Staff creating a customer account directly, with an initial password. Self-registration is the other door into the same table (see the 'Public' folder). Names are optional because the column is nullable."
+          }
+        },
+        {
+          "name": "Get the user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the same account\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.environment.get(\"lastUserId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
+            },
+            "description": "Unlike `/user/profile`, this returns a soft-deleted account as well: an admin who can list them must be able to open one (ADR-0014, amended step 9)."
+          }
+        },
+        {
+          "name": "Update the user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the name is cleared, not left alone\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const user = pm.response.json().data;",
+                  "",
+                  "  pm.expect(user.lastName).to.eql(null);",
+                  "  pm.expect(user.firstName).to.eql(\"Robin\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lastName\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
+            },
+            "description": "Names accept `null` to clear them, which `undefined` cannot express in a partial update — the column is nullable, so 'unset it' is a legal request and must be distinguishable from 'leave it'."
+          }
+        },
+        {
+          "name": "Revoke the user's sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 with no body\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/sessions/revoke",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{lastUserId}}",
+                "sessions",
+                "revoke"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create the same user again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 USER_EMAIL_TAKEN\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"USER_EMAIL_TAKEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin › Role guards",
+      "description": "The same endpoints as somebody the `super_admin` bypass does not cover (ADR-0019). Both accounts come from `pnpm db:seed -- --dev`; the password is the one printed by that command.",
+      "item": [
+        {
+          "name": "Login as the manager fixture",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and exactly one role\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.principal.roles).to.eql([\"manager\"]);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"managerAccessToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managerEmail}}\",\n  \"password\": \"{{devPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Manager lists users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?limit=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "A manager may read the customer base."
+          }
+        },
+        {
+          "name": "Manager creates a user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"refused@machxi.local\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"]
+            },
+            "description": "The resource is mounted behind `authorize('admin', 'manager')` and this route narrows it back to `admin`. A route may narrow a mount's guard, never widen it — both run."
+          }
+        },
+        {
+          "name": "Manager lists staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"]
+            },
+            "description": "Managing operators is not a manager's job."
+          }
+        },
+        {
+          "name": "Login as the editor fixture",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and exactly one role\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.principal.roles).to.eql([\"editor\"]);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"editorAccessToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{editorEmail}}\",\n  \"password\": \"{{devPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            },
+            "description": "The 'authenticated but unprivileged' fixture: a real staff session that no admin resource accepts."
+          }
+        },
+        {
+          "name": "Editor reads its own principal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.roles).to.eql([\"editor\"]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "me"]
+            },
+            "description": "Being authenticated *is* the requirement for reading your own principal — there is no `authorize` on the auth router."
+          }
+        },
+        {
+          "name": "Editor lists users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "Editor lists staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Auth",
+      "description": "`/api/v1/user/auth/*` — the same endpoints, the same bodies and the same order as the admin segment. The population is carried by the URL, never by a field in the body, so a client cannot ask to be authenticated as the other one (ADR-0015, ADR-0018).",
+      "item": [
+        {
+          "name": "Login (customer fixture)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and a user principal\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const principal = pm.response.json().data.principal;",
+                  "",
+                  "  pm.expect(principal.kind).to.eql(\"user\");",
+                  "  pm.expect(principal.roles).to.eql([\"customer\"]);",
+                  "});",
+                  "",
+                  "const auth = pm.response.json().data;",
+                  "",
+                  "pm.environment.set(\"userAccessToken\", auth.accessToken);",
+                  "pm.environment.set(\"userRefreshToken\", auth.refreshToken);",
+                  "pm.environment.set(\"userId\", auth.principal.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{devPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the same principal\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.environment.get(\"userId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const presented = pm.environment.get(\"userRefreshToken\");",
+                  "",
+                  "pm.test(\"200 and a rotated pair\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.refreshToken).to.not.eql(presented);",
+                  "});",
+                  "",
+                  "const auth = pm.response.json().data;",
+                  "",
+                  "pm.environment.set(\"userAccessToken\", auth.accessToken);",
+                  "pm.environment.set(\"userRefreshToken\", auth.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{userRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Login as a disabled account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_ACCOUNT_DISABLED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_ACCOUNT_DISABLED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{disabledEmail}}\",\n  \"password\": \"{{devPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            },
+            "description": "The password is correct and the answer is still a refusal — `403`, not `401`, because the credentials are not what failed. The fixture exists for exactly this path (ADR-0017, ADR-0018)."
+          }
+        },
+        {
+          "name": "Segment isolation — a user token on an admin route",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_TOKEN_INVALID\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_TOKEN_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "me"]
+            },
+            "description": "The token was minted with the user segment's `aud`, so it fails inside jose before any claim of ours is read. `401` and not `403`: the wrong population must not be able to tell an existing admin route from an absent one (ADR-0019)."
+          }
+        },
+        {
+          "name": "Segment isolation — a staff token on a user route",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_TOKEN_INVALID\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_TOKEN_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "me"]
+            },
+            "description": "The same rule in the other direction."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User › Profile",
+      "description": "`/api/v1/user/profile` — every handler addresses `ctx.principal`, so there is no `:id` and no ownership check to get wrong (ADR-0019 §3).\n\nThe folder signs in as the account 'Admin › Users' created rather than as the `customer` fixture, because it changes a password: doing that to a fixture would break the next run.",
+      "item": [
+        {
+          "name": "Login as the account this run created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.principal.id).to.eql(pm.environment.get(\"lastUserId\"));",
+                  "});",
+                  "",
+                  "pm.environment.set(\"profileAccessToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get my profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and it is my own record\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const user = pm.response.json().data;",
+                  "",
+                  "  pm.expect(user.id).to.eql(pm.environment.get(\"lastUserId\"));",
+                  "  pm.expect(user.deletedAt).to.eql(null);",
+                  "  pm.expect(user).to.not.have.property(\"passwordHash\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "The same `UserResource` the admin endpoints return, so a client learns one shape. `deletedAt` is always `null` here — this endpoint refuses a deleted account outright, with the `404` the admin one deliberately does not give."
+          }
+        },
+        {
+          "name": "Update my profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the updated profile\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.lastName).to.eql(\"Renamed\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Robin\",\n  \"lastName\": \"Renamed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "Status and roles are absent from this schema by construction: a user cannot promote or re-enable their own account by editing their profile."
+          }
+        },
+        {
+          "name": "Change my password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 with no body\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPassword}}\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "change-password"]
+            },
+            "description": "`204`, and the caller's *other* sessions are revoked — the session making the change survives, which is why the requests below still work. `currentPassword` is only bounded, not held to the policy: an account whose password predates a policy change must still be able to change it."
+          }
+        },
+        {
+          "name": "Change my password with the old one",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 USER_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"USER_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPassword}}\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "change-password"]
+            },
+            "description": "Proves the change landed. `403` and not `401` on purpose: the caller *is* authenticated and their session is fine, so a `401` would send every client interceptor that treats it as 'the session died' to the login screen over a typo."
+          }
+        },
+        {
+          "name": "My session survived my own password change",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public",
+      "description": "`/api/v1/public/*` — no authentication. Self-registration is mounted only when `FEATURE_USER_REGISTRATION` is on; with the flag off the path does not exist and answers `ROUTE_NOT_FOUND` rather than a `403` that would confirm the feature is there (ADR-0004).",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"newRegisteredEmail\", \"qa-signup-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 with a signed-in user\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const auth = pm.response.json().data;",
+                  "",
+                  "  pm.expect(auth.tokenType).to.eql(\"Bearer\");",
+                  "  pm.expect(auth.principal.kind).to.eql(\"user\");",
+                  "  pm.expect(auth.principal.roles).to.eql([\"customer\"]);",
+                  "  pm.expect(auth.principal.email).to.eql(pm.environment.get(\"newRegisteredEmail\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"{{qaPassword}}\",\n  \"firstName\": \"Sam\",\n  \"lastName\": \"Signup\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "register"]
+            },
+            "description": "`201` with a session, so a newly registered user is signed in without a second round trip. Registration hashes a password and creates a session exactly like login does, so it shares login's rate limiter."
+          }
+        },
+        {
+          "name": "Register the same address again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 CONFLICT, and the message does not confirm the address\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "",
+                  "  const error = pm.response.json().error;",
+                  "",
+                  "  pm.expect(error.code).to.eql(\"CONFLICT\");",
+                  "  pm.expect(error.code, \"an anonymous caller learns nothing specific\").to.not.eql(\"USER_EMAIL_TAKEN\");",
+                  "  pm.expect(error.message).to.not.include(pm.environment.get(\"newRegisteredEmail\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"{{qaPassword}}\",\n  \"firstName\": \"Sam\",\n  \"lastName\": \"Signup\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "register"]
+            },
+            "description": "Generic `CONFLICT`, never `USER_EMAIL_TAKEN`: telling an anonymous caller which addresses are taken turns this endpoint into an account-existence oracle (ADR-0020 §Enumeration). The admin create endpoint may name the conflict because its caller is authenticated staff."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Errors & routing",
+      "description": "The failure branch of the envelope (ADR-0012, ADR-0013) and what the segment guards disclose about paths (ADR-0015, ADR-0019).",
+      "item": [
+        {
+          "name": "An unknown path in a public segment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ROUTE_NOT_FOUND\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ROUTE_NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "does-not-exist"]
+            },
+            "description": "Nothing intercepts first, so the not-found handler answers — in the same envelope, with the same `requestId`, as every other failure."
+          }
+        },
+        {
+          "name": "An unknown path in a guarded segment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "does-not-exist"]
+            },
+            "description": "`401`, not `404`. The segment's `authenticate()` runs for every request entering the router, matched or not, so an anonymous caller cannot map the admin surface by watching which paths answer `404` (ADR-0019, amended step 9). An authenticated staff principal gets the `404`."
+          }
+        },
+        {
+          "name": "A body that is not JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 MALFORMED_JSON\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"MALFORMED_JSON\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"someone@example.com\", \"password\":",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "login"]
+            },
+            "description": "The body parser fails before any route sees the request, and the failure still arrives as the standard envelope rather than Express's HTML error page."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teardown",
+      "description": "Ends every session the run opened and clears the tokens, so a second run starts from the same state as the first.",
+      "item": [
+        {
+          "name": "Log the created user out everywhere",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/logout-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "logout-all"]
+            },
+            "description": "`logout` ends the calling session; `logout-all` ends every session the principal holds. Both answer `204`."
+          }
+        },
+        {
+          "name": "The created user's token is dead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"profileAccessToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "The access token still verifies — it is signed and unexpired — but its session row is revoked, and `authenticate` checks the session on every request. That is the difference between `AUTH_TOKEN_INVALID` and `AUTH_SESSION_REVOKED`."
+          }
+        },
+        {
+          "name": "Log the customer out",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "The customer's token is dead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"userAccessToken\", \"\");",
+                  "pm.environment.set(\"userRefreshToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Log the manager out",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"managerAccessToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Log the editor out",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"editorAccessToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Log the super admin out",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "The super admin's token is dead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"staffAccessToken\", \"\");",
+                  "pm.environment.set(\"staffRefreshToken\", \"\");",
+                  "pm.environment.set(\"staffRefreshTokenInitial\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "me"]
+            },
+            "description": "The last step of the ADR-0021 acceptance checklist."
+          }
+        }
+      ]
+    }
+  ]
+}
