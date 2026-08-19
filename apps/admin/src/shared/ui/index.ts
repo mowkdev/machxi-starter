@@ -77,6 +77,10 @@ export {
   SidebarTrigger,
 } from "@repo/ui/components/sidebar";
 export { Skeleton } from "@repo/ui/components/skeleton";
+export { Spinner } from "@repo/ui/components/spinner";
 export { Toaster } from "@repo/ui/components/sonner";
 export { useIsMobile } from "@repo/ui/hooks/use-mobile";
 export { cn } from "@repo/ui/lib/utils";
+
+// Not a re-export: an app component with behaviour of its own (see its file).
+export { AppLoader } from "./app-loader";

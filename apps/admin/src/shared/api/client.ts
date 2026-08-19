@@ -42,6 +42,9 @@ import type { SessionStore } from "./session-store";
 export const CSRF_HEADER = "X-CSRF-Token";
 export const TRANSPORT_HEADER = "X-Auth-Transport";
 
+/** See `createApiClient` for why this exists at all. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 /** The exact set `core/middleware/csrf.ts` guards (ADR-0029 §CSRF). */
 const CSRF_GUARDED_PATHS = [
   "/auth/refresh",
@@ -165,6 +168,19 @@ export const createApiClient = ({
     // everything; a credentialed cross-origin request is the entire point of
     // `cors({ credentials: true })` on the API side.
     withCredentials: true,
+    /*
+     * axios has no default timeout, so a connection that is accepted and never
+     * answered hangs forever — and during the boot sequence that means the
+     * loading gate waits forever too, which is a spinner that never resolves
+     * into either the app or the unreachable screen. A ceiling turns that into
+     * a rejection the gate can report.
+     *
+     * Fifteen seconds is well past any healthy response (the API's own slowest
+     * path is an argon2 hash at ~130ms) and well inside an operator's patience.
+     * It bounds the wait; it does not cancel the work the server may already
+     * have done.
+     */
+    timeout: REQUEST_TIMEOUT_MS,
   });
 
   instance.interceptors.request.use((requestConfig) => {

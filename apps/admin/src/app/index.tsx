@@ -1,3 +1,5 @@
+import { AppLoader } from "@/shared/ui";
+
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
 import "./styles.css";
@@ -15,22 +17,9 @@ import "./styles.css";
  * `D3.5` adds `QueryClientProvider` here, between the two.
  */
 const App = () => (
-  <SessionProvider fallback={<BootGate />}>
+  <SessionProvider fallback={<AppLoader />}>
     <AppRouter />
   </SessionProvider>
-);
-
-/**
- * Deliberately minimal: two round trips on a local network, and a spinner that
- * flashes for 80ms is worse than a blank frame. It exists so the gate is a
- * decision rather than an accident.
- */
-const BootGate = () => (
-  <div
-    aria-busy="true"
-    aria-live="polite"
-    className="min-h-svh bg-background"
-  />
 );
 
 export default App;
