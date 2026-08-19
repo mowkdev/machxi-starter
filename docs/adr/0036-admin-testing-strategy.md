@@ -36,6 +36,7 @@ apps/admin/src/
 ├── test/
 │   ├── setup.ts              # jest-dom matchers; MSW lifecycle: listen / resetHandlers / close
 │   ├── render.tsx            # renderWithProviders(ui, options) — QueryClient, router, session provider
+│   ├── fixtures/             # configs and rows the machinery suites are driven from (D3.6)
 │   └── msw/
 │       ├── server.ts         # setupServer(...defaultHandlers) via msw/node
 │       └── handlers/         # per-feature, built from @repo/contracts
@@ -45,6 +46,8 @@ apps/admin/src/
 │           └── users.handlers.ts
 └── features/<feature>/__tests__/   # component tests live with the feature they test
 ```
+
+**Amended 2026-08-20 (D3.6):** `src/test/fixtures/` joins the harness. `D3.6` builds machinery whose whole claim is that it is driven by configuration, and the honest way to show that before a real resource exists is to drive it from a config that is nobody's real resource — a fixture, shared by the grid and form suites, rather than a demo page with a route and a nav entry that D3 would then have to delete. The rule that stops it becoming a parallel universe is the one §The load-bearing rule already states for handlers: a fixture may invent a *resource*, never a *response shape* — anything crossing the wire still comes from the contracts-typed envelope builders.
 
 **Amended 2026-08-19 (D3.3).** Colocated `__tests__` directories are **exempt from ADR-0032's boundaries lint**. A test is allowed to reach into the internals of the thing it tests — that is what makes it a unit test rather than a second consumer — and the layer rule is about production structure, which is what ADR-0032 wrote it for. The exemption is narrow: `src/**/__tests__/**` only, so a helper that drifts out of a test directory is classified and checked like anything else.
 

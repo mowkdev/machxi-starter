@@ -93,7 +93,12 @@ export const fieldsForVariant = (
  * A field with no `initialValue` starts `""` rather than `undefined`, because
  * React would otherwise take the control as uncontrolled on the first render
  * and warn — loudly, and for every form — the moment the operator types.
- * `multiCheckbox` starts as an empty array for the same reason.
+ *
+ * The empty value has to match the *control*, not just be falsy: a
+ * `multiCheckbox` holds an array and the two boolean controls hold a boolean.
+ * Seeding a `switch` with `""` renders it unchecked (its adapter tests
+ * `value === true`) and then submits `""` into a `z.boolean()` — a form that
+ * looks right and fails validation on a field the operator never touched.
  */
 export const initialValuesFor = (
   fields: FieldConfigMap,
@@ -103,12 +108,24 @@ export const initialValuesFor = (
     fieldsForVariant(fields, variant).map(([name, field]) => [
       name,
       field.initialValue === undefined
-        ? field.component === "multiCheckbox"
-          ? []
-          : ""
+        ? emptyValueFor(field.component)
         : field.initialValue,
     ]),
   );
+
+const emptyValueFor = (
+  component: FieldConfig["component"],
+): string | boolean | readonly string[] => {
+  switch (component) {
+    case "multiCheckbox":
+      return [];
+    case "checkbox":
+    case "switch":
+      return false;
+    default:
+      return "";
+  }
+};
 
 /**
  * The subset of a submitted form the operator actually changed.

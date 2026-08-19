@@ -69,12 +69,16 @@ apps/admin/src/
 │   └── user/
 └── shared/
     ├── api/                     # the API client (ADR-0033): axios instance, envelope/error handling, session store
+    ├── resource/                # the ResourceConfig vocabulary + its helpers (ADR-0035)
     ├── grid/                    # AppGrid + the grid registry (ADR-0035) — resource-agnostic, no domain knowledge
     ├── form/                    # AppFormProvider, AppFormInput + the field registry (ADR-0035)
+    ├── notifications/           # the ErrorCode → message map (ADR-0034)
     ├── ui/                      # re-exports of @repo/ui — the one door components come through
     ├── config/                  # import.meta.env parsed by a zod schema, the ADR-0004 posture applied to Vite
     └── lib/                     # generic helpers with no domain knowledge
 ```
+
+**Amended 2026-08-20 (D3.6).** `shared/notifications` (D3.5) and `shared/resource` (D3.6) are added above rather than left to be inferred. Both are placed by this ADR's own rules rather than by convenience: `notifications` holds the message map that `entities` and `features` need and may not reach for in `app`, and `resource` holds the config vocabulary that `entities` declare, `grid` and `form` consume, and nothing above `shared` should have to know the shape of.
 
 The split between `features` and `entities` follows the read/write seam ADR-0034 leans on: **entities own reads** (list and detail queries, the keys that cache them, the resource's column and field configuration), **features own writes** (the mutating interactions and the dialogs that host them). A feature composes entity hooks; an entity never knows a feature exists.
 

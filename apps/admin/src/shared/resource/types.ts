@@ -1,25 +1,34 @@
 import type { FilterOp } from "@repo/contracts";
 
-import type { CellRendererKey, FormatterKey } from "@/shared/grid/registry";
-import type { FieldComponentKey } from "@/shared/form/registry";
-
 /**
  * The `ResourceConfig` vocabulary (ADR-0035).
  *
- * **This module is type-only, and that is load-bearing.** The registries import
- * the adapters, the adapters import these types, and these types import the
- * registries' key unions — a cycle that is harmless only while every edge of it
- * is erased at compile time. A runtime `const` added here would close the cycle
- * for real and the field registry would initialise as `undefined`, several
- * modules away from the edit that caused it. Runtime helpers over these shapes
- * live in `./config.ts`.
- *
  * The rule the whole file exists to serve: **a config is data.** Names, labels,
  * initial values, and registry *keys* — never functions. That is what keeps
- * configs diffable, snapshottable and deep-mergeable, and what keeps the UI
+ * configs diffable, snapshottable and mergeable, and what keeps the UI
  * vocabulary finite: every key below resolves through a named registry, so a
  * typo is a compile error rather than a blank cell.
+ *
+ * **The key unions are declared here, and the registries satisfy them.** The
+ * first attempt ran the dependency the other way — `keyof typeof gridRegistry`
+ * — which inferred the vocabulary from the implementation and left a cycle
+ * (registry → adapters → this file → registry) that was safe only for as long
+ * as nobody added a runtime `const` to this module. Declaring the vocabulary
+ * and checking implementations against it costs one extra line when a key is
+ * added, and buys two things: there is no cycle to be careful about, and a key
+ * declared with no implementation is a compile error where it used to be
+ * inexpressible.
  */
+
+/** A `gridRegistry.formatters` key: a cell value rendered as text. */
+export type FormatterKey = "date" | "dateTime";
+
+/** A `gridRegistry.cellRenderers` key: a cell rendered as its own component. */
+export type CellRendererKey = "rowActions" | "statusBadge" | "rolesList";
+
+/** A `fieldRegistry` key: which control a form field is. */
+export type FieldComponentKey =
+  "input" | "textarea" | "select" | "checkbox" | "switch" | "multiCheckbox";
 
 /** Which of the two forms a field appears in. Absent means both. */
 export type FieldVariant = "create" | "edit";

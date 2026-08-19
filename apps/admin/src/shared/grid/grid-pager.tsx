@@ -16,8 +16,6 @@ import {
   SelectValue,
 } from "@/shared/ui";
 
-import { lastPageOffset } from "./list-state";
-
 /**
  * A real pager, because the total is real (ADR-0035).
  *
@@ -49,6 +47,15 @@ export interface GridPagerProps {
   readonly total: number | null;
   /** Rows on the page in hand — the only clue to "is there more" when total is null. */
   readonly rowCount: number;
+  /**
+   * Offset of the last page that holds a row, or `null` when the endpoint did
+   * not count and there is therefore no last page to jump to.
+   *
+   * Passed in rather than derived here: the engine already computes it from the
+   * `rowCount` the envelope supplied, and a pager that recomputed it would be a
+   * second answer to a question that has one.
+   */
+  readonly lastOffset: number | null;
   readonly onOffsetChange: (offset: number) => void;
   readonly onLimitChange: (limit: number) => void;
   readonly disabled?: boolean;
@@ -59,6 +66,7 @@ export const GridPager = ({
   limit,
   total,
   rowCount,
+  lastOffset,
   onOffsetChange,
   onLimitChange,
   disabled = false,
@@ -73,8 +81,7 @@ export const GridPager = ({
    * than discovered then. Without a total there is no last page to jump to and
    * no "of N" to show; a full page is the only evidence that more exists.
    */
-  const isOpenEnded = total === null;
-  const lastOffset = isOpenEnded ? offset : lastPageOffset(total, limit);
+  const isOpenEnded = total === null || lastOffset === null;
   const canGoBack = offset > 0;
   const canGoForward = isOpenEnded ? rowCount === limit : offset < lastOffset;
 
@@ -161,7 +168,8 @@ export const GridPager = ({
             // says so instead of guessing one.
             disabled={disabled || isOpenEnded || offset >= lastOffset}
             onClick={() => {
-              onOffsetChange(lastOffset);
+              // Unreachable while `isOpenEnded`, which is what disables it.
+              if (lastOffset !== null) onOffsetChange(lastOffset);
             }}
           >
             <ChevronsRightIcon aria-hidden />

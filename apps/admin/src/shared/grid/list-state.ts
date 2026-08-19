@@ -46,18 +46,33 @@ export const withSort = (
 ): ListQuerySearch => atFirstPage({ ...state, sort: [...sort] });
 
 /**
- * Replaces the whole filter set.
+ * Replaces the filters the grid's own controls own, and **only** those.
  *
- * Whole-set rather than per-field because that is the shape the engine reports:
+ * Whole-set for the owned fields, because that is the shape the engine reports:
  * `onColumnFiltersChange` hands back every column's filter state at once, and
- * translating that back into ADR-0014 filters is one function
+ * translating it back into ADR-0014 filters is one function
  * (`fromColumnFiltersState`), not a diff. A range control writing two filters
- * on one field falls out of it for free.
+ * on one field falls out of that for free.
+ *
+ * `owned` is what stops it being lossy, and the failure it prevents is not
+ * hypothetical: a URL may legitimately carry a filter on a field no *column*
+ * declares a control for — a deep link, or a future toolbar control. Replacing
+ * `state.filters` wholesale would erase it the moment the operator touched any
+ * column filter, silently widening what they are looking at. A filter the grid
+ * did not put there is not the grid's to remove.
  */
 export const withFilters = (
   state: ListQuerySearch,
+  owned: readonly string[],
   filters: readonly Filter[],
-): ListQuerySearch => atFirstPage({ ...state, filters: [...filters] });
+): ListQuerySearch =>
+  atFirstPage({
+    ...state,
+    filters: [
+      ...state.filters.filter((filter) => !owned.includes(filter.field)),
+      ...filters,
+    ],
+  });
 
 /** The free-text term. An empty term is removed, never sent as `q=`. */
 export const withSearch = (

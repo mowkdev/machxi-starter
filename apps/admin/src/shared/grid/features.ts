@@ -23,9 +23,11 @@ import type { GridMeta } from "./types";
  *
  * What the three registered features contribute is state and API only —
  * `getCanSort` / `getToggleSortingHandler` and the multi-sort cycling for
- * headers, `rowCount` → `getPageCount()` for the pager, and the column-filter
- * state the filter controls read and write. Every one of them is driven from
- * the URL (ADR-0034) and none of them computes over rows.
+ * headers; `rowCount` (the envelope's own `meta.pagination.total`) feeding
+ * `getPageCount()`, which is where the pager's last page comes from; and the
+ * column-filter state the filter controls read and write. Every one of them is
+ * driven from the URL (ADR-0034) and none of them computes over rows: the page
+ * that renders is the page the server sent, in the order the server sent it.
  *
  * Built once, at module scope, because the identity of this object is part of
  * the table's identity — rebuilding it per render would defeat the engine's

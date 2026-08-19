@@ -37,6 +37,8 @@ export interface GridMeta<TRow> {
 export interface CellRendererProps {
   readonly value: unknown;
   readonly row: unknown;
+  /** The row's own id, for renderers that need to name themselves per row. */
+  readonly rowId: string;
   readonly meta: GridMeta<unknown>;
 }
 

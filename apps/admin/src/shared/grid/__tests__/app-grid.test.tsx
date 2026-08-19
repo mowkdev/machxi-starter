@@ -390,9 +390,12 @@ describe("row actions", () => {
       />,
     );
 
-    const [firstMenu] = screen.getAllByRole("button", { name: "Row actions" });
-
-    await user.click(firstMenu!);
+    /*
+     * Named by the row, not reached by index. The id comes from `getRowId`, so
+     * a test says which account it is acting on the same way an operator's
+     * screen reader would — and stops depending on the order rows arrived in.
+     */
+    await user.click(screen.getByRole("button", { name: "Row actions for 1" }));
     await user.click(screen.getByRole("menuitem", { name: "Edit" }));
 
     // The feature declared `onSelect: (row: DemoRow) => …` and gets a `DemoRow`
@@ -422,10 +425,8 @@ describe("row actions", () => {
       />,
     );
 
-    const menus = screen.getAllByRole("button", { name: "Row actions" });
-
-    // The second row is `disabled`, so its delete is not offered.
-    await user.click(menus[1]!);
+    // Row 2 is the `disabled` one, so its delete is not offered.
+    await user.click(screen.getByRole("button", { name: "Row actions for 2" }));
 
     expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveAttribute(
       "aria-disabled",
@@ -433,11 +434,28 @@ describe("row actions", () => {
     );
   });
 
+  it("names each row's menu by that row, not by its position", () => {
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        meta={{
+          rowActions: [{ key: "edit", label: "Edit", onSelect: vi.fn() }],
+        }}
+      />,
+    );
+
+    // Twenty controls called "Row actions" is what the role-and-label
+    // discipline exists to prevent (ADR-0036).
+    expect(
+      screen.getAllByRole("button", { name: /^Row actions for / }),
+    ).toHaveLength(2);
+  });
+
   it("renders no menu at all when a feature declares no actions", () => {
     render(<Harness page={pageOf(demoRows)} />);
 
     expect(
-      screen.queryByRole("button", { name: "Row actions" }),
+      screen.queryByRole("button", { name: /Row actions/ }),
     ).not.toBeInTheDocument();
   });
 });

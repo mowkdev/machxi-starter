@@ -138,6 +138,14 @@ export const InputField = ({
 }: FieldAdapterProps) => (
   <Frame id={id} config={config} fieldState={fieldState}>
     <Input
+      /*
+       * `config.props` first, so nothing declared in data can overwrite the
+       * wiring below it. A config carrying `{ disabled: false }` would
+       * otherwise defeat the submit lock from the resource file — a control
+       * still editable while its request is in flight, configured into
+       * existence rather than coded.
+       */
+      {...config.props}
       id={id}
       name={field.name}
       ref={field.ref}
@@ -149,7 +157,6 @@ export const InputField = ({
       disabled={field.disabled ?? false}
       placeholder={config.placeholder}
       aria-invalid={fieldState.invalid}
-      {...config.props}
     />
   </Frame>
 );
@@ -162,6 +169,8 @@ export const TextareaField = ({
 }: FieldAdapterProps) => (
   <Frame id={id} config={config} fieldState={fieldState}>
     <Textarea
+      // `config.props` first, for the reason `InputField` records.
+      {...config.props}
       id={id}
       name={field.name}
       ref={field.ref}
@@ -173,7 +182,6 @@ export const TextareaField = ({
       disabled={field.disabled ?? false}
       placeholder={config.placeholder}
       aria-invalid={fieldState.invalid}
-      {...config.props}
     />
   </Frame>
 );

@@ -81,7 +81,7 @@ export const RolesList = ({ value }: CellRendererProps) => {
  * Renders nothing when no action applies, rather than an empty menu that opens
  * onto a blank panel.
  */
-export const RowActions = ({ row, meta }: CellRendererProps) => {
+export const RowActions = ({ row, rowId, meta }: CellRendererProps) => {
   const actions = meta.rowActions ?? [];
 
   if (actions.length === 0) return null;
@@ -95,12 +95,17 @@ export const RowActions = ({ row, meta }: CellRendererProps) => {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {/*
-         * The accessible name is what a test and a screen reader both find the
-         * menu by. "Row actions" alone would be ambiguous in a table of twenty
-         * of them, so the caller narrows it per row where it can — see
-         * `columns.tsx`, which has the row's own id.
+         * The accessible name carries the row's id, because a table of twenty
+         * rows otherwise has twenty controls called "Row actions" — which is
+         * precisely what the role-and-label discipline exists to prevent, and
+         * what would force every test to reach for a positional index. The id
+         * comes from `getRowId`, so it is the resource's own identifier.
          */}
-        <Button variant="ghost" size="icon-sm" aria-label="Row actions">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Row actions for ${rowId}`}
+        >
           <MoreHorizontalIcon aria-hidden />
         </Button>
       </DropdownMenuTrigger>

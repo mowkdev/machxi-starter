@@ -5,7 +5,6 @@ import type { ColumnConfigMap, ColumnOverrides } from "@/shared/resource/types";
 
 import { text } from "./formatters";
 import { gridRegistry } from "./registry";
-import type { GridMeta } from "./types";
 import type { GridFeatures } from "./features";
 
 /**
@@ -24,7 +23,6 @@ export type GridRow = Record<string, unknown>;
 export const buildColumns = (
   columns: ColumnConfigMap,
   overrides: ColumnOverrides | undefined,
-  meta: GridMeta<unknown>,
 ): ColumnDef<GridFeatures, GridRow>[] =>
   mergeColumns(columns, overrides).map(([name, column]) => {
     const Renderer =
@@ -55,7 +53,17 @@ export const buildColumns = (
           <Renderer
             value={context.getValue()}
             row={context.row.original}
-            meta={meta}
+            rowId={context.row.id}
+            /*
+             * Read from `table.options.meta` rather than closed over: that is
+             * the mechanism ADR-0035 names, and it is the one that keeps these
+             * defs independent of a feature's handlers. Baking `meta` in would
+             * make the column defs a function of it, so a caller passing an
+             * inline `meta={{ rowActions: [...] }}` would rebuild every
+             * `ColumnDef` on every render — the exact cost `options.meta`
+             * exists to avoid.
+             */
+            meta={context.table.options.meta ?? {}}
           />
         ),
       enableSorting: column.sortable === true,

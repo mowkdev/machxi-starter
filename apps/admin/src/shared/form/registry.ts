@@ -1,3 +1,5 @@
+import type { FieldComponentKey } from "@/shared/resource/types";
+
 import {
   CheckboxField,
   InputField,
@@ -5,15 +7,16 @@ import {
   SelectField,
   SwitchField,
   TextareaField,
+  type FieldAdapter,
 } from "./fields";
 
 /**
  * The form's whole UI vocabulary (ADR-0035 §The form half).
  *
  * The same bargain the grid registry makes: a config carries the key
- * `"multiCheckbox"`, this map carries the component, and {@link
- * FieldComponentKey} being `keyof` it means a typo is a compile error rather
- * than a silently missing control.
+ * `"multiCheckbox"`, this map carries the component, and `FieldComponentKey`
+ * being a declared union means a typo is a compile error rather than a silently
+ * missing control — while `satisfies` means a key with no adapter is one too.
  *
  * The vocabulary is deliberately finite. A field that genuinely does not fit
  * one of these is not a reason to widen the map with a one-off: ADR-0035's
@@ -28,7 +31,6 @@ export const fieldRegistry = {
   checkbox: CheckboxField,
   switch: SwitchField,
   multiCheckbox: MultiCheckboxField,
-} as const;
+} as const satisfies Record<FieldComponentKey, FieldAdapter>;
 
 export type FieldRegistry = typeof fieldRegistry;
-export type FieldComponentKey = keyof FieldRegistry;

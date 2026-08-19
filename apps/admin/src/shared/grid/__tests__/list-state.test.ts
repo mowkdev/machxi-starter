@@ -1,4 +1,8 @@
-import { listQuerySearchSchema, listStaffQuery } from "@repo/contracts";
+import {
+  listQuerySearchSchema,
+  listStaffQuery,
+  type ListQuerySearch,
+} from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
 import { demoResourceConfig } from "@/test/fixtures/demo-resource";
@@ -64,12 +68,40 @@ describe("list-state transitions", () => {
     expect(
       withSort(onPage4, [{ field: "email", direction: "asc" }]).offset,
     ).toBe(0);
-    expect(withFilters(onPage4, []).offset).toBe(0);
+    expect(withFilters(onPage4, [], []).offset).toBe(0);
     expect(withSearch(onPage4, "ada").offset).toBe(0);
   });
 
   it("keeps the operator near their place when the page size changes", () => {
     expect(withLimit({ ...base, offset: 60, limit: 20 }, 50).offset).toBe(50);
+  });
+
+  it("leaves alone a filter no control owns", () => {
+    /*
+     * The failure this exists for: the grid rebuilds the whole filter set from
+     * its own controls, so replacing `state.filters` wholesale would erase a
+     * filter on a field no column declares — a deep link, or a toolbar control
+     * a later step adds — the moment the operator touched any column filter.
+     * Silently widening what someone is looking at is worse than not filtering.
+     */
+    const withForeign: ListQuerySearch = {
+      ...base,
+      filters: [
+        { field: "deletedAt", op: "null", value: false },
+        { field: "status", op: "eq", value: "disabled" },
+      ],
+    };
+
+    const next = withFilters(
+      withForeign,
+      ["status"],
+      [{ field: "status", op: "eq", value: "active" }],
+    );
+
+    expect(next.filters).toEqual([
+      { field: "deletedAt", op: "null", value: false },
+      { field: "status", op: "eq", value: "active" },
+    ]);
   });
 
   it("drops an empty search rather than sending `q=`", () => {
@@ -216,6 +248,7 @@ describe("what the grid writes is what the API accepts", () => {
       withSort({ ...base, offset: 40 }, [
         { field: "createdAt", direction: "desc" },
       ]),
+      ["status"],
       [{ field: "status", op: "eq", value: "active" }],
     );
 

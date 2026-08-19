@@ -44,6 +44,13 @@ describe("formatters", () => {
   });
 });
 
+/** The slice of TanStack's cell context a resolved `cell` actually reads. */
+const cellContext = (value: unknown) => ({
+  getValue: () => value,
+  row: { id: "1", original: {} },
+  table: { options: { meta: {} } },
+});
+
 describe("buildColumns", () => {
   const columns: ColumnConfigMap = {
     email: { header: "Email", sortable: true },
@@ -51,7 +58,7 @@ describe("buildColumns", () => {
     createdAt: { header: "Created", formatter: "date", align: "end" },
   };
 
-  const built = buildColumns(columns, undefined, {});
+  const built = buildColumns(columns, undefined);
 
   it("builds one def per column, in declaration order", () => {
     expect(built.map((column) => column.id)).toEqual([
@@ -81,10 +88,9 @@ describe("buildColumns", () => {
 
     expect(typeof cell).toBe("function");
 
-    const rendered = (cell as (context: unknown) => React.ReactNode)({
-      getValue: () => "active",
-      row: { original: {} },
-    });
+    const rendered = (cell as (context: unknown) => React.ReactNode)(
+      cellContext("active"),
+    );
 
     render(<>{rendered}</>);
 
@@ -94,9 +100,7 @@ describe("buildColumns", () => {
   it("falls back to the text formatter when a column declares neither", () => {
     const cell = built[0]?.cell as (context: unknown) => React.ReactNode;
 
-    expect(
-      cell({ getValue: () => "ada@machxi.local", row: { original: {} } }),
-    ).toBe("ada@machxi.local");
+    expect(cell(cellContext("ada@machxi.local"))).toBe("ada@machxi.local");
   });
 
   it("lets a cellRenderer win over a formatter", () => {
@@ -115,13 +119,11 @@ describe("buildColumns", () => {
         },
       },
       undefined,
-      {},
     );
 
-    const rendered = (column?.cell as (context: unknown) => React.ReactNode)({
-      getValue: () => "disabled",
-      row: { original: {} },
-    });
+    const rendered = (column?.cell as (context: unknown) => React.ReactNode)(
+      cellContext("disabled"),
+    );
 
     render(<>{rendered}</>);
 

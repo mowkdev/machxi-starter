@@ -131,12 +131,14 @@ export const AppGrid = <TRow,>({
    */
   const cellMeta = (meta ?? {}) as unknown as GridMeta<unknown>;
 
+  /*
+   * Deliberately independent of `meta`: the renderers read handlers from
+   * `table.options.meta` at render time, so a caller may pass an inline
+   * `meta={{ rowActions: [...] }}` without rebuilding every column def.
+   */
   const tableColumns = useMemo(
-    () => buildColumns(columns, overrides, cellMeta),
-    // `cellMeta` is rebuilt whenever `meta` is; depending on the prop keeps the
-    // columns stable when a caller passes a memoised handler set.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [columns, overrides, meta],
+    () => buildColumns(columns, overrides),
+    [columns, overrides],
   );
 
   const rows = (page?.items ?? NO_ROWS) as readonly GridRow[];
@@ -168,7 +170,11 @@ export const AppGrid = <TRow,>({
       typeof updater === "function" ? updater(columnFilters) : updater;
 
     onListStateChange(
-      withFilters(listState, fromColumnFiltersState(next, filterable)),
+      withFilters(
+        listState,
+        filterable.map(([field]) => field),
+        fromColumnFiltersState(next, filterable),
+      ),
     );
   };
 
@@ -200,9 +206,15 @@ export const AppGrid = <TRow,>({
     onColumnFiltersChange,
     onPaginationChange,
     meta: cellMeta,
-    ...(getRowId === undefined
-      ? {}
-      : { getRowId: (row: GridRow) => getRowId(row as TRow) }),
+    /*
+     * Always set. Without it TanStack falls back to the row *index*, which
+     * makes `key={row.id}` positional — so React reuses row 3's DOM for a
+     * different account after a delete, and an open menu or a focused control
+     * ends up attached to the wrong row. Every resource in this API has an
+     * `id` (ADR-0012), and a caller whose rows do not can say so.
+     */
+    getRowId: (row: GridRow) =>
+      getRowId === undefined ? String(row["id"]) : getRowId(row as TRow),
   });
 
   /*
@@ -366,17 +378,30 @@ export const AppGrid = <TRow,>({
         </Table>
       </div>
 
+      {/*
+       * The pager reports through the engine rather than around it, so
+       * `onPaginationChange` above is the single path a page change takes —
+       * the same loop a header click takes through `onSortingChange`. Its last
+       * page is `getPageCount()`, which is derived from the `rowCount` the
+       * envelope's `meta.pagination.total` supplied; `null` says the endpoint
+       * did not count and there is no last page to offer.
+       */}
       <GridPager
         offset={listState.offset}
         limit={listState.limit}
         total={page?.total ?? null}
         rowCount={rows.length}
+        lastOffset={
+          page?.total === undefined || page.total === null
+            ? null
+            : Math.max(0, (table.getPageCount() - 1) * listState.limit)
+        }
         disabled={page === undefined || isFetching}
         onOffsetChange={(offset) => {
-          onListStateChange(withOffset(listState, offset));
+          table.setPageIndex(Math.floor(offset / listState.limit));
         }}
         onLimitChange={(limit) => {
-          onListStateChange(withLimit(listState, limit));
+          table.setPageSize(limit);
         }}
       />
     </div>
