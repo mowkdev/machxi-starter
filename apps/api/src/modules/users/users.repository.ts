@@ -240,6 +240,20 @@ export const createUsersRepository = (db: DbExecutor) =>
      * insert, and the second would surface as an unhandled unique violation.
      * The caller decides what to say about it — a generic `409` for anonymous
      * registration, `USER_EMAIL_TAKEN` for an admin (ADR-0020 §Enumeration).
+     *
+     * **The conflict target must name the partial index** (ADR-0028). Since
+     * D2.4 the uniqueness is `unique (email) where deleted_at is null`, and a
+     * bare `target: users.email` matches no index at all: Postgres would raise
+     * the unique violation instead of returning no row, this function would
+     * throw rather than resolve to `undefined`, and a duplicate registration
+     * would answer `500` instead of `CONFLICT`.
+     *
+     * `where` beside `target` is what makes the inference find it. It is
+     * **not** a row filter — drizzle emits it as
+     * `on conflict (email) where deleted_at is null do nothing`, where the
+     * predicate is Postgres's way of naming which partial index to infer. The
+     * plan for this step called the option `targetWhere`, which is
+     * `onConflictDoUpdate`'s spelling; `onConflictDoNothing` takes `where`.
      */
     create: async (
       input: NewUserInput,
@@ -254,7 +268,10 @@ export const createUsersRepository = (db: DbExecutor) =>
           lastName: input.lastName ?? null,
           status: input.status ?? "active",
         })
-        .onConflictDoNothing({ target: users.email })
+        .onConflictDoNothing({
+          target: users.email,
+          where: isNull(users.deletedAt),
+        })
         .returning({
           id: users.id,
           email: users.email,
@@ -367,6 +384,36 @@ export const createUsersRepository = (db: DbExecutor) =>
         .update(users)
         .set({ passwordHash, updatedAt: at })
         .where(eq(users.id, id));
+    },
+
+    /**
+     * `DELETE /api/v1/admin/users/:id` — the write half of soft deletion
+     * (ADR-0028).
+     *
+     * `status` is written alongside `deleted_at` so that `status` stays a
+     * truthful column on its own: `filter[status][eq]=active` is an
+     * allow-listed filter on the admin list, and an account that is
+     * active-and-deleted would satisfy it. The alternative — a `deleted`
+     * member in `USER_STATUSES` — was declined in D1.9, which is why
+     * `deletedAt` is on the wire at all.
+     *
+     * Only live rows match, so a second delete is a no-op rather than a
+     * timestamp that moves; the service refuses it before reaching here.
+     *
+     * @returns `false` when no live row has that id.
+     */
+    softDelete: async (
+      id: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<boolean> => {
+      const deleted = await tx
+        .update(users)
+        .set({ deletedAt: at, status: "disabled", updatedAt: at })
+        .where(and(eq(users.id, id), isNull(users.deletedAt)))
+        .returning({ id: users.id });
+
+      return deleted.length > 0;
     },
 
     // No standalone `rolesOf` — see the note in `staff.repository.ts`.

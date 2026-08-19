@@ -117,6 +117,7 @@ describe("admin staff administration", () => {
       { method: "patch", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/sessions/revoke` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/password` },
+      { method: "delete", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
     ] as const;
 
     const call = (route: (typeof ROUTES)[number]) =>
@@ -124,7 +125,9 @@ describe("admin staff administration", () => {
         ? request().get(route.path)
         : route.method === "post"
           ? request().post(route.path)
-          : request().patch(route.path);
+          : route.method === "delete"
+            ? request().delete(route.path)
+            : request().patch(route.path);
 
     it.each(ROUTES)(
       "$method $path refuses a caller with no credentials",

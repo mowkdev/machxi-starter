@@ -21,7 +21,7 @@ import {
   type AuthService,
 } from "../auth/index.js";
 import type { StaffService } from "../staff/index.js";
-import { userEmailTaken, userNotFound } from "./users.errors.js";
+import { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
 import { toUserResource } from "./users.mapper.js";
 import type { UserRecord, UsersRepository } from "./users.repository.js";
 
@@ -102,6 +102,26 @@ export const createUsersService = ({
     const record = await repository.findAnyById(id, tx);
 
     if (record === undefined) throw userNotFound();
+
+    return record;
+  };
+
+  /**
+   * The admin view of a subject that is about to be **written**.
+   *
+   * `readAny` tolerates a soft-deleted row because the read endpoints must
+   * (`GET /:id` answers `200` for one on purpose); the write endpoints must
+   * not, and since D2.4 that difference has a name rather than being the
+   * absence of a check. `409`, not `404`: the account exists and the caller may
+   * see it — what conflicts is its state (ADR-0028).
+   */
+  const readWritable = async (
+    id: string,
+    tx?: DbExecutor,
+  ): Promise<UserRecord> => {
+    const record = await readAny(id, tx);
+
+    if (record.deletedAt !== null) throw userDeleted();
 
     return record;
   };
@@ -204,7 +224,11 @@ export const createUsersService = ({
       const at = now();
 
       const { updated, revoked } = await transaction(async (tx) => {
-        const current = await readAny(id, tx);
+        // `readWritable`, not `readAny`: without it a `PATCH` could set a
+        // soft-deleted account back to `active` without clearing `deleted_at`,
+        // producing a row that is simultaneously active and deleted — a state
+        // no reader is written to expect (ADR-0028).
+        const current = await readWritable(id, tx);
 
         await repository.updateColumns(
           id,
@@ -270,7 +294,7 @@ export const createUsersService = ({
      * a no-op, and the two must not look the same.
      */
     revokeSessions: async (ctx: RequestContext, id: string): Promise<void> => {
-      const record = await readAny(id);
+      const record = await readWritable(id);
 
       const revoked = await sessions.revokeSessionsFor(ctx, {
         principalId: record.id,
@@ -281,6 +305,47 @@ export const createUsersService = ({
         { userId: record.id, revoked },
         "user sessions revoked by staff",
       );
+    },
+
+    /**
+     * `DELETE /api/v1/admin/users/:id` — soft delete (ADR-0028).
+     *
+     * One transaction, three writes: the timestamp, the status, and every live
+     * session of the account with reason `account_deleted`.
+     *
+     * `deleted_at` alone would already stop sign-in — `findByEmail` filters it
+     * — so `status` is written for a different reason: to keep `status` a
+     * truthful column on its own, since `filter[status][eq]=active` is an
+     * allow-listed filter and an active-and-deleted account would satisfy it.
+     *
+     * The sessions go in the same transaction because `sessions` has no
+     * foreign key to `users` (ADR-0018), so nothing else ends them, and any gap
+     * between the two writes is a window in which a deleted account still holds
+     * a valid access token.
+     *
+     * Deleting the row is not on the table: a customer record is referenced by
+     * future order history. What *is* released is the address — the partial
+     * unique index means a deleted account's email can be registered again,
+     * which is the support answer this endpoint exists to make possible.
+     */
+    remove: async (ctx: RequestContext, id: string): Promise<void> => {
+      const at = now();
+
+      // Refuses a second delete with `409` rather than moving the timestamp:
+      // "already deleted" is a conflict, not a no-op to report as success.
+      const record = await readWritable(id);
+
+      const revoked = await transaction(async (tx) => {
+        await repository.softDelete(record.id, at, tx);
+
+        return sessions.revokeSessionsFor(ctx, {
+          principalId: record.id,
+          reason: REVOKE_REASONS.accountDeleted,
+          tx,
+        });
+      });
+
+      ctx.logger.info({ userId: record.id, revoked }, "user account deleted");
     },
 
     /**
@@ -307,7 +372,10 @@ export const createUsersService = ({
 
       await actors.verifyActorPassword(ctx, body.currentPassword);
 
-      const record = await readAny(id);
+      // A deleted account cannot sign in at all, so setting its password is
+      // not dangerous — it is meaningless, and answering `409` says so rather
+      // than reporting success for a credential nobody can use (ADR-0028).
+      const record = await readWritable(id);
       const passwordHash = await hasher.hash(body.password);
 
       const revoked = await transaction(async (tx) => {

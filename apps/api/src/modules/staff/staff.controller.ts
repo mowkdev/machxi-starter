@@ -5,6 +5,7 @@ import type { ValidatedRequest } from "../../core/middleware/index.js";
 import type {
   changeStaffPasswordSchema,
   createStaffSchema,
+  deleteStaffSchema,
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,
@@ -90,6 +91,15 @@ export const createStaffController = (service: StaffService) =>
       res: Response,
     ): Promise<void> => {
       await service.setPassword(req.ctx, req.valid.params.id, req.valid.body);
+      respond.noContent(res);
+    },
+
+    /** `204`: the account is gone, and there is no resource left to describe. */
+    remove: async (
+      req: ValidatedRequest<typeof deleteStaffSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.remove(req.ctx, req.valid.params.id);
       respond.noContent(res);
     },
   }) as const;

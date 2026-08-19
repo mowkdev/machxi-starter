@@ -8,6 +8,7 @@ import type {
 import {
   changePasswordSchema,
   createUserSchema,
+  deleteUserSchema,
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,
@@ -69,6 +70,16 @@ export const createUsersRouter = (controller: UsersController): Router => {
     authorize("admin"),
     validate(setUserPasswordSchema),
     controller.setPassword,
+  );
+
+  // A soft delete (ADR-0028): the row survives with `deleted_at` set, because
+  // a customer record is referenced by future order history. `admin` only —
+  // a manager reads the customer base and does not end accounts in it.
+  router.delete(
+    "/:id",
+    authorize("admin"),
+    validate(deleteUserSchema),
+    controller.remove,
   );
 
   return router;

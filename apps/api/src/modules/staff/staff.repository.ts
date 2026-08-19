@@ -394,6 +394,30 @@ export const createStaffRepository = (db: DbExecutor) =>
         .where(eq(staff.id, id));
     },
 
+    /**
+     * `DELETE /api/v1/admin/staff/:id` — a hard delete (ADR-0028).
+     *
+     * The row goes, and with it the grants: `staff_roles.staff_id` is
+     * `on delete cascade`, so no second statement is needed. Grants this
+     * person issued to *others* survive — `staff_roles.granted_by` is
+     * `on delete set null` — which is the audit behaviour the schema chose
+     * deliberately (ADR-0017).
+     *
+     * Staff have no `deleted_at` and this does not add one: a staff member is
+     * a directory entry, where a customer record is referenced by future order
+     * history. The asymmetry is the decision, not an oversight.
+     *
+     * @returns `false` when no row has that id.
+     */
+    remove: async (id: string, tx: DbExecutor = db): Promise<boolean> => {
+      const removed = await tx
+        .delete(staff)
+        .where(eq(staff.id, id))
+        .returning({ id: staff.id });
+
+      return removed.length > 0;
+    },
+
     // No standalone `rolesOf`: every read above returns the grants from the
     // same query, and a separate one would be a second round trip on the login
     // path (ADR-0017, amended step 8).

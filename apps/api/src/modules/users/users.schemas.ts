@@ -29,6 +29,9 @@ export const updateUserSchema = {
 } as const;
 export const revokeUserSessionsSchema = { params: userIdParams } as const;
 
+/** `DELETE /api/v1/admin/users/:id` (ADR-0028). No body — see the staff one. */
+export const deleteUserSchema = { params: userIdParams } as const;
+
 /**
  * `POST /api/v1/admin/users/:id/password` — the administrative reset
  * (ADR-0027).

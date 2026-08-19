@@ -156,6 +156,20 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
       return Promise.resolve();
     },
 
+    softDelete: (id: string) => {
+      const row = rows.get(id);
+
+      if (row === undefined || row.deleted) return Promise.resolve(false);
+
+      row.deleted = true;
+      // Written alongside the timestamp so `status` stays a truthful column on
+      // its own: `filter[status][eq]=active` is an allow-listed filter, and an
+      // active-and-deleted account would satisfy it (ADR-0028).
+      row.status = "disabled";
+
+      return Promise.resolve(true);
+    },
+
     updateLastLoginAt: () => Promise.resolve(),
 
     updatePasswordHash: (id: string, passwordHash: string) => {
@@ -715,6 +729,110 @@ describe("createUsersService — the user segment", () => {
         "UNAUTHENTICATED",
         401,
       );
+    });
+  });
+
+  /* -- D2.4: soft deletion (ADR-0028) -------------------------------------- */
+
+  describe("remove", () => {
+    it("marks the row deleted, disables it, and ends every session", async () => {
+      const { service, repo, sessions } = build([userRow()]);
+
+      await service.remove(adminCtx(), USER_ID);
+
+      expect(repo.rows.get(USER_ID)?.deleted).toBe(true);
+      expect(repo.rows.get(USER_ID)?.status).toBe("disabled");
+      expect(sessions.revocations).toEqual([
+        {
+          principalId: USER_ID,
+          reason: REVOKE_REASONS.accountDeleted,
+          exceptSessionId: undefined,
+        },
+      ]);
+    });
+
+    it("answers NOT_FOUND for an unknown id", async () => {
+      const { service, sessions } = build([userRow()]);
+
+      await expectAppError(
+        () => service.remove(adminCtx(), OTHER_ID),
+        "NOT_FOUND",
+        404,
+      );
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses a second delete with USER_DELETED rather than moving the timestamp", async () => {
+      const { service, sessions } = build([userRow({ deleted: true })]);
+
+      await expectAppError(
+        () => service.remove(adminCtx(), USER_ID),
+        "USER_DELETED",
+        409,
+      );
+      expect(sessions.revocations).toEqual([]);
+    });
+  });
+
+  describe("writes aimed at a deleted account (ADR-0028)", () => {
+    /**
+     * `409`, not `404`: the account exists and the caller may still read it.
+     * What conflicts is the state of the row — the same distinction
+     * `STAFF_LAST_SUPER_ADMIN` draws.
+     */
+    it("refuses PATCH, so no row can be active and deleted at once", async () => {
+      // The bug this closes: `update` read through `readAny`, which tolerates a
+      // deleted row, so an admin could set one back to `active` without
+      // clearing `deleted_at`.
+      const { service, repo } = build([userRow({ deleted: true })]);
+
+      await expectAppError(
+        () => service.update(adminCtx(), USER_ID, { status: "active" }),
+        "USER_DELETED",
+        409,
+      );
+
+      expect(repo.rows.get(USER_ID)?.status).toBe("active");
+      expect(repo.rows.get(USER_ID)?.deleted).toBe(true);
+    });
+
+    it("refuses a session revoke", async () => {
+      const { service, sessions } = build([userRow({ deleted: true })]);
+
+      await expectAppError(
+        () => service.revokeSessions(adminCtx(), USER_ID),
+        "USER_DELETED",
+        409,
+      );
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses a password reset, and buys no hash doing it", async () => {
+      const { service, repo, hasher } = build([userRow({ deleted: true })]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(adminCtx(), USER_ID, {
+            password: "ResetByAdmin!2026",
+            currentPassword: ACTOR_PASSWORD,
+          }),
+        "USER_DELETED",
+        409,
+      );
+
+      expect(repo.calls.updatePasswordHash).toBe(0);
+      expect(hasher.calls.hash).toBe(0);
+    });
+
+    it("still reads through getById, because an admin may open one", async () => {
+      // Answering `404` for a row the admin list just showed them would be the
+      // worse lie; the read path keeps the tolerance the write path drops.
+      const { service } = build([userRow({ deleted: true })]);
+
+      const resource = await service.getById(adminCtx(), USER_ID);
+
+      expect(resource.id).toBe(USER_ID);
+      expect(resource.deletedAt).not.toBeNull();
     });
   });
 

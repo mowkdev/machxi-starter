@@ -6,6 +6,7 @@ export {
 } from "./staff.controller.js";
 export {
   lastSuperAdmin,
+  selfDeletionForbidden,
   staffEmailTaken,
   staffNotFound,
   superAdminGrantForbidden,
@@ -23,6 +24,7 @@ export { createStaffProfileRouter, createStaffRouter } from "./staff.routes.js";
 export {
   changeStaffPasswordSchema,
   createStaffSchema,
+  deleteStaffSchema,
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,

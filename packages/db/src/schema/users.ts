@@ -1,10 +1,11 @@
-import { relations } from "drizzle-orm";
+import { isNull, relations } from "drizzle-orm";
 import {
   index,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -27,8 +28,14 @@ export const users = pgTable(
   "users",
   {
     id: primaryId(),
-    /** Unique **within users**; a staff member with the same address is a different account. */
-    email: citext().notNull().unique(),
+    /**
+     * Unique **within users**, and only among *live* rows — the constraint is
+     * the partial index in the table extras below, not on this column
+     * (ADR-0028).
+     *
+     * A staff member with the same address is a different account.
+     */
+    email: citext().notNull(),
     /**
      * Nullable, unlike `staff.password_hash`: the social / passwordless paths
      * in ADR-0018's future scope create an account with no password at all.
@@ -50,6 +57,25 @@ export const users = pgTable(
     deletedAt: timestamp({ withTimezone: true }),
   },
   (table) => [
+    /**
+     * One **live** account per address (ADR-0028).
+     *
+     * Partial rather than a plain unique constraint, so deleting an account
+     * releases its address: without the `where`, a soft-deleted row keeps the
+     * address reserved forever and "I deleted my account and want to come
+     * back" has no answer. Two rows may therefore share an address with at
+     * most one of them live, which every existing read already tolerates —
+     * `findByEmail` filters `deleted_at is null` and is the only lookup
+     * authentication uses.
+     *
+     * It is also the target `usersRepository.create` must name in
+     * `onConflictDoNothing`: an insert that names the old constraint matches
+     * no index, so the unique violation escapes as a `500` instead of the
+     * `CONFLICT` the caller is owed.
+     */
+    uniqueIndex("users_email_active_unique")
+      .on(table.email)
+      .where(isNull(table.deletedAt)),
     // Default `-createdAt` order and `createdAt` range filters of
     // GET /api/v1/admin/users (ADR-0014).
     index("users_created_at_idx").on(table.createdAt),

@@ -61,7 +61,12 @@ const toRecord = (row: FakeStaffRow): StaffRecord => ({
  */
 const createFakeRepository = (seed: FakeStaffRow[]) => {
   const rows = new Map(seed.map((row) => [row.id, { ...row }]));
-  const calls = { replaceRoles: 0, updateColumns: 0, updatePasswordHash: 0 };
+  const calls = {
+    replaceRoles: 0,
+    updateColumns: 0,
+    updatePasswordHash: 0,
+    lockRoleInvariant: 0,
+  };
   /** Every `replaceRoles`, so `granted_by` can be asserted (ADR-0017). */
   const grants: { staffId: string; grantedBy: string | null }[] = [];
   let sequence = 0;
@@ -151,7 +156,13 @@ const createFakeRepository = (seed: FakeStaffRow[]) => {
     // serialise. That the *real* service takes the lock before it reads is a
     // property only the database can demonstrate, and the integration suite
     // is where it is exercised.
-    lockRoleInvariant: () => Promise.resolve(),
+    lockRoleInvariant: () => {
+      calls.lockRoleInvariant += 1;
+
+      return Promise.resolve();
+    },
+
+    remove: (id: string) => Promise.resolve(rows.delete(id)),
 
     updateLastLoginAt: () => Promise.resolve(),
     // A no-op until D2.3, when the staff module gained endpoints that write a
@@ -1109,6 +1120,144 @@ describe("createStaffService", () => {
       expect(repo.rows.get(SUPER_ADMIN_ID)?.passwordHash).toBe(
         "hashed:ResetByAdmin!2026",
       );
+    });
+  });
+
+  describe("remove", () => {
+    it("deletes the row and revokes the account's sessions", async () => {
+      const { service, repo, sessions } = build([actorRow(), adminRow()]);
+
+      await service.remove(ctx(), ADMIN_ID);
+
+      expect(repo.rows.has(ADMIN_ID)).toBe(false);
+      // `sessions` has no foreign key to `staff` (ADR-0018), so deleting the
+      // principal would otherwise leave live-looking rows behind — and an
+      // orphan is unusable rather than revoked, which is not what an audit
+      // trail should have to infer.
+      expect(sessions.revocations).toEqual([
+        {
+          principalId: ADMIN_ID,
+          reason: REVOKE_REASONS.accountDeleted,
+          exceptSessionId: undefined,
+        },
+      ]);
+    });
+
+    it("refuses a staff member deleting themselves", async () => {
+      // The one delete whose actor vanishes mid-request, and the only one that
+      // interacts with the last-super-admin invariant from the inside
+      // (ADR-0028 rule 4). Plain 403, no new code.
+      const { service, repo, sessions } = build([actorRow()]);
+
+      await expectAppError(
+        () => service.remove(ctx(), ACTOR_ID),
+        "FORBIDDEN",
+        403,
+      );
+
+      expect(repo.rows.has(ACTOR_ID)).toBe(true);
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses self-deletion before anything else, invariant included", async () => {
+      // A super admin who is the last one, deleting themselves: the truthful
+      // answer is "you may never do this", not "not right now" — so the rule
+      // that cannot be satisfied by any state change goes first, which is the
+      // order `update` applies to privilege versus invariant.
+      const { service, repo } = build([
+        { ...actorRow(), roles: ["super_admin"] },
+      ]);
+
+      await expectAppError(
+        () => service.remove(superCtx(), ACTOR_ID),
+        "FORBIDDEN",
+        403,
+      );
+
+      expect(repo.calls.lockRoleInvariant).toBe(0);
+    });
+
+    it("refuses an admin deleting a super admin", async () => {
+      // Deleting a super admin is the most complete removal of standing there
+      // is, so it carries the guard that already covers disabling and forced
+      // logout (ADR-0017 §Invariants).
+      const { service, repo, sessions } = build([actorRow(), superAdminRow()]);
+
+      await expectAppError(
+        () => service.remove(ctx(), SUPER_ADMIN_ID),
+        "FORBIDDEN",
+        403,
+      );
+
+      expect(repo.rows.has(SUPER_ADMIN_ID)).toBe(true);
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses the last active super admin, behind the advisory lock", async () => {
+      // Two concurrent deletes of two different super admins would otherwise
+      // each count the other as the survivor and both commit, leaving a
+      // deployment with no super admin and no way back through the API.
+      const { service, repo, sessions } = build([actorRow(), superAdminRow()]);
+
+      await expectAppError(
+        () => service.remove(superCtx(), SUPER_ADMIN_ID),
+        "STAFF_LAST_SUPER_ADMIN",
+        409,
+      );
+
+      expect(repo.calls.lockRoleInvariant).toBe(1);
+      expect(repo.rows.has(SUPER_ADMIN_ID)).toBe(true);
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("allows it when another active super admin survives", async () => {
+      const { service, repo } = build([
+        actorRow(),
+        superAdminRow(),
+        {
+          ...adminRow(),
+          id: "44444444-4444-7444-8444-444444444444",
+          email: "second.root@machxi.local",
+          roles: ["super_admin"],
+        },
+      ]);
+
+      await service.remove(superCtx(), SUPER_ADMIN_ID);
+
+      expect(repo.rows.has(SUPER_ADMIN_ID)).toBe(false);
+    });
+
+    it("counts only *active* super admins as survivors", async () => {
+      // A disabled super admin cannot sign in, so it is no answer to "who is
+      // left" — the invariant is about an active one existing (ADR-0017).
+      const { service } = build([
+        actorRow(),
+        superAdminRow(),
+        {
+          ...adminRow(),
+          id: "44444444-4444-7444-8444-444444444444",
+          email: "disabled.root@machxi.local",
+          status: "disabled",
+          roles: ["super_admin"],
+        },
+      ]);
+
+      await expectAppError(
+        () => service.remove(superCtx(), SUPER_ADMIN_ID),
+        "STAFF_LAST_SUPER_ADMIN",
+        409,
+      );
+    });
+
+    it("answers NOT_FOUND for an unknown id", async () => {
+      const { service, sessions } = build([actorRow()]);
+
+      await expectAppError(
+        () => service.remove(ctx(), ADMIN_ID),
+        "NOT_FOUND",
+        404,
+      );
+      expect(sessions.revocations).toEqual([]);
     });
   });
 

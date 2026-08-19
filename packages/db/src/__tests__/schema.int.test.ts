@@ -151,9 +151,75 @@ describe("migration 0001", () => {
         "staff_created_at_idx",
         "staff_email_unique",
         "users_created_at_idx",
-        "users_email_unique",
       ]),
     );
+  });
+});
+
+describe("migration 0002", () => {
+  it("replaces the users email constraint with a partial unique index", async () => {
+    // ADR-0028: a plain unique constraint burns a soft-deleted address
+    // forever. The index is what releases it, and its `where` clause is what
+    // `onConflictDoNothing` has to name — in the repository *and* in the dev
+    // seeder, which is where the missing predicate first showed up as
+    // "there is no unique or exclusion constraint matching the ON CONFLICT
+    // specification".
+    const rows = await rowsOf<{ indexname: string; indexdef: string }>(
+      sql`select indexname, indexdef from pg_indexes
+          where schemaname = 'public' and tablename = 'users'
+          order by indexname`,
+    );
+
+    const names = rows.map((row) => row.indexname);
+
+    expect(names).toContain("users_email_active_unique");
+    expect(names).not.toContain("users_email_unique");
+
+    const partial = rows.find(
+      (row) => row.indexname === "users_email_active_unique",
+    );
+
+    expect(partial?.indexdef).toMatch(/UNIQUE/i);
+    expect(partial?.indexdef).toMatch(/WHERE \(deleted_at IS NULL\)/i);
+  });
+
+  it("allows two rows to share an address when only one is live", async () => {
+    const email = "rejoin@machxi.test";
+
+    const [deleted] = await client.db
+      .insert(users)
+      .values({ email, deletedAt: new Date() })
+      .returning({ id: users.id });
+
+    await expect(
+      client.db.insert(users).values({ email }),
+    ).resolves.not.toThrow();
+
+    expect(deleted?.id).toEqual(expect.any(String));
+  });
+
+  it("still refuses two live rows with the same address", async () => {
+    // The half of uniqueness that has to survive: releasing a deleted
+    // address must not release a live one.
+    const email = "still.unique@machxi.test";
+
+    await client.db.insert(users).values({ email });
+
+    await expectUniqueViolation(client.db.insert(users).values({ email }));
+  });
+
+  it("refuses a second *deleted* row only when a live one exists", async () => {
+    // Two deleted rows with one address are legal — the index does not see
+    // them at all — which is what makes repeated delete-and-rejoin cycles
+    // possible rather than a slow-motion unique violation.
+    const email = "twice.deleted@machxi.test";
+    const deletedAt = new Date();
+
+    await client.db.insert(users).values({ email, deletedAt });
+
+    await expect(
+      client.db.insert(users).values({ email, deletedAt }),
+    ).resolves.not.toThrow();
   });
 });
 

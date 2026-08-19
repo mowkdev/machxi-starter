@@ -63,6 +63,18 @@ export const REVOKE_REASONS = {
    */
   passwordReset: "password_reset",
   /**
+   * `DELETE /api/v1/admin/{staff,users}/:id` (D2.4).
+   *
+   * Written in the same transaction as the delete itself: `sessions` has no
+   * foreign key to either population (ADR-0018), so nothing else ends them —
+   * and for staff the row is gone a statement later, which would leave the
+   * session rows orphaned rather than revoked. An orphan is unusable, because
+   * the principal lookup after session verification finds nothing, but
+   * "unusable in practice" is not what an audit trail should have to infer
+   * (ADR-0028).
+   */
+  accountDeleted: "account_deleted",
+  /**
    * A role grant changed (step 9). Roles ride in the access token's claims
    * (ADR-0018), so ending the sessions is what makes the new set take effect
    * rather than waiting out `JWT_ACCESS_TTL`.

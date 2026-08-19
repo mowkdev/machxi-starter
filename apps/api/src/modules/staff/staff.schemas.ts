@@ -31,6 +31,14 @@ export const updateStaffSchema = {
 export const revokeStaffSessionsSchema = { params: staffIdParams } as const;
 
 /**
+ * `DELETE /api/v1/admin/staff/:id` (ADR-0028). No body: deletion needs no
+ * payload, and the actor re-authentication `setStaffPasswordSchema` carries is
+ * deliberately not copied here — the endpoint is already fenced by the rank
+ * rule, the last-super-admin invariant and the self-deletion refusal.
+ */
+export const deleteStaffSchema = { params: staffIdParams } as const;
+
+/**
  * `POST /api/v1/admin/staff/:id/password` — the administrative reset
  * (ADR-0027).
  *

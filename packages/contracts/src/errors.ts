@@ -97,11 +97,21 @@ const AUTH_ERROR_CODES = [
  * | Code | Status | Raised when |
  * |---|---|---|
  * | `USER_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/users` with an email already in the `users` table |
+ * | `USER_DELETED` | 409 | a write aimed at a soft-deleted user account (ADR-0028) |
  * | `STAFF_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/staff` with an email already in the `staff` table |
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
  *
+ * `USER_DELETED` is `409` and not `404`: the account exists and the caller may
+ * still *read* it — `GET /:id` answers `200` for a deleted account on purpose,
+ * because an admin who can list deleted accounts must be able to open one. What
+ * the request conflicts with is the account's state, which is the same
+ * distinction `STAFF_LAST_SUPER_ADMIN` draws. `410 Gone` would claim the
+ * resource is permanently unavailable at this URL, and it is not.
+ *
  * Emails are unique **within** a population, so the two "taken" codes are
- * separate: the same person may hold both a staff and a user account.
+ * separate: the same person may hold both a staff and a user account. Since
+ * ADR-0028 the uniqueness is partial — `USER_EMAIL_TAKEN` means a *live*
+ * account holds the address, not that it has ever been used.
  *
  * Both "taken" codes belong to **authenticated staff** endpoints, which is why
  * they may name the
@@ -113,6 +123,7 @@ const AUTH_ERROR_CODES = [
  */
 const DOMAIN_ERROR_CODES = [
   "USER_EMAIL_TAKEN",
+  "USER_DELETED",
   "STAFF_EMAIL_TAKEN",
   "STAFF_LAST_SUPER_ADMIN",
 ] as const;

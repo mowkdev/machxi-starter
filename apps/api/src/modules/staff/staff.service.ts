@@ -23,6 +23,7 @@ import {
 } from "../auth/index.js";
 import {
   lastSuperAdmin,
+  selfDeletionForbidden,
   staffEmailTaken,
   staffNotFound,
   superAdminGrantForbidden,
@@ -486,6 +487,76 @@ export const createStaffService = ({
       ctx.logger.info(
         { staffId: targetId, revoked, by: actor(ctx).id },
         "staff password reset by an admin",
+      );
+    },
+
+    /**
+     * `DELETE /api/v1/admin/staff/:id` — a hard delete (ADR-0028).
+     *
+     * The row goes and `staff_roles` cascades with it. There is no
+     * `deleted_at` on `staff` and this does not add one: a staff member is a
+     * directory entry, where a customer record is referenced by future order
+     * history. The cost is stated in the ADR rather than discovered — the
+     * answer to "who used to be an admin here" goes with the row, and if that
+     * becomes unacceptable the fix is an append-only audit log, not a column.
+     *
+     * Four rules, in this order:
+     *
+     * 1. **Nobody deletes themselves.** Checked first and outside the
+     *    transaction, because it needs no row: it is the strongest of the four
+     *    — "you may not do this at all" outranks "nobody may do this right
+     *    now", which is the order `update` already applies to privilege versus
+     *    invariant. Running it after the invariant would answer the last super
+     *    admin deleting themselves with `409`, when the truthful answer is that
+     *    they may never do it at all.
+     * 2. **The rank rule.** Deleting a super admin is the most complete removal
+     *    of standing there is, so it carries the guard that already covers
+     *    disabling and forced logout (ADR-0017 §Invariants).
+     * 3. **The last-super-admin invariant**, behind `lockRoleInvariant` —
+     *    under READ COMMITTED two concurrent deletes of two different super
+     *    admins would each count the other as the survivor and both commit,
+     *    leaving a deployment with no super admin and no way back through the
+     *    API.
+     * 4. **Sessions are revoked before the row goes**, in the same
+     *    transaction. `sessions` has no foreign key to `staff` (ADR-0018), so
+     *    deleting the principal would otherwise leave live-looking rows behind.
+     */
+    remove: async (ctx: RequestContext, id: string): Promise<void> => {
+      const principal = actor(ctx);
+
+      if (id === principal.id) throw selfDeletionForbidden();
+
+      const revoked = await transaction(async (tx) => {
+        // Before the read the invariant rests on, for the reason `update`
+        // takes it: a count cannot see an uncommitted sibling.
+        await repository.lockRoleInvariant(tx);
+
+        const target = await read(id, tx);
+
+        assertMayActOnSuperAdmin(ctx, target);
+
+        if (
+          target.status === "active" &&
+          target.roles.includes(SUPER_ADMIN_ROLE) &&
+          (await repository.countOtherActiveSuperAdmins(target.id, tx)) === 0
+        ) {
+          throw lastSuperAdmin();
+        }
+
+        const count = await sessions.revokeSessionsFor(ctx, {
+          principalId: target.id,
+          reason: REVOKE_REASONS.accountDeleted,
+          tx,
+        });
+
+        await repository.remove(target.id, tx);
+
+        return count;
+      });
+
+      ctx.logger.info(
+        { staffId: id, revoked, by: principal.id },
+        "staff account deleted",
       );
     },
 

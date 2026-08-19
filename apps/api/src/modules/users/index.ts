@@ -4,7 +4,7 @@ export {
   type UserProfileController,
   type UsersController,
 } from "./users.controller.js";
-export { userEmailTaken, userNotFound } from "./users.errors.js";
+export { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
 export { toUserResource } from "./users.mapper.js";
 export {
   createUsersRepository,
@@ -17,6 +17,7 @@ export { createUserProfileRouter, createUsersRouter } from "./users.routes.js";
 export {
   changePasswordSchema,
   createUserSchema,
+  deleteUserSchema,
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,

@@ -20,3 +20,15 @@ export const userNotFound = (): AppError => notFound("User not found");
  */
 export const userEmailTaken = (): AppError =>
   conflict("A user with this email already exists", "USER_EMAIL_TAKEN");
+
+/**
+ * A write aimed at a soft-deleted account (ADR-0028).
+ *
+ * `409` and not `404`: the account exists and the caller may still read it —
+ * `GET /:id` answers `200` for a deleted account on purpose, because an admin
+ * who can list deleted accounts must be able to open one. What the request
+ * conflicts with is the state of the row, which is the same distinction
+ * {@link lastSuperAdmin} draws in the staff module.
+ */
+export const userDeleted = (): AppError =>
+  conflict("This account has been deleted", "USER_DELETED");

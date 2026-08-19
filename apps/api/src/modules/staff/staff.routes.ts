@@ -8,6 +8,7 @@ import type {
 import {
   changeStaffPasswordSchema,
   createStaffSchema,
+  deleteStaffSchema,
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,
@@ -66,6 +67,12 @@ export const createStaffRouter = (controller: StaffController): Router => {
     validate(setStaffPasswordSchema),
     controller.setPassword,
   );
+
+  // A hard delete: the row goes and `staff_roles` cascades with it (ADR-0028).
+  // `admin` like everything else in this router, which the mount already says
+  // — the rules a guard cannot express (rank, the last super admin, and that
+  // nobody deletes themselves) are the service's.
+  router.delete("/:id", validate(deleteStaffSchema), controller.remove);
 
   return router;
 };

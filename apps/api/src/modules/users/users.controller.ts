@@ -5,6 +5,7 @@ import type { ValidatedRequest } from "../../core/middleware/index.js";
 import type {
   changePasswordSchema,
   createUserSchema,
+  deleteUserSchema,
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,
@@ -77,6 +78,20 @@ export const createUsersController = (service: UsersService) =>
       res: Response,
     ): Promise<void> => {
       await service.setPassword(req.ctx, req.valid.params.id, req.valid.body);
+      respond.noContent(res);
+    },
+
+    /**
+     * `204`: the account is soft-deleted. The row survives and stays readable
+     * through `GET /:id`, so there is nothing new to tell the caller — and a
+     * body here would invite a client to treat the response as the account's
+     * final state rather than as confirmation (ADR-0012).
+     */
+    remove: async (
+      req: ValidatedRequest<typeof deleteUserSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.remove(req.ctx, req.valid.params.id);
       respond.noContent(res);
     },
   }) as const;

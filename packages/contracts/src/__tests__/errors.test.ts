@@ -45,6 +45,7 @@ describe("ERROR_CODES", () => {
     expect(ERROR_CODES).toEqual(
       expect.arrayContaining([
         "USER_EMAIL_TAKEN",
+        "USER_DELETED",
         "STAFF_EMAIL_TAKEN",
         "STAFF_LAST_SUPER_ADMIN",
       ]),

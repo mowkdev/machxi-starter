@@ -70,3 +70,18 @@ export const superAdminGrantForbidden = (): AppError =>
  */
 export const superAdminTargetForbidden = (): AppError =>
   forbidden("Only a super admin may disable or sign out a super admin");
+
+/**
+ * `DELETE /api/v1/admin/staff/:id` aimed at the caller's own account
+ * (ADR-0028 rule 4).
+ *
+ * Plain `FORBIDDEN` and no new code, the shape {@link superAdminGrantForbidden}
+ * uses: this is a rule about standing, not a state the system is in.
+ *
+ * Self-deletion is the one delete whose actor vanishes mid-request, and the
+ * only one that interacts with the last-super-admin invariant from the inside.
+ * Refusing it outright removes a class of question for one line; an operator
+ * who wants out is deleted by another admin.
+ */
+export const selfDeletionForbidden = (): AppError =>
+  forbidden("A staff member cannot delete their own account");

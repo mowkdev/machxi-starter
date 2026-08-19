@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { inArray, isNull } from "drizzle-orm";
 
 import { userRoles, users } from "../../src/index.js";
 import type { Seeder } from "../types.js";
@@ -25,7 +25,16 @@ export const devUsersSeeder: Seeder = {
           status,
         })),
       )
-      .onConflictDoNothing({ target: users.email });
+      // The conflict target is the **partial** index `users_email_active_unique`
+      // (ADR-0028), so the predicate is not optional: without it the insert
+      // matches no index at all and Postgres refuses the statement with
+      // "there is no unique or exclusion constraint matching the ON CONFLICT
+      // specification" — which turns "seeding is idempotent" (ADR-0008) into a
+      // crash on the second run rather than a no-op.
+      .onConflictDoNothing({
+        target: users.email,
+        where: isNull(users.deletedAt),
+      });
 
     const rows = await db
       .select({ id: users.id, email: users.email })

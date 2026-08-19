@@ -12,6 +12,7 @@ import {
   bearer,
   createStaffMember,
   createUserAccount,
+  listQueryString,
   login,
   NEW_ACCOUNT_PASSWORD,
   type Tokens,
@@ -117,6 +118,7 @@ describe("admin user administration", () => {
       { method: "patch", path: `${USERS_BASE}/${UNKNOWN_ID}` },
       { method: "post", path: `${USERS_BASE}/${UNKNOWN_ID}/sessions/revoke` },
       { method: "post", path: `${USERS_BASE}/${UNKNOWN_ID}/password` },
+      { method: "delete", path: `${USERS_BASE}/${UNKNOWN_ID}` },
     ] as const;
 
     const ROUTES = [...READ_ROUTES, ...WRITE_ROUTES];
@@ -126,7 +128,9 @@ describe("admin user administration", () => {
         ? request().get(route.path)
         : route.method === "post"
           ? request().post(route.path)
-          : request().patch(route.path);
+          : route.method === "delete"
+            ? request().delete(route.path)
+            : request().patch(route.path);
 
     it.each(ROUTES)(
       "$method $path refuses a caller with no credentials",
@@ -528,6 +532,263 @@ describe("admin user administration", () => {
       const response = await asAdmin(`${USERS_BASE}/${target.id}`).expect(200);
 
       expect(response.body.data.deletedAt).toBeNull();
+    });
+  });
+
+  /**
+   * `DELETE /api/v1/admin/users/:id` — soft deletion (ADR-0028).
+   *
+   * The write half of the read path D1 built: `deleted_at`, `findAnyById` and
+   * the `deletedAt` filter all described states the API could not produce
+   * until now. What the tests below are really checking is that the two halves
+   * agree — the row stays readable where the ADR says it must, stops being
+   * writable where it says it must, and releases its address, which is the
+   * whole reason the unique index became partial.
+   */
+  describe("DELETE /api/v1/admin/users/:id", () => {
+    const remove = (token: string, id: string) =>
+      request()
+        .delete(`${USERS_BASE}/${id}`)
+        .set("Authorization", bearer(token));
+
+    it("soft-deletes: 204, the row survives, and it is disabled", async () => {
+      const target = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "delete.me@machxi.local" },
+      );
+
+      const response = await remove(adminTokens.accessToken, target.id).expect(
+        204,
+      );
+
+      expect(response.body).toEqual({});
+      expect(response.text).toBe("");
+
+      // `GET` still answers `200`, on purpose: an admin who can list deleted
+      // accounts must be able to open one, and a `404` for a row they were
+      // just shown is the worse lie.
+      const after = await asAdmin(`${USERS_BASE}/${target.id}`).expect(200);
+
+      expect(userEnvelope.safeParse(after.body).success).toBe(true);
+      expect(after.body.data.deletedAt).toEqual(expect.any(String));
+      // `status` is written too, so it stays truthful on its own: an
+      // active-and-deleted account would satisfy `filter[status][eq]=active`.
+      expect(after.body.data.status).toBe("disabled");
+    });
+
+    it("ends every session and refuses the credential afterwards", async () => {
+      const email = "delete.sessions@machxi.local";
+      const target = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+      const tokens = await login(harness.app, "user", {
+        email,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      await remove(adminTokens.accessToken, target.id).expect(204);
+
+      const profile = await request()
+        .get("/api/v1/user/profile")
+        .set("Authorization", bearer(tokens.accessToken))
+        .expect(401);
+
+      expect(profile.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      // And the account cannot come back through the front door: `findByEmail`
+      // filters `deleted_at is null`, so this is indistinguishable from an
+      // unknown address (ADR-0020 §Enumeration).
+      const relogin = await request()
+        .post("/api/v1/user/auth/login")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(401);
+
+      expect(relogin.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("releases the address, so the same person can come back", async () => {
+      // The support answer this endpoint exists to make possible, and the one
+      // thing the plain unique constraint made impossible (ADR-0028).
+      const email = "delete.rejoin@machxi.local";
+      const first = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      await remove(adminTokens.accessToken, first.id).expect(204);
+
+      const second = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      expect(second.id).not.toBe(first.id);
+      expect(second.deletedAt).toBeNull();
+
+      // Two rows, one address, at most one live — which is exactly what the
+      // partial index permits and what every read already tolerated.
+      const both = await asAdmin(
+        `${USERS_BASE}?${listQueryString({
+          "filter[email]": email,
+          "filter[deletedAt][null]": "false",
+          limit: 10,
+        })}`,
+      ).expect(200);
+
+      expect(both.body.data).toHaveLength(1);
+      expect(both.body.data[0].id).toBe(first.id);
+    });
+
+    it("answers a duplicate registration CONFLICT, not 500", async () => {
+      // The load-bearing line of the step: `onConflictDoNothing` has to name
+      // the partial index, or the insert matches no index at all, the unique
+      // violation escapes, and this answers `500` (ADR-0028).
+      const email = "delete.conflict@machxi.local";
+
+      await createUserAccount(harness.app, adminTokens.accessToken, { email });
+
+      const conflict = await request()
+        .post(USERS_BASE)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(409);
+
+      expect(conflict.body.error.code).toBe("USER_EMAIL_TAKEN");
+    });
+
+    it("lets a self-registered address be registered again after deletion", async () => {
+      // The public path, which answers a plain `CONFLICT` rather than naming
+      // the address (ADR-0020 §Enumeration) — and must therefore not answer it
+      // for an address whose only holder is deleted.
+      const email = "delete.reregister@machxi.local";
+
+      const registered = await request()
+        .post("/api/v1/public/auth/register")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(201);
+
+      await remove(
+        adminTokens.accessToken,
+        registered.body.data.principal.id as string,
+      ).expect(204);
+
+      await request()
+        .post("/api/v1/public/auth/register")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(201);
+    });
+
+    it("refuses a second delete with 409 USER_DELETED", async () => {
+      const target = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "delete.twice@machxi.local" },
+      );
+
+      await remove(adminTokens.accessToken, target.id).expect(204);
+
+      const again = await remove(adminTokens.accessToken, target.id).expect(
+        409,
+      );
+
+      expect(again.body.error.code).toBe("USER_DELETED");
+    });
+
+    it("answers 404 for an unknown id and 400 for a malformed one", async () => {
+      const missing = await remove(adminTokens.accessToken, UNKNOWN_ID).expect(
+        404,
+      );
+
+      expect(missing.body.error.code).toBe("NOT_FOUND");
+
+      const malformed = await remove(
+        adminTokens.accessToken,
+        "not-a-uuid",
+      ).expect(400);
+
+      expect(malformed.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    describe("a deleted account is read-only", () => {
+      let deletedId: string;
+
+      beforeAll(async () => {
+        const target = await createUserAccount(
+          harness.app,
+          adminTokens.accessToken,
+          { email: "delete.readonly@machxi.local" },
+        );
+
+        deletedId = target.id;
+        await remove(adminTokens.accessToken, deletedId).expect(204);
+      });
+
+      it("refuses PATCH, so nothing can be active and deleted at once", async () => {
+        const response = await request()
+          .patch(`${USERS_BASE}/${deletedId}`)
+          .set("Authorization", bearer(adminTokens.accessToken))
+          .send({ status: "active" })
+          .expect(409);
+
+        expect(response.body.error.code).toBe("USER_DELETED");
+
+        const after = await asAdmin(`${USERS_BASE}/${deletedId}`).expect(200);
+
+        expect(after.body.data.status).toBe("disabled");
+        expect(after.body.data.deletedAt).toEqual(expect.any(String));
+      });
+
+      it("refuses a session revoke", async () => {
+        const response = await request()
+          .post(`${USERS_BASE}/${deletedId}/sessions/revoke`)
+          .set("Authorization", bearer(adminTokens.accessToken))
+          .expect(409);
+
+        expect(response.body.error.code).toBe("USER_DELETED");
+      });
+
+      it("refuses a password reset", async () => {
+        const response = await request()
+          .post(`${USERS_BASE}/${deletedId}/password`)
+          .set("Authorization", bearer(adminTokens.accessToken))
+          .send({
+            password: "ResetByAnAdmin!2026",
+            currentPassword: NEW_ACCOUNT_PASSWORD,
+          })
+          .expect(409);
+
+        expect(response.body.error.code).toBe("USER_DELETED");
+      });
+
+      it("still reads, and still shows up when the list asks about deletion", async () => {
+        await asAdmin(`${USERS_BASE}/${deletedId}`).expect(200);
+
+        const listed = await asAdmin(
+          `${USERS_BASE}?${listQueryString({
+            "filter[deletedAt][null]": "false",
+            limit: 100,
+          })}`,
+        ).expect(200);
+
+        expect(
+          listed.body.data.map((item: { id: string }) => item.id),
+        ).toContain(deletedId);
+
+        // And is hidden from the default scope, which is what makes "the
+        // account is gone" true on the screen where it matters.
+        const defaultScope = await asAdmin(`${USERS_BASE}?limit=100`).expect(
+          200,
+        );
+
+        expect(
+          defaultScope.body.data.map((item: { id: string }) => item.id),
+        ).not.toContain(deletedId);
+      });
     });
   });
 
