@@ -5,8 +5,10 @@
  * ADR-0033's "never `localStorage`" rule is about session tokens, and nothing
  * here is one.
  *
- * `D3.3` moves this behind `app/providers/` with the rest of the app wiring
- * (ADR-0032); it lives here so `D3.1` can prove the tokens flip.
+ * It sits in `app/providers/` with the rest of the app's wiring, which is
+ * where ADR-0032's tree puts the theme. `main.tsx` applies the stored
+ * preference before the first paint; a provider with a toggle in the dashboard
+ * shell is `D3.9`'s to add, once there is a header to put it in.
  */
 
 export const THEMES = ["light", "dark"] as const;

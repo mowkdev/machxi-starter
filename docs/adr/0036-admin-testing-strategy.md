@@ -46,6 +46,8 @@ apps/admin/src/
 └── features/<feature>/__tests__/   # component tests live with the feature they test
 ```
 
+**Amended 2026-08-19 (D3.3).** Colocated `__tests__` directories are **exempt from ADR-0032's boundaries lint**. A test is allowed to reach into the internals of the thing it tests — that is what makes it a unit test rather than a second consumer — and the layer rule is about production structure, which is what ADR-0032 wrote it for. The exemption is narrow: `src/**/__tests__/**` only, so a helper that drifts out of a test directory is classified and checked like anything else.
+
 Everything is functional per [ADR-0009](0009-api-modular-layering.md)'s house style: handler modules export `create<Feature>Handlers(state)` returning an `as const` array; no classes, no shared mutable module state — a test that needs a scripted scenario builds its own handlers and `server.use(...)`es them, and `resetHandlers()` between tests puts the defaults back.
 
 ### The load-bearing rule: MSW at the HTTP boundary, handlers derived from contracts

@@ -85,6 +85,12 @@ Everything here is functional per the house style: slices export plain functions
 FSD without an import linter decays into folders with aspirational names — the dependency rule only exists if something fails when it is broken, which is the lesson ADR-0009 encoded as "the direction this ADR exists to fix" and the API enforces by structure. Here structure cannot enforce it (any ES import resolves), so lint does:
 
 - `eslint-plugin-boundaries` is added to `apps/admin`'s flat config (extending `@repo/eslint-config` as today). `boundaries/elements` names the six layers by folder pattern; `boundaries/element-types` encodes the table above; entry-point rules pin consumption to each slice's `index.ts`.
+
+  **Amended 2026-08-19 (D3.3)** with three things the implementation found, none of which change the decision.
+
+  - **The rule is `boundaries/dependencies`.** The plugin renamed `element-types` in v6 and deprecated `entry-point` and `no-private` in v7, folding both into the one rule; the entry-point half is now a `file` selector inside the `to` clause. The snippet above is the v5 spelling — kept as the statement of intent, but the config is the v7 one, and it is not a mistake to be corrected backwards.
+  - **The rule enforces nothing without a resolver.** `boundaries` classifies the *target* of every import, and an import it cannot resolve is "unknown" and passes silently. With the elements matching but no `settings["import/resolver"]`, an upward `shared` → `widgets` import linted clean. `eslint-import-resolver-typescript` is therefore part of the decision rather than a detail of it, and the enforcement claim is only worth making against a deliberate violation — D3.3 verified all three (upward, cross-slice, past the public API) by probe.
+  - **Unclassified files need their own rule.** `boundaries/dependencies` is silent about a dependency matching no element, so a file outside the six folders would be importable from everywhere and checked by nothing — the exact outcome this section exists to prevent. `boundaries/no-unknown-files` and `no-unknown-dependencies` close it; the entry point (`main.tsx`) and colocated tests are the only exemptions.
 - An upward import, a cross-slice import within a layer, or a deep import past a public API **fails `pnpm lint`**, which fails the gate. The rule is taught by the error message, not by the onboarding doc.
 
 ```js
@@ -138,7 +144,7 @@ tanstackRouter({
 })
 ```
 
-Route files stay thin by rule: a path, `validateSearch`, a `beforeLoad` guard, and a lazy import of the page component from `pages/`. A route file that grows JSX beyond composition is a page in the wrong folder. `routeTree.gen.ts` is a build artifact that lives in the tree (the types depend on it), is excluded from lint, and is never hand-edited — a conflict in it is resolved by regenerating, not by merging.
+Route files stay thin by rule: a path, `validateSearch`, a `beforeLoad` guard, and a lazy import of the page component from `pages/`. A route file that grows JSX beyond composition is a page in the wrong folder. `routeTree.gen.ts` is a build artifact that lives in the tree (the types depend on it), is excluded from lint, and is never hand-edited — a conflict in it is resolved by regenerating, not by merging. **Amended 2026-08-19 (D3.3):** and excluded from formatting, for the same reason and with the same precedent `packages/ui`'s generated primitives set in D3.1 — otherwise `pnpm format` and the generator take turns dirtying the working tree.
 
 ### Layout topology and guards
 
