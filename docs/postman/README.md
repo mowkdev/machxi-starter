@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 77 requests in 11 folders: `Health`,
+- `machxi-api.postman_collection.json` — 82 requests in 11 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `User Auth`, `User › Profile`, `Public`,
   `Errors & routing`, `Teardown`.
@@ -52,13 +52,25 @@ and changes it again; `Admin › Users` resets the user it created, and
 `User › Profile` signs in with that. A reset that silently did nothing would fail
 at the next login rather than pass quietly.
 
-**It disables what it creates.** One staff account, one user and one
-self-registered user per run — v1 has no delete endpoint, so the teardown
-`PATCH`es all three to `disabled` instead. That is a security step, not
-housekeeping: one of them holds `manager`, and all three have a password
-committed in this repository. `pnpm test:postman` can only be aimed at
-`localhost`; the Postman app can be aimed anywhere. `pnpm db:reset` clears the
-rows.
+**It deletes what it creates.** One staff account, one user and one
+self-registered user per run, all removed by the teardown. That is a security
+step, not housekeeping: one of them holds `manager`, and all of them have a
+password committed in this repository. `pnpm test:postman` can only be aimed at
+`localhost`; the Postman app can be aimed anywhere.
+
+Until D2.4 the teardown could only `PATCH` them to `disabled`, "because it
+cannot delete them — v1 has no delete endpoint" (ADR-0021, D1.10 amendment). A
+disabled account is a row rather than a way in, but a deleted one is neither.
+ADR-0021 is frozen, so ADR-0028 §Consequences is where the change is recorded —
+the collection changes, the ADR does not.
+
+The teardown is also where both delete endpoints are documented, because it is
+where the run legitimately has accounts to destroy. It shows the asymmetry
+between the populations end to end: the staff row is gone and answers `404`,
+the user row is still readable at `200` with `deletedAt` set, a `PATCH` at it
+answers `409 USER_DELETED`, and the address it released is registered again by
+the next request — the support answer the partial unique index exists to make
+possible.
 
 **Negative paths are deliberate, not accidental.** `403` for a manager writing to
 `/admin/users`, `409 CONFLICT` (never `USER_EMAIL_TAKEN`) for a duplicate public

@@ -2952,7 +2952,7 @@
     },
     {
       "name": "Teardown",
-      "description": "Ends every session the run opened and clears the tokens, so a second run starts from the same state as the first.",
+      "description": "Leaves the database as the run found it.\n\nUntil D2.4 this folder *disabled* the three accounts each run creates, because v1 had no delete endpoint — a live account with a password committed in this repository is a way in, and a disabled one is a row (ADR-0021, D1.10 amendment). It can now delete them, which is neither, and ADR-0028 §Consequences is where that change is recorded: the collection changes, the frozen ADR does not.\n\nThe deletes double as the documentation of both endpoints, including the asymmetry between them — a deleted staff row is gone, a deleted user row is still readable and no longer writable.",
       "item": [
         {
           "name": "Log the created user out everywhere",
@@ -3148,61 +3148,146 @@
           }
         },
         {
-          "name": "Disable the staff account this run created",
+          "name": "Delete the staff account this run created",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"200 and the account can no longer sign in\", function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().data.status).to.eql(\"disabled\");",
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
                   "});"
                 ]
               }
             }
           ],
           "request": {
-            "method": "PATCH",
+            "method": "DELETE",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{staffAccessToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"disabled\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "url": {
               "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "staff", "{{lastStaffId}}"]
             },
-            "description": "v1 has no delete endpoint, so the run cannot remove what it creates — but it can leave it unable to sign in. That matters because the account was granted `manager` and its password is committed in this collection: against a shared environment, a live account with a public password is a way in. Runs against a local dev database accumulate disabled rows; `pnpm db:reset` clears them."
+            "description": "A **hard** delete: the row goes and `staff_roles` cascades with it (ADR-0028). Staff have no `deleted_at` — a staff member is a directory entry, where a customer record is referenced by future order history.\n\nThe caller is the seeded super admin, which matters for the two rules a guard cannot express: nobody deletes themselves, and only a super admin may delete one."
           }
         },
         {
-          "name": "Disable the user account this run created",
+          "name": "The deleted staff member is gone",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"200 and the account can no longer sign in\", function () {",
+                  "pm.test(\"404 NOT_FOUND\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{lastStaffId}}"]
+            },
+            "description": "The other half of the asymmetry: where a deleted user still answers `200`, a deleted staff member answers `404`, because the row is not there to read."
+          }
+        },
+        {
+          "name": "Delete the user account this run created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
+            },
+            "description": "A **soft** delete: `deleted_at` is set, `status` becomes `disabled`, and every session of the account is revoked with reason `account_deleted` — all in one transaction, because `sessions` has no foreign key to `users` and a gap between the writes is a window in which a deleted account still holds a valid access token (ADR-0028)."
+          }
+        },
+        {
+          "name": "The deleted user is still readable",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, deleted and disabled\", function () {",
                   "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().data.status).to.eql(\"disabled\");",
+                  "",
+                  "  const user = pm.response.json().data;",
+                  "",
+                  "  pm.expect(user.deletedAt).to.not.eql(null);",
+                  "  pm.expect(user.status).to.eql(\"disabled\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
+            },
+            "description": "`200`, on purpose: an admin who can list deleted accounts must be able to open one, and answering `404` for a row they were just shown is the worse lie. `status` is written alongside `deleted_at` so that `status` stays truthful on its own — an active-and-deleted account would satisfy `filter[status][eq]=active`."
+          }
+        },
+        {
+          "name": "A write to the deleted user is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 USER_DELETED\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"USER_DELETED\");",
                   "});"
                 ]
               }
@@ -3222,7 +3307,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"disabled\"\n}",
+              "raw": "{\n  \"status\": \"active\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3234,32 +3319,63 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
             },
-            "description": "The same reasoning for the customer account, whose password this run also changed to a committed value."
+            "description": "The read path keeps its tolerance and the write path drops it. Without this, a `PATCH` could set a deleted account back to `active` without clearing `deleted_at` — a row simultaneously active and deleted, which no reader is written to expect.\n\n`409` and not `404`: the account exists and the caller may see it; the request conflicts with its state. `410 Gone` would claim the resource is permanently unavailable at this URL, and it is not."
           }
         },
         {
-          "name": "Disable the account this run registered",
+          "name": "Delete the account this run registered",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"200 and the account can no longer sign in\", function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().data.status).to.eql(\"disabled\");",
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
                   "});"
                 ]
               }
             }
           ],
           "request": {
-            "method": "PATCH",
+            "method": "DELETE",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{staffAccessToken}}"
-              },
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastRegisteredId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastRegisteredId}}"]
+            },
+            "description": "Deleting the self-registered account sets up the request below, which is the point of the whole partial-index change."
+          }
+        },
+        {
+          "name": "The released address can be registered again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201, and it is a different account\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const principal = pm.response.json().data.principal;",
+                  "",
+                  "  pm.expect(principal.id).to.not.eql(pm.environment.get(\"lastRegisteredId\"));",
+                  "  pm.environment.set(\"lastRegisteredId\", principal.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
@@ -3267,7 +3383,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"disabled\"\n}",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"{{qaPassword}}\",\n  \"firstName\": \"Sam\",\n  \"lastName\": \"Signup\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3275,11 +3391,42 @@
               }
             },
             "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "register"]
+            },
+            "description": "The support answer this endpoint exists to make possible: \"I deleted my account and want to come back.\" Under the old plain unique constraint the address was burned forever and this answered `409 CONFLICT`; the partial index — `unique (email) where deleted_at is null` — releases it (ADR-0028).\n\nTwo rows now share the address, at most one of them live, which every existing read already tolerates: `findByEmail` filters `deleted_at is null` and is the only lookup authentication uses."
+          }
+        },
+        {
+          "name": "Delete it again, so the run leaves nothing behind",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
               "raw": "{{baseUrl}}/api/v1/admin/users/{{lastRegisteredId}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "users", "{{lastRegisteredId}}"]
             },
-            "description": "And the self-registered one, which reached the same table through the public door and holds the same committed password."
+            "description": "The re-registered account holds a password committed in this repository, like every account the run creates, so it goes the same way as the others."
           }
         },
         {
