@@ -31,6 +31,7 @@ export {
   BreadcrumbSeparator,
 } from "@repo/ui/components/breadcrumb";
 export { Button, buttonVariants } from "@repo/ui/components/button";
+export { Checkbox } from "@repo/ui/components/checkbox";
 export {
   Card,
   CardAction,
@@ -51,14 +52,23 @@ export {
 } from "@repo/ui/components/dropdown-menu";
 export {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
   FieldSet,
+  FieldTitle,
 } from "@repo/ui/components/field";
 export { Input } from "@repo/ui/components/input";
 export { Label } from "@repo/ui/components/label";
+export {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select";
 export { Separator } from "@repo/ui/components/separator";
 export {
   Sidebar,
@@ -78,6 +88,17 @@ export {
 } from "@repo/ui/components/sidebar";
 export { Skeleton } from "@repo/ui/components/skeleton";
 export { Spinner } from "@repo/ui/components/spinner";
+export { Switch } from "@repo/ui/components/switch";
+export {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@repo/ui/components/table";
+export { Textarea } from "@repo/ui/components/textarea";
 export { Toaster, toast } from "@repo/ui/components/sonner";
 export { useIsMobile } from "@repo/ui/hooks/use-mobile";
 export { cn } from "@repo/ui/lib/utils";

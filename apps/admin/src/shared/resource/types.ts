@@ -1,0 +1,174 @@
+import type { FilterOp } from "@repo/contracts";
+
+import type { CellRendererKey, FormatterKey } from "@/shared/grid/registry";
+import type { FieldComponentKey } from "@/shared/form/registry";
+
+/**
+ * The `ResourceConfig` vocabulary (ADR-0035).
+ *
+ * **This module is type-only, and that is load-bearing.** The registries import
+ * the adapters, the adapters import these types, and these types import the
+ * registries' key unions — a cycle that is harmless only while every edge of it
+ * is erased at compile time. A runtime `const` added here would close the cycle
+ * for real and the field registry would initialise as `undefined`, several
+ * modules away from the edit that caused it. Runtime helpers over these shapes
+ * live in `./config.ts`.
+ *
+ * The rule the whole file exists to serve: **a config is data.** Names, labels,
+ * initial values, and registry *keys* — never functions. That is what keeps
+ * configs diffable, snapshottable and deep-mergeable, and what keeps the UI
+ * vocabulary finite: every key below resolves through a named registry, so a
+ * typo is a compile error rather than a blank cell.
+ */
+
+/** Which of the two forms a field appears in. Absent means both. */
+export type FieldVariant = "create" | "edit";
+
+/**
+ * A choice in a `select` or `multiCheckbox`, or in an enum filter control.
+ *
+ * A bare string is the common case — the contracts enums (`STAFF_ROLES`,
+ * `USER_STATUSES`) are readonly string tuples, and ADR-0035's own example
+ * passes one straight through. The object form is for the times the stored
+ * value and the shown label genuinely differ.
+ */
+export type OptionConfig =
+  string | { readonly value: string; readonly label: string };
+
+/**
+ * Props a registry component may be given from config.
+ *
+ * Deliberately primitives only: `{ type: "email" }` is data, a render prop is
+ * not, and widening this to `unknown` would reopen the door the no-functions
+ * rule closes.
+ */
+export type ComponentProps = Readonly<
+  Record<string, string | number | boolean>
+>;
+
+/**
+ * A filter control on a column.
+ *
+ * `kind` picks the control; the remaining keys say which ADR-0014 operators it
+ * writes. A column gets one of these **only if `listQuerySchema` allow-lists
+ * the field and those operators** for its endpoint — offering a control the API
+ * answers with a `VALIDATION_ERROR` would be worse than offering none, which is
+ * why ADR-0035 has the config-versus-contract tests check exactly this pairing.
+ */
+export type FilterControlConfig =
+  | {
+      /** A text box. `eq` matches exactly; `like` wraps the escaped term in `%…%`. */
+      readonly kind: "text";
+      readonly op: Extract<FilterOp, "eq" | "like">;
+      readonly placeholder?: string;
+    }
+  | {
+      /** A select over an allow-listed enum. */
+      readonly kind: "enum";
+      readonly op: Extract<FilterOp, "eq" | "in">;
+      readonly options: readonly OptionConfig[];
+      readonly placeholder?: string;
+    }
+  | {
+      /** A date range, written as two comparisons on the same field. */
+      readonly kind: "dateRange";
+      readonly from: Extract<FilterOp, "gt" | "gte">;
+      readonly to: Extract<FilterOp, "lt" | "lte">;
+    }
+  | {
+      /**
+       * `filter[deletedAt][null]=false` — "show deleted users" as a checkbox.
+       *
+       * `value` is what the box writes when it is checked; unchecked clears the
+       * filter rather than writing the opposite, because "no opinion" and "only
+       * the live ones" are the same request to an endpoint whose default scope
+       * already hides them (ADR-0014, step-9 amendment).
+       */
+      readonly kind: "presence";
+      readonly op: Extract<FilterOp, "null">;
+      readonly value: boolean;
+      readonly label: string;
+    };
+
+/** One column of a resource's grid. */
+export interface ColumnConfig {
+  readonly header: string;
+  /**
+   * Renders a sort control in the header. Set it only where the endpoint's
+   * `sortable` allow-list contains the field.
+   */
+  readonly sortable?: boolean;
+  /** A `gridRegistry.formatters` key: the value rendered as text. */
+  readonly formatter?: FormatterKey;
+  /**
+   * A `gridRegistry.cellRenderers` key. Takes precedence over `formatter` —
+   * a renderer receives the raw value and decides its own presentation.
+   */
+  readonly cellRenderer?: CellRendererKey;
+  /** The filter control for this column, if the contract allows one. */
+  readonly filter?: FilterControlConfig;
+  /** Numeric and action columns read better trailing. */
+  readonly align?: "start" | "end";
+  /** For per-usage overrides: drop the column without editing the resource. */
+  readonly hidden?: boolean;
+}
+
+/**
+ * A resource's columns, in render order.
+ *
+ * Declaration order is the column order: `Object.entries` walks string keys in
+ * insertion order, so the config reads top-to-bottom the way the table reads
+ * left-to-right, and reordering columns is reordering lines.
+ */
+export type ColumnConfigMap = Readonly<Record<string, ColumnConfig>>;
+
+/** One field of a resource's forms. */
+export interface FieldConfig {
+  readonly label: string;
+  /** A `fieldRegistry` key. */
+  readonly component: FieldComponentKey;
+  readonly description?: string;
+  readonly placeholder?: string;
+  /** Choices for `select` and `multiCheckbox`. */
+  readonly options?: readonly OptionConfig[];
+  /** The create form's starting value. */
+  readonly initialValue?: string | number | boolean | readonly string[] | null;
+  /** Which forms the field appears in. Absent means both. */
+  readonly variants?: readonly FieldVariant[];
+  /**
+   * An emptied control submits `null` rather than `""`.
+   *
+   * The contracts' nullable names (`updateUserBody`) make "clear it" a legal
+   * request that `""` cannot express, so the adapter has to know which one the
+   * field means.
+   */
+  readonly nullable?: boolean;
+  /** Passed to the registry component — `{ type: "password" }` and the like. */
+  readonly props?: ComponentProps;
+}
+
+/** A resource's form fields. */
+export type FieldConfigMap = Readonly<Record<string, FieldConfig>>;
+
+/**
+ * One resource, declared once (ADR-0035).
+ *
+ * Columns and fields together, so the staff table and the staff form cannot
+ * disagree about what a staff member is. Configs are written `as const satisfies
+ * ResourceConfig`, which keeps the literal key types for
+ * {@link createAppFormInput} while still checking the shape.
+ */
+export interface ResourceConfig {
+  readonly name: string;
+  readonly columns: ColumnConfigMap;
+  readonly fields: FieldConfigMap;
+}
+
+/**
+ * Per-usage column overrides.
+ *
+ * One level deep is enough — a usage overrides a column's own keys, never the
+ * inside of a `filter` — and stopping there keeps the merge a rule anyone can
+ * predict rather than a deep-merge whose behaviour has to be looked up.
+ */
+export type ColumnOverrides = Readonly<Record<string, Partial<ColumnConfig>>>;
