@@ -22,7 +22,7 @@ import {
  *
  * Unlike the staff router, this resource is not uniformly `admin`: the segment
  * mounts it behind `authorize("admin", "manager")` because a manager may
- * *read* the customer base, and the four writing routes refine that to
+ * *read* the customer base, and the five writing routes refine that to
  * `authorize("admin")` (ADR-0019 §2). `super_admin` bypasses both, on the one
  * line in `authorize` where that is stated.
  *

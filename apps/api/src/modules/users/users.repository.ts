@@ -297,7 +297,16 @@ export const createUsersRepository = (db: DbExecutor) =>
      * The `in` checks are `!== undefined` on purpose: `null` is a value that
      * clears the column, and `?? {}` would silently drop it.
      *
-     * @returns `false` when no row has that id.
+     * **Live rows only** (D2.4). The service refuses a deleted subject before
+     * calling this, but that read is a check and not a lock: under READ
+     * COMMITTED a `PATCH` whose check ran before a concurrent `DELETE`
+     * committed will block here, re-evaluate a `where` that still matches, and
+     * write `status: 'active'` onto a row that now has `deleted_at` set —
+     * which is the "simultaneously active and deleted" state ADR-0028 exists
+     * to prevent. The predicate is what makes the refusal hold under
+     * concurrency rather than only in sequence.
+     *
+     * @returns `false` when no **live** row has that id.
      */
     updateColumns: async (
       id: string,
@@ -315,7 +324,7 @@ export const createUsersRepository = (db: DbExecutor) =>
           ...(patch.status === undefined ? {} : { status: patch.status }),
           updatedAt: at,
         })
-        .where(eq(users.id, id))
+        .where(and(eq(users.id, id), isNull(users.deletedAt)))
         .returning({ id: users.id });
 
       return updated.length > 0;
@@ -374,6 +383,7 @@ export const createUsersRepository = (db: DbExecutor) =>
         .where(eq(users.id, id));
     },
 
+    /** Live rows only, for the reason {@link UsersRepository.updateColumns} is. */
     updatePasswordHash: async (
       id: string,
       passwordHash: string,
@@ -383,7 +393,7 @@ export const createUsersRepository = (db: DbExecutor) =>
       await tx
         .update(users)
         .set({ passwordHash, updatedAt: at })
-        .where(eq(users.id, id));
+        .where(and(eq(users.id, id), isNull(users.deletedAt)));
     },
 
     /**

@@ -31,6 +31,15 @@ import { createStaffService } from "../staff.service.js";
 const SUPER_ADMIN_ID = "11111111-1111-7111-8111-111111111111";
 const ADMIN_ID = "22222222-2222-7222-8222-222222222222";
 const ACTOR_ID = "33333333-3333-7333-8333-333333333333";
+/**
+ * An actor id with hex *letters* in it, for the case-spelling rule below.
+ *
+ * The other ids in this file are all digits, so `toUpperCase()` on them is a
+ * no-op — a test written against one of those would pass whether or not the
+ * comparison is case-insensitive, which is how the first attempt at this test
+ * proved nothing.
+ */
+const MIXED_CASE_ACTOR_ID = "0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f11";
 const NOW = new Date("2026-08-18T12:00:00.000Z");
 
 /* ── fakes ────────────────────────────────────────────────────────────────── */
@@ -1130,11 +1139,19 @@ describe("createStaffService", () => {
       await service.remove(ctx(), ADMIN_ID);
 
       expect(repo.rows.has(ADMIN_ID)).toBe(false);
-      // `sessions` has no foreign key to `staff` (ADR-0018), so deleting the
-      // principal would otherwise leave live-looking rows behind — and an
-      // orphan is unusable rather than revoked, which is not what an audit
-      // trail should have to infer.
+      // Twice, and both are deliberate. The first runs inside the transaction,
+      // because `sessions` has no foreign key to `staff` (ADR-0018) and
+      // deleting the principal would otherwise leave live-looking rows behind.
+      // The second runs after the commit, for the login that read this account
+      // before it and inserts its session after: `authenticate` verifies the
+      // session and never the principal, so that session would be a deleted
+      // operator holding `admin` until its access token expired.
       expect(sessions.revocations).toEqual([
+        {
+          principalId: ADMIN_ID,
+          reason: REVOKE_REASONS.accountDeleted,
+          exceptSessionId: undefined,
+        },
         {
           principalId: ADMIN_ID,
           reason: REVOKE_REASONS.accountDeleted,
@@ -1157,6 +1174,33 @@ describe("createStaffService", () => {
 
       expect(repo.rows.has(ACTOR_ID)).toBe(true);
       expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses self-deletion however the id is spelled", async () => {
+      // `z.uuid()` accepts uppercase and Postgres matches it against the row,
+      // so a comparison between two strings is not a comparison between two
+      // ids. `idSchema` lower-cases on the way in and this compares the row's
+      // own id inside the transaction; either alone would have closed the
+      // bypass the D2.4 review found, and both are cheap.
+      const { service, repo } = build([
+        { ...actorRow(), id: MIXED_CASE_ACTOR_ID },
+      ]);
+      const mixedCtx = contextFor(
+        staffPrincipal(MIXED_CASE_ACTOR_ID, ["admin"]),
+      );
+      const shouted = MIXED_CASE_ACTOR_ID.toUpperCase();
+
+      // The premise, asserted rather than assumed: an all-digit id would make
+      // this test vacuous.
+      expect(shouted).not.toBe(MIXED_CASE_ACTOR_ID);
+
+      await expectAppError(
+        () => service.remove(mixedCtx, shouted),
+        "FORBIDDEN",
+        403,
+      );
+
+      expect(repo.rows.has(MIXED_CASE_ACTOR_ID)).toBe(true);
     });
 
     it("refuses self-deletion before anything else, invariant included", async () => {

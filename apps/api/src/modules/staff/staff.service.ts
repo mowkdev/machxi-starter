@@ -509,6 +509,16 @@ export const createStaffService = ({
      *    invariant. Running it after the invariant would answer the last super
      *    admin deleting themselves with `409`, when the truthful answer is that
      *    they may never do it at all.
+     *
+     *    Checked **again** against the row, inside the transaction, and that
+     *    is not belt-and-braces for its own sake: the first comparison is
+     *    between two strings, and a UUID has more than one spelling. An
+     *    uppercased id satisfies `z.uuid()` and matches the row in Postgres
+     *    while failing `===` against the principal, which is how this rule was
+     *    bypassable until the D2.4 review found it. `idSchema` now lower-cases
+     *    on the way in, and `target.id` is whatever the database holds, so the
+     *    inner check compares two canonical values and does not depend on the
+     *    schema having done its job.
      * 2. **The rank rule.** Deleting a super admin is the most complete removal
      *    of standing there is, so it carries the guard that already covers
      *    disabling and forced logout (ADR-0017 §Invariants).
@@ -524,7 +534,12 @@ export const createStaffService = ({
     remove: async (ctx: RequestContext, id: string): Promise<void> => {
       const principal = actor(ctx);
 
-      if (id === principal.id) throw selfDeletionForbidden();
+      // The cheap refusal, on the string, so the common case costs no
+      // transaction. Case-insensitive because two spellings of one UUID are
+      // one id.
+      if (id.toLowerCase() === principal.id.toLowerCase()) {
+        throw selfDeletionForbidden();
+      }
 
       const revoked = await transaction(async (tx) => {
         // Before the read the invariant rests on, for the reason `update`
@@ -532,6 +547,10 @@ export const createStaffService = ({
         await repository.lockRoleInvariant(tx);
 
         const target = await read(id, tx);
+
+        // The authoritative one: `target.id` is what the database holds, so
+        // this compares canonical values whatever the URL said.
+        if (target.id === principal.id) throw selfDeletionForbidden();
 
         assertMayActOnSuperAdmin(ctx, target);
 
@@ -554,8 +573,21 @@ export const createStaffService = ({
         return count;
       });
 
+      // The same post-commit sweep the users delete takes, and it matters more
+      // here: `authenticate` verifies the session and never the principal
+      // (ADR-0018), so a session minted by a login that raced this delete is a
+      // *deleted operator holding `admin`* for the rest of its access token's
+      // life — the row it names is gone, and nothing on the request path looks.
+      // Narrowing the window to one statement is what this step can do; closing
+      // it needs a per-request principal check, which is a superseding ADR to
+      // ADR-0018 rather than a line here (recorded in ADR-0028 §Consequences).
+      const straggler = await sessions.revokeSessionsFor(ctx, {
+        principalId: id,
+        reason: REVOKE_REASONS.accountDeleted,
+      });
+
       ctx.logger.info(
-        { staffId: id, revoked, by: principal.id },
+        { staffId: id, revoked: revoked + straggler, by: principal.id },
         "staff account deleted",
       );
     },

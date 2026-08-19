@@ -336,7 +336,14 @@ export const createUsersService = ({
       const record = await readWritable(id);
 
       const revoked = await transaction(async (tx) => {
-        await repository.softDelete(record.id, at, tx);
+        // `softDelete` only matches a *live* row, and its boolean is the one
+        // thing that sees a concurrent delete: the read above happened outside
+        // this transaction, so two callers can both pass it and the loser
+        // would otherwise update nothing and answer `204` for a request the
+        // ADR says is a `409`.
+        if (!(await repository.softDelete(record.id, at, tx))) {
+          throw userDeleted();
+        }
 
         return sessions.revokeSessionsFor(ctx, {
           principalId: record.id,
@@ -345,7 +352,20 @@ export const createUsersService = ({
         });
       });
 
-      ctx.logger.info({ userId: record.id, revoked }, "user account deleted");
+      // A login that read this account before the commit inserts its session
+      // *after* the revoke inside it: `login` verifies argon2 outside any
+      // transaction, which is ~130 ms of window, and `sessions` has no foreign
+      // key to hold it back. One more sweep after the commit narrows that to a
+      // single statement. It is a no-op on every ordinary delete.
+      const straggler = await sessions.revokeSessionsFor(ctx, {
+        principalId: record.id,
+        reason: REVOKE_REASONS.accountDeleted,
+      });
+
+      ctx.logger.info(
+        { userId: record.id, revoked: revoked + straggler },
+        "user account deleted",
+      );
     },
 
     /**

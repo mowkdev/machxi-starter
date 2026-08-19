@@ -16,8 +16,20 @@ export type IsoDateTime = string;
  * A resource id. UUIDs are generated as v7 (ADR-0006), but the schema accepts
  * any version: rejecting a well-formed id because of its version would turn a
  * future id-strategy change into a breaking API change for no safety gain.
+ *
+ * **Lower-cased on the way in**, the way {@link emailSchema} is, and for a
+ * sharper reason than tidiness. RFC 9562 says a UUID is written lowercase and
+ * read case-insensitively, so `z.uuid()` accepts `018F…` and Postgres's `uuid`
+ * type matches it against the stored row — but a service comparing the string
+ * to an id it got from somewhere else (a JWT `sub`, a principal) compares
+ * *strings*, and those differ. That is not hypothetical: it let an uppercased
+ * id walk past `staff.remove`'s self-deletion refusal in D2.4, which is the
+ * one rule in that endpoint with no second line of defence.
+ *
+ * Normalising here fixes the class rather than the instance: every
+ * `req.valid.params.id` is canonical before any service sees it.
  */
-export const idSchema = z.uuid();
+export const idSchema = z.uuid().toLowerCase();
 
 /** Longest email accepted, per the RFC 5321 path limit. */
 export const MAX_EMAIL_LENGTH = 254;

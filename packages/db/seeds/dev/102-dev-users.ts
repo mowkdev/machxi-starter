@@ -1,4 +1,4 @@
-import { inArray, isNull } from "drizzle-orm";
+import { and, inArray, isNull } from "drizzle-orm";
 
 import { userRoles, users } from "../../src/index.js";
 import type { Seeder } from "../types.js";
@@ -36,13 +36,19 @@ export const devUsersSeeder: Seeder = {
         where: isNull(users.deletedAt),
       });
 
+    // Live rows only. Since the index became partial an address may name two
+    // rows — one deleted, one live — and granting `customer` to the dead one
+    // is both pointless and an over-count in the line this seeder logs.
     const rows = await db
       .select({ id: users.id, email: users.email })
       .from(users)
       .where(
-        inArray(
-          users.email,
-          DEV_USERS.map((fixture) => fixture.email),
+        and(
+          isNull(users.deletedAt),
+          inArray(
+            users.email,
+            DEV_USERS.map((fixture) => fixture.email),
+          ),
         ),
       );
 

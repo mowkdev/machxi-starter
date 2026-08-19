@@ -111,6 +111,18 @@ describe("nameSchema", () => {
 });
 
 describe("idSchema", () => {
+  it("lower-cases, so two spellings of one id compare equal", () => {
+    // RFC 9562 writes a UUID lowercase and reads it case-insensitively, and
+    // Postgres matches either — but a service comparing the string to an id
+    // from a JWT compares *strings*. An uppercased id walked past
+    // `staff.remove`'s self-deletion refusal until D2.4's review (ADR-0028
+    // rule 4), which is why this is normalised at the edge rather than at each
+    // comparison.
+    expect(idSchema.parse("0199A1F4-4C2E-7C53-9C62-3E0F9D0F7F11")).toBe(
+      "0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f11",
+    );
+  });
+
   it("accepts a uuid of any version, including the v7 ids the db generates", () => {
     expect(
       idSchema.safeParse("0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f11").success,

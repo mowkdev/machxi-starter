@@ -218,6 +218,30 @@ describe("staff account deletion", () => {
         .expect(200);
     });
 
+    it("refuses it however the id is spelled", async () => {
+      // A UUID has more than one spelling: `z.uuid()` accepts uppercase and
+      // Postgres matches it against the row, so a rule implemented as a string
+      // comparison against the principal was bypassable until the D2.4 review
+      // found it. `idSchema` now lower-cases on the way in, and the rule is
+      // re-checked against the row inside the transaction.
+      const shouted = adminId.toUpperCase();
+
+      // The premise, asserted rather than assumed: a UUID that happened to be
+      // all digits would make this test vacuous.
+      expect(shouted).not.toBe(adminId);
+
+      const response = await remove(adminTokens.accessToken, shouted).expect(
+        403,
+      );
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+
+      await request()
+        .get("/api/v1/admin/profile")
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .expect(200);
+    });
+
     it("refuses a super admin deleting themselves, invariant or not", async () => {
       // The rule that outranks the invariant: the truthful answer is "you may
       // never do this", not "not right now".

@@ -101,9 +101,25 @@ Postman: add the four endpoints, and keep the collection repeatable — change o
 
 **Done when:** the rules above are covered by integration tests for both populations; the guard matrix test enumerates the new routes; `pnpm test:postman` green.
 
-### 4. Account deletion
+### 4. ~~Account deletion~~ — **done 2026-08-19**
 
 **ADRs:** [0028](../adr/0028-account-deletion.md), [0006](../adr/0006-database-postgres-drizzle.md), [0008](../adr/0008-database-migrations-and-seeding.md), [0017](../adr/0017-identity-model-populations-and-roles.md)
+
+**Closed.** Migration `0002_users_email_partial_unique` replaces the unqualified unique constraint on `users.email` with `unique (email) where deleted_at is null`; `DELETE /api/v1/admin/users/:id` soft-deletes in one transaction and `DELETE /api/v1/admin/staff/:id` hard-deletes behind four rules; `USER_DELETED` (409) joins the error union. `apps/api/test/staff-delete.int.test.ts` is new, both guard matrices gained the route, and `@repo/db`'s schema suite gained four tests over the partial index. 420 unit, 332 integration, 82 Postman requests — and the Postman teardown now deletes the three accounts each run creates instead of disabling them, which is what ADR-0028 §Consequences reserved.
+
+Three things the plan above says that turned out to be wrong, all corrected in [ADR-0028](../adr/0028-account-deletion.md), **amended 2026-08-19 (D2.4)**:
+
+- **`onConflictDoNothing` takes `where`, not `targetWhere`.** `targetWhere` is `onConflictDoUpdate`'s option; drizzle emits `where` between the target and `do nothing`, which is Postgres's index-inference position. Passing `targetWhere` would have been dropped silently and a duplicate registration would have answered `500` — the exact failure the ADR wrote the sentence to prevent.
+- **The repository is not "the one place" the change is load-bearing.** `packages/db/seeds/dev/102-dev-users.ts` names the same constraint and broke first: with the index partial and the target bare, Postgres refuses the statement outright, so every integration file failed in `beforeAll` before an endpoint ran. Anything that upserts on `users.email` carries the predicate — and the second offender was outside `src/`, where a search for the endpoint's code path does not reach.
+- **Self-deletion is refused before the invariant, not after.** "You may never do this" outranks "nobody may do this right now", which is the order `staff.update` already applies (ADR-0017, amended step 9). It also makes the last-super-admin refusal unreachable in sequence — the only caller entitled to delete the last one is themselves — so rule 2 is understood as a concurrency guard and is tested that way: two super admins deleting each other, exactly one of which lands.
+
+**The reviews found one real bug and two races.** `adr-reviewer` and `security-reviewer` independently found the same defect:
+
+- **The self-deletion rule was bypassable by uppercasing the id.** `z.uuid()` accepts uppercase and Postgres compares canonically, so the row lookup succeeded while `id === principal.id` did not. `idSchema` now lower-cases on the way in — the fix for the class, since the only ids this API compares are a path parameter and a JWT `sub`, and only one of them was normalised — and the rule is re-checked inside the transaction against the row's own id. The first test written for it proved nothing, because every id in the unit fixtures is all digits and `toUpperCase()` on those is a no-op; both tests now assert that premise before relying on it.
+- **A `PATCH` racing a delete could write `status: 'active'` onto a deleted row**, recreating the active-and-deleted state ADR-0028 exists to prevent: the service's refusal is a check, not a lock. `updateColumns` and `updatePasswordHash` now match live rows only.
+- **A login racing a delete outlives it.** `login` verifies argon2 outside any transaction and inserts its session afterwards, so a session can appear after the delete has swept — and for staff that is a deleted operator holding `admin` until the access token expires, because `authenticate` verifies the session and never the principal. Both deletes sweep once more after the commit, narrowing the window to a single statement. **Closing it needs a per-request principal check, which is a superseding ADR to ADR-0018 (D1, frozen) and is the second thing D2 leaves for somebody to decide** — the first being the per-principal rate limit D2.3 left open.
+
+Two smaller notes worth keeping: `drizzle-kit generate` writes `meta/*.json` unformatted, so `pnpm format` belongs after `pnpm db:generate` (the 0000 and 0001 snapshots are prettier-clean and 0002 now matches them); and the _Implemented_ column in the [ADR index](../adr/README.md) was filled in ahead of time when ADR-0025–0029 were written, so it already names `D2.4` and migration `0002` correctly.
 
 D1 built the whole read half of soft deletion and nothing that writes it. Use `/db-schema-change` for the migration.
 

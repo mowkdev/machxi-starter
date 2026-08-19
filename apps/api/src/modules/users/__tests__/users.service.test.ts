@@ -742,7 +742,16 @@ describe("createUsersService — the user segment", () => {
 
       expect(repo.rows.get(USER_ID)?.deleted).toBe(true);
       expect(repo.rows.get(USER_ID)?.status).toBe("disabled");
+      // Twice: once inside the transaction, and once after it commits, for a
+      // login that read the account before the delete and inserts its session
+      // after the first sweep has run (`login` verifies argon2 outside any
+      // transaction, which is ~130 ms of window).
       expect(sessions.revocations).toEqual([
+        {
+          principalId: USER_ID,
+          reason: REVOKE_REASONS.accountDeleted,
+          exceptSessionId: undefined,
+        },
         {
           principalId: USER_ID,
           reason: REVOKE_REASONS.accountDeleted,
@@ -758,6 +767,27 @@ describe("createUsersService — the user segment", () => {
         () => service.remove(adminCtx(), OTHER_ID),
         "NOT_FOUND",
         404,
+      );
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses the loser of a concurrent delete, rather than reporting success", async () => {
+      // The read that refuses an already-deleted subject happens outside the
+      // transaction, so two callers can both pass it. `softDelete` matches
+      // live rows only, and its boolean is the one thing that sees the race:
+      // without it the loser writes nothing and answers `204` for a request
+      // ADR-0028 says is a `409`.
+      const { service, repo, sessions } = build([userRow()]);
+
+      // Stands in for the sibling transaction committing first.
+      const row = repo.rows.get(USER_ID);
+
+      if (row !== undefined) row.deleted = true;
+
+      await expectAppError(
+        () => service.remove(adminCtx(), USER_ID),
+        "USER_DELETED",
+        409,
       );
       expect(sessions.revocations).toEqual([]);
     });
