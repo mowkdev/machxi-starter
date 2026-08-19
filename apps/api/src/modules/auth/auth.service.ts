@@ -3,7 +3,6 @@ import type {
   LoginBody,
   Population,
   PrincipalResource,
-  RefreshBody,
   RegisterBody,
 } from "@repo/contracts";
 import type { PasswordHasher } from "@repo/crypto";
@@ -83,6 +82,20 @@ export const REVOKE_REASONS = {
 } as const;
 
 export type RevokeReason = (typeof REVOKE_REASONS)[keyof typeof REVOKE_REASONS];
+
+/**
+ * What `refresh` needs, which is a token and not a request body.
+ *
+ * `refreshBody.refreshToken` became optional in ADR-0029 — a browser on cookie
+ * transport sends an empty body — but "where the token came from" is the
+ * controller's question. By the time the service is called there is either a
+ * token or an error, so this type keeps the service's own precondition
+ * unchanged rather than pushing the optionality down a layer that has no way
+ * to resolve it.
+ */
+export interface RefreshInput {
+  readonly refreshToken: string;
+}
 
 /** What {@link AuthService.revokeSessionsFor} acts on. */
 export interface RevokeSessionsForInput {
@@ -270,7 +283,7 @@ export const createAuthService = ({
      */
     refresh: async (
       ctx: RequestContext,
-      { refreshToken }: RefreshBody,
+      { refreshToken }: RefreshInput,
     ): Promise<AuthResource> => {
       const at = now();
       const presentedHash = sha256Base64url(refreshToken);

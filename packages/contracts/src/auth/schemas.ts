@@ -49,9 +49,16 @@ export const refreshTokenSchema = z
   .min(1)
   .max(MAX_REFRESH_TOKEN_LENGTH);
 
-/** `POST /api/v1/{admin,user}/auth/refresh`. */
+/**
+ * `POST /api/v1/{admin,user}/auth/refresh`.
+ *
+ * Optional since ADR-0029: a browser on cookie transport sends nothing in the
+ * body and the server reads `__Secure-machxi.refresh` instead. A request with
+ * neither is refused by the controller as a validation error — the schema
+ * cannot express "one of these two", because the other one is not a field.
+ */
 export const refreshBody = z.strictObject({
-  refreshToken: refreshTokenSchema,
+  refreshToken: refreshTokenSchema.optional(),
 });
 export type RefreshBody = z.infer<typeof refreshBody>;
 

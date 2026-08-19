@@ -22,7 +22,22 @@ export const TOKEN_TYPE = "Bearer";
 export interface TokenPair {
   readonly accessToken: string;
   readonly accessTokenExpiresAt: IsoDateTime;
-  readonly refreshToken: string;
+  /**
+   * **Absent when the client asked for cookie transport** (ADR-0029).
+   *
+   * `X-Auth-Transport: cookie` on `login`, `refresh` or `register` moves this
+   * value into an `httpOnly` cookie, and its absence here is the signal that
+   * it went there: a browser client cannot read it and does not need to, since
+   * the browser attaches it to `/auth/refresh` on its own.
+   *
+   * It is still present for every `body`-transport caller — the default, and
+   * what mobile clients and Postman use — so this is optional in the type and
+   * unconditional in practice for anyone who did not opt in.
+   *
+   * `refreshTokenExpiresAt` stays either way: knowing when the session ends is
+   * useful even to a client that cannot see the credential.
+   */
+  readonly refreshToken?: string;
   readonly refreshTokenExpiresAt: IsoDateTime;
   readonly tokenType: typeof TOKEN_TYPE;
 }

@@ -181,6 +181,29 @@ describe("changePasswordBody", () => {
   });
 });
 
+describe("refreshBody — cookie transport (ADR-0029)", () => {
+  it("accepts an empty body, because the token may be in a cookie", () => {
+    // The server reads `__Secure-machxi.refresh` when the field is absent. The
+    // schema cannot express "one of these two" — the other one is not a field —
+    // so "neither" is refused by the controller, not here.
+    expect(refreshBody.safeParse({}).success).toBe(true);
+  });
+
+  it("still accepts and bounds a token in the body", () => {
+    expect(refreshBody.safeParse({ refreshToken: "abc" }).success).toBe(true);
+    expect(
+      refreshBody.safeParse({ refreshToken: "a".repeat(1000) }).success,
+    ).toBe(false);
+  });
+
+  it("still rejects an unknown field", () => {
+    expect(
+      refreshBody.safeParse({ refreshToken: "abc", transport: "cookie" })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe("setPasswordBody", () => {
   it("takes the subject's new password and the actor's own current one", () => {
     expect(

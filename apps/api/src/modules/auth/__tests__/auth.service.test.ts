@@ -1,3 +1,4 @@
+import type { AuthResource } from "@repo/contracts";
 import type { PasswordHasher } from "@repo/crypto";
 import { sha256Base64url } from "@repo/crypto";
 import { createLogger } from "@repo/logger";
@@ -360,6 +361,24 @@ beforeEach(() => {
 
 /* ── login ────────────────────────────────────────────────────────────────── */
 
+/**
+ * The refresh token of a service response, asserted present.
+ *
+ * `AuthResource.refreshToken` is optional since ADR-0029 — the **controller**
+ * omits it when the client asked for cookie transport — but the service always
+ * issues one, and every assertion below rests on that. Narrowing here says so
+ * once and fails loudly if it ever stops being true, rather than spreading
+ * `?? ""` over twenty call sites and turning a missing token into a passing
+ * test.
+ */
+const refreshTokenOf = (auth: AuthResource): string => {
+  if (auth.refreshToken === undefined) {
+    throw new Error("the auth service must always issue a refresh token");
+  }
+
+  return auth.refreshToken;
+};
+
 describe("login", () => {
   it("returns the token pair, the expiries and the principal", async () => {
     const harness = build();
@@ -378,7 +397,9 @@ describe("login", () => {
     const auth = await login(harness, "correct-horse-battery");
     const [session] = [...harness.sessions.rows.values()];
 
-    expect(session?.refreshTokenHash).toBe(sha256Base64url(auth.refreshToken));
+    expect(session?.refreshTokenHash).toBe(
+      sha256Base64url(refreshTokenOf(auth)),
+    );
     expect(session?.refreshTokenHash).not.toBe(auth.refreshToken);
   });
 
@@ -496,7 +517,7 @@ describe("refresh", () => {
     advance(GRACE_SEC + 1);
 
     const second = await harness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
 
     expect(second.refreshToken).not.toBe(first.refreshToken);
@@ -507,7 +528,7 @@ describe("refresh", () => {
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: first.refreshToken,
+        refreshToken: refreshTokenOf(first),
       }),
     ).rejects.toMatchObject({ code: "AUTH_REFRESH_REUSED" });
   });
@@ -519,7 +540,7 @@ describe("refresh", () => {
     advance(600);
 
     const second = await harness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
 
     expect(new Date(second.refreshTokenExpiresAt).getTime()).toBe(
@@ -533,13 +554,13 @@ describe("refresh", () => {
     const first = await login(harness, "correct-horse-battery");
 
     await harness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
 
     advance(GRACE_SEC - 1);
 
     const retry = await harness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
 
     expect(retry.refreshToken).toBeTruthy();
@@ -553,14 +574,14 @@ describe("refresh", () => {
     const first = await login(harness, "correct-horse-battery");
 
     await harness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
 
     advance(GRACE_SEC + 1);
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: first.refreshToken,
+        refreshToken: refreshTokenOf(first),
       }),
     ).rejects.toMatchObject({ status: 401, code: "AUTH_REFRESH_REUSED" });
 
@@ -577,7 +598,7 @@ describe("refresh", () => {
     const first = await login(harness, "correct-horse-battery");
 
     await harness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
     await harness.service.logout(context(principalOf("session-1")));
 
@@ -585,7 +606,7 @@ describe("refresh", () => {
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: first.refreshToken,
+        refreshToken: refreshTokenOf(first),
       }),
     ).rejects.toMatchObject({ code: "AUTH_SESSION_REVOKED" });
   });
@@ -599,7 +620,7 @@ describe("refresh", () => {
     const first = await login(staffHarness, "correct-horse-battery");
 
     await staffHarness.service.refresh(context(), {
-      refreshToken: first.refreshToken,
+      refreshToken: refreshTokenOf(first),
     });
 
     const userService = createAuthService({
@@ -623,7 +644,7 @@ describe("refresh", () => {
     advance(GRACE_SEC + 1);
 
     await expect(
-      userService.refresh(context(), { refreshToken: first.refreshToken }),
+      userService.refresh(context(), { refreshToken: refreshTokenOf(first) }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_REFRESH_TOKEN" });
 
     expect([...staffHarness.sessions.rows.values()][0]?.revokedAt).toBeNull();
@@ -652,7 +673,7 @@ describe("refresh", () => {
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: auth.refreshToken,
+        refreshToken: refreshTokenOf(auth),
       }),
     ).rejects.toMatchObject({ code: "AUTH_SESSION_REVOKED" });
   });
@@ -665,7 +686,7 @@ describe("refresh", () => {
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: auth.refreshToken,
+        refreshToken: refreshTokenOf(auth),
       }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_REFRESH_TOKEN" });
   });
@@ -696,7 +717,7 @@ describe("refresh", () => {
     });
 
     await expect(
-      userService.refresh(context(), { refreshToken: auth.refreshToken }),
+      userService.refresh(context(), { refreshToken: refreshTokenOf(auth) }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_REFRESH_TOKEN" });
   });
 
@@ -709,7 +730,7 @@ describe("refresh", () => {
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: auth.refreshToken,
+        refreshToken: refreshTokenOf(auth),
       }),
     ).rejects.toMatchObject({ status: 403, code: "AUTH_ACCOUNT_DISABLED" });
 
@@ -726,7 +747,7 @@ describe("refresh", () => {
 
     await expect(
       harness.service.refresh(context(), {
-        refreshToken: auth.refreshToken,
+        refreshToken: refreshTokenOf(auth),
       }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_REFRESH_TOKEN" });
 

@@ -66,11 +66,18 @@ const GENERIC_ERROR_CODES = [
  * | `AUTH_REFRESH_REUSED` | 401 | a rotated refresh token was replayed outside the grace window; the session is revoked | re-login and warn the user |
  * | `AUTH_ACCOUNT_DISABLED` | 403 | credentials are correct but `status != active` | show a support message |
  * | `AUTH_CURRENT_PASSWORD_INVALID` | 403 | the caller re-presented their own password on a credential-setting endpoint and it did not verify | ask for the password again |
+ * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching the `machxi.csrf` cookie (ADR-0029) | re-read the cookie and retry; if it persists, re-login |
  *
  * `AUTH_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
  * *is* authenticated — their session is fine and stays fine — so a `401` would
  * be untrue about the request and would send every client interceptor that
  * treats `401` as "the session died" to the login screen over a typo.
+ *
+ * `CSRF_TOKEN_INVALID` is listed here because the three endpoints it guards are
+ * the auth ones, and it is deliberately **not** `AUTH_`-prefixed: the caller's
+ * credentials are fine and their session is untouched. What failed is the
+ * request's integrity — the double-submit token that proves the browser meant
+ * to send it (ADR-0029) — which is a different question from who is asking.
  *
  * It is an auth code rather than a users-module one because the condition it
  * reports is a property of the credential check and not of any aggregate: all
@@ -89,6 +96,7 @@ const AUTH_ERROR_CODES = [
   "AUTH_REFRESH_REUSED",
   "AUTH_ACCOUNT_DISABLED",
   "AUTH_CURRENT_PASSWORD_INVALID",
+  "CSRF_TOKEN_INVALID",
 ] as const;
 
 /**

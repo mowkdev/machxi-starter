@@ -37,6 +37,7 @@ describe("ERROR_CODES", () => {
         "AUTH_REFRESH_REUSED",
         "AUTH_ACCOUNT_DISABLED",
         "AUTH_CURRENT_PASSWORD_INVALID",
+        "CSRF_TOKEN_INVALID",
       ]),
     );
   });

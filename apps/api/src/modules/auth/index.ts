@@ -21,6 +21,14 @@ export {
   toUserPrincipalResource,
 } from "./auth.mapper.js";
 export {
+  clearAuthCookies,
+  readRefreshCookie,
+  readTransport,
+  setAuthCookies,
+  type AuthTransport,
+  type RefreshCookieInput,
+} from "./auth.cookies.js";
+export {
   createAuthenticate,
   readBearerToken,
   type Authenticate,
@@ -48,6 +56,7 @@ export {
   createAuthService,
   type AuthService,
   type AuthServiceDeps,
+  type RefreshInput,
 } from "./auth.service.js";
 export {
   audienceFor,
@@ -58,6 +67,7 @@ export {
 export {
   createAuthController,
   type AuthController,
+  type AuthControllerDeps,
 } from "./auth.controller.js";
 export type {
   CreatePrincipalInput,

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { isAppError, type AppError } from "../../errors/index.js";
-import { validate } from "../validate.js";
+import { validate, type ValidationSchemas } from "../validate.js";
 
 /**
  * ADR-0011: controllers never read `req.body` or `req.query`; they read what a
@@ -18,6 +18,8 @@ const schemas = {
 
 const run = (
   req: Partial<Request>,
+  /** Defaults to the shared schema; the absent-body case needs its own. */
+  against: ValidationSchemas = schemas,
 ): {
   request: Partial<Request>;
   next: ReturnType<typeof vi.fn>;
@@ -27,7 +29,7 @@ const run = (
   const request = { params: {}, query: {}, body: {}, ...req };
 
   try {
-    validate(schemas)(request as Request, {} as Response, next);
+    validate(against)(request as Request, {} as Response, next);
   } catch (error) {
     return { request, next, error };
   }
@@ -93,6 +95,26 @@ describe("validate", () => {
       "limit",
       "email",
     ]);
+  });
+
+  it("treats an absent body as an empty one", () => {
+    // A bodyless `POST` is a real request: a browser refreshing from its
+    // cookie sends no body and no content type, and Express leaves `req.body`
+    // undefined rather than `{}` (ADR-0029). A schema whose fields are all
+    // optional must accept it.
+    const optional = { body: z.strictObject({ note: z.string().optional() }) };
+    const { request, next } = run({ ...valid, body: undefined }, optional);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(request.valid?.body).toEqual({});
+  });
+
+  it("names the missing fields when a required body is absent", () => {
+    const { error } = run({ ...valid, body: undefined });
+
+    expect((error as AppError).details?.map((detail) => detail.path)).toContain(
+      "email",
+    );
   });
 
   it("does not prefix paths with params/query/body", () => {

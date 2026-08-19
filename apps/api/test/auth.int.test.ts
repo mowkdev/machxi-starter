@@ -7,6 +7,14 @@ import { z } from "zod";
 
 import { createTestApp, type TestApp } from "./support/app.js";
 import {
+  CSRF_COOKIE,
+  REFRESH_COOKIE,
+  TRANSPORTS,
+  cookieValue,
+  setCookie,
+  type TransportCase,
+} from "./support/transport.js";
+import {
   FIXTURE_PASSWORD,
   FIXTURE_STAFF,
   FIXTURE_USERS,
@@ -24,13 +32,24 @@ import {
  * to keep that true is for every assertion below to hold on both segments. A
  * rule that passes for staff and quietly fails for users is exactly the class
  * of bug the shared implementation exists to prevent.
+ *
+ * Since D2.5 it runs **four** times: transport is a second axis on the same
+ * case object (ADR-0029 §Consequences), for the same reason. The flows must
+ * not differ between a mobile client holding its refresh token in a keychain
+ * and a browser holding it in a cookie it cannot read — only where the token
+ * travels differs, and a rule that holds on `body` and quietly fails on
+ * `cookie` is the same class of bug one axis lower.
  */
 
 const authResource = successEnvelopeSchema(
   z.object({
     accessToken: z.string().min(1),
     accessTokenExpiresAt: z.iso.datetime(),
-    refreshToken: z.string().min(1),
+    // Optional since ADR-0029, and each transport asserts its own half of that
+    // below: `body` that it is present, `cookie` that it is absent. Leaving it
+    // required here would fail every cookie run for the right reason in the
+    // wrong place.
+    refreshToken: z.string().min(1).optional(),
     refreshTokenExpiresAt: z.iso.datetime(),
     tokenType: z.literal("Bearer"),
     principal: z.object({
@@ -89,7 +108,21 @@ const CASES: readonly PopulationCase[] = [
   },
 ];
 
-describe.each(CASES)("$name authentication", (population) => {
+interface Run {
+  readonly name: string;
+  readonly population: PopulationCase;
+  readonly transport: TransportCase;
+}
+
+const RUNS: readonly Run[] = CASES.flatMap((population) =>
+  TRANSPORTS.map((transport) => ({
+    name: `${population.name} over ${transport.name}`,
+    population,
+    transport,
+  })),
+);
+
+describe.each(RUNS)("$name authentication", ({ population, transport }) => {
   let harness: TestApp;
 
   beforeAll(async () => {
@@ -104,16 +137,27 @@ describe.each(CASES)("$name authentication", (population) => {
   const request = () => supertest(harness.app);
 
   const login = (credentials: Credentials = population.active()) =>
-    request().post(`${population.base}/login`).send(credentials);
+    transport.ask(request().post(`${population.base}/login`)).send(credentials);
 
-  const tokensFor = async (credentials?: Credentials) => {
+  /**
+   * Signs in and returns the access token plus whatever this transport gives a
+   * client to refresh with — a string it will put in a body, or a pair of
+   * cookies and the CSRF token it must echo.
+   */
+  const sessionFor = async (credentials?: Credentials) => {
     const response = await login(credentials).expect(200);
 
-    return response.body.data as {
-      accessToken: string;
-      refreshToken: string;
-    };
+    return {
+      accessToken: response.body.data.accessToken as string,
+      carrier: transport.carry(response),
+    } as const;
   };
+
+  /** A `refresh` request presenting the credential the way this transport does. */
+  const refreshWith = (carrier: ReturnType<typeof transport.carry>) =>
+    carrier.present(
+      transport.ask(request().post(`${population.base}/refresh`)),
+    );
 
   describe("login", () => {
     it("returns a token pair and the principal", async () => {
@@ -123,6 +167,47 @@ describe.each(CASES)("$name authentication", (population) => {
       expect(response.body.data.principal.kind).toBe(population.name);
       expect(response.body.data.principal.email).toBe(
         population.active().email,
+      );
+    });
+
+    it("puts the refresh token where this transport says it goes", async () => {
+      const response = await login().expect(200);
+
+      if (transport.name === "body") {
+        // D1's behaviour, unchanged, and the default for anyone who does not
+        // ask: mobile clients, Postman, every existing caller.
+        expect(response.body.data.refreshToken).toEqual(expect.any(String));
+        expect(response.headers["set-cookie"]).toBeUndefined();
+
+        return;
+      }
+
+      // The whole trade: what an XSS can read no longer includes a thirty-day
+      // credential, because the credential is not in the response it can read.
+      expect(response.body.data.refreshToken).toBeUndefined();
+      expect(JSON.stringify(response.body)).not.toContain(
+        cookieValue(response, REFRESH_COOKIE) ?? "unreachable",
+      );
+
+      const refresh = setCookie(response, REFRESH_COOKIE);
+      const csrf = setCookie(response, CSRF_COOKIE);
+
+      expect(refresh).toMatch(/HttpOnly/i);
+      expect(refresh).toMatch(/Secure/i);
+      expect(refresh).toMatch(/SameSite=Strict/i);
+      expect(refresh).toContain(`Path=${population.base}`);
+
+      // Readable by script on purpose — the client echoes it back — and
+      // scoped exactly like its sibling.
+      expect(csrf).not.toMatch(/HttpOnly/i);
+      expect(csrf).toMatch(/Secure/i);
+      expect(csrf).toMatch(/SameSite=Strict/i);
+      expect(csrf).toContain(`Path=${population.base}`);
+
+      // The expiry stays on the wire either way: knowing when the session ends
+      // is useful to a client that cannot see the credential.
+      expect(response.body.data.refreshTokenExpiresAt).toEqual(
+        expect.any(String),
       );
     });
 
@@ -212,7 +297,7 @@ describe.each(CASES)("$name authentication", (population) => {
 
   describe("me", () => {
     it("returns the principal, read fresh from the database", async () => {
-      const { accessToken } = await tokensFor();
+      const { accessToken } = await sessionFor();
 
       const response = await request()
         .get(`${population.base}/me`)
@@ -244,16 +329,21 @@ describe.each(CASES)("$name authentication", (population) => {
 
   describe("refresh", () => {
     it("rotates the pair and the new access token works", async () => {
-      const first = await tokensFor();
+      const first = await sessionFor();
 
-      const response = await request()
-        .post(`${population.base}/refresh`)
-        .send({ refreshToken: first.refreshToken })
-        .expect(200);
+      const response = await refreshWith(first.carrier).expect(200);
 
       expect(authResource.safeParse(response.body).success).toBe(true);
-      expect(response.body.data.refreshToken).not.toBe(first.refreshToken);
       expect(response.body.data.principal.kind).toBe(population.name);
+
+      // Rotation is rotation whatever carried the token: the value that comes
+      // back is not the value that went out, and the service never learns
+      // which one it was.
+      const rotated = transport.carry(response);
+
+      expect(rotated.token ?? cookieValue(response, REFRESH_COOKIE)).not.toBe(
+        first.carrier.token ?? "body-transport-has-no-cookie",
+      );
 
       await request()
         .get(`${population.base}/me`)
@@ -264,25 +354,33 @@ describe.each(CASES)("$name authentication", (population) => {
     it("tolerates a replay inside the rotation grace window", async () => {
       // `REFRESH_ROTATION_GRACE_SEC` is 30 in `.env.test`, so an immediate
       // second call is the "two tabs / lost response" case, not an attack.
-      const first = await tokensFor();
+      const first = await sessionFor();
 
-      await request()
-        .post(`${population.base}/refresh`)
-        .send({ refreshToken: first.refreshToken })
-        .expect(200);
-
-      await request()
-        .post(`${population.base}/refresh`)
-        .send({ refreshToken: first.refreshToken })
-        .expect(200);
+      await refreshWith(first.carrier).expect(200);
+      await refreshWith(first.carrier).expect(200);
     });
 
     it("refuses an unknown refresh token", async () => {
-      const response = await request()
-        .post(`${population.base}/refresh`)
-        .send({ refreshToken: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" })
-        .expect(401);
+      const unknown = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+      const csrf = "csrf-value-that-matches-itself";
 
+      const response = await (
+        transport.name === "body"
+          ? request()
+              .post(`${population.base}/refresh`)
+              .send({ refreshToken: unknown })
+          : request()
+              .post(`${population.base}/refresh`)
+              .set("Cookie", [
+                `${REFRESH_COOKIE}=${unknown}`,
+                `${CSRF_COOKIE}=${csrf}`,
+              ])
+              .set("X-CSRF-Token", csrf)
+      ).expect(401);
+
+      // The CSRF check passes — the client did mean to send this — and the
+      // token still does not exist. The two failures are different questions
+      // and must not be answered with each other's code.
       expect(response.body.error.code).toBe("AUTH_INVALID_REFRESH_TOKEN");
     });
   });
@@ -291,10 +389,10 @@ describe.each(CASES)("$name authentication", (population) => {
     it("answers 204 and immediately invalidates the access token", async () => {
       // This is what the per-request session lookup buys: revocation takes
       // effect now, not at the next token expiry (ADR-0018).
-      const { accessToken } = await tokensFor();
+      const { accessToken, carrier } = await sessionFor();
 
-      await request()
-        .post(`${population.base}/logout`)
+      await carrier
+        .present(request().post(`${population.base}/logout`))
         .set("Authorization", `Bearer ${accessToken}`)
         .expect(204);
 
@@ -307,17 +405,16 @@ describe.each(CASES)("$name authentication", (population) => {
     });
 
     it("kills the refresh token of the session it revoked", async () => {
-      const { accessToken, refreshToken } = await tokensFor();
+      const { accessToken, carrier } = await sessionFor();
 
-      await request()
-        .post(`${population.base}/logout`)
+      await carrier
+        .present(request().post(`${population.base}/logout`))
         .set("Authorization", `Bearer ${accessToken}`)
         .expect(204);
 
-      const response = await request()
-        .post(`${population.base}/refresh`)
-        .send({ refreshToken })
-        .expect(401);
+      // Presenting the same credential again: the cookie the browser still
+      // holds is worth exactly as little as the string a mobile client kept.
+      const response = await refreshWith(carrier).expect(401);
 
       expect(response.body.error.code).toBe("AUTH_SESSION_REVOKED");
     });
@@ -327,11 +424,11 @@ describe.each(CASES)("$name authentication", (population) => {
     });
 
     it("logout-all ends every other session too", async () => {
-      const first = await tokensFor();
-      const second = await tokensFor();
+      const first = await sessionFor();
+      const second = await sessionFor();
 
-      await request()
-        .post(`${population.base}/logout-all`)
+      await first.carrier
+        .present(request().post(`${population.base}/logout-all`))
         .set("Authorization", `Bearer ${first.accessToken}`)
         .expect(204);
 

@@ -78,7 +78,20 @@ export const validate = <S extends ValidationSchemas>(
     const valid = {
       params: parse(schemas.params, req.params),
       query: parse(schemas.query, req.query),
-      body: parse(schemas.body, req.body),
+      // `?? {}` because "no body" and "an empty body" are the same request as
+      // far as a schema is concerned, and Express does not agree: `express.json`
+      // leaves `req.body` undefined when nothing matched the content type, and
+      // sets `{}` for an empty JSON document. Without this, whether a request
+      // validates would depend on whether the client bothered to send
+      // `Content-Type`. It became load-bearing with cookie transport
+      // (ADR-0029): a browser refreshing from its cookie sends
+      // `fetch(url, { method: "POST" })` — no body, no content type — and every
+      // field of `refreshBody` is optional, so `{}` is exactly valid.
+      //
+      // A schema with required fields is unaffected except in its message: it
+      // now reports which fields are missing rather than "expected object,
+      // received undefined", which is the more useful of the two.
+      body: parse(schemas.body, req.body ?? {}),
     };
 
     if (issues.length > 0) {

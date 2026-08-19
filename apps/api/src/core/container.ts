@@ -183,8 +183,20 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     } as const,
     controllers: {
       health: createHealthController(health),
-      staffAuth: createAuthController(staffAuth),
-      userAuth: createAuthController(userAuth),
+      // The population and the TTL are what the controller needs to place a
+      // refresh cookie: the segment decides its `Path`, so a browser signed
+      // into both populations never sends one's token to the other's
+      // endpoints, and `REFRESH_TOKEN_TTL` is its `Max-Age` (ADR-0029).
+      staffAuth: createAuthController({
+        service: staffAuth,
+        population: "staff",
+        refreshTtlSec: config.auth.refreshTtlSec,
+      }),
+      userAuth: createAuthController({
+        service: userAuth,
+        population: "user",
+        refreshTtlSec: config.auth.refreshTtlSec,
+      }),
       staff: createStaffController(staffService),
       users: createUsersController(usersService),
       // The same service behind a second controller: `/api/v1/user/profile`

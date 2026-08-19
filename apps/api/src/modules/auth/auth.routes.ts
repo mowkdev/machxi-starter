@@ -1,7 +1,7 @@
 import type { Population } from "@repo/contracts";
 import { Router, type RequestHandler } from "express";
 
-import { noStore, validate } from "../../core/middleware/index.js";
+import { csrfGuard, noStore, validate } from "../../core/middleware/index.js";
 import type { AuthController } from "./auth.controller.js";
 import { loginSchema, refreshSchema, registerSchema } from "./auth.schemas.js";
 
@@ -50,9 +50,15 @@ export const createAuthRouter = ({
     validate(loginSchema),
     controller.login,
   );
+  // `csrfGuard` before `validate`, and that is the ADR-0011 order rather than
+  // an exception to it: it is a guard, and a request that fails it should not
+  // first have its body parsed to produce a better error message. It does
+  // nothing at all unless the request is leaning on the refresh cookie
+  // (ADR-0029 §CSRF), so every `body`-transport caller passes straight through.
   router.post(
     "/refresh",
     refreshRateLimiter,
+    csrfGuard,
     validate(refreshSchema),
     controller.refresh,
   );
@@ -63,8 +69,12 @@ export const createAuthRouter = ({
   // decorator (ADR-0019 §1).
   router.use(authenticate(population));
 
-  router.post("/logout", controller.logout);
-  router.post("/logout-all", controller.logoutAll);
+  // Both carry the guard for the same reason `refresh` does: a browser on
+  // cookie transport sends the refresh cookie here too — the path matches —
+  // and ending somebody's session from another site is a smaller prize than
+  // stealing it but still not one to hand over.
+  router.post("/logout", csrfGuard, controller.logout);
+  router.post("/logout-all", csrfGuard, controller.logoutAll);
   router.get("/me", controller.me);
 
   return router;

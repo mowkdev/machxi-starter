@@ -1,5 +1,6 @@
 export { authorize } from "./authorize.js";
 export { createContextMiddleware } from "./context.js";
+export { csrfGuard } from "./csrf.js";
 export {
   createErrorHandler,
   toAppError,
