@@ -24,6 +24,7 @@ build order that produced the current state is
 corepack enable
 pnpm install
 cp .env.example .env         # every variable is documented there (ADR-0004)
+cp apps/admin/.env.example apps/admin/.env   # the browser app reads its own (ADR-0033)
 pnpm docker:up               # local Postgres, waits until healthy (ADR-0007)
 pnpm db:setup                # migrations + super admin seed (ADR-0008)
 pnpm db:seed -- --dev        # local fixture accounts (optional, but the smoke test needs them)

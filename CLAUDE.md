@@ -26,6 +26,7 @@ Work is staged into numbered **deliverables** (ADR-0025), one plan file each, st
 ```
 pnpm i                         # Node 22, pnpm 10 (corepack enable)
 cp .env.example .env
+cp apps/admin/.env.example apps/admin/.env   # apps/admin reads its own (ADR-0033)
 pnpm docker:up                 # Postgres 16 (docker/local/compose.yaml)
 pnpm db:setup                  # migrate + seed super admin (from SEED_SUPER_ADMIN_* in .env)
 pnpm db:seed -- --dev          # dev fixtures (manager/editor staff, customer users)

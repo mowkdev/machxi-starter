@@ -10,6 +10,7 @@ import {
 } from "@/shared/api/session-store";
 
 import { routeTree } from "../routeTree.gen";
+import { onSessionEnded, sessionStore } from "./session";
 
 /**
  * The router, and the context its guards read (ADR-0032).
@@ -48,7 +49,7 @@ declare module "@tanstack/react-router" {
 }
 
 export interface AppRouterOptions {
-  /** Overrides the guard's view of the session; defaults to the D3.3 stub. */
+  /** The guard's view of the session; the app passes its singleton store. */
   readonly session?: SessionStore;
   /** A memory history under test; the browser's own history in the app. */
   readonly history?: RouterHistory;
@@ -65,6 +66,18 @@ export const createAppRouter = ({ session, history }: AppRouterOptions = {}) =>
     ...(history ? { history } : {}),
   });
 
-const appRouter = createAppRouter();
+const appRouter = createAppRouter({ session: sessionStore });
+
+/*
+ * When the client decides a session is over -- a terminal code, or a retry that
+ * failed again -- the guards have to be asked again. Invalidating re-runs
+ * `beforeLoad`, the `_dashboard` guard sees an empty store, and the redirect to
+ * `/login` happens in the one place that owns it (ADR-0032: guards belong to
+ * the route tree). The alternative, a `navigate` call inside the API client,
+ * would put routing knowledge in `shared/api`.
+ */
+onSessionEnded(() => {
+  void appRouter.invalidate();
+});
 
 export const AppRouter = () => <RouterProvider router={appRouter} />;

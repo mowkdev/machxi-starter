@@ -1,10 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import {
+  ChevronsUpDownIcon,
   LayoutDashboardIcon,
   ShieldIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
+
+import { LogoutMenuItem } from "@/features/auth";
 
 import {
   Sidebar,
@@ -19,6 +22,11 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/shared/ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/shared/ui";
 
 /**
  * The navigation half of the `sidebar-07` shell (ADR-0031, ADR-0032).
@@ -32,8 +40,11 @@ import {
  * (ADR-0032 §Routing). `activeProps` is the router's own active state — no
  * `useLocation` comparison to keep in sync.
  *
- * The current principal is not here yet: `D3.9` puts it in the footer, once
- * there is a session to read it from.
+ * The footer holds the account menu, which is where logout lives (ADR-0032
+ * names "navigation, current-principal block, logout" as this widget's job).
+ * `D3.9` fills the trigger with the signed-in principal; until then it is a
+ * plain label, because reading the store to render a name is that step's work
+ * and this one only has to be able to end the session.
  */
 
 const NAVIGATION = [
@@ -87,7 +98,28 @@ export const AppSidebar = () => (
       </SidebarGroup>
     </SidebarContent>
 
-    <SidebarFooter />
+    <SidebarFooter>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton size="lg" tooltip="Account">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-accent">
+                  <UserIcon className="size-4" />
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">Account</span>
+                </div>
+                <ChevronsUpDownIcon className="ml-auto size-4" />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56" side="right">
+              <LogoutMenuItem />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarFooter>
     <SidebarRail />
   </Sidebar>
 );

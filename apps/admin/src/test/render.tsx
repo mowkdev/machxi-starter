@@ -3,7 +3,12 @@ import { render, type RenderResult } from "@testing-library/react";
 import type { ReactElement } from "react";
 
 import { createAppRouter } from "@/app/providers/router";
-import type { SessionStore } from "@/shared/api/session-store";
+import { createApiClient, type ApiClient } from "@/shared/api/client";
+import { ApiProvider } from "@/shared/api/context";
+import {
+  createSessionStore,
+  type SessionStore,
+} from "@/shared/api/session-store";
 
 /**
  * The two ways this app is rendered under test (ADR-0036).
@@ -20,24 +25,53 @@ import type { SessionStore } from "@/shared/api/session-store";
  * guard asserted against a hand-built route tree only proves the test's tree.
  */
 
-export const renderWithProviders = (ui: ReactElement): RenderResult =>
-  render(ui);
+export interface ProviderOptions {
+  readonly store?: SessionStore;
+  readonly client?: ApiClient;
+}
 
-export interface RenderAppOptions {
+/**
+ * Builds the pair every rendered tree needs, so a caller that cares about
+ * neither still gets a working `useApiClient`.
+ */
+const providers = ({ store, client }: ProviderOptions) => {
+  const sessionStore = store ?? createSessionStore();
+
+  return {
+    store: sessionStore,
+    client:
+      client ??
+      createApiClient({ store: sessionStore, baseUrl: "http://api.test" }),
+  };
+};
+
+export const renderWithProviders = (
+  ui: ReactElement,
+  options: ProviderOptions = {},
+): RenderResult => {
+  const value = providers(options);
+
+  return render(<ApiProvider value={value}>{ui}</ApiProvider>);
+};
+
+export interface RenderAppOptions extends ProviderOptions {
   /** Where the app starts. Defaults to the dashboard index. */
   readonly initialPath?: string;
-  /** The guard's view of the session — a guard needs to be told no. */
-  readonly session?: SessionStore;
 }
 
 export const renderApp = ({
   initialPath = "/",
-  session,
+  ...options
 }: RenderAppOptions = {}): RenderResult => {
+  const value = providers(options);
   const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [initialPath] }),
-    ...(session ? { session } : {}),
+    session: value.store,
   });
 
-  return render(<RouterProvider router={router} />);
+  return render(
+    <ApiProvider value={value}>
+      <RouterProvider router={router} />
+    </ApiProvider>,
+  );
 };

@@ -37,6 +37,25 @@ beforeAll(() => {
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList;
 
+  /*
+   * The rest of the jsdom ceiling, in the same place and for the same reason.
+   * Radix's menus and popovers use the Pointer Events capture API and
+   * `scrollIntoView`, and jsdom implements neither — without these a
+   * `user-event` click on a dropdown trigger throws instead of opening it, and
+   * every menu in the app becomes untestable for a reason that has nothing to
+   * do with the app.
+   */
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.setPointerCapture ??= () => undefined;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+
   server.listen({ onUnhandledRequest: "error" });
 });
 

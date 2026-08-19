@@ -1,7 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { SessionStore } from "@/shared/api/session-store";
+import {
+  createSessionStore,
+  type SessionStore,
+} from "@/shared/api/session-store";
 import { renderApp } from "@/test/render";
 
 /**
@@ -20,13 +23,23 @@ import { renderApp } from "@/test/render";
  * router a different session is exercising the production path.
  */
 
-const session = (isAuthenticated: boolean): SessionStore => ({
-  isAuthenticated: () => isAuthenticated,
-});
+/*
+ * A real store rather than a shape-compatible fake: the guard reads
+ * `isAuthenticated()`, which is derived from the access token's presence
+ * (ADR-0033), so a fake that answered the predicate directly would stop
+ * testing the derivation the moment it changed.
+ */
+const session = (isAuthenticated: boolean): SessionStore => {
+  const store = createSessionStore();
+
+  if (isAuthenticated) store.setSession({ accessToken: "test-access-token" });
+
+  return store;
+};
 
 describe("route guards", () => {
   it("sends an unauthenticated visitor from a protected page to /login", async () => {
-    renderApp({ initialPath: "/staff", session: session(false) });
+    renderApp({ initialPath: "/staff", store: session(false) });
 
     // The login screen, inside the `_auth` shell — not the dashboard.
     expect(
@@ -36,7 +49,7 @@ describe("route guards", () => {
   });
 
   it("sends an authenticated visitor away from /login", async () => {
-    renderApp({ initialPath: "/login", session: session(true) });
+    renderApp({ initialPath: "/login", store: session(true) });
 
     // The mirror guard on `_auth`: a signed-in operator has no business here.
     expect(
@@ -50,7 +63,7 @@ describe("route guards", () => {
   });
 
   it("renders a protected page inside the dashboard shell", async () => {
-    renderApp({ initialPath: "/staff", session: session(true) });
+    renderApp({ initialPath: "/staff", store: session(true) });
 
     expect(
       await screen.findByRole("heading", { name: "Staff" }),
@@ -61,7 +74,7 @@ describe("route guards", () => {
   });
 
   it("titles the shell from the route's own staticData", async () => {
-    renderApp({ initialPath: "/profile", session: session(true) });
+    renderApp({ initialPath: "/profile", store: session(true) });
 
     // Declared on the route rather than looked up in the layout, so a page and
     // its heading cannot drift apart.

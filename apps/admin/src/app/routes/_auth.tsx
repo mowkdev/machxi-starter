@@ -10,10 +10,10 @@ import { useRouteTitle } from "@/shared/lib/route-title";
  * appearing twice in the URL.
  *
  * The mirror of `_dashboard`: an operator who already has a session has no
- * business on the login screen, so they are sent to the dashboard. With the
- * `D3.3` session stub answering `true` unconditionally this redirect fires for
- * everyone, which is why the stub is the one thing `D3.4` must replace before
- * the login screen can be used at all.
+ * business on the login screen, so they are sent to the dashboard. Since `D3.4`
+ * the answer comes from the real store (ADR-0033), which the boot sequence has
+ * already hydrated by the time any guard runs — that ordering is what
+ * `SessionProvider`'s loading gate exists to guarantee.
  */
 export const Route = createFileRoute("/_auth")({
   beforeLoad: ({ context }) => {

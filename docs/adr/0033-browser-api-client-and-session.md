@@ -32,7 +32,10 @@ apps/admin/src/shared/
     session-store.ts    # createSessionStore() — tokens in memory, observable
     client.ts           # createApiClient(deps) — axios instance + interceptors
     bootstrap.ts        # bootstrapSession() — the reload path (§Boot)
+    context.tsx         # ApiProvider, useApiClient, useSession (added D3.4)
 ```
+
+**Amended 2026-08-19 (D3.4).** `context.tsx` is the fifth file, and it is here rather than beside the provider that supplies it because ADR-0032's dependency rule put it here: a feature may not import from `app`, so a `useApiClient` exported from `app/providers` would be unusable by the login form that needs it — and the boundaries lint refused it rather than letting it through. Hooks that reach the client are part of the client's surface; `app` keeps constructing the singletons and deciding when they are ready. Nothing in `context.tsx` constructs anything, which is what lets a test wrap a component in a client built for that test with no module mocking. `useSession` deliberately returns `{ principal, isAuthenticated }` and **not** the tokens: the store's whole argument is minimising what a script can walk away with, and `client.ts` is the only code that needs them.
 
 ### Configuration: `import.meta.env` behind one module
 
@@ -184,6 +187,8 @@ const bootstrapSession = async (): Promise<"authenticated" | "anonymous"> => {
 
 A visitor with no cookie at all fails step 2 cheaply (`400` — `refreshBody` with neither cookie nor body token is a validation error, ADR-0029 §Contracts) and lands anonymous, which is the correct answer, not an error to report.
 
+**Amended 2026-08-19 (D3.4): there is a third outcome, and step 1 is where it comes from.** The sequence above swallows a failed *refresh* into `anonymous`; it must not swallow a failed *bootstrap*. If `GET /auth/csrf` itself cannot be reached the API is down or misconfigured, and reporting that as "not signed in" sends an operator to a login screen that cannot work either. So `bootstrapSession` lets that rejection propagate, and the shell's loading gate renders an unreachable state instead of the app. The gate holding until the sequence *settles* — rather than until it succeeds — is what makes the third outcome expressible at all. It is a terminal screen today, with no retry affordance; a transient blip at load therefore needs a manual reload, which is a known rough edge rather than a decision.
+
 ### Logout
 
 `POST /auth/logout` with the CSRF header; the server revokes the session and clears both cookies (ADR-0029 §The cookie). The client then clears the store and redirects to `/login`. The clear is unconditional — a client that cannot reach the API must still end what it controls locally; the server-side session, unreachable in that moment, dies at its TTL or at reuse detection, which is the best an offline logout can do.
@@ -200,6 +205,8 @@ A visitor with no cookie at all fails step 2 cheaply (`400` — `refreshBody` wi
 - **The whole flow is testable without a server.** Every decision here — single-flight, boot, terminal codes, header attachment — is observable at the HTTP boundary, which is what lets MSW (ADR-0036) exercise it in the unit tier. **Amended 2026-08-19 (D3.2):** the `CSRF_TOKEN_INVALID` recovery above is in that set and is scripted the same way — a handler that answers `403` once, then a counted `GET /auth/csrf`, then the retry succeeding.
 - **Two header names are duplicated** from `apps/api/src/core/http/cookies.ts` into `shared/api`. They are wire contract under a frozen ADR, so the copies cannot drift silently — but whoever supersedes ADR-0029 must find this ADR too, and this sentence is the pointer.
 - **One detail is left to D3.4 under a stated invariant:** the `code` assigned to envelope-less failures (network down, non-JSON responses). Whatever it is, the rejection must satisfy `isApiClientError`, or callers grow a second failure branch this ADR exists to prevent.
+
+  **Amended 2026-08-19 (D3.4): it is `SERVICE_UNAVAILABLE`,** taken from the existing `@repo/contracts` union rather than invented. From the browser's side a dead socket, a DNS failure and a proxy returning HTML are indistinguishable from an API that is not there, which is what that code already means; a client-only member of a union the contracts package defines for the *API's* answers would make the union describe two different things. `status` is the discriminator that keeps the two readings apart: **`0` means no answer arrived**, and a real `503` carries `503`. That distinction is load-bearing rather than cosmetic — D3.4's client uses it to decide *not* to end a session when a refresh simply got no answer, because a dropped connection is no evidence at all that the session died, and logging an operator out over one costs them their in-flight work to fix nothing.
 - The session dies with the tab. A reload is a bootstrap, a closed tab is a logout-in-effect, and nothing about the session survives in storage for a later audit or attacker to find.
 
 ## Alternatives considered

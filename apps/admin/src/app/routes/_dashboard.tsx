@@ -15,8 +15,11 @@ import { useRouteTitle } from "@/shared/lib/route-title";
  * review catch but a visible new layout route.
  *
  * `redirect` carries the attempted location so a session that expires mid-task
- * returns the operator to the screen they were on. `D3.4` is what makes this
- * fire, by replacing the session stub with the real token store.
+ * returns the operator to the screen they were on; the login route validates it
+ * as a same-origin path, so it cannot become an open redirect. Since `D3.4` the
+ * predicate is the real store: the access token's presence *is* the
+ * authenticated state (ADR-0033), and the API client invalidating the router
+ * when a session dies is what re-runs this guard mid-session.
  *
  * The title is per-route `staticData` rather than a lookup table, so a page and
  * its heading cannot drift apart.

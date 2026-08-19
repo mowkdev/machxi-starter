@@ -1,0 +1,350 @@
+import type { Page } from "@repo/contracts";
+import { http } from "msw";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import {
+  API,
+  authResource,
+  createAuthHandlers,
+  createAuthMockState,
+  type AuthMockState,
+} from "@/test/msw/handlers/auth.handlers";
+import { fail, listOk, ok } from "@/test/msw/handlers/envelope";
+import { server } from "@/test/msw/server";
+
+import { isApiClientError } from "../api-error";
+import { createBootstrap } from "../bootstrap";
+import { createApiClient } from "../client";
+import { createSessionStore } from "../session-store";
+
+/**
+ * The ADR-0033 plumbing, at the HTTP boundary (ADR-0036 §What must be covered).
+ *
+ * These are the behaviours that are invisible in any component and wrong in
+ * ways that only show up as a user logged out on a Tuesday, so MSW intercepts
+ * the wire and the *real* client runs — its interceptors, its header
+ * attachment, its single-flight refresh. A test that stubbed `client.get` would
+ * prove the stub.
+ */
+
+/** `Page<T>` in full, so the handler answers the shape ADR-0014 defines. */
+const EMPTY_PAGE: Page<never> = {
+  items: [],
+  offset: 0,
+  limit: 20,
+  total: 0,
+  sort: [],
+  filters: {},
+};
+
+const setup = (state: AuthMockState = createAuthMockState()) => {
+  const store = createSessionStore();
+  let sessionEndedCalls = 0;
+  const client = createApiClient({
+    store,
+    baseUrl: "http://api.test",
+    onSessionEnded: () => {
+      sessionEndedCalls += 1;
+    },
+  });
+
+  server.use(...createAuthHandlers(state));
+
+  return {
+    store,
+    client,
+    state,
+    bootstrap: createBootstrap(client),
+    endedCalls: () => sessionEndedCalls,
+  };
+};
+
+describe("boot sequence", () => {
+  it("fetches a CSRF token, refreshes, and hydrates the store", async () => {
+    const { bootstrap, store, state } = setup();
+
+    await expect(bootstrap()).resolves.toBe("authenticated");
+
+    expect(state.csrfCalls).toBe(1);
+    expect(state.refreshCalls).toBe(1);
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.getPrincipal()?.email).toBe("admin@machxi.local");
+    // The refresh response's rotated token replaces the bootstrap's.
+    expect(store.getCsrfToken()).toBe("csrf-for-access-1");
+  });
+
+  it("lands anonymous when the visitor has no session", async () => {
+    const state = createAuthMockState();
+    state.refreshFailsWith = { status: 401, code: "AUTH_TOKEN_INVALID" };
+    const { bootstrap, store } = setup(state);
+
+    // Not an error to report: a first-time visitor has no cookie, and the
+    // correct answer is "not signed in" rather than a failure.
+    await expect(bootstrap()).resolves.toBe("anonymous");
+    expect(store.isAuthenticated()).toBe(false);
+  });
+
+  it("rejects rather than reporting anonymous when the API is unreachable", async () => {
+    const { bootstrap } = setup();
+    server.use(http.get(`${API}/auth/csrf`, () => Response.error()));
+
+    // A failed bootstrap is not "no session" — it is "no API", and sending an
+    // operator to a login screen that cannot work either would be worse.
+    await expect(bootstrap()).rejects.toSatisfy(isApiClientError);
+  });
+
+  it("sends the CSRF token as a header on refresh and nowhere else", async () => {
+    const { client, store } = setup();
+    const seen: Record<string, string | null> = {};
+
+    server.use(
+      http.post(`${API}/auth/refresh`, ({ request }) => {
+        seen.refresh = request.headers.get("x-csrf-token");
+        return ok({ csrfToken: "unused" });
+      }),
+      http.get(`${API}/staff`, ({ request }) => {
+        seen.staff = request.headers.get("x-csrf-token");
+        seen.authorization = request.headers.get("authorization");
+        return listOk(EMPTY_PAGE);
+      }),
+    );
+
+    store.setSession({ accessToken: "token-a", csrfToken: "csrf-a" });
+    await client.instance.post("/auth/refresh", {});
+    await client.instance.get("/staff");
+
+    // Exactly the set `core/middleware/csrf.ts` guards (ADR-0029 §CSRF).
+    expect(seen.refresh).toBe("csrf-a");
+    expect(seen.staff).toBeNull();
+    expect(seen.authorization).toBe("Bearer token-a");
+  });
+});
+
+describe("single-flight refresh", () => {
+  beforeEach(() => {
+    server.resetHandlers();
+  });
+
+  it("shares one refresh between every caller that meets a 401", async () => {
+    const { client, store, state } = setup();
+    let attempts = 0;
+
+    server.use(
+      // `: Response` because the resolver branches — MSW infers the body
+      // type from the first `return`, so a handler answering either an error or
+      // a success envelope needs the widened annotation.
+      http.get(`${API}/staff`, (): Response => {
+        attempts += 1;
+        // The first three callers meet the expired token; their retries carry
+        // the new one and succeed.
+        return attempts <= 3
+          ? fail(401, "AUTH_TOKEN_EXPIRED")
+          : listOk(EMPTY_PAGE);
+      }),
+    );
+
+    store.setSession({ accessToken: "expired", csrfToken: "csrf" });
+
+    await Promise.all([
+      client.instance.get("/staff"),
+      client.instance.get("/staff"),
+      client.instance.get("/staff"),
+    ]);
+
+    // The whole point: three concurrent 401s, one refresh. Without it, refresh
+    // rotation turns the other two into replays of a just-rotated token, which
+    // is reuse detection and a revoked session (ADR-0018).
+    expect(state.refreshCalls).toBe(1);
+    expect(store.getAccessToken()).toBe("access-1");
+  });
+
+  it("retries a request once and no more", async () => {
+    const { client, store, endedCalls } = setup();
+    let attempts = 0;
+
+    server.use(
+      http.get(`${API}/staff`, () => {
+        attempts += 1;
+        return fail(401, "AUTH_TOKEN_EXPIRED");
+      }),
+    );
+
+    store.setSession({ accessToken: "expired", csrfToken: "csrf" });
+
+    await expect(client.instance.get("/staff")).rejects.toSatisfy(
+      isApiClientError,
+    );
+
+    // A second 401 after a fresh token is not staleness, and looping on it is
+    // how an outage becomes a request storm.
+    expect(attempts).toBe(2);
+    expect(store.isAuthenticated()).toBe(false);
+    expect(endedCalls()).toBe(1);
+  });
+
+  it("does not recurse when refresh itself answers 401", async () => {
+    const state = createAuthMockState();
+    state.refreshFailsWith = { status: 401, code: "AUTH_TOKEN_INVALID" };
+    const { client, store, endedCalls } = setup(state);
+
+    store.setSession({ accessToken: "expired", csrfToken: "csrf" });
+
+    await expect(client.instance.post("/auth/refresh", {})).rejects.toSatisfy(
+      isApiClientError,
+    );
+
+    expect(state.refreshCalls).toBe(1);
+    expect(store.isAuthenticated()).toBe(false);
+    expect(endedCalls()).toBe(1);
+  });
+});
+
+describe("terminal auth codes", () => {
+  it.each([
+    "AUTH_REFRESH_REUSED",
+    "AUTH_SESSION_REVOKED",
+    "AUTH_ACCOUNT_DISABLED",
+  ] as const)("ends the session on %s", async (code) => {
+    const { client, store, endedCalls } = setup();
+
+    server.use(http.get(`${API}/staff`, () => fail(401, code)));
+    store.setSession({ accessToken: "token", csrfToken: "csrf" });
+
+    await expect(client.instance.get("/staff")).rejects.toMatchObject({ code });
+
+    // The dead-cookie states of ADR-0029 §Consequences: the server killed the
+    // session but could not clear the browser's cookie, so a retry only
+    // replays a dead thirty-day credential.
+    expect(store.isAuthenticated()).toBe(false);
+    expect(endedCalls()).toBe(1);
+  });
+});
+
+describe("CSRF_TOKEN_INVALID is recoverable", () => {
+  it("re-bootstraps and retries once, and the session survives", async () => {
+    const { client, store, state } = setup();
+    let attempts = 0;
+
+    server.use(
+      http.post(`${API}/auth/logout-all`, (): Response => {
+        attempts += 1;
+        // Stale on the first attempt, accepted once the client has
+        // re-bootstrapped — the two-tab race, with no attacker in sight.
+        return attempts === 1
+          ? fail(403, "CSRF_TOKEN_INVALID")
+          : new Response(null, { status: 204 });
+      }),
+    );
+
+    store.setSession({ accessToken: "token", csrfToken: "stale" });
+
+    await client.instance.post("/auth/logout-all");
+
+    expect(attempts).toBe(2);
+    expect(state.csrfCalls).toBe(1);
+    expect(store.getCsrfToken()).toBe("bootstrap-csrf-1");
+    // The point of the D3.2 amendment: this used to end the session.
+    expect(store.isAuthenticated()).toBe(true);
+  });
+
+  it("recovers on refresh itself, without deadlocking the single flight", async () => {
+    /*
+     * ADR-0036 names this case by endpoint, and it is the one with a hazard the
+     * others do not have: the retry is issued from *inside* the promise
+     * `inflightRefresh` is holding, so a naive implementation either deadlocks
+     * awaiting itself or rotates twice.
+     */
+    const { client, store, state } = setup();
+    let attempts = 0;
+
+    server.use(
+      http.post(`${API}/auth/refresh`, (): Response => {
+        attempts += 1;
+        state.refreshCalls += 1;
+
+        return attempts === 1
+          ? fail(403, "CSRF_TOKEN_INVALID")
+          : ok(authResource("access-after-rebootstrap"));
+      }),
+    );
+
+    store.setSession({ accessToken: "token", csrfToken: "stale" });
+
+    await client.refreshSession();
+
+    expect(state.refreshCalls).toBe(2);
+    expect(state.csrfCalls).toBe(1);
+    expect(store.getAccessToken()).toBe("access-after-rebootstrap");
+    expect(store.isAuthenticated()).toBe(true);
+  });
+
+  it("ends the session on a second failure", async () => {
+    const { client, store, endedCalls } = setup();
+    let attempts = 0;
+
+    server.use(
+      http.post(`${API}/auth/logout-all`, () => {
+        attempts += 1;
+        return fail(403, "CSRF_TOKEN_INVALID");
+      }),
+    );
+
+    store.setSession({ accessToken: "token", csrfToken: "stale" });
+
+    await expect(
+      client.instance.post("/auth/logout-all"),
+    ).rejects.toMatchObject({ code: "CSRF_TOKEN_INVALID" });
+
+    // A shadowed duplicate cookie survives any number of re-bootstraps, so the
+    // retry is bounded at one and the loop the terminal list prevents stays
+    // prevented.
+    expect(attempts).toBe(2);
+    expect(store.isAuthenticated()).toBe(false);
+    expect(endedCalls()).toBe(1);
+  });
+});
+
+describe("failures without an envelope", () => {
+  it("still rejects with an ApiClientError", async () => {
+    const { client } = setup();
+
+    server.use(http.get(`${API}/staff`, () => Response.error()));
+
+    // The invariant ADR-0033 §Consequences left to this step: callers get one
+    // failure type, or the abstraction is not one.
+    await expect(client.instance.get("/staff")).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      status: 0,
+    });
+  });
+
+  it("rejects with the envelope's code when there is one", async () => {
+    const { client } = setup();
+
+    server.use(
+      http.get(`${API}/staff`, () => fail(403, "FORBIDDEN", "Not for you")),
+    );
+
+    await expect(client.instance.get("/staff")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Not for you",
+      status: 403,
+    });
+  });
+});
+
+describe("logout", () => {
+  it("clears the session even when the request fails", async () => {
+    const { client, store, endedCalls } = setup();
+
+    server.use(http.post(`${API}/auth/logout`, () => Response.error()));
+    store.setSession({ accessToken: "token", csrfToken: "csrf" });
+
+    await expect(client.logout()).rejects.toSatisfy(isApiClientError);
+
+    // A client that cannot reach the API must still end what it controls; the
+    // server-side session dies at its TTL.
+    expect(store.isAuthenticated()).toBe(false);
+    expect(endedCalls()).toBe(1);
+  });
+});
