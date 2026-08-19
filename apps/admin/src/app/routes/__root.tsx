@@ -1,5 +1,7 @@
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 
+import type { QueryClient } from "@tanstack/react-query";
+
 import type { SessionStore } from "@/shared/api/session-store";
 import { Toaster } from "@/shared/ui";
 
@@ -11,15 +13,16 @@ import { Toaster } from "@/shared/ui";
  * `beforeLoad` rather than an `any` the next author has to guess at. The
  * context is *declared* here and *supplied* in `app/providers/router.tsx`.
  *
- * ADR-0032 draws the context as `{ queryClient, session }`. The query client
- * arrives with ADR-0034 in `D3.5`, and declaring the slot early would mean
- * importing a package this step does not depend on to name a type nothing
- * reads. Widening the context then touches this file and the provider — no
- * route file — so there is nothing to buy by pre-declaring it.
+ * ADR-0032 draws the context as `{ queryClient, session }`, and since `D3.5`
+ * both are here. No loader uses the client yet; it is threaded through because
+ * that is what lets a route loader call `ensureQueryData` with the same key and
+ * function the hook uses (ADR-0034 §Entity API), and adding it later would
+ * mean touching every route file that had already typed its context.
  */
 
 export interface RouterContext {
   readonly session: SessionStore;
+  readonly queryClient: QueryClient;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({

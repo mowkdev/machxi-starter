@@ -19,6 +19,7 @@ import {
   isApiClientError,
   type ApiClientError,
 } from "./api-error";
+import { serializeListParams } from "./list-params";
 import type { SessionStore } from "./session-store";
 
 /**
@@ -181,6 +182,14 @@ export const createApiClient = ({
      * have done.
      */
     timeout: REQUEST_TIMEOUT_MS,
+    /*
+     * Pinned here so no call site ever builds a query string by hand (ADR-0034
+     * §List state). axios's default serializer would write
+     * `filter[0][field]=...` for the parsed filter array, which
+     * `listQuerySchema` rejects; the bracket form the API's Express parsing
+     * consumes is `filter[status][in]=a,b`.
+     */
+    paramsSerializer: serializeListParams,
   });
 
   instance.interceptors.request.use((requestConfig) => {

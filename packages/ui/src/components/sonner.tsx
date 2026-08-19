@@ -38,4 +38,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
   )
 }
 
+/*
+ * `toast` is re-exported here rather than imported from `sonner` by an app.
+ * ADR-0031 keeps the design system's runtime dependencies in this package, and
+ * the imperative half of the toast API is part of the component's surface: an
+ * app that called `sonner` directly would need its own copy of the dependency
+ * and could drift from the version this `Toaster` renders with.
+ */
+export { toast } from "sonner"
+
 export { Toaster }

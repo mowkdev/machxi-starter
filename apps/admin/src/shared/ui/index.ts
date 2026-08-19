@@ -78,7 +78,7 @@ export {
 } from "@repo/ui/components/sidebar";
 export { Skeleton } from "@repo/ui/components/skeleton";
 export { Spinner } from "@repo/ui/components/spinner";
-export { Toaster } from "@repo/ui/components/sonner";
+export { Toaster, toast } from "@repo/ui/components/sonner";
 export { useIsMobile } from "@repo/ui/hooks/use-mobile";
 export { cn } from "@repo/ui/lib/utils";
 

@@ -41,6 +41,12 @@ export const listOk = <T>(page: Page<T>, status = 200) =>
           limit: page.limit,
           total: page.total,
         },
+        // `respond.list` fills all three on every list response, so a handler
+        // that emitted only `pagination` would describe an API that does not
+        // exist — and the client reads `meta.sort` / `meta.filters` rather
+        // than recomputing them (ADR-0012, ADR-0014).
+        sort: [...page.sort],
+        filters: page.filters,
       },
     },
     { status },

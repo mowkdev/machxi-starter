@@ -78,6 +78,8 @@ apps/admin/src/
 
 The split between `features` and `entities` follows the read/write seam ADR-0034 leans on: **entities own reads** (list and detail queries, the keys that cache them, the resource's column and field configuration), **features own writes** (the mutating interactions and the dialogs that host them). A feature composes entity hooks; an entity never knows a feature exists.
 
+**Amended 2026-08-20 (D3.5).** Said that way it contradicts [ADR-0034](0034-server-state-and-notifications.md) §Entity API, whose own snippets put `useCreateStaff` / `useUpdateStaff` in the entity slice — and ADR-0034 is right. The line is **the cache surface, not reads versus writes**: an entity owns its queries, its key factory *and* the mutation hooks that invalidate them, because "invalidate `lists()` and the touched `detail(id)`" is a rule about keys and belongs where the keys are; a mutation hook living in a feature would import a key factory across a slice boundary and the rule would have as many homes as callers. Features own the *interactions* that call those hooks — the form, the dialog, the confirm, the decision of what to do afterwards. A feature still composes entity hooks and an entity still never knows a feature exists.
+
 Everything here is functional per the house style: slices export plain functions, hooks and `as const` config objects — no classes, no decorators.
 
 ### Enforcement is part of the decision

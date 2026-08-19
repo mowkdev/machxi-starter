@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import {
   RouterProvider,
   createRouter,
@@ -10,6 +11,7 @@ import {
 } from "@/shared/api/session-store";
 
 import { routeTree } from "../routeTree.gen";
+import { createQueryClient } from "./query-client";
 import { onSessionEnded, sessionStore } from "./session";
 
 /**
@@ -53,12 +55,21 @@ export interface AppRouterOptions {
   readonly session?: SessionStore;
   /** A memory history under test; the browser's own history in the app. */
   readonly history?: RouterHistory;
+  /** The cache route loaders may prime; the app passes its singleton. */
+  readonly queryClient?: QueryClient;
 }
 
-export const createAppRouter = ({ session, history }: AppRouterOptions = {}) =>
+export const createAppRouter = ({
+  session,
+  history,
+  queryClient,
+}: AppRouterOptions = {}) =>
   createRouter({
     routeTree,
-    context: { session: session ?? createSessionStore() },
+    context: {
+      session: session ?? createSessionStore(),
+      queryClient: queryClient ?? createQueryClient(),
+    },
     defaultPreload: "intent",
     // Spread rather than passed as `undefined`: `exactOptionalPropertyTypes`
     // (ADR-0002) distinguishes "absent" from "explicitly undefined", and the
@@ -80,4 +91,10 @@ onSessionEnded(() => {
   void appRouter.invalidate();
 });
 
-export const AppRouter = () => <RouterProvider router={appRouter} />;
+export const AppRouter = ({ queryClient }: { queryClient: QueryClient }) => {
+  // The router is built once at module scope; the app's client is handed to its
+  // context here rather than at construction so both providers share one cache.
+  appRouter.update({ context: { ...appRouter.options.context, queryClient } });
+
+  return <RouterProvider router={appRouter} />;
+};

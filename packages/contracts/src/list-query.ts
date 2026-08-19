@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sortSpecSchema } from "./envelope.js";
 
 import type { SortDirection } from "./enums.js";
 import type { Pagination, SortSpec } from "./envelope.js";
@@ -200,6 +201,50 @@ const parseSort = (
  *   the allow-lists — a wiring bug, surfaced when the router is built rather
  *   than on the first request.
  */
+/**
+ * The **parsed** list query, as a schema.
+ *
+ * {@link listQuerySchema} parses the *wire* form and outputs this one, which
+ * makes it unusable for anything that has to re-read what it produced: a
+ * browser URL holding a validated list state is exactly that case, and a router
+ * that round-trips its own output through the wire schema gets
+ * `expected string, received array` on `sort` and an unrecognised `filters`.
+ *
+ * Verified rather than assumed \u2014 `listStaffQuery.safeParse(listStaffQuery.parse({}))`
+ * fails \u2014 which is why this exists as its own export rather than as an
+ * `.and()` on the builder.
+ *
+ * It validates shape, not allow-lists: the endpoint's `sortable` and
+ * `filterable` sets are enforced by {@link listQuerySchema} when the request
+ * reaches the API, and re-stating them here would be a second place to keep
+ * them. What this guarantees is that a client holding a parsed query in a URL
+ * can read it back as the same object it wrote.
+ */
+export const filterSchema: z.ZodType<Filter> = z.union([
+  z.object({
+    field: z.string(),
+    op: z.enum(SCALAR_FILTER_OPS),
+    value: z.unknown(),
+  }),
+  z.object({
+    field: z.string(),
+    op: z.literal("in"),
+    value: z.array(z.unknown()),
+  }),
+  z.object({ field: z.string(), op: z.literal("like"), value: z.string() }),
+  z.object({ field: z.string(), op: z.literal("null"), value: z.boolean() }),
+]) as z.ZodType<Filter>;
+
+export const listQuerySearchSchema = z.object({
+  offset: z.number().int().min(0).default(0),
+  limit: z.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+  sort: z.array(sortSpecSchema).default([]),
+  filters: z.array(filterSchema).default([]),
+  q: z.string().min(1).max(MAX_SEARCH_LENGTH).optional(),
+});
+
+export type ListQuerySearch = z.infer<typeof listQuerySearchSchema>;
+
 export const listQuerySchema = (options: ListQueryOptions) => {
   const {
     sortable,

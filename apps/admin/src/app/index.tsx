@@ -1,5 +1,8 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+
 import { AppLoader } from "@/shared/ui";
 
+import { createQueryClient } from "./providers/query-client";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
 import "./styles.css";
@@ -14,11 +17,21 @@ import "./styles.css";
  * `_dashboard` guard would read an empty store and bounce a signed-in operator
  * to `/login` on every reload.
  *
- * `D3.5` adds `QueryClientProvider` here, between the two.
+ * `QueryClientProvider` sits between them: inside the gate, because a query
+ * fired before the session is hydrated would go out without a token, and
+ * outside the router, because ADR-0034 gives one client to the whole app.
+ *
+ * The client is built once at module scope for the same reason the router is
+ * — constructing it in the component body would discard the cache on every
+ * re-render.
  */
+const queryClient = createQueryClient();
+
 const App = () => (
   <SessionProvider fallback={<AppLoader />}>
-    <AppRouter />
+    <QueryClientProvider client={queryClient}>
+      <AppRouter queryClient={queryClient} />
+    </QueryClientProvider>
   </SessionProvider>
 );
 
