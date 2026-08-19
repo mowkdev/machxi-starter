@@ -4,8 +4,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "format": "prettier --write \"**/*.{ts,tsx,mjs,md,json}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,mjs,md,json}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,mjs,md,json,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mjs,md,json,css}\"",
     "lint": "turbo run lint",
     "test": "turbo run test --concurrency=1",
     "test:unit": "turbo run test:unit",

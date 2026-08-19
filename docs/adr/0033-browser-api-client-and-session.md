@@ -73,6 +73,8 @@ export const createApiClient = ({ store, baseUrl }: { store: SessionStore; baseU
 
 A closure-based module holding the access token, the CSRF token and the authenticated principal **in memory only** — ADR-0029's design, finished: the server put the durable credential where JavaScript cannot reach it, and this store is the client refusing to undo that by writing its half somewhere durable. **`localStorage` and `sessionStorage` are never used**, for the reason ADR-0029 exists at all: anything a script can read after the fact, an XSS reads too, and the whole trade of D2.5 was reducing what an XSS walks away with.
 
+**Amended 2026-08-19 (D3.1).** That sentence is scoped to credentials, and saying so is worth more than leaving it to be read charitably. The rule is: **no access token, no CSRF token and no principal is ever written to `localStorage`, `sessionStorage` or a cookie the client sets itself** — nothing whose disclosure moves an attacker forward. Non-credential display state is not covered and may be persisted: `D3.1`'s theme preference is a `localStorage` key, and `@repo/ui`'s generated `sidebar.tsx` writes the sidebar's open/closed state to a cookie of its own. Neither weakens the trade — an XSS that reads either learns which colours the operator prefers — and the paragraph above still forbids the thing that matters. What does still hold unconditionally is §Context's other rule: the client never *reads* `document.cookie`, because on the reference deployment there is nothing there to read.
+
 ```ts
 // apps/admin/src/shared/api/session-store.ts
 export const createSessionStore = () => {

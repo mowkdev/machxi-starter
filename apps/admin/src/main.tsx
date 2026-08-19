@@ -1,7 +1,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./app";
+import { applyTheme, preferredTheme } from "./app/theme";
 import "./index.css";
+
+// Before the first paint, so a stored dark preference does not flash light.
+applyTheme(preferredTheme());
 
 const el = document.getElementById("root");
 if (el) {
