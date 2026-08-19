@@ -4,6 +4,8 @@
 - Date: 2026-08-18
 
 > Written as `proposed` and **accepted the same day**. It changes a published contract (`AuthResource`) and moves a security boundary, so it was put up for a decision rather than assumed; [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts, and this is now agreed and not yet built — `D2.5` implements it. It stays amendable in place while D2 is in progress (ADR-0025 rule 2); once D2 ships it changes only by supersession.
+>
+> **Amended 2026-08-19 (D2.6).** D2.5 built it and D2 shipped the same day, so the sentence above about it being "not yet built" is history: this ADR is closed, and the amendments dated _2026-08-19 (D2.5)_ below were the last made in the window.
 
 ## Context
 
@@ -139,9 +141,13 @@ _`validate` now treats an absent body as `{}`._ Not a contracts change and not a
 
 **Deployment constraints this creates, and what is still open.**
 
-- **The app and the API must be same-site.** `SameSite=Strict` means the refresh cookie is sent only when they share a registrable domain, so an SPA on `app.vercel.app` against `api.machxi.io` will never refresh and nothing in the code will say why. Cookie transport is for a same-site deployment; anything else stays on `body`.
+- **Cookie transport requires the app and the API to be same-_host_, not merely same-site.** Two attributes set that bar together, and only the first was obvious. `SameSite=Strict` means the refresh cookie is sent only when the two share a registrable domain, so an SPA on `app.vercel.app` against `api.machxi.io` never refreshes at all. The second is `document.cookie`: it returns only cookies of the document's **own host**, so `app.example.com` cannot read a `__Host-` cookie set by `api.example.com` even though the two are same-site and the refresh cookie is sent happily between them.
+
+  That matters because of what a reload leaves behind. Both the access token and the body copy of the CSRF token live in memory by design, so after a refresh of the page the only credential the client still holds is the cookie the browser keeps for it — and on a cross-host deployment it cannot read the CSRF token it must echo. The refresh would be a `403` and the user would have to log in again. Same-host has no such gap: the token is at `Path=/` on the host the app is served from, so a reloaded page reads it straight back.
+
+  So the supported shape is: **the app and the API behind one host** — one reverse proxy, or the API mounted under the app's origin — for cookie transport, and `body` transport for everything else, which is what a mobile client uses and what Postman documents. This is a deployment constraint rather than a code path, which is exactly why it belongs in the record: nothing in the API can detect it, and the failure it produces is a `403` on a page reload that looks like a bug in the client.
 - **No untrusted host under that registrable domain.** The fail-closed duplicate rule turns a shadowing attempt into a denial of service rather than a compromise, which is the best a path-scoped cookie can do. A deployment that cannot make that promise should not enable cookie transport.
-- **A cross-host app cannot bootstrap after a reload.** It holds the CSRF token in memory, so a page refresh loses it, and the only way to obtain a new one is a request that does not itself need it. A `GET /auth/csrf` that sets and returns the pair is the conventional answer and is **not decided here** — it is a new endpoint, and it wants its own decision about caching, rate limiting and whether it may be called unauthenticated.
+- **Lifting the same-host constraint needs an endpoint this ADR does not add.** A `GET /auth/csrf` that sets the cookie and returns the token would let a cross-host app bootstrap after a reload, because it is the one request in the flow that cannot itself require a CSRF token. It is a new endpoint with its own questions — may it be called unauthenticated, what does it cost, is it cacheable — so it is listed under _Planned_ in the ADR index rather than decided in passing here. Until it exists, a cross-host deployment uses `body` transport.
 - **The refresh cookie is not cleared when the server kills the session.** `logout` and `logout-all` clear both cookies; a refresh that fails with `AUTH_REFRESH_REUSED`, `AUTH_SESSION_REVOKED` or `AUTH_ACCOUNT_DISABLED` leaves the browser replaying a dead thirty-day cookie until it expires. Fixing it means a controller that inspects an error before rethrowing, which ADR-0013 keeps out of controllers, so it is recorded rather than done.
 
 ## Alternatives considered

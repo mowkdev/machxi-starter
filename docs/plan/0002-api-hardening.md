@@ -1,6 +1,6 @@
 # D2 — API hardening and D3 prerequisites
 
-- Status: **in progress**, opened 2026-08-18
+- Status: **shipped 2026-08-19**, opened 2026-08-18
 - Steps: `D2.1` – `D2.6`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -8,7 +8,7 @@ Scope: close the gaps a technical review of D1 found, and make the decisions the
 
 Each step names the ADRs that govern it. Read them before implementing — they carry the reasoning, this file carries the work. Every step ends green on `pnpm lint && pnpm check-types && pnpm test` and a conventional commit.
 
-**Amendment window.** ADRs 0025–0029 were written for this deliverable and may be amended in place while it is in progress, labelled `**Amended YYYY-MM-DD (D2.N).**` at the point of change ([ADR-0025](../adr/0025-deliverables.md) rule 2). ADRs 0001–0024 belong to D1 and are closed: if the work below needs one of them to say something different, stop and write a superseding ADR ([ADR-0024](../adr/0024-adr-lifecycle.md) rule 1).
+**Amendment window — now shut.** ADRs 0025–0029 were written for this deliverable and were amendable in place while it ran, labelled `**Amended YYYY-MM-DD (D2.N).**` at the point of change ([ADR-0025](../adr/0025-deliverables.md) rule 2). D2 shipped 2026-08-19, so they are closed: change them with a superseding ADR. ADRs 0001–0024 belong to D1 and are closed: if the work below needs one of them to say something different, stop and write a superseding ADR ([ADR-0024](../adr/0024-adr-lifecycle.md) rule 1).
 
 ## Build order
 
@@ -170,9 +170,19 @@ The integration suite is already parameterised by population (ADR-0021, D1.8 ame
 
 **Done when:** both transports pass the full auth suite for both populations; a cookie-transport response body contains no `refreshToken`; a cookie-driven refresh without `X-CSRF-Token` answers `403`.
 
-### 6. Close-out
+### 6. ~~Close-out~~ — **done 2026-08-19**
 
 **ADRs:** [0025](../adr/0025-deliverables.md) rule 4, [0021](../adr/0021-testing-strategy.md) §Acceptance checklist
+
+**Closed.** The _Implemented_ column names every ADR D2 built or extended; `CLAUDE.md`, `docs/README.md` and this file's amendment note say the window is shut; the ledger row reads `shipped 2026-08-19`. `.env.example` needed no change — no step in D2 added a variable, which ADR-0029 §Contracts states as a decision rather than an accident.
+
+**The checklist was run on a fresh clone, and all six items pass.** Worth keeping from the doing of it:
+
+- **Item 4 failed the first time for a reason that was not the repository.** `@repo/ui:test` could not start vitest — `ERR_PACKAGE_IMPORT_NOT_DEFINED: "#module-sync-enabled"` from vite — on a clone made inside a deep temporary directory. The trees were byte-identical to the working one (same vite, same `package.json`, same `config.js` hash, same `vitest → vite` link), which left the path: at ~270 characters the file sits past Windows' 260-character `MAX_PATH`, so Node could not read `vite/package.json` and reported its `imports` map as missing. The same clone at a 47-character path passes. **A fresh-clone check on Windows has to be done somewhere short**, and this is the note that says so.
+- **Item 6 works, and the failure it produces is the one D2.1 designed.** With Postgres stopped, `pnpm test` exits non-zero and `@repo/db:test` is the suite that fails first — the one D2.1 pulled back into `test`. Before that step a warm cache made the whole gate green with no database at all.
+- **Item 3 is the D2.2 fix, observed rather than asserted.** `pnpm lint && pnpm check-types` on a fresh clone leaves `git status` clean; before D2.2, `next typegen` rewrote a committed file on every run.
+
+**Three decisions D2 deferred now have an owner** in the ADR index's _Planned_ list, written before the window shut so they cannot be lost: a per-principal budget for expensive routes (a brute-force gap, not only a cost one, per D2.3's review), per-request principal freshness (`authenticate` verifies the session and never the principal), and `GET /auth/csrf`, the endpoint that would lift ADR-0029's same-host constraint. Each names the ADR it would supersede.
 
 - Fill the _Implemented_ column in `docs/adr/README.md` for every ADR this deliverable built, in `D2.N` form.
 - Sync `.env.example`, `CLAUDE.md` and `docs/README.md` with anything the steps changed.

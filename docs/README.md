@@ -25,5 +25,6 @@ The in-place amendment window is scoped to a deliverable ([ADR-0025](adr/0025-de
 rule 2), not to a date. An ADR is amendable only while its deliverable is
 `in progress` in the ledger; once that deliverable ships, code and ADR that
 disagree are reconciled by a superseding ADR, never by editing the record. D1
-shipped 2026-08-18, so ADRs 0001–0024 are closed; D2 is in progress, so ADRs
-0025–0029 are not.
+shipped 2026-08-18 and D2 shipped 2026-08-19, so every ADR written so far —
+0001–0029 — is closed. Nothing is amendable in place until the next
+deliverable opens and writes its own.

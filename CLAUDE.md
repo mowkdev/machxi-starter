@@ -2,7 +2,7 @@
 
 Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin panel and a web app. **Architecture is decided in `docs/adr/` — read the relevant ADR before changing anything it covers.** Index: `docs/adr/README.md`. Build order and endpoint scope: the deliverable plans in `docs/plan/`, starting from the ledger `docs/plan/README.md`.
 
-Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18; D2 (API hardening) is in progress** — `docs/plan/0002-api-hardening.md`.
+Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18, D2 (API hardening) shipped 2026-08-19; nothing is in progress** — D3 (the frontend apps) is next and needs an ADR for `packages/ui` first. See `docs/plan/README.md`.
 
 ## Non-negotiables (from the ADRs)
 
@@ -17,7 +17,7 @@ Work is staged into numbered **deliverables** (ADR-0025), one plan file each, st
 - **DB** (ADR-0006/0008): schema in `packages/db/src/schema`, migrations generated with `drizzle-kit generate` and committed, never `push`; API never auto-migrates; seeds are idempotent.
 - **Logging** (ADR-0005): pino via `ctx.logger`; fields object first, short static message second; no `console.*`.
 - **Contracts** (ADR-0023): `@repo/contracts` depends only on `zod`; enums are defined once there and consumed by `pgEnum` and zod.
-- **Deliverables and the ADR window** (ADR-0025): an ADR may be amended in place only while the deliverable it belongs to is `in progress` in `docs/plan/README.md`. ADRs 0001–0024 belong to shipped D1 and are frozen — diverging from one means writing a superseding ADR, never editing it.
+- **Deliverables and the ADR window** (ADR-0025): an ADR may be amended in place only while the deliverable it belongs to is `in progress` in `docs/plan/README.md`. **Every ADR is currently frozen** — 0001–0024 with shipped D1, 0025–0029 with shipped D2 — so diverging from any of them means writing a superseding ADR, never editing it. A new deliverable reopens only the ADRs written for it.
 - **Task caching** (ADR-0026): a task whose result depends on anything outside the repo is never cached and declares its `env`. `pnpm test` includes the integration tier, so it is `cache: false` and runs `--concurrency=1`; `pnpm test:unit` is the cached fast loop.
 
 ## Commands
