@@ -1,6 +1,6 @@
 # ADR-0032: Admin app architecture — Feature-Sliced Design and TanStack Router
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-19
 
 ## Context

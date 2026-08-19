@@ -12,7 +12,7 @@ Each step names the ADRs that govern it. Read them before implementing — they 
 
 **Amendment window.** ADRs 0030–0036 were written for this deliverable and may be amended in place while it is in progress, labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change ([ADR-0025](../adr/0025-deliverables.md) rule 2). ADRs 0001–0029 belong to shipped D1/D2 and are closed: if the work below needs one of them to say something different, stop and write a superseding ADR ([ADR-0024](../adr/0024-adr-lifecycle.md) rule 1).
 
-**Gate.** ADRs 0030–0036 are `proposed`. A step that implements a `proposed` ADR waits until the ADR is `accepted` — [ADR-0025](../adr/0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts, and D2.5 set the precedent by waiting on ADR-0029.
+**Gate.** ADRs 0030–0036 were written `proposed` and accepted 2026-08-19, before any implementing step started — [ADR-0025](../adr/0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts, and the acceptance un-gates every step below. A future amendment that changes a decision re-gates only the steps that build it.
 
 ## Build order
 

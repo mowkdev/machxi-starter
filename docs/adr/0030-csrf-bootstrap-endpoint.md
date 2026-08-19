@@ -1,6 +1,6 @@
 # ADR-0030: CSRF bootstrap endpoint (`GET /auth/csrf`)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-19
 
 > Written for D3 ("Admin panel", opened 2026-08-19), whose plan names `D3.2` as the implementing step. It stays amendable in place while D3 is in progress ([ADR-0025](0025-deliverables.md) rule 2).

@@ -1,6 +1,6 @@
 # ADR-0035: Config-driven resource UI — AppGrid on TanStack Table, and config-driven forms on React Hook Form
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-19
 
 > Written at the opening of D3, alongside ADR-0030–0034 and ADR-0036. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D3.6` implements the machinery this ADR describes, and `D3.7`–`D3.9` (staff, users, profile pages) are the proof it is worth having. It stays amendable in place while D3 is `in progress` ([`docs/plan/README.md`](../plan/README.md)).

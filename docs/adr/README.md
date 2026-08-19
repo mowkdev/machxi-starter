@@ -12,7 +12,7 @@ The repository is a Turborepo/pnpm monorepo intended as a bootstrap for projects
 - **The amendment window is scoped to a deliverable** ([ADR-0025](0025-deliverables.md) rule 2), not to a date. An ADR may be amended in place only while the deliverable it was written for is `in progress` in [`docs/plan/README.md`](../plan/README.md); once that deliverable ships, the ADR changes only through a superseding ADR that carries the whole decision.
   - **D1 shipped 2026-08-18**, so ADRs 0001–0024 are closed. The amendments dated _2026-08-18 (step N)_ inside them were made under the exception ADR-0024 rule 2 grants and are the last of their kind for those records.
   - **D2 shipped 2026-08-19**, so ADRs 0025–0029 are closed too. The amendments dated _2026-08-19 (D2.N)_ inside them were the last made in that window; ADRs 0001–0029 now change only by supersession.
-  - **D3 is in progress**, so ADRs 0030–0036 are amendable, labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change. They are `proposed` as written; each is accepted before its implementing step starts (ADR-0025 rule 3).
+  - **D3 is in progress**, so ADRs 0030–0036 are amendable, labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change. Written as `proposed`, all seven were **accepted 2026-08-19**, before any implementing step started (ADR-0025 rule 3).
 - "Implemented" is not a status — it is the _Implemented_ column below, which names the plan step that built the decision and where the code lives (ADR-0024 §Lifecycle rule 4). Steps are written `D<deliverable>.<step>` (ADR-0025 §Step identity).
 - Code snippets in ADRs are illustrative of shape and naming; the implementation is the source of truth for details.
 
@@ -65,7 +65,7 @@ _Implemented_ names the build-order step from the deliverable's plan in [`docs/p
 | [0027](0027-credential-self-service-and-reset.md)    | Credential self-service and administrative password reset                    | accepted | D2.3 — `/api/v1/admin/profile` and `POST /admin/{staff,users}/:id/password`                                                                                                                                                                                                                    |
 | [0028](0028-account-deletion.md)                     | Account deletion: soft for users, hard for staff                             | accepted | D2.4 — `DELETE /admin/{staff,users}/:id`, migration `0002` (partial unique index on `users.email`)                                                                                                                                                                                             |
 | [0029](0029-browser-token-transport.md)              | Browser token transport: httpOnly refresh cookie and CSRF                    | accepted | D2.5 — `core/http/cookies.ts`, `core/middleware/csrf.ts`, `modules/auth/auth.cookies.ts`; the auth suite runs population × transport (ADR-0018 §Token transport delegated the decision)                                                                                                        |
-| [0030](0030-csrf-bootstrap-endpoint.md)              | CSRF bootstrap endpoint (`GET /auth/csrf`)                                   | proposed | D3.2 planned — the endpoint ADR-0029 delegated, un-gating cookie transport for cross-host same-site deployments                                                                                                                                                                                |
+| [0030](0030-csrf-bootstrap-endpoint.md)              | CSRF bootstrap endpoint (`GET /auth/csrf`)                                   | accepted | D3.2 planned — the endpoint ADR-0029 delegated, un-gating cookie transport for cross-host same-site deployments                                                                                                                                                                                |
 
 ### Quality
 
@@ -77,16 +77,16 @@ _Implemented_ names the build-order step from the deliverable's plan in [`docs/p
 
 ### Frontend
 
-Written together when D3 opened (2026-08-19); all `proposed`, each accepted before its implementing step starts.
+Written together when D3 opened (2026-08-19) and accepted the same day, before any implementing step started.
 
 | #                                              | Title                                                                          | Status   | Implemented                                                                           |
 | ---------------------------------------------- | ------------------------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------- |
-| [0031](0031-ui-design-system.md)               | `packages/ui`: shadcn/ui design system on Tailwind v4                          | proposed | D3.1 planned — the step the ledger named as D3's blocker                              |
-| [0032](0032-admin-app-architecture.md)         | Admin app architecture: Feature-Sliced Design and TanStack Router              | proposed | D3.3 planned — the `apps/admin` skeleton, layouts and route tree                      |
-| [0033](0033-browser-api-client-and-session.md) | Browser API client and session: axios, in-memory tokens, single-flight refresh | proposed | D3.4 planned — the client half of ADR-0029/0030                                       |
-| [0034](0034-server-state-and-notifications.md) | Server state and notifications: TanStack Query conventions and sonner          | proposed | D3.5 planned — query-key factories, list state in the URL, `meta`-driven toasts       |
-| [0035](0035-config-driven-resource-ui.md)      | Config-driven resource UI: AppGrid on TanStack Table, forms on React Hook Form | proposed | D3.6 planned — the machinery; exercised by the staff/users/profile pages in D3.7–D3.9 |
-| [0036](0036-admin-testing-strategy.md)         | Admin app testing strategy: Vitest, Testing Library and MSW                    | proposed | D3.3 planned — the harness; suites accrue in every later step (sits beside ADR-0021)  |
+| [0031](0031-ui-design-system.md)               | `packages/ui`: shadcn/ui design system on Tailwind v4                          | accepted | D3.1 planned — the step the ledger named as D3's blocker                              |
+| [0032](0032-admin-app-architecture.md)         | Admin app architecture: Feature-Sliced Design and TanStack Router              | accepted | D3.3 planned — the `apps/admin` skeleton, layouts and route tree                      |
+| [0033](0033-browser-api-client-and-session.md) | Browser API client and session: axios, in-memory tokens, single-flight refresh | accepted | D3.4 planned — the client half of ADR-0029/0030                                       |
+| [0034](0034-server-state-and-notifications.md) | Server state and notifications: TanStack Query conventions and sonner          | accepted | D3.5 planned — query-key factories, list state in the URL, `meta`-driven toasts       |
+| [0035](0035-config-driven-resource-ui.md)      | Config-driven resource UI: AppGrid on TanStack Table, forms on React Hook Form | accepted | D3.6 planned — the machinery; exercised by the staff/users/profile pages in D3.7–D3.9 |
+| [0036](0036-admin-testing-strategy.md)         | Admin app testing strategy: Vitest, Testing Library and MSW                    | accepted | D3.3 planned — the harness; suites accrue in every later step (sits beside ADR-0021)  |
 
 ### Planned (not yet written)
 
@@ -129,6 +129,6 @@ The ledger is [`docs/plan/README.md`](../plan/README.md), and [ADR-0025](0025-de
 **D3 — Admin panel, in progress (opened 2026-08-19).** The staff-facing SPA over the admin segment, plus the two prerequisites it cannot exist without: `packages/ui` as a real design system, and the CSRF bootstrap endpoint that lets a cross-host same-site deployment reload without losing its session. `apps/web` moved to D4 on the way in — the two apps share almost nothing beyond `@repo/ui`.
 
 - **Build order**: [`docs/plan/0003-admin-app.md`](../plan/0003-admin-app.md), D3.1–D3.10.
-- **Decisions**: ADRs [0030](0030-csrf-bootstrap-endpoint.md)–[0036](0036-admin-testing-strategy.md), written together when the deliverable opened, all `proposed` — each is accepted before its implementing step starts (ADR-0025 rule 3, the ADR-0029 precedent).
+- **Decisions**: ADRs [0030](0030-csrf-bootstrap-endpoint.md)–[0036](0036-admin-testing-strategy.md), written together when the deliverable opened and accepted the same day, before any implementing step started (ADR-0025 rule 3 keeps "agreed" and "built" as separate facts — every step is still unbuilt).
 
 What D1 deliberately did **not** include: the two frontend apps (ADR-0022 covers only their configuration), OpenAPI, i18n, and everything under _Planned_ above. Each ADR's §Consequences says where its own edges are, and ADR-0020 §Residual risks collects the security ones in one place.

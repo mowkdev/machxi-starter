@@ -1,6 +1,6 @@
 # ADR-0033: Browser API client and session — axios, in-memory tokens, single-flight refresh
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-19
 
 > Owned by D3 (admin panel); D3.4 implements it. This is the client-side counterpart of [ADR-0029](0029-browser-token-transport.md), which is frozen with D2 — nothing here changes what the API does, only how a browser app is required to use it.

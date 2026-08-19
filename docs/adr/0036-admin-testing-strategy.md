@@ -1,6 +1,6 @@
 # ADR-0036: Admin app testing strategy — Vitest, Testing Library and MSW
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-19
 
 > Written at the opening of D3. `D3.3` lands the infrastructure — the setup file, the MSW server, the render helper — and the suites themselves accrue in every step after it, the way the API's did under [ADR-0021](0021-testing-strategy.md). It stays amendable in place while D3 is `in progress` ([ADR-0025](0025-deliverables.md) rule 2).
