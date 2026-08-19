@@ -98,6 +98,24 @@ export interface UserPrincipalResource {
 export type PrincipalResource = StaffPrincipalResource | UserPrincipalResource;
 
 /**
+ * The body of `GET /api/v1/{user,admin}/auth/csrf` (ADR-0030).
+ *
+ * The bootstrap a browser client runs before it can refresh: the endpoint sets
+ * or rotates `__Host-machxi.csrf` and returns the same value here, because the
+ * two copies serve different deployments. A same-host app could read the
+ * cookie back after a reload; an app on `admin.example.com` against
+ * `api.example.com` never can, and this is the only copy it will ever see
+ * (ADR-0029 §CSRF, amended D2.5).
+ *
+ * Not part of {@link AuthResource}: nothing is authenticated here, no token is
+ * issued, and the endpoint exists precisely for the moment when the client
+ * holds no session at all.
+ */
+export interface CsrfResource {
+  readonly csrfToken: string;
+}
+
+/**
  * The body of a successful login, refresh or registration.
  *
  * `principal` is included on refresh as well as login. ADR-0018 leaves that

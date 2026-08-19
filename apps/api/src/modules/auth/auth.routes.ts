@@ -48,6 +48,14 @@ export const createAuthRouter = ({
   router.use(noStore);
 
   // Unauthenticated by definition: these are how a client *gets* a token.
+  //
+  // `/csrf` is first because it is what a reloaded browser calls before it can
+  // call anything else (ADR-0030). It carries no limiter of its own: the
+  // global one (ADR-0020) covers it, and it deliberately does **not** take
+  // `refreshRateLimiter` — that budget is for guessing at opaque tokens, and a
+  // bootstrap presents nothing to guess. Charging it there would let any page
+  // spend a visitor's refresh budget by calling this endpoint.
+  router.get("/csrf", controller.csrf);
   router.post(
     "/login",
     loginRateLimiter,

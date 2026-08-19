@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 82 requests in 11 folders: `Health`,
+- `machxi-api.postman_collection.json` — 84 requests in 11 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `User Auth`, `User › Profile`, `Public`,
   `Errors & routing`, `Teardown`.
@@ -78,7 +78,7 @@ registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Ea
 of those requests carries a description saying which ADR decided it.
 
 **Rate limits bound how often it runs** (ADR-0020). One pass spends 1 of the 5
-failed refreshes per 15 minutes per IP, and 63 of the 300 global requests (the
+failed refreshes per 15 minutes per IP, and 65 of the 300 global requests (the
 three health probes sit outside every limiter) —
 roughly four consecutive runs per window against one API process (the global
 limiter binds first). A `429

@@ -44,21 +44,34 @@ D3.2's tests record it as deliberately unauthenticated — [ADR-0019](0019-autho
 
 ### What it does
 
-It sets — or rotates — `__Host-machxi.csrf` with a fresh `randomToken(32)` and the same attributes ADR-0029 gives it, **and** returns the same value in the envelope body:
+It sets `__Host-machxi.csrf` with the same attributes ADR-0029 gives it, **and** returns the same value in the envelope body:
 
 ```ts
-// modules/auth/auth.cookies.ts — extracted from setAuthCookies, which now calls it
-export const setCsrfCookie = (res: Response): string => { /* cookie write, returns the token */ };
+// modules/auth/auth.cookies.ts — one writer, two policies
+export const setCsrfCookie = (res: Response, maxAgeSec: number): string => { /* always mints */ };
+export const ensureCsrfCookie = (req: Request, res: Response, maxAgeSec: number): string => { /* echoes, else mints */ };
 
 // modules/auth/auth.controller.ts
-csrf: async (req: Request, res: Response): Promise<void> => {
-  respond.ok(res, { csrfToken: setCsrfCookie(res) });
+csrf: (req: Request, res: Response): void => {
+  respond.ok<CsrfResource>(res, { csrfToken: ensureCsrfCookie(req, res, refreshTtlSec) });
 },
 ```
+
+**Amended 2026-08-19 (D3.2)** on two points the first draft got wrong, both found while building it.
+
+_The cookie's `Max-Age` is `REFRESH_TOKEN_TTL`, and the writer takes it as a parameter._ "The same attributes ADR-0029 gives it" is the binding sentence, and ADR-0029 §CSRF does not actually name this one — its `Max-Age` row belongs to the refresh cookie, and the CSRF cookie inherited the same value only because D2.5's `setAuthCookies` wrote both from one variable. So the attribute is stated here, which is the one place that can state it while ADR-0029 stays frozen. A parameterless `setCsrfCookie(res)` would have issued a *session* cookie from the bootstrap and a thirty-day one from login: the same code path, two different cookies, and a reloaded browser finding nothing exactly when it needs it.
+
+_The bootstrap echoes an existing token instead of rotating._ The paragraph below said last-write-wins was fine, and it was — while only `login` and `refresh` rotated, because no third party can trigger either. This endpoint is different in kind: unauthenticated, no input, plain `GET`, so it is reachable **in the operator's own browser** from a page they did not mean to visit. A bootstrap that rotated unconditionally would let that page replace a signed-in operator's cookie, leaving the value their tab holds in memory stale, so their next refresh answers `403 CSRF_TOKEN_INVALID` and — under ADR-0033's terminal codes — ends the session. That is a cross-site forced logout, which is the class of thing the CSRF token exists to prevent, so the endpoint is idempotent instead: `ensureCsrfCookie` re-sends the token the caller already holds and mints only when there is none. An unintended call becomes a no-op.
+
+Two notes on the reach of that, because the fix is worth more than the analysis behind it. `SameSite=Strict` governs whether the cookie is *sent*, and RFC 6265bis also gates *storing* one on the request's same-site status, so a plain cross-site subresource load may well be unable to write the cookie at all; a cross-site **top-level navigation** is the vector that clearly can, and any host under the registrable domain can — the sibling ADR-0029 already refuses to allow. **Which of those a given browser permits was not established here** — an honest test needs two real domains and TLS, since `Secure` and `__Host-` do not survive a plain-HTTP alias. The idempotent bootstrap makes the question moot, which is why it was preferred over the alternative of writing "re-bootstrap once on `403`" into the client that does not exist yet.
+
+Echoing discloses nothing new: the cookie is already readable by any page on the API's host, which is what `httpOnly: false` is for, and the body is opaque to any origin outside the CORS allow-list. A duplicate or shadowed cookie reads as absent (`readCookie` fails closed, ADR-0029 §CSRF) and therefore mints, which is the right way round — the client ends up holding one unambiguous value it can echo rather than a shadowed one it cannot.
 
 Both copies for the same two moments ADR-0029 §CSRF (amended D2.5) already distinguished: the cookie is what a same-host page reads back after a reload; the body is the only copy a cross-host app can ever see.
 
 **Rotation is last-write-wins, and that is fine.** A browser with two tabs, or signed into both populations, may race a bootstrap against a login; whichever `Set-Cookie` lands last wins. ADR-0029's amendment already established the ground for this: the CSRF token is not a credential, and any current value satisfies the check. A client that echoes the value from the response it actually received matches the cookie that response set.
+
+**Amended 2026-08-19 (D3.2).** With the bootstrap idempotent, the only writers that rotate are `login` and `refresh`, so the race narrows to what it was before this endpoint existed — and two tabs bootstrapping now converge on one value rather than fighting over two. It does not vanish: a login in one tab still rotates the cookie under a second tab holding the old value in memory, and that tab's next cookie-driven request answers `403 CSRF_TOKEN_INVALID`. **That `403` is recoverable, and the client must treat it as such** — re-bootstrap and retry once, rather than ending the session. [ADR-0033](0033-browser-api-client-and-session.md) lists `CSRF_TOKEN_INVALID` among its terminal codes; D3.4 is where that has to be reconciled, and this sentence is the notice.
 
 **The response is never cacheable.** `noStore` already applies router-wide (ADR-0020, amended step 10), so no code changes for this — but it is a requirement here, not an inherited nicety: a cached response would hand back a token the accompanying `Set-Cookie` never reached the browser with, and the mismatch is a `403` that looks like a client bug. If the router-wide `no-store` is ever revisited, this route keeps it.
 
@@ -99,7 +112,7 @@ The client **never reads `document.cookie`**, which is the property worth statin
 - The reload flow costs one extra round trip before the refresh. Same-host deployments could skip it by reading the cookie directly; the uniform protocol deliberately does not, trading one cheap request for a client with no deployment-shaped branches.
 - Postman gains the request in both auth folders. The collection runs on `body` transport and is functionally unaffected — the new request documents the endpoint and asserts the envelope and the `Set-Cookie`, nothing downstream depends on it.
 - Integration tests cover the triple: the cookie is set with the ADR-0029 attributes, the body echoes the same value, and the response is the standard envelope ([ADR-0012](0012-response-envelope.md)).
-- `setAuthCookies` is refactored so the CSRF write exists once (`setCsrfCookie`) and is called from two places; the refresh-cookie write is untouched.
+- `setAuthCookies` is refactored so the CSRF write exists once and is called from two places; the refresh-cookie write is untouched. **Amended 2026-08-19 (D3.2):** "once" means the attributes, which `clearAuthCookies` also needs — `res.clearCookie` only deletes a cookie whose `path`, `secure` and `sameSite` match what was set, so a drift between the writer and the clearer is a logout that leaves a live cookie behind. They are one `csrfAttributes` constant, spread by all three call sites, and deliberately not the refresh cookie's `baseAttributes`, whose `Path` differs on purpose.
 - ADR-0029's §Consequences describe a constraint this ADR narrows. That record stays as written — D2 is shipped and the ADR is frozen — and it already points here by name, which is what the _Planned_ entry was for.
 
 ## Alternatives considered

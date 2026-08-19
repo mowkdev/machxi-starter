@@ -15,6 +15,7 @@ export {
 export {
   TOKEN_TYPE,
   type AuthResource,
+  type CsrfResource,
   type PrincipalResource,
   type StaffPrincipalResource,
   type TokenPair,

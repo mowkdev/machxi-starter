@@ -1,4 +1,4 @@
-import type { AuthResource, Population } from "@repo/contracts";
+import type { AuthResource, CsrfResource, Population } from "@repo/contracts";
 import type { Request, Response } from "express";
 
 import { validation } from "../../core/errors/index.js";
@@ -8,6 +8,7 @@ import {
   clearAuthCookies,
   readRefreshCookie,
   readTransport,
+  ensureCsrfCookie,
   setAuthCookies,
 } from "./auth.cookies.js";
 import type { IssuedAuthResource } from "./auth.mapper.js";
@@ -103,6 +104,27 @@ export const createAuthController = ({
   };
 
   return {
+    /**
+     * `GET /auth/csrf` — the bootstrap (ADR-0030).
+     *
+     * The one endpoint in the flow that cannot require a CSRF token, because
+     * it is where a client gets one. It takes no input, reads no credential
+     * and touches no database: a `randomToken(32)`, a `Set-Cookie` and the
+     * same value in the body, which is the only copy an app on a different
+     * host than the API will ever be able to see.
+     *
+     * Unauthenticated by necessity as much as by principle — it runs at the
+     * moment a reloaded page holds no access token, so a guarded version
+     * would be an endpoint nothing could call. That reachability is also why
+     * it echoes an existing token rather than rotating: see
+     * {@link ensureCsrfCookie}.
+     */
+    csrf: (req: Request, res: Response): void => {
+      respond.ok<CsrfResource>(res, {
+        csrfToken: ensureCsrfCookie(req, res, refreshTtlSec),
+      });
+    },
+
     login: async (
       req: ValidatedRequest<typeof loginSchema>,
       res: Response,

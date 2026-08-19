@@ -23,9 +23,11 @@ export {
 } from "./auth.mapper.js";
 export {
   clearAuthCookies,
+  ensureCsrfCookie,
   readRefreshCookie,
   readTransport,
   setAuthCookies,
+  setCsrfCookie,
   type AuthTransport,
   type RefreshCookieInput,
 } from "./auth.cookies.js";

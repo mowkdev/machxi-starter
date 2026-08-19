@@ -206,6 +206,62 @@
       "description": "`/api/v1/admin/auth/*` (ADR-0018). Login and refresh are unauthenticated by definition; `me` is not. The refresh requests below rotate twice on purpose — see 'A rotated-out refresh token is dead'.",
       "item": [
         {
+          "name": "Bootstrap the CSRF token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a CSRF token\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.success).to.be.true;",
+                  "  pm.expect(body.meta.requestId, \"requestId\").to.be.a(\"string\").that.is.not.empty;",
+                  "  pm.expect(body.data.csrfToken, \"csrfToken\").to.be.a(\"string\").that.is.not.empty;",
+                  "  // 32 bytes of CSPRNG output as unpadded base64url. Asserting the shape",
+                  "  // is what would notice a token that stopped being unguessable.",
+                  "  pm.expect(body.data.csrfToken).to.match(/^[A-Za-z0-9_-]{43}$/);",
+                  "  pm.expect(Object.keys(body.data), \"the resource is only the token\").to.eql([\"csrfToken\"]);",
+                  "});",
+                  "",
+                  "pm.test(\"the cookie carries the same value\", function () {",
+                  "  const header = pm.response.headers.get(\"set-cookie\");",
+                  "",
+                  "  pm.expect(header, \"__Host-machxi.csrf must be set\").to.include(\"__Host-machxi.csrf=\");",
+                  "  pm.expect(header, \"readable by the client, which is the mechanism\").to.not.include(\"HttpOnly\");",
+                  "  pm.expect(header).to.include(\"Path=/\");",
+                  "  pm.expect(header).to.include(\"SameSite=Strict\");",
+                  "",
+                  "  // The load-bearing property: an app on a different host than the API can",
+                  "  // never read the cookie, so the body copy has to be the same value.",
+                  "  const cookie = header.split(\"__Host-machxi.csrf=\")[1].split(\";\")[0];",
+                  "",
+                  "  pm.expect(cookie).to.eql(pm.response.json().data.csrfToken);",
+                  "});",
+                  "",
+                  "pm.test(\"is never cacheable\", function () {",
+                  "  // A cached body would hand back a token whose Set-Cookie never arrived.",
+                  "  pm.expect(pm.response.headers.get(\"cache-control\")).to.include(\"no-store\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/csrf",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "csrf"]
+            },
+            "description": "The bootstrap of ADR-0030, and the first request a browser app makes. It is deliberately unauthenticated — it runs at the moment a reloaded page holds no access token, so requiring one would make it uncallable — and it sets or rotates `__Host-machxi.csrf` while returning the same value in the body. Two copies for two deployments: a same-host app reads the cookie back, and an app on `admin.example.com` against `api.example.com` can only ever see the body.\n\nNothing below depends on it. This collection runs on `body` transport, where the CSRF check does not apply at all (ADR-0029 §CSRF), so this request documents and asserts the endpoint rather than feeding anything. Because the cookie is at `Path=/`, either segment's route yields a token valid for both — the two exist for symmetry."
+          }
+        },
+        {
           "name": "Login (seeded super admin)",
           "event": [
             {
@@ -2255,6 +2311,62 @@
       "name": "User Auth",
       "description": "`/api/v1/user/auth/*` — the same endpoints, the same bodies and the same order as the admin segment. The population is carried by the URL, never by a field in the body, so a client cannot ask to be authenticated as the other one (ADR-0015, ADR-0018).",
       "item": [
+        {
+          "name": "Bootstrap the CSRF token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a CSRF token\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.success).to.be.true;",
+                  "  pm.expect(body.meta.requestId, \"requestId\").to.be.a(\"string\").that.is.not.empty;",
+                  "  pm.expect(body.data.csrfToken, \"csrfToken\").to.be.a(\"string\").that.is.not.empty;",
+                  "  // 32 bytes of CSPRNG output as unpadded base64url. Asserting the shape",
+                  "  // is what would notice a token that stopped being unguessable.",
+                  "  pm.expect(body.data.csrfToken).to.match(/^[A-Za-z0-9_-]{43}$/);",
+                  "  pm.expect(Object.keys(body.data), \"the resource is only the token\").to.eql([\"csrfToken\"]);",
+                  "});",
+                  "",
+                  "pm.test(\"the cookie carries the same value\", function () {",
+                  "  const header = pm.response.headers.get(\"set-cookie\");",
+                  "",
+                  "  pm.expect(header, \"__Host-machxi.csrf must be set\").to.include(\"__Host-machxi.csrf=\");",
+                  "  pm.expect(header, \"readable by the client, which is the mechanism\").to.not.include(\"HttpOnly\");",
+                  "  pm.expect(header).to.include(\"Path=/\");",
+                  "  pm.expect(header).to.include(\"SameSite=Strict\");",
+                  "",
+                  "  // The load-bearing property: an app on a different host than the API can",
+                  "  // never read the cookie, so the body copy has to be the same value.",
+                  "  const cookie = header.split(\"__Host-machxi.csrf=\")[1].split(\";\")[0];",
+                  "",
+                  "  pm.expect(cookie).to.eql(pm.response.json().data.csrfToken);",
+                  "});",
+                  "",
+                  "pm.test(\"is never cacheable\", function () {",
+                  "  // A cached body would hand back a token whose Set-Cookie never arrived.",
+                  "  pm.expect(pm.response.headers.get(\"cache-control\")).to.include(\"no-store\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/csrf",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "csrf"]
+            },
+            "description": "The bootstrap of ADR-0030, and the first request a browser app makes. It is deliberately unauthenticated — it runs at the moment a reloaded page holds no access token, so requiring one would make it uncallable — and it sets or rotates `__Host-machxi.csrf` while returning the same value in the body. Two copies for two deployments: a same-host app reads the cookie back, and an app on `admin.example.com` against `api.example.com` can only ever see the body.\n\nNothing below depends on it. This collection runs on `body` transport, where the CSRF check does not apply at all (ADR-0029 §CSRF), so this request documents and asserts the endpoint rather than feeding anything. Because the cookie is at `Path=/`, either segment's route yields a token valid for both — the two exist for symmetry."
+          }
+        },
         {
           "name": "Login (customer fixture)",
           "event": [
