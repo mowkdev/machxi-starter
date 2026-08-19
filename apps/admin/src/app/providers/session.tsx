@@ -85,22 +85,28 @@ export const SessionProvider = ({
   );
 
   /*
-   * `StrictMode` double-invokes effects in development, which would run the
-   * boot sequence twice: two `GET /auth/csrf` and two refreshes, deduped only
-   * if they happen to overlap. The bootstrap is safe to repeat — ADR-0030's
+   * `StrictMode` double-invokes effects in development, which would otherwise
+   * run the boot sequence twice: two `GET /auth/csrf` and two refreshes, deduped
+   * only if they happen to overlap. The bootstrap is safe to repeat — ADR-0030's
    * endpoint echoes rather than rotates since D3.2, and `refreshSession` is
-   * single-flight — so this is noise rather than a hazard, but a second
-   * refresh is a second rotation and there is no reason to spend one.
+   * single-flight — but a second refresh is a second rotation, so the promise is
+   * created once and kept.
+   *
+   * The latch guards the **promise**, never the subscription, and that
+   * distinction is the whole comment. Returning early from the effect instead
+   * leaves the first run's `cancelled` flag — already set by StrictMode's
+   * cleanup — as the only one the pending promise ever checks, so `setState`
+   * never fires and the gate holds a blank screen forever. Every run attaches
+   * its own handlers; only the request is shared.
    */
-  const started = useRef(false);
+  const booting = useRef<Promise<BootstrapOutcome> | null>(null);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-
     let cancelled = false;
 
-    bootstrap()
+    booting.current ??= bootstrap();
+
+    booting.current
       .then(() => {
         if (!cancelled) setState("ready");
       })

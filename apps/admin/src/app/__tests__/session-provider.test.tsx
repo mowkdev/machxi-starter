@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SessionProvider } from "@/app/providers/session";
@@ -15,11 +16,14 @@ import { createSessionStore } from "@/shared/api/session-store";
  * the boot sequence settles — rather than any particular markup.
  */
 
-const setup = (bootstrap: () => Promise<"authenticated" | "anonymous">) => {
+const setup = (
+  bootstrap: () => Promise<"authenticated" | "anonymous">,
+  { strict = false }: { strict?: boolean } = {},
+) => {
   const store = createSessionStore();
   const client = createApiClient({ store, baseUrl: "http://api.test" });
 
-  return render(
+  const tree = (
     <SessionProvider
       bootstrap={bootstrap}
       client={client}
@@ -27,8 +31,10 @@ const setup = (bootstrap: () => Promise<"authenticated" | "anonymous">) => {
       store={store}
     >
       <p>Protected content</p>
-    </SessionProvider>,
+    </SessionProvider>
   );
+
+  return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
 };
 
 describe("SessionProvider", () => {
@@ -57,6 +63,25 @@ describe("SessionProvider", () => {
     setup(() => Promise.resolve("anonymous"));
 
     expect(await screen.findByText("Protected content")).toBeInTheDocument();
+  });
+
+  it("renders under StrictMode, which double-invokes the effect", async () => {
+    /*
+     * `main.tsx` mounts the app inside `StrictMode`, and no other suite renders
+     * that way — which is exactly how a latch that returned early from the
+     * effect shipped a permanently blank screen while every test stayed green.
+     * React runs the effect, runs its cleanup, then runs it again; the pending
+     * promise must resolve into handlers that are still live.
+     */
+    const bootstrap = vi.fn(() =>
+      Promise.resolve<"authenticated">("authenticated"),
+    );
+
+    setup(bootstrap, { strict: true });
+
+    expect(await screen.findByText("Protected content")).toBeInTheDocument();
+    // The request is shared across the double-invoke; only the handlers repeat.
+    expect(bootstrap).toHaveBeenCalledTimes(1);
   });
 
   it("says so when the API cannot be reached at all", async () => {
