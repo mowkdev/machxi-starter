@@ -40,7 +40,7 @@ The endpoint requires no principal. Two reasons, one of principle and one of nec
 - **The token grants nothing on its own.** It proves only that the sender could read a response from this origin, which is precisely the double-submit property ADR-0029 already relied on when it put `csrfToken` in the response body of `login` and `refresh`. An attacker who calls this endpoint gets a token — for *their own* client, matched to *their own* cookie jar. It moves them nowhere: the thing the CSRF check defends is the refresh cookie, which this endpoint neither reads nor sets.
 - **Requiring auth would be circular.** Bootstrap runs at the exact moment the client holds no access token — that is what a reload leaves behind, and the whole reason the endpoint exists. An authenticated `GET /auth/csrf` is an endpoint nothing could ever call.
 
-The route-guard matrix test ([ADR-0019](0019-authorization-guards.md)) records it as unauthenticated, deliberately, so the next reader finds a decision rather than an omission.
+D3.2's tests record it as deliberately unauthenticated — [ADR-0019](0019-authorization-guards.md)'s guard-matrix discipline applied to the auth routers, whose existing suites carry no such matrix — so the next reader finds a decision rather than an omission.
 
 ### What it does
 
@@ -64,7 +64,7 @@ Both copies for the same two moments ADR-0029 §CSRF (amended D2.5) already dist
 
 ### Rate limiting
 
-The global limiter (`300 / 15 min / IP`, [ADR-0020](0020-security-baseline.md)) covers it, and nothing stricter is added. It must **not** count against the refresh limiter — that budget is for guessing at opaque tokens (ADR-0020, amended D2.5), and a bootstrap presents nothing to guess. The cost of a call is one `randomToken(32)` and a header write — cheap by design, no database, no hash pool. And honestly: an attacker gains nothing by hammering it. Each call buys a token that is only good with the cookie jar it was issued into; a million of them are a million answers to a question nobody asked.
+The global limiter (`300 / 15 min / IP`, [ADR-0020](0020-security-baseline.md)) covers it, and nothing stricter is added. It must **not** count against the refresh limiter — that budget is for guessing at opaque tokens (ADR-0020; narrowed to count only `401` by the D2.5 change recorded in ADR-0029 §Consequences), and a bootstrap presents nothing to guess. The cost of a call is one `randomToken(32)` and a header write — cheap by design, no database, no hash pool. And honestly: an attacker gains nothing by hammering it. Each call buys a token that is only good with the cookie jar it was issued into; a million of them are a million answers to a question nobody asked.
 
 ### Contracts
 
@@ -95,7 +95,7 @@ The client **never reads `document.cookie`**, which is the property worth statin
 
 ## Consequences
 
-- One new unauthenticated endpoint per segment, and the guard-matrix test gains both as recorded exceptions alongside `login` and `refresh`.
+- One new unauthenticated endpoint per segment, recorded as deliberately unauthenticated in the auth suites. The existing guard matrices enumerate the admin resource routes, not the auth routers, so D3.2 creates that record rather than joining one.
 - The reload flow costs one extra round trip before the refresh. Same-host deployments could skip it by reading the cookie directly; the uniform protocol deliberately does not, trading one cheap request for a client with no deployment-shaped branches.
 - Postman gains the request in both auth folders. The collection runs on `body` transport and is functionally unaffected — the new request documents the endpoint and asserts the envelope and the `Set-Cookie`, nothing downstream depends on it.
 - Integration tests cover the triple: the cookie is set with the ADR-0029 attributes, the body echoes the same value, and the response is the standard envelope ([ADR-0012](0012-response-envelope.md)).

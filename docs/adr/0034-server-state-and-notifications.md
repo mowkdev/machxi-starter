@@ -56,7 +56,9 @@ export const useStaffList = (params: ListStaffQuery) =>
   });
 ```
 
-What this buys, in order of importance: the params shape and its serialization (`LIST_QUERY_PARAMS`, the `filter[field][op]` bracket syntax) are defined **once**, in contracts, and reused by API validation, router search validation and the query key — a divergence is a type error, not a bug report. Every grid state is a deep link; back/forward walks table states because navigation *is* the state change. And the cache falls out correctly: same URL, same key, same entry.
+What this buys, in order of importance: the parameter names and the **parsed** shape (`LIST_QUERY_PARAMS`, the nested filter record) are defined **once**, in contracts, and reused by API validation, router search validation and the query key — a divergence is a type error, not a bug report. Every grid state is a deep link; back/forward walks table states because navigation *is* the state change. And the cache falls out correctly: same URL, same key, same entry.
+
+Said precisely, because two serializations are in play and only the parsed shape is shared: the `filter[field][op]` **bracket syntax is the wire form** — produced by an axios `paramsSerializer` the ADR-0033 client configures once, consumed by Express's query parsing on the API side — while the **app's own URL** uses TanStack Router's search-param serialization of the same parsed shape. The two need not match; the contract is the zod-validated object between them, and `D3.5` pins the serializer so no call site ever builds a query string by hand.
 
 This is the seam ADR-0035's `AppGrid` plugs into — the grid reads validated search, renders `meta.pagination` / `meta.sort` / `meta.filters` from the envelope (ADR-0012 emits them so clients need not re-parse their own query), and writes state changes as navigations.
 
@@ -72,7 +74,7 @@ export const createQueryClient = () =>
       queries: {
         staleTime: 30_000,
         retry: (failureCount, error) =>
-          isApiError(error) ? false : failureCount < 2,
+          isApiClientError(error) ? false : failureCount < 2,
       },
       mutations: { retry: false },
     },
@@ -82,7 +84,7 @@ export const createQueryClient = () =>
 ```
 
 - **`staleTime` ~30 seconds.** The default of `0` marks everything stale immediately, so every window focus and every remount refetches — a refetch storm that buys nothing when the data is admin CRUD that mostly changes because *this* user changed it (and mutations invalidate explicitly, below). Thirty seconds of acceptable staleness is the same judgement ADR-0014 made server-side when it let `total` come from a second, non-transactional query: "an admin table showing a count one insert stale is not a correctness problem."
-- **Never retry a 4xx.** An `ApiError` carrying a code (ADR-0033) is an *answer* — the server parsed the request and refused it — not a flake. Retrying a `403` three times triples load and delays the real feedback. Network failures and 5xx get up to 2 retries.
+- **Never retry a 4xx.** An `ApiClientError` carrying a code (ADR-0033) is an *answer* — the server parsed the request and refused it — not a flake. Retrying a `403` three times triples load and delays the real feedback. Network failures and 5xx get up to 2 retries.
 - **Mutations never retry.** A write whose response was lost may have been applied; replaying it automatically risks doing the thing twice. The user retries deliberately, from the error toast.
 
 ### Entity API functions and hooks
@@ -138,12 +140,12 @@ export const createNotifyingMutationCache = () =>
     },
     onError: (error, _variables, _context, mutation) => {
       if (mutation.meta?.errorToast === false) return;
-      toast.error(messageForError(error)); // ApiError.code → message map
+      toast.error(messageForError(error)); // ApiClientError.code → message map
     },
   });
 ```
 
-- **Error toasting is automatic and needs no declaration.** The handler maps `ApiError.code` (ADR-0033) through **one message map keyed by the `@repo/contracts` `ErrorCode` union**. Typing it `Record<ErrorCode, string>` makes the compiler enforce what ADR-0013 designed for: a new code added to contracts fails the admin build until someone writes its message. This is the i18n seam — codes are the catalogue key; swapping the map for a locale-aware catalogue later changes one file. At runtime an unrecognised code (an older bundle against a newer API) falls back to a generic message, which is exactly what contracts tells clients to do.
+- **Error toasting is automatic and needs no declaration.** The handler maps `ApiClientError.code` (ADR-0033) through **one message map keyed by the `@repo/contracts` `ErrorCode` union**. Typing it `Record<ErrorCode, string>` makes the compiler enforce what ADR-0013 designed for: a new code added to contracts fails the admin build until someone writes its message. This is the i18n seam — codes are the catalogue key; swapping the map for a locale-aware catalogue later changes one file. At runtime an unrecognised code (an older bundle against a newer API) falls back to a generic message, which is exactly what contracts tells clients to do.
 - **`meta: { errorToast: false }` opts out** where a form renders the error inline. The division of labour with ADR-0035's forms: **field-level errors belong to the form** (a `VALIDATION_ERROR`'s `details`, an `emailTaken` conflict mapped onto its field), **operation-level outcomes belong to toasts**. A form that shows "email already in use" under the field suppresses the toast; a delete triggered from a row menu, with no form to speak through, relies on it.
 - **`meta` is typed, not stringly-typed**, via TanStack Query's `Register` interface (module augmentation), so `meta: { succes: "…" }` is a compile error and the convention is discoverable from the type:
 
@@ -161,7 +163,7 @@ declare module "@tanstack/react-query" {
 ### What this does not decide
 
 - **The grid and form components themselves** — ADR-0035, which consumes the list hooks and the inline-error division defined here.
-- **The API client, `ApiError`, and token refresh** — ADR-0033. This ADR assumes a client whose failures carry a contracts `ErrorCode`.
+- **The API client, `ApiClientError`, and token refresh** — ADR-0033. This ADR assumes a client whose failures carry a contracts `ErrorCode`.
 - **Websocket / server-push invalidation.** Nothing pushes; staleness is bounded by `staleTime` and mutation invalidation. A future collaborative feature would revisit `staleTime` per query, which the defaults above deliberately leave overridable.
 
 ## Consequences

@@ -68,7 +68,9 @@ apps/admin/src/
 │   ├── staff/                   # TanStack Query hooks, query-key factory, staff resource UI config (ADR-0035)
 │   └── user/
 └── shared/
-    ├── api/                     # the API client (ADR-0033): fetch wrapper, envelope/error handling, token store
+    ├── api/                     # the API client (ADR-0033): axios instance, envelope/error handling, session store
+    ├── grid/                    # AppGrid + the grid registry (ADR-0035) — resource-agnostic, no domain knowledge
+    ├── form/                    # AppFormProvider, AppFormInput + the field registry (ADR-0035)
     ├── ui/                      # re-exports of @repo/ui — the one door components come through
     ├── config/                  # import.meta.env parsed by a zod schema, the ADR-0004 posture applied to Vite
     └── lib/                     # generic helpers with no domain knowledge

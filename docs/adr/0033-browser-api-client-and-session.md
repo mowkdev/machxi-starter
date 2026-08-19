@@ -28,7 +28,7 @@ apps/admin/src/shared/
   config/
     index.ts            # the only reader of import.meta.env, zod-validated
   api/
-    api-error.ts        # apiError(), isApiError() — the branded failure type
+    api-error.ts        # apiClientError(), isApiClientError() — the branded failure type
     session-store.ts    # createSessionStore() — tokens in memory, observable
     client.ts           # createApiClient(deps) — axios instance + interceptors
     bootstrap.ts        # bootstrapSession() — the reload path (§Boot)
@@ -47,6 +47,8 @@ export const config = Object.freeze(envSchema.parse(import.meta.env));
 ```
 
 `apps/admin/.env.example` documents `VITE_API_URL`, committed with the local default. One thing said honestly rather than discovered later: **`VITE_*` variables are compile-time public** — Vite inlines them into the served bundle, so nothing secret may ever be added to this schema. That is not a weakness of this design; it is what "configuration of a browser app" means, and writing it down is what keeps a future API key out of the file.
+
+Inlining has an [ADR-0026](0026-task-graph-caching-and-serialisation.md) consequence: the variable is an input to the cached `build` task, so **`turbo.json` declares `VITE_API_URL` in the admin `build` (and `dev`) task's `env`** — undeclared, a changed API URL would replay a stale bundle from cache, the exact silent-default failure D2.1 recorded for the `db:*` tasks. The test tasks stay out of it by construction: the harness pins a fixed value inside the repository ([ADR-0036](0036-admin-testing-strategy.md)), so no test task reads the environment at all.
 
 ### The axios instance
 
@@ -69,28 +71,31 @@ export const createApiClient = ({ store, baseUrl }: { store: SessionStore; baseU
 
 ### The session store
 
-A closure-based module holding the access token and the CSRF token **in memory only** — ADR-0029's design, finished: the server put the durable credential where JavaScript cannot reach it, and this store is the client refusing to undo that by writing its half somewhere durable. **`localStorage` and `sessionStorage` are never used**, for the reason ADR-0029 exists at all: anything a script can read after the fact, an XSS reads too, and the whole trade of D2.5 was reducing what an XSS walks away with.
+A closure-based module holding the access token, the CSRF token and the authenticated principal **in memory only** — ADR-0029's design, finished: the server put the durable credential where JavaScript cannot reach it, and this store is the client refusing to undo that by writing its half somewhere durable. **`localStorage` and `sessionStorage` are never used**, for the reason ADR-0029 exists at all: anything a script can read after the fact, an XSS reads too, and the whole trade of D2.5 was reducing what an XSS walks away with.
 
 ```ts
 // apps/admin/src/shared/api/session-store.ts
 export const createSessionStore = () => {
   let accessToken: string | null = null;
   let csrfToken: string | null = null;
+  let principal: PrincipalResource | null = null;
   const listeners = new Set<() => void>();
   const notify = () => { for (const listener of listeners) listener(); };
 
   return {
     getAccessToken: () => accessToken,
     getCsrfToken: () => csrfToken,
-    setTokens: (next: { accessToken?: string; csrfToken?: string }) => { /* assign present fields */ notify(); },
-    clear: () => { accessToken = null; csrfToken = null; notify(); },
+    getPrincipal: () => principal,
+    isAuthenticated: () => accessToken !== null,
+    setSession: (next: { accessToken?: string; csrfToken?: string; principal?: PrincipalResource }) => { /* assign present fields */ notify(); },
+    clear: () => { accessToken = null; csrfToken = null; principal = null; notify(); },
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   } as const;
 };
 export type SessionStore = ReturnType<typeof createSessionStore>;
 ```
 
-The two tokens are separate fields because they exist at different moments: after ADR-0030's bootstrap the store holds a CSRF token and no access token, and that intermediate state is exactly what the boot sequence (below) passes through. `subscribe` exists because two things observe the store — the router guard ADR-0032 defines, which must know "authenticated or not" before a protected route renders, and React, via `useSyncExternalStore`. The store knows about neither.
+The two tokens are separate fields because they exist at different moments: after ADR-0030's bootstrap the store holds a CSRF token and no access token, and that intermediate state is exactly what the boot sequence (below) passes through. **The principal lives here too, by decision**: `AuthResource` carries it on both login and refresh, and it is session identity — who is signed in — not server state, so it belongs to the store rather than the query cache ([ADR-0034](0034-server-state-and-notifications.md) owns the latter). The sidebar's current-principal block (ADR-0032) reads it from here; richer or fresher account data is a `/profile` query, cached like any other server state. `isAuthenticated()` is derived — the access token's presence *is* the authenticated state — and is the predicate the ADR-0032 route guard calls. `subscribe` exists because two things observe the store — that router guard, which must know "authenticated or not" before a protected route renders, and React, via `useSyncExternalStore`. The store knows about neither.
 
 ### Request interceptors: what each request carries
 
@@ -102,31 +107,31 @@ Three headers, attached by a request interceptor reading the store:
 
 The header names are declared as constants in `shared/api`, duplicating the values in `apps/api/src/core/http/cookies.ts`. They cannot be imported — an app does not import from another app — and they do not move to `@repo/contracts` here, because ADR-0029 §Contracts deliberately made them constants-not-configuration on the API side and that ADR is frozen. The duplication is safe for the same reason: those names change only by superseding ADR-0029, at which point this ADR is revisited with it.
 
-### Response translation: the envelope in, `ApiError` out
+### Response translation: the envelope in, `ApiClientError` out
 
 A response interceptor is where ADR-0012 stops being the API's shape and starts being the client's:
 
 - **`204`** resolves to `undefined` — logout and deletes have no body by decision.
 - **A success envelope** resolves typed as the contracts envelope. For lists, `meta.pagination`, `meta.sort` and `meta.filters` are **kept, not discarded**: ADR-0014 emits them precisely so an admin table can render its state without re-parsing its own query, and a client that unwraps lists down to a bare array would force every table to reconstruct what the server already said.
-- **An error envelope** rejects with an `ApiError` — a branded, functional error mirroring ADR-0013's `AppError` on the other side of the wire:
+- **An error envelope** rejects with an `ApiClientError` — a branded, functional error mirroring ADR-0013's `AppError` on the other side of the wire. The name is deliberately not `ApiError`: `@repo/contracts` already exports an `ApiError` interface — the envelope's `error` object — which this same module imports when parsing envelopes, and a second type of that name would guarantee import confusion.
 
 ```ts
 // apps/admin/src/shared/api/api-error.ts
-export interface ApiErrorData {
+export interface ApiClientErrorData {
   status: number;                       // the HTTP status that carried it
   code: ErrorCode;                      // the @repo/contracts union
   message: string;
   details?: readonly ErrorDetail[];
 }
-export type ApiError = Error & Readonly<ApiErrorData> & { readonly [API_ERROR]: true };
+export type ApiClientError = Error & Readonly<ApiClientErrorData> & { readonly [API_CLIENT_ERROR]: true };
 
-export const apiError = (data: ApiErrorData): ApiError => { /* new Error + Object.assign + brand */ };
-export const isApiError = (e: unknown): e is ApiError => typeof e === "object" && e !== null && API_ERROR in e;
+export const apiClientError = (data: ApiClientErrorData): ApiClientError => { /* new Error + Object.assign + brand */ };
+export const isApiClientError = (e: unknown): e is ApiClientError => typeof e === "object" && e !== null && API_CLIENT_ERROR in e;
 ```
 
-Callers branch with `isApiError(e)` and switch on `e.code` — never on message strings, never on classes. That is ADR-0013's no-`instanceof` rule for ADR-0013's own reason, which is *stronger* in a bundled SPA: `instanceof` across chunks and library boundaries is exactly where it breaks. `code` is typed as the union, so an exhaustiveness check in a `switch` is a compile error the day the API adds a code the client does not handle — and per the union's own contract, an unrecognised code at runtime is treated as a generic failure of whatever status carried it.
+Callers branch with `isApiClientError(e)` and switch on `e.code` — never on message strings, never on classes. That is ADR-0013's no-`instanceof` rule for ADR-0013's own reason, which is *stronger* in a bundled SPA: `instanceof` across chunks and library boundaries is exactly where it breaks. `code` is typed as the union, so an exhaustiveness check in a `switch` is a compile error the day the API adds a code the client does not handle — and per the union's own contract, an unrecognised code at runtime is treated as a generic failure of whatever status carried it.
 
-Every rejection out of the client satisfies `isApiError`, including failures that carry no envelope at all — the network is down, a gateway answered HTML. Callers get one failure type or the abstraction is not one. The exact `code` mapping for envelope-less failures is D3.4's to pin under that invariant; it is noted in §Consequences rather than guessed here.
+Every rejection out of the client satisfies `isApiClientError`, including failures that carry no envelope at all — the network is down, a gateway answered HTML. Callers get one failure type or the abstraction is not one. The exact `code` mapping for envelope-less failures is D3.4's to pin under that invariant; it is noted in §Consequences rather than guessed here.
 
 ### 401 and the single-flight refresh
 
@@ -153,7 +158,7 @@ A page load starts with an empty store — that is the price of memory-only toke
 // apps/admin/src/shared/api/bootstrap.ts
 const bootstrapSession = async (): Promise<"authenticated" | "anonymous"> => {
   const { csrfToken } = await getCsrf();          // GET /auth/csrf  (ADR-0030)
-  store.setTokens({ csrfToken });
+  store.setSession({ csrfToken });
   try {
     await refreshSession();                        // POST /auth/refresh — cookie + X-CSRF-Token
     return "authenticated";
@@ -165,8 +170,8 @@ const bootstrapSession = async (): Promise<"authenticated" | "anonymous"> => {
 ```
 
 1. `GET /auth/csrf` (ADR-0030) — the one request in the flow that cannot itself require a CSRF token. It sets or rotates the cookie and hands the client the matching body copy, which is the only copy this client will ever use.
-2. `POST /auth/refresh` with the token in `X-CSRF-Token`. Success hydrates the store — access token and the rotated CSRF token from `AuthResource` — **before any protected route renders**; the app shell holds a loading gate until `bootstrapSession` resolves, and the router guard never sees a half-bootstrapped store.
-3. Failure lands on `/login`. Four codes are terminal and are never retried: `AUTH_REFRESH_REUSED`, `AUTH_SESSION_REVOKED`, `AUTH_ACCOUNT_DISABLED`, `CSRF_TOKEN_INVALID`. These are the dead-cookie states ADR-0029 §Consequences records — the server killed the session but could not clear the browser's cookie, so the browser would replay a dead thirty-day credential until it expires. The client treating them as "logged out, go to `/login`" is the handling that consequence was left open for; retrying any of them spends `RATE_LIMIT_REFRESH_MAX` on an answer that will not change.
+2. `POST /auth/refresh` with the token in `X-CSRF-Token`. Success hydrates the store — access token, rotated CSRF token and principal from `AuthResource` — **before any protected route renders**; the app shell holds a loading gate until `bootstrapSession` resolves, and the router guard never sees a half-bootstrapped store.
+3. Failure lands on `/login`. Four codes are terminal and are never retried, and this list is canonical — ADR-0036's suites assert it. Three — `AUTH_REFRESH_REUSED`, `AUTH_SESSION_REVOKED`, `AUTH_ACCOUNT_DISABLED` — are the dead-cookie states ADR-0029 §Consequences records: the server killed the session but could not clear the browser's cookie, so the browser would replay a dead thirty-day credential until it expires, and treating them as "logged out, go to `/login`" is the handling that consequence was left open for. The fourth, `CSRF_TOKEN_INVALID`, is terminal *for this client specifically*: contracts' guidance to "re-read the cookie and retry" addresses a client that may hold a stale copy, and this one just received its copy from the bootstrap seconds earlier — there is nothing fresher to present, so a retry spends `RATE_LIMIT_REFRESH_MAX` on an answer that will not change.
 
 A visitor with no cookie at all fails step 2 cheaply (`400` — `refreshBody` with neither cookie nor body token is a validation error, ADR-0029 §Contracts) and lands anonymous, which is the correct answer, not an error to report.
 
@@ -185,7 +190,7 @@ A visitor with no cookie at all fails step 2 cheaply (`400` — `refreshBody` wi
 - **The client is coupled to the envelope and the error union.** That is not a cost to mitigate; it is the point of `@repo/contracts` (ADR-0023) — one parser for every endpoint, exhaustive `code` handling checked by the compiler, and an additive new code degrading to "generic failure of that status" instead of breaking.
 - **The whole flow is testable without a server.** Every decision here — single-flight, boot, terminal codes, header attachment — is observable at the HTTP boundary, which is what lets MSW (ADR-0036) exercise it in the unit tier.
 - **Two header names are duplicated** from `apps/api/src/core/http/cookies.ts` into `shared/api`. They are wire contract under a frozen ADR, so the copies cannot drift silently — but whoever supersedes ADR-0029 must find this ADR too, and this sentence is the pointer.
-- **One detail is left to D3.4 under a stated invariant:** the `code` assigned to envelope-less failures (network down, non-JSON responses). Whatever it is, the rejection must satisfy `isApiError`, or callers grow a second failure branch this ADR exists to prevent.
+- **One detail is left to D3.4 under a stated invariant:** the `code` assigned to envelope-less failures (network down, non-JSON responses). Whatever it is, the rejection must satisfy `isApiClientError`, or callers grow a second failure branch this ADR exists to prevent.
 - The session dies with the tab. A reload is a bootstrap, a closed tab is a logout-in-effect, and nothing about the session survives in storage for a later audit or attacker to find.
 
 ## Alternatives considered

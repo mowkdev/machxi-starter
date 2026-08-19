@@ -44,7 +44,7 @@ The one API change in this deliverable, and it lands before any client code depe
 
 **ADRs:** [0033](../adr/0033-browser-api-client-and-session.md), [0030](../adr/0030-csrf-bootstrap-endpoint.md), [0029](../adr/0029-browser-token-transport.md), [0013](../adr/0013-error-model.md)
 
-`shared/config` (zod-validated `import.meta.env`, `VITE_API_URL`, `apps/admin/.env.example`), `shared/api` (axios instance, envelope unwrap, branded `ApiError` + `isApiError`, in-memory session store, single-flight 401 refresh), the boot sequence (`GET /auth/csrf` → `POST /auth/refresh` behind a loading gate), real route guards in `_dashboard`/`_auth` `beforeLoad`, and the login feature on the login-01 screen with fields disabled while the mutation is pending. Logout wired in the dashboard shell. MSW suites cover bootstrap, single-flight refresh with queued retries, and every terminal auth code landing on `/login`.
+`shared/config` (zod-validated `import.meta.env`, `VITE_API_URL`, `apps/admin/.env.example`), `shared/api` (axios instance, envelope unwrap, branded `ApiClientError` + `isApiClientError`, in-memory session store, single-flight 401 refresh), the boot sequence (`GET /auth/csrf` → `POST /auth/refresh` behind a loading gate), real route guards in `_dashboard`/`_auth` `beforeLoad`, and the login feature on the login-01 screen with fields disabled while the mutation is pending. Logout wired in the dashboard shell. MSW suites cover bootstrap, single-flight refresh with queued retries, and every terminal auth code landing on `/login`.
 
 **Done when:** login → dashboard → reload keeps the session → logout → guarded routes redirect, against the real API in dev; the session flows are green in the cached unit loop against MSW.
 
@@ -54,7 +54,7 @@ The one API change in this deliverable, and it lands before any client code depe
 
 The QueryClient with its decided defaults, per-entity query-key factories and API functions in `entities/{staff,user}`, list state validated into the URL by the `@repo/contracts` list schemas through TanStack Router search params, and the notification layer: `<Toaster>` mounted once, `MutationCache`/`QueryCache` global handlers reading typed `meta`, the error-code → message map over the contracts union.
 
-**Done when:** a list hook driven from URL search params refetches on param change; a mutation with `meta.success` toasts without any call-site `toast()`; an `ApiError` code renders its mapped message; all covered by MSW tests.
+**Done when:** a list hook driven from URL search params refetches on param change; a mutation with `meta.success` toasts without any call-site `toast()`; an `ApiClientError` code renders its mapped message; all covered by MSW tests.
 
 ### 6. Resource UI machinery — AppGrid and config-driven forms
 
