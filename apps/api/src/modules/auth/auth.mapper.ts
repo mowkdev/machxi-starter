@@ -1,6 +1,7 @@
 import {
   TOKEN_TYPE,
   type AuthResource,
+  type IsoDateTime,
   type PrincipalResource,
   type StaffPrincipalResource,
   type UserPrincipalResource,
@@ -53,6 +54,22 @@ export interface AuthResourceInput {
 }
 
 /**
+ * What the **service** issues, which is narrower than what the API returns.
+ *
+ * `AuthResource.refreshToken` became optional in ADR-0029 because a controller
+ * on cookie transport removes it. The service has no such case: every session
+ * it creates or rotates has a refresh token, and every caller below the
+ * controller depends on that. Narrowing here keeps the optionality in the one
+ * layer that can resolve it — the same reasoning `RefreshInput` applies in the
+ * other direction — and it is what lets the controller destructure the field
+ * without a branch that could never run.
+ */
+export type IssuedAuthResource = AuthResource & {
+  readonly refreshToken: string;
+  readonly refreshTokenExpiresAt: IsoDateTime;
+};
+
+/**
  * The body of login, refresh and registration (ADR-0018).
  *
  * Both expiries go out as absolute ISO-8601 instants, not as a `expiresIn`
@@ -66,7 +83,7 @@ export const toAuthResource = ({
   accessTokenExpiresAt,
   refreshToken,
   refreshTokenExpiresAt,
-}: AuthResourceInput): AuthResource => ({
+}: AuthResourceInput): IssuedAuthResource => ({
   accessToken,
   accessTokenExpiresAt: accessTokenExpiresAt.toISOString(),
   refreshToken,

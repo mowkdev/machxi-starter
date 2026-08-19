@@ -20,7 +20,7 @@ import { expect } from "vitest";
  */
 
 export const REFRESH_COOKIE = "__Secure-machxi.refresh";
-export const CSRF_COOKIE = "machxi.csrf";
+export const CSRF_COOKIE = "__Host-machxi.csrf";
 export const TRANSPORT_HEADER = "X-Auth-Transport";
 export const CSRF_HEADER = "X-CSRF-Token";
 

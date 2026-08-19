@@ -47,6 +47,14 @@ The alternative — inferring "this is a browser" from `Origin` or `User-Agent` 
 
 The default is `body` so that this ADR does not break every existing caller on the day it lands.
 
+**Amended 2026-08-19 (D2.5).** The rule above says transport is chosen "per request, with a header", and on `refresh` that turned out to be a trap rather than a choice.
+
+_A `refresh` that arrives on the cookie is answered on the cookie, header or no header._ A browser that refreshes from its cookie and forgets `X-Auth-Transport` would otherwise be answered with the rotated token **in the body and no new cookie** — so the browser goes on holding the value that was just rotated away. Replaying it is tolerated inside `REFRESH_ROTATION_GRACE_SEC` and is reuse detection outside it, at which point the session is revoked (ADR-0018 §Refresh). A forgotten header would cost the user their session, silently and minutes later, which is a far worse failure than the one the opt-in exists to prevent.
+
+So on `refresh` the presented cookie *is* the opt-in, and the header decides only what a caller who presented nothing gets. This is not the `Origin`-sniffing rejected above: nothing is inferred about the client, and the signal is the credential it actually sent — a request cannot present the refresh cookie without already holding the refresh token. `login` and `register` are unchanged, because there is no credential to read there and the header is the only thing to go on.
+
+The body still wins when both are present, so a client that names its credential explicitly gets a body answer whatever is attached to the request.
+
 ### The cookie
 
 | Attribute  | Value                                                       |
@@ -75,6 +83,14 @@ So the cookie-bearing endpoints also require a **double-submit token**:
 - `POST /auth/refresh`, `POST /auth/logout` and `POST /auth/logout-all` require `X-CSRF-Token` to equal the `machxi.csrf` cookie **when the request is relying on the refresh cookie**. A request that carries its refresh token in the body is not cookie-driven and is not subject to the check.
 - The comparison is constant-time, and a mismatch is `403 CSRF_TOKEN_INVALID`.
 
+**Amended 2026-08-19 (D2.5).** The scheme above is right and the cookie it specifies was unusable. Three corrections, all found by the review of the first implementation.
+
+_`machxi.csrf` becomes `__Host-machxi.csrf` at `Path=/`._ The rule above gives it "same `Path`" as the refresh cookie, and that makes it **unreadable by the client it exists for**: `document.cookie` returns only cookies whose path matches the *document's* URL, so an app served from `/` or `/dashboard` never sees a token scoped to `/api/v1/admin/auth`. As specified, the double-submit could only ever fail, and the first thing anyone building `admin` would have done is weaken or delete the check. `Path=/` fixes it and makes the `__Host-` prefix free, which is worth having in its own right — see below.
+
+_The token is also returned in the response body on cookie transport, as `AuthResource.csrfToken`._ The cookie copy is what a page re-reads after a reload; the body copy is for an app served from a different host than the API — `app.example.com` against `api.example.com` — which is same-*site* enough for `SameSite=Strict` to send the refresh cookie but can never read the API's cookies from `document.cookie`. That is the deployment `CORS_ORIGINS` and `credentials: true` exist for, so it cannot be the one the CSRF scheme excludes. The value grants nothing on its own: it proves only that the sender could read a response or a cookie from this origin, which a cross-site attacker cannot.
+
+_A cookie name that appears twice is treated as absent._ `__Secure-` constrains the scheme, not the host, so a sibling subdomain that can set `Domain=example.com` cookies may plant a second cookie of either name; RFC 6265 §5.4 orders the `Cookie` header by descending path length, so **the attacker chooses which one a first-match reader sees**. On `machxi.csrf` that hands them both halves of the double-submit; on the refresh cookie it is session fixation, and the shadow keeps winning every rotation because the API's own cookie is host-only at a shorter path. `readCookie` therefore fails closed on a duplicate — the request is answered as though no cookie were sent, which costs a real client a re-login and costs the attacker the attack. `__Host-` closes it outright for the CSRF cookie; the refresh cookie cannot take that prefix without giving up its path scope, so fail-closed is its only defence and the deployment constraint below is the rest of it.
+
 The middleware is `core/middleware/csrf.ts` and is applied by the auth routers, alongside `noStore`. It reads cookies and nothing else, so it needs no container dependency.
 
 ### Contracts
@@ -83,6 +99,14 @@ The middleware is `core/middleware/csrf.ts` and is applied by the auth routers, 
 - `refreshBody.refreshToken` becomes optional; the controller supplies the cookie value when it is absent, and a request with neither is a validation error.
 - `CSRF_TOKEN_INVALID` (403) joins the error-code union.
 - No new environment variable. Cookie names, attributes and the CSRF header are constants in `apps/api`, not configuration — a deployment that needs to change them is a deployment with a different security model.
+
+**Amended 2026-08-19 (D2.5).** Where those constants live, and one thing the change needed that this section did not anticipate.
+
+_The names are in `core/http/cookies.ts`, not in the auth module._ Two things need them and they sit on opposite sides of the dependency rule: the auth controller writes the cookies, and `core/middleware/csrf.ts` reads them. Core may not import a module (ADR-0009), so the shared constant lives in core and the auth module keeps only the *writing* — attributes, clearing, and the transport decision.
+
+_There is no `cookie-parser`._ §Context lists "a cookie parser" among what changes in `apps/api`, and what landed is a twenty-line `readCookie` rather than a dependency: `res.cookie` is already built into Express, this API reads exactly two cookies, and both hold base64url values it set itself. The two edges that make a naive parser wrong are tested — a value containing `=`, and a name that is a suffix of another name, so `evil.machxi.csrf` cannot answer for `machxi.csrf`.
+
+_`validate` now treats an absent body as `{}`._ Not a contracts change and not a new decision, but it is here because of this one: `fetch(url, { method: "POST" })` — what a browser refreshing from its cookie sends — carries no body and no content type, so Express leaves `req.body` undefined and `refreshBody`, whose every field is now optional, was rejected before the controller could look at the cookie. A schema with required fields is unaffected apart from reporting which fields are missing rather than "expected object, received undefined".
 
 ### What this does not decide
 
@@ -103,6 +127,22 @@ The middleware is `core/middleware/csrf.ts` and is applied by the auth routers, 
 - Postman keeps working unchanged, on `body` transport, which keeps the collection usable as documentation of the transport a mobile client would use.
 - `AuthResource.refreshToken` becoming optional makes every existing consumer's type slightly weaker. There are no consumers outside this repository yet, which is why this is the moment to do it.
 - Two cookies per population, four for a browser signed into both. They are path-scoped, so no request carries more than two.
+
+  **Amended 2026-08-19 (D2.5).** Three per population, and the CSRF one is now shared: `__Host-machxi.csrf` is at `Path=/`, so a browser signed into both populations holds one CSRF cookie and two refresh cookies. The last write wins, which is correct — the token is not a credential and any current value satisfies the check.
+
+**Amended 2026-08-19 (D2.5).** What the implementation and its review added to this list.
+
+- **The refresh limiter now counts only `401`.** It runs before `csrfGuard`, is keyed on IP alone, and `skipSuccessfulRequests` charged every non-2xx — so a `403 CSRF_TOKEN_INVALID` or a `400` empty body counted against the budget. Any web page could `fetch` `/auth/refresh` five times and lock a visitor out, and on cookie transport a locked-out browser has no token in JavaScript to retry with: the session ends at the next access-token expiry. `requestWasSuccessful: (_req, res) => res.statusCode !== 401` narrows it to what ADR-0020 meant by "failed refreshes".
+- **The body exemption belongs to `refresh` alone.** §CSRF exempts "a request that carries its refresh token in the body", which is a description of `refresh`; `logout` and `logout-all` read no body at all, so a `refreshToken` field in one of those is only ever a request to skip the check. The guard is a factory (`createCsrfGuard({ allowBodyToken })`) and the two logout routes take the default.
+- **`CSRF_TOKEN_INVALID` is unprefixed and grouped with the auth codes.** ADR-0013 prefixes codes owned by a module (`AUTH_`, `USER_`, `STAFF_`) and leaves generic ones bare; this one is raised by core middleware, which its taxonomy has no group for. The name follows the rule and the array entry sits with the endpoints it guards.
+- **`validate` treating an absent body as `{}` widened exactly one schema.** Every other all-optional body — `updateStaffBody`, `updateStaffProfileBody`, `updateUserBody`, `updateProfileBody` — carries `.refine(Object.keys(body).length > 0)`, so `{}` still fails there; `refreshBody` is the only one whose acceptance changed. That is what makes the change safe, and it is one missing `.refine` away from stopping being true.
+
+**Deployment constraints this creates, and what is still open.**
+
+- **The app and the API must be same-site.** `SameSite=Strict` means the refresh cookie is sent only when they share a registrable domain, so an SPA on `app.vercel.app` against `api.machxi.io` will never refresh and nothing in the code will say why. Cookie transport is for a same-site deployment; anything else stays on `body`.
+- **No untrusted host under that registrable domain.** The fail-closed duplicate rule turns a shadowing attempt into a denial of service rather than a compromise, which is the best a path-scoped cookie can do. A deployment that cannot make that promise should not enable cookie transport.
+- **A cross-host app cannot bootstrap after a reload.** It holds the CSRF token in memory, so a page refresh loses it, and the only way to obtain a new one is a request that does not itself need it. A `GET /auth/csrf` that sets and returns the pair is the conventional answer and is **not decided here** — it is a new endpoint, and it wants its own decision about caching, rate limiting and whether it may be called unauthenticated.
+- **The refresh cookie is not cleared when the server kills the session.** `logout` and `logout-all` clear both cookies; a refresh that fails with `AUTH_REFRESH_REUSED`, `AUTH_SESSION_REVOKED` or `AUTH_ACCOUNT_DISABLED` leaves the browser replaying a dead thirty-day cookie until it expires. Fixing it means a controller that inspects an error before rethrowing, which ADR-0013 keeps out of controllers, so it is recorded rather than done.
 
 ## Alternatives considered
 

@@ -106,6 +106,65 @@ describe.each(CASES)("$name cookie transport", (population) => {
       expect(response.body.error.code).toBe("CSRF_TOKEN_INVALID");
     });
 
+    it("refuses a request whose CSRF cookie was shadowed", async () => {
+      // A sibling subdomain can set a `Domain=` cookie of the same name, and
+      // RFC 6265 orders the header so the attacker's copy can come first.
+      // `readCookie` fails closed on a duplicate, so the double-submit cannot
+      // be satisfied by a value the attacker chose.
+      const session = await signIn();
+
+      const response = await request()
+        .post(`${population.base}/refresh`)
+        .set("Cookie", [`${CSRF_COOKIE}=attacker-chosen`, ...session.cookies])
+        .set(CSRF_HEADER, "attacker-chosen")
+        .expect(403);
+
+      expect(response.body.error.code).toBe("CSRF_TOKEN_INVALID");
+    });
+
+    it("refuses a request whose refresh cookie was shadowed", async () => {
+      // The same defence on the credential itself: a planted refresh cookie
+      // would otherwise be session fixation, since the shadow keeps winning
+      // every rotation.
+      const session = await signIn();
+
+      const response = await request()
+        .post(`${population.base}/refresh`)
+        .set("Cookie", [
+          `${REFRESH_COOKIE}=attacker-session`,
+          ...session.cookies,
+        ])
+        .set(CSRF_HEADER, session.csrf)
+        // No refresh cookie survives the duplicate, so nothing was presented.
+        .expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("hands the client the CSRF token in the body as well", async () => {
+      // The cookie is what a page re-reads after a reload; this is what an app
+      // served from a different host than the API uses, since it can never
+      // read the API's cookies (ADR-0029 §CSRF, amended D2.5).
+      const response = await request()
+        .post(`${population.base}/login`)
+        .set(TRANSPORT_HEADER, "cookie")
+        .send(population.credentials())
+        .expect(200);
+
+      expect(response.body.data.csrfToken).toBe(
+        cookieValue(response, CSRF_COOKIE),
+      );
+    });
+
+    it("omits the CSRF token from a body-transport response", async () => {
+      const response = await request()
+        .post(`${population.base}/login`)
+        .send(population.credentials())
+        .expect(200);
+
+      expect(response.body.data.csrfToken).toBeUndefined();
+    });
+
     it("refuses the header alone, without the cookie it must match", async () => {
       // Half of a double-submit is not a submit: an attacker who can set a
       // header cannot read the cookie, which is the whole asymmetry.
@@ -187,13 +246,15 @@ describe.each(CASES)("$name cookie transport", (population) => {
 
       expect(cleared).toHaveLength(2);
 
-      for (const name of [REFRESH_COOKIE, CSRF_COOKIE]) {
-        const cookie = setCookie(response, name);
+      // Cleared with the attributes each was set with, or the browser keeps
+      // the original: a cookie is identified by name, domain **and** path.
+      expect(setCookie(response, REFRESH_COOKIE)).toContain(
+        `Path=${population.base}`,
+      );
+      expect(setCookie(response, CSRF_COOKIE)).toContain("Path=/");
 
-        expect(cookie).toBeDefined();
-        // Cleared with the attributes it was set with, or the browser keeps
-        // the original: a cookie is identified by name, domain **and** path.
-        expect(cookie).toContain(`Path=${population.base}`);
+      for (const name of [REFRESH_COOKIE, CSRF_COOKIE]) {
+        expect(setCookie(response, name)).toBeDefined();
         expect(cookieValue(response, name)).toBeUndefined();
       }
     });

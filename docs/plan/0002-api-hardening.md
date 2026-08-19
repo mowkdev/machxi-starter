@@ -142,9 +142,25 @@ Postman: the teardown folder deletes the accounts each run creates instead of di
 
 **Done when:** a deleted user's address can be re-registered; two rows may share an address with at most one live; writes to a deleted user answer `409 USER_DELETED` while `GET` still answers `200`; deleting the last active super admin is refused; deleting a staff member revokes their sessions in the same transaction; `pnpm db:reset` replays cleanly from migration `0000`.
 
-### 5. Browser token transport
+### 5. ~~Browser token transport~~ — **done 2026-08-19**
 
 **ADRs:** [0029](../adr/0029-browser-token-transport.md), [0018](../adr/0018-authentication-sessions-and-tokens.md) §Token transport, [0020](../adr/0020-security-baseline.md) §CORS
+
+**Closed.** `X-Auth-Transport: cookie` on `login`, `refresh` and `register` moves the refresh token into `__Secure-machxi.refresh` and omits it from the body; `core/middleware/csrf.ts` guards `refresh`, `logout` and `logout-all`; `AuthResource.refreshToken` and `refreshBody.refreshToken` are optional and `CSRF_TOKEN_INVALID` (403) joins the union. New files: `core/http/cookies.ts`, `core/middleware/csrf.ts`, `modules/auth/auth.cookies.ts`, `test/support/transport.ts`, `test/auth-cookie.int.test.ts`. The auth suite now runs four times — population × transport — for 446 unit and 406 integration tests. Postman is deliberately unchanged, on `body` transport, which keeps the collection an accurate description of what a mobile client does.
+
+Two decisions the ADR did not settle, both recorded in it (**amended 2026-08-19 (D2.5)**):
+
+- **A cookie-driven `refresh` is answered on cookie transport whether or not the header is present.** Header-only reads well and is a trap: a browser that forgets the header gets the rotated token in the body and no new cookie, so it keeps the value that was just rotated away — replaying that later is reuse detection, and the session is revoked. A missing header must not cost a session. It is not the `Origin`-sniffing the ADR rejected, and §CSRF already reasons with the same predicate: the signal is the credential the client actually presented.
+- **`validate` treats an absent body as `{}`.** `fetch(url, { method: "POST" })` — what a browser refreshing from its cookie sends — carries no body and no content type, so Express leaves `req.body` undefined and every field of `refreshBody` is now optional. Every other all-optional body schema carries `.refine(keys > 0)`, so `refreshBody` is the only one whose acceptance widened.
+
+**The security review found two HIGH defects in what shipped, and both were real.**
+
+- **The CSRF token was unreadable by any real browser.** ADR-0029 scoped `machxi.csrf` to the same path as the refresh cookie, and `document.cookie` returns only cookies matching the _document's_ path — so an app at `/dashboard` could never read a token scoped to `/api/v1/admin/auth`. The double-submit could only ever have failed, and the first thing anyone building `admin` would have done is delete the check. It is now `__Host-machxi.csrf` at `Path=/`, **and** returned in the body as `AuthResource.csrfToken`, because an app on a different host from the API — same-site enough for the cookie to be sent, different-host enough that it cannot read it — is exactly the deployment `CORS_ORIGINS` exists for.
+- **A sibling subdomain could shadow either cookie.** `__Secure-` constrains the scheme, not the host, and RFC 6265 orders the `Cookie` header so the attacker picks what a first-match reader sees: their CSRF token, or their refresh token (session fixation, winning every rotation). `readCookie` now fails closed on a duplicate name, and `__Host-` closes it outright for the CSRF cookie.
+
+Two MEDIUMs went with them: the refresh limiter counted `403`s and `400`s, so any web page could spend a visitor's budget and — on cookie transport, with no token in JavaScript to retry with — end their session; and the body exemption in the CSRF guard applied to `logout`, which reads no body at all.
+
+**What D2.5 leaves open**, all in ADR-0029's amended §Consequences: cookie transport requires a same-site deployment with no untrusted host under the registrable domain; a cross-host app cannot bootstrap a CSRF token after a page reload without a `GET /auth/csrf` endpoint, which is a decision rather than an implementation detail; and a refresh that fails terminally does not clear the cookie, because a controller that inspects an error before rethrowing is what ADR-0013 keeps out of controllers.
 
 ADR-0029 was accepted on 2026-08-18, which un-gates this step. It changes `AuthResource`, a published contract, so it lands **before** any D3 client code is written and not alongside it.
 

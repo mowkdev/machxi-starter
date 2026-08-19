@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 
 import {
   CSRF_COOKIE,
+  CSRF_COOKIE_PATH,
   REFRESH_COOKIE,
   TRANSPORT_HEADER,
   authCookiePath,
@@ -90,8 +91,15 @@ export const setAuthCookies = (
 
   // Not `httpOnly`, and that is the mechanism rather than an oversight: the
   // client reads this one and echoes it in `X-CSRF-Token`.
+  //
+  // `Path=/` rather than the segment path its sibling uses, because a cookie
+  // is only visible to `document.cookie` at the document's own path — an app
+  // served from `/` cannot read one scoped to `/api/v1/admin/auth`. The
+  // `__Host-` prefix requires `Path=/` too, and buys host-only in exchange.
   res.cookie(CSRF_COOKIE, csrfToken, {
-    ...baseAttributes(population),
+    secure: true,
+    sameSite: "strict",
+    path: CSRF_COOKIE_PATH,
     httpOnly: false,
     maxAge,
   });
@@ -117,7 +125,9 @@ export const clearAuthCookies = (
     httpOnly: true,
   });
   res.clearCookie(CSRF_COOKIE, {
-    ...baseAttributes(population),
+    secure: true,
+    sameSite: "strict",
+    path: CSRF_COOKIE_PATH,
     httpOnly: false,
   });
 };

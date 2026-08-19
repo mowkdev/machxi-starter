@@ -1,5 +1,4 @@
 import type {
-  AuthResource,
   LoginBody,
   Population,
   PrincipalResource,
@@ -21,7 +20,7 @@ import {
   sessionRevoked,
 } from "./auth.errors.js";
 import type { HashLimiter } from "./auth.hash-limiter.js";
-import { toAuthResource } from "./auth.mapper.js";
+import { toAuthResource, type IssuedAuthResource } from "./auth.mapper.js";
 import type { SessionsRepository } from "./auth.repository.js";
 import type { TokenService } from "./auth.tokens.js";
 import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
@@ -165,7 +164,7 @@ export const createAuthService = ({
     principal: PrincipalRecord,
     at: Date,
     tx?: DbExecutor,
-  ): Promise<AuthResource> => {
+  ): Promise<IssuedAuthResource> => {
     const refreshToken = newRefreshToken();
     const refreshTokenExpiresAt = refreshExpiryFrom(at);
 
@@ -215,7 +214,7 @@ export const createAuthService = ({
     login: async (
       ctx: RequestContext,
       { email, password }: LoginBody,
-    ): Promise<AuthResource> => {
+    ): Promise<IssuedAuthResource> => {
       const at = now();
       const principal = await principals.findByEmail(email);
 
@@ -284,7 +283,7 @@ export const createAuthService = ({
     refresh: async (
       ctx: RequestContext,
       { refreshToken }: RefreshInput,
-    ): Promise<AuthResource> => {
+    ): Promise<IssuedAuthResource> => {
       const at = now();
       const presentedHash = sha256Base64url(refreshToken);
 
@@ -542,7 +541,7 @@ export const createAuthService = ({
     register: async (
       ctx: RequestContext,
       body: RegisterBody,
-    ): Promise<AuthResource> => {
+    ): Promise<IssuedAuthResource> => {
       const create = principals.create;
 
       if (create === undefined) {

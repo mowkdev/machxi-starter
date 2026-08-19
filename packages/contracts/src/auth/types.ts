@@ -39,6 +39,23 @@ export interface TokenPair {
    */
   readonly refreshToken?: string;
   readonly refreshTokenExpiresAt: IsoDateTime;
+  /**
+   * **Present only on cookie transport** (ADR-0029 §CSRF): the value the
+   * client must echo in `X-CSRF-Token` on `refresh`, `logout` and
+   * `logout-all`.
+   *
+   * It is also set as the `__Host-machxi.csrf` cookie, and that copy is the
+   * one a page uses after a reload. This one exists because the two are not
+   * interchangeable: an app served from a different host than the API — the
+   * deployment `CORS_ORIGINS` and `credentials: true` exist for — can never
+   * read the API's cookies from `document.cookie`, so without this it could
+   * not satisfy the check at all.
+   *
+   * It is not a credential: it grants nothing on its own, and its only job is
+   * to prove that whoever sent the request could read a response or a cookie
+   * from this origin, which a cross-site attacker cannot.
+   */
+  readonly csrfToken?: string;
   readonly tokenType: typeof TOKEN_TYPE;
 }
 

@@ -34,10 +34,22 @@ export const REFRESH_COOKIE = "__Secure-machxi.refresh";
  * its own — it proves only that the sender could read a cookie for this
  * origin, which a cross-site attacker cannot.
  *
- * No `__Secure-` prefix, because it is not a credential and the prefix would
- * only make the name longer.
+ * `__Host-`, unlike its sibling, and both halves of that prefix's contract are
+ * wanted here rather than tolerated. `Path=/` is what makes the cookie
+ * *readable*: `document.cookie` returns only cookies whose path matches the
+ * **document's** URL, so an app at `/dashboard` could never see a token scoped
+ * to `/api/v1/admin/auth` — the version this shipped with in D2.5 was
+ * unreadable by any real browser, and the check it guards could only ever have
+ * failed. Host-only is what makes it unshadowable by a sibling subdomain,
+ * which is the attacker `csrf.ts` names as its reason to exist.
+ *
+ * Sending a non-secret token on every request to this host is the cost, and it
+ * is the normal shape of a CSRF cookie.
  */
-export const CSRF_COOKIE = "machxi.csrf";
+export const CSRF_COOKIE = "__Host-machxi.csrf";
+
+/** `__Host-` requires it, and readability by the app's own pages needs it. */
+export const CSRF_COOKIE_PATH = "/";
 
 /** Where the client echoes {@link CSRF_COOKIE} back. */
 export const CSRF_HEADER = "x-csrf-token";
@@ -67,15 +79,32 @@ export const authCookiePath = (population: "staff" | "user"): string =>
  * nothing else wants.
  *
  * RFC 6265 §4.2.1 is the whole grammar: pairs separated by `; `, the name up
- * to the first `=`, the value everything after it. Two details are worth
- * stating because they are what a naive `split("=")` gets wrong — a value may
- * contain `=` (base64 padding does), and a name must match **exactly**, or
- * `machxi.csrf` would also match a cookie called `evil.machxi.csrf`.
+ * to the first `=`, the value everything after it. Three details are worth
+ * stating because they are what a naive implementation gets wrong.
+ *
+ * A value may contain `=` — base64 padding does — so the split is on the
+ * *first* one only. A name must match **exactly**, or `machxi.csrf` would also
+ * answer for `evil.machxi.csrf`.
+ *
+ * And **a name that appears twice yields nothing**, which is the one that is a
+ * security property rather than a correctness one. A `Cookie` header may
+ * legitimately carry two cookies of the same name from different paths or
+ * domains, ordered by descending path length (RFC 6265 §5.4) — so a sibling
+ * subdomain that can set `Domain=example.com` cookies chooses which one a
+ * first-match reader sees. For `machxi.csrf` that hands the attacker both
+ * halves of the double-submit; for the refresh cookie it is session fixation,
+ * with the shadow winning every subsequent rotation because the API's own
+ * cookie is host-only at a shorter path. `__Secure-` does not help: it
+ * constrains the scheme, not the host. Failing closed does — the request is
+ * answered as though no cookie were present, which for a real client is a
+ * re-login and for the attacker is nothing.
  */
 export const readCookie = (req: Request, name: string): string | undefined => {
   const header = req.headers.cookie;
 
   if (header === undefined) return undefined;
+
+  let found: string | undefined;
 
   for (const pair of header.split(";")) {
     const separator = pair.indexOf("=");
@@ -84,17 +113,22 @@ export const readCookie = (req: Request, name: string): string | undefined => {
 
     if (pair.slice(0, separator).trim() !== name) continue;
 
+    // Seen twice: somebody is shadowing, and neither value can be trusted to
+    // be ours.
+    if (found !== undefined) return undefined;
+
     const value = pair.slice(separator + 1).trim();
 
     // `res.cookie` percent-encodes on the way out, so this reverses it. A
     // malformed sequence would throw, and a cookie the client mangled is a
-    // cookie this API does not have.
+    // cookie this API does not have — but the loop continues, so a malformed
+    // duplicate cannot hide a second one.
     try {
-      return decodeURIComponent(value);
+      found = decodeURIComponent(value);
     } catch {
-      return undefined;
+      found = "";
     }
   }
 
-  return undefined;
+  return found === "" ? undefined : found;
 };

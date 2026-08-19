@@ -38,19 +38,16 @@ import { forbidden } from "../errors/index.js";
  * error messages. The only question asked of the body is whether the caller
  * supplied a token at all.
  */
-const isCookieDriven = (req: Request): boolean => {
-  if (readCookie(req, REFRESH_COOKIE) === undefined) return false;
-
+const carriesBodyToken = (req: Request): boolean => {
   const body: unknown = req.body;
 
-  const suppliedInBody =
+  return (
     typeof body === "object" &&
     body !== null &&
     "refreshToken" in body &&
     typeof (body as { refreshToken?: unknown }).refreshToken === "string" &&
-    (body as { refreshToken: string }).refreshToken.length > 0;
-
-  return !suppliedInBody;
+    (body as { refreshToken: string }).refreshToken.length > 0
+  );
 };
 
 /**
@@ -68,6 +65,24 @@ const equals = (a: string, b: string): boolean => {
   return left.length === right.length && timingSafeEqual(left, right);
 };
 
+export interface CsrfGuardOptions {
+  /**
+   * Whether a refresh token in the body exempts the request.
+   *
+   * True for `refresh`, which is the only endpoint where a body token is a
+   * legitimate way to present the credential — that request is not
+   * cookie-driven and ADR-0029 does not subject it to the check.
+   *
+   * False everywhere else, and `logout` / `logout-all` are why it is an option
+   * rather than a constant: they take no body at all, so a `refreshToken`
+   * field in one means nothing except that somebody wanted the exemption. It
+   * is not reachable cross-site today — both require `Authorization: Bearer`,
+   * which a cross-site page cannot set — but an exemption that exists for one
+   * endpoint should not be honoured by endpoints that cannot use it.
+   */
+  readonly allowBodyToken?: boolean;
+}
+
 /**
  * Requires `X-CSRF-Token` to match the `machxi.csrf` cookie on a cookie-driven
  * request, and does nothing otherwise.
@@ -77,28 +92,30 @@ const equals = (a: string, b: string): boolean => {
  * request. A `401` would tell a client whose token merely went stale to throw
  * the session away.
  */
-export const csrfGuard = (
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-): void => {
-  if (!isCookieDriven(req)) {
+export const createCsrfGuard =
+  ({ allowBodyToken = false }: CsrfGuardOptions = {}) =>
+  (req: Request, _res: Response, next: NextFunction): void => {
+    const cookieDriven =
+      readCookie(req, REFRESH_COOKIE) !== undefined &&
+      !(allowBodyToken && carriesBodyToken(req));
+
+    if (!cookieDriven) {
+      next();
+
+      return;
+    }
+
+    const cookie = readCookie(req, CSRF_COOKIE);
+    const header = req.get(CSRF_HEADER);
+
+    if (
+      cookie === undefined ||
+      header === undefined ||
+      cookie.length === 0 ||
+      !equals(cookie, header)
+    ) {
+      throw forbidden("CSRF token missing or invalid", "CSRF_TOKEN_INVALID");
+    }
+
     next();
-
-    return;
-  }
-
-  const cookie = readCookie(req, CSRF_COOKIE);
-  const header = req.get(CSRF_HEADER);
-
-  if (
-    cookie === undefined ||
-    header === undefined ||
-    cookie.length === 0 ||
-    !equals(cookie, header)
-  ) {
-    throw forbidden("CSRF token missing or invalid", "CSRF_TOKEN_INVALID");
-  }
-
-  next();
-};
+  };

@@ -197,12 +197,20 @@ describe.each(RUNS)("$name authentication", ({ population, transport }) => {
       expect(refresh).toMatch(/SameSite=Strict/i);
       expect(refresh).toContain(`Path=${population.base}`);
 
-      // Readable by script on purpose — the client echoes it back — and
-      // scoped exactly like its sibling.
+      // Readable by script on purpose — the client echoes it back — and at
+      // `Path=/` rather than its sibling's segment path, because
+      // `document.cookie` only returns cookies matching the *document's* path
+      // and no app is served from `/api/v1/admin/auth`. `__Host-` requires the
+      // same `Path=/` and buys host-only in return (ADR-0029, amended D2.5).
       expect(csrf).not.toMatch(/HttpOnly/i);
       expect(csrf).toMatch(/Secure/i);
       expect(csrf).toMatch(/SameSite=Strict/i);
-      expect(csrf).toContain(`Path=${population.base}`);
+      expect(csrf).toContain("Path=/");
+      expect(csrf).not.toContain(`Path=${population.base}`);
+
+      // And in the body as well, for an app on a different host than the API,
+      // which can never read the API's cookies at all.
+      expect(response.body.data.csrfToken).toEqual(expect.any(String));
 
       // The expiry stays on the wire either way: knowing when the session ends
       // is useful to a client that cannot see the credential.

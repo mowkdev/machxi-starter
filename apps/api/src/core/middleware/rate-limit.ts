@@ -115,12 +115,23 @@ export const createLoginRateLimiter = (config: AppConfig): RequestHandler =>
  * `skipSuccessfulRequests` is the whole point: a client whose access token
  * expires every 15 minutes refreshes legitimately and must never spend its
  * budget doing so. What this bounds is guessing at opaque tokens.
+ *
+ * **Only a rejected token spends budget** — `401`, and nothing else. Charging
+ * every non-2xx was defensible while the only way to reach this endpoint was
+ * to present a token, and stopped being so with cookie transport (ADR-0029):
+ * the limiter runs before `csrfGuard`, is keyed on IP alone, and a `403`
+ * CSRF failure or a `400` empty body would have counted. Any web page can
+ * `fetch` this endpoint five times with no cookie and no body, and on cookie
+ * transport a locked-out browser has no token in JavaScript to retry with —
+ * so a spent budget is not "retry later", it is the session ending at the next
+ * access-token expiry.
  */
 export const createRefreshRateLimiter = (config: AppConfig): RequestHandler =>
   rateLimit({
     ...baseOptions(RATE_LIMIT_WINDOW_MS),
     limit: config.rateLimit.refreshMax,
     skipSuccessfulRequests: true,
+    requestWasSuccessful: (_req, res) => res.statusCode !== 401,
   });
 
 /**

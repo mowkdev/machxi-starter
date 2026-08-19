@@ -17,6 +17,7 @@ export {
 } from "./auth.hash-limiter.js";
 export {
   toAuthResource,
+  type IssuedAuthResource,
   toStaffPrincipalResource,
   toUserPrincipalResource,
 } from "./auth.mapper.js";

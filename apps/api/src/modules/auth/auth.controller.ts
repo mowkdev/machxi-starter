@@ -10,6 +10,7 @@ import {
   readTransport,
   setAuthCookies,
 } from "./auth.cookies.js";
+import type { IssuedAuthResource } from "./auth.mapper.js";
 import type { AuthService } from "./auth.service.js";
 import type {
   loginSchema,
@@ -65,7 +66,7 @@ export const createAuthController = ({
   const applyTransport = (
     req: Request,
     res: Response,
-    resource: AuthResource,
+    resource: IssuedAuthResource,
     /**
      * Forces cookie transport because the request *arrived* on it.
      *
@@ -88,15 +89,17 @@ export const createAuthController = ({
 
     const { refreshToken, ...rest } = resource;
 
-    if (refreshToken !== undefined) {
-      setAuthCookies(res, {
-        population,
-        token: refreshToken,
-        maxAgeSec: refreshTtlSec,
-      });
-    }
+    const csrfToken = setAuthCookies(res, {
+      population,
+      token: refreshToken,
+      maxAgeSec: refreshTtlSec,
+    });
 
-    return rest;
+    // In the body as well as in the cookie, and the two are for different
+    // moments: the cookie is what a page reads after a reload, and this is
+    // what an app on a different host than the API uses, since it can never
+    // read the API's cookies at all (ADR-0029 §CSRF, amended D2.5).
+    return { ...rest, csrfToken };
   };
 
   return {

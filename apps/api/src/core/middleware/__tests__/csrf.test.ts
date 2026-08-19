@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { isAppError } from "../../errors/index.js";
 import { CSRF_COOKIE, REFRESH_COOKIE } from "../../http/index.js";
-import { csrfGuard } from "../csrf.js";
+import { createCsrfGuard } from "../csrf.js";
 
 /**
  * The double-submit check (ADR-0029 §CSRF).
@@ -30,10 +30,17 @@ const requestOf = ({ cookies, header, body }: RequestShape): Request =>
       name.toLowerCase() === "x-csrf-token" ? header : undefined,
   }) as unknown as Request;
 
-const run = (shape: RequestShape) => {
+/**
+ * `allowBodyToken` defaults to true here because most cases below are about
+ * `refresh`, the only endpoint where a token in the body is a legitimate way
+ * to present the credential. The logout shape — where it is false — has its
+ * own case at the end.
+ */
+const run = (shape: RequestShape, allowBodyToken = true) => {
   const next = vi.fn();
+  const guard = createCsrfGuard({ allowBodyToken });
   const call = () => {
-    csrfGuard(requestOf(shape), {} as Response, next as NextFunction);
+    guard(requestOf(shape), {} as Response, next as NextFunction);
   };
 
   return { next, call } as const;
@@ -138,6 +145,17 @@ describe("csrfGuard", () => {
 
     it("refuses a request with no body at all — logout and logout-all", () => {
       expectForbidden(run({ cookies }).call);
+    });
+
+    it("ignores a body token where no body is read at all", () => {
+      // `logout` and `logout-all` take no body, so a `refreshToken` field in
+      // one means nothing except that somebody wanted the exemption `refresh`
+      // has. Not reachable cross-site — both need `Authorization: Bearer` —
+      // but an exemption should not be honoured by an endpoint that cannot
+      // use it.
+      expectForbidden(
+        run({ cookies, body: { refreshToken: "in-the-body" } }, false).call,
+      );
     });
   });
 });

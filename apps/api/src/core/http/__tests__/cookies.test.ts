@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CSRF_COOKIE,
+  CSRF_COOKIE_PATH,
   REFRESH_COOKIE,
   authCookiePath,
   readCookie,
@@ -61,6 +62,25 @@ describe("readCookie", () => {
     ).toBeUndefined();
   });
 
+  it("yields nothing when the name appears twice", () => {
+    // RFC 6265 section 5.4 orders the header by descending path length, so a
+    // sibling subdomain that can set `Domain=` cookies chooses what a
+    // first-match reader sees: the attacker's CSRF token, or their refresh
+    // token. Failing closed costs a real client a re-login and costs the
+    // attacker the attack.
+    const shadowed = `${CSRF_COOKIE}=attacker; ${CSRF_COOKIE}=ours`;
+
+    expect(readCookie(withCookies(shadowed), CSRF_COOKIE)).toBeUndefined();
+  });
+
+  it("fails closed even when the shadow is malformed", () => {
+    // A duplicate that throws in `decodeURIComponent` must not let the second
+    // one through as though it were the only one.
+    const shadowed = `${REFRESH_COOKIE}=%E0%A4%A; ${REFRESH_COOKIE}=ours`;
+
+    expect(readCookie(withCookies(shadowed), REFRESH_COOKIE)).toBeUndefined();
+  });
+
   it("is undefined for a missing header, a missing name and a pair with no `=`", () => {
     expect(readCookie(withCookies(), REFRESH_COOKIE)).toBeUndefined();
     expect(readCookie(withCookies("other=1"), REFRESH_COOKIE)).toBeUndefined();
@@ -87,10 +107,17 @@ describe("authCookiePath", () => {
 });
 
 describe("the cookie names", () => {
-  it("prefixes the credential with `__Secure-` and not the CSRF token", () => {
+  it("gives each cookie the prefix its job allows", () => {
+    // The credential is path-scoped, so it cannot take `__Host-`, which
+    // requires `Path=/` and would attach a thirty-day token to every request
+    // this API serves.
     expect(REFRESH_COOKIE.startsWith("__Secure-")).toBe(true);
-    // Not a credential, and it must be readable by script, so the prefix would
-    // buy nothing but length.
-    expect(CSRF_COOKIE.startsWith("__")).toBe(false);
+    expect(REFRESH_COOKIE.startsWith("__Host-")).toBe(false);
+
+    // The CSRF token has to be readable at the *document's* path, so it is at
+    // `Path=/` anyway — which makes `__Host-` free, and host-only is exactly
+    // what stops a sibling subdomain shadowing it.
+    expect(CSRF_COOKIE.startsWith("__Host-")).toBe(true);
+    expect(CSRF_COOKIE_PATH).toBe("/");
   });
 });
