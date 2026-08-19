@@ -2,7 +2,7 @@
 
 Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin panel and a web app. **Architecture is decided in `docs/adr/` — read the relevant ADR before changing anything it covers.** Index: `docs/adr/README.md`. Build order and endpoint scope: the deliverable plans in `docs/plan/`, starting from the ledger `docs/plan/README.md`.
 
-Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18, D2 (API hardening) shipped 2026-08-19; nothing is in progress** — D3 (the frontend apps) is next and needs an ADR for `packages/ui` first. See `docs/plan/README.md`.
+Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18, D2 shipped 2026-08-19; D3 (admin panel) is in progress** — `docs/plan/0003-admin-app.md`. ADRs 0030–0036 were written for D3 and are `proposed`: each must be accepted before its implementing step starts, and they are the only ADRs currently amendable in place.
 
 ## Non-negotiables (from the ADRs)
 
@@ -19,6 +19,7 @@ Work is staged into numbered **deliverables** (ADR-0025), one plan file each, st
 - **Contracts** (ADR-0023): `@repo/contracts` depends only on `zod`; enums are defined once there and consumed by `pgEnum` and zod.
 - **Deliverables and the ADR window** (ADR-0025): an ADR may be amended in place only while the deliverable it belongs to is `in progress` in `docs/plan/README.md`. **Every ADR is currently frozen** — 0001–0024 with shipped D1, 0025–0029 with shipped D2 — so diverging from any of them means writing a superseding ADR, never editing it. A new deliverable reopens only the ADRs written for it.
 - **Task caching** (ADR-0026): a task whose result depends on anything outside the repo is never cached and declares its `env`. `pnpm test` includes the integration tier, so it is `cache: false` and runs `--concurrency=1`; `pnpm test:unit` is the cached fast loop.
+- **Frontend (D3, ADRs 0030–0036 — `proposed`, read before touching `apps/admin` or `packages/ui`)**: shadcn/ui design system in `@repo/ui` on Tailwind v4 (0031); FSD layers with lint-enforced import direction and TanStack Router file-based routes (0032); tokens in memory only, single-flight refresh, CSRF via the 0030 bootstrap endpoint, never `document.cookie` or localStorage (0033); TanStack Query owns all server state, list state in URL search params, toasts via typed mutation `meta` + sonner (0034); one `ResourceConfig` per resource — serializable config + named registries — for both AppGrid (AG Grid CE) and config-driven RHF forms over contracts zod schemas, all fields disabled while a mutation is pending (0035); Vitest + Testing Library + MSW with handlers derived from `@repo/contracts`, no live-API tier (0036).
 
 ## Commands
 
@@ -38,7 +39,7 @@ pnpm test:postman              # newman over docs/postman
 ## Repo map
 
 - `apps/api` — Express 5 API (`src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, `src/core/container.ts` composition root)
-- `apps/admin` (Vite + React), `apps/web` (Next.js) — out of scope until the API deliverable is done
+- `apps/admin` (Vite + React SPA, port 3001) — **the D3 build target**, FSD architecture per ADR-0032; `apps/web` (Next.js) — out of scope until D4
 - `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
 - `docker/local` — compose for local dev; `docs/` — ADRs, plan, Postman
 - `scripts/` — repo-level tooling outside the workspaces, so **not** covered by `turbo run lint` / `check-types` (ADR-0002); today only `postman.mjs`
