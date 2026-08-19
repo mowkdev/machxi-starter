@@ -82,7 +82,7 @@ D3 needs these, so they are in scope for `D3.1` rather than added ad hoc later:
 
 - **The admin app's internal architecture** — routing, state, data fetching. That is [ADR-0032](0032-admin-app-architecture.md).
 - **Form wiring** — which form engine, how `Field` composes with it, validation against `@repo/contracts` schemas. That is [ADR-0035](0035-config-driven-resource-ui.md).
-- **Grid theming**, beyond one sentence that belongs here because it is a token concern: AG Grid's Theming API binds to the same CSS variables this package declares, so the grid follows the theme — light, dark and brand — from the one stylesheet. The detail is ADR-0035's.
+- **The data grid.** ADR-0035 builds it from TanStack Table and this package's own `Table` primitives, so there is no second theming system to bridge — the grid follows the theme because it is made of these components. Nothing about it is decided here.
 
 ## Consequences
 

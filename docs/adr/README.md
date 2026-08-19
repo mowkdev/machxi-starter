@@ -85,7 +85,7 @@ Written together when D3 opened (2026-08-19); all `proposed`, each accepted befo
 | [0032](0032-admin-app-architecture.md)         | Admin app architecture: Feature-Sliced Design and TanStack Router              | proposed | D3.3 planned — the `apps/admin` skeleton, layouts and route tree                      |
 | [0033](0033-browser-api-client-and-session.md) | Browser API client and session: axios, in-memory tokens, single-flight refresh | proposed | D3.4 planned — the client half of ADR-0029/0030                                       |
 | [0034](0034-server-state-and-notifications.md) | Server state and notifications: TanStack Query conventions and sonner          | proposed | D3.5 planned — query-key factories, list state in the URL, `meta`-driven toasts       |
-| [0035](0035-config-driven-resource-ui.md)      | Config-driven resource UI: AppGrid on AG Grid CE, forms on React Hook Form     | proposed | D3.6 planned — the machinery; exercised by the staff/users/profile pages in D3.7–D3.9 |
+| [0035](0035-config-driven-resource-ui.md)      | Config-driven resource UI: AppGrid on TanStack Table, forms on React Hook Form | proposed | D3.6 planned — the machinery; exercised by the staff/users/profile pages in D3.7–D3.9 |
 | [0036](0036-admin-testing-strategy.md)         | Admin app testing strategy: Vitest, Testing Library and MSW                    | proposed | D3.3 planned — the harness; suites accrue in every later step (sits beside ADR-0021)  |
 
 ### Planned (not yet written)
