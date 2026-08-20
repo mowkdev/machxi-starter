@@ -34,19 +34,31 @@ interface AppFormContextValue {
 
 const AppFormContext = createContext<AppFormContextValue | null>(null);
 
-export interface AppFormProviderProps<TValues extends FieldValues> {
+/**
+ * `TSubmitted` carries RHF's transform, and defaults to `TValues` because most
+ * forms have none (**amended D3.8** — see `AppFormDialog`). Nothing in here
+ * reads either one; the provider only needs to accept the form the caller
+ * built, and a two-parameter signature would refuse a transformed one.
+ */
+export interface AppFormProviderProps<
+  TValues extends FieldValues,
+  TSubmitted extends FieldValues = TValues,
+> {
   readonly fields: FieldConfigMap;
   readonly variant: FieldVariant;
-  readonly form: UseFormReturn<TValues>;
+  readonly form: UseFormReturn<TValues, unknown, TSubmitted>;
   readonly children: ReactNode;
 }
 
-export const AppFormProvider = <TValues extends FieldValues>({
+export const AppFormProvider = <
+  TValues extends FieldValues,
+  TSubmitted extends FieldValues = TValues,
+>({
   fields,
   variant,
   form,
   children,
-}: AppFormProviderProps<TValues>) => (
+}: AppFormProviderProps<TValues, TSubmitted>) => (
   <AppFormContext.Provider value={{ fields, variant }}>
     <FormProvider {...form}>{children}</FormProvider>
   </AppFormContext.Provider>

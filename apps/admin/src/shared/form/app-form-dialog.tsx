@@ -47,16 +47,32 @@ import { AppFormError } from "./form-error";
  * `users-manage` need the same frame, and a copy in each is the drift ADR-0035
  * exists to prevent, one layer up from the fields.
  */
-export interface AppFormDialogProps<TValues extends FieldValues> {
+/**
+ * `TSubmitted` defaults to `TValues`, and the two differ exactly when a form's
+ * **state is not its request body** (**amended D3.7 → D3.8**).
+ *
+ * That is not the common case and was not the case at all until `D3.8`: a body
+ * whose fields are all required — `createStaffBody` — is held by the controls
+ * as-is. A body with *optional* fields is not, because "the operator left this
+ * blank" has to arrive as an absent key and no control can hold absence. Such a
+ * form resolves through a transform, RHF types that with its third parameter,
+ * and this frame has to carry the pair or the caller is forced into a cast that
+ * asserts away the very distinction the transform exists to make.
+ */
+export interface AppFormDialogProps<
+  TValues extends FieldValues,
+  TSubmitted extends FieldValues = TValues,
+> {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly title: string;
   readonly description?: string;
   /** The form the caller built, with `disabled` already tied to `isPending`. */
-  readonly form: UseFormReturn<TValues>;
+  readonly form: UseFormReturn<TValues, unknown, TSubmitted>;
   readonly fields: FieldConfigMap;
   readonly variant: FieldVariant;
-  readonly onSubmit: (values: TValues) => void | Promise<void>;
+  /** What the form *sends*, which the resolver may have transformed. */
+  readonly onSubmit: (values: TSubmitted) => void | Promise<void>;
   readonly isPending: boolean;
   readonly submitLabel: string;
   /** `false` while there is nothing worth submitting — an untouched edit. */
@@ -65,7 +81,10 @@ export interface AppFormDialogProps<TValues extends FieldValues> {
   readonly children: ReactNode;
 }
 
-export const AppFormDialog = <TValues extends FieldValues>({
+export const AppFormDialog = <
+  TValues extends FieldValues,
+  TSubmitted extends FieldValues = TValues,
+>({
   open,
   onOpenChange,
   title,
@@ -78,7 +97,7 @@ export const AppFormDialog = <TValues extends FieldValues>({
   submitLabel,
   canSubmit = true,
   children,
-}: AppFormDialogProps<TValues>) => (
+}: AppFormDialogProps<TValues, TSubmitted>) => (
   <Dialog
     open={open}
     onOpenChange={(next) => {

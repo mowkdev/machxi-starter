@@ -97,12 +97,22 @@ export type FilterControlConfig =
     }
   | {
       /**
-       * `filter[deletedAt][null]=false` — "show deleted users" as a checkbox.
+       * A checkbox over a nullability question — `filter[deletedAt][null]=false`
+       * on the users list.
        *
        * `value` is what the box writes when it is checked; unchecked clears the
        * filter rather than writing the opposite, because "no opinion" and "only
        * the live ones" are the same request to an endpoint whose default scope
        * already hides them (ADR-0014, step-9 amendment).
+       *
+       * **This is a scope switch, not an additive filter** (D3.8). It once read
+       * "show deleted users" here, which is what one would want and is not what
+       * the endpoint does: `null: false` compiles to `deleted_at is not null`,
+       * and the users repository drops its default live-only scope as soon as a
+       * filter names `deletedAt` — so checking the box *replaces* the live rows
+       * with the deleted ones. `label` is the config's to get right, and it is
+       * the one part of a config no schema can check, so it is the one part
+       * worth reading twice.
        */
       readonly kind: "presence";
       readonly op: Extract<FilterOp, "null">;

@@ -1,4 +1,4 @@
-import { setPasswordBody } from "@repo/contracts";
+import { createUserBody, setPasswordBody } from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
@@ -13,8 +13,11 @@ import {
   type UsersMockState,
 } from "@/test/msw/handlers/users.handlers";
 import { server } from "@/test/msw/server";
+import { userResourceConfig } from "@/entities/user";
+import { fieldsForVariant, initialValuesFor } from "@/shared/resource/config";
 import { renderWithProviders } from "@/test/render";
 
+import { asCreateBody } from "../create-user-dialog";
 import { passwordFields } from "../reset-user-password-dialog";
 import type { UserAction } from "../types";
 import { UserDialogs } from "../user-dialogs";
@@ -50,6 +53,56 @@ beforeEach(() => {
   server.use(...createUsersHandlers(state));
 });
 
+describe("the state-to-body conversion", () => {
+  /*
+   * The unit half of what the create dialog's resolver does, kept beside the
+   * converter rather than in the entity suite: `asCreateBody` belongs to this
+   * feature, and an entity test reaching up into a feature would invert
+   * ADR-0032's direction even where the lint exempts it.
+   */
+  it("converts an untouched create form into a body the endpoint accepts", () => {
+    /*
+     * The claim the D3.8 amendment to ADR-0035 actually makes, asserted end to
+     * end: the form's *state* is not the body, and the conversion is what makes
+     * the difference legal. A blank form plus the two required answers has to
+     * parse — if `asCreateBody` stopped dropping the `null` names or the
+     * unanswered `status`, this is where it would show.
+     */
+    const blank = initialValuesFor(userResourceConfig.fields, "create");
+    const body = asCreateBody({
+      ...blank,
+      email: "new.customer@example.test",
+      password: "DevPassword!123",
+    });
+
+    expect(body).toEqual({
+      email: "new.customer@example.test",
+      password: "DevPassword!123",
+    });
+    expect(createUserBody.safeParse(body).success).toBe(true);
+  });
+
+  it.each(
+    fieldsForVariant(userResourceConfig.fields, "create").map(([n]) => n),
+  )("never lets the create form send %s as null", (name) => {
+    /*
+     * The precondition `asCreateBody` rests on: it drops every `null` a
+     * `nullable` field produces, which is only correct while `createUserBody`
+     * has no nullable field of its own. The day one is added, "clear this"
+     * would silently become "not provided" and the server's default would be
+     * applied to a request the operator did not make — so the assumption is
+     * pinned rather than left in a comment.
+     */
+    expect(
+      createUserBody.safeParse({
+        email: "new.customer@example.test",
+        password: "DevPassword!123",
+        [name]: null,
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("the create dialog", () => {
   it("renders the create variant, and no roles control", () => {
     open({ kind: "create" });
@@ -64,6 +117,22 @@ describe("the create dialog", () => {
     expect(
       screen.queryByRole("group", { name: "Roles" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("never offers the new account's password to the browser as the operator's own", () => {
+    open({ kind: "create" });
+
+    /*
+     * The riskier of the app's two password forms, and the one that had no test
+     * until the D3.8 review asked for it: an `email` field beside a
+     * `type="password"` one is the sign-up signature a browser answers with
+     * "Save password?" — which would file the new customer's initial credential
+     * into the acting operator's password manager and sync it off the machine.
+     */
+    expect(screen.getByLabelText("Initial password")).toHaveAttribute(
+      "autocomplete",
+      "off",
+    );
   });
 
   it("omits an untouched optional field rather than sending it empty", async () => {
@@ -256,7 +325,7 @@ describe("the administrative password reset", () => {
     });
   });
 
-  it("refuses a deleted subject before it ever checks the actor", async () => {
+  it("refuses a deleted subject once the actor is verified", async () => {
     const user = userEvent.setup();
     const { onClose } = open({ kind: "reset-password", user: GONE });
 
@@ -301,6 +370,28 @@ describe("the confirms", () => {
     expect(
       state.rows.find((row) => row.id === CARA.id)?.deletedAt,
     ).not.toBeNull();
+  });
+
+  it("refuses a second delete instead of reporting it as done", async () => {
+    const user = userEvent.setup();
+    const { onClose } = open({ kind: "delete", user: GONE });
+
+    /*
+     * The flow `useUserRowActions` exists to justify. It leaves **Delete**
+     * enabled on a row that already carries `deletedAt`, on the argument that
+     * the API is the enforcement point — so this is the one path where the
+     * client and the server must be seen to agree. The service refuses a second
+     * delete with `409` rather than moving the timestamp ("already deleted" is
+     * a conflict, not a no-op to report as success, ADR-0028), and until the
+     * D3.8 review the mock answered `204` — certifying the opposite of
+     * production on precisely the flow the design rests on.
+     */
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(
+      await screen.findByText("That user is deleted and cannot be changed."),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("surfaces a refusal it deliberately did not pre-guess", async () => {

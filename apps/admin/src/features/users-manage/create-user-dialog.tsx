@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserBody, type CreateUserBody } from "@repo/contracts";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm, type Resolver, type ResolverOptions } from "react-hook-form";
 
 import {
   UserFormInput,
@@ -41,35 +41,72 @@ const CREATE_FIELDS = fieldsForVariant(userResourceConfig.fields, "create");
 const FIELD_NAMES = CREATE_FIELDS.map(([name]) => name);
 
 /**
- * Components whose empty value means "the operator chose nothing".
+ * What the controls actually hold, which is **not** a `CreateUserBody`.
  *
- * A `select` showing its placeholder has not been answered; an empty text box
- * has been answered with an empty string. Keeping that distinction is what lets
- * a blank **required** field still fail with its own schema's message
- * (`emailSchema` says what a bad address is) instead of zod's generic
- * complaint about a missing key.
+ * Three of the five differ from the body's type — a nullable name rests at
+ * `null`, an unanswered `select` at `""` — and typing the form as the body
+ * would need a double cast that says exactly that and then hides it. Naming
+ * the real shape is what lets `useForm`'s third type parameter carry the
+ * transform: the state is this, `handleSubmit` receives a `CreateUserBody`, and
+ * the conversion between them is `asCreateBody` rather than an assertion.
+ */
+type CreateUserFormValues = {
+  email: string;
+  password: string;
+  firstName: string | null;
+  lastName: string | null;
+  status: string;
+};
+
+/**
+ * Fields whose *empty* value means "the operator chose nothing".
+ *
+ * A `select` showing its placeholder has not been answered, and neither has a
+ * `multiCheckbox` with nothing ticked; an empty text box **has** been answered,
+ * with an empty string. Keeping that distinction is what lets a blank
+ * **required** field still fail with its own schema's message (`emailSchema`
+ * says what a bad address is) instead of zod's generic complaint about a
+ * missing key.
  */
 const UNCHOSEN_WHEN_EMPTY = new Set(["select", "multiCheckbox"]);
 
-/** Which create fields report emptiness as "no answer" rather than as a value. */
 const OPTIONAL_WHEN_EMPTY = new Set(
   CREATE_FIELDS.filter(([, field]) =>
     UNCHOSEN_WHEN_EMPTY.has(field.component),
   ).map(([name]) => name),
 );
 
+/** Fields the config says may be cleared, and whose `null` therefore means it. */
+const NULLABLE = new Set(
+  CREATE_FIELDS.filter(([, field]) => field.nullable === true).map(
+    ([name]) => name,
+  ),
+);
+
 /**
- * The form's state as the request body.
+ * Whether a control's value is the operator declining to answer.
  *
- * Two conversions, both of which are the config speaking: a `nullable` field's
- * empty control produced `null`, which on *create* means "not provided"; and an
- * unanswered `select` produced `""`. Everything else travels as typed.
+ * Both branches are the *config* speaking rather than this function guessing:
+ * `nullable` is why an emptied name arrives as `null`, and `component` is what
+ * makes an empty value mean "unchosen" rather than "chosen as empty". A
+ * `multiCheckbox` holds `[]` rather than `""` when nothing is ticked, which is
+ * why emptiness is tested per shape and not with a falsy check.
  */
-const asCreateBody = (values: Record<string, unknown>): CreateUserBody =>
+const isUnanswered = (name: string, value: unknown): boolean => {
+  if (value === null) return NULLABLE.has(name);
+  if (!OPTIONAL_WHEN_EMPTY.has(name)) return false;
+
+  return value === "" || (Array.isArray(value) && value.length === 0);
+};
+
+/**
+ * The form's state as the request body: everything the operator answered, and
+ * nothing they did not.
+ */
+export const asCreateBody = (values: Record<string, unknown>): CreateUserBody =>
   Object.fromEntries(
     Object.entries(values).filter(
-      ([name, value]) =>
-        value !== null && !(value === "" && OPTIONAL_WHEN_EMPTY.has(name)),
+      ([name, value]) => !isUnanswered(name, value),
     ),
   ) as CreateUserBody;
 
@@ -78,11 +115,33 @@ const parseCreateBody = zodResolver(createUserBody);
 /**
  * Validates the body rather than the form state (see the note above).
  *
- * The values it returns are what `handleSubmit` hands the submit callback, so
- * there is one conversion and no second place for the two to disagree.
+ * The values it returns are what `handleSubmit` hands the submit callback — RHF
+ * uses the resolver's output when one is present — so there is exactly one
+ * conversion and no second place for the two to disagree. That is also what the
+ * three type parameters say: state in, body out.
  */
-const resolver: Resolver<CreateUserBody> = (values, context, options) =>
-  parseCreateBody(asCreateBody(values) as CreateUserBody, context, options);
+const resolver: Resolver<CreateUserFormValues, unknown, CreateUserBody> = (
+  values,
+  context,
+  options,
+) =>
+  parseCreateBody(
+    asCreateBody(values),
+    context,
+    /*
+     * The one cast in this file, and it is on **metadata**, not on data.
+     * `ResolverOptions` is generic over the form's value type only so that its
+     * `names` and `fields` can be keyed by field name — and those names are
+     * identical on both sides of the conversion, because the conversion drops
+     * keys and never renames one. `zodResolver` reads nothing from it but
+     * `criteriaMode` and `shouldUseNativeValidation`.
+     *
+     * Casting the *values* instead is what the first version of this file did
+     * (`as unknown as CreateUserBody` on `defaultValues`), and it asserted away
+     * precisely the difference the file exists to handle.
+     */
+    options as unknown as ResolverOptions<CreateUserBody>,
+  );
 
 export const CreateUserDialog = ({
   open,
@@ -93,12 +152,12 @@ export const CreateUserDialog = ({
 }) => {
   const createUser = useCreateUser();
 
-  const form = useForm<CreateUserBody>({
+  const form = useForm<CreateUserFormValues, unknown, CreateUserBody>({
     resolver,
     defaultValues: initialValuesFor(
       userResourceConfig.fields,
       "create",
-    ) as unknown as CreateUserBody,
+    ) as CreateUserFormValues,
     // The submit lock, half one (ADR-0035).
     disabled: createUser.isPending,
   });

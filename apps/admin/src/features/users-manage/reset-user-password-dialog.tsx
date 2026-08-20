@@ -22,14 +22,15 @@ import type { FieldConfigMap } from "@/shared/resource/types";
  * base and may not rewrite a credential in it.
  *
  * **The field map is declared here and not shared with the staff reset**, even
- * though `setPasswordBody` is one schema for both populations. A field map is
- * *content*, not machinery: it is labels and descriptions for a particular
- * screen, and the two already differ — this one says the customer's sessions
- * end, that one says an operator's do. `shared/form` holds the registry, the
- * adapters, the provider and the dialog frame, and the moment it started
- * holding a form's copy it would stop being any of those. Two resources whose
- * field maps look alike is the same non-problem as two configs that both
- * declare an `email` field (ADR-0035, amended D3.7).
+ * though `setPasswordBody` is one schema for both populations and the copy
+ * currently happens to be word-for-word identical. A field map is *content*,
+ * not machinery: it is the labels and descriptions of one screen, and
+ * `shared/form` holds the registry, the adapters, the provider and the dialog
+ * frame — the moment it started holding a form's copy it would stop being any
+ * of those. Two field maps that look alike is the same non-problem as two
+ * configs that both declare an `email` field (ADR-0035, amended D3.7); what
+ * would be a problem is a shared one, the day an operator's reset and a
+ * customer's need to say different things and only one of them can.
  */
 const passwordFields = {
   password: {

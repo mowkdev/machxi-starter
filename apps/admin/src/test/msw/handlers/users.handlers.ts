@@ -267,14 +267,23 @@ export const createUsersHandlers = (state: UsersMockState) =>
 
         state.seen.passwords.push({ id, body });
 
+        /*
+         * The actor's own password **first**, which is the order the service
+         * takes and takes deliberately: a wrong one then answers the same `403`
+         * whether or not the id exists, so the endpoint is not an enumeration
+         * oracle, and no argon2 hash is bought for a request that is about to
+         * be refused anyway (ADR-0027, ADR-0020). Checking the subject's state
+         * first would answer a fact about another account to a caller who has
+         * not proved who they are — and would quietly teach this suite the
+         * wrong order.
+         */
+        if (body.currentPassword !== state.actorPassword)
+          return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+
         const refused = refusedIfDeleted(
           state.rows.find((row) => row.id === id),
         );
         if (refused !== null) return refused;
-
-        // ADR-0027 rule 1: the actor re-presents their own password.
-        if (body.currentPassword !== state.actorPassword)
-          return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
 
         return new Response(null, { status: 204 });
       },
@@ -301,6 +310,20 @@ export const createUsersHandlers = (state: UsersMockState) =>
       const id = String(params["id"]);
 
       state.seen.deleted.push(id);
+
+      /*
+       * A second delete is a `409`, not a no-op reported as success: the
+       * service refuses it rather than moving the timestamp (ADR-0028), and
+       * `softDelete` matches a live row only. This handler is the one place the
+       * suite can get that wrong, and it matters more here than anywhere else —
+       * `useUserRowActions` deliberately leaves **Delete** enabled on a row
+       * carrying `deletedAt`, on the argument that the API is the enforcement
+       * point. A mock that answered `204` would certify the opposite of what
+       * production does, on precisely the flow that argument rests on.
+       */
+      const refused = refusedIfDeleted(state.rows.find((row) => row.id === id));
+      if (refused !== null) return refused;
+
       state.rows = state.rows.map((row) =>
         row.id === id
           ? {

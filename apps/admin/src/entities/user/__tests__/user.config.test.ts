@@ -134,13 +134,36 @@ describe("the users form config against the request bodies", () => {
      * the other direction — every field of `createStaffBody` is required, so
      * omitting one there fails; here only `email` and `password` are, so a
      * config that dropped `status` would still pass. That is a property of the
-     * contract rather than a hole in the test, and the check below is the part
-     * that would actually catch a drifted config.
+     * contract rather than a hole in the test, and the two checks below close
+     * the gap from the contract's side.
      */
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
-    expect(names).toContain("email");
-    expect(names).toContain("password");
   });
+
+  it.each(Object.keys(createUserBody.shape))(
+    "renders %s on the create form iff the endpoint requires it",
+    (key) => {
+      /*
+       * Derived from the schema rather than naming `email` and `password` by
+       * hand, which would restate the contract instead of checking against it.
+       * A field the endpoint *requires* must be on the form — there is no other
+       * way for an operator to supply it — and this fails for any future
+       * required key nobody added a control for.
+       *
+       * The converse is deliberately not asserted: an optional key the form
+       * omits is a product decision, and `roles` is one (see below).
+       */
+      const names = fieldsForVariant(fields, "create").map(([name]) => name);
+      const withoutIt = Object.fromEntries(
+        Object.keys(createUserBody.shape)
+          .filter((other) => other !== key)
+          .map((other) => [other, sampleFor(other)] as const),
+      );
+      const isRequired = !createUserBody.safeParse(withoutIt).success;
+
+      if (isRequired) expect(names).toContain(key);
+    },
+  );
 
   it("edits with exactly the fields the edit variant declares", () => {
     const names = fieldsForVariant(fields, "edit").map(([name]) => name);
