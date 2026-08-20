@@ -1,6 +1,7 @@
 import type {
   CreateUserBody,
   ListUsersQuery,
+  SetPasswordBody,
   UpdateUserBody,
 } from "@repo/contracts";
 import {
@@ -30,6 +31,24 @@ import { userKeys } from "./user.keys";
 
 const useApi = () => createUserApi(useApiClient());
 
+/**
+ * `errorToast: false` on the mutations a **form** hosts, because each of them
+ * calls `applyServerErrors` and the failure is already on screen next to the
+ * field it belongs to, or at the top of the form. The confirms keep their
+ * toast: a confirm has no field for a refusal to land on (ADR-0034).
+ */
+const FORM_MUTATION_META = { errorToast: false } as const;
+
+/**
+ * A mutation whose *variables* are a credential forgets them immediately.
+ *
+ * TanStack Query keeps a settled mutation, variables included, in the mutation
+ * cache for `gcTime` — five minutes by default — so a password submitted
+ * through `mutateAsync` would outlive the dialog, the `reset()` and the
+ * unmount. ADR-0034, amended D3.7.
+ */
+const CREDENTIAL_MUTATION = { gcTime: 0 } as const;
+
 export const useUserList = (params: ListUsersQuery) => {
   const api = useApi();
 
@@ -56,8 +75,10 @@ export const useCreateUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // The body carries the new account's initial password.
+    ...CREDENTIAL_MUTATION,
     mutationFn: (body: CreateUserBody) => api.create(body),
-    meta: { success: "The user was created." },
+    meta: { ...FORM_MUTATION_META, success: "The user was created." },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
     },
@@ -71,7 +92,7 @@ export const useUpdateUser = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateUserBody }) =>
       api.update(id, body),
-    meta: { success: "The user was updated." },
+    meta: { ...FORM_MUTATION_META, success: "The user was updated." },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
       void queryClient.invalidateQueries({ queryKey: userKeys.detail(id) });
@@ -79,6 +100,55 @@ export const useUpdateUser = () => {
   });
 };
 
+/**
+ * The administrative password reset (ADR-0027).
+ *
+ * Invalidates like any other write because the password write sets `updatedAt`
+ * on the row, so a cached list or detail would show a stale one.
+ */
+export const useSetUserPassword = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    // Two plaintext passwords in the variables, one of them the actor's own.
+    ...CREDENTIAL_MUTATION,
+    mutationFn: ({ id, body }: { id: string; body: SetPasswordBody }) =>
+      api.setPassword(id, body),
+    meta: {
+      ...FORM_MUTATION_META,
+      success:
+        "The password was reset and every session of that account was signed out.",
+    },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: userKeys.detail(id) });
+    },
+  });
+};
+
+/**
+ * Forced sign-out, and the one mutation here that invalidates **nothing**.
+ *
+ * It writes `sessions`, a different aggregate that this app does not cache, and
+ * the `users` row is untouched — so there is no key of this entity's to
+ * invalidate (ADR-0034, amended D3.7).
+ */
+export const useRevokeUserSessions = () => {
+  const api = useApi();
+
+  return useMutation({
+    mutationFn: (id: string) => api.revokeSessions(id),
+    meta: { success: "Every session of that account was signed out." },
+  });
+};
+
+/**
+ * The **soft** delete (ADR-0028), which is why the list is invalidated rather
+ * than the row being dropped from the cache: the account stays listed, with
+ * `deletedAt` set and `status` written to `disabled`, and the grid has to show
+ * the new shape rather than a gap where a row used to be.
+ */
 export const useDeleteUser = () => {
   const api = useApi();
   const queryClient = useQueryClient();

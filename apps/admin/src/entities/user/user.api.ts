@@ -3,9 +3,10 @@ import type {
   ListEnvelope,
   ListUsersQuery,
   Page,
-  UserResource,
+  SetPasswordBody,
   SuccessEnvelope,
   UpdateUserBody,
+  UserResource,
 } from "@repo/contracts";
 
 import type { ApiClient } from "@/shared/api/client";
@@ -65,6 +66,24 @@ export const createUserApi = (client: ApiClient) =>
       return data.data;
     },
 
+    /**
+     * `POST /admin/users/:id/password` — the administrative reset (ADR-0027).
+     *
+     * `password` is the subject's new credential and `currentPassword` is the
+     * **acting** staff member's own, re-presented as ADR-0027 rule 1 requires.
+     * `admin` only, never `manager`: reading the customer base is a manager's
+     * job and rewriting a customer's credential is not.
+     */
+    setPassword: async (id: string, body: SetPasswordBody): Promise<void> => {
+      await client.instance.post(`/users/${id}/password`, body);
+    },
+
+    /** `POST /admin/users/:id/sessions/revoke` — forced sign-out. `204`. */
+    revokeSessions: async (id: string): Promise<void> => {
+      await client.instance.post(`/users/${id}/sessions/revoke`);
+    },
+
+    /** A **soft** delete (ADR-0028): the row survives with `deletedAt` set. */
     remove: async (id: string): Promise<void> => {
       await client.instance.delete(`/users/${id}`);
     },

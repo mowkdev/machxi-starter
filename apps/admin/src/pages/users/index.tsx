@@ -1,5 +1,20 @@
+import type { ListQuerySearch } from "@repo/contracts";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+
+import { userResourceConfig, useUserList } from "@/entities/user";
 import {
+  UserDialogs,
+  useUserRowActions,
+  type UserAction,
+} from "@/features/users-manage";
+import { toListQuery } from "@/shared/api/list-params";
+import { AppGrid } from "@/shared/grid/app-grid";
+import {
+  Button,
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -7,24 +22,79 @@ import {
 } from "@/shared/ui";
 
 /**
- * The second consumer, and the measure of the machinery.
+ * The users screen (`D3.8`) — and the measure of the D3.6 machinery.
  *
- * A placeholder page (ADR-0032): pages are thin composition, and this one has
- * nothing to compose yet. It exists so the route tree, the guard and the
- * dashboard shell are exercised end to end before any data layer exists.
+ * It is the staff page with two identifiers changed, which is the result the
+ * step was designed to test rather than a shortcut taken to reach it: every
+ * difference between the two resources — a soft-delete column, a presence
+ * filter, nullable names, a status the create endpoint accepts — is declared in
+ * `userResourceConfig` and none of it is visible here. If this file had needed
+ * to know any of it, that would have been the finding.
  */
-export const UsersPage = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>Users</CardTitle>
-      <CardDescription>
-        The second consumer, and the measure of the machinery.
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <p className="text-sm text-muted-foreground">
-        The users grid and soft-delete flows arrive in D3.8.
-      </p>
-    </CardContent>
-  </Card>
-);
+export const UsersPage = () => {
+  const navigate = useNavigate();
+  const listState = useSearch({ from: "/_dashboard/users" });
+  const [action, setAction] = useState<UserAction | null>(null);
+
+  const users = useUserList(toListQuery(listState));
+
+  const onListStateChange = useCallback(
+    (next: ListQuerySearch) => {
+      void navigate({ to: "/users", search: next });
+    },
+    [navigate],
+  );
+
+  const onAction = useCallback((next: UserAction | null) => {
+    setAction(next);
+  }, []);
+
+  const closeAction = useCallback(() => {
+    setAction(null);
+  }, []);
+
+  const rowActions = useUserRowActions(onAction);
+  const meta = useMemo(() => ({ rowActions }), [rowActions]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Users</CardTitle>
+        <CardDescription>
+          The customer accounts. Deleted ones stay listed, and the Deleted
+          column is what says so.
+        </CardDescription>
+        <CardAction>
+          <Button
+            onClick={() => {
+              setAction({ kind: "create" });
+            }}
+          >
+            <PlusIcon aria-hidden />
+            New user
+          </Button>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent>
+        <AppGrid
+          columns={userResourceConfig.columns}
+          page={users.data}
+          error={users.error}
+          onRetry={() => {
+            void users.refetch();
+          }}
+          listState={listState}
+          onListStateChange={onListStateChange}
+          meta={meta}
+          // `q` searches email and name on this endpoint (`listUsersQuery`).
+          searchable
+          isFetching={users.isFetching}
+          emptyMessage="No users match this view."
+        />
+      </CardContent>
+
+      <UserDialogs action={action} onClose={closeAction} />
+    </Card>
+  );
+};
