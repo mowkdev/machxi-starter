@@ -91,14 +91,14 @@ Written together when D3 opened (2026-08-19) and accepted the same day, before a
 
 ADRs 0037–0042 were written 2026-08-20 for the planned **D4 — data grid v2** ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), grounded in a review of the D3.6–D3.8 implementation. All `proposed`; their window opens with D4.
 
-| #                                               | Title                                                                         | Status   | Implemented                                                                                       |
-| ----------------------------------------------- | ----------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| [0037](0037-grid-viewport-layout.md)            | Grid viewport layout: a height-budgeted shell, one scroll container           | proposed | D4.1 planned — fixes the two shipped layout defects and builds the shell the rest slot into       |
-| [0038](0038-grid-selection-and-capabilities.md) | Row selection, capabilities and the grid toolbar                              | proposed | D4.3 planned — the `grid` capability block, checkbox column, toolbar and bulk fan-out             |
-| [0039](0039-grid-filter-ux.md)                  | Filter UX: header filter dialogs, hot filters and the applied-filters bar     | proposed | D4.4 planned — the filter row dies; icons, per-column dialogs, toolbar hot filters, the chips bar |
-| [0040](0040-record-routes-and-edit-surfaces.md) | Record routes and edit surfaces: dialog, drawer, page                         | proposed | D4.2 planned — `/staff/$id`, `/users/$id`; form surfaces become routes                            |
-| [0041](0041-grid-preferences.md)                | Persisted grid preferences: column sizing, order and visibility               | proposed | D4.5 planned — the third state owner, behind a storage-adapter seam                               |
-| [0042](0042-client-side-authorization.md)       | Client-side authorization: `can(action, resource)` over the principal's roles | proposed | D4 (not yet built) — the vocabulary D4's affordances are gated with; closes the D3.8 deferral     |
+| #                                               | Title                                                                         | Status   | Implemented                                                                                                             |
+| ----------------------------------------------- | ----------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [0037](0037-grid-viewport-layout.md)            | Grid viewport layout: a height-budgeted shell, one scroll container           | proposed | D4.1 planned — fixes the two shipped layout defects and builds the shell the rest slot into                             |
+| [0038](0038-grid-selection-and-capabilities.md) | Row selection, capabilities and the grid toolbar                              | proposed | D4.3 planned — the `grid` capability block, checkbox column, toolbar and bulk fan-out                                   |
+| [0039](0039-grid-filter-ux.md)                  | Filter UX: header filter dialogs, hot filters and the applied-filters bar     | proposed | D4.4 planned — the filter row dies; icons, per-column dialogs, toolbar hot filters, the chips bar                       |
+| [0040](0040-record-routes-and-edit-surfaces.md) | Record routes and edit surfaces: dialog, drawer, page                         | proposed | D4.2 planned — `/staff/$id`, `/users/$id`; form surfaces become routes                                                  |
+| [0041](0041-grid-preferences.md)                | Persisted grid preferences: column sizing, order and visibility               | proposed | D4.5 planned — the third state owner, behind a storage-adapter seam                                                     |
+| [0042](0042-client-side-authorization.md)       | Client-side authorization: `can(action, resource)` over the principal's roles | proposed | D4.3 planned — the vocabulary D4's affordances are gated with, beside ADR-0038's capabilities; closes the D3.8 deferral |
 
 ### Planned (not yet written)
 

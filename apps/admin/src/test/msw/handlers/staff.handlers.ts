@@ -171,6 +171,10 @@ export const createStaffHandlers = (state: StaffMockState) =>
 
       state.seen.created.push(body);
 
+      // `staffService.create` → `emailTaken()` on the unique index. Named per
+      // ADR-0036 (amended D3.10): a refusal is where a mock drifts, and a
+      // comment describing the behaviour cannot be checked against the thing it
+      // claims to copy.
       if (state.rows.some((row) => row.email === body.email))
         return fail(409, "STAFF_EMAIL_TAKEN");
 
@@ -234,8 +238,9 @@ export const createStaffHandlers = (state: StaffMockState) =>
 
         state.seen.passwords.push({ id, body });
 
-        // ADR-0027 rule 1: the actor re-presents their own password, and a
-        // wrong one is the same `403` the self-service endpoints answer.
+        // `staffService.verifyActorPassword`, called by `setPassword` before it
+        // hashes anything: ADR-0027 rule 1, the actor re-presenting their own
+        // password, answered with the same `403` the self-service endpoints use.
         if (body.currentPassword !== state.actorPassword)
           return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
 

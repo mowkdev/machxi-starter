@@ -155,7 +155,14 @@ const applyQuery = (
   return result;
 };
 
-/** Every write refuses a soft-deleted subject with `409` (ADR-0028). */
+/**
+ * Every write refuses a soft-deleted subject with `409` (ADR-0028).
+ *
+ * Mirrors `usersService.assertNotDeleted`, reached from `update`, `remove` and
+ * `setPassword` — named per ADR-0036 (amended D3.10), because a refusal is
+ * where a mock drifts and a comment describing the behaviour cannot be checked
+ * against the thing it claims to copy.
+ */
 const refusedIfDeleted = (user: UserResource | undefined): Response | null => {
   if (user === undefined) return fail(404, "NOT_FOUND");
 
@@ -206,6 +213,7 @@ export const createUsersHandlers = (state: UsersMockState) =>
           (row) => row.email === body.email && row.deletedAt === null,
         )
       )
+        // `usersService.create` → `emailTaken()` on the live-email unique index.
         return fail(409, "USER_EMAIL_TAKEN");
 
       const created: UserResource = {
@@ -277,6 +285,8 @@ export const createUsersHandlers = (state: UsersMockState) =>
          * not proved who they are — and would quietly teach this suite the
          * wrong order.
          */
+        // `staffService.verifyActorPassword`, which `usersService.setPassword`
+        // takes as `actors` from the container (ADR-0027, amended D2.3).
         if (body.currentPassword !== state.actorPassword)
           return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
 

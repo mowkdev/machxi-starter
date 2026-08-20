@@ -8,9 +8,8 @@ envelope, and a Postman collection that proves the whole surface works.
 
 Architecture is decided in [`docs/adr/`](docs/adr/README.md) — read the relevant
 ADR before changing anything it covers. Work is staged into numbered deliverables
-(ADR-0025); the ledger is [`docs/plan/README.md`](docs/plan/README.md), and the
-build order that produced the current state is
-[`docs/plan/0001-api-foundation.md`](docs/plan/0001-api-foundation.md).
+(ADR-0025); the ledger is [`docs/plan/README.md`](docs/plan/README.md), which
+says which deliverable is in progress and links the build order of each.
 
 ## Requirements
 
@@ -35,7 +34,7 @@ Then, in a second terminal:
 
 ```sh
 curl http://localhost:4000/health/ready
-pnpm test:postman            # 66 requests, 202 assertions — did it actually work?
+pnpm test:postman            # 84 requests, 260 assertions — did it actually work?
 ```
 
 `pnpm test:postman` runs the Postman collection headless with newman against
@@ -49,8 +48,10 @@ half of the ADR-0021 acceptance checklist: if it is green, the clone works.
 `pnpm db:setup` seeds one super admin from `SEED_SUPER_ADMIN_EMAIL` /
 `SEED_SUPER_ADMIN_PASSWORD` in your `.env`. It never rewrites an existing
 account's password, so changing those values later does not reset a live account.
-v1 has no staff password-change endpoint either — create a second staff account
-with `POST /admin/staff` and disable the first.
+A staff member changes their own password with
+`POST /api/v1/admin/profile/change-password` (ADR-0027), which the admin panel's
+Profile screen drives; an administrator resets somebody else's with
+`POST /api/v1/admin/staff/:id/password`, re-presenting their own.
 
 `pnpm db:seed -- --dev` adds fixtures, all with the password `DevPassword!123`:
 
@@ -139,7 +140,7 @@ this one.
 - `@repo/db` — Postgres schema, client, migrations and seeds (ADR-0006, ADR-0008)
 - `@repo/crypto` — argon2id hashing and token generation (ADR-0018)
 - `@repo/logger` — structured logger (ADR-0005)
-- `@repo/ui` — shared React components
+- `@repo/ui` — the shadcn/ui design system, owned as source (ADR-0031)
 - `@repo/eslint-config` — shared ESLint flat configs, including the rules that enforce the ADRs
 - `@repo/typescript-config` — shared tsconfig bases
 - `@repo/vitest-config` — shared Vitest presets (`node`, `react`)

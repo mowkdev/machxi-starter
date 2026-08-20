@@ -28,7 +28,7 @@ import { createUsersRouter } from "../modules/users/index.js";
  *   (ADR-0019 §3, ADR-0027).
  * - `/staff` is `admin` throughout. Managing operators is not a manager's job.
  * - `/users` is `admin` **or** `manager` to read, and the router narrows its
- *   four writing routes back to `admin`.
+ *   five writing routes back to `admin`.
  *
  * `super_admin` bypasses both, on the single line in `authorize` that says so.
  */

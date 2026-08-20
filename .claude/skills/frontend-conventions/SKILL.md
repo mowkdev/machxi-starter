@@ -23,7 +23,7 @@ src/shared/     api/ ui/ form/ grid/ resource/ notifications/ lib/ config/ — n
 ```
 
 - **Only downward, never sideways.** `eslint-plugin-boundaries` + `eslint-import-resolver-typescript` enforce it; a feature importing another feature, or anything importing from `app`, is a lint error. A pattern two features want gets _demoted_ into `entities`/`shared` or promoted to a widget.
-- **Slices have a public API**: import `@/entities/staff`, not `@/entities/staff/staff.api`. Colocated tests are the exception.
+- **Slices have a public API**: import `@/entities/staff`, not `@/entities/staff/staff.api`. Colocated tests are one exception and **`shared` is the other** — its slices are the app's own toolbox and are imported by path (`@/shared/grid/app-grid`), which the lint config states explicitly.
 - **A hook two layers need lives in `shared`, not beside its provider** — `useApiClient`/`useSession` are in `shared/api/context` precisely because a feature may not reach into `app`.
 - Routes are TanStack Router file-based: `_auth.*` (unauthenticated) and `_dashboard.*` (guarded in `_dashboard.tsx`'s `beforeLoad`). Adding a page under `_dashboard/` inherits the guard. `staticData: { title }` per route.
 
