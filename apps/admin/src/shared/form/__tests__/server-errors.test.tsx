@@ -1,3 +1,4 @@
+import { emailSchema } from "@repo/contracts";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
@@ -218,6 +219,40 @@ describe("applyServerErrors", () => {
       type: "server",
       message: "Bad",
     });
+  });
+
+  it("shows a field rule in the contract's own words, whichever side caught it", async () => {
+    const user = userEvent.setup();
+    const issue = emailSchema.safeParse("nope").error?.issues[0];
+
+    if (issue === undefined) throw new Error("emailSchema should refuse this");
+
+    render(
+      <Harness
+        error={fail({
+          status: 400,
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+          // What `toErrorDetails` sends: the zod issue's own message, copied
+          // unchanged from the schema the API parsed with.
+          details: [{ path: "email", message: issue.message }],
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Fail" }));
+
+    /*
+     * The D3.9 decision, pinned. A matched detail is rendered verbatim and is
+     * *not* mapped through `ERROR_MESSAGES`, because a path-bearing detail is a
+     * zod issue from `@repo/contracts` — the same schema `zodResolver` runs on
+     * this form, so this is the sentence the client would have shown had it
+     * caught the rule first. Codes are catalogued by ADR-0034's map; field
+     * rules are catalogued by the schema that defines them, which is also where
+     * localising them belongs.
+     */
+    expect(screen.getByText(issue.message)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

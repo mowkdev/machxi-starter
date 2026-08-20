@@ -1,6 +1,7 @@
 import type { PrincipalResource } from "@repo/contracts";
 import {
   createContext,
+  useCallback,
   useContext,
   useSyncExternalStore,
   type ReactNode,
@@ -79,4 +80,38 @@ export const useSession = (): SessionView => {
     principal: snapshot.principal,
     isAuthenticated: snapshot.accessToken !== null,
   };
+};
+
+/**
+ * Replaces the principal the session holds — and **only** the principal.
+ *
+ * The session store has exactly one writer for the things that make a session:
+ * `client.ts` sets the tokens and the principal at login, at refresh and at the
+ * bootstrap, and a feature that hydrated them itself would be a second writer
+ * of the same state (see `login` in `client.ts`). This is not that. It writes
+ * the *display identity* of an account that has just changed its own name
+ * through `PATCH /admin/profile`, and it exists because the alternative was
+ * worse in both directions: the sidebar footer reads `principal`, so without it
+ * an operator renames themselves and watches the old name sit in the corner
+ * until the next token refresh — and the fix of having the shell fetch
+ * `/admin/profile` on every screen would put a request in a layout to keep a
+ * label current.
+ *
+ * ADR-0033 §The session store already says which of the two this is: the
+ * principal lives in the store because it is session identity, and "richer or
+ * fresher account data is a `/profile` query like any other". This is that
+ * query's answer, handed back to the one place identity is kept.
+ *
+ * Narrow on purpose. It hands out no store, so nothing gains a way to read a
+ * token or to clear a session that did not already have one.
+ */
+export const useSetPrincipal = (): ((principal: PrincipalResource) => void) => {
+  const { store } = useApi();
+
+  return useCallback(
+    (principal: PrincipalResource) => {
+      store.setSession({ principal });
+    },
+    [store],
+  );
 };

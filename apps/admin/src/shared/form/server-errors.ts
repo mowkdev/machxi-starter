@@ -18,6 +18,34 @@ import { messageForError } from "@/shared/notifications/messages";
  * simply vanishes, leaving a form that rejected a submit and said why to
  * nobody. So every path ends somewhere visible: matched details go to their
  * field, and anything left over goes to the form-level `root.server`.
+ *
+ * ## Why a detail's own message is rendered verbatim (decided D3.9)
+ *
+ * `D3.7` flagged this and `D3.8` handed it on: a matched detail is shown in the
+ * API's words, which looks like a second source of operator-facing copy beside
+ * `ERROR_MESSAGES` and therefore a hole in the i18n seam. It is not, and the
+ * reason is worth writing down rather than re-deriving:
+ *
+ * **A detail with a `path` is a zod issue from a `@repo/contracts` schema.**
+ * `toErrorDetails` (`apps/api/src/core/errors/zod.ts`) is the only thing in the
+ * API that ever sets one, and it copies `issue.message` unchanged from the
+ * schema `validate()` parsed with — the *same* schema this form's `zodResolver`
+ * runs on the way in (ADR-0011, ADR-0023). So the string this function renders
+ * is the string the operator would have seen a moment earlier had the client
+ * caught the rule first. Mapping it to a second sentence here would make one
+ * rule read two ways depending on which side happened to notice it.
+ *
+ * That fixes both seams rather than leaving one open. **Codes are catalogued in
+ * `ERROR_MESSAGES`; field rules are catalogued in the schema that defines
+ * them** — and localising the latter is zod's own error map on the contracts
+ * package, applied once for both sides, not a per-field map maintained here
+ * that could drift from the rule it describes.
+ *
+ * The boundary that keeps this true is the `known` check below: a detail naming
+ * something this form does not render never reaches an operator as raw copy —
+ * it falls through to `messageForError`, which is the code catalogue. Details
+ * without a path do the same, which is what happens to `RATE_LIMITED`'s
+ * `retryAfter` and to anything else that is data rather than a sentence.
  */
 
 /** Where the form-level message lives, for {@link AppFormError} to render. */

@@ -125,3 +125,4 @@ export { cn } from "@repo/ui/lib/utils";
 // Not re-exports: app components with behaviour of their own (see their files).
 export { AppLoader } from "./app-loader";
 export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";
+export { QueryError } from "./query-error";
