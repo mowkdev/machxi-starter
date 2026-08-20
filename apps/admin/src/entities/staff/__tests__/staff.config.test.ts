@@ -11,6 +11,7 @@ import type {
   GridConfig,
   FieldConfigMap,
   FilterControlConfig,
+  HotFilterConfig,
 } from "@/shared/resource/types";
 
 import { staffResourceConfig } from "../staff.config";
@@ -201,7 +202,7 @@ const sampleFor = (name: string): unknown => {
   }
 };
 
-describe("the staff grid capability block against ADR-0038", () => {
+describe("the staff grid config block against ADR-0038 and ADR-0039", () => {
   const grid: GridConfig | undefined = staffResourceConfig.grid;
 
   it("declares selection wherever it declares a bulk action", () => {
@@ -239,7 +240,73 @@ describe("the staff grid capability block against ADR-0038", () => {
       "canDelete",
       "canEdit",
       "editSurface",
+      "hotFilters",
       "selectable",
     ]);
+  });
+});
+
+/** A hot filter as the query string one press will write. */
+const wireHotFilterFor = (config: HotFilterConfig): Record<string, unknown> => {
+  if (config.kind === "presence")
+    return { [config.field]: { null: String(config.value) } };
+
+  const [first] = resolveOptions(config.options);
+
+  return {
+    [config.field]:
+      config.op === "eq" ? (first?.value ?? "") : { in: first?.value ?? "" },
+  };
+};
+
+describe("the staff hot filters against listStaffQuery", () => {
+  const hotFilters: readonly HotFilterConfig[] =
+    staffResourceConfig.grid.hotFilters;
+
+  /*
+   * The same discipline the column filters get, and the reason it earns its
+   * keep here: ADR-0039's own example declares a `roles` hot filter for staff,
+   * which `listStaffQuery.filterable` has no entry for — `staff_roles` is a
+   * join table. A button the API answers with a `VALIDATION_ERROR` fails here
+   * rather than in front of an operator, which is the whole argument for
+   * declaring hot filters as config instead of composing them per page.
+   */
+  it.each(hotFilters.map((config) => [config.field, config] as const))(
+    "%s presses into a filter the endpoint allow-lists, field and operator",
+    (_field, config) => {
+      const parsed = listStaffQuery.safeParse({
+        filter: wireHotFilterFor(config),
+      });
+
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    },
+  );
+
+  it("declares only options the endpoint accepts", () => {
+    /*
+     * Per option, not per group: a group is one button per option, and an
+     * option outside the field's value schema is a button that always fails.
+     * The sample in the case above only ever exercises the first one.
+     *
+     * **One direction only, and the name says so.** This cannot also assert
+     * that the contract accepts *nothing else* — the allow-list is a zod enum
+     * inside the endpoint's schema and there is no way to enumerate it from
+     * out here. Declaring fewer options than the API allows costs an operator a
+     * choice; declaring one it refuses costs them a button that always fails,
+     * and that is the direction worth a test.
+     */
+    for (const config of hotFilters) {
+      if (config.kind !== "enum") continue;
+
+      for (const option of resolveOptions(config.options)) {
+        // Through the same builder the case above uses, so an `in` group is
+        // probed as `in` rather than silently as the `eq` shorthand.
+        const parsed = listStaffQuery.safeParse({
+          filter: wireHotFilterFor({ ...config, options: [option.value] }),
+        });
+
+        expect(parsed.success, `${config.field} = ${option.value}`).toBe(true);
+      }
+    }
   });
 });

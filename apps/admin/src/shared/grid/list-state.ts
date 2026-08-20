@@ -88,6 +88,55 @@ export const withFilters = (
     ],
   });
 
+/**
+ * Identity of a filter, for React keys and for removal (ADR-0039).
+ *
+ * **Field plus operator, never the value.** That pairing is what the URL can
+ * actually hold one of: `fromColumnFiltersState` writes at most one entry per
+ * operator, and a date range is two entries because its two bounds are two
+ * operators on one field. Keying by value instead would make a chip's identity
+ * change as the filter changed, which is the one thing a key must not do.
+ */
+export const filterKey = (filter: Filter): string =>
+  `${filter.field}:${filter.op}`;
+
+/**
+ * Drops one applied filter — the chip's removal (ADR-0039).
+ *
+ * Every entry matching the field and operator goes, not the first: a
+ * hand-written URL can carry two `filter[status][eq]` values, and a removal
+ * that left one of them behind would be a chip that does not disappear when
+ * clicked.
+ *
+ * Back to offset 0 like every other change to *what* is listed — the standing
+ * `atFirstPage` rule, and the reason removing a chip on page 4 does not strand
+ * the operator on an empty page.
+ */
+export const withoutFilter = (
+  state: ListQuerySearch,
+  filter: Filter,
+): ListQuerySearch =>
+  atFirstPage({
+    ...state,
+    filters: state.filters.filter(
+      (entry) => filterKey(entry) !== filterKey(filter),
+    ),
+  });
+
+/**
+ * Clear all: every filter and `q`, back to the first page (ADR-0039).
+ *
+ * **`sort` and `limit` stand.** What is *listed* changed, so the page resets;
+ * how it is ordered and how much of it fits did not, and an operator who set a
+ * sort and a page size did not ask for those to be undone by a button about
+ * filters.
+ */
+export const clearedFilters = (state: ListQuerySearch): ListQuerySearch => {
+  const { q: _q, ...rest } = state;
+
+  return atFirstPage({ ...rest, filters: [] });
+};
+
 /** The free-text term. An empty term is removed, never sent as `q=`. */
 export const withSearch = (
   state: ListQuerySearch,

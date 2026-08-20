@@ -217,8 +217,15 @@ const isKind = <TKind extends ColumnFilterValue["kind"]>(
 const startOfDay = (day: string): Date => new Date(`${day}T00:00:00.000Z`);
 const endOfDay = (day: string): Date => new Date(`${day}T23:59:59.999Z`);
 
-/** The inverse of {@link containsPattern}, for rendering a control from a URL. */
-const unescapeContains = (pattern: string): string =>
+/**
+ * The inverse of {@link containsPattern}, for rendering a control from a URL.
+ *
+ * Exported since `D4.4`: the applied-filters bar has the same problem a control
+ * does — the URL holds `%ada%` and the operator typed `ada` — and a chip
+ * reading `Email contains "%ada%"` would be showing them the wire form of their
+ * own words.
+ */
+export const unescapeContains = (pattern: string): string =>
   pattern
     .replace(/^%/, "")
     .replace(/%$/, "")

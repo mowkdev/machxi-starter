@@ -56,6 +56,31 @@ export const staffResourceConfig = {
     canEdit: true,
     canDelete: true,
     canBulkDelete: true,
+    /*
+     * The one stance this resource has (ADR-0039, `D4.4`).
+     *
+     * ADR-0039's own example declares two here — `status` and `roles` — and
+     * `roles` cannot exist: `listStaffQuery.filterable` has no entry for it,
+     * because `staff_roles` is a join table, which the ADR's own Context
+     * paragraph says. `__tests__/staff.config.test.ts` runs every hot filter
+     * through the contract exactly as it runs every column filter, so the
+     * ADR's version would have failed a test before it failed an operator —
+     * which is what that discipline is for. Amended in the ADR rather than
+     * quietly dropped.
+     *
+     * `status` is a stance and not a composition: an operator asking "who is
+     * disabled?" asks it many times a session, and the same field's header
+     * dialog is still there and still agrees, because both write one entry.
+     */
+    hotFilters: [
+      {
+        kind: "enum",
+        field: "status",
+        label: "Status",
+        op: "eq",
+        options: STAFF_STATUSES,
+      },
+    ],
   },
   columns: {
     email: {

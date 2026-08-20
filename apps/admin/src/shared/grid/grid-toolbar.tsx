@@ -1,10 +1,15 @@
+import type { Filter } from "@repo/contracts";
 import { Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { GridCapabilities } from "@/shared/resource/types";
+import type {
+  GridCapabilities,
+  HotFilterConfig,
+} from "@/shared/resource/types";
 import { Button, Separator } from "@/shared/ui";
 
-import { GridSearch } from "./filter-controls";
+import { GridSearch } from "./grid-search";
+import { HotFilters } from "./hot-filter-controls";
 import type { GridToolbarContext } from "./types";
 
 /**
@@ -18,9 +23,10 @@ import type { GridToolbarContext } from "./types";
  * surface and ADR-0041's columns menu both need a home — and "each sibling
  * invents a div" is how a region grows without anyone deciding its shape.
  *
- * **Left:** search (`q` is the endpoint's property, not any column's), then the
- * seat ADR-0039's hot-filter groups take, then the selection count. **Right:**
- * the capability-driven actions, then ADR-0041's columns menu.
+ * **Left:** search (`q` is the endpoint's property, not any column's), then
+ * ADR-0039's hot-filter groups — which took that seat at `D4.4` — then the
+ * selection count. **Right:** the capability-driven actions, then ADR-0041's
+ * columns menu.
  *
  * **Extension slots are JSX, not config** — the same line ADR-0035 drew for
  * form layout. A toolbar configured as *data* would either carry functions in
@@ -34,6 +40,12 @@ export interface GridToolbarProps extends GridToolbarContext {
   readonly searchable: boolean;
   readonly searchValue: string;
   readonly onSearchCommit: (next: string) => void;
+  /** The stances this resource declares (ADR-0039). None renders none. */
+  readonly hotFilters: readonly HotFilterConfig[];
+  /** The URL's validated filters — what the groups read their pressed state from. */
+  readonly filters: readonly Filter[];
+  /** One field's filters replaced whole, through the same `withFilters` channel. */
+  readonly onHotFilterChange: (field: string, next: readonly Filter[]) => void;
   /**
    * The Create affordance, rendered only when `canCreate` (see the amendment
    * note on {@link AppGridProps.createAction}).
@@ -54,6 +66,9 @@ export const GridToolbar = ({
   searchable,
   searchValue,
   onSearchCommit,
+  hotFilters,
+  filters,
+  onHotFilterChange,
   createAction,
   onBulkDelete,
   toolbarStart,
@@ -72,11 +87,13 @@ export const GridToolbar = ({
   /*
    * A region with nothing in it is a band of dead space and a `gap-3` above the
    * table, on every grid whose endpoint is not searchable and whose resource
-   * declares no capabilities — the same argument the filter row already makes
-   * for itself. It returns `null` rather than rendering an empty flex row.
+   * declares no capabilities and no hot filters — the same argument ADR-0039's
+   * applied-filters bar makes for itself, and the one that got the filter row
+   * deleted. It returns `null` rather than rendering an empty flex row.
    */
   if (
     !searchable &&
+    hotFilters.length === 0 &&
     !showCreate &&
     !showBulkDelete &&
     selectedCount === 0 &&
@@ -100,6 +117,17 @@ export const GridToolbar = ({
         {searchable ? (
           <GridSearch value={searchValue} onCommit={onSearchCommit} />
         ) : null}
+
+        {/*
+         * Between search and the bespoke slot, which is the order ADR-0039
+         * names: the declarable stances first, then whatever a screen composed
+         * by hand. Nothing renders when a resource declares none.
+         */}
+        <HotFilters
+          hotFilters={hotFilters}
+          filters={filters}
+          onChange={onHotFilterChange}
+        />
 
         {toolbarStart}
 

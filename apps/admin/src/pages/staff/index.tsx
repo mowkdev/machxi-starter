@@ -116,8 +116,15 @@ export const StaffPage = () => {
           meta={meta}
           // `q` searches email and name on this endpoint (`listStaffQuery`),
           // which is a property of the API rather than of any column — so it is
-          // the toolbar's and not the filter row's (ADR-0035, amended D3.6).
+          // the toolbar's and not any header's (ADR-0035, amended D3.6). That
+          // is also why it is the one control ADR-0039 left live-committing.
           searchable
+          /*
+           * The stances this resource declares (ADR-0039). Not part of the
+           * capability block on purpose: ADR-0042 narrows capabilities by
+           * role, and nobody's role decides whether a list may be filtered.
+           */
+          hotFilters={staffResourceConfig.grid.hotFilters}
           isFetching={staff.isFetching}
           emptyMessage="No staff match this view."
           capabilities={capabilities}

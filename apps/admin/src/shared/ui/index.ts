@@ -59,6 +59,7 @@ export {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@repo/ui/components/dialog";
 export {
   DropdownMenu,

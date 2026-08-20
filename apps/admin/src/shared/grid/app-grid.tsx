@@ -1,4 +1,4 @@
-import type { ListQuerySearch, Page } from "@repo/contracts";
+import type { Filter, ListQuerySearch, Page } from "@repo/contracts";
 import {
   useTable,
   type ColumnFiltersState,
@@ -21,6 +21,7 @@ import type {
   ColumnConfigMap,
   ColumnOverrides,
   GridCapabilities,
+  HotFilterConfig,
 } from "@/shared/resource/types";
 import {
   Button,
@@ -35,6 +36,7 @@ import {
   cn,
 } from "@/shared/ui";
 
+import { AppliedFilters } from "./applied-filters";
 import {
   filterableColumns,
   fromColumnFiltersState,
@@ -43,10 +45,11 @@ import {
 } from "./column-filters";
 import { buildColumns, buildSelectionColumn, type GridRow } from "./columns";
 import { gridFeatures } from "./features";
-import { FilterControl } from "./filter-controls";
+import { ColumnFilterDialog } from "./filter-dialog";
 import { GridPager } from "./grid-pager";
 import { GridToolbar } from "./grid-toolbar";
 import {
+  clearedFilters,
   fromSortingState,
   isStranded,
   lastPageOffset,
@@ -56,6 +59,7 @@ import {
   withOffset,
   withSearch,
   withSort,
+  withoutFilter,
 } from "./list-state";
 import type { GridMeta, GridToolbarContext } from "./types";
 
@@ -123,6 +127,15 @@ export interface AppGridProps<TRow> {
   readonly getRowId?: ((row: TRow) => string) | undefined;
   /** Whether the endpoint implements ADR-0014's `q` search. */
   readonly searchable?: boolean | undefined;
+  /**
+   * The stances this resource offers one press away (ADR-0039, `D4.4`).
+   *
+   * A prop rather than a member of {@link capabilities}, deliberately: ADR-0042
+   * narrows *capabilities* by the operator's role, and a hot filter is a filter
+   * — nobody's role decides whether a list may be narrowed. The screen hands it
+   * straight from `config.grid.hotFilters`, the way it hands `columns`.
+   */
+  readonly hotFilters?: readonly HotFilterConfig[] | undefined;
   readonly isFetching?: boolean | undefined;
   /** Shown in place of rows when the page is empty. */
   readonly emptyMessage?: string | undefined;
@@ -185,6 +198,9 @@ export interface AppGridProps<TRow> {
 
 const NO_ROWS: readonly never[] = [];
 
+/** One frozen empty array, so the default does not re-identify per render. */
+const NO_HOT_FILTERS: readonly HotFilterConfig[] = Object.freeze([]);
+
 /**
  * One frozen empty array for the not-selectable case.
  *
@@ -228,6 +244,7 @@ export const AppGrid = <TRow,>({
   meta,
   getRowId,
   searchable = false,
+  hotFilters = NO_HOT_FILTERS,
   isFetching = false,
   emptyMessage = "No results.",
   capabilities,
@@ -321,6 +338,16 @@ export const AppGrid = <TRow,>({
         fromColumnFiltersState(next, filterable),
       ),
     );
+  };
+
+  /*
+   * The third writer of the same state (ADR-0039). Its `owned` is the one field
+   * it presses on, so a stance never touches a filter it did not put there —
+   * the same rule `withFilters` keeps for the column controls, applied one
+   * field at a time.
+   */
+  const onHotFilterChange = (field: string, next: readonly Filter[]) => {
+    onListStateChange(withFilters(listState, [field], next));
   };
 
   const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
@@ -467,6 +494,9 @@ export const AppGrid = <TRow,>({
           onSearchCommit={(term) => {
             onListStateChange(withSearch(listState, term));
           }}
+          hotFilters={hotFilters}
+          filters={listState.filters}
+          onHotFilterChange={onHotFilterChange}
           createAction={createAction}
           onBulkDelete={onBulkDelete}
           toolbarStart={toolbarStart}
@@ -477,6 +507,41 @@ export const AppGrid = <TRow,>({
       ) : (
         renderToolbar(toolbarContext)
       )}
+
+      {/*
+       * The applied-filters bar (ADR-0039) — the second static region of
+       * ADR-0037's budget, and it renders nothing when nothing is applied.
+       *
+       * `hotFilters` reaches it only when this component drew them. A screen
+       * that replaced the toolbar outright replaced the hot filters with it, so
+       * suppressing their chips would leave those filters displayed by
+       * *nothing* — the silently-narrower grid this bar exists to prevent,
+       * arriving through the extension seam.
+       */}
+      <AppliedFilters
+        filters={listState.filters}
+        q={listState.q ?? ""}
+        /*
+         * `merged`, so a usage that *hid* a column has hidden its label too —
+         * the same set that decides `owned` for the update channel decides the
+         * words for the display one, which keeps it one rule instead of two.
+         * ADR-0039 names exactly this case ("the deleted-only state arriving by
+         * URL on a page whose overrides hid the column") as foreign, and a
+         * friendly label on a filter with no control to open would be the bar
+         * implying one.
+         */
+        columns={merged}
+        hotFilters={renderToolbar === undefined ? hotFilters : NO_HOT_FILTERS}
+        onRemoveFilter={(filter) => {
+          onListStateChange(withoutFilter(listState, filter));
+        }}
+        onRemoveSearch={() => {
+          onListStateChange(withSearch(listState, ""));
+        }}
+        onClearAll={() => {
+          onListStateChange(clearedFilters(listState));
+        }}
+      />
 
       {/*
        * The one scroll container (ADR-0037), on both axes, and the floor that
@@ -509,6 +574,7 @@ export const AppGrid = <TRow,>({
                 {headerGroup.headers.map((header) => {
                   const sorted = header.column.getIsSorted();
                   const align = header.column.columnDef.meta?.align ?? "start";
+                  const filter = header.column.columnDef.meta?.filter;
 
                   return (
                     <TableHead
@@ -522,74 +588,71 @@ export const AppGrid = <TRow,>({
                             : "descending"
                       }
                     >
-                      {header.column.getCanSort() ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 data-[state=open]:bg-accent"
-                          onClick={header.column.getToggleSortingHandler()}
-                        >
+                      {/*
+                       * Sort control and filter icon, side by side (ADR-0039).
+                       * Sorting is untouched — a header click still toggles it —
+                       * and the filter icon is a sibling rather than something
+                       * inside the sort button, which would be a button in a
+                       * button.
+                       */}
+                      <div
+                        className={cn(
+                          "flex items-center gap-1",
+                          align === "end" && "justify-end",
+                        )}
+                      >
+                        {header.column.getCanSort() ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="-ml-2 h-8 data-[state=open]:bg-accent"
+                            onClick={header.column.getToggleSortingHandler()}
+                          >
+                            <table.FlexRender header={header} />
+                            {sorted === "asc" ? (
+                              <ArrowUpIcon aria-hidden />
+                            ) : sorted === "desc" ? (
+                              <ArrowDownIcon aria-hidden />
+                            ) : (
+                              <ChevronsUpDownIcon
+                                aria-hidden
+                                className="opacity-50"
+                              />
+                            )}
+                          </Button>
+                        ) : (
                           <table.FlexRender header={header} />
-                          {sorted === "asc" ? (
-                            <ArrowUpIcon aria-hidden />
-                          ) : sorted === "desc" ? (
-                            <ArrowDownIcon aria-hidden />
-                          ) : (
-                            <ChevronsUpDownIcon
-                              aria-hidden
-                              className="opacity-50"
-                            />
-                          )}
-                        </Button>
-                      ) : (
-                        <table.FlexRender header={header} />
-                      )}
+                        )}
+
+                        {filter === undefined ? null : (
+                          <ColumnFilterDialog
+                            field={header.column.id}
+                            label={String(
+                              header.column.columnDef.header ??
+                                header.column.id,
+                            )}
+                            config={filter}
+                            /*
+                             * Committed through the engine, not around it: the
+                             * dialog's Apply is `setFilterValue`, which lands in
+                             * `onColumnFiltersChange` above and navigates. One
+                             * path in and out, the same one the deleted row used.
+                             */
+                            value={
+                              header.column.getFilterValue() as
+                                ColumnFilterValue | undefined
+                            }
+                            onCommit={(next) => {
+                              header.column.setFilterValue(next);
+                            }}
+                          />
+                        )}
+                      </div>
                     </TableHead>
                   );
                 })}
               </TableRow>
             ))}
-
-            {/*
-             * The filter row exists only if something can be filtered. An empty
-             * second header row would be a band of dead space on every grid
-             * whose contract allow-lists nothing.
-             *
-             * Its cells are `td`, not `th`, even though they sit in the
-             * `thead`: a `th` claims the `columnheader` role, and these cells
-             * label nothing — they hold controls. Marking them up as headers
-             * would tell a screen reader that this table has twelve column
-             * headers for six columns, and would put a second "header" row in
-             * front of every row query a test writes.
-             */}
-            {filterable.length > 0 ? (
-              <TableRow data-slot="grid-filters">
-                {headerGroups[0]?.headers.map((header) => {
-                  const config = header.column.columnDef.meta?.filter;
-
-                  return (
-                    <TableCell key={header.id} className="p-2">
-                      {config === undefined ? null : (
-                        <FilterControl
-                          field={header.column.id}
-                          label={String(
-                            header.column.columnDef.header ?? header.column.id,
-                          )}
-                          config={config}
-                          value={
-                            header.column.getFilterValue() as
-                              ColumnFilterValue | undefined
-                          }
-                          onChange={(next) => {
-                            header.column.setFilterValue(next);
-                          }}
-                        />
-                      )}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ) : null}
           </TableHeader>
 
           <TableBody>

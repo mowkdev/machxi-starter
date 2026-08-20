@@ -15,7 +15,9 @@ import {
   toListFilters,
 } from "../column-filters";
 import {
+  clearedFilters,
   containsPattern,
+  filterKey,
   fromSortingState,
   isStranded,
   lastPageOffset,
@@ -25,6 +27,7 @@ import {
   withOffset,
   withSearch,
   withSort,
+  withoutFilter,
 } from "../list-state";
 
 /**
@@ -265,6 +268,93 @@ describe("what the grid writes is what the API accepts", () => {
         sort: "-createdAt",
         filter: { status: "active" },
       }).success,
+    ).toBe(true);
+  });
+});
+
+describe("removing filters (ADR-0039)", () => {
+  const applied: ListQuerySearch = {
+    ...base,
+    offset: 60,
+    limit: 50,
+    sort: [{ field: "name", direction: "asc" }],
+    q: "ada",
+    filters: [
+      { field: "name", op: "like", value: "%ada%" },
+      { field: "createdAt", op: "gte", value: new Date("2026-01-01") },
+      { field: "createdAt", op: "lte", value: new Date("2026-02-01") },
+    ],
+  };
+
+  it("keys a filter by field and operator, never by value", () => {
+    /*
+     * A date range is two entries on one field, so field alone cannot identify
+     * one — and a key that included the value would change as the filter did,
+     * which is the one thing a React key must not do.
+     */
+    expect(
+      filterKey({ field: "createdAt", op: "gte", value: new Date() }),
+    ).toBe("createdAt:gte");
+    expect(
+      filterKey({ field: "createdAt", op: "lte", value: new Date() }),
+    ).not.toBe(filterKey({ field: "createdAt", op: "gte", value: new Date() }));
+  });
+
+  it("drops one bound of a range and leaves the other standing", () => {
+    const next = withoutFilter(applied, applied.filters[1]!);
+
+    // One chip removed, not the column — loosening the lower bound without
+    // re-composing the upper one is the whole reason a range is two chips.
+    expect(next.filters).toEqual([
+      { field: "name", op: "like", value: "%ada%" },
+      { field: "createdAt", op: "lte", value: new Date("2026-02-01") },
+    ]);
+    expect(next.q).toBe("ada");
+    // What is listed changed, so the page resets (the standing `atFirstPage`).
+    expect(next.offset).toBe(0);
+  });
+
+  it("removes every entry a hand-written URL duplicated", () => {
+    /*
+     * `filters` is an array, and nothing stops a URL carrying the same field
+     * and operator twice. Dropping only the first would be a chip that does not
+     * disappear when clicked.
+     */
+    const duplicated: ListQuerySearch = {
+      ...base,
+      filters: [
+        { field: "status", op: "eq", value: "active" },
+        { field: "status", op: "eq", value: "disabled" },
+      ],
+    };
+
+    expect(withoutFilter(duplicated, duplicated.filters[0]!).filters).toEqual(
+      [],
+    );
+  });
+
+  it("clears filters and q, resets the offset, and leaves sort and limit alone", () => {
+    const next = clearedFilters(applied);
+
+    expect(next.filters).toEqual([]);
+    expect(next.q).toBeUndefined();
+    expect(next.offset).toBe(0);
+    // How the list is ordered and how much of it fits was not what Clear all
+    // was about, and undoing either would be a button exceeding its label.
+    expect(next.sort).toEqual([{ field: "name", direction: "asc" }]);
+    expect(next.limit).toBe(50);
+  });
+
+  it("produces states the router will round-trip", () => {
+    // Same seam the `withFilters` suite defends: a state `validateSearch`
+    // rejects is a silent reset to page one on the click after this one.
+    expect(
+      listQuerySearchSchema.safeParse(
+        withoutFilter(applied, applied.filters[0]!),
+      ).success,
+    ).toBe(true);
+    expect(
+      listQuerySearchSchema.safeParse(clearedFilters(applied)).success,
     ).toBe(true);
   });
 });

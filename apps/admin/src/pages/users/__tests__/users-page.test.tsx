@@ -129,7 +129,13 @@ describe("the users grid", () => {
       screen.queryByRole("cell", { name: GONE.email }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("checkbox", { name: "Deleted only" }));
+    /*
+     * A **hot filter** since `D4.4` (ADR-0039), and the first `presence` one:
+     * this is the definition of a stance — pressed and released many times a
+     * session — so it moved out of the deleted filter row and into the toolbar
+     * as a toggle button rather than a checkbox buried among six header cells.
+     */
+    await user.click(screen.getByRole("button", { name: "Deleted only" }));
 
     /*
      * `filter[deletedAt][null]=false` is `deleted_at is not null`, and the
@@ -187,7 +193,7 @@ describe("the users grid", () => {
       ).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("checkbox", { name: "Deleted only" }));
+    await user.click(screen.getByRole("button", { name: "Deleted only" }));
 
     const row = await screen.findByRole("row", {
       name: new RegExp(CARA.email),

@@ -120,6 +120,63 @@ export type FilterControlConfig =
       readonly label: string;
     };
 
+/**
+ * A **hot filter** — a stance, one press away (ADR-0039, `D4.4`).
+ *
+ * Some filters are compositions and some are stances. "Active staff",
+ * "editors", "deleted only" are pressed and released many times a session, and
+ * routing them through a header dialog taxes the most-used filters with the
+ * ceremony built for the least-used ones. A resource names those, in config,
+ * and they render as button groups in the toolbar.
+ *
+ * **This is a third writer of the same state, not a second mechanism.** A press
+ * produces the same {@link Filter} shape and navigates through the same
+ * `withFilters` channel with its own field as `owned`, and its pressed state is
+ * derived from the URL — so a hot filter and the same field's header dialog
+ * cannot disagree: they are two views of one entry.
+ *
+ * **Two kinds, deliberately.** `text` and `dateRange` are excluded: a button is
+ * a *choice*, not a composition surface, and those two belong to the dialogs.
+ * The escape hatch for anything outside this vocabulary is ADR-0038's
+ * `toolbarStart`, which composes `withFilters` by hand — config for the
+ * declarable, JSX for the bespoke.
+ *
+ * The same honesty rule as {@link FilterControlConfig}: a hot filter may be
+ * declared only where `listQuerySchema` allow-lists the field and the operator,
+ * and each resource's config test runs these through the actual contract.
+ */
+export type HotFilterConfig =
+  | {
+      /** A segmented group over an allow-listed enum. */
+      readonly kind: "enum";
+      readonly field: string;
+      /** Names the group for assistive technology; not shown as a legend. */
+      readonly label: string;
+      /**
+       * `eq` is single-select with an implicit "All" — pressing the active
+       * option releases it. `in` is multi-toggle, accumulating into one
+       * `filter[field][in]`.
+       */
+      readonly op: Extract<FilterOp, "eq" | "in">;
+      readonly options: readonly OptionConfig[];
+    }
+  | {
+      /**
+       * A single toggle over a nullability question — the users grid's
+       * "Deleted only".
+       *
+       * `value` is what a pressed button writes; releasing clears the filter
+       * rather than writing the opposite, for the reason
+       * {@link FilterControlConfig}'s `presence` records: "no opinion" and "only
+       * the live ones" are the same request.
+       */
+      readonly kind: "presence";
+      readonly field: string;
+      readonly label: string;
+      readonly op: Extract<FilterOp, "null">;
+      readonly value: boolean;
+    };
+
 /** One column of a resource's grid. */
 export interface ColumnConfig {
   readonly header: string;
@@ -252,6 +309,17 @@ export interface GridConfig extends GridCapabilities {
    * config says otherwise.
    */
   readonly editSurface?: EditSurfaceKey;
+  /**
+   * The stances this resource offers one press away (ADR-0039, `D4.4`).
+   *
+   * Optional, and a grid that declares none renders none — which is the whole
+   * of "pluggable". It sits on {@link GridConfig} rather than on
+   * {@link GridCapabilities} for the same reason `editSurface` does: ADR-0042
+   * narrows *capabilities* by role, and a hot filter is a filter, not an
+   * affordance anybody's role decides about. The page hands it to `AppGrid`
+   * beside `columns`, which is what it is — declared filter surface.
+   */
+  readonly hotFilters?: readonly HotFilterConfig[];
 }
 
 /**

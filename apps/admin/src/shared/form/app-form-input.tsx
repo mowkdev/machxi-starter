@@ -32,10 +32,10 @@ export const AppFormInput = ({ fieldName, overrides }: AppFormInputProps) => {
   const declared = useFieldConfig(fieldName);
   const { control } = useFormContext();
   /*
-   * A generated id rather than the field name. Two forms for the same resource
-   * can be on screen at once — an edit dialog over a grid that has a filter row
-   * — and duplicate `id`s would point every `<label for>` at whichever control
-   * rendered first.
+   * A generated id rather than the field name. Two controls for the same field
+   * can be on screen at once — a record surface open over the grid it was
+   * opened from (ADR-0040), a second form behind it — and duplicate `id`s would
+   * point every `<label for>` at whichever control rendered first.
    */
   const id = useId();
 

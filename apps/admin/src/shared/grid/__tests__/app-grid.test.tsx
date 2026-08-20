@@ -3,12 +3,21 @@ import {
   type ListQuerySearch,
   type Page,
 } from "@repo/contracts";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { GridCapabilities } from "@/shared/resource/types";
+import type {
+  GridCapabilities,
+  HotFilterConfig,
+} from "@/shared/resource/types";
 import {
   demoResourceConfig,
   demoRows,
@@ -55,6 +64,7 @@ const Harness = ({
   meta,
   onChange,
   searchable = false,
+  hotFilters,
   capabilities,
   createAction,
   onBulkDelete,
@@ -67,6 +77,7 @@ const Harness = ({
   readonly meta?: GridMeta<DemoRow>;
   readonly onChange?: (next: ListQuerySearch) => void;
   readonly searchable?: boolean;
+  readonly hotFilters?: readonly HotFilterConfig[];
   readonly capabilities?: GridCapabilities;
   readonly createAction?: ReactNode;
   readonly onBulkDelete?: (
@@ -85,6 +96,7 @@ const Harness = ({
       page={page}
       listState={listState}
       searchable={searchable}
+      hotFilters={hotFilters}
       meta={meta}
       capabilities={capabilities}
       createAction={createAction}
@@ -297,64 +309,101 @@ describe("the pager", () => {
   });
 });
 
-describe("the filter row", () => {
-  it("offers a control only where the config declares one", () => {
+/**
+ * Opens one column's filter dialog and hands back its scope.
+ *
+ * The name is matched by prefix because the icon carries its active state in
+ * its accessible name — "Filter by Name" when clear, "Filter by Name
+ * (filtered)" when the URL says otherwise — which is the one thing a screen
+ * reader can hear about a column that is already narrowing the list.
+ */
+const openFilterDialog = async (
+  user: ReturnType<typeof userEvent.setup>,
+  column: string,
+) => {
+  await user.click(
+    screen.getByRole("button", { name: new RegExp(`^Filter by ${column}`) }),
+  );
+
+  return within(await screen.findByRole("dialog"));
+};
+
+describe("the header filter dialogs", () => {
+  it("leaves nothing in the header but headers", () => {
     render(<Harness page={pageOf(demoRows)} />);
 
+    /*
+     * The filter row is gone (ADR-0039) — one header row, not two — which is
+     * what returns the `dateRange` columns to content width and is the concrete
+     * complaint the ADR opens on. Asserted from the operator's side as well:
+     * none of the four controls is on screen until something is opened.
+     */
+    // The `thead` is the first `rowgroup`, and it holds one row where it used
+    // to hold two.
     expect(
-      screen.getByRole("textbox", { name: "Filter by Name" }),
-    ).toBeInTheDocument();
+      within(screen.getAllByRole("rowgroup")[0]!).getAllByRole("row"),
+    ).toHaveLength(1);
     expect(
-      screen.getByRole("combobox", { name: "Filter by Status" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("textbox", { name: "Filter by Name" }),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("checkbox", { name: "Show archived" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("combobox", { name: "Filter by Status" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "Show archived" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Created from")).not.toBeInTheDocument();
+  });
+
+  it("offers a filter icon only where the config declares one", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    for (const column of ["Name", "Status", "Created", "Archived"])
+      expect(
+        screen.getByRole("button", { name: `Filter by ${column}` }),
+      ).toBeInTheDocument();
+
     // `tags` declares no filter, because nothing allow-lists it.
     expect(
-      screen.queryByRole("textbox", { name: "Filter by Tags" }),
+      screen.queryByRole("button", { name: "Filter by Tags" }),
     ).not.toBeInTheDocument();
   });
 
-  it("writes an escaped containment filter after the operator stops typing", async () => {
+  it("commits an escaped containment filter on Apply, and not before", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
     render(<Harness page={pageOf(demoRows)} onChange={onChange} />);
 
+    const dialog = await openFilterDialog(user, "Name");
+
     await user.type(
-      screen.getByRole("textbox", { name: "Filter by Name" }),
+      dialog.getByRole("textbox", { name: "Filter by Name" }),
       "100%",
     );
 
-    await waitFor(() => {
-      expect(onChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          filters: [{ field: "name", op: "like", value: "%100\\%%" }],
-        }),
-      );
-    });
+    /*
+     * The whole point of a composition surface: four keystrokes, no navigation.
+     * The row this replaced debounced and then committed anyway, which is what
+     * made a half-typed date range a real request.
+     */
+    expect(onChange).not.toHaveBeenCalled();
 
-    // Debounced: one navigation for the whole word, not one per keystroke.
+    await user.click(dialog.getByRole("button", { name: "Apply" }));
+
     expect(onChange).toHaveBeenCalledTimes(1);
-  });
-
-  it("writes a presence filter from the checkbox", async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-
-    render(<Harness page={pageOf(demoRows)} onChange={onChange} />);
-
-    await user.click(screen.getByRole("checkbox", { name: "Show archived" }));
-
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        filters: [{ field: "archivedAt", op: "null", value: false }],
+        // Escaped: somebody typing `100%` means the four characters, not
+        // "match everything" (ADR-0014's reasoning, applied client-side).
+        filters: [{ field: "name", op: "like", value: "%100\\%%" }],
       }),
     );
   });
 
-  it("renders the controls from the URL it was given", () => {
+  it("seeds its draft from the URL, and says so in the icon's name", async () => {
+    const user = userEvent.setup();
+
     render(
       <Harness
         page={pageOf(demoRows)}
@@ -365,11 +414,470 @@ describe("the filter row", () => {
       />,
     );
 
-    // What the operator typed, not the wire pattern — a pasted link renders the
-    // same control state as the session that produced it.
-    expect(screen.getByRole("textbox", { name: "Filter by Name" })).toHaveValue(
+    // The state a screen reader can reach, not only an accent colour.
+    expect(
+      screen.getByRole("button", { name: "Filter by Name (filtered)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Filter by Status" }),
+    ).toBeInTheDocument();
+
+    const dialog = await openFilterDialog(user, "Name");
+
+    // What the operator typed, not the wire pattern — a pasted link opens the
+    // same dialog state as the session that produced it.
+    expect(dialog.getByRole("textbox", { name: "Filter by Name" })).toHaveValue(
       "ada",
     );
+  });
+
+  it("gives focus back to the icon it was opened from", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} />);
+
+    const trigger = screen.getByRole("button", { name: "Filter by Name" });
+
+    await user.click(trigger);
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+
+    /*
+     * The reason the icon is a real `DialogTrigger` and not a `Button` with an
+     * `onClick`. Radix's modal content replaces the default focus restore with
+     * `triggerRef.current?.focus()`; with no Trigger mounted that ref is null,
+     * the restore is *suppressed* rather than falling back, and every close
+     * path drops focus onto `<body>` — a keyboard operator ejected to the top
+     * of the page by the act of filtering one column. Nothing in a class list
+     * or a type says so, which is why it is asserted.
+     */
+    await waitFor(() => {
+      expect(trigger).toHaveFocus();
+    });
+  });
+
+  it("clears its own column and leaves every other filter alone", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        onChange={onChange}
+        initial={{
+          ...base,
+          filters: [
+            { field: "name", op: "like", value: "%ada%" },
+            { field: "status", op: "eq", value: "active" },
+          ],
+        }}
+      />,
+    );
+
+    const dialog = await openFilterDialog(user, "Name");
+
+    await user.click(dialog.getByRole("button", { name: "Clear" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [{ field: "status", op: "eq", value: "active" }],
+      }),
+    );
+  });
+
+  it("writes both bounds of a range as one navigation", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(<Harness page={pageOf(demoRows)} onChange={onChange} />);
+
+    const dialog = await openFilterDialog(user, "Created");
+
+    /*
+     * `fireEvent` rather than `user.type`: jsdom's date input takes a value,
+     * not keystrokes. What is under test is the commit, not the widget.
+     */
+    fireEvent.change(dialog.getByLabelText("Created from"), {
+      target: { value: "2026-01-01" },
+    });
+    fireEvent.change(dialog.getByLabelText("Created to"), {
+      target: { value: "2026-02-01" },
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+
+    await user.click(dialog.getByRole("button", { name: "Apply" }));
+
+    // One navigation carrying both halves of one intent — and the upper bound
+    // pushed to the end of the chosen day, because "up to the 1st" includes it.
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [
+          {
+            field: "createdAt",
+            op: "gte",
+            value: new Date("2026-01-01T00:00:00.000Z"),
+          },
+          {
+            field: "createdAt",
+            op: "lte",
+            value: new Date("2026-02-01T23:59:59.999Z"),
+          },
+        ],
+      }),
+    );
+  });
+
+  it("writes a presence filter from its checkbox", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(<Harness page={pageOf(demoRows)} onChange={onChange} />);
+
+    const dialog = await openFilterDialog(user, "Archived");
+
+    await user.click(dialog.getByRole("checkbox", { name: "Show archived" }));
+    await user.click(dialog.getByRole("button", { name: "Apply" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [{ field: "archivedAt", op: "null", value: false }],
+      }),
+    );
+  });
+
+  it("round-trips the enum control", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(<Harness page={pageOf(demoRows)} onChange={onChange} />);
+
+    const dialog = await openFilterDialog(user, "Status");
+
+    await user.click(
+      dialog.getByRole("combobox", { name: "Filter by Status" }),
+    );
+    await user.click(await screen.findByRole("option", { name: "Disabled" }));
+    await user.click(dialog.getByRole("button", { name: "Apply" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [{ field: "status", op: "eq", value: "disabled" }],
+      }),
+    );
+  });
+});
+
+describe("the applied-filters bar", () => {
+  it("renders nothing when nothing is applied", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Clear all" }),
+    ).not.toBeInTheDocument();
+    /*
+     * The live region is *mounted* and empty rather than absent. A region that
+     * appears already populated is announced unreliably and one that unmounts
+     * is not announced at all — so clearing the last filter, the change most
+     * worth hearing, would be the one the bar stayed silent about.
+     */
+    expect(screen.getByRole("status")).toHaveTextContent("");
+  });
+
+  it("names an owned filter in the column's own words, and removes only it", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        onChange={onChange}
+        initial={{
+          ...base,
+          q: "ada",
+          filters: [
+            { field: "name", op: "like", value: "%ada%" },
+            { field: "status", op: "eq", value: "active" },
+          ],
+        }}
+      />,
+    );
+
+    /*
+     * The column config contributes the *words* — its header, and the enum's
+     * humanised option label — and never membership. The `like` pattern is
+     * unwrapped back to what was typed for the same reason the dialog unwraps
+     * it: `%ada%` is the wire's business.
+     */
+    expect(screen.getByText("Name contains “ada”")).toBeInTheDocument();
+    expect(screen.getByText("Status is Active")).toBeInTheDocument();
+    expect(screen.getByText("Search “ada”")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("3 filters applied");
+
+    await user.click(
+      screen.getByRole("button", { name: "Remove filter: Status is Active" }),
+    );
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: "ada",
+        filters: [{ field: "name", op: "like", value: "%ada%" }],
+      }),
+    );
+  });
+
+  it("shows a filter no column owns, and clears it", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        onChange={onChange}
+        initial={{
+          ...base,
+          filters: [{ field: "ownerId", op: "eq", value: "u-9" }],
+        }}
+      />,
+    );
+
+    /*
+     * The case the bar exists for, and the one the old filter row answered with
+     * *nothing on screen at all*: a deep link narrowing the list on a field no
+     * column declares. The label is deliberately ugly — it is showing the
+     * operator something no config claimed to understand — and it is removable
+     * all the same.
+     */
+    expect(screen.getByText("ownerId eq u-9")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Remove filter: ownerId eq u-9" }),
+    );
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: [] }),
+    );
+  });
+
+  it("clears filters and q, resets the offset, and leaves sort and limit alone", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows, { total: 200 })}
+        onChange={onChange}
+        initial={{
+          ...base,
+          offset: 100,
+          limit: 50,
+          sort: [{ field: "name", direction: "asc" }],
+          q: "ada",
+          filters: [{ field: "status", op: "eq", value: "active" }],
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+
+    // What is *listed* changed, so the page resets; how it is ordered and how
+    // much of it fits did not, and neither was asked about.
+    expect(onChange).toHaveBeenCalledWith({
+      offset: 0,
+      limit: 50,
+      sort: [{ field: "name", direction: "asc" }],
+      filters: [],
+    });
+  });
+});
+
+describe("hot filters", () => {
+  const STATUS_GROUP: readonly HotFilterConfig[] = [
+    {
+      kind: "enum",
+      field: "status",
+      label: "Status",
+      op: "eq",
+      options: ["active", "disabled"],
+    },
+  ];
+
+  it("renders a declared group, and presses on and off", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        onChange={onChange}
+        hotFilters={STATUS_GROUP}
+      />,
+    );
+
+    const group = within(screen.getByRole("group", { name: "Status filter" }));
+
+    expect(group.getByRole("button", { name: "Active" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await user.click(group.getByRole("button", { name: "Active" }));
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: [{ field: "status", op: "eq", value: "active" }],
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Active" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // Pressing the pressed option releases it — the implicit "All" that makes a
+    // single-select stance clearable without a second control.
+    await user.click(screen.getByRole("button", { name: "Active" }));
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filters: [] }),
+    );
+  });
+
+  it("agrees with the same field's header dialog", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        hotFilters={STATUS_GROUP}
+        initial={{
+          ...base,
+          filters: [{ field: "status", op: "eq", value: "disabled" }],
+        }}
+      />,
+    );
+
+    /*
+     * Two views of one entry, never two states. Both read the URL, so a value
+     * set by either is what the other shows — which is the property that makes
+     * a hot filter a third *writer* rather than a second mechanism.
+     */
+    expect(screen.getByRole("button", { name: "Disabled" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    const dialog = await openFilterDialog(user, "Status");
+
+    expect(
+      dialog.getByRole("combobox", { name: "Filter by Status" }),
+    ).toHaveTextContent("Disabled");
+  });
+
+  it("suppresses the chip it is displaying, and not one it cannot", () => {
+    const displayed = render(
+      <Harness
+        page={pageOf(demoRows)}
+        hotFilters={STATUS_GROUP}
+        initial={{
+          ...base,
+          filters: [{ field: "status", op: "eq", value: "disabled" }],
+        }}
+      />,
+    );
+
+    // The pressed button *is* this filter's visible, removable representation;
+    // a chip beside it would be a second way to remove one thing.
+    expect(screen.queryByText("Status is Disabled")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Clear all" }),
+    ).toBeInTheDocument();
+
+    /*
+     * Unmounted rather than re-rendered: `Harness` seeds the route's search
+     * params into state once, the way a route does, so a new `initial` on a
+     * standing tree would be ignored — which would make the second half of this
+     * test assert the first half's DOM.
+     */
+    displayed.unmount();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        hotFilters={STATUS_GROUP}
+        initial={{
+          ...base,
+          filters: [{ field: "status", op: "eq", value: "archived" }],
+        }}
+      />,
+    );
+
+    /*
+     * A value the group cannot represent — a deep link outside the declared
+     * options. Nothing is pressed, so nothing is displaying it, so the chip is
+     * the only thing standing between the operator and an unexplained list.
+     */
+    expect(screen.getByRole("button", { name: "Active" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByText("Status is archived")).toBeInTheDocument();
+  });
+
+  it("keeps the chip when the toolbar that would have displayed it was replaced", () => {
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        hotFilters={STATUS_GROUP}
+        renderToolbar={() => <div>bespoke</div>}
+        initial={{
+          ...base,
+          filters: [{ field: "status", op: "eq", value: "disabled" }],
+        }}
+      />,
+    );
+
+    /*
+     * `renderToolbar` replaces the region outright — hot filters included — so
+     * suppressing this chip would leave the filter displayed by *nothing*: the
+     * silently-narrower grid the bar exists to prevent, arriving through the
+     * extension seam.
+     */
+    expect(screen.getByText("bespoke")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Disabled" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Status is Disabled")).toBeInTheDocument();
+  });
+
+  it("is released by Clear all, because a hot filter is a filter", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        hotFilters={STATUS_GROUP}
+        initial={{
+          ...base,
+          filters: [{ field: "status", op: "eq", value: "active" }],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Active" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+
+    expect(screen.getByRole("button", { name: "Active" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Clear all" }),
+    ).not.toBeInTheDocument();
   });
 });
 

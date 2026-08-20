@@ -14,10 +14,30 @@ import { server } from "./msw/server";
  * so the bound is raised once, here, rather than sprinkled per assertion.
  *
  * It is a *ceiling*, not a delay: every query still resolves as soon as the
- * DOM says so, and a genuinely broken assertion costs five seconds instead of
- * one before failing.
+ * DOM says so, and a genuinely broken assertion costs the ceiling instead of a
+ * second before failing.
+ *
+ * **Raised from five seconds to fifteen at `D4.4`**, on a measurement rather
+ * than a hunch. On a loaded machine the first `findByRole` in
+ * `staff-page.test.tsx` and `users-page.test.tsx` — the two files that mount
+ * the whole route tree and then wait for a list — crossed five seconds
+ * consistently, and the same two assertions failed the same way with `D4.4`
+ * *stashed*, so the cause is the load the whole suite is under, not any
+ * screen's render cost. The bound was set against one machine's idle timings
+ * and the number was the only thing standing between "the gate is green" and
+ * "the gate is green here"; fifteen has the headroom the file's own paragraph
+ * says it wants, and costs nothing when the DOM arrives on time.
+ *
+ * **Ten, and not fifteen, because `vitest.config.ts` pins `testTimeout` at
+ * fifteen for a reason it writes down**: the test ceiling has to sit *above*
+ * this one, or a genuinely failing `findBy*` races the test timeout and reports
+ * "Test timed out in 15000ms" instead of naming the element it could not find.
+ * Setting the two equal — the first version of this raise — would have quietly
+ * undone that fix and made the sentence above ("a genuinely broken assertion
+ * costs the ceiling before failing") false. Anything raised here has to keep
+ * the gap.
  */
-configure({ asyncUtilTimeout: 5_000 });
+configure({ asyncUtilTimeout: 10_000 });
 
 /**
  * The harness ADR-0036 specifies: jest-dom matchers and the MSW lifecycle.

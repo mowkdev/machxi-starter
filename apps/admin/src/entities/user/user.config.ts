@@ -61,6 +61,38 @@ export const userResourceConfig = {
     canEdit: true,
     canDelete: true,
     canBulkDelete: true,
+    /*
+     * Two stances, and the second is the one ADR-0039 anticipated (`D4.4`).
+     *
+     * "Deleted only" was the app's only `presence` control and it lived in the
+     * filter row, where it was a checkbox an operator had to find among six
+     * other cells. It is the definition of a stance — pressed and released many
+     * times a session — so it becomes the first `presence` hot filter, which is
+     * exactly what ADR-0039 §Consequences expects.
+     *
+     * The `deletedAt` column **keeps its dialog control as well**, deliberately
+     * and temporarily: ADR-0039 hands the question of whether that duplicate
+     * survives to the `D4.6` sweep, and until then the pair is what proves the
+     * two surfaces cannot disagree — press the button, open the dialog, find it
+     * checked. The chip suppression rule is what keeps the *bar* from showing a
+     * third representation of the same entry.
+     */
+    hotFilters: [
+      {
+        kind: "enum",
+        field: "status",
+        label: "Status",
+        op: "eq",
+        options: USER_STATUSES,
+      },
+      {
+        kind: "presence",
+        field: "deletedAt",
+        label: "Deleted only",
+        op: "null",
+        value: false,
+      },
+    ],
   },
   columns: {
     email: {

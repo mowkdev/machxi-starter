@@ -84,8 +84,9 @@ describe("the staff grid", () => {
       await screen.findByRole("cell", { name: "ada@machxi.local" }),
     ).toBeInTheDocument();
 
-    // One `columnheader` per column — the filter row's cells are `td`, which is
-    // what keeps this count honest (ADR-0035, amended D3.6).
+    // One `columnheader` per column, and since `D4.4` that is simply because
+    // the header has one row: ADR-0039 deleted the filter row, and with it the
+    // `td`-in-a-`thead` patch D3.6 needed to keep this count honest.
     const headers = screen
       .getAllByRole("columnheader")
       .map((header) => header.textContent);
@@ -110,29 +111,142 @@ describe("the staff grid", () => {
       "Actions",
     ]);
 
-    // The registry's renderers, resolved from config keys: `rolesList` and
-    // `statusBadge` on values `shared/grid` knows nothing about.
-    expect(screen.getByText("Super admin")).toBeInTheDocument();
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    /*
+     * The registry's renderers, resolved from config keys: `rolesList` and
+     * `statusBadge` on values `shared/grid` knows nothing about.
+     *
+     * Scoped to the table since `D4.4`, and the reason is the feature rather
+     * than the test: ADR-0039's hot filters put a "Disabled" button in the
+     * toolbar, so the word is now on screen twice — once as a stance an
+     * operator can press, once as a badge on a row. Only the second is what
+     * this test is about.
+     */
+    const table = within(screen.getByRole("table"));
+
+    expect(table.getByText("Super admin")).toBeInTheDocument();
+    expect(table.getByText("Disabled")).toBeInTheDocument();
   });
 
-  it("offers a filter control only where the contract allow-lists one", async () => {
+  it("offers a filter icon only where the contract allow-lists one", async () => {
     openStaff();
 
     await screen.findByRole("cell", { name: "ada@machxi.local" });
 
     // Declared filterable by `listStaffQuery` …
-    expect(screen.getByPlaceholderText("Contains…")).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "Filter by Status" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Created from")).toBeInTheDocument();
+    for (const column of ["Email", "Status", "Last login", "Created"])
+      expect(
+        screen.getByRole("button", { name: `Filter by ${column}` }),
+      ).toBeInTheDocument();
 
-    // … and not, because `staff_roles` is a join table. A control here would
-    // be an offer the API answers with a `VALIDATION_ERROR`.
+    // … and not, because `staff_roles` is a join table. An icon here would be
+    // an offer the API answers with a `VALIDATION_ERROR`.
     expect(
-      screen.queryByRole("combobox", { name: "Filter by Roles" }),
+      screen.queryByRole("button", { name: "Filter by Roles" }),
     ).not.toBeInTheDocument();
+    // Nor here: `firstName` is sortable but not in the endpoint's `filterable`
+    // map at all — it is reachable through `q`.
+    expect(
+      screen.queryByRole("button", { name: "Filter by First name" }),
+    ).not.toBeInTheDocument();
+
+    /*
+     * And the controls themselves are behind those icons rather than in a row
+     * of their own (ADR-0039). This is the assertion that the width complaint
+     * is actually fixed: no control occupies a header cell, so no column is
+     * sized by its filter.
+     */
+    expect(screen.queryByPlaceholderText("Contains…")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Created from")).not.toBeInTheDocument();
+  });
+
+  it("composes a filter in its dialog and asks the server on Apply", async () => {
+    const user = userEvent.setup();
+
+    openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+
+    await user.click(screen.getByRole("button", { name: "Filter by Email" }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+
+    await user.type(
+      dialog.getByRole("textbox", { name: "Filter by Email" }),
+      "ada",
+    );
+
+    // Nothing has been asked yet — the dialog composes, Apply commits.
+    expect(lastList()?.filters).toEqual([]);
+
+    await user.click(dialog.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      expect(lastList()?.filters).toEqual([
+        { field: "email", op: "like", value: "%ada%" },
+      ]);
+    });
+
+    /*
+     * And the round trip closes on screen: the chip is the bar reading the URL
+     * back, and the icon's name now says the column is filtered.
+     */
+    expect(await screen.findByText("Email contains “ada”")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Filter by Email (filtered)" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+
+    /*
+     * Asserted on the view rather than on a request, deliberately: clearing
+     * navigates back to a query key this session already fetched, and
+     * ADR-0034's 30-second `staleTime` means TanStack Query serves it from
+     * cache without going near the network. "The list is unfiltered again" is
+     * the observable; "the server was asked again" is not, and asserting it
+     * would be asserting a cache miss.
+     */
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Email contains “ada”"),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "Filter by Email" }),
+    ).toBeInTheDocument();
+  });
+
+  it("presses a hot filter and asks the server for that stance", async () => {
+    const user = userEvent.setup();
+
+    openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+
+    /*
+     * `status` is the one stance this resource declares (ADR-0039). ADR-0039's
+     * own example declares `roles` beside it, which `listStaffQuery` has no
+     * `filterable` entry for — the config test is where that is caught, and
+     * this is where the declared one is proved to reach the endpoint.
+     */
+    const group = within(screen.getByRole("group", { name: "Status filter" }));
+
+    await user.click(group.getByRole("button", { name: "Disabled" }));
+
+    await waitFor(() => {
+      expect(lastList()?.filters).toEqual([
+        { field: "status", op: "eq", value: "disabled" },
+      ]);
+    });
+
+    // The same field's header dialog agrees, because both read the one URL.
+    await user.click(
+      screen.getByRole("button", { name: "Filter by Status (filtered)" }),
+    );
+    expect(
+      within(await screen.findByRole("dialog")).getByRole("combobox", {
+        name: "Filter by Status",
+      }),
+    ).toHaveTextContent("Disabled");
   });
 
   it("sorts by asking the server, not by reordering the page it holds", async () => {
@@ -147,7 +261,12 @@ describe("the staff grid", () => {
       { field: "createdAt", direction: "desc" },
     ]);
 
-    await user.click(screen.getByRole("button", { name: /Email/ }));
+    /*
+     * Named exactly, not by pattern: since `D4.4` the Email header holds two
+     * buttons — the sort control and ADR-0039's filter icon — and `/Email/`
+     * matches both.
+     */
+    await user.click(screen.getByRole("button", { name: "Email" }));
 
     await waitFor(() => {
       expect(lastList()?.sort).toEqual([{ field: "email", direction: "asc" }]);

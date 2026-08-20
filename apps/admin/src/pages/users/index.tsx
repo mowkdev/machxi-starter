@@ -102,6 +102,12 @@ export const UsersPage = () => {
           meta={meta}
           // `q` searches email and name on this endpoint (`listUsersQuery`).
           searchable
+          /*
+           * The stances this resource declares (ADR-0039). Not part of the
+           * capability block on purpose: ADR-0042 narrows capabilities by
+           * role, and nobody's role decides whether a list may be filtered.
+           */
+          hotFilters={userResourceConfig.grid.hotFilters}
           isFetching={users.isFetching}
           emptyMessage="No users match this view."
           capabilities={capabilities}

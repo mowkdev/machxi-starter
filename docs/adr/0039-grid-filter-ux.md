@@ -1,9 +1,9 @@
 # ADR-0039: Filter UX — header filter dialogs, hot filters and the applied-filters bar
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-20
 
-> One of the D4 (data grid v2) decision set, written together with [ADR-0037](0037-grid-viewport-layout.md), [ADR-0038](0038-grid-selection-and-capabilities.md), [ADR-0040](0040-record-routes-and-edit-surfaces.md) and [ADR-0041](0041-grid-preferences.md), before D4 opens (`docs/plan/0004-data-grid-v2.md`, `planned` — it opens when D3 ships). `D4.4` is the planned implementing step. Under ADR-0025 it becomes amendable in place while D4 is `in progress`.
+> One of the D4 (data grid v2) decision set, written together with [ADR-0037](0037-grid-viewport-layout.md), [ADR-0038](0038-grid-selection-and-capabilities.md), [ADR-0040](0040-record-routes-and-edit-surfaces.md) and [ADR-0041](0041-grid-preferences.md), before D4 opens (`docs/plan/0004-data-grid-v2.md`, `planned` — it opens when D3 ships). `D4.4` is the planned implementing step. Under ADR-0025 it becomes amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.4` — the per-step acceptance D4 runs on.
 
 ## Context
 
@@ -33,6 +33,8 @@ ADR-0037 gives the D4 grid a viewport shell with static regions above the scroll
 - carries `aria-label` `"Filter by <header>"` (the same accessible name the row's controls used);
 - is visually **active** — filled/accent — when the URL currently carries a filter on that column's field, with the same state exposed to assistive technology, so a glance at the header answers "is this column filtered?" without opening anything.
 
+**Amended 2026-08-20 (D4.4): the active state travels *in* the accessible name, because on this control there is nowhere else honest to put it.** The two bullets above ask for both — a name pinned to `"Filter by <header>"`, and the state exposed to assistive technology — and the implementation could not have both. `aria-pressed` was the obvious channel and is the wrong one: it declares a toggle button, and this button toggles nothing, it opens a dialog. `data-active` is what the accent colour reads and a screen reader never hears. So the name is `"Filter by <header>"` when the column is clear and `"Filter by <header> (filtered)"` when the URL carries a filter on it, which is the sentence a screen-reader user needs and the only one this control can carry. Tests name it by prefix.
+
 **The button opens a shadcn `Dialog` carrying that column's filter UI by kind.** The four control kinds and their operator mappings are **reused as dialog content, not redesigned**: `text` renders its input with the op made visible (e.g. "contains" for `like`; the `%`/`_`/`\` escaping rule is unchanged), `enum` its select, `dateRange` its from/to pair, `presence` its labelled toggle. Focus trapping, `Escape`, and return-of-focus come free with the Dialog primitive (ADR-0031) — none of it is rebuilt here.
 
 **The dialog commits on an explicit Apply.** It has two actions:
@@ -47,6 +49,8 @@ One boundary is deliberately left open: this ADR does not forbid a later anchore
 ### The applied-filters bar
 
 **A bar above the table — between ADR-0038's toolbar and the header, a static region in ADR-0037's shell — renders one removable chip per applied filter, plus a chip for an active `q`, plus a Clear-all action.** It renders nothing (no dead band) when there is nothing applied.
+
+**Amended 2026-08-20 (D4.4): "nothing applied" is a fact about the URL, not about the chips.** Once hot filters suppress the chips they display, the two stop being the same count — a grid with a pressed "Deleted only" and nothing else has zero chips and one applied filter, and a bar that rendered on chip count would take Clear all off screen exactly when it was the only way to release the stance. The bar renders whenever `filters` is non-empty or `q` is set; sometimes that is a Clear all with no chips beside it, which is correct.
 
 **The load-bearing rule: the bar renders from the URL's validated `listState.filters` (plus `q`) — never from the column configs.** This is the same lesson `withFilters`' `owned` argument encodes, applied to display instead of update: a deep-linked or otherwise foreign filter on a field no column owns *was actually sent to the server*, and a summary derived from configs would omit it — a grid silently narrower than its UI admits. The bar is the honest display of what the server was asked. Column configs contribute **labels only, never membership**: where a column owns the field, the chip reads header + human operator + value (enum values resolved through the config's `options`, a `presence` chip using the config's own label — "Deleted only", not a boolean); where no column owns it, the chip falls back to a raw `field op value` rendering, which is ugly on purpose — it is showing the operator something no config claimed to understand, and it must still be removable.
 
@@ -85,29 +89,45 @@ Some filters are not compositions but *stances* — "active staff", "editors", "
 ```ts
 // shared/resource/types.ts — mirrors FilterControlConfig's discriminated style
 export type HotFilterConfig =
-  | { readonly field: string; readonly label: string; readonly control: "enum";
-      readonly op: "eq" | "in"; readonly options: readonly Option[] }
-  | { readonly field: string; readonly label: string; readonly control: "presence";
+  | { readonly kind: "enum"; readonly field: string; readonly label: string;
+      readonly op: "eq" | "in"; readonly options: readonly OptionConfig[] }
+  | { readonly kind: "presence"; readonly field: string; readonly label: string;
       readonly op: "null"; readonly value: boolean };
 
 // entities/staff/staff.config.ts
 grid: {
   hotFilters: [
-    { field: "status", label: "Status", control: "enum", op: "eq", options: STAFF_STATUSES },
-    { field: "roles",  label: "Role",   control: "enum", op: "eq", options: STAFF_ROLES },
+    { kind: "enum", field: "status", label: "Status", op: "eq", options: STAFF_STATUSES },
   ],
 },
 ```
+
+**Amended 2026-08-20 (D4.4), on both halves of that snippet.**
+
+**`kind`, not `control`.** The comment above the type says it mirrors `FilterControlConfig`'s discriminated style and the code then picks a different discriminant name. Two words for one idea, in one file, is the sort of thing nobody remembers which side of; `kind` is what the sibling union uses and what every `switch` in `shared/grid` already reads.
+
+**And `roles` cannot be a staff hot filter.** `listStaffQuery.filterable` has no `roles` entry — `staff_roles` is a join table, which §Context of this very ADR says about the *columns* and then forgets one screen later. The example was written from what a resource looks like rather than from what its contract allows, which is the exact failure the honesty rule exists for. It is not a slip that survives contact: the config-versus-contract tests §Hot filters promises were written first, and this ADR's own example is the first thing they refused. `status` alone is what staff declares; the users grid declares `status` and the `presence` toggle §Consequences anticipates.
 
 - **Two kinds, deliberately.** `enum` renders a button group — `op: "eq"` as a segmented single-select with an implicit "All" (pressing the active option releases it), `op: "in"` as multi-toggle buttons accumulating into one `filter[field][in]`. `presence` renders a single toggle ("Deleted only"). `text` and `dateRange` are excluded on purpose: a button is a *choice*, not a composition surface — those kinds belong to the dialogs above.
 - **The same model, verbatim.** A press translates to the same `Filter` shape and navigates through `withFilters` with the hot filter's own field as `owned` — no second channel, no new helpers. Pressed state derives from the URL's validated filters, so a hot filter and a header dialog on the same field cannot disagree: they are two views of one entry, and either surface's change is instantly reflected in the other.
 - **The same honesty.** A hot filter may be declared only where `listQuerySchema` allow-lists the field and operator, and the config-versus-contract tests (ADR-0035/0036) extend to `hotFilters` exactly as they cover column filters — a button the API would refuse fails a test before it fails an operator.
 - **Chips defer to a pressed button.** The applied-filters bar suppresses a chip whose filter a hot-filter control currently *displays* — the pressed button is that filter's visible, removable representation, and two removal affordances for one entry is noise. The invariant the bar keeps is unchanged in spirit: **every applied filter is visible and removable in exactly one place.** A deep-linked value the group cannot represent (a `status` outside the declared options, a foreign field) gets its chip as before, and **Clear all clears hot filters too** — they are filters, not a separate mechanism.
+
+  **Amended 2026-08-20 (D4.4): "displays" is all-or-nothing, and it is defined as "could pressing these buttons have produced exactly this?"** Any looser reading breaks the invariant it is meant to keep. A multi-toggle `in` group holding `["alpha", "gamma"]` where only `alpha` is declared must not press `alpha` and call the entry displayed: half of what the server was asked would then be represented by nothing at all — a filter the operator can neither see nor remove, which is the failure this whole ADR opens on. So a group whose value it cannot fully represent shows **nothing** pressed and hands the entry to the chips bar, which can render anything. The same rule makes an operator mismatch (an `eq` group against an `in` filter) and an inverted presence value (`null: true` against a toggle declaring `null: false`) chips rather than presses.
+
+  **And suppression is by *entry*, not by resemblance.** A predicate asking "could pressing these buttons have produced this filter?" is right about a filter and wrong about a *list* of them: the group renders from the first `field:op` entry it finds, so a URL carrying `status eq active` and `status eq disabled` presses "Active" while the predicate suppresses both — the second entry invisible and unremovable, which is this invariant failing inside the code that keeps it. The bar suppresses the entries the groups actually read, which cannot say that whatever the URL holds.
+
+  **And nothing is suppressed when the toolbar was replaced.** ADR-0038's `renderToolbar` replaces the region outright, hot filters included — so `AppGrid` passes the bar an empty list in that case. Suppressing a chip because a control that is not on screen would have displayed it is the silently-narrower grid arriving through the extension seam.
+- **Not a capability** (added 2026-08-20, `D4.4`). `hotFilters` sits on `GridConfig` beside ADR-0040's `editSurface`, deliberately outside ADR-0038's `GridCapabilities` block, and reaches `AppGrid` as its own prop rather than through `allowedCapabilities`. The capability block is the thing ADR-0042 narrows by role, and narrowing a filter by role would be meaningless: nobody's role decides whether a list may be looked at through a smaller window, and the rows the filter admits are the rows the API was already willing to send. A hot filter is declared filter surface, like a column.
 - **The escape hatch is the toolbar slot.** A one-off control too custom for the config vocabulary composes `withFilters` by hand inside ADR-0038's `toolbarStart` — the same division ADR-0035 draws everywhere: config for the declarable, JSX for the bespoke.
 
 ### One source, announced
 
 The filter icons' active states, the hot filters' pressed states, the chips, and the dialogs' initial drafts all derive from the same single source — the URL's validated list state — so they cannot disagree with each other or with the request the server answered. The bar's region announces its changes politely (`aria-live="polite"`), so applying or clearing a filter is heard, not only seen; the wording is a `D4.4` implementation detail.
+
+**Settled at `D4.4`, since it was left here to be.** The live region is a visually hidden `role="status"` holding a count — "3 filters applied" — rather than `aria-live` on the chip list itself, which would read every added and removed chip aloud in sequence and turn Clear all into a recital. One polite sentence per change, with wording chosen rather than inherited from a DOM diff.
+
+**Amended 2026-08-20 (D4.4): a hot-filter group is named `"<label> filter"`, not `<label>`.** A group called "Status" is indistinguishable from the *form field* called "Status" the moment a record surface opens over the grid — which ADR-0040 makes the normal case, since the grid stays mounted underneath — so both are in the document at once and a label query finds two things. Naming what the control *is*, not only what it is about, fixes that and is also what a screen reader needs on landing in a toolbar out of context.
 
 ### What this does not change
 
@@ -121,6 +141,14 @@ The filter icons' active states, the hot filters' pressed states, the chips, and
 - **A filtered view finally explains itself.** The chips answer "what am I looking at?" in one line, including for state no visible control produced, and Clear all undoes a composed view in one action.
 - **One more dialog surface** living under the app's existing overlay conventions (submit-lock posture, focus management per ADR-0031/0035); the Dialog primitive supplies the behaviour, so this is composition rather than new machinery.
 - **The chips bar is the first UI rendered from *foreign* state**, which is new test surface (ADR-0036): a deep-linked filter on an unowned field shows a raw-labelled chip and removing it navigates correctly; an icon's active state matches the URL; Apply commits one navigation and Clear removes only its column; Clear all drops filters and `q`, resets the offset, and preserves sort and limit. `chipsForState`, `withoutFilter` and `clearedFilters` are pure and unit-testable beside the existing `list-state` and `column-filters` suites.
+
+  **Amended 2026-08-20 (D4.4): "foreign state" turned out to include state this app wrote, and the security pass is what found it.** Three ways the bar could describe a filter differently from the request it stands for, all of them in the labelling and none in the plumbing:
+
+  - **A `like` chip may only say "contains" about a pattern `containsPattern` produced.** `unescapeContains` is a *lossy* inverse — exact for what this UI writes, a guess for anything else. A deep link carrying `like: "ada"` with no wrapping `%` asks for an exact match; unwrapping it would put "Email contains “ada”" above an empty grid and let an operator conclude the substring is missing rather than that they asked a different question. `like: "%a%b%"` runs the other way, rendering a wildcard as a literal `%`. The term is therefore round-tripped through `containsPattern` and trusted only if it reproduces the pattern exactly; otherwise the chip falls through to the raw form, which is what this ADR already prescribes for anything it cannot honestly phrase. (The dialog's *draft* is seeded by the same lossy inverse and is left as it was: that path ends in an explicit Apply, so the rewrite is something the operator does rather than something that happens to them. Recorded, not fixed.)
+  - **A range chip names a UTC day, not a local one.** `toListFilters` builds a bound as UTC midnight or UTC end-of-day of the day picked in a `<input type="date">`, and the dialog re-reads it with `toISOString().slice(0, 10)`. Formatting that instant with the *cell* formatter — correctly local, because a cell holds a real event — moves an end-of-day bound forward a day east of UTC and a start-of-day bound back a day west of it, so the chip and the dialog name different days for one filter. A bound is not an event; it is the day that was typed.
+  - **`filterSchema` bounds neither `field` nor a scalar `value`**, which was harmless while nothing rendered a filter no column owned and stopped being harmless the moment this bar did. Labels are clamped, because an unbounded one wraps into a band that eats ADR-0037's height budget and pushes the table and pager off screen. Bounding the schema itself is the better fix and is a `@repo/contracts` change this deliverable does not take; it is recorded on the index's Planned list.
+
+  A fourth was in the suppression rule rather than in a label, and is amended at §Hot filters instead: suppression is by filter *entry*, not by resemblance.
 - **The code mostly moves house rather than being rewritten.** The dialog content is the existing `FilterControl` kinds, the translations (`toListFilters`, `toColumnFilterValue`, `containsPattern` and its inverse) are untouched, and the removal helpers are siblings of `withFilters`. The row's per-keystroke debounce becomes unnecessary inside a commit-on-Apply dialog — a deletion, not a redesign.
 - **Filtering costs one more click than the row did — except where it costs none.** An operator who filtered the same column constantly paid nothing before and pays an icon-click now; where that cost matters, the resource declares a hot filter and the stance is one press. The row taxed *every* grid's width and legibility all the time; the dialog-plus-hot-filter split prices each filter by how it is actually used.
 - **Hot filters add a config vocabulary and a suppression rule to test** (ADR-0036): a declared group renders and round-trips through the URL; pressing the active `eq` option releases it; a chip is suppressed exactly while a button displays its filter and reappears for unrepresentable values; Clear all releases pressed buttons. The users grid's "Deleted only" is expected to become the first `presence` hot filter — the D4.6 sweep decides whether the `deletedAt` column keeps a duplicate dialog control or drops it.
