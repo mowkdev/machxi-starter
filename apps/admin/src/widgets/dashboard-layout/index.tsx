@@ -23,6 +23,16 @@ import {
  * router-driven version wants route `staticData` the layout would have to read;
  * the route file reads it and passes it down for the same reason.
  *
+ * **A height budget needs a definite height to divide** (ADR-0037, amended
+ * `D4.1`). `SidebarProvider`'s `min-h-svh` is a floor and not a ceiling: it
+ * makes the frame a viewport tall while the content fits, and the moment a
+ * grid is taller the wrapper grows with it, so `flex-1` further down resolves
+ * against the content's height and budgets nothing. `h-svh` on the inset is
+ * what makes the height definite, and it is applied only in `fullHeight` mode
+ * so a document-flowed page is left alone. When the floor inside the grid wins
+ * on a very short viewport the column overflows this box and the document
+ * scrolls — the graceful degradation, reached rather than designed around.
+ *
  * **The page container carries the flex contract** (ADR-0037). `min-w-0` is
  * unconditional and is the second half of the fix `SidebarInset` got in
  * `@repo/ui`: without it this container is floored at the min-content width of
@@ -49,7 +59,7 @@ export const DashboardLayout = ({
 }) => (
   <SidebarProvider>
     {sidebar}
-    <SidebarInset>
+    <SidebarInset className={cn(fullHeight && "h-svh")}>
       <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger className="-ml-1" />
         <Separator

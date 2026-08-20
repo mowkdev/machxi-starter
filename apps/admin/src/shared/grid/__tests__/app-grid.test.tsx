@@ -482,8 +482,14 @@ describe("loading", () => {
  * and they are exactly what ADR-0037 §Consequences asks a review to cite.
  */
 describe("viewport layout", () => {
+  /*
+   * By its `data-slot`, not by its utility classes: renaming a Tailwind class
+   * should not fail a suite that is asking "which element scrolls". The class
+   * *assertions* below are a different question — which axes and what floor —
+   * and those genuinely are about the classes.
+   */
   const scrollBody = (container: HTMLElement) =>
-    container.querySelector(".overflow-auto");
+    container.querySelector('[data-slot="grid-scroll"]');
 
   it("puts the table in exactly one scroll container, and owns it", () => {
     const { container } = render(<Harness page={pageOf(demoRows)} />);
@@ -517,9 +523,16 @@ describe("viewport layout", () => {
 
     const header = container.querySelector('[data-slot="table-header"]');
     expect(scrollBody(container)).toContainElement(header as HTMLElement);
-    // Opaque, so rows pass under it rather than through it.
     expect(header?.className).toContain("sticky");
-    expect(header?.className).toContain("bg-card");
+    /*
+     * Opaque on the *cells*, and the table drawn with separated borders — the
+     * shape ADR-0037 (amended D4.1) settled on after the browser showed that a
+     * background on the `thead` does not travel with a sticky section while
+     * `border-collapse: collapse` is in force. Asserted because it looks like
+     * gratuitous class soup at a glance and is not; the ADR says why.
+     */
+    expect(header?.className).toContain("[&_th]:bg-card");
+    expect(screen.getByRole("table").className).toContain("border-separate");
   });
 
   it("keeps the search box and the pager out of it", () => {

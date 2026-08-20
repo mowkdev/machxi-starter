@@ -120,6 +120,29 @@ export interface AppGridProps<TRow> {
 
 const NO_ROWS: readonly never[] = [];
 
+/**
+ * What a sticky header costs on a collapsed-border table (ADR-0037, `D4.1`).
+ *
+ * Tailwind's preflight sets `border-collapse: collapse`, and under collapsed
+ * borders Chrome does not carry a table *section*'s background along with a
+ * sticky `thead`: the header text travels, its background stays behind, and
+ * every row scrolls straight through the column labels. Found in the browser,
+ * because nothing in jsdom and nothing in a class list says so.
+ *
+ * Separated borders with zero spacing fixes it, at one price the separated
+ * model charges: borders on rows are not rendered, only borders on cells. So
+ * the `border-b` that `@repo/ui`'s `TableRow` and `TableHeader` declare is
+ * re-declared here on the cells, which is what keeps the table looking exactly
+ * as it did. This lives in the grid rather than in the design system because it
+ * is the sticky header's bill, not the `Table` primitive's — a table that does
+ * not stick has nothing to pay.
+ */
+const STICKY_HEADER_TABLE = [
+  "border-separate border-spacing-0",
+  "[&_thead_th]:border-b [&_thead_td]:border-b",
+  "[&_tbody_td]:border-b [&_tbody_tr:last-child>td]:border-b-0",
+].join(" ");
+
 export const AppGrid = <TRow,>({
   columns,
   overrides,
@@ -300,16 +323,21 @@ export const AppGrid = <TRow,>({
        * are different tokens, and a header that borrowed the wrong one would
        * show it the moment a row passed under it.
        */}
-      <div className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto rounded-md border bg-card">
-        <Table container={false}>
+      <div
+        data-slot="grid-scroll"
+        className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto rounded-md border bg-card"
+      >
+        <Table container={false} className={STICKY_HEADER_TABLE}>
           {/*
            * Sticky within the scroll body — the point of the budget. It carries
            * an opaque background so rows pass *under* the header rather than
            * through it, and a stacking order, because ADR-0039's filter
            * popovers and ADR-0038's row menus will float in this same
-           * container and have to layer against it knowingly.
+           * container and have to layer against it knowingly. The opaque
+           * background is on the cells rather than on the `thead`, for the
+           * reason `STICKY_HEADER_TABLE` above records.
            */}
-          <TableHeader className="sticky top-0 z-10 bg-card">
+          <TableHeader className="sticky top-0 z-10 [&_td]:bg-card [&_th]:bg-card">
             {headerGroups.map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {

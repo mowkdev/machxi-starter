@@ -57,7 +57,7 @@ export const UsersPage = () => {
   const meta = useMemo(() => ({ rowActions }), [rowActions]);
 
   return (
-    <Card className="min-h-0 flex-1 overflow-hidden">
+    <Card className="min-h-0 flex-1">
       <CardHeader>
         <CardTitle>Users</CardTitle>
         <CardDescription>
@@ -80,8 +80,14 @@ export const UsersPage = () => {
        * The Card is part of the height budget, not decoration around it
        * (ADR-0037): every wrapper between the page container and AppGrid
        * carries `flex flex-col flex-1 min-h-0`, or the budget reverts to
-       * document scroll and the sticky header comes unstuck. `overflow-hidden`
-       * keeps the scroll body's corners inside the Card's radius.
+       * document scroll and the sticky header comes unstuck.
+       *
+       * And it deliberately does *not* clip: `min-h-0` lets the Card shrink to
+       * whatever the viewport left it, so on a viewport too short for the
+       * grid's own floor the scroll body overflows this box on purpose and the
+       * document scrolls. An `overflow-hidden` here looks tidier and silently
+       * eats the pager instead — measured in the browser at `D4.1`, which is
+       * the only tier that can see it.
        */}
       <CardContent className="flex min-h-0 flex-1 flex-col">
         <AppGrid

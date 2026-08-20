@@ -16,13 +16,19 @@ Each step names the ADRs that govern it. Read them before implementing — they 
 
 ## Build order
 
-### 1. Grid viewport layout — the shell fixes
+### ~~1. Grid viewport layout — the shell fixes~~ — **done 2026-08-20**
 
 **ADRs:** [0037](../adr/0037-grid-viewport-layout.md), [0031](../adr/0031-ui-design-system.md), [0032](../adr/0032-admin-app-architecture.md)
 
 First because it fixes what is broken today and builds the frame every later region slots into. The root cause of both shipped defects is one CSS fact — flex items default to `min-width: auto`, and nothing in the chain from `SidebarInset` to the table says otherwise, so the inset is floored at the table's `whitespace-nowrap` min-content width. `min-w-0` lands on `SidebarInset` (an owned edit to `packages/ui`'s generated `sidebar.tsx`, under ADR-0031's regenerate-and-diff model) and on the dashboard page container; the doubled scroll wrapper goes (`@repo/ui`'s `Table` gains the container opt-out; AppGrid owns the one scroll element); grid pages become height-budgeted — static toolbar and filter-bar regions, a `flex-1 min-h-0 overflow-auto` scroll body with a sticky header, the pager as a static footer, a minimum-height floor, and the token-driven thin scrollbar utility from `@repo/ui`.
 
 **Done when:** no page-level horizontal scrollbar at any viewport width with both resource grids rendered; collapsing/expanding the sidebar reflows the grid smoothly through the 200 ms transition; the grid fills the viewport with header and pager static while only rows scroll (custom scrollbars, both engines); a very short viewport degrades to page scroll at the floor rather than a crushed grid; profile and dashboard pages keep normal document flow.
+
+**Closed.** ADR-0037 accepted at the head of the step, then built: `min-w-0` on `SidebarInset` and on the page container, a `container` opt-out on `@repo/ui`'s `Table` so AppGrid owns the one `overflow-auto` element, the flex height budget with a sticky header and a static pager, `min-h-64` as the floor, `.scrollbar-thin` in the design system, and full height as a per-page `staticData` opt-in.
+
+Three things the browser found that neither the class lists nor the MSW tier could, each amended into ADR-0037 rather than worked around: **`min-h-svh` is a floor, not a ceiling**, so the budget needs one definite height (`h-svh` on the inset in full-height mode) or every `flex-1` below it resolves against the content it was meant to clip; **a sticky `thead`'s background does not travel** while `border-collapse: collapse` is in force, so the grid's table draws with separated borders at zero spacing and puts the borders and the opaque background on the cells; and **nothing on the grid path may clip**, because an `overflow-hidden` on the Card ate the pager on a short viewport instead of letting the page scroll.
+
+Evidence, separated the way `D3.10` separated it. **Machine-verified:** `pnpm lint`, `pnpm check-types`, `pnpm format:check` clean; `pnpm test` green at `0 cached, 8 total` — 433 API, 267 admin (+7), 12 `@repo/ui` (+3). **Walked in Chrome against the dev stack**, which is the only tier that can see geometry: both grids viewport-filled with the header and pager static and only rows scrolling; no page-level scrollbar on either axis, in either sidebar state or across the transition; the scroll body flexing from 465px down to its 256px floor as the frame shrinks, and overflowing rather than crushing below roughly 560px; `/profile` and `/` with no height constraint and no pane scroller. **Not walked:** Firefox — the standard `scrollbar-width` / `scrollbar-color` half of the utility is written but only Chrome's rendering was seen.
 
 ### 2. Record routes and edit surfaces
 
