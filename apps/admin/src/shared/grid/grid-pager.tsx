@@ -115,7 +115,12 @@ export const GridPager = ({
   return (
     <nav
       aria-label="Pagination"
-      className="flex flex-wrap items-center justify-between gap-4 px-2 py-3"
+      /*
+       * `shrink-0` because this is the budget's static footer (ADR-0037): it
+       * declares its height and the scroll body takes the rest, so a page of
+       * twenty rows no longer hides the pager below the fold.
+       */
+      className="flex shrink-0 flex-wrap items-center justify-between gap-4 px-2 py-3"
     >
       <p className="text-sm text-muted-foreground" data-slot="grid-range">
         {range}

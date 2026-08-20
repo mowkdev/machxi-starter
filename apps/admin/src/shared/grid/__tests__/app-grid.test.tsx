@@ -469,3 +469,72 @@ describe("loading", () => {
     expect(screen.queryByText("Sprocket")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The frame the grid renders into (`D4.1`, ADR-0037).
+ *
+ * Nothing here asserts geometry, and it says so rather than pretending: jsdom
+ * computes no layout, so "the header stayed put while the rows scrolled" is a
+ * claim only the deliverable's manual walk can make. What this suite pins is
+ * the *structure* that produces it — which element scrolls, that there is
+ * exactly one of it, and that the header and the pager are its static siblings
+ * rather than its content. Those are the invariants a careless wrapper breaks,
+ * and they are exactly what ADR-0037 §Consequences asks a review to cite.
+ */
+describe("viewport layout", () => {
+  const scrollBody = (container: HTMLElement) =>
+    container.querySelector(".overflow-auto");
+
+  it("puts the table in exactly one scroll container, and owns it", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    // The doubled wrapper is gone: `@repo/ui`'s Table no longer contributes
+    // one, so the border's radius has nothing clipping it and sticky offsets
+    // have one element to resolve against.
+    expect(
+      container.querySelectorAll('[data-slot="table-container"]'),
+    ).toHaveLength(0);
+
+    const body = scrollBody(container);
+    expect(body).not.toBeNull();
+    expect(container.querySelectorAll(".overflow-auto")).toHaveLength(1);
+    expect(body).toContainElement(screen.getByRole("table"));
+  });
+
+  it("scrolls on both axes, with the design system's own scrollbar", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    // `overflow-auto`, not `overflow-x-auto`: the vertical scroll the height
+    // budget hands it and the horizontal scroll the double wrapper used to
+    // split are the same container's job now.
+    const body = scrollBody(container);
+    expect(body?.className).toContain("scrollbar-thin");
+    expect(body?.className).toContain("min-h-64");
+  });
+
+  it("keeps the header inside the scroll body and stuck to its top", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    const header = container.querySelector('[data-slot="table-header"]');
+    expect(scrollBody(container)).toContainElement(header as HTMLElement);
+    // Opaque, so rows pass under it rather than through it.
+    expect(header?.className).toContain("sticky");
+    expect(header?.className).toContain("bg-card");
+  });
+
+  it("keeps the search box and the pager out of it", () => {
+    const { container } = render(
+      <Harness page={pageOf(demoRows)} searchable />,
+    );
+
+    // Static siblings of the scroll body: the chrome declares its height and
+    // the rows take the rest, which is the whole budget in one assertion.
+    const body = scrollBody(container);
+    expect(body).not.toContainElement(
+      screen.getByRole("navigation", { name: "Pagination" }),
+    );
+    expect(body).not.toContainElement(
+      screen.getByRole("searchbox", { name: "Search" }),
+    );
+  });
+});

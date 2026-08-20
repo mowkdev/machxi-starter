@@ -47,6 +47,17 @@ declare module "@tanstack/react-router" {
    */
   interface StaticDataRouteOption {
     title?: string;
+    /**
+     * Whether this page is height-budgeted rather than document-flowed
+     * (ADR-0037 §A height-budgeted grid shell). Grid pages opt in; a form
+     * taller than the viewport should scroll as a document, not inside a pane,
+     * so `false` — the default — is the right answer for most screens.
+     *
+     * It rides the same channel as `title` for the same reason: the shell must
+     * not have to know which paths are grids, and a route already declares
+     * what it is.
+     */
+    fullHeight?: boolean;
   }
 }
 

@@ -68,7 +68,7 @@ export const StaffPage = () => {
   const meta = useMemo(() => ({ rowActions }), [rowActions]);
 
   return (
-    <Card>
+    <Card className="min-h-0 flex-1 overflow-hidden">
       <CardHeader>
         <CardTitle>Staff</CardTitle>
         <CardDescription>
@@ -86,7 +86,14 @@ export const StaffPage = () => {
         </CardAction>
       </CardHeader>
 
-      <CardContent>
+      {/*
+       * The Card is part of the height budget, not decoration around it
+       * (ADR-0037): every wrapper between the page container and AppGrid
+       * carries `flex flex-col flex-1 min-h-0`, or the budget reverts to
+       * document scroll and the sticky header comes unstuck. `overflow-hidden`
+       * keeps the scroll body's corners inside the Card's radius.
+       */}
+      <CardContent className="flex min-h-0 flex-1 flex-col">
         <AppGrid
           columns={staffResourceConfig.columns}
           page={staff.data}

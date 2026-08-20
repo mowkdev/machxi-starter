@@ -263,9 +263,23 @@ export const AppGrid = <TRow,>({
   const columnCount = merged.length;
 
   return (
-    <div className="space-y-3">
+    /*
+     * The height budget (ADR-0037).
+     *
+     * `flex-1 min-h-0` on a column whose chrome is static and whose scroll body
+     * takes the rest: the toolbar and the pager declare their heights, the rows
+     * get whatever is left, and no dimension is written down anywhere — which
+     * is the property a `calc(100vh - …)` would have traded away the first time
+     * a sibling ADR changed the chrome's height.
+     *
+     * It is unconditional here and switched further up (`fullHeight` on the
+     * page container). In a page that did not opt in, `flex-1` and `min-h-0`
+     * are inert — the grid grows with its rows and the document scrolls — so
+     * one component serves both strategies without a mode of its own.
+     */
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       {searchable ? (
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <GridSearch
             value={listState.q ?? ""}
             onCommit={(term) => {
@@ -275,9 +289,27 @@ export const AppGrid = <TRow,>({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-md border">
-        <Table>
-          <TableHeader>
+      {/*
+       * The one scroll container (ADR-0037), on both axes, and the floor that
+       * keeps a short viewport honest: when `min-h-64` wins, the column grows
+       * past the viewport and the document scrolls — D3's behaviour, reached by
+       * degrading rather than by crushing the grid to two rows.
+       *
+       * `bg-card` is here as well as on the sticky header so the two agree
+       * whatever this grid is mounted in; in dark mode `card` and `background`
+       * are different tokens, and a header that borrowed the wrong one would
+       * show it the moment a row passed under it.
+       */}
+      <div className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto rounded-md border bg-card">
+        <Table container={false}>
+          {/*
+           * Sticky within the scroll body — the point of the budget. It carries
+           * an opaque background so rows pass *under* the header rather than
+           * through it, and a stacking order, because ADR-0039's filter
+           * popovers and ADR-0038's row menus will float in this same
+           * container and have to layer against it knowingly.
+           */}
+          <TableHeader className="sticky top-0 z-10 bg-card">
             {headerGroups.map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {

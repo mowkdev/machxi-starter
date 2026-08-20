@@ -1,10 +1,19 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import {
+  createProfileHandlers,
+  createProfileMockState,
+} from "@/test/msw/handlers/profile.handlers";
+import {
+  createStaffHandlers,
+  createStaffMockState,
+} from "@/test/msw/handlers/staff.handlers";
+import { server } from "@/test/msw/server";
 import { renderApp } from "@/test/render";
 
 /**
@@ -81,5 +90,57 @@ describe("route guards", () => {
     expect(
       await screen.findByRole("heading", { name: "Profile" }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The vertical strategy, read off the same channel as the title (`D4.1`,
+ * ADR-0037 §Full-height mode is a page choice).
+ *
+ * Geometry itself is not assertable here — jsdom lays nothing out, so no test
+ * in this tier can say the pager stayed put or the rows scrolled; that is what
+ * the deliverable's manual walk is for. What *is* assertable is the decision
+ * that produces the geometry: which pages asked for a height budget. Asserting
+ * it through the real route tree is the point, because the failure this guards
+ * against is a new page silently inheriting the wrong strategy.
+ */
+describe("page vertical strategy", () => {
+  /*
+   * These pages fetch, and ADR-0036 makes an unhandled request an error — so
+   * the two screens below get their handlers even though nothing here asserts
+   * a row. A page rendering its error surface is not the page whose frame is
+   * being checked.
+   */
+  beforeEach(() => {
+    server.use(
+      ...createStaffHandlers(createStaffMockState()),
+      ...createProfileHandlers(createProfileMockState()),
+    );
+  });
+
+  const pageContainer = () =>
+    document.querySelector('[data-slot="page-container"]');
+
+  it("budgets the height of a grid page", async () => {
+    renderApp({ initialPath: "/staff", store: session(true) });
+    await screen.findByRole("heading", { name: "Staff" });
+
+    expect(pageContainer()).toHaveAttribute("data-full-height");
+  });
+
+  it("leaves a form page in normal document flow", async () => {
+    renderApp({ initialPath: "/profile", store: session(true) });
+    await screen.findByRole("heading", { name: "Profile" });
+
+    // A form taller than the viewport should scroll as a document, not inside
+    // a pane — so the absence here is the decision, not an oversight.
+    expect(pageContainer()).not.toHaveAttribute("data-full-height");
+  });
+
+  it("leaves the dashboard index in normal document flow", async () => {
+    renderApp({ initialPath: "/", store: session(true) });
+    await screen.findByRole("heading", { name: "Dashboard" });
+
+    expect(pageContainer()).not.toHaveAttribute("data-full-height");
   });
 });

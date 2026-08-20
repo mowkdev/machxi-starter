@@ -3,7 +3,7 @@ import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
 
-import { useRouteTitle } from "@/shared/lib/route-title";
+import { useRouteFullHeight, useRouteTitle } from "@/shared/lib/route-meta";
 
 /**
  * The guard, and the reason it lives here (ADR-0032 §Layout topology).
@@ -22,7 +22,9 @@ import { useRouteTitle } from "@/shared/lib/route-title";
  * when a session dies is what re-runs this guard mid-session.
  *
  * The title is per-route `staticData` rather than a lookup table, so a page and
- * its heading cannot drift apart.
+ * its heading cannot drift apart. `fullHeight` rides the same channel (`D4.1`,
+ * ADR-0037): whether a page is a height budget or a document is a property of
+ * the page, and the shell should not hold a list of which paths are grids.
  */
 export const Route = createFileRoute("/_dashboard")({
   beforeLoad: ({ context, location }) => {
@@ -35,7 +37,11 @@ export const Route = createFileRoute("/_dashboard")({
 
 function DashboardShell() {
   return (
-    <DashboardLayout sidebar={<AppSidebar />} title={useRouteTitle("Admin")}>
+    <DashboardLayout
+      sidebar={<AppSidebar />}
+      title={useRouteTitle("Admin")}
+      fullHeight={useRouteFullHeight()}
+    >
       <Outlet />
     </DashboardLayout>
   );

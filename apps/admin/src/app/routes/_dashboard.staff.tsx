@@ -34,7 +34,8 @@ import { listSearchDefaults } from "@/shared/grid/list-state";
  */
 export const Route = createFileRoute("/_dashboard/staff")({
   component: StaffPage,
-  staticData: { title: "Staff" },
+  // A grid page is a height budget, not a document (ADR-0037, `D4.1`).
+  staticData: { title: "Staff", fullHeight: true },
   validateSearch: listQuerySearchSchema,
   search: { middlewares: [stripSearchParams(listSearchDefaults)] },
 });
