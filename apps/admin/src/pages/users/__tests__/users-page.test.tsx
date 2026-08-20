@@ -67,6 +67,15 @@ const openUsers = (roles: readonly StaffRole[] = ["admin"]) => {
 const lastList = () => state.seen.list.at(-1);
 
 beforeEach(() => {
+  /*
+   * This screen's grid persists its columns to real `localStorage` under
+   * `machxi.admin.grid:users:v1` (`D4.5`). No case below touches the Columns
+   * menu, so nothing is written today — the clear is here so that the first one
+   * that does cannot hand its arrangement to the next test and make this file's
+   * result depend on its order.
+   */
+  window.localStorage.clear();
+
   server.use(...createUsersHandlers(createUsersMockState()));
 });
 

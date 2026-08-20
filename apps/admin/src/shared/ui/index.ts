@@ -83,6 +83,12 @@ export {
 export { Input } from "@repo/ui/components/input";
 export { Label } from "@repo/ui/components/label";
 export {
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@repo/ui/components/popover";
+export {
   Select,
   SelectContent,
   SelectItem,

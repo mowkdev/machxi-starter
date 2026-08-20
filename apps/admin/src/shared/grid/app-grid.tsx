@@ -2,6 +2,9 @@ import type { Filter, ListQuerySearch, Page } from "@repo/contracts";
 import {
   useTable,
   type ColumnFiltersState,
+  type ColumnOrderState,
+  type ColumnSizingState,
+  type ColumnVisibilityState,
   type OnChangeFn,
   type PaginationState,
   type RowSelectionState,
@@ -12,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -43,7 +47,15 @@ import {
   toColumnFiltersState,
   type ColumnFilterValue,
 } from "./column-filters";
-import { buildColumns, buildSelectionColumn, type GridRow } from "./columns";
+import { ColumnsMenu } from "./columns-menu";
+import {
+  SELECTION_COLUMN_ID,
+  buildColumns,
+  buildSelectionColumn,
+  movableColumns,
+  structuralColumns,
+  type GridRow,
+} from "./columns";
 import { gridFeatures } from "./features";
 import { ColumnFilterDialog } from "./filter-dialog";
 import { GridPager } from "./grid-pager";
@@ -61,7 +73,13 @@ import {
   withSort,
   withoutFilter,
 } from "./list-state";
+import {
+  MIN_COLUMN_WIDTH,
+  clampColumnWidth,
+  type PreferenceStorage,
+} from "./preferences";
 import type { GridMeta, GridToolbarContext } from "./types";
+import { useGridPreferences } from "./use-grid-preferences";
 
 /**
  * The config-driven grid (ADR-0035).
@@ -187,6 +205,33 @@ export interface AppGridProps<TRow> {
   readonly renderToolbar?:
     ((context: GridToolbarContext) => ReactNode) | undefined;
   /**
+   * Which grid's arrangement this is, for ADR-0041's preferences store.
+   *
+   * `ResourceConfig.name` at every call site — the prop exists so a second grid
+   * over the same resource can say otherwise, because two grids sharing an id
+   * would fight over one entry and each would restore the other's layout.
+   * **Absent means nothing persists**: sizing, order and visibility still work
+   * for the life of the component, they simply have nowhere to be written.
+   */
+  readonly gridId?: string | undefined;
+  /**
+   * The storage adapter (ADR-0041), defaulting to `localStorage`.
+   *
+   * This is the seam the ADR is built around rather than a test hook: the
+   * future server-backed user-settings adapter arrives *here*, as a third
+   * implementation of three functions, and neither this component nor the store
+   * changes when it does. Tests pass an in-memory one, which is the same fact
+   * from the other side.
+   *
+   * **It must be referentially stable.** The store is memoised on this value,
+   * so an adapter constructed inline in the caller's JSX — `storage={createX()}`
+   * — rebuilds the store every render, and a store rebuilt every render hands
+   * `useSyncExternalStore` a new snapshot every render, which is an infinite
+   * loop rather than a slow path. Module scope, a `useMemo` or a ref; the
+   * default is a module-level decision and has the property for free.
+   */
+  readonly preferenceStorage?: PreferenceStorage | undefined;
+  /**
    * Page-size options for the pager; the pager's own defaults when absent.
    *
    * Kept as a prop *and* readable from `capabilities.pageSizes`, with the
@@ -253,6 +298,8 @@ export const AppGrid = <TRow,>({
   toolbarStart = null,
   toolbarEnd = null,
   renderToolbar,
+  gridId,
+  preferenceStorage,
   pageSizes,
 }: AppGridProps<TRow>) => {
   const merged = useMemo(
@@ -260,6 +307,22 @@ export const AppGrid = <TRow,>({
     [columns, overrides],
   );
   const filterable = useMemo(() => filterableColumns(merged), [merged]);
+
+  /*
+   * The resource's own columns and the grid's chrome, told apart once
+   * (ADR-0041). Structural columns — ADR-0038's checkbox and the row-actions
+   * column — are exempt from every preference **by construction**: `movable` is
+   * what the store knows about, `structural` is pinned after it, and neither
+   * list is something a validation rule has to keep honest.
+   */
+  const movable = useMemo(() => movableColumns(merged), [merged]);
+  const structural = useMemo(() => structuralColumns(merged), [merged]);
+
+  const [preferences, preferenceStore] = useGridPreferences({
+    gridId,
+    movable,
+    storage: preferenceStorage,
+  });
 
   const selectable = capabilities?.selectable === true;
 
@@ -313,6 +376,34 @@ export const AppGrid = <TRow,>({
     () => toColumnFiltersState(listState.filters, filterable),
     [listState.filters, filterable],
   );
+  /*
+   * The engine's three ergonomics slices, composed from the store.
+   *
+   * `columnOrder` is the whole table's, so the structural columns are put back
+   * around the operator's arrangement here — selection first, actions last —
+   * which is what makes their position a property of this component rather than
+   * of any resource's config, and what makes them unmovable without a rule
+   * saying so.
+   */
+  const columnOrder = useMemo<ColumnOrderState>(
+    () => [
+      ...(selectable ? [SELECTION_COLUMN_ID] : []),
+      ...preferences.order,
+      ...structural,
+    ],
+    [selectable, preferences.order, structural],
+  );
+
+  /*
+   * Absent means visible, so only the hidden ones are named. Storing the
+   * negative is what makes a column added to the config tomorrow arrive
+   * *visible* rather than inheriting a stale `true` nobody wrote.
+   */
+  const columnVisibility = useMemo<ColumnVisibilityState>(
+    () => Object.fromEntries(preferences.hidden.map((id) => [id, false])),
+    [preferences.hidden],
+  );
+
   const pagination = useMemo<PaginationState>(
     () => ({
       pageIndex: Math.floor(listState.offset / listState.limit),
@@ -350,6 +441,46 @@ export const AppGrid = <TRow,>({
     onListStateChange(withFilters(listState, [field], next));
   };
 
+  /*
+   * The three ergonomics handlers, and they all narrow to `movable` on the way
+   * in. The engine reports the whole table's state — selection column, actions
+   * column and all — and the store is only ever told about the resource's own
+   * columns, so a structural id cannot reach storage even if something upstream
+   * offered one.
+   */
+  const onColumnOrderChange: OnChangeFn<ColumnOrderState> = (updater) => {
+    const next = typeof updater === "function" ? updater(columnOrder) : updater;
+
+    preferenceStore.set({
+      ...preferences,
+      order: next.filter((id) => movable.includes(id)),
+    });
+  };
+
+  const onColumnVisibilityChange: OnChangeFn<ColumnVisibilityState> = (
+    updater,
+  ) => {
+    const next =
+      typeof updater === "function" ? updater(columnVisibility) : updater;
+
+    preferenceStore.set({
+      ...preferences,
+      hidden: movable.filter((id) => next[id] === false),
+    });
+  };
+
+  const onColumnSizingChange: OnChangeFn<ColumnSizingState> = (updater) => {
+    const next =
+      typeof updater === "function" ? updater(preferences.sizing) : updater;
+
+    preferenceStore.set({
+      ...preferences,
+      sizing: Object.fromEntries(
+        Object.entries(next).filter(([id]) => movable.includes(id)),
+      ),
+    });
+  };
+
   const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
     const next = typeof updater === "function" ? updater(pagination) : updater;
 
@@ -373,10 +504,27 @@ export const AppGrid = <TRow,>({
     ...(page?.total === undefined || page.total === null
       ? {}
       : { rowCount: page.total }),
-    state: { sorting, columnFilters, pagination, rowSelection },
+    state: {
+      sorting,
+      columnFilters,
+      pagination,
+      rowSelection,
+      /*
+       * ADR-0041's three, controlled from the preferences store exactly as the
+       * three above are controlled from the URL. "The table owns nothing
+       * durable" is the taxonomy's third clause, and this object is where it
+       * is true or false.
+       */
+      columnOrder,
+      columnVisibility,
+      columnSizing: preferences.sizing,
+    },
     onSortingChange,
     onColumnFiltersChange,
     onPaginationChange,
+    onColumnOrderChange,
+    onColumnVisibilityChange,
+    onColumnSizingChange,
     onRowSelectionChange: setRowSelection,
     /*
      * Registered unconditionally (`features.ts` says why) but only *enabled*
@@ -417,11 +565,99 @@ export const AppGrid = <TRow,>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, listState.offset, listState.limit]);
 
+  /*
+   * The resize drag, **owned here rather than taken from v9** (ADR-0041,
+   * amended `D4.5`).
+   *
+   * `columnResizingFeature` ships `header.getResizeHandler()`, and its start
+   * width is `column.getSize()` — which for a column nobody has sized yet is the
+   * engine's 150px default, while this grid's real default is "whatever the
+   * content needed". Using it would snap a wide email column to 150px on the
+   * first pixel of the first drag, before tracking the pointer at all. Reading
+   * the start width off the header cell instead keeps auto-layout for every
+   * untouched column and costs the fifteen lines below.
+   *
+   * It still writes through `table.setColumnSizing`, so the path in and out is
+   * the one every other control takes: engine reports, `onColumnSizingChange`
+   * translates, the store owns.
+   */
+  const setColumnWidth = useCallback(
+    (columnId: string, width: number) => {
+      table.setColumnSizing((current) => ({
+        ...current,
+        [columnId]: clampColumnWidth(width),
+      }));
+    },
+    [table],
+  );
+
+  const clearColumnWidth = useCallback(
+    (columnId: string) => {
+      table.setColumnSizing((current) => {
+        const { [columnId]: _dropped, ...rest } = current;
+
+        return rest;
+      });
+    },
+    [table],
+  );
+
+  const menuEntries = useMemo(
+    () =>
+      preferences.order.map((id) => ({
+        id,
+        label: String(merged.find(([name]) => name === id)?.[1].header ?? id),
+        isVisible: !preferences.hidden.includes(id),
+      })),
+    [preferences.order, preferences.hidden, merged],
+  );
+
+  /*
+   * Whether anything deviates from the config, which is the only thing "Reset
+   * to defaults" could act on. Order is compared as a sequence because
+   * reordering changes nothing else about it.
+   */
+  const isDirty =
+    Object.keys(preferences.sizing).length > 0 ||
+    preferences.hidden.length > 0 ||
+    preferences.order.join("\n") !== movable.join("\n");
+
+  const moveColumn = useCallback(
+    (columnId: string, direction: -1 | 1) => {
+      const from = preferences.order.indexOf(columnId);
+      const to = from + direction;
+
+      if (from === -1 || to < 0 || to >= preferences.order.length) return;
+
+      const next = [...preferences.order];
+      const [moved] = next.splice(from, 1);
+
+      if (moved === undefined) return;
+      next.splice(to, 0, moved);
+
+      /*
+       * Through the engine, not around it: `setColumnOrder` lands in
+       * `onColumnOrderChange`, which is where the structural ids are stripped —
+       * so the menu never has to know they exist.
+       */
+      table.setColumnOrder([
+        ...(selectable ? [SELECTION_COLUMN_ID] : []),
+        ...next,
+        ...structural,
+      ]);
+    },
+    [preferences.order, table, selectable, structural],
+  );
+
   const headerGroups = table.getHeaderGroups();
   const bodyRows = table.getRowModel().rows;
-  // The injected checkbox column counts: a `colSpan` short by one leaves the
-  // empty, loading and error rows failing to span the table they replace.
-  const columnCount = merged.length + (selectable ? 1 : 0);
+  /*
+   * The *visible* leaf columns, since `D4.5` — a `colSpan` counted from the
+   * config would over-span the moment an operator hides a column, and the
+   * empty, loading and error rows would push the table wider than its own
+   * header.
+   */
+  const columnCount = table.getVisibleLeafColumns().length;
 
   /*
    * The selection as ids rather than as the engine's state object, because that
@@ -501,6 +737,29 @@ export const AppGrid = <TRow,>({
           onBulkDelete={onBulkDelete}
           toolbarStart={toolbarStart}
           toolbarEnd={toolbarEnd}
+          /*
+           * `null`, not a component that renders nothing: the toolbar decides
+           * whether the whole region exists by asking whether its slots were
+           * *given* anything, and an element that returns `null` still counts
+           * as given. A grid whose every column is structural would otherwise
+           * get the empty band ADR-0038 spent a step removing.
+           */
+          columnsMenu={
+            movable.length === 0 ? null : (
+              <ColumnsMenu
+                entries={menuEntries}
+                isDirty={isDirty}
+                onToggle={(id, visible) => {
+                  table.setColumnVisibility((current) => ({
+                    ...current,
+                    [id]: visible,
+                  }));
+                }}
+                onMove={moveColumn}
+                onReset={preferenceStore.reset}
+              />
+            )
+          }
           selectedIds={selectedIds}
           clearSelection={clearSelection}
         />
@@ -576,10 +835,17 @@ export const AppGrid = <TRow,>({
                   const align = header.column.columnDef.meta?.align ?? "start";
                   const filter = header.column.columnDef.meta?.filter;
 
+                  const width = widthOf(preferences, header.column.id);
+
                   return (
                     <TableHead
                       key={header.id}
-                      className={cn(align === "end" && "text-right")}
+                      // `relative` so the resize handle can sit on the edge.
+                      className={cn(
+                        "relative",
+                        align === "end" && "text-right",
+                      )}
+                      style={width === undefined ? undefined : { width }}
                       aria-sort={
                         sorted === false
                           ? undefined
@@ -599,7 +865,22 @@ export const AppGrid = <TRow,>({
                         className={cn(
                           "flex items-center gap-1",
                           align === "end" && "justify-end",
+                          width !== undefined && "overflow-hidden",
                         )}
+                        /*
+                         * The width lives on an inner block as well as on the
+                         * cell, and that is what makes sizing bite at all.
+                         * `@repo/ui`'s `TableHead` and `TableCell` are
+                         * `whitespace-nowrap`, and under `table-layout: auto` a
+                         * cell's own `width` is a suggestion its content can
+                         * overrule — so a narrowed column would simply refuse
+                         * to narrow. A fixed-width block inside it cannot.
+                         */
+                        style={
+                          width === undefined
+                            ? undefined
+                            : { width, maxWidth: width }
+                        }
                       >
                         {header.column.getCanSort() ? (
                           <Button
@@ -648,6 +929,22 @@ export const AppGrid = <TRow,>({
                           />
                         )}
                       </div>
+
+                      {header.column.columnDef.meta?.structural ===
+                      true ? null : (
+                        <ResizeHandle
+                          label={String(
+                            header.column.columnDef.header ?? header.column.id,
+                          )}
+                          width={width}
+                          onResize={(next) => {
+                            setColumnWidth(header.column.id, next);
+                          }}
+                          onReset={() => {
+                            clearColumnWidth(header.column.id);
+                          }}
+                        />
+                      )}
                     </TableHead>
                   );
                 })}
@@ -683,17 +980,42 @@ export const AppGrid = <TRow,>({
             ) : (
               bodyRows.map((row) => (
                 <TableRow key={row.id}>
-                  {row.getAllCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        cell.column.columnDef.meta?.align === "end" &&
-                          "text-right",
-                      )}
-                    >
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
+                  {/*
+                   * `getVisibleCells`, not `getAllCells` — since `D4.5` a
+                   * column can be hidden, and a row that rendered every cell
+                   * would put its data under the wrong headers.
+                   */}
+                  {row.getVisibleCells().map((cell) => {
+                    const width = widthOf(preferences, cell.column.id);
+
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          cell.column.columnDef.meta?.align === "end" &&
+                            "text-right",
+                        )}
+                        style={width === undefined ? undefined : { width }}
+                      >
+                        {/*
+                         * Unsized columns render exactly as they did — no
+                         * wrapper, no constraint, content-width auto layout.
+                         * Only a column somebody has actually sized gets the
+                         * fixed-width block that makes the number real.
+                         */}
+                        {width === undefined ? (
+                          <table.FlexRender cell={cell} />
+                        ) : (
+                          <div
+                            className="overflow-hidden text-ellipsis"
+                            style={{ width, maxWidth: width }}
+                          >
+                            <table.FlexRender cell={cell} />
+                          </div>
+                        )}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))
             )}
@@ -731,6 +1053,138 @@ export const AppGrid = <TRow,>({
         }}
       />
     </div>
+  );
+};
+
+/**
+ * A stored width, read as an **own** property.
+ *
+ * `sizing` is a plain object, so a resource whose column is called `constructor`
+ * or `toString` would otherwise read a *function* off the prototype chain —
+ * which passes the `undefined` test and reaches a `style`. Not reachable from
+ * storage, where `reconcile` filters to declared ids; reachable from a config,
+ * which is exactly the kind of thing a config is allowed to contain.
+ */
+const widthOf = (
+  preferences: { readonly sizing: Readonly<Record<string, number>> },
+  columnId: string,
+): number | undefined =>
+  Object.hasOwn(preferences.sizing, columnId)
+    ? preferences.sizing[columnId]
+    : undefined;
+
+/** How far one arrow-key press moves an edge. */
+const RESIZE_STEP = 16;
+
+/**
+ * The column's right edge, as a control (ADR-0041, `D4.5`).
+ *
+ * **A `button`, not a bare `div` with `onMouseDown`.** The ADR describes resize
+ * as "a pointer drag on the header edge" and says nothing about the keyboard,
+ * which would have made column widths the one grid affordance reachable by
+ * mouse alone — in a panel whose every other control is operable by name and by
+ * key. It costs an `aria-label` and two arrow keys, so it is a decision rather
+ * than a gap: left and right nudge the edge, `Enter` and a double-click return
+ * the column to content width.
+ *
+ * The drag listens on `window`, because a pointer that leaves the handle
+ * mid-drag — which it does immediately, that being the point — must not end the
+ * drag.
+ */
+const ResizeHandle = ({
+  label,
+  width,
+  onResize,
+  onReset,
+}: {
+  readonly label: string;
+  /** The current width, or `undefined` while the column is content-sized. */
+  readonly width: number | undefined;
+  readonly onResize: (next: number) => void;
+  readonly onReset: () => void;
+}) => {
+  /*
+   * The drag listens on `window`, because a pointer that leaves the handle
+   * mid-drag — which it does immediately, that being the point — must not end
+   * the drag. That makes the listeners outlive the element unless something
+   * says otherwise: `pointerup` normally cleans them up, but a navigation
+   * mid-drag unmounts this button with the pointer still down, and ADR-0040
+   * made record surfaces routes, so navigating away from a grid is ordinary.
+   * One `AbortController` per drag, aborted on unmount, so the closure over the
+   * table cannot be held by a grid that is gone.
+   */
+  const drag = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      drag.current?.abort();
+    },
+    [],
+  );
+
+  return (
+    <button
+      type="button"
+      aria-label={`Resize ${label}`}
+      data-slot="grid-resize-handle"
+      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-transparent hover:bg-border focus-visible:bg-border focus-visible:outline-none"
+      onDoubleClick={onReset}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onReset();
+          return;
+        }
+
+        const step =
+          event.key === "ArrowLeft"
+            ? -RESIZE_STEP
+            : event.key === "ArrowRight"
+              ? RESIZE_STEP
+              : 0;
+
+        if (step === 0) return;
+
+        event.preventDefault();
+        /*
+         * The current width, or the rendered one for a column nobody has sized —
+         * the same measurement the drag takes, for the same reason: the engine's
+         * default is a number this grid never used.
+         */
+        onResize(
+          (width ??
+            event.currentTarget.parentElement?.getBoundingClientRect().width ??
+            MIN_COLUMN_WIDTH) + step,
+        );
+      }}
+      onPointerDown={(event) => {
+        // Only the primary button, and never a text selection across the header.
+        if (event.button !== 0) return;
+        event.preventDefault();
+
+        const cell = event.currentTarget.parentElement;
+        const startX = event.clientX;
+        const startWidth = width ?? cell?.getBoundingClientRect().width ?? 0;
+
+        drag.current?.abort();
+        const controller = new AbortController();
+
+        drag.current = controller;
+
+        const move = (moveEvent: PointerEvent) => {
+          onResize(startWidth + moveEvent.clientX - startX);
+        };
+        const stop = () => {
+          controller.abort();
+        };
+
+        const options = { signal: controller.signal };
+
+        window.addEventListener("pointermove", move, options);
+        window.addEventListener("pointerup", stop, options);
+        window.addEventListener("pointercancel", stop, options);
+      }}
+    />
   );
 };
 

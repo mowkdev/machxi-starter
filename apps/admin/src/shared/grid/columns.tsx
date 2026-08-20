@@ -1,7 +1,11 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { mergeColumns } from "@/shared/resource/config";
-import type { ColumnConfigMap, ColumnOverrides } from "@/shared/resource/types";
+import type {
+  ColumnConfig,
+  ColumnConfigMap,
+  ColumnOverrides,
+} from "@/shared/resource/types";
 import { Checkbox } from "@/shared/ui";
 
 import { text } from "./formatters";
@@ -29,6 +33,42 @@ export type GridRow = Record<string, unknown>;
  * to exempt it from hiding and reordering by construction.
  */
 export const SELECTION_COLUMN_ID = "__select__";
+
+/**
+ * Whether a column is **structural** — the grid's own chrome rather than one of
+ * the resource's fields (ADR-0041).
+ *
+ * Structural columns are exempt from every preference by construction: they are
+ * not offered in the Columns menu, cannot be hidden or reordered, are not
+ * resizable, and never enter the stored value. The selection column is pinned
+ * first and the row-actions column last, and neither position is a convention
+ * anyone has to remember.
+ *
+ * The discriminator is the **registry key**, not a column name: `rowActions` is
+ * `shared/grid` vocabulary (`CellRendererKey`), so this stays a statement about
+ * the machinery rather than domain knowledge `shared` may not hold (ADR-0032).
+ * A resource that called its column `operations` still gets the right answer;
+ * one that put a `rowActions` renderer in the middle of its config still gets
+ * it last, which is the point of doing this here.
+ */
+export const isStructuralColumn = (column: ColumnConfig): boolean =>
+  column.cellRenderer === "rowActions";
+
+/** A resource's own columns, in config order — everything a preference governs. */
+export const movableColumns = (
+  columns: readonly (readonly [string, ColumnConfig])[],
+): readonly string[] =>
+  columns.flatMap(([name, column]) =>
+    isStructuralColumn(column) ? [] : [name],
+  );
+
+/** The structural tail, pinned after every movable column. */
+export const structuralColumns = (
+  columns: readonly (readonly [string, ColumnConfig])[],
+): readonly string[] =>
+  columns.flatMap(([name, column]) =>
+    isStructuralColumn(column) ? [name] : [],
+  );
 
 /**
  * The checkbox column, **built in — `AppGrid` owns it, it is not a config
@@ -85,7 +125,9 @@ export const buildSelectionColumn = (): ColumnDef<GridFeatures, GridRow> => ({
     />
   ),
   enableSorting: false,
-  meta: { align: "start", filter: undefined },
+  // Structural (ADR-0041): never hidden, never resized, never in the menu.
+  enableHiding: false,
+  meta: { align: "start", filter: undefined, structural: true },
 });
 
 export const buildColumns = (
@@ -135,6 +177,18 @@ export const buildColumns = (
           />
         ),
       enableSorting: column.sortable === true,
-      meta: { align: column.align ?? "start", filter: column.filter },
+      /*
+       * The row-actions column is chrome, not a field (ADR-0041): hiding it
+       * would strand every row's menu behind a preference, and resizing a
+       * column of icon buttons answers no question. Everything else is
+       * hideable and resizable — per-column flags would be config vocabulary
+       * with no consumer, which the ADR refuses as YAGNI.
+       */
+      enableHiding: !isStructuralColumn(column),
+      meta: {
+        align: column.align ?? "start",
+        filter: column.filter,
+        structural: isStructuralColumn(column),
+      },
     } satisfies ColumnDef<GridFeatures, GridRow>;
   });

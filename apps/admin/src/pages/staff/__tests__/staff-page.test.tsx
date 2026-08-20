@@ -74,6 +74,71 @@ const lastList = () => state.seen.list.at(-1);
 
 beforeEach(() => {
   server.use(...createStaffHandlers(createStaffMockState()));
+  /*
+   * The grid preferences of `D4.5` are real `localStorage` here, because these
+   * screens exercise the *wiring* — `gridId={staffResourceConfig.name}` — not
+   * the store, which has its own suite over the in-memory adapter. Clearing
+   * between tests is what stops one case handing its column arrangement to the
+   * next and making this file's result depend on its order.
+   */
+  window.localStorage.clear();
+});
+
+describe("grid preferences, through the real wiring", () => {
+  /*
+   * The store's own behaviour is covered against an in-memory adapter in
+   * `shared/grid/__tests__/preferences.test.ts`. What only a screen can show is
+   * that the two resources declare *different* `gridId`s and therefore keep
+   * separate entries — the plan's "`staff` and `users` prove isolation" — and
+   * that the id reaching the store is the resource's own name rather than a
+   * constant somebody typed twice.
+   */
+  it("persists one resource's columns across a reload without touching the other's", async () => {
+    const user = userEvent.setup();
+
+    const first = openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("checkbox", {
+        name: "Roles",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("columnheader", { name: "Roles" }),
+      ).not.toBeInTheDocument();
+    });
+
+    /*
+     * Close the menu before unmounting. An operator would, and a test that does
+     * not leaves a Radix overlay mounted at teardown — its dismiss layer and
+     * focus guards keep mutating the document, and every `findBy*` in every
+     * later test in this file then re-scans a tree that never settles. It cost
+     * one test in this file six hundred seconds before it was noticed.
+     */
+    await user.keyboard("{Escape}");
+
+    // A remount is what a reload is, and the arrangement comes back.
+    first.unmount();
+    openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+    expect(
+      screen.queryByRole("columnheader", { name: "Roles" }),
+    ).not.toBeInTheDocument();
+
+    // And the entry is the staff grid's alone.
+    expect(
+      window.localStorage.getItem("machxi.admin.grid:staff:v1"),
+    ).not.toBeNull();
+    expect(
+      window.localStorage.getItem("machxi.admin.grid:users:v1"),
+    ).toBeNull();
+  });
 });
 
 describe("the staff grid", () => {

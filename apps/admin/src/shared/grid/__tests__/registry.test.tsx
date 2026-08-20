@@ -80,7 +80,38 @@ describe("buildColumns", () => {
   });
 
   it("carries the filter config and alignment as column meta", () => {
-    expect(built[2]?.meta).toEqual({ align: "end", filter: undefined });
+    expect(built[2]?.meta).toEqual({
+      align: "end",
+      filter: undefined,
+      structural: false,
+    });
+  });
+
+  it("marks the grid's own chrome structural, by registry key not by name", () => {
+    /*
+     * `structural` joined the meta at `D4.5` (ADR-0041) and is what exempts a
+     * column from every preference: not offered in the Columns menu, not
+     * hideable, not resizable, never in the stored value. The discriminator is
+     * the `rowActions` renderer key — `shared/grid` vocabulary — so a resource
+     * that named the column `operations` still gets the right answer, and one
+     * that named an ordinary column `actions` does not get the wrong one.
+     */
+    const withChrome = buildColumns(
+      {
+        actions: { header: "Nothing special" },
+        operations: { header: "Operations", cellRenderer: "rowActions" },
+      },
+      undefined,
+    );
+
+    expect(withChrome.map((column) => column.meta?.structural)).toEqual([
+      false,
+      true,
+    ]);
+    expect(withChrome.map((column) => column.enableHiding)).toEqual([
+      true,
+      false,
+    ]);
   });
 
   it("resolves a cellRenderer key to its component", () => {

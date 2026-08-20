@@ -55,6 +55,15 @@ export interface GridToolbarProps extends GridToolbarContext {
     ((ids: readonly string[], context: GridToolbarContext) => void) | undefined;
   readonly toolbarStart: ReactNode;
   readonly toolbarEnd: ReactNode;
+  /**
+   * ADR-0041's Columns surface, or `null` where nothing is movable.
+   *
+   * `null` matters: {@link isPresent} asks whether a slot was *given*
+   * something, and an element that renders nothing still counts as given — so
+   * a component with an internal empty check would keep this region alive as a
+   * band of dead space.
+   */
+  readonly columnsMenu: ReactNode;
 }
 
 /** Whether a slot was actually given something to render. */
@@ -73,6 +82,7 @@ export const GridToolbar = ({
   onBulkDelete,
   toolbarStart,
   toolbarEnd,
+  columnsMenu,
   selectedIds,
   clearSelection,
 }: GridToolbarProps) => {
@@ -98,7 +108,8 @@ export const GridToolbar = ({
     !showBulkDelete &&
     selectedCount === 0 &&
     !isPresent(toolbarStart) &&
-    !isPresent(toolbarEnd)
+    !isPresent(toolbarEnd) &&
+    !isPresent(columnsMenu)
   )
     return null;
 
@@ -171,6 +182,13 @@ export const GridToolbar = ({
         ) : null}
 
         {toolbarEnd}
+
+        {/*
+         * Last on the right, which is the seat ADR-0038 reserved for it when
+         * the toolbar became a region: the actions that change *the data* come
+         * first, and the control that changes *the view of it* sits at the end.
+         */}
+        {columnsMenu}
       </div>
     </div>
   );

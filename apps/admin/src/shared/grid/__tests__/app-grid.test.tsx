@@ -12,9 +12,10 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  ColumnOverrides,
   GridCapabilities,
   HotFilterConfig,
 } from "@/shared/resource/types";
@@ -25,6 +26,11 @@ import {
 } from "@/test/fixtures/demo-resource";
 
 import { AppGrid } from "../app-grid";
+import {
+  createMemoryStorage,
+  gridStorageKey,
+  type PreferenceStorage,
+} from "../preferences";
 import type { GridMeta, GridToolbarContext } from "../types";
 
 /**
@@ -65,6 +71,9 @@ const Harness = ({
   onChange,
   searchable = false,
   hotFilters,
+  overrides,
+  gridId,
+  storage,
   capabilities,
   createAction,
   onBulkDelete,
@@ -78,6 +87,9 @@ const Harness = ({
   readonly onChange?: (next: ListQuerySearch) => void;
   readonly searchable?: boolean;
   readonly hotFilters?: readonly HotFilterConfig[];
+  readonly overrides?: ColumnOverrides;
+  readonly gridId?: string;
+  readonly storage?: PreferenceStorage;
   readonly capabilities?: GridCapabilities;
   readonly createAction?: ReactNode;
   readonly onBulkDelete?: (
@@ -93,10 +105,13 @@ const Harness = ({
   return (
     <AppGrid<DemoRow>
       columns={demoResourceConfig.columns}
+      overrides={overrides}
       page={page}
       listState={listState}
       searchable={searchable}
       hotFilters={hotFilters}
+      gridId={gridId}
+      preferenceStorage={storage}
       meta={meta}
       capabilities={capabilities}
       createAction={createAction}
@@ -1102,10 +1117,48 @@ describe("row selection", () => {
 });
 
 describe("the toolbar", () => {
-  it("renders nothing at all when there is nothing to put in it", () => {
-    const { container } = render(<Harness page={pageOf(demoRows)} />);
+  it("renders no region at all for a grid that is nothing but chrome", () => {
+    /*
+     * ADR-0038's empty-region rule, which `D4.5` came close to deleting by
+     * accident: the Columns surface is in the toolbar on every grid, so the
+     * only grid left without one is a grid with no movable columns. `AppGrid`
+     * passes `null` rather than a component with an internal empty check,
+     * because the toolbar decides on what it was *given* — and an element that
+     * renders nothing still counts as given.
+     */
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        overrides={{
+          name: { hidden: true },
+          status: { hidden: true },
+          tags: { hidden: true },
+          createdAt: { hidden: true },
+          archivedAt: { hidden: true },
+        }}
+      />,
+    );
 
-    expect(container.querySelector('[data-slot="grid-toolbar"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
+    expect(document.querySelector('[data-slot="grid-toolbar"]')).toBeNull();
+  });
+
+  it("carries the Columns surface even when nothing else is configured", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    /*
+     * ADR-0038's "a region with nothing in it renders nothing" still holds,
+     * and since `D4.5` it has no live case on a grid that has columns:
+     * ADR-0041 gave every such grid one control, so the toolbar always has
+     * something in it. Asserted as what is true rather than deleted, because
+     * the empty-region rule is still the reason a *future* control cannot
+     * assume the region exists.
+     */
+    expect(screen.getByRole("button", { name: "Columns" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("searchbox", { name: "Search" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear all" })).toBeNull();
   });
 
   it("offers Create only when the capability says so", () => {
@@ -1310,5 +1363,327 @@ describe("viewport layout", () => {
     expect(body).not.toContainElement(
       screen.getByRole("searchbox", { name: "Search" }),
     );
+  });
+});
+
+describe("grid preferences", () => {
+  const GRID = "widget";
+
+  /*
+   * A fresh in-memory adapter per test, which is ADR-0041's seam used as the
+   * ADR says it will be. It is not only isolation: without it these tests fall
+   * through to the real `localStorage`, and the first one to hide a column
+   * would hand its arrangement to the next — a suite whose result depends on
+   * its order, produced by the very persistence it is checking.
+   */
+  let storage: PreferenceStorage;
+
+  beforeEach(() => {
+    storage = createMemoryStorage();
+  });
+
+  const openColumns = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+
+    return within(await screen.findByRole("dialog"));
+  };
+
+  const headers = (): readonly string[] =>
+    screen
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent ?? "");
+
+  const entry = (storage: PreferenceStorage): Record<string, unknown> | null =>
+    JSON.parse(storage.read(gridStorageKey(GRID)) ?? "null") as Record<
+      string,
+      unknown
+    > | null;
+
+  it("offers every column the resource declares, and none of the grid's own", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    const menu = await openColumns(user);
+
+    for (const label of ["Name", "Status", "Tags", "Created", "Archived"])
+      expect(menu.getByRole("checkbox", { name: label })).toBeInTheDocument();
+
+    /*
+     * Structural columns are **absent, not disabled** (ADR-0041). The selection
+     * checkbox and the row-actions column are the grid's own chrome: hiding the
+     * actions column would strand every row's menu behind a preference, and
+     * there is no flag anywhere to forget, because they were never offered.
+     */
+    expect(menu.queryByRole("checkbox", { name: "Actions" })).toBeNull();
+    expect(menu.queryByRole("button", { name: "Move Actions up" })).toBeNull();
+  });
+
+  it("hides a column, and the header goes with it", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    expect(headers()).toContain("Tags");
+
+    await user.click(
+      (await openColumns(user)).getByRole("checkbox", { name: "Tags" }),
+    );
+
+    expect(headers()).not.toContain("Tags");
+    // And the rows follow the header, which is `getVisibleCells` doing its job:
+    // a row still rendering every cell would put its data under the wrong ones.
+    expect(screen.queryByRole("cell", { name: "alpha" })).toBeNull();
+  });
+
+  it("moves a column, and the order follows", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    expect(headers()).toEqual([
+      "Name",
+      "Status",
+      "Tags",
+      "Created",
+      "Archived",
+      "Actions",
+    ]);
+
+    await user.click(
+      (await openColumns(user)).getByRole("button", { name: "Move Status up" }),
+    );
+
+    expect(headers()).toEqual([
+      "Status",
+      "Name",
+      "Tags",
+      "Created",
+      "Archived",
+      "Actions",
+    ]);
+  });
+
+  it("keeps the grid's own chrome at the ends, whatever the operator does", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        gridId={GRID}
+        storage={storage}
+        capabilities={ALL}
+      />,
+    );
+
+    // Selection first, actions last, before anything is touched.
+    expect(headers().at(0)).toBe("");
+    expect(headers().at(-1)).toBe("Actions");
+
+    const menu = await openColumns(user);
+
+    // Move the last movable column down as far as the menu allows…
+    expect(
+      menu.getByRole("button", { name: "Move Archived down" }),
+    ).toBeDisabled();
+
+    await user.click(menu.getByRole("button", { name: "Move Name down" }));
+
+    /*
+     * …and the ends are still the ends. Their position is a property of
+     * `AppGrid`, composed around the operator's arrangement rather than stored
+     * with it, so there is no ordering an operator can reach that puts the row
+     * menu in the middle of the data.
+     */
+    expect(headers().at(0)).toBe("");
+    expect(headers().at(-1)).toBe("Actions");
+  });
+
+  it("restores the arrangement on the next mount", async () => {
+    const user = userEvent.setup();
+
+    const first = render(
+      <Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />,
+    );
+
+    const menu = await openColumns(user);
+
+    await user.click(menu.getByRole("checkbox", { name: "Tags" }));
+    await user.click(menu.getByRole("button", { name: "Move Status up" }));
+
+    // Closed first, so no Radix overlay is left mounted at teardown to keep
+    // mutating the document for the tests after this one.
+    await user.keyboard("{Escape}");
+
+    // A remount over the same storage is what a reload is (ADR-0041's round
+    // trip); the store re-reads, re-validates and reconciles on the way in.
+    first.unmount();
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    expect(headers()).toEqual([
+      "Status",
+      "Name",
+      "Created",
+      "Archived",
+      "Actions",
+    ]);
+  });
+
+  it("keeps two grids' arrangements apart", async () => {
+    const user = userEvent.setup();
+
+    const first = render(
+      <Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />,
+    );
+
+    await user.click(
+      (await openColumns(user)).getByRole("checkbox", { name: "Tags" }),
+    );
+    await user.keyboard("{Escape}");
+    first.unmount();
+
+    // One entry per grid: a second grid over the same storage restores its own
+    // defaults, not the first one's arrangement.
+    render(
+      <Harness page={pageOf(demoRows)} gridId="other" storage={storage} />,
+    );
+
+    expect(headers()).toContain("Tags");
+  });
+
+  it("stores column names and numbers, and nothing from the rows", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    await user.click(
+      (await openColumns(user)).getByRole("checkbox", { name: "Tags" }),
+    );
+
+    /*
+     * The ADR-0033 carve-out this store stands on, asserted end to end rather
+     * than only over the store: what an XSS reading this key learns is which
+     * columns an operator prefers. No row data, no filter value, nothing typed.
+     */
+    expect(entry(storage)).toEqual({
+      v: 1,
+      sizing: {},
+      order: ["name", "status", "tags", "createdAt", "archivedAt"],
+      hidden: ["tags"],
+    });
+  });
+
+  it("resizes from the keyboard as well as the pointer", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    /*
+     * The handle is a named button, not a bare `div` with `onMouseDown`
+     * (ADR-0041, amended `D4.5`): a drag is the natural gesture and it cannot
+     * be the *only* one, or column width becomes the single grid affordance in
+     * this panel that a keyboard cannot reach. jsdom has no layout, so the
+     * measured start width is 0 and the floor is what the nudge lands on —
+     * which is the clamp doing its job either way.
+     */
+    const handle = screen.getByRole("button", { name: "Resize Name" });
+
+    handle.focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(entry(storage)?.["sizing"]).toEqual({ name: 64 });
+  });
+
+  it("refuses to hide the last visible column", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    const menu = await openColumns(user);
+
+    for (const label of ["Status", "Tags", "Created", "Archived"])
+      await user.click(menu.getByRole("checkbox", { name: label }));
+
+    /*
+     * A grid with no columns is not a preference, it is a blank rectangle where
+     * the data was — and the one control that undoes it lives inside this menu,
+     * which is a worse place to discover the mistake than to prevent it. The
+     * last one standing is disabled rather than left to be clicked.
+     */
+    expect(menu.getByRole("checkbox", { name: "Name" })).toBeDisabled();
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent),
+    ).toEqual(["Name", "Actions"]);
+  });
+
+  it("returns to the config on Reset, and takes the entry with it", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    const menu = await openColumns(user);
+
+    await user.click(menu.getByRole("checkbox", { name: "Tags" }));
+    await user.click(menu.getByRole("button", { name: "Move Status up" }));
+    expect(entry(storage)).not.toBeNull();
+
+    await user.click(menu.getByRole("button", { name: "Reset to defaults" }));
+
+    expect(headers()).toEqual([
+      "Name",
+      "Status",
+      "Tags",
+      "Created",
+      "Archived",
+      "Actions",
+    ]);
+    /*
+     * Removed, not overwritten with today's defaults — so a column the config
+     * gains tomorrow arrives at its own default rather than inheriting a frozen
+     * snapshot of this one.
+     */
+    expect(entry(storage)).toBeNull();
+  });
+
+  it("offers Reset only when something deviates", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    const menu = await openColumns(user);
+
+    expect(
+      menu.getByRole("button", { name: "Reset to defaults" }),
+    ).toBeDisabled();
+
+    await user.click(menu.getByRole("checkbox", { name: "Tags" }));
+
+    expect(
+      menu.getByRole("button", { name: "Reset to defaults" }),
+    ).toBeEnabled();
+  });
+
+  it("persists nothing for a grid with no id", async () => {
+    const user = userEvent.setup();
+    const storage: PreferenceStorage = {
+      read: vi.fn(() => null),
+      write: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    render(<Harness page={pageOf(demoRows)} storage={storage} />);
+
+    await user.click(
+      (await openColumns(user)).getByRole("checkbox", { name: "Tags" }),
+    );
+
+    /*
+     * The arrangement still works for the life of the component — the header is
+     * gone — it simply has nowhere to be written. Persisting under a shared
+     * fallback key would be worse than not persisting: two unrelated grids
+     * would fight over one entry and each would restore the other's layout.
+     */
+    expect(headers()).not.toContain("Tags");
+    expect(storage.write).not.toHaveBeenCalled();
   });
 });

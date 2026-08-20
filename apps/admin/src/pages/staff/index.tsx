@@ -125,6 +125,13 @@ export const StaffPage = () => {
            * role, and nobody's role decides whether a list may be filtered.
            */
           hotFilters={staffResourceConfig.grid.hotFilters}
+          /*
+           * Which arrangement this operator's is (ADR-0041). The resource's
+           * own name, so the two grids keep separate entries and neither
+           * restores the other's columns; a second grid over the same
+           * resource is what the prop exists to let say otherwise.
+           */
+          gridId={staffResourceConfig.name}
           isFetching={staff.isFetching}
           emptyMessage="No staff match this view."
           capabilities={capabilities}
