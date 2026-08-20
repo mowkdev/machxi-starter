@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { staffResourceConfig } from "@/entities/staff";
+import { userResourceConfig } from "@/entities/user";
+import { gridStorageKey } from "@/shared/grid/preferences";
 import { fail } from "@/test/msw/handlers/envelope";
 import { API } from "@/test/msw/handlers/auth.handlers";
 import {
@@ -131,12 +134,21 @@ describe("grid preferences, through the real wiring", () => {
       screen.queryByRole("columnheader", { name: "Roles" }),
     ).not.toBeInTheDocument();
 
-    // And the entry is the staff grid's alone.
+    /*
+     * And the entry is the staff grid's alone.
+     *
+     * Both keys are built with `gridStorageKey` from the resource's own
+     * `name`, never typed out. The first version hand-wrote
+     * `machxi.admin.grid:users:v1` — and `userResourceConfig.name` is `"user"`
+     * — so it asserted that a key nothing has ever written is absent. A
+     * negative control that cannot fail is worse than none, because it reads
+     * like cover.
+     */
     expect(
-      window.localStorage.getItem("machxi.admin.grid:staff:v1"),
+      window.localStorage.getItem(gridStorageKey(staffResourceConfig.name)),
     ).not.toBeNull();
     expect(
-      window.localStorage.getItem("machxi.admin.grid:users:v1"),
+      window.localStorage.getItem(gridStorageKey(userResourceConfig.name)),
     ).toBeNull();
   });
 });

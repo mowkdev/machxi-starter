@@ -1,9 +1,11 @@
 ---
 name: frontend-conventions
-description: Quick reference of the machxi admin-app conventions (FSD layers, design system, session, server state, resource UI, testing) condensed from ADRs 0030-0036. Load before writing or reviewing any code under apps/admin or packages/ui.
+description: Quick reference of the machxi admin-app conventions (FSD layers, design system, session, server state, resource UI, the v2 data grid, testing) condensed from ADRs 0030-0042. Load before writing or reviewing any code under apps/admin or packages/ui.
 ---
 
 # Frontend conventions (condensed from docs/adr — ADRs win on conflict)
+
+ADRs 0030–0036 (D3) and 0037–0042 (D4).
 
 Covers `apps/admin` and `packages/ui`. The API side is `/api-conventions`.
 
@@ -37,7 +39,7 @@ src/shared/     api/ ui/ form/ grid/ resource/ notifications/ lib/ config/ — n
 
 ## Session and the API client (ADR-0033, ADR-0030)
 
-- **Credentials live in memory only.** No access token, CSRF token or principal in `localStorage`, `sessionStorage` or a client-set cookie; the client never _reads_ `document.cookie`. Non-credential display state (theme, sidebar) may be persisted.
+- **Credentials live in memory only.** No access token, CSRF token or principal in `localStorage`, `sessionStorage` or a client-set cookie; the client never _reads_ `document.cookie`. Non-credential display state may be persisted, and there are three: the theme, the sidebar's cookie, and ADR-0041's grid preferences. A fourth cites the same carve-out rather than treating persistence as normalised.
 - Boot: `GET /auth/csrf` → `POST /auth/refresh`; the app renders nothing until it resolves. A failed refresh is `anonymous`; a failed bootstrap is "API unreachable" and is shown.
 - One axios instance in `shared/api/client.ts`: bearer on every request, CSRF header on the three guarded paths, `X-Auth-Transport: cookie` on login/refresh, **single-flight** refresh on `401`, one bounded retry each for `401` and `403 CSRF_TOKEN_INVALID`, terminal codes end the session. Absolute URLs are refused.
 - `client.ts` is the only writer of tokens. `useSetPrincipal` is the one narrow exception, for a profile rename.
@@ -65,13 +67,27 @@ src/shared/     api/ ui/ form/ grid/ resource/ notifications/ lib/ config/ — n
 - Server failures: `applyServerErrors(error, form.setError, { fields: <this variant's names>, codeFields })`. It lands a `VALIDATION_ERROR` detail on its field verbatim (the detail's words are the contract's) and everything else at the form level through `ERROR_MESSAGES`.
 - Operator-facing copy: **codes** are catalogued in `shared/notifications/messages.ts` (`Record<ErrorCode, string>` — a new code fails the build until someone writes a sentence); **field rules** are catalogued in the contracts schema. The API's own `error.message` is never rendered.
 
+## The data grid, v2 (ADRs 0037–0042)
+
+Everything below is additive over ADR-0035; the config is still data and the server still owns every data operation.
+
+- **The shell (0037).** A grid page opts in with `staticData: { fullHeight: true }`, and **every wrapper from the page container down to `AppGrid` carries `flex flex-col flex-1 min-h-0`** — one missing link and the budget reverts to document scroll and the sticky header comes unstuck. Nothing on that path may clip: an `overflow-hidden` that looks tidier silently eats the pager on a short viewport. One scroll container, sticky header, static pager, `min-h-64` floor, and below the floor the page scrolls rather than the grid crushing.
+- **Record surfaces are routes (0040).** `/<x>/new` and `/<x>/$id`, detail data through the route loader (`ensureQueryData` on the entity's own `detail(id)` key), `retainSearchParams` on the list parent. The list route needs an **index leaf the grid does not live on**, or opening a dialog unmounts the grid behind it. `grid.editSurface: "dialog" | "drawer" | "page"` picks the shell and **the URL is identical across all three**. Destructive confirmations and the password ceremony stay ephemeral component state on purpose — a URL must not reopen a "confirm delete".
+- **Capabilities (0038) and `can()` (0042) are different questions.** `grid: { selectable, canCreate, canEdit, canDelete, canBulkDelete }` says what _this surface offers_; `useAllowedCapabilities(config.grid, "<resource>")` conjoins it with the operator's role **once per screen**, so `shared/grid` never learns a resource name. The API's guards remain the enforcement — none of this is a security boundary. Containment actions (reset password, sign out everywhere, and the edit form that hosts disabling) render for everyone deliberately: a hidden break-glass control during an incident is worse than a refused one. Bulk delete is a feature-owned `Promise.allSettled` fan-out — bounded concurrency, stops dead on `RATE_LIMITED`, one summary with per-item refusals.
+- **Filters (0039).** There is no filter row. A column that declares a `filter` gets a **header icon opening a dialog that commits on Apply**; `grid.hotFilters` are toolbar stances, `enum` or `presence` only, because a button is a choice and not a composition surface. The applied-filters bar renders **from the URL's validated filters, never from the column configs** — configs contribute labels, never membership — so a deep-linked filter on a field no column owns still shows and still clears. A chip is suppressed exactly while a hot-filter button displays the same entry.
+- **Preferences (0041).** `gridId={config.name}` turns on column sizing, order and visibility. The taxonomy is the rule to cite when new grid state asks where it lives: **the URL owns _view_ state, preferences own _ergonomics_, the table owns nothing durable.** Sizing never enters a link — a shared view must not impose the sender's column widths on the receiver. Storage is behind a three-function adapter; the value is versioned, bounded and reconciled against the config on read, so a column rename is never a migration.
+- **Structural columns are the grid's, not the resource's.** The selection checkbox and any column whose `cellRenderer` is `rowActions` are pinned first and last by `AppGrid`, absent from the Columns menu, and never hidden, reordered, resized or stored.
+
 ## Testing (ADR-0036)
 
 - Vitest + Testing Library + MSW (`msw/node`). **No live-API tier**; an unhandled request is an error.
 - Handlers are built from `@repo/contracts` — parse the request with the schema the API validates with, answer through the envelope builders. A handler modelling a refusal names the service function it mirrors, and must never be more permissive than it.
 - `renderWithProviders` for a component; `renderApp` for anything about routing (real generated route tree on a memory history). Every dependency is passed, never `vi.mock`ed.
 - Query by **role and accessible name**. A control the suite cannot name is one a screen reader cannot name.
-- Cover: config-versus-contract, the URL↔query round trip, form validation and server-error placement, the submit lock, and each session state (bootstrapped, expired-and-refreshed, terminal).
+- Cover: config-versus-contract (columns **and** hot filters, every declared option), the URL↔query round trip, form validation and server-error placement, the submit lock, and each session state (bootstrapped, expired-and-refreshed, terminal).
+- **Grid preferences are tested at two levels, and they use different storage on purpose.** The store's own suite runs against an in-memory `PreferenceStorage`, which is what the adapter seam is for; a _page_ suite exercises the real wiring (`gridId={config.name}` reaching the real adapter) and therefore writes real `localStorage` — so it clears `window.localStorage` in `beforeEach`, or one case's column arrangement is handed to the next and the file's result depends on its order.
+- **Close an overlay before unmounting.** A test that unmounts with a Radix popover or dialog open leaves its dismiss layer mutating the document; nothing fails, and every `findBy*` after it re-scans a tree that never settles. It cost one file 656 s before anyone noticed (`D4.5`).
+- jsdom has no layout, so **geometry is not testable here** — widths, wrapping, sticky positioning and scroll behaviour are the manual walk's, and the walk is what has caught every one of D4's layout defects.
 
 ## Commands
 

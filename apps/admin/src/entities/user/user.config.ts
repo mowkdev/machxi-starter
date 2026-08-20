@@ -15,8 +15,9 @@ import type { ResourceConfig } from "@/shared/resource/types";
  * - **`deletedAt` is a column**, because deletion here is soft (ADR-0028): the
  *   row survives, an admin still lists and opens it, and `USER_STATUSES` has no
  *   `deleted` member on purpose. The timestamp is the mark. It is deliberately
- *   not `sortable` — `listUsersQuery` does not allow-list it — and it carries
- *   the one `presence` filter in the app.
+ *   not `sortable` — `listUsersQuery` does not allow-list it — and since `D4.6`
+ *   it carries no filter either: the app's one `presence` control is the
+ *   toolbar's "Deleted only" hot filter, and this column is the mark alone.
  * - **Names are nullable and start `null`**, because `users.first_name` is a
  *   nullable column and `updateUserBody` accepts `null` to clear it. The pair
  *   is what makes one declaration serve both forms: see the note on the field.
@@ -70,11 +71,12 @@ export const userResourceConfig = {
      * times a session — so it becomes the first `presence` hot filter, which is
      * exactly what ADR-0039 §Consequences expects.
      *
-     * The `deletedAt` column **keeps its dialog control as well**, deliberately
-     * and temporarily: ADR-0039 hands the question of whether that duplicate
-     * survives to the `D4.6` sweep, and until then the pair is what proves the
-     * two surfaces cannot disagree — press the button, open the dialog, find it
-     * checked. The chip suppression rule is what keeps the *bar* from showing a
+     * **`D4.6` made this the only control for that stance.** `D4.4` left the
+     * `deletedAt` column's dialog control in place as well, so one filter had
+     * two controls three inches apart; ADR-0039 deferred the choice to the
+     * sweep and the sweep dropped the duplicate. The column still exists —
+     * it is the mark a soft delete leaves — it simply no longer offers a
+     * second way to press this. The chip suppression rule is what keeps the *bar* from showing a
      * third representation of the same entry.
      */
     hotFilters: [
@@ -138,31 +140,28 @@ export const userResourceConfig = {
        */
       formatter: "dateTime",
       /*
-       * **"Deleted only", not "show deleted"** — and the label is the finding.
+       * **No filter icon here, and that is `D4.6` closing a question ADR-0039
+       * left open.** This column carried the app's one `presence` control, and
+       * `D4.4` made the same filter a toolbar hot filter — leaving the operator
+       * two ways to one stance, three inches apart. The ADR deferred the choice
+       * to the sweep; the sweep drops the duplicate.
        *
-       * ADR-0035 and the `presence` kind's own doc both describe this control
-       * as "show deleted users", which is what one would want and is not what
-       * the endpoint can do. `filter[deletedAt][null]=false` means
-       * `deleted_at is not null`, and the repository's default scope "steps
-       * aside as soon as the query mentions `deletedAt`" — so checking the box
-       * replaces the live accounts with the deleted ones rather than adding
-       * them. There is no third request available: `deletedAt` is allow-listed
-       * for `null` alone, so the client can ask for live *or* deleted, never
-       * both, and a checkbox is a scope switch here rather than an additive
-       * filter. Labelling it "Show deleted" would be the UI making a promise
-       * the contract cannot keep, which is the one thing the config-versus-
-       * contract discipline exists to prevent. ADR-0035 amended (D3.8).
+       * The **column stays**, because it is not the filter: a soft-deleted
+       * account is listed like any other and reports `status: "disabled"`
+       * (ADR-0028), so the timestamp is the only thing on the row that says
+       * which of the two it is. What it stops carrying is a second control for
+       * a filter the toolbar already presses.
        *
-       * Unchecked still writes *nothing* rather than the opposite, because
-       * "no opinion" and "only the live ones" really are the same request to
-       * an endpoint whose default scope hides them (ADR-0014).
+       * The reasoning that made the label right is still the toolbar's to keep,
+       * and it is worth restating where the column can see it:
+       * `filter[deletedAt][null]=false` means `deleted_at is not null`, and the
+       * repository's default scope steps aside as soon as the query mentions
+       * `deletedAt` — so pressing it **replaces** the live accounts with the
+       * deleted ones rather than adding them. There is no third request:
+       * `deletedAt` is allow-listed for `null` alone, so the client can ask for
+       * live *or* deleted, never both. "Show deleted" would have been the UI
+       * promising what the contract cannot keep (ADR-0035, amended D3.8).
        */
-      filter: {
-        kind: "presence",
-        op: "null",
-        value: false,
-        label: "Deleted only",
-      },
     },
     actions: { header: "Actions", cellRenderer: "rowActions", align: "end" },
   },

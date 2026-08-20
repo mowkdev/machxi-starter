@@ -23,9 +23,9 @@ import { userResourceConfig } from "../user.config";
  * that repetition is the point rather than a smell: each config makes claims
  * about *its own* schema, and a shared assertion would have to be given both
  * halves anyway. What differs is the interesting part, and it is all here: a
- * `presence` filter, a column that is filterable but **not** sortable, and a
- * create body whose optional fields make one direction of the strict-object
- * argument weaker than it is for staff.
+ * `presence` hot filter, a column the endpoint allow-lists a filter for that
+ * declares **no** control of its own, and a create body whose optional fields
+ * make one direction of the strict-object argument weaker than it is for staff.
  */
 
 // Widened to the vocabulary's types: the config is `as const satisfies
@@ -99,15 +99,20 @@ describe("the users grid config against listUsersQuery", () => {
     },
   );
 
-  it("filters `deletedAt` by presence and cannot sort by it", () => {
+  it("declares no control on `deletedAt`, and the endpoint allows only presence", () => {
     /*
-     * The one column in the app that is filterable and not sortable, and the
-     * pair of assertions is why both directions of the test above exist.
      * `listUsersQuery` allow-lists `deletedAt` for `null` alone — the timestamp
      * is an internal soft-delete marker, but "show me the deleted ones" is a
      * real admin question (ADR-0017).
+     *
+     * The *column* declares neither a sort nor a filter since `D4.6`, and the
+     * two absences mean different things: no sort because the endpoint refuses
+     * one, no filter because the toolbar's hot filter is where that stance
+     * lives now. Only the first is a claim about the contract, which is why
+     * only the first has a negative control beside it.
      */
     expect(columns["deletedAt"]?.sortable).toBeUndefined();
+    expect(columns["deletedAt"]?.filter).toBeUndefined();
     expect(listUsersQuery.safeParse({ sort: "deletedAt" }).success).toBe(false);
     expect(
       listUsersQuery.safeParse({ filter: { deletedAt: { null: "false" } } })

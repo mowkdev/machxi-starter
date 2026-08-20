@@ -24,7 +24,7 @@ import { staffPrincipal } from "@/test/principals";
  * the server, the pager reads a real total, the URL is the state. Repeating it
  * would test D3.6 twice. What is asserted here is the behaviour that is this
  * resource's alone, and every piece of it comes from ADR-0028's soft delete:
- * deleted accounts are hidden by default, the "Deleted only" checkbox is a
+ * deleted accounts are hidden by default, the "Deleted only" toggle is a
  * scope switch written into the URL like any other filter, and a deleted
  * account is **kept and marked** rather than removed.
  */
