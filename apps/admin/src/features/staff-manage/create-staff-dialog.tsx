@@ -3,14 +3,13 @@ import { createStaffBody, type CreateStaffBody } from "@repo/contracts";
 import { useForm } from "react-hook-form";
 
 import {
-  STAFF_ERROR_FIELDS,
   StaffFormInput,
   staffResourceConfig,
   useCreateStaff,
 } from "@/entities/staff";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { applyServerErrors } from "@/shared/form/server-errors";
-import { initialValuesFor } from "@/shared/resource/config";
+import { fieldsForVariant, initialValuesFor } from "@/shared/resource/config";
 
 /**
  * `POST /admin/staff` — an admin creates an operator with an initial password
@@ -26,6 +25,11 @@ import { initialValuesFor } from "@/shared/resource/config";
  * (ADR-0011/0023), so a password rule tightened in `@repo/contracts` tightens
  * this form in the same commit and there is no second copy to drift.
  */
+/** What the create form puts on screen — the config decides, not this file. */
+const FIELD_NAMES = fieldsForVariant(staffResourceConfig.fields, "create").map(
+  ([name]) => name,
+);
+
 export const CreateStaffDialog = ({
   open,
   onClose,
@@ -65,8 +69,18 @@ export const CreateStaffDialog = ({
        * field, and whatever matches nothing is still shown by `AppFormError`.
        */
       applyServerErrors(error, form.setError, {
-        fields: Object.keys(staffResourceConfig.fields),
-        codeFields: STAFF_ERROR_FIELDS,
+        /*
+         * This variant's field names, not the resource's whole map.
+         *
+         * `applyServerErrors` reads the list as "fields this form *renders*",
+         * and that is what makes its guarantee true — a detail it cannot place
+         * falls through to `root.server` and is shown. Handing it a name the
+         * form does not render (`status`, which is edit-only) would make
+         * `setError` land on a control that is not on screen, count as landed,
+         * and skip the fallback: the submit fails and says why to nobody.
+         */
+        fields: FIELD_NAMES,
+        codeFields: staffResourceConfig.errorFields,
       });
     }
   };

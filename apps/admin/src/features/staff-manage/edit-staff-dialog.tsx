@@ -7,7 +7,6 @@ import {
 import { useForm } from "react-hook-form";
 
 import {
-  STAFF_ERROR_FIELDS,
   StaffFormInput,
   staffResourceConfig,
   useStaff,
@@ -15,7 +14,7 @@ import {
 } from "@/entities/staff";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { applyServerErrors } from "@/shared/form/server-errors";
-import { dirtyValuesOf } from "@/shared/resource/config";
+import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
 
 /**
  * `PATCH /admin/staff/:id` — names, roles and status (ADR-0017).
@@ -33,6 +32,11 @@ import { dirtyValuesOf } from "@/shared/resource/config";
  * `AppFormError` through ADR-0034's map, which is the only place that decides
  * how a failure reads.
  */
+
+/** What the edit form puts on screen — the config decides, not this file. */
+const FIELD_NAMES = fieldsForVariant(staffResourceConfig.fields, "edit").map(
+  ([name]) => name,
+);
 
 /** The staff member as this form's values. `roles` is copied, not aliased. */
 const toFormValues = (staff: StaffResource): UpdateStaffBody => ({
@@ -96,9 +100,15 @@ export const EditStaffDialog = ({
       await updateStaff.mutateAsync({ id: staff.id, body });
       onClose();
     } catch (error) {
+      /*
+       * This variant's names — see the note in `create-staff-dialog.tsx`. Here
+       * it is what makes `STAFF_EMAIL_TAKEN` behave: the edit form renders no
+       * `email`, so the code has no field to claim and the message lands at the
+       * top of the form where it can actually be read.
+       */
       applyServerErrors(error, form.setError, {
-        fields: Object.keys(staffResourceConfig.fields),
-        codeFields: STAFF_ERROR_FIELDS,
+        fields: FIELD_NAMES,
+        codeFields: staffResourceConfig.errorFields,
       });
     }
   };

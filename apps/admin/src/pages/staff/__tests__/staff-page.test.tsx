@@ -1,8 +1,11 @@
 import type { StaffResource } from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { fail } from "@/test/msw/handlers/envelope";
+import { API } from "@/test/msw/handlers/auth.handlers";
 import {
   createSessionStore,
   type SessionStore,
@@ -147,6 +150,44 @@ describe("the staff grid", () => {
     expect(
       screen.queryByRole("cell", { name: "ada@machxi.local" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("says so when the list is refused, instead of loading forever", async () => {
+    const user = userEvent.setup();
+
+    /*
+     * The failure ADR-0034 premises silent queries on having somewhere to show
+     * themselves. `AppGrid` used to render its loading rows whenever it had no
+     * page, and the retry policy short-circuits a `4xx` — so an `editor` who
+     * reached this route, or a role revoked mid-session, met five skeleton rows
+     * that never resolved and no message anywhere.
+     */
+    state = createStaffMockState();
+    let refused = true;
+
+    server.use(
+      // Returning `undefined` is MSW's "not mine" — so once the flag flips, the
+      // request falls through to the working handlers behind this one and the
+      // retry is a real recovery rather than a second mock.
+      http.get(`${API}/staff`, () =>
+        refused ? fail(403, "FORBIDDEN") : undefined,
+      ),
+      ...createStaffHandlers(state),
+    );
+
+    renderApp({ initialPath: "/staff", store: authenticated() });
+
+    expect(
+      await screen.findByText("You do not have permission to do that."),
+    ).toBeInTheDocument();
+
+    // And the panel offers another attempt rather than only an apology.
+    refused = false;
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(
+      await screen.findByRole("cell", { name: "ada@machxi.local" }),
+    ).toBeInTheDocument();
   });
 
   it("pages from the real total the envelope carries", async () => {

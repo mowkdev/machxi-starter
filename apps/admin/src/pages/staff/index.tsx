@@ -90,6 +90,12 @@ export const StaffPage = () => {
         <AppGrid
           columns={staffResourceConfig.columns}
           page={staff.data}
+          // The error panel ADR-0034 premises silent queries on. Without it a
+          // refused or failed list is five skeleton rows that never resolve.
+          error={staff.error}
+          onRetry={() => {
+            void staff.refetch();
+          }}
           listState={listState}
           onListStateChange={onListStateChange}
           meta={meta}

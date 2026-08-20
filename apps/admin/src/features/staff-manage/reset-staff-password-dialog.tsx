@@ -8,8 +8,8 @@ import {
 import { useForm } from "react-hook-form";
 
 import { useSetStaffPassword } from "@/entities/staff";
-import { createAppFormInput } from "@/shared/form/app-form-input";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
+import { createAppFormInput } from "@/shared/form/app-form-input";
 import { applyServerErrors } from "@/shared/form/server-errors";
 import type { FieldConfigMap } from "@/shared/resource/types";
 
@@ -24,24 +24,38 @@ import type { FieldConfigMap } from "@/shared/resource/types";
  * of a stolen admin token is not an account-takeover engine.
  *
  * **The field map lives here rather than on the resource**, and that is the
- * rule rather than an exception to it: `staffResourceConfig.fields` describes
- * what a staff member *is*, and neither of these is an attribute of one — the
- * endpoint is a sub-resource for exactly that reason (ADR-0027 §Administrative
- * reset). `AppFormProvider` is keyed on a `FieldConfigMap`, not on a
- * `ResourceConfig`, so a credential form declares its own and gets the same
- * registry, the same adapters and the same submit lock.
+ * rule rather than an exception to it (ADR-0035, amended D3.7):
+ * `staffResourceConfig.fields` describes what a staff member *is*, and neither
+ * of these is an attribute of one — the endpoint is a sub-resource for exactly
+ * that reason (ADR-0027 §Administrative reset). `AppFormProvider` is keyed on a
+ * `FieldConfigMap`, not on a `ResourceConfig`, so an action form declares its
+ * own and gets the same registry, the same adapters and the same submit lock.
+ * What it owes in return is the same contract test a resource config owes, and
+ * `__tests__/staff-manage.test.tsx` carries it.
  */
-const passwordFields = {
+export const passwordFields = {
   password: {
     label: "New password",
     component: "input",
-    props: { type: "password", autoComplete: "new-password" },
+    /*
+     * `off`, not `new-password`. This box holds the *subject's* credential, and
+     * a `new-password` field sitting next to a `current-password` one is the
+     * exact shape a browser reads as "this person is changing their own
+     * password" — answered with a "Save password?" prompt that would file
+     * somebody else's credential into the acting admin's password manager and
+     * sync it off the machine. `off` is a hint browsers may ignore, so this
+     * narrows the case rather than closing it; the D3.7 step notes record the
+     * residual and what would close it.
+     */
+    props: { type: "password", autoComplete: "off" },
     description:
       "Hand it over out of band. Every session of this account is signed out.",
   },
   currentPassword: {
     label: "Your own current password",
     component: "input",
+    // The one field here that really is this operator's own credential, and
+    // therefore the only one that may say so to the browser.
     props: { type: "password", autoComplete: "current-password" },
     description: "Confirms it is you making the change, not a stolen session.",
   },
@@ -97,7 +111,8 @@ export const ResetStaffPasswordDialog = ({
       description="They stay signed out until they use the new password. Nothing forces them to change it afterwards."
       form={form}
       fields={passwordFields}
-      variant="create"
+      // Neither a create nor an edit of a staff member — see `FieldVariant`.
+      variant="action"
       onSubmit={onSubmit}
       isPending={setPassword.isPending}
       submitLabel="Reset password"

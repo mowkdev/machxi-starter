@@ -65,11 +65,27 @@ export const useStaff = (id: string) => {
  */
 const FORM_MUTATION_META = { errorToast: false } as const;
 
+/**
+ * A mutation whose *variables* are a credential forgets them immediately.
+ *
+ * TanStack Query keeps a settled mutation — including the `variables` it was
+ * called with — in the mutation cache for `gcTime`, five minutes by default. So
+ * without this, `{ password, currentPassword }` outlives the dialog that
+ * collected it, the `form.reset()` that cleared it and the unmount that removed
+ * it, sitting in memory reachable from `queryClient.getMutationCache()`. Nothing
+ * reads it today; the point is that nothing *can*, which is the same posture
+ * ADR-0033 takes towards tokens — keep the window in which a credential exists
+ * as narrow as the work requires.
+ */
+const CREDENTIAL_MUTATION = { gcTime: 0 } as const;
+
 export const useCreateStaff = () => {
   const api = useApi();
   const queryClient = useQueryClient();
 
   return useMutation({
+    // The body carries the new operator's initial password.
+    ...CREDENTIAL_MUTATION,
     mutationFn: (body: CreateStaffBody) => api.create(body),
     meta: { ...FORM_MUTATION_META, success: "The staff member was created." },
     onSuccess: () => {
@@ -105,6 +121,8 @@ export const useSetStaffPassword = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Two plaintext passwords in the variables, one of them the actor's own.
+    ...CREDENTIAL_MUTATION,
     mutationFn: ({ id, body }: { id: string; body: SetPasswordBody }) =>
       api.setPassword(id, body),
     meta: {

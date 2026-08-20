@@ -3,7 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { useApiClient } from "@/shared/api/context";
-import { isApiClientError } from "@/shared/api/api-error";
+import { messageForError } from "@/shared/notifications/messages";
 import {
   Button,
   Field,
@@ -69,20 +69,19 @@ export const LoginForm = () => {
       await navigate({ to: redirect ?? "/" });
     } catch (error) {
       /*
-       * Branching on the code, not on `isApiClientError`: every rejection out
-       * of the client satisfies that by design (ADR-0033's invariant), so the
-       * friendly fallback would have been dead code and a dropped socket would
-       * have rendered axios's "Network Error" to an operator.
+       * ADR-0034's code-to-message map, which is where every code gets a
+       * sentence written for an operator — including `SERVICE_UNAVAILABLE`,
+       * which is what a dropped socket becomes on the way out of the ADR-0033
+       * client.
        *
-       * `D3.5` replaces this with ADR-0034's code-to-message map, which is
-       * where every code gets a sentence written for a human.
+       * It replaces an earlier version that rendered the API's own `message`.
+       * That message is a developer-facing English default (ADR-0013) and is
+       * deliberately not shown: showing it bypasses the i18n seam `messages.ts`
+       * exists to be, and puts wording nobody wrote for this screen on it. The
+       * line said `D3.5` would replace it and D3.5 replaced it everywhere else;
+       * this was the last one, found by the `D3.7` review.
        */
-      const message =
-        isApiClientError(error) && error.code !== "SERVICE_UNAVAILABLE"
-          ? error.message
-          : "The API could not be reached. Try again.";
-
-      setFormError(message);
+      setFormError(messageForError(error));
     } finally {
       setPending(false);
     }

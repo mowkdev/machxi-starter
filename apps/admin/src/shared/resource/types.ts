@@ -1,4 +1,4 @@
-import type { FilterOp } from "@repo/contracts";
+import type { ErrorCode, FilterOp } from "@repo/contracts";
 
 /**
  * The `ResourceConfig` vocabulary (ADR-0035).
@@ -30,8 +30,19 @@ export type CellRendererKey = "rowActions" | "statusBadge" | "rolesList";
 export type FieldComponentKey =
   "input" | "textarea" | "select" | "checkbox" | "switch" | "multiCheckbox";
 
-/** Which of the two forms a field appears in. Absent means both. */
-export type FieldVariant = "create" | "edit";
+/**
+ * Which form a field appears in. Absent from a field's `variants` means every
+ * one of them.
+ *
+ * `create` and `edit` are the resource's own pair. **Amended D3.7:** `action`
+ * is what a form over a *sub-resource* renders under — the administrative
+ * password reset (ADR-0027), and the profile's change-password in `D3.9`. Those
+ * bodies are not attributes of the resource, so their field map is neither a
+ * create nor an edit of one, and rendering them as `"create"` was a claim the
+ * vocabulary could not honestly make. No field in such a map declares
+ * `variants` at all, so this exists to be *named* rather than to filter.
+ */
+export type FieldVariant = "create" | "edit" | "action";
 
 /**
  * A choice in a `select` or `multiCheckbox`, or in an enum filter control.
@@ -171,6 +182,21 @@ export interface ResourceConfig {
   readonly name: string;
   readonly columns: ColumnConfigMap;
   readonly fields: FieldConfigMap;
+  /**
+   * Domain error codes that mean "this field", for the failures the API
+   * reports without a path (**amended D3.7**).
+   *
+   * `STAFF_EMAIL_TAKEN` is a `409` whose `details` are empty — the conflict is
+   * about the request, not about a zod issue — but the operator's question is
+   * "what do I change?" and the answer is a box on screen. It belongs *on* the
+   * config rather than beside it for the reason columns and fields do: a
+   * resource declares itself once, and a consumer that had to import two
+   * symbols would eventually import one.
+   *
+   * Data, like everything else here — a `Partial` map of code to field name,
+   * never a callback. {@link applyServerErrors} consumes it.
+   */
+  readonly errorFields?: Readonly<Partial<Record<ErrorCode, string>>>;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { STAFF_ROLES, STAFF_STATUSES, type ErrorCode } from "@repo/contracts";
+import { STAFF_ROLES, STAFF_STATUSES } from "@repo/contracts";
 
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import type { ResourceConfig } from "@/shared/resource/types";
@@ -78,7 +78,20 @@ export const staffResourceConfig = {
     password: {
       label: "Initial password",
       component: "input",
-      props: { type: "password", autoComplete: "new-password" },
+      /*
+       * `autoComplete: "off"` and deliberately **not** `"new-password"`.
+       *
+       * This box holds somebody else's credential. `new-password` next to an
+       * `email` field is the signature a browser reads as "this person is
+       * setting their own password", and the answer is a "Save password?"
+       * prompt that would file the new operator's initial credential into the
+       * acting admin's password manager and sync it to their account — a
+       * password leaving the machine it was typed on, which is the opposite of
+       * what ADR-0033 buys by keeping tokens in memory. `off` is a hint a
+       * browser may still ignore, so this narrows the case rather than closing
+       * it; the residual is recorded in the D3.7 step notes.
+       */
+      props: { type: "password", autoComplete: "off" },
       /*
        * The operational instruction ADR-0027 rule 4 leaves as the consequence
        * of not building a forced change: an administrator-set password stays
@@ -105,6 +118,22 @@ export const staffResourceConfig = {
       variants: ["edit"],
     },
   },
+  /**
+   * The domain failure the API reports without a field path, and the box an
+   * operator would have to change to fix it.
+   *
+   * `STAFF_EMAIL_TAKEN` is a `409` whose `details` are empty — the conflict is
+   * about the request rather than about a zod issue — so `applyServerErrors`
+   * would otherwise put it at the top of the form when the answer is plainly
+   * the email field.
+   *
+   * It can only ever land on the create form, and not because of anything
+   * declared here: each dialog passes `applyServerErrors` the field names of
+   * *its own variant*, and `email` is create-only, so the edit form's list has
+   * no `email` for this code to name and the message correctly falls through to
+   * the form level there.
+   */
+  errorFields: { STAFF_EMAIL_TAKEN: "email" },
 } as const satisfies ResourceConfig;
 
 /**
@@ -115,20 +144,3 @@ export const staffResourceConfig = {
  * `as const` above is for: the literal key types survive into `keyof`.
  */
 export const StaffFormInput = createAppFormInput(staffResourceConfig.fields);
-
-/**
- * Domain failures the API reports without a field path, and the field an
- * operator would have to change to fix them.
- *
- * `STAFF_EMAIL_TAKEN` is a `409` whose `details` are empty — the conflict is
- * about the request rather than about a zod issue — so `applyServerErrors`
- * would otherwise put it at the top of the form when the answer is plainly the
- * email box. Data beside the config, not a callback at the call site, for the
- * reason everything else here is data.
- *
- * It maps only on the create form: `updateStaffBody` has no `email`, so the
- * edit form's field list does not contain one and the same code correctly lands
- * form-level there instead.
- */
-export const STAFF_ERROR_FIELDS: Readonly<Partial<Record<ErrorCode, string>>> =
-  { STAFF_EMAIL_TAKEN: "email" };

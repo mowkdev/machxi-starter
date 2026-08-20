@@ -1,5 +1,6 @@
 import type {
   ErrorCode,
+  ErrorDetail,
   ErrorEnvelope,
   ListEnvelope,
   Page,
@@ -52,11 +53,27 @@ export const listOk = <T>(page: Page<T>, status = 200) =>
     { status },
   );
 
-export const fail = (status: number, code: ErrorCode, message?: string) =>
+/**
+ * `details` is the half a form test cannot do without: ADR-0013 puts a zod
+ * issue's field path there, and `applyServerErrors` is entirely about where
+ * those paths land. A `fail` that could not carry them would let the suite
+ * assert the form-level fallback and never the field-level path it exists to
+ * take first.
+ */
+export const fail = (
+  status: number,
+  code: ErrorCode,
+  message?: string,
+  details?: readonly ErrorDetail[],
+) =>
   HttpResponse.json<ErrorEnvelope>(
     {
       success: false,
-      error: { code, message: message ?? code },
+      error: {
+        code,
+        message: message ?? code,
+        ...(details === undefined ? {} : { details }),
+      },
       meta: { requestId: REQUEST_ID },
     },
     { status },

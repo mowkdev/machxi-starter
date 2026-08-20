@@ -9,6 +9,7 @@ import {
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
+import { messageForError } from "@/shared/notifications/messages";
 import { mergeColumns } from "@/shared/resource/config";
 import type { ColumnConfigMap, ColumnOverrides } from "@/shared/resource/types";
 import {
@@ -86,6 +87,21 @@ export interface AppGridProps<TRow> {
   readonly overrides?: ColumnOverrides | undefined;
   /** The page in hand. `undefined` while the first one is loading. */
   readonly page?: Page<TRow> | undefined;
+  /**
+   * Why there is no page, if the list query failed.
+   *
+   * ADR-0034 keeps queries silent by default, and the reason it gives is that
+   * "a failed read usually has somewhere better to show itself — an empty grid,
+   * an error panel in the place the data would have been". This is that place.
+   * Without it a `403` from the segment's `authorize` mount, a `500` or a dead
+   * socket renders as loading rows that never resolve — the retry policy
+   * short-circuits a `4xx`, so nothing ever arrives to replace them — and the
+   * one refusal the client deliberately does not pre-guess reaches the operator
+   * as no message at all.
+   */
+  readonly error?: unknown;
+  /** Lets the error row offer another attempt rather than only an apology. */
+  readonly onRetry?: (() => void) | undefined;
   /** The validated search params the route owns (ADR-0034). */
   readonly listState: ListQuerySearch;
   readonly onListStateChange: (next: ListQuerySearch) => void;
@@ -106,6 +122,8 @@ export const AppGrid = <TRow,>({
   columns,
   overrides,
   page,
+  error,
+  onRetry,
   listState,
   onListStateChange,
   meta,
@@ -346,7 +364,32 @@ export const AppGrid = <TRow,>({
           </TableHeader>
 
           <TableBody>
-            {page === undefined ? (
+            {page === undefined && error !== undefined && error !== null ? (
+              /*
+               * A failure, in the place the rows would have been. It wins over
+               * the loading branch because a query that failed is not loading —
+               * `keepPreviousData` means a *refetch* failure still has a page
+               * to render, and that case deliberately keeps showing it rather
+               * than replacing an operator's view with an apology.
+               */
+              <TableRow>
+                <TableCell colSpan={columnCount} className="h-24 text-center">
+                  <p role="alert" className="text-sm text-destructive">
+                    {messageForError(error)}
+                  </p>
+                  {onRetry === undefined ? null : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={onRetry}
+                    >
+                      Try again
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : page === undefined ? (
               <LoadingRows columns={columnCount} />
             ) : bodyRows.length === 0 ? (
               <TableRow>

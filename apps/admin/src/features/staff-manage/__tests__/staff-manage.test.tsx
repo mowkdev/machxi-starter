@@ -1,7 +1,8 @@
-import { delay, http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setPasswordBody } from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { delay, http } from "msw";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API } from "@/test/msw/handlers/auth.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
@@ -14,6 +15,7 @@ import {
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 
+import { passwordFields } from "../reset-staff-password-dialog";
 import { StaffDialogs } from "../staff-dialogs";
 import type { StaffAction } from "../types";
 
@@ -132,7 +134,7 @@ describe("the create dialog", () => {
 
     // `ada@machxi.local` already exists in the fixture, so the handler answers
     // the real `409` — a conflict with no `details`, which is exactly the case
-    // `STAFF_ERROR_FIELDS` exists for.
+    // the config's `errorFields` exists for.
     await user.type(screen.getByLabelText("Email"), ADA.email);
     await user.type(
       screen.getByLabelText("Initial password"),
@@ -154,6 +156,45 @@ describe("the create dialog", () => {
       );
     });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows a detail naming a field this variant does not render", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.post(`${API}/staff`, () =>
+        /*
+         * `status` is a real field of the resource and is **edit-only**, so the
+         * create form does not render it. The regression this guards: passing
+         * `applyServerErrors` the resource's whole field map made it call
+         * `setError("status")` on a control that is not on screen, report that
+         * something landed, and skip the `root.server` fallback — a submit that
+         * failed and said why to nobody. Each dialog now passes its own
+         * variant's names, so a detail it cannot place is shown at the top of
+         * the form.
+         */
+        fail(400, "VALIDATION_ERROR", "Invalid", [
+          { path: "status", message: "Status is not accepted here" },
+        ]),
+      ),
+    );
+
+    open({ kind: "create" });
+
+    await user.type(screen.getByLabelText("Email"), "new@machxi.local");
+    await user.type(
+      screen.getByLabelText("Initial password"),
+      "DevPassword!123",
+    );
+    await user.type(screen.getByLabelText("First name"), "New");
+    await user.type(screen.getByLabelText("Last name"), "Operator");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(
+      await screen.findByText(
+        "Some of the details are not valid. Check the form and try again.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("disables every field while the request is in flight", async () => {
@@ -269,6 +310,44 @@ describe("the edit dialog", () => {
 });
 
 describe("the administrative password reset", () => {
+  it("declares exactly the fields setPasswordBody accepts", () => {
+    /*
+     * The config-versus-contract test an *action* form owes, and the reason
+     * ADR-0035 (amended D3.7) lets one declare its field map in the feature
+     * that owns the interaction: the map is not the resource's, but it answers
+     * to a `@repo/contracts` schema exactly as a resource's does. `strictObject`
+     * makes this one parse prove both directions — nothing missing, nothing the
+     * endpoint would reject as unknown.
+     */
+    const parsed = setPasswordBody.safeParse(
+      Object.fromEntries(
+        Object.keys(passwordFields).map((name) => [name, "DevPassword!123"]),
+      ),
+    );
+
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
+  it("never offers the subject's password to the browser as the operator's own", () => {
+    open({ kind: "reset-password", staff: MO });
+
+    /*
+     * A `new-password` box beside a `current-password` one is the signature a
+     * browser reads as "this person is changing their own password", and the
+     * "Save password?" prompt that follows would file somebody else's
+     * credential into this operator's password manager and sync it off the
+     * machine. Only the actor's own box may say `current-password`.
+     */
+    expect(screen.getByLabelText("New password")).toHaveAttribute(
+      "autocomplete",
+      "off",
+    );
+    expect(screen.getByLabelText("Your own current password")).toHaveAttribute(
+      "autocomplete",
+      "current-password",
+    );
+  });
+
   it("asks for the subject's new password and the actor's own", () => {
     open({ kind: "reset-password", staff: MO });
 
