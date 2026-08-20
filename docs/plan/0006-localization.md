@@ -25,10 +25,11 @@ Candidates the ADR weighs: react-i18next (the ecosystem default), FormatJS/react
 
 - **One new ADR**: the i18n strategy — library, key scheme, package/dictionary boundary, the zod error map, the lint rule, and the pseudo-locale verification tier. Additive beside frozen ADR-0031–0036; the messages-catalogue evolution touches what D3 decided, so the ADR must say explicitly why it is an extension and not a divergence — or supersede.
 
-## Assumptions taken 2026-08-20 (revisable until the deliverable opens)
+## Locales (decided 2026-08-20)
 
-- **English stays the source language; a pseudo-locale ships alongside it** (accented-and-widened English in the `en-XA` tradition) as the proof that nothing is hardcoded — pseudo-localization catches extraction gaps mechanically and needs no translator. **A real second locale is then a content drop, not a code change**, and the operator names the language when they want it. Recorded as the default because "en only, infrastructure ready" rots silently and no target language was named.
+- **English is the source language; Latvian (`lv`) is the second locale, named by the operator** — the deliverable ships both, so the pipeline is proven by a real translation, not just infrastructure. Latvian is also a usefully demanding second locale: three plural forms (the `21 ieraksts` / `2 ieraksti` / `11 ierakstu` split), which is exactly what the ICU-plurals requirement above exists for — an i18n layer that survives Latvian counts survives most of Europe.
+- **A pseudo-locale still ships as a dev-only verification tier** (accented-and-widened English in the `en-XA` tradition): it catches extraction gaps mechanically, which a real translation cannot — a missed hardcoded string looks fine in Latvian review only until someone reads every screen. It is excluded from the production locale enum.
 
 ## Acceptance sketch
 
-A pseudo-locale walk of every screen shows no unaccented string anywhere — grid chrome, dialogs, toasts, validation errors included; the lint rule is red on a literal JSX string and the gate proves it; switching locale is live, without reload, and survives sign-out/sign-in on another browser via D5; dates and counts format per locale.
+A pseudo-locale walk of every screen shows no unaccented string anywhere — grid chrome, dialogs, toasts, validation errors included; the same walk in `lv` reads as Latvian throughout, plural forms correct on grid counts and pagination; the lint rule is red on a literal JSX string and the gate proves it; switching locale is live, without reload, and survives sign-out/sign-in on another browser via D5; dates and counts format per locale.
