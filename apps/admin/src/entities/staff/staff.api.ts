@@ -3,6 +3,7 @@ import type {
   ListEnvelope,
   ListStaffQuery,
   Page,
+  SetPasswordBody,
   StaffResource,
   SuccessEnvelope,
   UpdateStaffBody,
@@ -66,6 +67,24 @@ export const createStaffApi = (client: ApiClient) =>
       >(`/staff/${id}`, body);
 
       return data.data;
+    },
+
+    /**
+     * `POST /admin/staff/:id/password` — the administrative reset (ADR-0027).
+     *
+     * The two passwords in the body belong to two different people: `password`
+     * is the subject's new credential and `currentPassword` is the **acting**
+     * staff member's own, re-presented as the step-up ADR-0027 rule 1 requires.
+     * `204`, with no count of the sessions it revoked — how many devices the
+     * account was signed in on is not the caller's business.
+     */
+    setPassword: async (id: string, body: SetPasswordBody): Promise<void> => {
+      await client.instance.post(`/staff/${id}/password`, body);
+    },
+
+    /** `POST /admin/staff/:id/sessions/revoke` — forced sign-out. `204`. */
+    revokeSessions: async (id: string): Promise<void> => {
+      await client.instance.post(`/staff/${id}/sessions/revoke`);
     },
 
     remove: async (id: string): Promise<void> => {

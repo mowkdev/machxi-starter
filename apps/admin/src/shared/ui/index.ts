@@ -17,6 +17,16 @@
  */
 
 export {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@repo/ui/components/alert-dialog";
+export {
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -41,6 +51,15 @@ export {
   CardHeader,
   CardTitle,
 } from "@repo/ui/components/card";
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@repo/ui/components/dialog";
 export {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,5 +122,6 @@ export { Toaster, toast } from "@repo/ui/components/sonner";
 export { useIsMobile } from "@repo/ui/hooks/use-mobile";
 export { cn } from "@repo/ui/lib/utils";
 
-// Not a re-export: an app component with behaviour of its own (see its file).
+// Not re-exports: app components with behaviour of their own (see their files).
 export { AppLoader } from "./app-loader";
+export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";

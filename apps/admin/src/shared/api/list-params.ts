@@ -2,6 +2,7 @@ import {
   LIST_QUERY_PARAMS,
   type Filter,
   type ListQuery,
+  type ListQuerySearch,
   type SortSpec,
 } from "@repo/contracts";
 
@@ -90,6 +91,26 @@ export const serializeListParams = (
   }
 
   return search.toString();
+};
+
+/**
+ * A route's validated search params as the list query a hook takes.
+ *
+ * The two types describe the same thing and differ in one place:
+ * `listQuerySearchSchema` declares `q` with `.optional()`, which infers
+ * `q?: string | undefined`, while `ListQuery` declares `q?: string`. Under
+ * `exactOptionalPropertyTypes` those are not the same type — an explicitly
+ * `undefined` property is not an absent one — so the hand-off needs a place to
+ * drop the key rather than pass `undefined` through it.
+ *
+ * That place is here rather than a spread at every page, because the same
+ * conversion is the first line of every list screen and a `q` accidentally
+ * serialized as `q=` is a `VALIDATION_ERROR` from the endpoint's own schema.
+ */
+export const toListQuery = (search: ListQuerySearch): ListQuery => {
+  const { q, ...rest } = search;
+
+  return q === undefined ? rest : { ...rest, q };
 };
 
 /**

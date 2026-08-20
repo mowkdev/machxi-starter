@@ -1,6 +1,7 @@
 import type {
   CreateStaffBody,
   ListStaffQuery,
+  SetPasswordBody,
   UpdateStaffBody,
 } from "@repo/contracts";
 import {
@@ -51,13 +52,26 @@ export const useStaff = (id: string) => {
   });
 };
 
+/**
+ * `errorToast: false` on the three mutations a **form** hosts.
+ *
+ * ADR-0034 splits the two halves cleanly: field-level failures belong to the
+ * form, operation-level outcomes belong to toasts. Each of these is submitted
+ * from a form that calls `applyServerErrors`, which lands what it can next to a
+ * field and everything else at the top of the form — so leaving the toast on
+ * would say the same thing twice, once where the operator is already looking
+ * and once over the top of it. The confirms below keep theirs, because a
+ * confirm has no field for a refusal to land on.
+ */
+const FORM_MUTATION_META = { errorToast: false } as const;
+
 export const useCreateStaff = () => {
   const api = useApi();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (body: CreateStaffBody) => api.create(body),
-    meta: { success: "The staff member was created." },
+    meta: { ...FORM_MUTATION_META, success: "The staff member was created." },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
     },
@@ -71,11 +85,56 @@ export const useUpdateStaff = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateStaffBody }) =>
       api.update(id, body),
-    meta: { success: "The staff member was updated." },
+    meta: { ...FORM_MUTATION_META, success: "The staff member was updated." },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
       void queryClient.invalidateQueries({ queryKey: staffKeys.detail(id) });
     },
+  });
+};
+
+/**
+ * The administrative password reset (ADR-0027).
+ *
+ * It invalidates like any other write, and the reason is not ceremony: the
+ * password write sets `updatedAt` on the row, so a list or a detail left in
+ * cache would show a stale one. The rule stays exception-free.
+ */
+export const useSetStaffPassword = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: SetPasswordBody }) =>
+      api.setPassword(id, body),
+    meta: {
+      ...FORM_MUTATION_META,
+      success:
+        "The password was reset and every session of that account was signed out.",
+    },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: staffKeys.detail(id) });
+    },
+  });
+};
+
+/**
+ * Forced sign-out (ADR-0018 §Revocation).
+ *
+ * The one mutation here that invalidates **nothing**, and that is the rule
+ * holding rather than bending: it writes to `sessions`, which is a different
+ * aggregate and one this app does not cache. Nothing on the staff resource
+ * changes, so there is no key of this entity's to invalidate — an
+ * `invalidateQueries` here would be a refetch that can only ever return what is
+ * already on screen.
+ */
+export const useRevokeStaffSessions = () => {
+  const api = useApi();
+
+  return useMutation({
+    mutationFn: (id: string) => api.revokeSessions(id),
+    meta: { success: "Every session of that account was signed out." },
   });
 };
 

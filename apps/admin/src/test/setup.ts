@@ -1,8 +1,23 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
 import { server } from "./msw/server";
+
+/**
+ * Testing Library's default `findBy*` timeout is one second, which is fine for
+ * a component and not for the first render in a file that mounts the whole
+ * route tree: the router, the generated tree and the design system all load on
+ * that render, and under the parallelism `vitest run` uses across eighteen
+ * files it lands either side of the second. The symptom is a suite that passes
+ * per file and flakes in the gate, which is the worst shape a suite can take —
+ * so the bound is raised once, here, rather than sprinkled per assertion.
+ *
+ * It is a *ceiling*, not a delay: every query still resolves as soon as the
+ * DOM says so, and a genuinely broken assertion costs five seconds instead of
+ * one before failing.
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 /**
  * The harness ADR-0036 specifies: jest-dom matchers and the MSW lifecycle.
@@ -49,6 +64,15 @@ beforeAll(() => {
   Element.prototype.setPointerCapture ??= () => undefined;
   Element.prototype.releasePointerCapture ??= () => undefined;
   Element.prototype.scrollIntoView ??= () => undefined;
+
+  /*
+   * jsdom *has* `scrollTo` and answers every call with a "Not implemented"
+   * console error, which TanStack Router's scroll restoration triggers on every
+   * navigation — so a routing test's output is mostly that. Assigned rather
+   * than `??=`d for exactly that reason: the method exists, it is the behaviour
+   * that does not. Nothing in this suite asserts scroll position.
+   */
+  window.scrollTo = () => undefined;
 
   globalThis.ResizeObserver ??= class {
     observe() {}

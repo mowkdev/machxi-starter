@@ -1,7 +1,9 @@
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
+import { createQueryClient } from "@/app/providers/query-client";
 import { createAppRouter } from "@/app/providers/router";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
 import { ApiProvider } from "@/shared/api/context";
@@ -9,32 +11,43 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import { Toaster } from "@/shared/ui";
 
 /**
  * The two ways this app is rendered under test (ADR-0036).
  *
- * `renderWithProviders` is for a component in isolation. It wraps nothing yet —
- * there is nothing to wrap until `D3.4` adds a session provider and `D3.5` a
- * `QueryClientProvider` — and it deliberately takes no options until one of
- * them consumes one: an ignored `session` argument is worse than none, because
- * a test that passes it would get the default and pass for the wrong reason.
+ * `renderWithProviders` is for a component in isolation: the API client and
+ * session store of ADR-0033, and the ADR-0034 query client with its real
+ * defaults — retry policy, `staleTime`, and the global caches that turn
+ * mutation `meta` into toasts. A `<Toaster>` comes with it, because a component
+ * test that asserts an operation's feedback should not have to remember to
+ * mount the surface it lands on; the app mounts one at the root for the same
+ * reason.
  *
  * `renderApp` is for anything that is *about* routing: it mounts the real
  * generated route tree on a memory history, so guards, redirects and layout
  * composition are exercised as shipped rather than as re-declared by a test. A
  * guard asserted against a hand-built route tree only proves the test's tree.
+ * Its router shares the one query client, which is what ADR-0032's
+ * `context: { queryClient, session }` is for.
+ *
+ * Every dependency is *passed*, never module-mocked: that is the property the
+ * factories in `shared/api` and `app/providers` exist to give, and it is why a
+ * test needs no `vi.mock`.
  */
 
 export interface ProviderOptions {
   readonly store?: SessionStore;
   readonly client?: ApiClient;
+  /** A cache of the test's own, so nothing leaks between cases. */
+  readonly queryClient?: QueryClient;
 }
 
 /**
- * Builds the pair every rendered tree needs, so a caller that cares about
- * neither still gets a working `useApiClient`.
+ * Builds the trio every rendered tree needs, so a caller that cares about none
+ * of them still gets a working `useApiClient` and a working `useQuery`.
  */
-const providers = ({ store, client }: ProviderOptions) => {
+const providers = ({ store, client, queryClient }: ProviderOptions) => {
   const sessionStore = store ?? createSessionStore();
 
   return {
@@ -42,6 +55,7 @@ const providers = ({ store, client }: ProviderOptions) => {
     client:
       client ??
       createApiClient({ store: sessionStore, baseUrl: "http://api.test" }),
+    queryClient: queryClient ?? createQueryClient(),
   };
 };
 
@@ -51,7 +65,14 @@ export const renderWithProviders = (
 ): RenderResult => {
   const value = providers(options);
 
-  return render(<ApiProvider value={value}>{ui}</ApiProvider>);
+  return render(
+    <ApiProvider value={{ client: value.client, store: value.store }}>
+      <QueryClientProvider client={value.queryClient}>
+        {ui}
+        <Toaster />
+      </QueryClientProvider>
+    </ApiProvider>,
+  );
 };
 
 export interface RenderAppOptions extends ProviderOptions {
@@ -67,11 +88,17 @@ export const renderApp = ({
   const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [initialPath] }),
     session: value.store,
+    queryClient: value.queryClient,
   });
 
-  return render(
-    <ApiProvider value={value}>
-      <RouterProvider router={router} />
-    </ApiProvider>,
+  const tree: ReactNode = (
+    <ApiProvider value={{ client: value.client, store: value.store }}>
+      <QueryClientProvider client={value.queryClient}>
+        {/* The root route mounts its own `<Toaster>`; this tree adds none. */}
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApiProvider>
   );
+
+  return render(tree);
 };
