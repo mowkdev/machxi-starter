@@ -5,12 +5,11 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 
-import { createApiClient, type ApiClient } from "@/shared/api/client";
+import type { ApiClient } from "@/shared/api/client";
 import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { config } from "@/shared/config";
 
 import { routeTree } from "../routeTree.gen";
 import { createQueryClient } from "./query-client";
@@ -70,8 +69,17 @@ export interface AppRouterOptions {
   readonly history?: RouterHistory;
   /** The cache route loaders may prime; the app passes its singleton. */
   readonly queryClient?: QueryClient;
-  /** What loaders fetch through (`D4.2`); the app passes its singleton. */
-  readonly client?: ApiClient;
+  /**
+   * What loaders fetch through (`D4.2`); the app passes its singleton.
+   *
+   * Required, unlike its two siblings, and the asymmetry is deliberate: a
+   * defaulted session store or query client is an empty one, which is
+   * harmless, while a defaulted **client** would be a second axios instance —
+   * its own single-flight refresh state (ADR-0033) and no `onSessionEnded`
+   * wiring, so a dead session would never be announced. There is one client per
+   * document by construction; making it required is how that stays true.
+   */
+  readonly client: ApiClient;
 }
 
 export const createAppRouter = ({
@@ -79,7 +87,7 @@ export const createAppRouter = ({
   history,
   queryClient,
   client,
-}: AppRouterOptions = {}) => {
+}: AppRouterOptions) => {
   const store = session ?? createSessionStore();
 
   return createRouter({
@@ -87,8 +95,7 @@ export const createAppRouter = ({
     context: {
       session: store,
       queryClient: queryClient ?? createQueryClient(),
-      client:
-        client ?? createApiClient({ store, baseUrl: config.VITE_API_URL }),
+      client,
     },
     defaultPreload: "intent",
     // Spread rather than passed as `undefined`: `exactOptionalPropertyTypes`

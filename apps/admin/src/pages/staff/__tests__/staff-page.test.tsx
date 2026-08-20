@@ -236,13 +236,15 @@ describe("the staff screen's actions", () => {
      * The grid is still mounted underneath — `staff` declares a dialog, and a dialog
      * overlays the list rather than replacing it.
      *
-     * Queried through the DOM rather than by role, and that is the modal doing
-     * its job: Radix marks the rest of the document `aria-hidden` while an
-     * overlay is open, so `getByRole` correctly cannot see the rows. Their
-     * being *there* is what this asserts; their being unreachable is the
-     * intended behaviour of the shell on top of them.
+     * `hidden: true` because Radix marks the rest of the document
+     * `aria-hidden` while an overlay is open, so the default role query
+     * correctly cannot see these rows. That is the shell behaving; the
+     * assertion is that the rows are still *there*, and Testing Library has an
+     * option for exactly this question rather than a reason to drop to the DOM.
      */
-    expect(document.querySelector('[data-slot="table"]')).not.toBeNull();
+    expect(screen.getAllByRole("row", { hidden: true }).length).toBeGreaterThan(
+      1,
+    );
   });
 
   it("reaches every row action from a menu named for its row", async () => {

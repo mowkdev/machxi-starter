@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
-import { Card, CardContent, CardDescription, CardHeader } from ".";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+} from "@repo/ui/components/card";
 import { QueryError } from "./query-error";
 
 /**

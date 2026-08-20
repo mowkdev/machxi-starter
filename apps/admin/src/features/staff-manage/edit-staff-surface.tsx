@@ -121,7 +121,7 @@ export const EditStaffSurface = ({
       close();
     } catch (error) {
       /*
-       * This variant's names — see the note in `create-staff-dialog.tsx`. Here
+       * This variant's names — see the note in `create-staff-surface.tsx`. Here
        * it is what makes `STAFF_EMAIL_TAKEN` behave: the edit form renders no
        * `email`, so the code has no field to claim and the message lands at the
        * top of the form where it can actually be read.

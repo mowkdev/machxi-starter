@@ -1,3 +1,4 @@
+import { useBlocker } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
 
@@ -11,7 +12,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
   Sheet,
   SheetContent,
   SheetDescription,
@@ -51,9 +51,9 @@ const FOOTER = "mt-6 flex justify-end gap-2";
  * bookmark and no test that navigates by path knows which of these rendered.
  *
  * The submit lock reaches all three (ADR-0040 §Details pinned): the dialog and
- * the drawer refuse to dismiss while the mutation is in flight, and the page
- * has no dismissal to refuse — only its Cancel button, which is inside the
- * locked `FieldSet` like every other control.
+ * the drawer refuse to dismiss while the mutation is in flight, and the page —
+ * which has no dismissal gesture of its own but plenty of ways out of it —
+ * blocks the navigation instead. See {@link AppFormPage}.
  */
 export interface AppFormSurfaceProps<
   TValues extends FieldValues,
@@ -176,23 +176,72 @@ export const AppFormSurface = <
     );
   }
 
-  /*
-   * The page. No overlay, no dismissal gesture, and — because the list route
-   * unmounts the grid for this surface — nothing behind it to preserve context
-   * with. `max-w-2xl` because a form stretched across a wide monitor is a form
-   * whose labels and controls have lost each other.
-   */
+  return (
+    <AppFormPage
+      title={title}
+      {...(description === undefined ? {} : { description })}
+      isPending={isPending}
+    >
+      {frame(<div className={FOOTER}>{actions}</div>)}
+    </AppFormPage>
+  );
+};
+
+/**
+ * The page shell — no overlay, and therefore the one that has to block
+ * navigation for itself.
+ *
+ * ADR-0040 §Details pinned says the in-flight rule reaches "the page shell's
+ * navigation affordances alike", and the page is the shell where that is not
+ * free. A dialog and a drawer own a dismissal gesture and refuse it while a
+ * mutation is in flight; a page has no gesture of its own, but it sits inside
+ * `_dashboard`, where the sidebar links and the Back button are live ways out.
+ * Without the blocker an operator can leave mid-submit, the mutation lands
+ * anyway, and its failure has no form left to render in — which is exactly the
+ * outcome the other two shells refuse.
+ *
+ * It is a separate component because the blocker is a hook and
+ * {@link AppFormSurface} returns early for the other two surfaces; a hook after
+ * a conditional return is not a hook. `enableBeforeUnload: false`
+ * deliberately: this guards an in-app navigation, and a browser's own "leave
+ * site?" prompt is a different, uglier conversation that nothing here has
+ * earned.
+ *
+ * `max-w-2xl` because a form stretched across a wide monitor is a form whose
+ * labels and controls have lost each other.
+ */
+const AppFormPage = ({
+  title,
+  description,
+  isPending,
+  children,
+}: {
+  readonly title: string;
+  readonly description?: string;
+  readonly isPending: boolean;
+  readonly children: ReactNode;
+}) => {
+  useBlocker({ shouldBlockFn: () => isPending, enableBeforeUnload: false });
+
   return (
     <Card className="max-w-2xl">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        {/*
+         * A real `h2`, not `CardTitle` — which is a styled `div`.
+         *
+         * The other two shells title themselves with Radix's `DialogTitle` and
+         * `SheetTitle`, both of which are headings, so a `CardTitle` here would
+         * make "the same form in three shells" false for the one consumer that
+         * cannot see styling: a screen reader would find a heading in two of
+         * them and a run of bold text in the third. Caught by the suite that
+         * runs the same assertions against all three, which is what it is for.
+         */}
+        <h2 className="leading-none font-semibold">{title}</h2>
         {description === undefined ? null : (
           <CardDescription>{description}</CardDescription>
         )}
       </CardHeader>
-      <CardContent>
-        {frame(<div className={FOOTER}>{actions}</div>)}
-      </CardContent>
+      <CardContent>{children}</CardContent>
     </Card>
   );
 };

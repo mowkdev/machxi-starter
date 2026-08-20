@@ -230,15 +230,17 @@ describe("the users grid", () => {
       document.querySelector('[data-slot="sheet-content"]'),
     ).not.toBeNull();
     /*
-     * The grid is still mounted underneath — a drawer's whole argument over a modal is
-     * that the list stays on screen beside it.
+     * The grid is still mounted underneath — a drawer's whole argument over a modal
+     * is that the list stays on screen beside it.
      *
-     * Queried through the DOM rather than by role, and that is the modal doing
-     * its job: Radix marks the rest of the document `aria-hidden` while an
-     * overlay is open, so `getByRole` correctly cannot see the rows. Their
-     * being *there* is what this asserts; their being unreachable is the
-     * intended behaviour of the shell on top of them.
+     * `hidden: true` because Radix marks the rest of the document
+     * `aria-hidden` while an overlay is open, so the default role query
+     * correctly cannot see these rows. That is the shell behaving; the
+     * assertion is that the rows are still *there*, and Testing Library has an
+     * option for exactly this question rather than a reason to drop to the DOM.
      */
-    expect(document.querySelector('[data-slot="table"]')).not.toBeNull();
+    expect(screen.getAllByRole("row", { hidden: true }).length).toBeGreaterThan(
+      1,
+    );
   });
 });
