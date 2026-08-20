@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useApiClient } from "@/shared/api/context";
+import { CREDENTIAL_MUTATION } from "@/shared/api/credential-mutation";
 
 import { createUserApi } from "./user.api";
 import { userKeys } from "./user.keys";
@@ -38,16 +39,6 @@ const useApi = () => createUserApi(useApiClient());
  * toast: a confirm has no field for a refusal to land on (ADR-0034).
  */
 const FORM_MUTATION_META = { errorToast: false } as const;
-
-/**
- * A mutation whose *variables* are a credential forgets them immediately.
- *
- * TanStack Query keeps a settled mutation, variables included, in the mutation
- * cache for `gcTime` — five minutes by default — so a password submitted
- * through `mutateAsync` would outlive the dialog, the `reset()` and the
- * unmount. ADR-0034, amended D3.7.
- */
-const CREDENTIAL_MUTATION = { gcTime: 0 } as const;
 
 export const useUserList = (params: ListUsersQuery) => {
   const api = useApi();

@@ -17,6 +17,8 @@ import { applyServerErrors } from "@/shared/form/server-errors";
 import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
 import { Button, FieldGroup, FieldSet, Spinner } from "@/shared/ui";
 
+import { useInvalidateOwnStaffRow } from "./use-invalidate-own-staff-row";
+
 /**
  * `PATCH /admin/profile` — the operator's own names (ADR-0027).
  *
@@ -54,6 +56,7 @@ export const ProfileDetailsForm = ({
   readonly profile: StaffResource;
 }) => {
   const updateProfile = useUpdateProfile();
+  const invalidateOwnStaffRow = useInvalidateOwnStaffRow();
 
   const form = useForm<UpdateStaffProfileBody>({
     resolver: zodResolver(updateStaffProfileBody),
@@ -86,6 +89,12 @@ export const ProfileDetailsForm = ({
 
     try {
       const updated = await updateProfile.mutateAsync(body);
+
+      // The names on this operator's own `/admin/staff` row are the ones that
+      // just changed — see the hook for why the invalidation is here and not
+      // in the entity.
+      invalidateOwnStaffRow();
+
       // Makes the just-saved values the new baseline, so the form is clean and
       // the button disables itself again. Without it `keepDirtyValues` would
       // hold these fields dirty against every later refetch.

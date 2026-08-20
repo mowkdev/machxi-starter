@@ -7,6 +7,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient, useSetPrincipal } from "@/shared/api/context";
+import { CREDENTIAL_MUTATION } from "@/shared/api/credential-mutation";
 
 import { createProfileApi } from "./profile.api";
 import { profileKeys } from "./profile.keys";
@@ -19,14 +20,12 @@ import { profileKeys } from "./profile.keys";
  * one cache entry, so both mutations invalidate `profileKeys.all` and there is
  * nothing else of this entity's to name.
  *
- * What they cannot invalidate is the **staff list**, where the acting admin is
- * also a row. ADR-0032 allows an entity to import from `shared` and nowhere
- * else, so `entities/profile` cannot reach `staffKeys` — deliberately, because
- * the alternative is a graph of entities invalidating each other. The cost is
- * bounded and worth stating: rename yourself, then open `/staff`, and the row
- * may show the old name until that query goes stale. Fixing it properly is a
- * cross-entity invalidation vocabulary, which is a decision rather than a line
- * of code and does not belong in this step.
+ * What they do **not** invalidate is the staff entity, where the acting
+ * operator is also a row — not because the staleness is acceptable but because
+ * this is the wrong layer to fix it from: ADR-0032 lets an entity import from
+ * `shared` and nowhere else, so `entities/profile` cannot reach `staffKeys`.
+ * The layer that may see both is the feature, and it does:
+ * `features/profile-manage/use-invalidate-own-staff-row.ts`.
  */
 
 const useApi = () => createProfileApi(useApiClient());
@@ -82,12 +81,10 @@ export const useUpdateProfile = () => {
 /**
  * `POST /admin/profile/change-password` (ADR-0027 §Staff self-service).
  *
- * `gcTime: 0` for the reason the two staff credential mutations carry it
- * (ADR-0034, amended D3.7): TanStack Query keeps a settled mutation's
- * `variables` for the default five minutes, so without this the operator's old
- * *and* new passwords outlive the dialog that collected them, the `reset()`
- * that cleared it and the unmount that removed it — reachable from
- * `getMutationCache()`. Nothing reads them; the point is that nothing can.
+ * `CREDENTIAL_MUTATION` for the reason the staff ones carry it (ADR-0034,
+ * amended D3.7): the operator's old *and* new passwords are this mutation's
+ * `variables`, and without `gcTime: 0` they outlive the dialog that collected
+ * them by five minutes.
  *
  * It invalidates the profile because the password write stamps `updatedAt` on
  * the row, which is the same test every other mutation here answers: does the
@@ -104,7 +101,7 @@ export const useChangePassword = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    gcTime: 0,
+    ...CREDENTIAL_MUTATION,
     mutationFn: (body: ChangePasswordBody) => api.changePassword(body),
     meta: {
       ...FORM_MUTATION_META,

@@ -1,4 +1,7 @@
-import type { PrincipalResource } from "@repo/contracts";
+import type {
+  PrincipalResource,
+  StaffPrincipalResource,
+} from "@repo/contracts";
 import {
   createContext,
   useCallback,
@@ -102,14 +105,31 @@ export const useSession = (): SessionView => {
  * fresher account data is a `/profile` query like any other". This is that
  * query's answer, handed back to the one place identity is kept.
  *
- * Narrow on purpose. It hands out no store, so nothing gains a way to read a
- * token or to clear a session that did not already have one.
+ * Narrow on purpose, in three ways (the third two from the D3.9 review):
+ *
+ * - It hands out no store, so nothing gains a way to read a token or to clear
+ *   a session that did not already have one.
+ * - It takes a **staff** principal. `PrincipalResource` is a union covering
+ *   both populations, and this client is pinned to `/api/v1/admin` — a `user`
+ *   principal cannot arrive here, and accepting one would let a future caller
+ *   swap the population of a session that is by construction staff.
+ * - **It refuses to write into a store with no session.** `setSession` merges,
+ *   so this could never forge authentication — `isAuthenticated` derives from
+ *   the access token. What it could do is repopulate a store that logout had
+ *   just cleared: the sidebar's sign-out is outside the form's `fieldset`, so
+ *   ending the session while a name save is in flight is reachable, and the
+ *   `onSuccess` that follows would write the operator's name and address back
+ *   into memory an explicit logout had emptied.
  */
-export const useSetPrincipal = (): ((principal: PrincipalResource) => void) => {
+export const useSetPrincipal = (): ((
+  principal: StaffPrincipalResource,
+) => void) => {
   const { store } = useApi();
 
   return useCallback(
-    (principal: PrincipalResource) => {
+    (principal: StaffPrincipalResource) => {
+      if (store.getAccessToken() === null) return;
+
       store.setSession({ principal });
     },
     [store],

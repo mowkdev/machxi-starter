@@ -41,11 +41,20 @@ import { messageForError } from "@/shared/notifications/messages";
  * package, applied once for both sides, not a per-field map maintained here
  * that could drift from the rule it describes.
  *
- * The boundary that keeps this true is the `known` check below: a detail naming
- * something this form does not render never reaches an operator as raw copy —
- * it falls through to `messageForError`, which is the code catalogue. Details
- * without a path do the same, which is what happens to `RATE_LIMITED`'s
- * `retryAfter` and to anything else that is data rather than a sentence.
+ * Two boundaries keep it true, and both are checks rather than conventions: the
+ * error's **code** must be `VALIDATION_ERROR`, because only zod produces these,
+ * and the detail's **field** must be one this form renders. Anything else — a
+ * `403`, `RATE_LIMITED`'s pathless `retryAfter` detail, a future domain error
+ * that grows a path — falls through to `messageForError` and is answered from
+ * the code catalogue.
+ *
+ * One residual, stated because it is the case the argument does not cover: a
+ * form whose *state is not its body* (the D3.8 transform) can be told about a
+ * key its controls never held, and zod's own type message for it ("expected
+ * string, received null") is a sentence the client-side resolver would never
+ * have produced. It still lands somewhere visible — that is what the field
+ * check is for — but it is the one shape of validation copy this design cannot
+ * promise an operator has seen before.
  */
 
 /** Where the form-level message lives, for {@link AppFormError} to render. */
@@ -91,7 +100,21 @@ export const applyServerErrors = <TValues extends FieldValues>(
   const known = new Set(fields);
   let landed = false;
 
-  for (const detail of error.details ?? []) {
+  /*
+   * The gate that makes the header's argument an invariant rather than an
+   * observation (**D3.9 review**). The claim "a detail's words are the
+   * contract's" holds because `toErrorDetails` is the only thing in the API
+   * that sets a `path` — which is true today and enforced by nothing: the
+   * `AppError` factory takes arbitrary `details`, and one that grew a `path`
+   * whose head happened to match a rendered field would reach an operator as
+   * raw copy, past the ADR-0034 catalogue. Reading the code here costs a line
+   * and makes the escape impossible: everything that is not a validation
+   * failure falls through to `codeFields` and then to `messageForError`, which
+   * is where a sentence somebody wrote for a developer belongs.
+   */
+  const detailsAreFieldRules = error.code === "VALIDATION_ERROR";
+
+  for (const detail of detailsAreFieldRules ? (error.details ?? []) : []) {
     /*
      * `path` is the dotted path the API sent (`"email"`, `"roles.0"`). The head
      * segment is what identifies the field; RHF understands the rest of the

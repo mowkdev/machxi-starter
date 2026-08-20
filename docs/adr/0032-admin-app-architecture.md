@@ -63,10 +63,11 @@ apps/admin/src/
 │   ├── auth/login/              # the login form and its mutation
 │   ├── staff-manage/            # create/edit/disable/reset-password dialogs + mutations
 │   ├── users-manage/
-│   └── profile-edit/            # name form, change-password form
+│   └── profile-manage/          # name form, change-password dialog
 ├── entities/
 │   ├── staff/                   # TanStack Query hooks, query-key factory, staff resource UI config (ADR-0035)
-│   └── user/
+│   ├── user/
+│   └── profile/                 # the caller's own account — a singleton: no list, no :id
 └── shared/
     ├── api/                     # the API client (ADR-0033): axios instance, envelope/error handling, session store
     ├── resource/                # the ResourceConfig vocabulary + its helpers (ADR-0035)
@@ -77,6 +78,8 @@ apps/admin/src/
     ├── config/                  # import.meta.env parsed by a zod schema, the ADR-0004 posture applied to Vite
     └── lib/                     # generic helpers with no domain knowledge
 ```
+
+**Amended 2026-08-20 (D3.9).** Two names in the tree, corrected to what shipped rather than left to be reconciled by whoever notices. The feature is `profile-manage`, not `profile-edit` — it owns a change-password action as well as an edit, and every other feature slice already reads `<resource>-manage`; and `entities/profile` is added, which the tree never listed because the two resources it did list are the ones with grids. The second is the interesting one: a **singleton** entity has no list query, no key per id and no `ResourceConfig` (ADR-0035, amended D3.9), and the layer map still places it exactly where a resource belongs — it is a domain resource with query hooks and a key factory, and pages and features reach it the same way.
 
 **Amended 2026-08-20 (D3.6).** `shared/notifications` (D3.5) and `shared/resource` (D3.6) are added above rather than left to be inferred. Both are placed by this ADR's own rules rather than by convenience: `notifications` holds the message map that `entities` and `features` need and may not reach for in `app`, and `resource` holds the config vocabulary that `entities` declare, `grid` and `form` consume, and nothing above `shared` should have to know the shape of.
 

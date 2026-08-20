@@ -7,10 +7,13 @@ import {
 import { useForm } from "react-hook-form";
 
 import { useChangePassword } from "@/entities/profile";
+import { useSession } from "@/shared/api/context";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import { applyServerErrors } from "@/shared/form/server-errors";
 import type { FieldConfigMap } from "@/shared/resource/types";
+
+import { useInvalidateOwnStaffRow } from "./use-invalidate-own-staff-row";
 
 /**
  * `POST /admin/profile/change-password` — the operator changing their own
@@ -71,6 +74,8 @@ export const ChangePasswordDialog = ({
   readonly onClose: () => void;
 }) => {
   const changePassword = useChangePassword();
+  const invalidateOwnStaffRow = useInvalidateOwnStaffRow();
+  const { principal } = useSession();
 
   const form = useForm<ChangePasswordBody>({
     resolver: zodResolver(changePasswordBody),
@@ -81,6 +86,8 @@ export const ChangePasswordDialog = ({
   const onSubmit = async (values: ChangePasswordBody) => {
     try {
       await changePassword.mutateAsync(values);
+      // The password write stamps `updatedAt` on this operator's own staff row.
+      invalidateOwnStaffRow();
       // Before `onClose`, so the plaintext is gone from the form state whether
       // or not React gets around to unmounting the dialog this tick.
       form.reset();
@@ -108,6 +115,25 @@ export const ChangePasswordDialog = ({
       isPending={changePassword.isPending}
       submitLabel="Change password"
     >
+      {/*
+       * The identity anchor a password manager needs (D3.9 review). Two
+       * password boxes and no username gives it nothing to key the update on,
+       * and an operator with more than one saved credential for this origin —
+       * their own plus a break-glass account is normal here — gets the wrong
+       * entry updated or a duplicate saved, either of which leaves a vault
+       * entry that no longer opens the account. `login-form` already does this
+       * with a real field; here the value is not the operator's to edit, so it
+       * is present and hidden rather than shown. `hidden` is a hint a browser
+       * may ignore, like the `autoComplete` values themselves.
+       */}
+      <input
+        aria-hidden
+        autoComplete="username"
+        hidden
+        readOnly
+        tabIndex={-1}
+        value={principal?.email ?? ""}
+      />
       <PasswordFormInput fieldName="currentPassword" />
       <PasswordFormInput fieldName="newPassword" />
     </AppFormDialog>

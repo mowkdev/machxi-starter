@@ -254,6 +254,33 @@ describe("applyServerErrors", () => {
     expect(screen.getByText(issue.message)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("will not render a non-validation detail's words, whatever path it claims", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Harness
+        error={fail({
+          status: 503,
+          code: "SERVICE_UNAVAILABLE",
+          message: "Request failed",
+          // Not a zod issue, so not a sentence anybody wrote for an operator.
+          // Nothing in the API emits this shape today; the point of the check
+          // is that the day something does, it cannot reach the screen.
+          details: [{ path: "email", message: "pg: connection refused" }],
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Fail" }));
+
+    expect(
+      screen.queryByText("pg: connection refused"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The API could not be reached. Check your connection and try again.",
+    );
+  });
 });
 
 describe("AppFormError", () => {

@@ -130,6 +130,23 @@ describe("the profile page", () => {
     expect(store.getPrincipal()?.firstName).toBe("Adaline");
   });
 
+  it("is reachable from the account menu, not only from the nav", async () => {
+    const user = userEvent.setup();
+
+    renderApp({ initialPath: "/", store: signedIn() });
+
+    await user.click(await screen.findByRole("button", { name: "Account" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Profile" }));
+
+    // The menu that ends the session is also the one that opens the account it
+    // belongs to — the footer is the current-principal block ADR-0032 names,
+    // and a name with nowhere to click is half of one.
+    // By text, not by role: `CardTitle` is a `div` in the generated shadcn
+    // primitive (ADR-0031 keeps those byte-identical to upstream), so the only
+    // heading on a dashboard screen is the shell's own `h1`.
+    expect(await (await page()).findByText("Your account")).toBeInTheDocument();
+  });
+
   it("reaches the change-password dialog from the password card", async () => {
     const user = userEvent.setup();
 

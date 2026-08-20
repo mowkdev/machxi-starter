@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { delay, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { staffKeys } from "@/entities/staff";
 import { createSessionStore } from "@/shared/api/session-store";
 import { API } from "@/test/msw/handlers/auth.handlers";
 import {
@@ -108,6 +109,29 @@ describe("the details form", () => {
       expect(
         screen.getByRole("button", { name: "Save changes" }),
       ).toBeDisabled();
+    });
+  });
+
+  it("invalidates the operator's own row in the staff cache", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders(
+      <ProfileDetailsForm profile={PROFILE} />,
+    );
+
+    queryClient.setQueryData(staffKeys.detail(PROFILE.id), PROFILE);
+
+    await user.type(screen.getByLabelText("First name"), "x");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    /*
+     * The acting operator is a staff row too, and this write changed its names.
+     * ADR-0032 stops the *entity* reaching `staffKeys`; the feature is the layer
+     * that may see both, which is where the invalidation lives.
+     */
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(staffKeys.detail(PROFILE.id))?.isInvalidated,
+      ).toBe(true);
     });
   });
 
@@ -231,6 +255,9 @@ describe("the change-password dialog", () => {
       await screen.findByText("That is not your current password."),
     ).toBeInTheDocument();
     expect(state.password).toBe(CURRENT_PASSWORD);
+    // Refused, and recorded as refused — `seen.changed` means accepted.
+    expect(state.seen.changed).toHaveLength(0);
+    expect(state.seen.refused).toHaveLength(1);
   });
 
   it("changes the password, keeps this session, and says both", async () => {
@@ -260,6 +287,37 @@ describe("the change-password dialog", () => {
     // undoing the reason the endpoint spares it.
     expect(state.otherSessionsRevoked).toBe(2);
     expect(store.isAuthenticated()).toBe(true);
+  });
+
+  it("keeps no trace of either password once the mutation has settled", async () => {
+    const user = userEvent.setup();
+    const { queryClient, unmount } = renderWithProviders(
+      <ChangePasswordDialog onClose={vi.fn()} />,
+    );
+
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await user.type(screen.getByLabelText("New password"), NEW_PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    await waitFor(() => {
+      expect(state.password).toBe(NEW_PASSWORD);
+    });
+
+    unmount();
+
+    /*
+     * `CREDENTIAL_MUTATION`'s `gcTime: 0`, made observable (D3.9 review). A
+     * settled mutation keeps its `variables` for five minutes by default, so
+     * without it both plaintexts would still be reachable from here — and
+     * deleting the option is otherwise a silent change that leaves the suite
+     * green.
+     */
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+    });
   });
 
   it("closes once the change has landed", async () => {

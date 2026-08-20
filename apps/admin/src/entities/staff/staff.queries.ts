@@ -11,6 +11,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
+import { CREDENTIAL_MUTATION } from "@/shared/api/credential-mutation";
 import { useApiClient } from "@/shared/api/context";
 
 import { createStaffApi } from "./staff.api";
@@ -64,20 +65,6 @@ export const useStaff = (id: string) => {
  * confirm has no field for a refusal to land on.
  */
 const FORM_MUTATION_META = { errorToast: false } as const;
-
-/**
- * A mutation whose *variables* are a credential forgets them immediately.
- *
- * TanStack Query keeps a settled mutation — including the `variables` it was
- * called with — in the mutation cache for `gcTime`, five minutes by default. So
- * without this, `{ password, currentPassword }` outlives the dialog that
- * collected it, the `form.reset()` that cleared it and the unmount that removed
- * it, sitting in memory reachable from `queryClient.getMutationCache()`. Nothing
- * reads it today; the point is that nothing *can*, which is the same posture
- * ADR-0033 takes towards tokens — keep the window in which a credential exists
- * as narrow as the work requires.
- */
-const CREDENTIAL_MUTATION = { gcTime: 0 } as const;
 
 export const useCreateStaff = () => {
   const api = useApi();

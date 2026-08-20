@@ -59,20 +59,36 @@ const providers = ({ store, client, queryClient }: ProviderOptions) => {
   };
 };
 
+/**
+ * The trio is returned alongside the render result so a test can assert about
+ * it (`D3.9`): the query client is where `gcTime: 0` is observable — a settled
+ * credential mutation must not still be in `getMutationCache()` — and where a
+ * cross-entity invalidation shows up. A test that had to build its own client
+ * to see either would be asserting about a client the component never used.
+ */
+export interface ProviderResult extends RenderResult {
+  readonly store: SessionStore;
+  readonly client: ApiClient;
+  readonly queryClient: QueryClient;
+}
+
 export const renderWithProviders = (
   ui: ReactElement,
   options: ProviderOptions = {},
-): RenderResult => {
+): ProviderResult => {
   const value = providers(options);
 
-  return render(
-    <ApiProvider value={{ client: value.client, store: value.store }}>
-      <QueryClientProvider client={value.queryClient}>
-        {ui}
-        <Toaster />
-      </QueryClientProvider>
-    </ApiProvider>,
-  );
+  return {
+    ...render(
+      <ApiProvider value={{ client: value.client, store: value.store }}>
+        <QueryClientProvider client={value.queryClient}>
+          {ui}
+          <Toaster />
+        </QueryClientProvider>
+      </ApiProvider>,
+    ),
+    ...value,
+  };
 };
 
 export interface RenderAppOptions extends ProviderOptions {

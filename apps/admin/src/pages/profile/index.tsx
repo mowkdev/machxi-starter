@@ -5,10 +5,9 @@ import {
   ChangePasswordDialog,
   ProfileDetailsForm,
 } from "@/features/profile-manage";
+import { RolesList, StatusBadge } from "@/shared/grid/cells";
 import { dateTime } from "@/shared/grid/formatters";
-import { humanize } from "@/shared/resource/config";
 import {
-  Badge,
   Button,
   Card,
   CardAction,
@@ -92,25 +91,20 @@ export const ProfilePage = () => {
             <>
               <dl className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 <Summary label="Email">{profile.data.email}</Summary>
+                {/*
+                 * The grid's own renderers, not a second pair (D3.9 review).
+                 * They are resource-agnostic by ADR-0035's rule — `statusBadge`
+                 * colours an enum label, `rolesList` renders string badges, and
+                 * neither knows what a staff member is — so a screen with no
+                 * table on it is still entitled to the vocabulary. The
+                 * hand-rolled version this replaces had already drifted:
+                 * `invited` read destructive here and secondary in the grid.
+                 */}
                 <Summary label="Status">
-                  <Badge
-                    variant={
-                      profile.data.status === "active"
-                        ? "default"
-                        : "destructive"
-                    }
-                  >
-                    {humanize(profile.data.status)}
-                  </Badge>
+                  <StatusBadge value={profile.data.status} />
                 </Summary>
                 <Summary label="Roles">
-                  <span className="flex flex-wrap gap-1">
-                    {profile.data.roles.map((role) => (
-                      <Badge key={role} variant="outline">
-                        {humanize(role)}
-                      </Badge>
-                    ))}
-                  </span>
+                  <RolesList value={profile.data.roles} />
                 </Summary>
                 <Summary label="Last sign-in">
                   {/* This session's own sign-in, so it is never `null` here —

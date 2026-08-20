@@ -51,7 +51,9 @@ export interface ProfileMockState {
   otherSessionsRevoked: number;
   readonly seen: {
     updated: UpdateStaffProfileBody[];
+    /** Bodies the endpoint **accepted**. A refusal goes in `refused`. */
     changed: ChangePasswordBody[];
+    refused: ChangePasswordBody[];
   };
 }
 
@@ -61,7 +63,7 @@ export const createProfileMockState = (
   profile: { ...profile },
   password: CURRENT_PASSWORD,
   otherSessionsRevoked: 0,
-  seen: { updated: [], changed: [] },
+  seen: { updated: [], changed: [], refused: [] },
 });
 
 export const createProfileHandlers = (state: ProfileMockState) =>
@@ -94,13 +96,20 @@ export const createProfileHandlers = (state: ProfileMockState) =>
       async ({ request }): Promise<Response> => {
         const body = changePasswordBody.parse(await request.json());
 
-        state.seen.changed.push(body);
-
         // `staffService.changePassword` verifies the actor before it hashes
         // anything; a wrong one is `403 AUTH_CURRENT_PASSWORD_INVALID`, the
         // same code the administrative reset answers (ADR-0027 §Contracts).
-        if (body.currentPassword !== state.password)
+        if (body.currentPassword !== state.password) {
+          state.seen.refused.push(body);
+
           return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+        }
+
+        // Recorded *after* the check, so `seen.changed` means "the endpoint
+        // accepted this" rather than "the endpoint saw it" — a refused attempt
+        // in that list would let an assertion about what landed pass on a
+        // `403` (D3.9 review).
+        state.seen.changed.push(body);
 
         state.password = body.newPassword;
         // `exceptSessionId: principal.sessionId` — the caller's session is the

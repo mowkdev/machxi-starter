@@ -44,15 +44,29 @@ const badgeVariantFor = (
   return "secondary";
 };
 
+/**
+ * A value rendered from nothing but itself.
+ *
+ * `StatusBadge` and `RolesList` read only `value`, and saying so in the type is
+ * what lets a screen with no grid on it use the same vocabulary — the profile
+ * page renders a status and a roles list, and a hand-rolled pair there had
+ * already disagreed with these about `invited` (D3.9 review). A function taking
+ * fewer props still satisfies {@link CellRenderer}, so the registry is
+ * unaffected.
+ */
+export interface ValueOnlyProps {
+  readonly value: unknown;
+}
+
 /** An enum value as a coloured label. */
-export const StatusBadge = ({ value }: CellRendererProps) => {
+export const StatusBadge = ({ value }: ValueOnlyProps) => {
   if (typeof value !== "string" || value === "") return <>{EMPTY_CELL}</>;
 
   return <Badge variant={badgeVariantFor(value)}>{humanize(value)}</Badge>;
 };
 
 /** A string array as badges — roles, tags, anything repeated and short. */
-export const RolesList = ({ value }: CellRendererProps) => {
+export const RolesList = ({ value }: ValueOnlyProps) => {
   const values = Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
