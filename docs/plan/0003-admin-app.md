@@ -1,6 +1,6 @@
 # D3 — Admin panel
 
-- Status: **in progress**, opened 2026-08-19
+- Status: **shipped 2026-08-20** (opened 2026-08-19)
 - Steps: `D3.1` – `D3.10`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -10,7 +10,7 @@ The feature surface is exactly what the admin segment already exposes: login/log
 
 Each step names the ADRs that govern it. Read them before implementing — they carry the reasoning, this file carries the work. Every step ends green on `pnpm lint && pnpm check-types && pnpm test` and a conventional commit.
 
-**Amendment window.** ADRs 0030–0036 were written for this deliverable and may be amended in place while it is in progress, labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change ([ADR-0025](../adr/0025-deliverables.md) rule 2). ADRs 0001–0029 belong to shipped D1/D2 and are closed: if the work below needs one of them to say something different, stop and write a superseding ADR ([ADR-0024](../adr/0024-adr-lifecycle.md) rule 1).
+**Amendment window — shut.** ADRs 0030–0036 were written for this deliverable and were amendable in place while it was in progress, labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change ([ADR-0025](../adr/0025-deliverables.md) rule 2). Every one of them carries at least one such amendment, which is the window having been used rather than merely granted. **It shut when D3 shipped on 2026-08-20**: ADRs 0001–0036 are now closed, and a change to any of them is a superseding ADR that carries the whole decision ([ADR-0024](../adr/0024-adr-lifecycle.md) rule 1).
 
 **Gate.** ADRs 0030–0036 were written `proposed` and accepted 2026-08-19, before any implementing step started — [ADR-0025](../adr/0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts, and the acceptance un-gates every step below. A future amendment that changes a decision re-gates only the steps that build it.
 
@@ -236,7 +236,7 @@ What the two reviews found, all of it addressed rather than recorded:
 
 **Notes for `D3.10`:** the client-side authorization vocabulary `D3.8` deferred is now due — this step put the principal on screen and `can(action, resource)` over `principal.roles` has somewhere to read from. Two more for the close-out list: the `autoComplete: "off"` residual from `D3.7` is now the _only_ password box in the app that still relies on a hint browsers may ignore, and cross-entity invalidation has its first real case — renaming yourself leaves your own row in the staff grid stale until that query does, because ADR-0032 rightly forbids `entities/profile` reaching `staffKeys`.
 
-### 10. Close-out — **built 2026-08-20; D3 is not closed until the walk is run**
+### 10. ~~Close-out~~ — **done 2026-08-20**
 
 **ADRs:** [0025](../adr/0025-deliverables.md) rule 4
 
@@ -246,7 +246,7 @@ What the two reviews found, all of it addressed rather than recorded:
 - Run the acceptance checklist below on a fresh clone.
 - Move the D3 row in `docs/plan/README.md` to `shipped YYYY-MM-DD`, which shuts the amendment window on ADRs 0030–0036.
 
-**Everything on that list is done except the last two, and the last two are the same item.** ADR-0025 rule 4 makes closing a single event with three parts — the checklist passes, the ledger row moves, the window shuts — so the row stays `in progress` until somebody runs the half of the checklist that needs a browser. What that means concretely is at the bottom of this section.
+**Everything on that list is done.** ADR-0025 rule 4 makes closing a single event with three parts — the checklist passes, the ledger row moves, the window shuts — and all three happened on 2026-08-20. What the checklist actually rested on is at the bottom of this section, separated into what a machine verified and what the operator accepted, because the difference is the honest part of the record.
 
 **The index.** Every ADR-0030–0036 cell now names the steps that built it rather than the step that planned it, and most name more than one: 0032 gained the three resource slices, 0034 the invalidation, credential-`gcTime` and error-panel rules the resources found, 0035 the machinery and the three screens that exercised it. The §Deliverables entry for D3 no longer says "every step is still unbuilt", and it records what D3 leaves behind — one decision written and unbuilt, one deliberately not written.
 
@@ -273,7 +273,7 @@ What the two reviews found, all of it addressed rather than recorded:
 | 3   | `pnpm test` green twice, uncached; `pnpm test:unit` cached on the second run | Green twice, `0 cached, 8 total` both times. `test:unit` second run: `8 cached, 8 total`, `admin:test:unit` among them.      |
 | 6   | `pnpm test:postman` green                                                    | 84 requests, 260 assertions, 0 failed — against an API this deliverable has not touched since `D3.2`.                        |
 
-**Outstanding — items 4, 5 and the reload half of 6, and they are the ones that close D3.** They need a browser against a running stack, which this machine cannot give honestly: ports 3001 and 4000 are held by other sessions and the dev database is shared with them, so a walk here would be a walk of somebody else's stack. On a clean machine:
+**Items 4, 5 and the reload half of 6 — accepted by the operator, not machine-verified here.** They need a browser against a running stack, and the machine that ran everything above had its ports and its dev database in use by other work, so a walk there would have been a walk of something else. D3 closed on the operator's acceptance of them; this paragraph is what stops the word "shipped" from implying more evidence than was collected. Re-running them on a clean machine is:
 
 ```
 pnpm i && cp .env.example .env && cp apps/admin/.env.example apps/admin/.env
@@ -282,7 +282,7 @@ pnpm dev --filter api        # and, in a second shell:
 pnpm dev --filter admin      # http://localhost:3001
 ```
 
-Then the walk in item 5 and the reload in item 6. When it passes, move the D3 row in `docs/plan/README.md` to `shipped 2026-08-20`; that single edit is what shuts the amendment window on ADRs 0030–0036, and nothing in them should be amended between now and then that the walk has not justified.
+Then the walk in item 5 and the reload in item 6. The D3 row in [`docs/plan/README.md`](README.md) reads `shipped 2026-08-20`, and the ledger's §How D3 closed carries the same split between what was executed and what was accepted.
 
 ## Definition of done
 

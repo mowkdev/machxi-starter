@@ -1,6 +1,6 @@
 # D4 — Data grid v2
 
-- Status: **planned** — opens when D3 ships ([ADR-0025](../adr/0025-deliverables.md) rule 5)
+- Status: **in progress**, opened 2026-08-20 — the day D3 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time)
 - Steps: `D4.1` – `D4.7`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -10,9 +10,9 @@ Everything here builds on decisions that stand unchanged: the server owns data o
 
 Each step names the ADRs that govern it. Read them before implementing — they carry the reasoning, this file carries the work. Every step ends green on `pnpm lint && pnpm check-types && pnpm test` and a conventional commit.
 
-**Amendment window.** ADRs 0037–0042 were written for this deliverable (while D3 was still in progress — writing is not opening) and may be amended in place while D4 is in progress, labelled `**Amended YYYY-MM-DD (D4.N).**` at the point of change (ADR-0025 rule 2). ADRs 0001–0029 are closed; 0030–0036 close when D3 ships — if the work below needs any closed ADR to say something different, stop and write a superseding ADR (ADR-0024 rule 1).
+**Amendment window.** ADRs 0037–0042 were written for this deliverable (while D3 was still in progress — writing is not opening) and may be amended in place while D4 is in progress, labelled `**Amended YYYY-MM-DD (D4.N).**` at the point of change (ADR-0025 rule 2). **ADRs 0001–0036 are closed** — 0030–0036 shut with D3 on 2026-08-20 — so if the work below needs any of them to say something different, stop and write a superseding ADR (ADR-0024 rule 1). That is the live constraint for this deliverable rather than a formality: D4 rebuilds surfaces ADR-0034 and ADR-0035 describe, and those two are now frozen.
 
-**Gate.** ADRs 0037–0042 are `proposed`. Each is accepted before its implementing step starts (ADR-0025 rule 3, the standing precedent from ADR-0029 and the D3 set).
+**Gate.** ADRs 0037–0042 are `proposed`, and opening the deliverable did not change that. Each is accepted before its own implementing step starts (ADR-0025 rule 3) — the stricter reading of the precedent D3 set by accepting all seven of its ADRs on one day, and the reason a step below is un-startable until somebody has read its ADR and agreed with it.
 
 ## Build order
 

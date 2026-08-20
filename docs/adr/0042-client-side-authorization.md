@@ -3,7 +3,7 @@
 - Status: proposed
 - Date: 2026-08-20
 
-> One of the D4 (data grid v2) decision set, written ahead of the deliverable alongside [ADR-0037](0037-grid-viewport-layout.md)–[0041](0041-grid-preferences.md) (`docs/plan/0004-data-grid-v2.md`, `planned`). Unlike those five it claims no step of its own: it is the vocabulary the affordances D4 builds are gated with, so the plan's step 3 (selection, capabilities and the toolbar) and step 6 (the sweep over both resources) are where it lands, and the index cell says `D4 (not yet built)` rather than naming one. It becomes amendable in place while D4 is `in progress` in [`docs/plan/README.md`](../plan/README.md) ([ADR-0025](0025-deliverables.md) rule 2).
+> One of the D4 (data grid v2) decision set, written ahead of the deliverable alongside [ADR-0037](0037-grid-viewport-layout.md)–[0041](0041-grid-preferences.md) (`docs/plan/0004-data-grid-v2.md`). It is the vocabulary the affordances D4 builds are gated with, so it lands at `D4.3` (selection, capabilities and the toolbar) beside [ADR-0038](0038-grid-selection-and-capabilities.md) — the two are halves of one question and shipping either alone rebuilds the defect that motivated both — and is exercised again at `D4.6`, the sweep over both resources. It becomes amendable in place while D4 is `in progress` in [`docs/plan/README.md`](../plan/README.md) ([ADR-0025](0025-deliverables.md) rule 2).
 
 ## Context
 
