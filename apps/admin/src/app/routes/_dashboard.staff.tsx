@@ -83,8 +83,23 @@ function StaffRoute() {
    * disappearing.
    */
   const matchRoute = useMatchRoute();
+  /*
+   * Two things this call has to say explicitly, both found in the browser at
+   * `D4.2` because the surface they break is one no resource uses yet:
+   *
+   * - **`includeSearch: false`.** `matchRoute` compares search params as well
+   *   as the path by default, so asking about `/staff/new` while the URL is
+   *   `/staff/new?limit=50` answers *no* — and the grid stayed mounted under a
+   *   `page` surface that had already replaced it. The question here is about
+   *   the path; the list's search is retained on purpose and must not be part
+   *   of the answer.
+   * - **`||`, not `??`.** A miss is `false`, not `undefined`, so `??` would
+   *   return the first miss and never ask about the second path — leaving
+   *   `/staff/$staffId` permanently unrecognised.
+   */
   const onRecord = Boolean(
-    matchRoute({ to: "/staff/new" }) ?? matchRoute({ to: "/staff/$staffId" }),
+    matchRoute({ to: "/staff/new", includeSearch: false }) ||
+    matchRoute({ to: "/staff/$staffId", includeSearch: false }),
   );
   const replacesTheGrid = editSurfaceOf(staffResourceConfig) === "page";
 

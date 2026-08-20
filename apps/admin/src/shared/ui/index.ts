@@ -93,7 +93,6 @@ export {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@repo/ui/components/sheet";

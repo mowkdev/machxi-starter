@@ -66,8 +66,11 @@ function UsersRoute() {
    * a config line and the topology has to follow it (ADR-0040).
    */
   const matchRoute = useMatchRoute();
+  // `includeSearch: false` and `||` rather than `??` — see the staff parent,
+  // which records what each of them costs when it is wrong.
   const onRecord = Boolean(
-    matchRoute({ to: "/users/new" }) ?? matchRoute({ to: "/users/$userId" }),
+    matchRoute({ to: "/users/new", includeSearch: false }) ||
+    matchRoute({ to: "/users/$userId", includeSearch: false }),
   );
 
   return (

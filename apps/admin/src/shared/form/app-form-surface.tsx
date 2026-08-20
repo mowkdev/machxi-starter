@@ -15,13 +15,25 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/shared/ui";
 
 import { AppFormDialog } from "./app-form-dialog";
 import { AppFormActions, AppFormFrame } from "./app-form-frame";
+
+/**
+ * One footer layout for the drawer and the page, matching the dialog's.
+ *
+ * `SheetFooter` was the obvious choice for the drawer and is the wrong one:
+ * shadcn styles it `flex-col`, so the two buttons stack full-width and Cancel
+ * sits *above* Save — a different visual priority from the same form in a
+ * modal, which is the drift "the same form in three shells" (ADR-0040) exists
+ * to prevent. Found by looking at it; nothing in a class list says a footer is
+ * a column. `DialogFooter` already resolves to this row on any non-tiny
+ * viewport, so all three now read the same.
+ */
+const FOOTER = "mt-6 flex justify-end gap-2";
 
 /**
  * A record being composed or edited, in whichever shell its resource declared
@@ -157,7 +169,7 @@ export const AppFormSurface = <
           </SheetHeader>
 
           <div className="px-4 pb-4">
-            {frame(<SheetFooter className="mt-6 px-0">{actions}</SheetFooter>)}
+            {frame(<div className={FOOTER}>{actions}</div>)}
           </div>
         </SheetContent>
       </Sheet>
@@ -179,7 +191,7 @@ export const AppFormSurface = <
         )}
       </CardHeader>
       <CardContent>
-        {frame(<div className="mt-6 flex justify-end gap-2">{actions}</div>)}
+        {frame(<div className={FOOTER}>{actions}</div>)}
       </CardContent>
     </Card>
   );
