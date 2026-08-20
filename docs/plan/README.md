@@ -4,12 +4,13 @@ The ledger of staged work in this repository. A **deliverable** is the unit defi
 
 Read this file first; open a plan only when you are working in it.
 
-| #                            | Title                              | Status                 | Scope in one line                                                                                             |
-| ---------------------------- | ---------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
-| [D1](0001-api-foundation.md) | API foundation                     | **shipped 2026-08-18** | A running, testable API: config, logging, DB, migrations, seeds, both auth flows, staff/users admin, profile. |
-| [D2](0002-api-hardening.md)  | API hardening and D3 prerequisites | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.              |
-| [D3](0003-admin-app.md)      | Admin panel (`apps/admin`)         | **in progress**        | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.  |
-| D4                           | Web app (`apps/web`)               | planned                | The Next.js user-facing app ADR-0022 configured. Not scheduled until D3 ships.                                |
+| #                            | Title                              | Status                 | Scope in one line                                                                                                                                             |
+| ---------------------------- | ---------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [D1](0001-api-foundation.md) | API foundation                     | **shipped 2026-08-18** | A running, testable API: config, logging, DB, migrations, seeds, both auth flows, staff/users admin, profile.                                                 |
+| [D2](0002-api-hardening.md)  | API hardening and D3 prerequisites | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                                              |
+| [D3](0003-admin-app.md)      | Admin panel (`apps/admin`)         | **in progress**        | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                                  |
+| [D4](0004-data-grid-v2.md)   | Data grid v2 (`apps/admin`)        | planned                | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings. Opens when D3 ships. |
+| D5                           | Web app (`apps/web`)               | planned                | The Next.js user-facing app ADR-0022 configured. Not scheduled until D4 ships.                                                                                |
 
 ## Rules
 

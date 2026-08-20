@@ -13,6 +13,7 @@ The repository is a Turborepo/pnpm monorepo intended as a bootstrap for projects
   - **D1 shipped 2026-08-18**, so ADRs 0001–0024 are closed. The amendments dated _2026-08-18 (step N)_ inside them were made under the exception ADR-0024 rule 2 grants and are the last of their kind for those records.
   - **D2 shipped 2026-08-19**, so ADRs 0025–0029 are closed too. The amendments dated _2026-08-19 (D2.N)_ inside them were the last made in that window; ADRs 0001–0029 now change only by supersession.
   - **D3 is in progress**, so ADRs 0030–0036 are amendable, labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change. Written as `proposed`, all seven were **accepted 2026-08-19**, before any implementing step started (ADR-0025 rule 3).
+  - **ADRs 0037–0041 were written 2026-08-20 for the planned D4** (data grid v2) and are `proposed`. Writing is not opening: their amendment window opens when D4 does, and each is accepted before its implementing step starts.
 - "Implemented" is not a status — it is the _Implemented_ column below, which names the plan step that built the decision and where the code lives (ADR-0024 §Lifecycle rule 4). Steps are written `D<deliverable>.<step>` (ADR-0025 §Step identity).
 - Code snippets in ADRs are illustrative of shape and naming; the implementation is the source of truth for details.
 
@@ -88,6 +89,16 @@ Written together when D3 opened (2026-08-19) and accepted the same day, before a
 | [0035](0035-config-driven-resource-ui.md)      | Config-driven resource UI: AppGrid on TanStack Table, forms on React Hook Form | accepted | D3.6 planned — the machinery; exercised by the staff/users/profile pages in D3.7–D3.9                                                                                                                                                          |
 | [0036](0036-admin-testing-strategy.md)         | Admin app testing strategy: Vitest, Testing Library and MSW                    | accepted | D3.3 — the harness (`src/test/`: setup, MSW server, render helpers); suites accrue in every later step (sits beside ADR-0021)                                                                                                                  |
 
+ADRs 0037–0041 were written 2026-08-20 for the planned **D4 — data grid v2** ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), grounded in a review of the D3.6–D3.8 implementation. All `proposed`; their window opens with D4.
+
+| #                                               | Title                                                               | Status   | Implemented                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| [0037](0037-grid-viewport-layout.md)            | Grid viewport layout: a height-budgeted shell, one scroll container | proposed | D4.1 planned — fixes the two shipped layout defects and builds the shell the rest slot into |
+| [0038](0038-grid-selection-and-capabilities.md) | Row selection, capabilities and the grid toolbar                    | proposed | D4.3 planned — the `grid` capability block, checkbox column, toolbar and bulk fan-out       |
+| [0039](0039-grid-filter-ux.md)                  | Column filter UX: header filter dialogs and the applied-filters bar | proposed | D4.4 planned — the filter row dies; icons, per-column dialogs and the chips bar             |
+| [0040](0040-record-routes-and-edit-surfaces.md) | Record routes and edit surfaces: dialog, drawer, page               | proposed | D4.2 planned — `/staff/$id`, `/users/$id`; form surfaces become routes                      |
+| [0041](0041-grid-preferences.md)                | Persisted grid preferences: column sizing, order and visibility     | proposed | D4.5 planned — the third state owner, behind a storage-adapter seam                         |
+
 ### Planned (not yet written)
 
 These will get their own ADRs when the corresponding features are implemented:
@@ -104,7 +115,10 @@ These will get their own ADRs when the corresponding features are implemented:
 - **Scheduling the session prune.** `pnpm db:sessions:prune` exists (ADR-0008, D1.8) and expired rows accumulate until something runs it. What is undecided is _what_ runs it — cron, the platform's scheduler, or an in-process timer — which is the same decision as background jobs below.
 - **OpenAPI generation** from `@repo/contracts`, and the contract-conformance test tier ADR-0021 leaves as "later". Until then the Postman collection is the API's documentation.
 - **Shared rate-limit state.** The ADR-0020 limiters use an in-memory store, which counts per process; more than one API instance multiplies every limit by the instance count. A shared store is a deployment decision and belongs with the CI/deployment ADR.
-- **`apps/web` architecture.** ADR-0032 deliberately scopes itself to `apps/admin`; Next.js App Router, server components and the user segment's session shape make `web` its own decision, owned by D4.
+- **`apps/web` architecture.** ADR-0032 deliberately scopes itself to `apps/admin`; Next.js App Router, server components and the user segment's session shape make `web` its own decision, owned by D5 (the ledger re-scoped D4 to the data grid).
+- **Bulk mutation endpoints.** ADR-0038 executes bulk delete as a client-side fan-out over the per-row endpoints, on purpose — the ADR-0028 refusals are per-item semantics. A transactional `POST /admin/{staff,users}/bulk-*` becomes worth deciding if scale ever makes N requests the problem; it is an API deliverable's decision, with ADR-0028's rules to answer for.
+- **Negated filter operators.** ADR-0014's `FILTER_OPS` has no `ne` / `notLike` / `notIn`, so no ADR-0039 filter dialog may offer "not contains". Adding negation is a supersession of ADR-0014 (D1, frozen) and a repository change, not a UI change.
+- **A user-settings API.** ADR-0041 persists grid ergonomics behind a storage-adapter seam with `localStorage` as the first adapter. Making preferences account-portable needs a settings resource on the API and a server-backed adapter — the seam and the versioned value schema are the ready-made contract.
 - **End-to-end browser tests (Playwright) for the frontend apps.** ADR-0036 defers them: they need a running API, a database, seed orchestration and a browser matrix, which is its own cost decision. Until then the admin app's contract fidelity rests on MSW handlers derived from `@repo/contracts` plus the D3 acceptance checklist.
 - Background jobs, email delivery, file storage.
 - Mobile app.
@@ -126,9 +140,14 @@ The ledger is [`docs/plan/README.md`](../plan/README.md), and [ADR-0025](0025-de
 - **Acceptance checklist**: the six items in that plan, run on a fresh clone — including the one D2.1 exists for, that stopping Postgres makes `pnpm test` fail instead of replaying a cached pass.
 - **What it left decided but unbuilt**: three gaps written down before this window shut. Two remain under _Planned_ above — a per-principal budget for expensive routes, and per-request principal freshness. The third, the `GET /auth/csrf` bootstrap endpoint, became [ADR-0030](0030-csrf-bootstrap-endpoint.md) when D3 opened.
 
-**D3 — Admin panel, in progress (opened 2026-08-19).** The staff-facing SPA over the admin segment, plus the two prerequisites it cannot exist without: `packages/ui` as a real design system, and the CSRF bootstrap endpoint that lets a cross-host same-site deployment reload without losing its session. `apps/web` moved to D4 on the way in — the two apps share almost nothing beyond `@repo/ui`.
+**D3 — Admin panel, in progress (opened 2026-08-19).** The staff-facing SPA over the admin segment, plus the two prerequisites it cannot exist without: `packages/ui` as a real design system, and the CSRF bootstrap endpoint that lets a cross-host same-site deployment reload without losing its session. `apps/web` moved out on the way in — the two apps share almost nothing beyond `@repo/ui` — and now sits at D5.
 
 - **Build order**: [`docs/plan/0003-admin-app.md`](../plan/0003-admin-app.md), D3.1–D3.10.
 - **Decisions**: ADRs [0030](0030-csrf-bootstrap-endpoint.md)–[0036](0036-admin-testing-strategy.md), written together when the deliverable opened and accepted the same day, before any implementing step started (ADR-0025 rule 3 keeps "agreed" and "built" as separate facts — every step is still unbuilt).
+
+**D4 — Data grid v2, planned (opens when D3 ships).** The second pass over the panel's largest surface, scoped by a review of what D3.6–D3.8 actually built: the two shipped layout defects and a height-budgeted grid shell, form surfaces as routes with three edit shells behind one config switch, row selection with capability-driven toolbars and a client-side bulk fan-out, the filter row replaced by header filter dialogs and an applied-filters bar, and persisted column ergonomics behind a storage-adapter seam. `apps/admin` and `packages/ui` only — no API change.
+
+- **Build order**: [`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md), D4.1–D4.7.
+- **Decisions**: ADRs [0037](0037-grid-viewport-layout.md)–[0041](0041-grid-preferences.md), written 2026-08-20 while D3 was still in progress — writing is not opening; the window opens with the deliverable.
 
 What D1 deliberately did **not** include: the two frontend apps (ADR-0022 covers only their configuration), OpenAPI, i18n, and everything under _Planned_ above. Each ADR's §Consequences says where its own edges are, and ADR-0020 §Residual risks collects the security ones in one place.
