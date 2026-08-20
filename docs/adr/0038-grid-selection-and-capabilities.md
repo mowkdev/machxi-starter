@@ -31,6 +31,7 @@ export interface GridCapabilities {
   readonly canEdit?: boolean;        // edit entry in the row menu
   readonly canDelete?: boolean;      // delete entry in the row menu
   readonly canBulkDelete?: boolean;  // bulk Delete in the toolbar; requires selectable
+  readonly pageSizes?: readonly number[]; // pager options; bounded by MAX_LIMIT at render
 }
 
 export interface ResourceConfig {
@@ -42,7 +43,7 @@ export interface ResourceConfig {
 }
 ```
 
-Booleans only — the configs-are-data rule of ADR-0035 stands unamended. A capability declares *that the surface offers something*; the handler still arrives at the usage site, as a prop or through `meta`, and a function never enters config. `canBulkDelete` without `selectable` is dead data — there is no selection for the button to act on — and the config fixture tests (ADR-0036) refuse the combination rather than letting the toolbar quietly render nothing.
+Flags and plain data only — the configs-are-data rule of ADR-0035 stands unamended. (`pageSizes` joined the block after AppGrid grew the equivalent prop in D3.8's URL-default fix; the capability block is where a resource *declares* it.) A capability declares *that the surface offers something*; the handler still arrives at the usage site, as a prop or through `meta`, and a function never enters config. `canBulkDelete` without `selectable` is dead data — there is no selection for the button to act on — and the config fixture tests (ADR-0036) refuse the combination rather than letting the toolbar quietly render nothing.
 
 **One config block, two readers.** `AppGrid` reads the capabilities for what it owns — the checkbox column, the toolbar's Create and bulk Delete. The *feature's* row-action hook reads the same block for what it owns: `useStaffRowActions` omits the `edit` entry when `canEdit` is not set and the `delete` entry when `canDelete` is not — a resource without delete shows no dead menu item. The join is the config, which the feature already imports (features consume entities, ADR-0032), not a reserved-key filter inside `shared/grid` that would make the grid recognise action names it is forbidden to have opinions about.
 

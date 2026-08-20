@@ -9,11 +9,11 @@ import {
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
-import { messageForError } from "@/shared/notifications/messages";
 import { mergeColumns } from "@/shared/resource/config";
 import type { ColumnConfigMap, ColumnOverrides } from "@/shared/resource/types";
 import {
   Button,
+  QueryError,
   Skeleton,
   Table,
   TableBody,
@@ -114,6 +114,8 @@ export interface AppGridProps<TRow> {
   readonly isFetching?: boolean | undefined;
   /** Shown in place of rows when the page is empty. */
   readonly emptyMessage?: string | undefined;
+  /** Page-size options for the pager; the pager's own defaults when absent. */
+  readonly pageSizes?: readonly number[] | undefined;
 }
 
 const NO_ROWS: readonly never[] = [];
@@ -131,6 +133,7 @@ export const AppGrid = <TRow,>({
   searchable = false,
   isFetching = false,
   emptyMessage = "No results.",
+  pageSizes,
 }: AppGridProps<TRow>) => {
   const merged = useMemo(
     () => mergeColumns(columns, overrides),
@@ -374,19 +377,7 @@ export const AppGrid = <TRow,>({
                */
               <TableRow>
                 <TableCell colSpan={columnCount} className="h-24 text-center">
-                  <p role="alert" className="text-sm text-destructive">
-                    {messageForError(error)}
-                  </p>
-                  {onRetry === undefined ? null : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={onRetry}
-                    >
-                      Try again
-                    </Button>
-                  )}
+                  <QueryError error={error} onRetry={onRetry} />
                 </TableCell>
               </TableRow>
             ) : page === undefined ? (
@@ -439,6 +430,7 @@ export const AppGrid = <TRow,>({
             ? null
             : Math.max(0, (table.getPageCount() - 1) * listState.limit)
         }
+        pageSizes={pageSizes}
         disabled={page === undefined || isFetching}
         onOffsetChange={(offset) => {
           table.setPageIndex(Math.floor(offset / listState.limit));

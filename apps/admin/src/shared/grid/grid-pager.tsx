@@ -32,13 +32,29 @@ import {
  * the way in.
  */
 
+/** The sizes offered when the caller does not say otherwise. */
+const DEFAULT_PAGE_SIZES: readonly number[] = [10, 20, 50, 100];
+
 /**
- * The offered page sizes, filtered against the contract's hard ceiling.
- *
- * Deriving the bound from `MAX_LIMIT` rather than restating it means a change
- * to the contract cannot leave the select offering a size the API rejects.
+ * What the select actually offers: the caller's sizes (or the defaults),
+ * bounded by the contract's hard ceiling, deduplicated, ascending — plus the
+ * current `limit` itself. Deriving the bound from `MAX_LIMIT` rather than
+ * restating it means a change to the contract cannot leave the select offering
+ * a size the API rejects; including `limit` is for the URL being user-writable
+ * (ADR-0034) — `?limit=37` is a state this control must be able to display,
+ * and a select whose value is not among its options silently shows nothing.
  */
-const PAGE_SIZES = [10, 20, 50, 100].filter((size) => size <= MAX_LIMIT);
+export const offeredSizes = (
+  sizes: readonly number[],
+  limit: number,
+): readonly number[] =>
+  [
+    ...new Set(
+      [...sizes, limit].filter(
+        (size) => Number.isInteger(size) && size >= 1 && size <= MAX_LIMIT,
+      ),
+    ),
+  ].sort((a, b) => a - b);
 
 export interface GridPagerProps {
   readonly offset: number;
@@ -58,6 +74,8 @@ export interface GridPagerProps {
   readonly lastOffset: number | null;
   readonly onOffsetChange: (offset: number) => void;
   readonly onLimitChange: (limit: number) => void;
+  /** Page-size options; the current `limit` is always offered alongside. */
+  readonly pageSizes?: readonly number[] | undefined;
   readonly disabled?: boolean;
 }
 
@@ -69,8 +87,10 @@ export const GridPager = ({
   lastOffset,
   onOffsetChange,
   onLimitChange,
+  pageSizes = DEFAULT_PAGE_SIZES,
   disabled = false,
 }: GridPagerProps) => {
+  const sizes = offeredSizes(pageSizes, limit);
   const first = rowCount === 0 ? 0 : offset + 1;
   const last = offset + rowCount;
 
@@ -117,7 +137,7 @@ export const GridPager = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PAGE_SIZES.map((size) => (
+              {sizes.map((size) => (
                 <SelectItem key={size} value={String(size)}>
                   {size}
                 </SelectItem>

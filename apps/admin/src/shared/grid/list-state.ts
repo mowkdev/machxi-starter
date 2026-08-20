@@ -1,3 +1,4 @@
+import { listQuerySearchSchema } from "@repo/contracts";
 import type { Filter, ListQuerySearch, SortSpec } from "@repo/contracts";
 import type { SortingState } from "@tanstack/react-table";
 
@@ -13,6 +14,19 @@ import type { SortingState } from "@tanstack/react-table";
  * because the caller navigates with the result and TanStack Router compares
  * search objects to decide whether anything changed.
  */
+
+/**
+ * The schema's own defaults, for the routes' `stripSearchParams` middleware
+ * (ADR-0034, amended D3.8).
+ *
+ * Derived by parsing an empty object rather than restated, so the URL's idea
+ * of "default" cannot drift from the schema's. A param equal to its default is
+ * stripped from every built link, which is what keeps `/staff` — not
+ * `/staff?offset=0&limit=20&sort=[]&filters=[]` — the canonical first page.
+ * `q` has no default and is simply absent when empty (`withSearch`).
+ */
+export const listSearchDefaults: Readonly<ListQuerySearch> =
+  listQuerySearchSchema.parse({});
 
 /** `[{ field: "email", direction: "desc" }]` → `[{ id: "email", desc: true }]`. */
 export const toSortingState = (sort: readonly SortSpec[]): SortingState =>

@@ -1,7 +1,8 @@
 import { listQuerySearchSchema } from "@repo/contracts";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, stripSearchParams } from "@tanstack/react-router";
 
 import { StaffPage } from "@/pages/staff";
+import { listSearchDefaults } from "@/shared/grid/list-state";
 
 /**
  * `/staff` — wiring, plus the list state (ADR-0034 §List state lives in
@@ -23,9 +24,17 @@ import { StaffPage } from "@/pages/staff";
  * by the API, when the request gets there, and by ADR-0035's config-versus-
  * contract tests before that. This schema guarantees the URL is readable back
  * as the object that wrote it; it deliberately does not restate the allow-list.
+ *
+ * Defaults are stripped from every built link (ADR-0034, amended D3.8): the
+ * URL carries only deviations, so `/staff` *is* page one at the default size.
+ * The middleware is fed the schema's own `parse({})` output
+ * (`listSearchDefaults`), so the two cannot disagree about what "default"
+ * means; a deep link that spells the defaults out still parses identically and
+ * normalises to the bare path on the next navigation.
  */
 export const Route = createFileRoute("/_dashboard/staff")({
   component: StaffPage,
   staticData: { title: "Staff" },
   validateSearch: listQuerySearchSchema,
+  search: { middlewares: [stripSearchParams(listSearchDefaults)] },
 });
