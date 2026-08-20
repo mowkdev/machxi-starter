@@ -181,6 +181,37 @@ export interface FieldConfig {
 export type FieldConfigMap = Readonly<Record<string, FieldConfig>>;
 
 /**
+ * Which shell a resource's record form is composed in (ADR-0040).
+ *
+ * A string key rather than a component, because the ADR-0035 rule stands: a
+ * config is data, and "which shell" is exactly the finite, serializable
+ * vocabulary that rule exists for. The three differ only in the frame — the
+ * form inside is the same config-driven form — and the **URL is identical
+ * across all three**, so changing this line breaks no link, no bookmark and no
+ * test that navigates by path.
+ */
+export type EditSurfaceKey = "dialog" | "drawer" | "page";
+
+/**
+ * How a resource's grid behaves, as opposed to what its columns are.
+ *
+ * Opened by `D4.2` with the one key ADR-0040 needs; ADR-0038 adds the
+ * capability flags (`selectable`, `canCreate`, `canEdit`, `canDelete`,
+ * `canBulkDelete`) to this same block at `D4.3`, and ADR-0039 and ADR-0041
+ * have their own keys after that. It is a block rather than a
+ * top-level key so those arrive as additions here instead of as five more
+ * siblings of `columns`.
+ */
+export interface GridConfig {
+  /**
+   * Which shell `new` and `$id` render in. Absent means `"dialog"` — D3's
+   * behaviour, so adopting ADR-0040 changes no resource's look until its own
+   * config says otherwise.
+   */
+  readonly editSurface?: EditSurfaceKey;
+}
+
+/**
  * One resource, declared once (ADR-0035).
  *
  * Columns and fields together, so the staff table and the staff form cannot
@@ -190,6 +221,8 @@ export type FieldConfigMap = Readonly<Record<string, FieldConfig>>;
  */
 export interface ResourceConfig {
   readonly name: string;
+  /** How the grid behaves (ADR-0040 opens it; ADR-0038 fills it out). */
+  readonly grid?: GridConfig;
   readonly columns: ColumnConfigMap;
   readonly fields: FieldConfigMap;
   /**

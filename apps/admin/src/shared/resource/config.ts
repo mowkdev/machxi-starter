@@ -2,10 +2,12 @@ import type {
   ColumnConfig,
   ColumnConfigMap,
   ColumnOverrides,
+  EditSurfaceKey,
   FieldConfig,
   FieldConfigMap,
   FieldVariant,
   OptionConfig,
+  ResourceConfig,
 } from "./types";
 
 /**
@@ -73,6 +75,16 @@ export const mergeColumns = (
         ],
     )
     .filter(([, column]) => column.hidden !== true);
+
+/**
+ * Which shell this resource composes records in (ADR-0040).
+ *
+ * One reader for the default, so "absent means dialog" is written down once
+ * rather than as a `?? "dialog"` at each of the two call sites that would
+ * otherwise have to remember it.
+ */
+export const editSurfaceOf = (config: ResourceConfig): EditSurfaceKey =>
+  config.grid?.editSurface ?? "dialog";
 
 /** Whether a field belongs to the form being rendered. */
 export const isInVariant = (

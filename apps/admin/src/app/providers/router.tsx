@@ -5,14 +5,16 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 
+import { createApiClient, type ApiClient } from "@/shared/api/client";
 import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import { config } from "@/shared/config";
 
 import { routeTree } from "../routeTree.gen";
 import { createQueryClient } from "./query-client";
-import { onSessionEnded, sessionStore } from "./session";
+import { apiClient, onSessionEnded, sessionStore } from "./session";
 
 /**
  * The router, and the context its guards read (ADR-0032).
@@ -68,18 +70,25 @@ export interface AppRouterOptions {
   readonly history?: RouterHistory;
   /** The cache route loaders may prime; the app passes its singleton. */
   readonly queryClient?: QueryClient;
+  /** What loaders fetch through (`D4.2`); the app passes its singleton. */
+  readonly client?: ApiClient;
 }
 
 export const createAppRouter = ({
   session,
   history,
   queryClient,
-}: AppRouterOptions = {}) =>
-  createRouter({
+  client,
+}: AppRouterOptions = {}) => {
+  const store = session ?? createSessionStore();
+
+  return createRouter({
     routeTree,
     context: {
-      session: session ?? createSessionStore(),
+      session: store,
       queryClient: queryClient ?? createQueryClient(),
+      client:
+        client ?? createApiClient({ store, baseUrl: config.VITE_API_URL }),
     },
     defaultPreload: "intent",
     // Spread rather than passed as `undefined`: `exactOptionalPropertyTypes`
@@ -87,8 +96,9 @@ export const createAppRouter = ({
     // router's own option is the former.
     ...(history ? { history } : {}),
   });
+};
 
-const appRouter = createAppRouter({ session: sessionStore });
+const appRouter = createAppRouter({ session: sessionStore, client: apiClient });
 
 /*
  * When the client decides a session is over -- a terminal code, or a retry that

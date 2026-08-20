@@ -105,6 +105,9 @@ export const renderApp = ({
     history: createMemoryHistory({ initialEntries: [initialPath] }),
     session: value.store,
     queryClient: value.queryClient,
+    // The same client the tree's hooks use, so a route loader and a component
+    // fetch through one MSW-intercepted instance (`D4.2`, ADR-0040).
+    client: value.client,
   });
 
   const tree: ReactNode = (

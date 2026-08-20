@@ -90,6 +90,14 @@ export {
 } from "@repo/ui/components/select";
 export { Separator } from "@repo/ui/components/separator";
 export {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@repo/ui/components/sheet";
+export {
   Sidebar,
   SidebarContent,
   SidebarFooter,
