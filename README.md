@@ -123,11 +123,15 @@ pnpm db:sessions:prune       # delete expired sessions (nothing schedules this y
   errors, the envelope and the middleware; `src/modules/<feature>` holds
   route → controller → service → repository; `src/core/container.ts` is the
   composition root.
-- `apps/admin` — Vite + React SPA, port 3001 (ADR-0022)
+- `apps/admin` — Vite + React SPA, port 3001 (ADR-0022), the staff-facing panel
+  over the admin segment. Feature-Sliced layers with a lint-enforced downward-only
+  import direction (ADR-0032): `src/{app,pages,widgets,features,entities,shared}`.
+  A resource is an entity slice that declares it, a feature slice that writes it
+  and a thin page that arranges them (ADR-0035).
 - `apps/web` — Next.js app, port 3002 (ADR-0022)
 
-The two frontends are configured but not built out — that is the next
-deliverable, not this one.
+`apps/web` is configured but not built out — that is a later deliverable, not
+this one.
 
 ### Packages
 

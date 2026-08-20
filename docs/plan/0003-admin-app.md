@@ -236,7 +236,7 @@ What the two reviews found, all of it addressed rather than recorded:
 
 **Notes for `D3.10`:** the client-side authorization vocabulary `D3.8` deferred is now due — this step put the principal on screen and `can(action, resource)` over `principal.roles` has somewhere to read from. Two more for the close-out list: the `autoComplete: "off"` residual from `D3.7` is now the _only_ password box in the app that still relies on a hint browsers may ignore, and cross-entity invalidation has its first real case — renaming yourself leaves your own row in the staff grid stale until that query does, because ADR-0032 rightly forbids `entities/profile` reaching `staffKeys`.
 
-### 10. Close-out
+### 10. Close-out — **built 2026-08-20; D3 is not closed until the walk is run**
 
 **ADRs:** [0025](../adr/0025-deliverables.md) rule 4
 
@@ -245,6 +245,41 @@ What the two reviews found, all of it addressed rather than recorded:
 - Decide and land the D3 tooling from the design discussion: the `ui-builder` agent and the `frontend-conventions`, `new-resource-ui` and `ui-component` skills, encoding the accepted ADRs' checklists.
 - Run the acceptance checklist below on a fresh clone.
 - Move the D3 row in `docs/plan/README.md` to `shipped YYYY-MM-DD`, which shuts the amendment window on ADRs 0030–0036.
+
+**Everything on that list is done except the last two, and the last two are the same item.** ADR-0025 rule 4 makes closing a single event with three parts — the checklist passes, the ledger row moves, the window shuts — so the row stays `in progress` until somebody runs the half of the checklist that needs a browser. What that means concretely is at the bottom of this section.
+
+**The index.** Every ADR-0030–0036 cell now names the steps that built it rather than the step that planned it, and most name more than one: 0032 gained the three resource slices, 0034 the invalidation, credential-`gcTime` and error-panel rules the resources found, 0035 the machinery and the three screens that exercised it. The §Deliverables entry for D3 no longer says "every step is still unbuilt", and it records what D3 leaves behind — one decision written and unbuilt, one deliberately not written.
+
+**The tooling.** `/frontend-conventions` is the mirror of `/api-conventions`: the layer map, the design-system door, the session rules, the server-state rules, the config-driven resource pattern and the testing discipline, condensed to what somebody needs before touching a file. `/new-resource-ui` is the checklist ADR-0035 §Consequences predicted ("adding a resource is config + entity hooks + thin pages"), written from what `D3.7`–`D3.9` actually did rather than from what the ADR guessed — including the singleton case, which the ADR did not anticipate. `/ui-component` encodes the two things about ADR-0031 that are easy to get wrong and invisible afterwards: the CLI installs the radix dependency into the app it was invoked from rather than into the package, and the generated file has to stay byte-identical or the regenerate-and-diff model stops being cheap. `ui-builder` is the agent that loads them. Both READMEs and `CLAUDE.md` list them.
+
+**Two decisions this step was left to make, and it made them differently.**
+
+- **The client-side authorization vocabulary is written and assigned to D4.** `D3.8` found a `manager` being offered five writes the API refuses on `/admin/users`, and handed the decision here. It is [ADR-0042](../adr/0042-client-side-authorization.md), `proposed`, its index cell reading `D4 (not yet built)` — the state ADR-0025 rule 3 exists for. The distinction it turns on belongs in this file too, because it is what makes the decision safe: the API's authorization has a **static** half (mount-level role guards — a table of resource × action → roles that depends on nothing but the principal) and a **dynamic** half (the rank rule, the last super admin, self-targeting — state the client does not hold). D3.7's rule that the client does not pre-guess a refusal is not overturned, it is given its scope: the static half may be answered, the dynamic half never. It lands in `D4.3` beside ADR-0038's capabilities, because the two are halves of one question — a capability says _this surface offers the action_, `can()` says _this role may perform it_ — and shipping either alone rebuilds the defect.
+- **The soft-deleted PII gap is recorded and deliberately not decided.** `D3.8` made deleted accounts — email and both names — browsable in one click by anybody with `manager` or above, and asked for an ADR before D3 ships. Writing one here would mean choosing a retention window, a redaction shape and whether restore exists, from a repository with no product input; and ADR-0028 is frozen, so it is a supersession rather than an amendment either way. What this step could usefully contribute it did: the entry in the index's _Planned_ list is sharpened from a storage question into an access one, which is what changed.
+
+**The `autoComplete` residual from `D3.7` is closed as accepted, not fixed.** `off` on a password box holding somebody else's credential is a hint a browser may ignore, and both candidate fixes are worse: separate `<form>` elements inside one dialog break the submit lock and the RHF context that make the dialog what it is, and no attribute exists meaning "this credential is not the user's". What `D3.9` added is the half that actually mattered — a `username` anchor on the _self-service_ form, so a password manager keys the update to the right account instead of guessing. The residual stands, and the operational instruction is one line: an administrator resetting somebody else's password may be prompted to save it, and should decline.
+
+**ADR-0036 gained the enforcement `D3.8` asked for.** Derivation from contracts bounds the _shapes_; three findings across `D3.8` and `D3.9` were the _refusals_ drifting, every one of them in the permissive direction, because a handler gets written from the happy path a test needed. A handler that models a refusal now names the service function it mirrors, in a comment at the branch — a naming requirement rather than a machine check, since nothing in `apps/admin` may import `apps/api`, and it puts the burden where the drift happens.
+
+**Verified — the automated half of the checklist, run today:**
+
+| #   | Item                                                                         | Result                                                                                                                       |
+| --- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Stack up, migrated, seeded                                                   | Postgres healthy; the integration tier and newman both ran against migrated, seeded databases. **Not** run as a fresh clone. |
+| 2   | `pnpm lint && pnpm check-types` clean, `git status` clean after              | Green, `pnpm format:check` clean too, and the tree is clean at this commit.                                                  |
+| 3   | `pnpm test` green twice, uncached; `pnpm test:unit` cached on the second run | Green twice, `0 cached, 8 total` both times. `test:unit` second run: `8 cached, 8 total`, `admin:test:unit` among them.      |
+| 6   | `pnpm test:postman` green                                                    | 84 requests, 260 assertions, 0 failed — against an API this deliverable has not touched since `D3.2`.                        |
+
+**Outstanding — items 4, 5 and the reload half of 6, and they are the ones that close D3.** They need a browser against a running stack, which this machine cannot give honestly: ports 3001 and 4000 are held by other sessions and the dev database is shared with them, so a walk here would be a walk of somebody else's stack. On a clean machine:
+
+```
+pnpm i && cp .env.example .env && cp apps/admin/.env.example apps/admin/.env
+pnpm docker:up && pnpm db:setup && pnpm db:seed -- --dev
+pnpm dev --filter api        # and, in a second shell:
+pnpm dev --filter admin      # http://localhost:3001
+```
+
+Then the walk in item 5 and the reload in item 6. When it passes, move the D3 row in `docs/plan/README.md` to `shipped 2026-08-20`; that single edit is what shuts the amendment window on ADRs 0030–0036, and nothing in them should be amended between now and then that the walk has not justified.
 
 ## Definition of done
 

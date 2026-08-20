@@ -2,7 +2,7 @@
 
 Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin panel and a web app. **Architecture is decided in `docs/adr/` — read the relevant ADR before changing anything it covers.** Index: `docs/adr/README.md`. Build order and endpoint scope: the deliverable plans in `docs/plan/`, starting from the ledger `docs/plan/README.md`.
 
-Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18, D2 shipped 2026-08-19; D3 (admin panel) is in progress** — `docs/plan/0003-admin-app.md`. ADRs 0030–0036 were written for D3 and are `accepted` (2026-08-19); they are the only ADRs currently amendable in place, while D3 is in progress.
+Work is staged into numbered **deliverables** (ADR-0025), one plan file each, steps written `D<n>.<step>`. **D1 shipped 2026-08-18, D2 shipped 2026-08-19; D3 (admin panel) is in progress** — `docs/plan/0003-admin-app.md`, all ten steps built, closing on its acceptance checklist. ADRs 0030–0036 were written for D3 and are `accepted` (2026-08-19); they are the only ADRs currently amendable in place, while D3 is in progress. ADRs 0037–0042 are `proposed` for the planned D4 (data grid v2) — written ahead of it, and not amendable until it opens.
 
 ## Non-negotiables (from the ADRs)
 
@@ -19,7 +19,8 @@ Work is staged into numbered **deliverables** (ADR-0025), one plan file each, st
 - **Contracts** (ADR-0023): `@repo/contracts` depends only on `zod`; enums are defined once there and consumed by `pgEnum` and zod.
 - **Deliverables and the ADR window** (ADR-0025): an ADR may be amended in place only while the deliverable it belongs to is `in progress` in `docs/plan/README.md`. ADRs 0001–0029 are frozen (D1 and D2 shipped) — diverging from one means writing a superseding ADR, never editing it. ADRs 0030–0036 were written for D3 and are amendable in place, labelled `**Amended YYYY-MM-DD (D3.<step>).**`, while D3 is in progress.
 - **Task caching** (ADR-0026): a task whose result depends on anything outside the repo is never cached and declares its `env`. `pnpm test` includes the integration tier, so it is `cache: false` and runs `--concurrency=1`; `pnpm test:unit` is the cached fast loop.
-- **Frontend (D3, ADRs 0030–0036 — read before touching `apps/admin` or `packages/ui`)**: shadcn/ui design system in `@repo/ui` on Tailwind v4 (0031); FSD layers with lint-enforced import direction and TanStack Router file-based routes (0032); credentials in memory only — no token or principal in `localStorage`, `sessionStorage` or a client-set cookie, though non-credential display state may be persisted — single-flight refresh, CSRF via the 0030 bootstrap endpoint, and the client never _reads_ `document.cookie` (0033); TanStack Query owns all server state, list state in URL search params, toasts via typed mutation `meta` + sonner (0034); one `ResourceConfig` per resource — serializable config + named registries — for both AppGrid (TanStack Table in manual mode, rendered with shadcn `Table`) and config-driven RHF forms over contracts zod schemas, all fields disabled while a mutation is pending (0035); Vitest + Testing Library + MSW with handlers derived from `@repo/contracts`, no live-API tier (0036).
+- **Frontend (D3, ADRs 0030–0036 — read `/frontend-conventions` before touching `apps/admin` or `packages/ui`)**: shadcn/ui design system in `@repo/ui` on Tailwind v4, reached through the single `shared/ui` door (0031); FSD layers with lint-enforced downward-only imports and TanStack Router file-based routes (0032); credentials in memory only — no token, CSRF token or principal in `localStorage`, `sessionStorage` or a client-set cookie, though non-credential display state may be persisted — single-flight refresh, CSRF via the 0030 bootstrap endpoint, and the client never _reads_ `document.cookie` (0033); TanStack Query owns all server state, list state in URL search params, outcomes declared in typed mutation `meta` and delivered by one global handler, queries silent and therefore rendering their own failure panel (0034); one `ResourceConfig` per resource — serializable config + named registries — for both AppGrid (TanStack Table v9 in manual mode over shadcn `Table`) and config-driven RHF forms over the contracts zod schemas, every field disabled while a mutation is pending (0035); Vitest + Testing Library + MSW with handlers derived from `@repo/contracts`, no live-API tier (0036).
+  - Two rules the D3 steps had to discover, worth knowing before the third resource: **operator-facing copy has exactly two catalogues** — error _codes_ in `shared/notifications/messages.ts`, field _rules_ in the contracts schema itself, and the API's own `error.message` is never rendered; and **a mutation invalidates its own entity's keys, while the feature invalidates whatever else the interaction touched** (an entity may not import another entity).
 
 ## Commands
 
@@ -31,6 +32,7 @@ pnpm docker:up                 # Postgres 16 (docker/local/compose.yaml)
 pnpm db:setup                  # migrate + seed super admin (from SEED_SUPER_ADMIN_* in .env)
 pnpm db:seed -- --dev          # dev fixtures (manager/editor staff, customer users)
 pnpm dev --filter api          # http://localhost:4000
+pnpm dev --filter admin        # http://localhost:3001 (needs the API up)
 pnpm test:unit                 # cached fast loop, no database
 pnpm lint && pnpm check-types && pnpm test   # the gate: test includes integration, needs Postgres up
 pnpm test:int --filter api     # integration tests only, against DATABASE_URL_TEST
@@ -40,7 +42,7 @@ pnpm test:postman              # newman over docs/postman
 ## Repo map
 
 - `apps/api` — Express 5 API (`src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, `src/core/container.ts` composition root)
-- `apps/admin` (Vite + React SPA, port 3001) — **the D3 build target**, FSD architecture per ADR-0032; `apps/web` (Next.js) — out of scope until D4
+- `apps/admin` (Vite + React SPA, port 3001) — the D3 build target: `src/{app,pages,widgets,features,entities,shared}` per ADR-0032, resources under `entities/` + `features/<x>-manage/` + a thin `pages/<x>/`, machinery in `shared/{api,form,grid,resource,ui,notifications}`; `apps/web` (Next.js) — out of scope until D5
 - `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
 - `docker/local` — compose for local dev; `docs/` — ADRs, plan, Postman
 - `scripts/` — repo-level tooling outside the workspaces, so **not** covered by `turbo run lint` / `check-types` (ADR-0002); today only `postman.mjs`
@@ -52,7 +54,7 @@ Use the Grep/Glob tools to search this repo; never `grep -r`, `find` or `rg` thr
 ## Workflow expectations
 
 1. Before implementing: identify the ADRs involved; if a change conflicts with one, check its deliverable in `docs/plan/README.md`. In progress → amend in place, labelled `**Amended YYYY-MM-DD (D<n>.<step>).**`. Shipped → stop and propose a superseding ADR instead of diverging (ADR-0024 rule 1, ADR-0025 rule 2).
-2. Use the project skills (`/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/new-adr`, `/plan-step`, `/postman-sync`, `/local-dev`, `/api-conventions`) — they encode the ADR checklists.
+2. Use the project skills — they encode the ADR checklists. API and data: `/api-conventions`, `/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/postman-sync`. Admin app: `/frontend-conventions`, `/new-resource-ui`, `/ui-component`. Everything else: `/new-adr`, `/plan-step`, `/local-dev`.
 3. Every change ends green on `pnpm lint && pnpm check-types && pnpm test`; new endpoints get integration tests (ADR-0021) and Postman requests.
 4. Keep docs in sync: new env var → ADR-0004 + `.env.example` + `turbo.json` `env` if a task reads it (ADR-0026); new endpoint → the current plan's scope + Postman; new decision → ADR + index (with its `D<n>.<step>` in the _Implemented_ column).
 5. Commit messages: conventional commits (`feat(api): …`, `chore(db): …`, `docs(adr): …`).
@@ -60,4 +62,4 @@ Use the Grep/Glob tools to search this repo; never `grep -r`, `find` or `rg` thr
 
 ## Subagents
 
-`.claude/agents/`: `adr-reviewer` (diff vs ADRs), `module-builder` (scaffold feature modules), `db-migrator` (schema → migration → contracts → seeds), `test-engineer` (Vitest unit/integration), `security-reviewer` (auth/session/input), `adr-author` (new/superseding ADRs). Use them for the matching task; run `adr-reviewer` and `security-reviewer` before opening a PR that touches `apps/api/src/core` or auth.
+`.claude/agents/`: `adr-reviewer` (diff vs ADRs), `module-builder` (scaffold API feature modules), `ui-builder` (admin screens, shared UI machinery, design-system primitives), `db-migrator` (schema → migration → contracts → seeds), `test-engineer` (Vitest unit/integration), `security-reviewer` (auth/session/input), `adr-author` (new/superseding ADRs). Use them for the matching task; run `adr-reviewer` and `security-reviewer` before opening a PR that touches `apps/api/src/core` or auth.

@@ -10,9 +10,9 @@ Everything here builds on decisions that stand unchanged: the server owns data o
 
 Each step names the ADRs that govern it. Read them before implementing — they carry the reasoning, this file carries the work. Every step ends green on `pnpm lint && pnpm check-types && pnpm test` and a conventional commit.
 
-**Amendment window.** ADRs 0037–0041 were written for this deliverable (while D3 was still in progress — writing is not opening) and may be amended in place while D4 is in progress, labelled `**Amended YYYY-MM-DD (D4.N).**` at the point of change (ADR-0025 rule 2). ADRs 0001–0029 are closed; 0030–0036 close when D3 ships — if the work below needs any closed ADR to say something different, stop and write a superseding ADR (ADR-0024 rule 1).
+**Amendment window.** ADRs 0037–0042 were written for this deliverable (while D3 was still in progress — writing is not opening) and may be amended in place while D4 is in progress, labelled `**Amended YYYY-MM-DD (D4.N).**` at the point of change (ADR-0025 rule 2). ADRs 0001–0029 are closed; 0030–0036 close when D3 ships — if the work below needs any closed ADR to say something different, stop and write a superseding ADR (ADR-0024 rule 1).
 
-**Gate.** ADRs 0037–0041 are `proposed`. Each is accepted before its implementing step starts (ADR-0025 rule 3, the standing precedent from ADR-0029 and the D3 set).
+**Gate.** ADRs 0037–0042 are `proposed`. Each is accepted before its implementing step starts (ADR-0025 rule 3, the standing precedent from ADR-0029 and the D3 set).
 
 ## Build order
 
@@ -34,11 +34,13 @@ Second because it restructures the pages before more grid surface accumulates on
 
 ### 3. Selection, capabilities and the toolbar
 
-**ADRs:** [0038](../adr/0038-grid-selection-and-capabilities.md), [0028](../adr/0028-account-deletion.md), [0034](../adr/0034-server-state-and-notifications.md)
+**ADRs:** [0038](../adr/0038-grid-selection-and-capabilities.md), [0042](../adr/0042-client-side-authorization.md), [0028](../adr/0028-account-deletion.md), [0034](../adr/0034-server-state-and-notifications.md)
 
 `ResourceConfig` gains the `grid` capability block (`selectable`, `canCreate`, `canEdit`, `canDelete`, `canBulkDelete`); AppGrid registers the v9 row-selection feature and injects the checkbox column when selected-for; `GridToolbar` becomes a real region — search left, capability-driven actions right (Create moves in from the page's `CardAction`, wired to the `new` route from D4.2), with `toolbarStart` / `toolbarEnd` / `renderToolbar` as the JSX extension seams. Bulk delete is a feature-owned `Promise.allSettled` fan-out over the existing per-row deletes: one confirmation with honest per-resource copy, one invalidation, one summary toast with per-item refusals (the ADR-0028 rules — rank, last super admin, self-delete — surface per item, which is the semantic a transactional endpoint could not give).
 
-**Done when:** selection is keyed by row id and survives page and filter navigation; the header checkbox toggles the current page and the count reads "N selected" across pages; capability flags provably add/remove the toolbar buttons and row-menu items; a mixed bulk delete (some refused) reports both outcomes and leaves the grid consistent after one refetch; toolbar slots append and `renderToolbar` replaces.
+[ADR-0042](../adr/0042-client-side-authorization.md) lands with it, because the two answer different halves of the same question and shipping one without the other reproduces the defect that motivated both: a capability says _this surface offers the action_, `can(action, resource)` says _this operator's role may perform it_, and an affordance needs both. `shared/auth` gains the policy table and the predicate; the narrowing is applied once per screen so `shared/grid` never learns a resource name. This is the D3.8 deferral — a `manager` reaching `/admin/users` and being refused by every write it offers — closed at the layer that draws the affordances.
+
+**Done when:** selection is keyed by row id and survives page and filter navigation; the header checkbox toggles the current page and the count reads "N selected" across pages; capability flags provably add/remove the toolbar buttons and row-menu items; a `manager` sees no write affordance on `/admin/users` while an `admin` sees all of them, and neither assertion is a security claim — the API still refuses; a mixed bulk delete (some refused) reports both outcomes and leaves the grid consistent after one refetch; toolbar slots append and `renderToolbar` replaces.
 
 ### 4. Filter UX — dialogs, hot filters and the applied-filters bar
 
@@ -58,7 +60,7 @@ The third state owner, with its boundary written down: the URL owns view state, 
 
 ### 6. The sweep — both resources on the full v2 surface
 
-**ADRs:** all of 0037–0041
+**ADRs:** all of 0037–0042
 
 Staff and users both run the complete v2 grid: capabilities declared per resource (users: `editSurface` other than staff's, to prove the switch; staff: bulk delete exercised against the rank-rule refusals), the machinery diff-check from D3.8 repeated — the step's deliverable is that enabling v2 for the second resource is config plus thin wiring, no change under `shared/`. Where it is not thin, the finding goes to the ADR's amendment, not to a workaround. Docs sync: `frontend-conventions` (if landed by D3.10) and the `new-resource-ui` checklist gain the capability block, edit-surface choice, and preferences.
 

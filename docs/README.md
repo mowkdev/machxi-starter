@@ -10,10 +10,11 @@
 
 ## Where to look for what
 
-- **"Why is it built this way?"** → the ADR. `docs/adr/README.md` indexes all 29, and [ADR-0024](adr/0024-adr-lifecycle.md) + [ADR-0025](adr/0025-deliverables.md) govern how they change.
+- **"Why is it built this way?"** → the ADR. `docs/adr/README.md` indexes them all, and [ADR-0024](adr/0024-adr-lifecycle.md) + [ADR-0025](adr/0025-deliverables.md) govern how they change.
 - **"What does the API answer for X?"** → the Postman collection; the requests that turn on a decision name the ADR that made it.
 - **"How do I run it?"** → the root [`README.md`](../README.md) quick-start, or [`docker/README.md`](../docker/README.md) when Postgres is the problem.
 - **"How do I add an endpoint / a module / a migration?"** → the skills in [`.claude/skills/`](../.claude/README.md); they encode the ADR checklists.
+- **"How do I add a screen / a resource / a component to the admin panel?"** → the frontend half of the same set: `/frontend-conventions`, `/new-resource-ui`, `/ui-component`.
 - **"What are we working on, and what is left?"** → the ledger [`plan/README.md`](plan/README.md), then the plan of the deliverable it says is in progress.
 
 ## Conventions
@@ -25,6 +26,8 @@ The in-place amendment window is scoped to a deliverable ([ADR-0025](adr/0025-de
 rule 2), not to a date. An ADR is amendable only while its deliverable is
 `in progress` in the ledger; once that deliverable ships, code and ADR that
 disagree are reconciled by a superseding ADR, never by editing the record. D1
-shipped 2026-08-18 and D2 shipped 2026-08-19, so every ADR written so far —
-0001–0029 — is closed. Nothing is amendable in place until the next
-deliverable opens and writes its own.
+shipped 2026-08-18 and D2 shipped 2026-08-19, so ADRs 0001–0029 are closed.
+ADRs 0030–0036 were written for D3 and are amendable while it is in progress,
+labelled `**Amended YYYY-MM-DD (D3.N).**` at the point of change. ADRs 0037–0042
+were written ahead of the planned D4: writing is not opening, so their window
+stays shut until that deliverable starts.
