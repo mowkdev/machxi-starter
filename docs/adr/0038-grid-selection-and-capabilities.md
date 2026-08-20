@@ -32,6 +32,7 @@ export interface GridCapabilities {
   readonly canDelete?: boolean;      // delete entry in the row menu
   readonly canBulkDelete?: boolean;  // bulk Delete in the toolbar; requires selectable
   readonly pageSizes?: readonly number[]; // pager options; bounded by MAX_LIMIT at render
+  readonly hotFilters?: readonly HotFilterConfig[]; // toolbar filter buttons (ADR-0039 owns the shape)
 }
 
 export interface ResourceConfig {
@@ -61,7 +62,7 @@ Within the screen, though, selection **survives page and filter navigation**, an
 
 **`AppGrid` grows a named toolbar region above the table — the single home for grid-level actions.**
 
-- **Left side:** `GridSearch`, exactly as today (`q` is the endpoint's property, not any column's — ADR-0035, amended D3.6), and the applied-filters interplay [ADR-0039](0039-grid-filter-ux.md) defines — the bar itself is that ADR's, this one only reserves its seat. The selection count and "Clear selection" render here when a selection exists.
+- **Left side:** `GridSearch`, exactly as today (`q` is the endpoint's property, not any column's — ADR-0035, amended D3.6); the hot-filter button groups a resource declares via `grid.hotFilters` ([ADR-0039](0039-grid-filter-ux.md) owns their shape, semantics and rendering — this one only reserves the seat, after the search); and the applied-filters interplay that same ADR defines — the bar itself is its. The selection count and "Clear selection" render here when a selection exists.
 - **Right side, capability-driven:** **Create** when `canCreate`, its handler a grid prop (`onCreate`) — the page's `CardAction` button moves into the toolbar, so grid actions have one home instead of one-and-a-half; **bulk Delete** when `canBulkDelete` *and* the selection is non-empty, its handler `onBulkDelete(ids)`; and [ADR-0041](0041-grid-preferences.md)'s columns menu, which that ADR owns.
 
 Toolbar handlers are **props**, not `meta` — `meta` is the channel cell renderers reach through `table.options.meta`, and the toolbar is not a cell:

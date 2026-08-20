@@ -1,4 +1,4 @@
-# ADR-0039: Column filter UX — header filter dialogs and the applied-filters bar
+# ADR-0039: Filter UX — header filter dialogs, hot filters and the applied-filters bar
 
 - Status: proposed
 - Date: 2026-08-20
@@ -76,9 +76,38 @@ export const clearedFilters = (
 
 One chip per applied `Filter` means a date range shows two chips (from and to), each independently removable — which matches what the URL and `meta.filters` actually hold, and lets an operator loosen one bound without re-composing the other. **Removing a chip removes that filter; Clear all clears filters and `q`, resets `offset` to 0, and leaves `sort` and `limit` alone** — what is *listed* changed, so the page resets (the standing `atFirstPage` rule); how it is ordered and sized did not.
 
+### Hot filters — the same model, one press away
+
+Some filters are not compositions but *stances* — "active staff", "editors", "deleted only" — pressed and released many times a session. Forcing them through a header dialog taxes the most-used filters with the ceremony built for the least-used ones. So a resource may declare **hot filters**: button groups rendered in the toolbar (ADR-0038's left cluster, after `GridSearch`), one press to apply, one press to clear.
+
+**Hot filters are declared in config and are nothing but a third writer of the same state.** `ResourceConfig.grid` (ADR-0038's block) gains `hotFilters?: readonly HotFilterConfig[]` — serializable data, per resource, optional; a grid that declares none renders none, which is the whole of "pluggable":
+
+```ts
+// shared/resource/types.ts — mirrors FilterControlConfig's discriminated style
+export type HotFilterConfig =
+  | { readonly field: string; readonly label: string; readonly control: "enum";
+      readonly op: "eq" | "in"; readonly options: readonly Option[] }
+  | { readonly field: string; readonly label: string; readonly control: "presence";
+      readonly op: "null"; readonly value: boolean };
+
+// entities/staff/staff.config.ts
+grid: {
+  hotFilters: [
+    { field: "status", label: "Status", control: "enum", op: "eq", options: STAFF_STATUSES },
+    { field: "roles",  label: "Role",   control: "enum", op: "eq", options: STAFF_ROLES },
+  ],
+},
+```
+
+- **Two kinds, deliberately.** `enum` renders a button group — `op: "eq"` as a segmented single-select with an implicit "All" (pressing the active option releases it), `op: "in"` as multi-toggle buttons accumulating into one `filter[field][in]`. `presence` renders a single toggle ("Deleted only"). `text` and `dateRange` are excluded on purpose: a button is a *choice*, not a composition surface — those kinds belong to the dialogs above.
+- **The same model, verbatim.** A press translates to the same `Filter` shape and navigates through `withFilters` with the hot filter's own field as `owned` — no second channel, no new helpers. Pressed state derives from the URL's validated filters, so a hot filter and a header dialog on the same field cannot disagree: they are two views of one entry, and either surface's change is instantly reflected in the other.
+- **The same honesty.** A hot filter may be declared only where `listQuerySchema` allow-lists the field and operator, and the config-versus-contract tests (ADR-0035/0036) extend to `hotFilters` exactly as they cover column filters — a button the API would refuse fails a test before it fails an operator.
+- **Chips defer to a pressed button.** The applied-filters bar suppresses a chip whose filter a hot-filter control currently *displays* — the pressed button is that filter's visible, removable representation, and two removal affordances for one entry is noise. The invariant the bar keeps is unchanged in spirit: **every applied filter is visible and removable in exactly one place.** A deep-linked value the group cannot represent (a `status` outside the declared options, a foreign field) gets its chip as before, and **Clear all clears hot filters too** — they are filters, not a separate mechanism.
+- **The escape hatch is the toolbar slot.** A one-off control too custom for the config vocabulary composes `withFilters` by hand inside ADR-0038's `toolbarStart` — the same division ADR-0035 draws everywhere: config for the declarable, JSX for the bespoke.
+
 ### One source, announced
 
-The filter icons' active states, the chips, and the dialogs' initial drafts all derive from the same single source — the URL's validated list state — so they cannot disagree with each other or with the request the server answered. The bar's region announces its changes politely (`aria-live="polite"`), so applying or clearing a filter is heard, not only seen; the wording is a `D4.4` implementation detail.
+The filter icons' active states, the hot filters' pressed states, the chips, and the dialogs' initial drafts all derive from the same single source — the URL's validated list state — so they cannot disagree with each other or with the request the server answered. The bar's region announces its changes politely (`aria-live="polite"`), so applying or clearing a filter is heard, not only seen; the wording is a `D4.4` implementation detail.
 
 ### What this does not change
 
@@ -93,12 +122,14 @@ The filter icons' active states, the chips, and the dialogs' initial drafts all 
 - **One more dialog surface** living under the app's existing overlay conventions (submit-lock posture, focus management per ADR-0031/0035); the Dialog primitive supplies the behaviour, so this is composition rather than new machinery.
 - **The chips bar is the first UI rendered from *foreign* state**, which is new test surface (ADR-0036): a deep-linked filter on an unowned field shows a raw-labelled chip and removing it navigates correctly; an icon's active state matches the URL; Apply commits one navigation and Clear removes only its column; Clear all drops filters and `q`, resets the offset, and preserves sort and limit. `chipsForState`, `withoutFilter` and `clearedFilters` are pure and unit-testable beside the existing `list-state` and `column-filters` suites.
 - **The code mostly moves house rather than being rewritten.** The dialog content is the existing `FilterControl` kinds, the translations (`toListFilters`, `toColumnFilterValue`, `containsPattern` and its inverse) are untouched, and the removal helpers are siblings of `withFilters`. The row's per-keystroke debounce becomes unnecessary inside a commit-on-Apply dialog — a deletion, not a redesign.
-- **Filtering costs one more click than the row did.** An operator who filtered the same column constantly paid nothing before and pays an icon-click now. Accepted: the row taxed *every* grid's width and legibility all the time to save that click some of the time, and the active-state icon keeps the applied state one glance away.
+- **Filtering costs one more click than the row did — except where it costs none.** An operator who filtered the same column constantly paid nothing before and pays an icon-click now; where that cost matters, the resource declares a hot filter and the stance is one press. The row taxed *every* grid's width and legibility all the time; the dialog-plus-hot-filter split prices each filter by how it is actually used.
+- **Hot filters add a config vocabulary and a suppression rule to test** (ADR-0036): a declared group renders and round-trips through the URL; pressing the active `eq` option releases it; a chip is suppressed exactly while a button displays its filter and reappears for unrepresentable values; Clear all releases pressed buttons. The users grid's "Deleted only" is expected to become the first `presence` hot filter — the D4.6 sweep decides whether the `deletedAt` column keeps a duplicate dialog control or drops it.
 
 ## Alternatives considered
 
 - **Keep the always-visible filter row.** The status quo, and the complaint: every column pays its widest filter's width (`dateRange` proves it), the header area carries controls whether or not anyone is filtering, and the row still offers no summary, no clear-all, and no account of foreign filters. The row also required its own accessibility patch (`td` in a `thead`) to avoid mis-rolling; the on-demand design has nothing in the header but headers.
 - **Popover instead of dialog.** Anchored to the icon, arguably lighter UX for a one-field edit, and the shadcn idiom for header menus. The dialog was the explicit product decision, and it holds on its merits: it serves small screens without a second code path (a popover needs a mobile fallback; a dialog *is* one), and the content — a labelled form, sometimes two dates and two buttons — is a form, not a menu. The door stays open (§Decision): a later popover presentation of the same content would change the overlay, not the decision.
 - **A single "all filters" panel editing every column at once.** One surface, but it loses the spatial tie between a filter and its column — the thing the header icon preserves from the row — and the bar plus per-column dialogs already compose to the same capability: see everything applied, change any one thing.
-- **Faceted-filter buttons in the toolbar for every filterable column.** shadcn's own data-table idiom. It scales badly past about three filterable columns (the users grid has five), turns the toolbar into a second header, and duplicates the spatial anchoring the real header already provides.
+- **Faceted-filter buttons in the toolbar for every filterable column.** shadcn's own data-table idiom. It scales badly past about three filterable columns (the users grid has five), turns the toolbar into a second header, and duplicates the spatial anchoring the real header already provides. §Hot filters is the deliberate, bounded version of this idea: toolbar buttons for the two or three filters a resource *names* as stances, not for every filterable column by default.
+- **Hot filters as ad-hoc page components instead of config.** Each page composing its own button group over `withFilters` — workable, and it is exactly the escape hatch kept for the bespoke case. Rejected as the default because the declarable case is the common one, and config is what makes a hot filter one line in the resource, tested against the contract, instead of a copy-pasted component drifting per page.
 - **Live-commit inside the dialog.** Symmetry with the row's behaviour, but the row's debounce trick does not transfer: a half-typed range is a different query, not a nearly-right one, and live-committing it refetches garbage between the two halves of the operator's intent. Apply makes one navigation carry one meaning, and it is what the explicit Clear pairs with.
