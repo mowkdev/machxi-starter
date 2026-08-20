@@ -43,7 +43,7 @@ pnpm test:postman              # newman over docs/postman
 ## Repo map
 
 - `apps/api` — Express 5 API (`src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, `src/core/container.ts` composition root)
-- `apps/admin` (Vite + React SPA, port 3001) — shipped in D3 and **the D4 build target**: `src/{app,pages,widgets,features,entities,shared}` per ADR-0032, resources under `entities/` + `features/<x>-manage/` + a thin `pages/<x>/`, machinery in `shared/{api,form,grid,resource,ui,notifications}`; `apps/web` (Next.js) — out of scope until D5
+- `apps/admin` (Vite + React SPA, port 3001) — shipped in D3 and **the D4 build target**: `src/{app,pages,widgets,features,entities,shared}` per ADR-0032, resources under `entities/` + `features/<x>-manage/` + a thin `pages/<x>/`, machinery in `shared/{api,form,grid,resource,ui,notifications}`; `apps/web` (Next.js) — re-scoped to marketing only, built last (D9); the user-facing product is the planned `apps/customer` Vite SPA (D7, see the ledger)
 - `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
 - `docker/local` — compose for local dev; `docs/` — ADRs, plan, Postman
 - `scripts/` — repo-level tooling outside the workspaces, so **not** covered by `turbo run lint` / `check-types` (ADR-0002); today only `postman.mjs`

@@ -10,7 +10,11 @@ Read this file first; open a plan only when you are working in it.
 | [D2](0002-api-hardening.md)  | API hardening and D3 prerequisites | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                         |
 | [D3](0003-admin-app.md)      | Admin panel (`apps/admin`)         | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                             |
 | [D4](0004-data-grid-v2.md)   | Data grid v2 (`apps/admin`)        | **in progress**        | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings. |
-| D5                           | Web app (`apps/web`)               | planned                | The Next.js user-facing app ADR-0022 configured. Opens when D4 ships.                                                                    |
+| [D5](0005-user-settings.md)  | User settings                      | planned                | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments. Opens when D4 ships. |
+| [D6](0006-localization.md)   | Interface localization             | planned                | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D5.        |
+| [D7](0007-customer-app.md)   | Customer app and platform extraction | planned              | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1. |
+| [D8](0008-impersonation.md)  | Customer impersonation             | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.   |
+| D9                           | Marketing site (`apps/web`)        | planned                | The Next.js app, re-scoped from "user-facing" to marketing only — the operator's call, recorded in §How D5–D9 were scoped. Built last.             |
 
 ## Rules
 
@@ -45,3 +49,14 @@ The evidence is worth separating, because rule 4 asks for an executable checklis
 Its six ADRs — [0037](../adr/0037-grid-viewport-layout.md)–[0042](../adr/0042-client-side-authorization.md) — were written 2026-08-20, while D3 was still in progress, and are `proposed`. **Writing is not opening and opening is not accepting**: their amendment window opens now, and each is accepted before its own implementing step starts, which is what the plan's Gate line means. That is a change from how D3 opened, where all seven were accepted the same day; per-step acceptance is the stricter reading of ADR-0025 rule 3 and costs one edit per step.
 
 [ADR-0042](../adr/0042-client-side-authorization.md) is the one D4 inherited rather than scoped: `D3.8` found a `manager` being offered five writes `/admin/users` refuses, `D3.10` wrote the decision, and `D4.3` builds it beside ADR-0038's capabilities because the two are halves of one question.
+
+## How D5–D9 were scoped
+
+Scoped 2026-08-20, while D4 was in progress — **scoping is not opening**: D5 opens when D4 ships, one at a time as ever, and each plan file above carries scope, rationale and explicitly-labelled assumptions rather than steps. Steps are written when a deliverable opens, and every assumption is revisable until then.
+
+Two operator decisions reshaped the ledger:
+
+- **`apps/web` is a marketing site, built last.** The old D5 row inherited ADR-0022's "public/user-facing app: Next.js" identity; the operator has since named the actual user-facing product a **customer app** — staff-adjacent in shape, heavy on grids and forms — and demoted `apps/web` to marketing only. Like the D3 split, the re-scoping itself is a ledger decision; the frozen ADR-0022 gets its superseding roster ADR when D7 opens and an app actually changes, not before.
+- **The customer app is a separate Vite SPA, not a mode of the admin panel.** The population boundary is the app boundary: ADR-0017's two populations, ADR-0033's one-population session machine, the customer-facing attack surface kept out of the origin where staff sessions live, and impersonation (D8) staying clean because the two sessions never coexist in one client. What the apps share is machinery, and D7 turns that machinery into packages.
+
+The order is a dependency chain, not a preference ranking: **D5 (settings)** first because ADR-0041's adapter seam is the freshest contract in the repo and D6 needs a locale slot to persist into; **D6 (localization)** before any second app exists, so the retrofit sweep is paid exactly once and D7's extraction moves components already dictionary-fed; **D7 (extraction + customer app)** as one deliverable because the second consumer is what makes an extraction honest; **D8 (impersonation)** last in the cluster because it signs into the app D7 builds and is the riskiest surface of the five; **D9 (marketing)** last outright, by the operator's call.
