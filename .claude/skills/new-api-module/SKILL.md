@@ -41,6 +41,6 @@ Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/
 
 - [ ] `/postman-sync` — add folder + requests + tests.
 - [ ] the current deliverable plan in `docs/plan/` endpoint scope (if new), env vars → ADR-0004 + `.env.example`.
-- [ ] `pnpm lint && pnpm check-types && pnpm test --filter api` green.
+- [ ] `pnpm check && pnpm test:int --filter api` green.
 
 Report created files and open questions (e.g. role assignments not specified).

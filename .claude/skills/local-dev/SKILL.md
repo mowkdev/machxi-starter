@@ -19,7 +19,7 @@ pnpm dev --filter api           # :4000  → GET http://localhost:4000/health/re
 ## Daily
 
 - `pnpm dev` (all) or `pnpm dev --filter api`
-- `pnpm lint && pnpm check-types && pnpm test` (unit) · `pnpm test:int --filter api` (needs docker) · `pnpm test:postman`
+- `pnpm check` (fast loop, cached) · `pnpm lint && pnpm check-types && pnpm test` (the gate, needs docker) · `pnpm test:int --filter api` · `pnpm test:postman`
 - Schema changed? `/db-schema-change`. Logs: `pnpm docker:logs`.
 
 ## Troubleshooting

@@ -33,7 +33,8 @@ pnpm db:setup                  # migrate + seed super admin (from SEED_SUPER_ADM
 pnpm db:seed -- --dev          # dev fixtures (manager/editor staff, customer users)
 pnpm dev --filter api          # http://localhost:4000
 pnpm dev --filter admin        # http://localhost:3001 (needs the API up)
-pnpm test:unit                 # cached fast loop, no database
+pnpm check                     # fast inner loop: lint + check-types + test:unit, one cached parallel turbo run
+pnpm test:unit                 # unit tests alone, cached, no database
 pnpm lint && pnpm check-types && pnpm test   # the gate: test includes integration, needs Postgres up
 pnpm test:int --filter api     # integration tests only, against DATABASE_URL_TEST
 pnpm test:postman              # newman over docs/postman

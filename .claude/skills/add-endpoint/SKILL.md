@@ -16,4 +16,4 @@ Read `/api-conventions`. Then:
 7. **Tests** — unit (service) + integration (happy, 400, 401, 403, 404 as applicable; list checks if list).
 8. **Postman** — `/postman-sync`.
 9. **Docs** — the current deliverable plan in `docs/plan/` scope; env vars if any.
-10. `pnpm lint && pnpm check-types && pnpm test --filter api`.
+10. `pnpm check && pnpm test:int --filter api` — the cached fast loop plus the honest integration tier.

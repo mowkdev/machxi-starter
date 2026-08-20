@@ -7,6 +7,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,mjs,md,json,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,mjs,md,json,css}\"",
     "lint": "turbo run lint",
+    "check": "turbo run lint check-types test:unit",
     "test": "turbo run test --concurrency=1",
     "test:unit": "turbo run test:unit",
     "test:int": "turbo run test:int --concurrency=1",

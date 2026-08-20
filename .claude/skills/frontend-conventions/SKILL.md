@@ -77,6 +77,7 @@ src/shared/     api/ ui/ form/ grid/ resource/ notifications/ lib/ config/ — n
 
 ```
 pnpm dev --filter admin          # http://localhost:3001 (needs the API on 4000)
-pnpm test:unit --filter admin    # cached, no database
+pnpm check                       # fast loop: lint + check-types + test:unit, one cached parallel run
+pnpm test:unit --filter admin    # admin's unit suite alone, cached, no database
 pnpm lint && pnpm check-types && pnpm test
 ```

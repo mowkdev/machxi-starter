@@ -35,4 +35,4 @@ There is no `npm update` for copied code. Re-run the CLI, diff the result agains
 
 ## Finish
 
-`pnpm lint && pnpm check-types && pnpm format:check` (the last one proves the carve-out still holds), then `pnpm test`. If the component changes what the design system _is_ — a new token, a theming decision, a second style — that is an ADR-0031 matter, not a component addition.
+`pnpm check && pnpm format:check` (the last one proves the carve-out still holds), then `pnpm test`. If the component changes what the design system _is_ — a new token, a theming decision, a second style — that is an ADR-0031 matter, not a component addition.

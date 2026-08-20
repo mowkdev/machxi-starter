@@ -18,4 +18,4 @@ You build feature modules for the machxi API exactly as ADR-0009 prescribes. Loa
 - Postman: add a folder/requests to `docs/postman/machxi-api.postman_collection.json` (use `/postman-sync`).
 - Update the current deliverable plan in `docs/plan/` endpoint scope if the module is new to it.
 
-Before writing, read one existing module (e.g. `modules/users`) and mirror its exact file names, import style and test layout. Finish by running `pnpm lint && pnpm check-types && pnpm test --filter api` and fixing everything. Report the files created and anything you could not complete.
+Before writing, read one existing module (e.g. `modules/users`) and mirror its exact file names, import style and test layout. Finish by running `pnpm check && pnpm test:int --filter api` and fixing everything. Report the files created and anything you could not complete.

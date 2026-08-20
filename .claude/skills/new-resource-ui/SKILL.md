@@ -45,5 +45,5 @@ The contract comes first: everything below is derived from `@repo/contracts`. If
 
 ## 5. Finish
 
-- `pnpm lint && pnpm check-types && pnpm test:unit --filter admin`, then the full gate.
+- `pnpm check` while iterating (lint + check-types + test:unit, one cached parallel run — deliberately unfiltered, so a contracts change breaking another package surfaces here), then the full gate `pnpm lint && pnpm check-types && pnpm test` once at the end — its lint and check-types are cache hits at that point, so its cost is the integration tier (ADR-0026).
 - Update the current plan's step notes in `docs/plan/`; if anything here forced a change under `src/shared/`, say so and say why — that is the machinery being wrong rather than this resource being special, and it is what an ADR amendment is for.
