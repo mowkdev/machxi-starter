@@ -18,6 +18,7 @@ import {
 } from "@/test/msw/handlers/users.handlers";
 import { server } from "@/test/msw/server";
 import { renderApp } from "@/test/render";
+import { staffPrincipal } from "@/test/principals";
 
 /**
  * Record routes (`D4.2`, ADR-0040), asserted through the real generated route
@@ -49,7 +50,10 @@ if (ADA === undefined || MO === undefined || CARA === undefined) {
 const signedIn = (): SessionStore => {
   const store = createSessionStore();
 
-  store.setSession({ accessToken: "test-access-token" });
+  store.setSession({
+    accessToken: "test-access-token",
+    principal: staffPrincipal(["admin"]),
+  });
 
   return store;
 };

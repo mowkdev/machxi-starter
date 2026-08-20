@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import type { RowAction } from "@/shared/grid/types";
+import type { GridCapabilities } from "@/shared/resource/types";
 
 import type { StaffActionHandler } from "./types";
 
@@ -28,17 +29,46 @@ import type { StaffActionHandler } from "./types";
  * whether the target is the actor — the first two are state this app does not
  * hold and the third would only cover one of the three refusals. Offering the
  * action and rendering the server's answer is honest; greying out one case and
- * silently mishandling the other two is not. (ADR-0042 gates affordances on the
- * operator's *role* at `D4.3`, which is a different claim from this one.)
+ * silently mishandling the other two is not. ADR-0042 keeps that paragraph
+ * verbatim; what it adds is a different claim, below.
+ *
+ * **Since `D4.3` the menu reads the capability block** (ADR-0038 §One config
+ * block, two readers): `AppGrid` reads it for the checkbox column and the
+ * toolbar, and this reads it for the menu, so the two cannot disagree about
+ * what an operator sees. The block arrives already narrowed by ADR-0042's
+ * `can()` — the screen conjoins the two once, above both readers — which is
+ * why this file names no resource and no role.
+ *
+ * **`edit` reads a flag `can()` deliberately leaves alone**, and so do
+ * `reset-password` and `revoke-sessions`, which have no flag at all. Those
+ * three are incident-containment controls: `revokeSessions` ends a compromised
+ * session, `setPassword` takes a stolen credential away, and the only route to
+ * `status: "disabled"` today is this `edit` form. A hidden control during an
+ * incident is silent — no message, no code, nothing to escalate with — where a
+ * visible one that answers `403` tells an operator the control exists and that
+ * they need somebody who may use it. So they render for everyone and the server
+ * answers (ADR-0042 §Containment controls).
  */
 export const useStaffRowActions = (
   onAction: StaffActionHandler,
+  /*
+   * Required, and explicitly nullable rather than optional (`D4.3` review).
+   * With `capabilities?` a call site that forgot the argument would silently
+   * drop both `edit` and `delete` — and `edit` is the containment control
+   * ADR-0042 says must never be hidden, because the disable path runs through
+   * it. That is the failure direction the ADR calls the worse one, and an
+   * optional parameter makes it the default behaviour of a typo. `| undefined`
+   * keeps "this resource declares nothing" expressible.
+   */
+  capabilities: GridCapabilities | undefined,
 ): readonly RowAction<StaffResource>[] => {
   const navigate = useNavigate();
 
-  return useMemo(
-    () => [
-      {
+  return useMemo(() => {
+    const actions: RowAction<StaffResource>[] = [];
+
+    if (capabilities?.canEdit === true)
+      actions.push({
         key: "edit",
         label: "Edit",
         onSelect: (staff) => {
@@ -53,7 +83,9 @@ export const useStaffRowActions = (
             search: true,
           });
         },
-      },
+      });
+
+    actions.push(
       {
         key: "reset-password",
         label: "Reset password",
@@ -68,15 +100,18 @@ export const useStaffRowActions = (
           onAction({ kind: "revoke-sessions", staff });
         },
       },
-      {
+    );
+
+    if (capabilities?.canDelete === true)
+      actions.push({
         key: "delete",
         label: "Delete",
         destructive: true,
         onSelect: (staff) => {
           onAction({ kind: "delete", staff });
         },
-      },
-    ],
-    [navigate, onAction],
-  );
+      });
+
+    return actions;
+  }, [capabilities, navigate, onAction]);
 };

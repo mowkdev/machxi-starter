@@ -36,6 +36,26 @@ export const staffResourceConfig = {
      * are the whole difference between them — same form, same URL.
      */
     editSurface: "dialog",
+    /*
+     * What this grid *offers* (ADR-0038) — one line per affordance, and the
+     * whole of what adding a resource costs beyond columns and fields.
+     *
+     * These are **not** permissions. `/admin/staff` mounts `authorize("admin")`
+     * uniformly, so every flag below is conjoined with ADR-0042's `can()` above
+     * the grid, and the API's guards remain the enforcement either way.
+     *
+     * `canBulkDelete` with `selectable`, never without — the pairing is checked
+     * in `__tests__/staff.config.test.ts` rather than left to a reader, because
+     * the failure mode is a toolbar button with nothing to act on. Staff is
+     * also where the fan-out meets real refusals: ADR-0028's rank rule, the
+     * last-super-admin invariant and the self-delete rule are all per row, so a
+     * batch of these is where "2 deleted, 1 refused" is not a hypothetical.
+     */
+    selectable: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+    canBulkDelete: true,
   },
   columns: {
     email: {

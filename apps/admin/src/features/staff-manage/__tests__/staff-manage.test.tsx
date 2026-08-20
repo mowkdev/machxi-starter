@@ -18,6 +18,7 @@ import {
 } from "@/shared/api/session-store";
 import { server } from "@/test/msw/server";
 import { renderApp, renderWithProviders } from "@/test/render";
+import { staffPrincipal } from "@/test/principals";
 
 import { passwordFields } from "../reset-staff-password-dialog";
 import { StaffDialogs } from "../staff-dialogs";
@@ -66,7 +67,10 @@ const open = (action: StaffAction, onClose = vi.fn()) => {
 const signedIn = (): SessionStore => {
   const store = createSessionStore();
 
-  store.setSession({ accessToken: "test-access-token" });
+  store.setSession({
+    accessToken: "test-access-token",
+    principal: staffPrincipal(["admin"]),
+  });
 
   return store;
 };

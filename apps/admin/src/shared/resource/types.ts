@@ -193,16 +193,59 @@ export type FieldConfigMap = Readonly<Record<string, FieldConfig>>;
 export type EditSurfaceKey = "dialog" | "drawer" | "page";
 
 /**
+ * What a resource's grid surface *offers* (ADR-0038, `D4.3`).
+ *
+ * Flags and plain data only — the configs-are-data rule of ADR-0035 stands
+ * unamended. **A capability declares that the surface offers something; the
+ * handler still arrives at the usage site**, as a prop or through `meta`, and a
+ * function never enters config.
+ *
+ * **Said honestly: these are UI capabilities, not authorization.** The API's
+ * guards (ADR-0019) remain the enforcement, and `canDelete` says "this
+ * resource's grid offers deletion", not "this operator may delete". ADR-0042 is
+ * the other half of that sentence: a discretionary affordance renders only when
+ * the capability *and* {@link can} are both true, and the conjunction happens
+ * once per screen through `allowedCapabilities` rather than at each button.
+ *
+ * It is split out of {@link GridConfig} rather than merged into it because the
+ * grid reads exactly this much: `editSurface` is a routing decision the record
+ * routes make (ADR-0040) and `AppGrid` has no business seeing it.
+ */
+export interface GridCapabilities {
+  /** A checkbox column and selection state (ADR-0038). */
+  readonly selectable?: boolean;
+  /** A Create affordance in the toolbar. */
+  readonly canCreate?: boolean;
+  /** An `edit` entry in the row menu. */
+  readonly canEdit?: boolean;
+  /** A `delete` entry in the row menu. */
+  readonly canDelete?: boolean;
+  /**
+   * A bulk Delete in the toolbar. **Requires `selectable`** — without a
+   * selection there is nothing for the button to act on, so the combination is
+   * dead data and each resource's config test refuses it rather than letting
+   * the toolbar quietly render nothing.
+   */
+  readonly canBulkDelete?: boolean;
+  /**
+   * Page-size options for the pager, bounded by `MAX_LIMIT` at render.
+   *
+   * It joined the capability block after `AppGrid` grew the equivalent prop in
+   * D3.8's URL-default fix: the resource is where a page size is *declared*,
+   * and the pager is where it is offered.
+   */
+  readonly pageSizes?: readonly number[];
+}
+
+/**
  * How a resource's grid behaves, as opposed to what its columns are.
  *
- * Opened by `D4.2` with the one key ADR-0040 needs; ADR-0038 adds the
- * capability flags (`selectable`, `canCreate`, `canEdit`, `canDelete`,
- * `canBulkDelete`) to this same block at `D4.3`, and ADR-0039 and ADR-0041
- * have their own keys after that. It is a block rather than a
- * top-level key so those arrive as additions here instead of as five more
- * siblings of `columns`.
+ * Opened by `D4.2` with the one key ADR-0040 needs and filled out by `D4.3`
+ * with ADR-0038's capability flags; ADR-0039 and ADR-0041 have their own keys
+ * after that. It is a block rather than a top-level key so those arrive as
+ * additions here instead of as more siblings of `columns`.
  */
-export interface GridConfig {
+export interface GridConfig extends GridCapabilities {
   /**
    * Which shell `new` and `$id` render in. Absent means `"dialog"` — D3's
    * behaviour, so adopting ADR-0040 changes no resource's look until its own

@@ -1,3 +1,4 @@
+import type { StaffRole } from "@repo/contracts";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -15,6 +16,7 @@ import {
 } from "@/test/msw/handlers/staff.handlers";
 import { server } from "@/test/msw/server";
 import { renderApp } from "@/test/render";
+import { staffPrincipal } from "@/test/principals";
 
 /**
  * The route tree, its two pathless layouts and the guards on them (ADR-0032
@@ -38,10 +40,20 @@ import { renderApp } from "@/test/render";
  * (ADR-0033), so a fake that answered the predicate directly would stop
  * testing the derivation the moment it changed.
  */
-const session = (isAuthenticated: boolean): SessionStore => {
+const session = (
+  isAuthenticated: boolean,
+  roles: readonly StaffRole[] = ["admin"],
+): SessionStore => {
   const store = createSessionStore();
 
-  if (isAuthenticated) store.setSession({ accessToken: "test-access-token" });
+  // A principal as well as a token since `D4.3`: `can()` reads
+  // `principal.roles`, and a store holding one without the other is the
+  // mid-bootstrap state rather than a signed-in operator (ADR-0042).
+  if (isAuthenticated)
+    store.setSession({
+      accessToken: "test-access-token",
+      principal: staffPrincipal(roles),
+    });
 
   return store;
 };
@@ -80,6 +92,54 @@ describe("route guards", () => {
     // The shell, not just the page: the sidebar-07 navigation is what makes
     // `_dashboard` a layout rather than a guard with no body.
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+  });
+
+  it("shows a manager only the navigation their role can read", async () => {
+    /*
+     * The half of ADR-0042 that lives in the shell, and the half most likely to
+     * regress, because the naive implementation — filter every item by
+     * `can("read", item.resource)` — is a bug that looks like a fix: `/` and
+     * `/profile` name no resource, `/profile` is deliberately absent from the
+     * policy table (it mounts with no `authorize` at all), and deny-by-default
+     * would therefore hide both from everybody but a `super_admin`.
+     *
+     * So the assertion is two-sided on purpose. Staff goes, because
+     * `/admin/staff` is `authorize("admin")` throughout and a manager cannot
+     * read it; Dashboard and Profile stay, because **absence of a `resource`
+     * means "not gated"** rather than "ask the table".
+     */
+    renderApp({ initialPath: "/", store: session(true, ["manager"]) });
+
+    expect(
+      await screen.findByRole("link", { name: "Dashboard" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument();
+    // A manager may read the customer base, so this one stays.
+    expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("link", { name: "Staff" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides nothing from an admin, and nothing from a super admin either", async () => {
+    const { unmount } = renderApp({ initialPath: "/", store: session(true) });
+
+    expect(
+      await screen.findByRole("link", { name: "Staff" }),
+    ).toBeInTheDocument();
+    unmount();
+
+    /*
+     * `super_admin` reaches everything on the one line in `can` that mirrors
+     * ADR-0019's bypass — asserted rather than assumed, because a table that
+     * listed the bypass per row instead would drift a row at a time.
+     */
+    renderApp({ initialPath: "/", store: session(true, ["super_admin"]) });
+
+    expect(
+      await screen.findByRole("link", { name: "Staff" }),
+    ).toBeInTheDocument();
   });
 
   it("titles the shell from the route's own staticData", async () => {

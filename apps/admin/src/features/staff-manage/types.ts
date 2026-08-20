@@ -27,7 +27,26 @@ import type { StaffResource } from "@repo/contracts";
 export type StaffAction =
   | { readonly kind: "reset-password"; readonly staff: StaffResource }
   | { readonly kind: "revoke-sessions"; readonly staff: StaffResource }
-  | { readonly kind: "delete"; readonly staff: StaffResource };
+  | { readonly kind: "delete"; readonly staff: StaffResource }
+  /**
+   * The bulk confirm (`D4.3`, ADR-0038). Ephemeral for the same reason the
+   * single delete is, and more so: a URL that reopened "delete these seven" on
+   * load would be a bookmarked, history-restorable destruction prompt primed
+   * over rows nobody has looked at.
+   *
+   * It carries three things because a bulk action needs all three and no other
+   * shape has them together: the selected `ids`, which may name rows no longer
+   * on screen; the `rows` the grid currently holds, so a refusal can be
+   * reported by address rather than by uuid; and `onSettled`, which is the
+   * grid's own `clearSelection` — the selection has to end when the fan-out
+   * does, and the state that holds it lives inside `AppGrid`.
+   */
+  | {
+      readonly kind: "bulk-delete";
+      readonly ids: readonly string[];
+      readonly rows: readonly StaffResource[];
+      readonly onSettled: () => void;
+    };
 
 /** How a page asks for an action; `null` closes whatever is open. */
 export type StaffActionHandler = (action: StaffAction | null) => void;

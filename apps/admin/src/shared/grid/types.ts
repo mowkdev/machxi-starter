@@ -27,6 +27,21 @@ export interface GridMeta<TRow> {
 }
 
 /**
+ * What the toolbar knows about the selection (ADR-0038).
+ *
+ * Handed to `renderToolbar` for the screen whose toolbar is genuinely bespoke,
+ * and to `onBulkDelete` so the action that consumes a selection can also end it
+ * — see the amendment note on `AppGridProps.onBulkDelete`.
+ *
+ * `selectedIds` are resource ids, not row indices: `getRowId` is always set, so
+ * a selection made on page one is still these ids on page three.
+ */
+export interface GridToolbarContext {
+  readonly selectedIds: readonly string[];
+  readonly clearSelection: () => void;
+}
+
+/**
  * What every registered cell renderer is called with.
  *
  * The row is `unknown` here and typed at the call site: `shared/grid` may hold

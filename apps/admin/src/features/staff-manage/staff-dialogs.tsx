@@ -1,5 +1,6 @@
 import { ResetStaffPasswordDialog } from "./reset-staff-password-dialog";
 import {
+  BulkDeleteStaffDialog,
   DeleteStaffDialog,
   RevokeStaffSessionsDialog,
 } from "./staff-confirm-dialogs";
@@ -39,5 +40,14 @@ export const StaffDialogs = ({
       );
     case "delete":
       return <DeleteStaffDialog staff={action.staff} onClose={onClose} />;
+    case "bulk-delete":
+      return (
+        <BulkDeleteStaffDialog
+          ids={action.ids}
+          rows={action.rows}
+          onSettled={action.onSettled}
+          onClose={onClose}
+        />
+      );
   }
 };

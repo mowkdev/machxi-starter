@@ -10,11 +10,11 @@ import {
   type StaffAction,
 } from "@/features/staff-manage";
 import { toListQuery } from "@/shared/api/list-params";
+import { useAllowedCapabilities } from "@/shared/auth";
 import { AppGrid } from "@/shared/grid/app-grid";
 import {
   Button,
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -35,11 +35,23 @@ import {
  * and every control reports back through `navigate`. So a view is a link, the
  * back button walks table states, and the cache falls out correctly because the
  * same URL is the same query key.
+ *
+ * **`D4.3` added one line and moved one button.** The line is
+ * `useAllowedCapabilities`, which is where ADR-0038's config block meets
+ * ADR-0042's `can()` — once, above both of the block's readers, so that neither
+ * `AppGrid` nor the row-action hook has to know which resource this is. The
+ * button is Create, which moves from the `CardHeader`'s `CardAction` into the
+ * toolbar, so grid actions have one home instead of one-and-a-half; it is still
+ * the `<Link>` `D4.2` made it.
  */
 export const StaffPage = () => {
   const navigate = useNavigate();
   const listState = useSearch({ from: "/_dashboard/staff" });
   const [action, setAction] = useState<StaffAction | null>(null);
+  const capabilities = useAllowedCapabilities(
+    staffResourceConfig.grid,
+    "staff",
+  );
 
   /*
    * The route's validated search params *are* the list query — the schema
@@ -64,7 +76,7 @@ export const StaffPage = () => {
     setAction(null);
   }, []);
 
-  const rowActions = useStaffRowActions(onAction);
+  const rowActions = useStaffRowActions(onAction, capabilities);
   const meta = useMemo(() => ({ rowActions }), [rowActions]);
 
   return (
@@ -74,23 +86,6 @@ export const StaffPage = () => {
         <CardDescription>
           The operators who can reach this panel.
         </CardDescription>
-        <CardAction>
-          {/*
-           * A link, not a `setAction` (`D4.2`, ADR-0040): composing a record is
-           * addressable state, so the entry point is a navigation and the
-           * surface it opens survives a reload. `search: true` keeps the view
-           * the operator was reading on the URL while they are away from it.
-           *
-           * ADR-0038 moves this into the toolbar at `D4.3` and gates it on
-           * `canCreate`; until then it stays where D3 put it.
-           */}
-          <Button asChild>
-            <Link to="/staff/new" search={true}>
-              <PlusIcon aria-hidden />
-              New staff member
-            </Link>
-          </Button>
-        </CardAction>
       </CardHeader>
 
       {/*
@@ -125,6 +120,40 @@ export const StaffPage = () => {
           searchable
           isFetching={staff.isFetching}
           emptyMessage="No staff match this view."
+          capabilities={capabilities}
+          createAction={
+            /*
+             * A link, not a handler (`D4.2`, ADR-0040): composing a record is
+             * addressable state, so the entry point is a navigation and the
+             * surface it opens survives a reload. `search: true` keeps the view
+             * the operator was reading on the URL while they are away from it.
+             *
+             * It is passed as a node rather than as `onCreate` because a
+             * `() => void` cannot produce an `<a>` — the amendment ADR-0038
+             * carries at `D4.3`. The capability still decides whether it
+             * renders at all.
+             */
+            <Button asChild size="sm">
+              <Link to="/staff/new" search={true}>
+                <PlusIcon aria-hidden />
+                New staff member
+              </Link>
+            </Button>
+          }
+          onBulkDelete={(ids, { clearSelection }) => {
+            /*
+             * The rows the grid holds travel with the action so refusals can be
+             * reported by address; `clearSelection` travels with it because the
+             * selection has to end when the fan-out does and the state that
+             * holds it lives inside `AppGrid`.
+             */
+            setAction({
+              kind: "bulk-delete",
+              ids,
+              rows: staff.data?.items ?? [],
+              onSettled: clearSelection,
+            });
+          }}
         />
       </CardContent>
 

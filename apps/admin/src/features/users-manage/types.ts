@@ -19,7 +19,14 @@ import type { UserResource } from "@repo/contracts";
 export type UserAction =
   | { readonly kind: "reset-password"; readonly user: UserResource }
   | { readonly kind: "revoke-sessions"; readonly user: UserResource }
-  | { readonly kind: "delete"; readonly user: UserResource };
+  | { readonly kind: "delete"; readonly user: UserResource }
+  /** The bulk confirm (`D4.3`); `staff-manage/types.ts` carries the reasoning. */
+  | {
+      readonly kind: "bulk-delete";
+      readonly ids: readonly string[];
+      readonly rows: readonly UserResource[];
+      readonly onSettled: () => void;
+    };
 
 /** How a page asks for an action; `null` closes whatever is open. */
 export type UserActionHandler = (action: UserAction | null) => void;

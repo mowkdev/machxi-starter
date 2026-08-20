@@ -1,6 +1,7 @@
 import {
   columnFilteringFeature,
   rowPaginationFeature,
+  rowSelectionFeature,
   rowSortingFeature,
   tableFeatures,
 } from "@tanstack/react-table";
@@ -21,13 +22,28 @@ import type { GridMeta } from "./types";
  * say the same thing; this says it structurally, which is a stronger version of
  * the honesty ADR-0035 asks for than the flags alone were.
  *
- * What the three registered features contribute is state and API only —
+ * What the registered features contribute is state and API only —
  * `getCanSort` / `getToggleSortingHandler` and the multi-sort cycling for
  * headers; `rowCount` (the envelope's own `meta.pagination.total`) feeding
  * `getPageCount()`, which is where the pager's last page comes from; and the
  * column-filter state the filter controls read and write. Every one of them is
  * driven from the URL (ADR-0034) and none of them computes over rows: the page
  * that renders is the page the server sent, in the order the server sent it.
+ *
+ * **`rowSelectionFeature` joined at `D4.3`** (ADR-0038), the way the first three
+ * did — registered, contributing state and API, computing nothing over rows.
+ * Its state is the exception to the sentence above: selection is not driven from
+ * the URL, because it is *action context* rather than view description, and a
+ * link carrying staged ids reproduces nothing useful (ADR-0038 §Selection). It
+ * is keyed by `getRowId`, which `AppGrid` always sets, so a row selected on page
+ * one is still selected on page three.
+ *
+ * Registering it unconditionally rather than per-capability is deliberate: the
+ * feature set is the table's identity, so a set that changed with a config flag
+ * would rebuild every table whose resource declared one. The *capability* is
+ * what decides whether a checkbox column exists to write the state; the feature
+ * with no column to drive it contributes an empty `rowSelection` and nothing
+ * else.
  *
  * Built once, at module scope, because the identity of this object is part of
  * the table's identity — rebuilding it per render would defeat the engine's
@@ -37,6 +53,7 @@ export const gridFeatures = tableFeatures({
   rowSortingFeature,
   rowPaginationFeature,
   columnFilteringFeature,
+  rowSelectionFeature,
   /*
    * v9's type-only meta slots, which replace v8's global `declare module`
    * augmentation. Per-table rather than program-global is the better fit here:

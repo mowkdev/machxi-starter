@@ -45,6 +45,22 @@ export const userResourceConfig = {
      * is identical either way, so nothing else in this slice knows.
      */
     editSurface: "drawer",
+    /*
+     * The same five flags staff declares (ADR-0038), and this resource is where
+     * the difference between a capability and a permission becomes visible.
+     *
+     * `/admin/users` mounts `authorize("admin", "manager")` and the router
+     * refines five writing routes back to `admin` — so a `manager` reaching
+     * this screen is offered by *this config* everything an `admin` is, and
+     * ADR-0042's narrowing above the grid is what takes Create and Delete away
+     * from them. The config says what the surface offers; `can()` says who may
+     * use it. Two questions, both answered before an affordance renders.
+     */
+    selectable: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+    canBulkDelete: true,
   },
   columns: {
     email: {

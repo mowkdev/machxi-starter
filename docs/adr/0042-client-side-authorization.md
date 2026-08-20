@@ -1,9 +1,9 @@
 # ADR-0042: Client-side authorization — `can(action, resource)` over the principal's roles
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-20
 
-> One of the D4 (data grid v2) decision set, written ahead of the deliverable alongside [ADR-0037](0037-grid-viewport-layout.md)–[0041](0041-grid-preferences.md) (`docs/plan/0004-data-grid-v2.md`). It is the vocabulary the affordances D4 builds are gated with, so it lands at `D4.3` (selection, capabilities and the toolbar) beside [ADR-0038](0038-grid-selection-and-capabilities.md) — the two are halves of one question and shipping either alone rebuilds the defect that motivated both — and is exercised again at `D4.6`, the sweep over both resources. It becomes amendable in place while D4 is `in progress` in [`docs/plan/README.md`](../plan/README.md) ([ADR-0025](0025-deliverables.md) rule 2).
+> One of the D4 (data grid v2) decision set, written ahead of the deliverable alongside [ADR-0037](0037-grid-viewport-layout.md)–[0041](0041-grid-preferences.md) (`docs/plan/0004-data-grid-v2.md`). It is the vocabulary the affordances D4 builds are gated with, so it lands at `D4.3` (selection, capabilities and the toolbar) beside [ADR-0038](0038-grid-selection-and-capabilities.md) — the two are halves of one question and shipping either alone rebuilds the defect that motivated both — and is exercised again at `D4.6`, the sweep over both resources. It becomes amendable in place while D4 is `in progress` in [`docs/plan/README.md`](../plan/README.md) ([ADR-0025](0025-deliverables.md) rule 2). **Accepted 2026-08-20**, at the head of `D4.3` and together with ADR-0038.
 
 ## Context
 

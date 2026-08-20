@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import type { RowAction } from "@/shared/grid/types";
+import type { GridCapabilities } from "@/shared/resource/types";
 
 import type { UserActionHandler } from "./types";
 
@@ -33,15 +34,29 @@ import type { UserActionHandler } from "./types";
  * other three still report into the page's own state, because a destructive
  * confirm and a credential ceremony must not be addressable. The staff menu
  * splits the same way for the same reason.
+ *
+ * **Since `D4.3` the menu reads the capability block** (ADR-0038), already
+ * narrowed by ADR-0042's `can()`. This resource is where that narrowing earns
+ * its keep: `/admin/users` mounts `authorize("admin", "manager")` and the router
+ * refines five writing routes back to `admin`, so a `manager` reaching this
+ * screen was offered five writes the API refuses. Two of them go — Create and
+ * Delete. **The other three deliberately stay**, because reset password, sign
+ * out everywhere and the disable path inside `edit` are the controls somebody
+ * reaches for during an incident, and a hidden one is a silent absence with
+ * nothing to escalate (ADR-0042 §Containment controls).
  */
 export const useUserRowActions = (
   onAction: UserActionHandler,
+  /** Required, never optional — `use-staff-row-actions.ts` says why. */
+  capabilities: GridCapabilities | undefined,
 ): readonly RowAction<UserResource>[] => {
   const navigate = useNavigate();
 
-  return useMemo(
-    () => [
-      {
+  return useMemo(() => {
+    const actions: RowAction<UserResource>[] = [];
+
+    if (capabilities?.canEdit === true)
+      actions.push({
         key: "edit",
         label: "Edit",
         onSelect: (user) => {
@@ -53,7 +68,9 @@ export const useUserRowActions = (
             search: true,
           });
         },
-      },
+      });
+
+    actions.push(
       {
         key: "reset-password",
         label: "Reset password",
@@ -68,15 +85,18 @@ export const useUserRowActions = (
           onAction({ kind: "revoke-sessions", user });
         },
       },
-      {
+    );
+
+    if (capabilities?.canDelete === true)
+      actions.push({
         key: "delete",
         label: "Delete",
         destructive: true,
         onSelect: (user) => {
           onAction({ kind: "delete", user });
         },
-      },
-    ],
-    [navigate, onAction],
-  );
+      });
+
+    return actions;
+  }, [capabilities, navigate, onAction]);
 };

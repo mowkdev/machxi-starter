@@ -4,13 +4,24 @@ import {
   type ColumnFiltersState,
   type OnChangeFn,
   type PaginationState,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { mergeColumns } from "@/shared/resource/config";
-import type { ColumnConfigMap, ColumnOverrides } from "@/shared/resource/types";
+import type {
+  ColumnConfigMap,
+  ColumnOverrides,
+  GridCapabilities,
+} from "@/shared/resource/types";
 import {
   Button,
   QueryError,
@@ -30,10 +41,11 @@ import {
   toColumnFiltersState,
   type ColumnFilterValue,
 } from "./column-filters";
-import { buildColumns, type GridRow } from "./columns";
+import { buildColumns, buildSelectionColumn, type GridRow } from "./columns";
 import { gridFeatures } from "./features";
-import { FilterControl, GridSearch } from "./filter-controls";
+import { FilterControl } from "./filter-controls";
 import { GridPager } from "./grid-pager";
+import { GridToolbar } from "./grid-toolbar";
 import {
   fromSortingState,
   isStranded,
@@ -45,7 +57,7 @@ import {
   withSearch,
   withSort,
 } from "./list-state";
-import type { GridMeta } from "./types";
+import type { GridMeta, GridToolbarContext } from "./types";
 
 /**
  * The config-driven grid (ADR-0035).
@@ -114,11 +126,73 @@ export interface AppGridProps<TRow> {
   readonly isFetching?: boolean | undefined;
   /** Shown in place of rows when the page is empty. */
   readonly emptyMessage?: string | undefined;
-  /** Page-size options for the pager; the pager's own defaults when absent. */
+  /**
+   * What this resource's grid surface offers (ADR-0038), already narrowed by
+   * the operator's role (ADR-0042) — the screen conjoins the two once, above
+   * here, so this component never learns a resource's name.
+   *
+   * Absent is the safe default: a plain read-only grid.
+   */
+  readonly capabilities?: GridCapabilities | undefined;
+  /**
+   * The Create affordance, rendered in the toolbar when `canCreate`.
+   *
+   * **`ReactNode` rather than ADR-0038's `onCreate: () => void`, amended at
+   * `D4.3`.** The ADR was written the same day as ADR-0040 and did not account
+   * for what that one decided: composing a record is addressable state, so
+   * Create is a `<Link>` and its role is the assertion — a `() => void` handler
+   * can only produce a `<button>`, which would undo D4.2's property that the
+   * entry point survives a middle-click, a copy-link and a reload. The
+   * capability still decides *whether*; the page supplies *what*, which is the
+   * same division ADR-0038 already draws with `toolbarStart` / `toolbarEnd`.
+   */
+  readonly createAction?: ReactNode;
+  /**
+   * Runs the bulk delete over the selected ids (ADR-0038's fan-out).
+   *
+   * **The second parameter is an amendment to ADR-0038 made at `D4.3`.** The
+   * ADR writes `onBulkDelete?: (ids: readonly string[]) => void` and also says
+   * "selection clears when the fan-out settles" — and with the selection state
+   * held here, in the machinery, the caller had no way to do the second thing.
+   * Handing it the same {@link GridToolbarContext} the toolbar already gets is
+   * the smallest fix: no new type, the state stays out of every page, and the
+   * feature that consumes a selection is the thing that ends it.
+   */
+  readonly onBulkDelete?:
+    ((ids: readonly string[], context: GridToolbarContext) => void) | undefined;
+  /** Appended after the toolbar's defaults, on the left. */
+  readonly toolbarStart?: ReactNode;
+  /** Appended after the toolbar's defaults, on the right. */
+  readonly toolbarEnd?: ReactNode;
+  /**
+   * Replaces the toolbar region outright.
+   *
+   * Precedence is pinned: **`renderToolbar` wins and the slots are then
+   * ignored.** Composing the two would make "what is in this toolbar" a
+   * question with two answers.
+   */
+  readonly renderToolbar?:
+    ((context: GridToolbarContext) => ReactNode) | undefined;
+  /**
+   * Page-size options for the pager; the pager's own defaults when absent.
+   *
+   * Kept as a prop *and* readable from `capabilities.pageSizes`, with the
+   * capability winning: the resource is where a page size is declared, and this
+   * stays for a usage that needs to differ from its resource.
+   */
   readonly pageSizes?: readonly number[] | undefined;
 }
 
 const NO_ROWS: readonly never[] = [];
+
+/**
+ * One frozen empty array for the not-selectable case.
+ *
+ * `getSelectedRowIds()` builds a fresh array per call, so a `[]` literal here
+ * would give the toolbar context a new identity every render and defeat the
+ * memo below for exactly the grids that have no selection to track.
+ */
+const EMPTY_IDS: readonly string[] = Object.freeze([]);
 
 /**
  * What a sticky header costs on a collapsed-border table (ADR-0037, `D4.1`).
@@ -156,6 +230,12 @@ export const AppGrid = <TRow,>({
   searchable = false,
   isFetching = false,
   emptyMessage = "No results.",
+  capabilities,
+  createAction = null,
+  onBulkDelete,
+  toolbarStart = null,
+  toolbarEnd = null,
+  renderToolbar,
   pageSizes,
 }: AppGridProps<TRow>) => {
   const merged = useMemo(
@@ -163,6 +243,26 @@ export const AppGrid = <TRow,>({
     [columns, overrides],
   );
   const filterable = useMemo(() => filterableColumns(merged), [merged]);
+
+  const selectable = capabilities?.selectable === true;
+
+  /*
+   * Selection is **ephemeral component state, not URL state**, and that is a
+   * deliberate exception to ADR-0034's rule rather than a gap in it (ADR-0038
+   * §Selection). That rule covers *view* state — offset, sort and filters
+   * describe what the operator is looking at, and a link reproducing them
+   * reproduces the view. A selection is *action context*: rows staged for
+   * something about to happen. A URL carrying selected ids is neither shareable
+   * nor restorable meaningfully — the recipient's fetched page may not contain
+   * the rows, the rows may no longer exist, and "here is my half-staged delete"
+   * is not a view anyone should be able to link to.
+   *
+   * Within the screen it survives page and filter navigation, and `getRowId` is
+   * what makes that honest: the keys are resource ids, so paging away and back
+   * finds the same rows selected. Leaving the screen discards it, which is what
+   * ephemeral means.
+   */
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   /*
    * The one place the row type is erased.
@@ -180,10 +280,11 @@ export const AppGrid = <TRow,>({
    * `table.options.meta` at render time, so a caller may pass an inline
    * `meta={{ rowActions: [...] }}` without rebuilding every column def.
    */
-  const tableColumns = useMemo(
-    () => buildColumns(columns, overrides),
-    [columns, overrides],
-  );
+  const tableColumns = useMemo(() => {
+    const built = buildColumns(columns, overrides);
+
+    return selectable ? [buildSelectionColumn(), ...built] : built;
+  }, [columns, overrides, selectable]);
 
   const rows = (page?.items ?? NO_ROWS) as readonly GridRow[];
 
@@ -245,10 +346,18 @@ export const AppGrid = <TRow,>({
     ...(page?.total === undefined || page.total === null
       ? {}
       : { rowCount: page.total }),
-    state: { sorting, columnFilters, pagination },
+    state: { sorting, columnFilters, pagination, rowSelection },
     onSortingChange,
     onColumnFiltersChange,
     onPaginationChange,
+    onRowSelectionChange: setRowSelection,
+    /*
+     * Registered unconditionally (`features.ts` says why) but only *enabled*
+     * where the capability asked for it — so a resource that declares no
+     * selection cannot acquire one through a stale state object or a stray
+     * `toggleSelected`.
+     */
+    enableRowSelection: selectable,
     meta: cellMeta,
     /*
      * Always set. Without it TanStack falls back to the row *index*, which
@@ -283,7 +392,48 @@ export const AppGrid = <TRow,>({
 
   const headerGroups = table.getHeaderGroups();
   const bodyRows = table.getRowModel().rows;
-  const columnCount = merged.length;
+  // The injected checkbox column counts: a `colSpan` short by one leaves the
+  // empty, loading and error rows failing to span the table they replace.
+  const columnCount = merged.length + (selectable ? 1 : 0);
+
+  /*
+   * The selection as ids rather than as the engine's state object, because that
+   * is what every consumer of it wants — `Promise.allSettled(ids.map(delete))`,
+   * a count, a confirm's copy. They are resource ids, so the list answers for
+   * rows the current page no longer holds, which is the whole point of keying
+   * by id.
+   *
+   * Read off the state this component controls rather than through
+   * `table.getSelectedRowIds()`, which is the same `Object.keys` and returns a
+   * fresh array on every call: memoising on the state gives the toolbar context
+   * a stable identity between selections instead of a new one per render.
+   */
+  const selectedIds = useMemo<readonly string[]>(
+    () =>
+      selectable
+        ? /*
+           * Filtered on the value rather than taken as `Object.keys`.
+           *
+           * `RowSelectionState` is `Record<string, true>` and v9 `delete`s a key
+           * on deselection, so the two are identical today — its own
+           * `getSelectedRowIds` is the bare `Object.keys`. What this feeds is
+           * deletion, and "key present" standing in for "selected" is an
+           * encoding a minor release could revise. The filter costs nothing and
+           * removes the coupling.
+           */
+          Object.entries(rowSelection)
+            .filter(([, on]) => on === true)
+            .map(([id]) => id)
+        : EMPTY_IDS,
+    [selectable, rowSelection],
+  );
+  const clearSelection = useCallback(() => {
+    setRowSelection({});
+  }, []);
+  const toolbarContext = useMemo<GridToolbarContext>(
+    () => ({ selectedIds, clearSelection }),
+    [selectedIds, clearSelection],
+  );
 
   return (
     /*
@@ -301,16 +451,32 @@ export const AppGrid = <TRow,>({
      * one component serves both strategies without a mode of its own.
      */
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      {searchable ? (
-        <div className="flex shrink-0 items-center gap-2">
-          <GridSearch
-            value={listState.q ?? ""}
-            onCommit={(term) => {
-              onListStateChange(withSearch(listState, term));
-            }}
-          />
-        </div>
-      ) : null}
+      {/*
+       * The toolbar (ADR-0038) — the third region ADR-0037's budget carries,
+       * after the header rows and the pager, and static chrome like both.
+       *
+       * `renderToolbar` wins outright and the slots are then ignored; a screen
+       * whose toolbar is genuinely bespoke replaces the region rather than
+       * negotiating with it.
+       */}
+      {renderToolbar === undefined ? (
+        <GridToolbar
+          capabilities={capabilities}
+          searchable={searchable}
+          searchValue={listState.q ?? ""}
+          onSearchCommit={(term) => {
+            onListStateChange(withSearch(listState, term));
+          }}
+          createAction={createAction}
+          onBulkDelete={onBulkDelete}
+          toolbarStart={toolbarStart}
+          toolbarEnd={toolbarEnd}
+          selectedIds={selectedIds}
+          clearSelection={clearSelection}
+        />
+      ) : (
+        renderToolbar(toolbarContext)
+      )}
 
       {/*
        * The one scroll container (ADR-0037), on both axes, and the floor that
@@ -490,7 +656,9 @@ export const AppGrid = <TRow,>({
             ? null
             : Math.max(0, (table.getPageCount() - 1) * listState.limit)
         }
-        pageSizes={pageSizes}
+        // The resource declares it (ADR-0038); the prop is the per-usage
+        // override, and the pager's own defaults are the floor under both.
+        pageSizes={capabilities?.pageSizes ?? pageSizes}
         disabled={page === undefined || isFetching}
         onOffsetChange={(offset) => {
           table.setPageIndex(Math.floor(offset / listState.limit));

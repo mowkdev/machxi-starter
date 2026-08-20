@@ -9,6 +9,7 @@ import {
 
 import { LogoutMenuItem } from "@/features/auth";
 import { useSession } from "@/shared/api/context";
+import { useCan, type ResourceName } from "@/shared/auth";
 
 import {
   Sidebar,
@@ -65,12 +66,48 @@ import {
  * would render the menu with no name rather than crash the shell around it.
  */
 
-const NAVIGATION = [
+/**
+ * The navigation, with the `can()` join written out rather than inferred
+ * (`D4.3`, ADR-0042 §What it may gate).
+ *
+ * The naive reading — "filter the items by `can("read", item.resource)`" — is a
+ * bug, and an instructive one: only two of these four name a resource. `/` is
+ * the dashboard and `/profile` is the resource ADR-0042 deliberately keeps *out*
+ * of the policy table (it mounts with no `authorize` at all), so filtering on a
+ * derived resource name would hide both from everybody but a `super_admin`,
+ * courtesy of deny-by-default doing exactly what it was asked.
+ *
+ * So the item carries the join explicitly and **absence means "not gated"** —
+ * which is the same rule the policy table states from the other end: a screen no
+ * role gates has no question for `can()` to answer, and a `false` about it is
+ * the predicate answering a question it was not asked.
+ *
+ * This makes the shell principal-dependent, so two operators see different apps.
+ * That is the intent, and its cost is named in ADR-0042: an operator sees a
+ * smaller app than the one that exists, with no indication that more is there,
+ * so "I can't find X" now has a new possible answer and the policy table is
+ * where it is looked up.
+ */
+interface NavItem {
+  readonly to: "/" | "/staff" | "/users" | "/profile";
+  readonly label: string;
+  readonly icon: typeof LayoutDashboardIcon;
+  readonly resource?: ResourceName;
+}
+
+/*
+ * Annotated rather than `as const satisfies`, which is the shape the rest of
+ * this repository prefers and the wrong one here: `as const` keeps each entry's
+ * literal type, so the two items with no `resource` have no such property to
+ * read and `item.resource === undefined` stops compiling. The annotation is
+ * what makes "absent means not gated" expressible at all.
+ */
+const NAVIGATION: readonly NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboardIcon },
-  { to: "/staff", label: "Staff", icon: ShieldIcon },
-  { to: "/users", label: "Users", icon: UsersIcon },
+  { to: "/staff", label: "Staff", icon: ShieldIcon, resource: "staff" },
+  { to: "/users", label: "Users", icon: UsersIcon, resource: "users" },
   { to: "/profile", label: "Profile", icon: UserIcon },
-] as const;
+];
 
 /**
  * The signed-in operator, as two lines and a monogram.
@@ -148,6 +185,38 @@ const AccountMenu = () => {
   );
 };
 
+/**
+ * The nav items this operator is offered.
+ *
+ * Split out so the rule is one expression and the widget stays composition: an
+ * item with no `resource` always renders, and one with a `resource` renders only
+ * where `can("read", …)` says so.
+ */
+const NavigationMenu = () => {
+  const can = useCan();
+
+  return (
+    <SidebarMenu>
+      {NAVIGATION.filter(
+        (item) => item.resource === undefined || can("read", item.resource),
+      ).map(({ to, label, icon: Icon }) => (
+        <SidebarMenuItem key={to}>
+          <SidebarMenuButton asChild tooltip={label}>
+            <Link
+              activeOptions={{ exact: to === "/" }}
+              activeProps={{ "data-active": true }}
+              to={to}
+            >
+              <Icon />
+              <span>{label}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  );
+};
+
 export const AppSidebar = () => (
   <Sidebar collapsible="icon">
     <SidebarHeader>
@@ -172,22 +241,7 @@ export const AppSidebar = () => (
       <SidebarGroup>
         <SidebarGroupLabel>Manage</SidebarGroupLabel>
         <SidebarGroupContent>
-          <SidebarMenu>
-            {NAVIGATION.map(({ to, label, icon: Icon }) => (
-              <SidebarMenuItem key={to}>
-                <SidebarMenuButton asChild tooltip={label}>
-                  <Link
-                    activeOptions={{ exact: to === "/" }}
-                    activeProps={{ "data-active": true }}
-                    to={to}
-                  >
-                    <Icon />
-                    <span>{label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          <NavigationMenu />
         </SidebarGroupContent>
       </SidebarGroup>
     </SidebarContent>

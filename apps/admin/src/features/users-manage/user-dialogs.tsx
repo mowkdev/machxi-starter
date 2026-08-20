@@ -1,6 +1,7 @@
 import { ResetUserPasswordDialog } from "./reset-user-password-dialog";
 import type { UserAction } from "./types";
 import {
+  BulkDeleteUsersDialog,
   DeleteUserDialog,
   RevokeUserSessionsDialog,
 } from "./user-confirm-dialogs";
@@ -32,5 +33,14 @@ export const UserDialogs = ({
       return <RevokeUserSessionsDialog user={action.user} onClose={onClose} />;
     case "delete":
       return <DeleteUserDialog user={action.user} onClose={onClose} />;
+    case "bulk-delete":
+      return (
+        <BulkDeleteUsersDialog
+          ids={action.ids}
+          rows={action.rows}
+          onSettled={action.onSettled}
+          onClose={onClose}
+        />
+      );
   }
 };

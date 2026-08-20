@@ -1,3 +1,4 @@
+import type { StaffRole } from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +15,7 @@ import {
   type UsersMockState,
 } from "@/test/msw/handlers/users.handlers";
 import { renderApp } from "@/test/render";
+import { staffPrincipal } from "@/test/principals";
 
 /**
  * The users screen end to end (`D3.8`; ADR-0028, ADR-0034, ADR-0035).
@@ -27,10 +29,23 @@ import { renderApp } from "@/test/render";
  * account is **kept and marked** rather than removed.
  */
 
-const authenticated = (): SessionStore => {
+/**
+ * A signed-in operator, parameterised by role since `D4.3` (ADR-0042).
+ *
+ * This resource is the one the parameter was added for: `/admin/users` mounts
+ * `authorize("admin", "manager")` and refines its five writes back to `admin`,
+ * so an `admin` and a `manager` are offered genuinely different screens — which
+ * is the D3.8 defect and the assertion that closes it.
+ */
+const authenticated = (
+  roles: readonly StaffRole[] = ["admin"],
+): SessionStore => {
   const store = createSessionStore();
 
-  store.setSession({ accessToken: "test-access-token" });
+  store.setSession({
+    accessToken: "test-access-token",
+    principal: staffPrincipal(roles),
+  });
 
   return store;
 };
@@ -42,11 +57,11 @@ if (CARA === undefined || GONE === undefined)
 
 let state: UsersMockState;
 
-const openUsers = () => {
+const openUsers = (roles: readonly StaffRole[] = ["admin"]) => {
   state = createUsersMockState();
   server.use(...createUsersHandlers(state));
 
-  return renderApp({ initialPath: "/users", store: authenticated() });
+  return renderApp({ initialPath: "/users", store: authenticated(roles) });
 };
 
 const lastList = () => state.seen.list.at(-1);
@@ -68,6 +83,9 @@ describe("the users grid", () => {
       .map((header) => header.textContent);
 
     expect(headers).toEqual([
+      // The checkbox column `grid.selectable` adds (ADR-0038), unlabelled
+      // because its header holds a control rather than a name.
+      "",
       "Email",
       "First name",
       "Last name",
@@ -242,5 +260,94 @@ describe("the users grid", () => {
     expect(screen.getAllByRole("row", { hidden: true }).length).toBeGreaterThan(
       1,
     );
+  });
+});
+
+/**
+ * What a role is offered on this screen (`D4.3`, ADR-0042).
+ *
+ * The two tests that would have caught the D3.8 defect, and they are cheap for
+ * the reason ADR-0042 predicted: the session store is a constructor parameter
+ * in this harness rather than a module to mock, so rendering the same screen
+ * for two principals is two calls.
+ *
+ * **Neither assertion is a security claim.** The API's guards remain the
+ * enforcement (ADR-0019); removing or tampering with the policy table must
+ * change nothing about which requests are accepted. What is asserted is which
+ * affordances are *drawn*.
+ */
+describe("the users screen for a manager", () => {
+  /** The row menu, opened on a row and read as text. */
+  const menuItemsFor = async (id: string) => {
+    const user = userEvent.setup();
+
+    await user.click(
+      screen.getByRole("button", { name: `Row actions for ${id}` }),
+    );
+
+    return within(await screen.findByRole("menu"))
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent);
+  };
+
+  it("is offered neither Create nor Delete, because the router refuses both", async () => {
+    openUsers(["manager"]);
+
+    await screen.findByRole("cell", { name: CARA.email });
+
+    /*
+     * `/admin/users` mounts `authorize("admin", "manager")` — a manager may read
+     * the customer base — and the router refines its five writing routes back to
+     * `authorize("admin")`. So these two were affordances that could only ever
+     * end in a `403`, which is the D3.8 defect this closes.
+     */
+    expect(screen.queryByRole("link", { name: "New user" })).toBeNull();
+
+    // The checkbox column stays, because selectable is not a permission — the
+    // bulk *button* is what goes with Delete, same endpoint and same answer.
+    // Asserted before the menu opens: Radix marks the rest of the document
+    // `aria-hidden` while an overlay is up.
+    expect(
+      screen.getByRole("checkbox", { name: `Select ${CARA.id}` }),
+    ).toBeInTheDocument();
+
+    expect(await menuItemsFor(CARA.id)).not.toContain("Delete");
+  });
+
+  it("still sees every containment control, and the server still answers them", async () => {
+    openUsers(["manager"]);
+
+    await screen.findByRole("cell", { name: CARA.email });
+
+    /*
+     * **This is the assertion that stops a later "tidy-up" from hiding them.**
+     * Reset password takes a stolen credential away, Sign out everywhere ends a
+     * compromised session, and the only route to `status: "disabled"` today is
+     * the Edit form. A hidden control during an incident is a silent absence
+     * with no error and nothing to escalate with; the `403` it would replace is
+     * at worst a wasted click and at best the sentence that tells an operator to
+     * go and find an admin (ADR-0042 §Containment controls).
+     *
+     * All three still `403`. That is deliberate, and the ADR says why.
+     */
+    expect(await menuItemsFor(CARA.id)).toEqual([
+      "Edit",
+      "Reset password",
+      "Sign out everywhere",
+    ]);
+  });
+
+  it("gives an admin both back", async () => {
+    openUsers(["admin"]);
+
+    await screen.findByRole("cell", { name: CARA.email });
+
+    expect(screen.getByRole("link", { name: "New user" })).toBeInTheDocument();
+    expect(await menuItemsFor(CARA.id)).toEqual([
+      "Edit",
+      "Reset password",
+      "Sign out everywhere",
+      "Delete",
+    ]);
   });
 });

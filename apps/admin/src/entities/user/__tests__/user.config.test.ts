@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { fieldsForVariant, resolveOptions } from "@/shared/resource/config";
 import type {
   ColumnConfigMap,
+  GridConfig,
   FieldConfigMap,
   FilterControlConfig,
 } from "@/shared/resource/types";
@@ -239,3 +240,46 @@ const sampleFor = (name: string): unknown => {
           : "Sample";
   }
 };
+
+describe("the users grid capability block against ADR-0038", () => {
+  const grid: GridConfig | undefined = userResourceConfig.grid;
+
+  it("declares selection wherever it declares a bulk action", () => {
+    /*
+     * `canBulkDelete` without `selectable` is dead data — there is no selection
+     * for the button to act on — so the config test refuses the combination
+     * rather than letting the toolbar quietly render nothing (ADR-0038).
+     *
+     * It is checked here rather than in the type because the two flags are
+     * independently meaningful: a resource may be selectable with no bulk
+     * action at all, and expressing "B implies A" in the type would cost a
+     * discriminated union for one rule.
+     */
+    if (grid?.canBulkDelete === true) expect(grid.selectable).toBe(true);
+  });
+
+  it("declares capabilities and a shell, and nothing that names a role", () => {
+    /*
+     * A capability is not a permission (ADR-0038, ADR-0042). The flags here are
+     * what this *surface offers*; every discretionary one is conjoined with
+     * `can()` above the grid, and the API's guards remain the enforcement
+     * either way — so a role, a principal or a permission string appearing in
+     * this block would be the config having taken an access-control decision,
+     * which ADR-0038 predicts somebody eventually tries.
+     *
+     * The key set is asserted rather than a `some(key.includes("role"))`
+     * predicate, which was the first version of this test and could not fail:
+     * no `GridConfig` key could contain "role", and the type forbids adding
+     * one. An exact set does catch a smuggled key, and it also catches a
+     * capability being added here without a decision about who may use it.
+     */
+    expect(Object.keys(grid ?? {}).sort()).toEqual([
+      "canBulkDelete",
+      "canCreate",
+      "canDelete",
+      "canEdit",
+      "editSurface",
+      "selectable",
+    ]);
+  });
+});

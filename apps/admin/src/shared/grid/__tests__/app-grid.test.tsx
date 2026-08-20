@@ -5,9 +5,10 @@ import {
 } from "@repo/contracts";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { GridCapabilities } from "@/shared/resource/types";
 import {
   demoResourceConfig,
   demoRows,
@@ -15,7 +16,7 @@ import {
 } from "@/test/fixtures/demo-resource";
 
 import { AppGrid } from "../app-grid";
-import type { GridMeta } from "../types";
+import type { GridMeta, GridToolbarContext } from "../types";
 
 /**
  * The grid, rendered entirely from the demo config (ADR-0035, `D3.6`).
@@ -54,12 +55,27 @@ const Harness = ({
   meta,
   onChange,
   searchable = false,
+  capabilities,
+  createAction,
+  onBulkDelete,
+  toolbarStart,
+  toolbarEnd,
+  renderToolbar,
 }: {
   readonly page?: Page<DemoRow>;
   readonly initial?: ListQuerySearch;
   readonly meta?: GridMeta<DemoRow>;
   readonly onChange?: (next: ListQuerySearch) => void;
   readonly searchable?: boolean;
+  readonly capabilities?: GridCapabilities;
+  readonly createAction?: ReactNode;
+  readonly onBulkDelete?: (
+    ids: readonly string[],
+    context: GridToolbarContext,
+  ) => void;
+  readonly toolbarStart?: ReactNode;
+  readonly toolbarEnd?: ReactNode;
+  readonly renderToolbar?: (context: GridToolbarContext) => ReactNode;
 }) => {
   const [listState, setListState] = useState(initial);
 
@@ -70,6 +86,12 @@ const Harness = ({
       listState={listState}
       searchable={searchable}
       meta={meta}
+      capabilities={capabilities}
+      createAction={createAction}
+      onBulkDelete={onBulkDelete}
+      toolbarStart={toolbarStart}
+      toolbarEnd={toolbarEnd}
+      renderToolbar={renderToolbar}
       getRowId={(row) => row.id}
       onListStateChange={(next) => {
         setListState(next);
@@ -77,6 +99,15 @@ const Harness = ({
       }}
     />
   );
+};
+
+/** Every affordance on, for the tests that are about what a *role* removes. */
+const ALL: GridCapabilities = {
+  selectable: true,
+  canCreate: true,
+  canEdit: true,
+  canDelete: true,
+  canBulkDelete: true,
 };
 
 describe("AppGrid", () => {
@@ -457,6 +488,228 @@ describe("row actions", () => {
     expect(
       screen.queryByRole("button", { name: /Row actions/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Selection, capabilities and the toolbar (`D4.3`, ADR-0038).
+ *
+ * Driven from the demo config so what is under test is the *machinery* reading
+ * a capability block, not a resource's opinion about itself — the same reason
+ * `D3.6` proved the grid against a config that is nobody's real resource.
+ */
+describe("row selection", () => {
+  it("has no checkbox column until a resource asks for one", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    // The safe default (ADR-0038 §Consequences): a resource that declares
+    // nothing gets a plain read-only grid.
+    expect(screen.queryByRole("checkbox", { name: /^Select/ })).toBeNull();
+    expect(screen.getAllByRole("columnheader")).toHaveLength(6);
+  });
+
+  it("injects one when it does, named per row rather than per position", () => {
+    render(<Harness page={pageOf(demoRows)} capabilities={ALL} />);
+
+    // Seven headers: the six the config declares plus the built-in checkbox,
+    // which `AppGrid` owns because it exists *because of* the capability.
+    expect(screen.getAllByRole("columnheader")).toHaveLength(7);
+    expect(
+      screen.getByRole("checkbox", { name: "Select all rows on this page" }),
+    ).toBeInTheDocument();
+    // Named by the row's own id, the way `RowActions` is — twenty controls
+    // called "Select row" is what the role-and-label discipline prevents.
+    expect(
+      screen.getByRole("checkbox", { name: "Select 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Select 2" }),
+    ).toBeInTheDocument();
+  });
+
+  it("counts what is selected, and clears on demand", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} capabilities={ALL} />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Select 1" }));
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear selection" }));
+
+    expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it("toggles the current page from the header checkbox", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} capabilities={ALL} />);
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all rows on this page" }),
+    );
+
+    /*
+     * The page, and only the page — the scope manual pagination lets it honour
+     * honestly. The client holds one server page, so a header checkbox claiming
+     * "everything matching this filter" would claim a scope it cannot deliver
+     * (ADR-0038 §Consequences).
+     */
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select 1" })).toBeChecked();
+  });
+
+  it("keeps a selection made on one page while another page is in hand", async () => {
+    const user = userEvent.setup();
+    const second: readonly DemoRow[] = [
+      { ...demoRows[0]!, id: "3", name: "Gasket" },
+    ];
+
+    const { rerender } = render(
+      <Harness page={pageOf(demoRows, { total: 3 })} capabilities={ALL} />,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "Select 1" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    /*
+     * The page changes under the grid, which is what a pager click does after
+     * the refetch lands. Selection is keyed by `getRowId` — the resource's own
+     * id — so it describes rows rather than positions and survives the swap.
+     * A selection keyed by index would now be pointing at "Gasket".
+     */
+    rerender(
+      <Harness
+        page={pageOf(second, { total: 3, offset: 20 })}
+        capabilities={ALL}
+      />,
+    );
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "Select 3" }),
+    ).not.toBeChecked();
+  });
+});
+
+describe("the toolbar", () => {
+  it("renders nothing at all when there is nothing to put in it", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    expect(container.querySelector('[data-slot="grid-toolbar"]')).toBeNull();
+  });
+
+  it("offers Create only when the capability says so", () => {
+    const create = <button type="button">New widget</button>;
+
+    const { rerender } = render(
+      <Harness
+        page={pageOf(demoRows)}
+        capabilities={{ ...ALL, canCreate: false }}
+        createAction={create}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "New widget" })).toBeNull();
+
+    rerender(
+      <Harness
+        page={pageOf(demoRows)}
+        capabilities={ALL}
+        createAction={create}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "New widget" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers bulk delete only with the capability and a non-empty selection", async () => {
+    const user = userEvent.setup();
+    const onBulkDelete = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        capabilities={ALL}
+        onBulkDelete={onBulkDelete}
+      />,
+    );
+
+    // Nothing staged, nothing to act on.
+    expect(screen.queryByRole("button", { name: /^Delete/ })).toBeNull();
+
+    await user.click(screen.getByRole("checkbox", { name: "Select 2" }));
+    await user.click(screen.getByRole("button", { name: "Delete 1" }));
+
+    // Resource ids, and the context that lets the caller end the selection when
+    // the fan-out settles (the `D4.3` amendment to ADR-0038's signature).
+    expect(onBulkDelete).toHaveBeenCalledWith(
+      ["2"],
+      expect.objectContaining({ selectedIds: ["2"] }),
+    );
+  });
+
+  it("withholds bulk delete when the resource declares no bulk capability", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        capabilities={{ ...ALL, canBulkDelete: false }}
+        onBulkDelete={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "Select 2" }));
+
+    // Still selectable, still counted — the button is what the capability
+    // removed, and the two are separate flags on purpose.
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Delete/ })).toBeNull();
+  });
+
+  it("composes the slots around the defaults", () => {
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        searchable
+        capabilities={ALL}
+        toolbarStart={<span>extra left</span>}
+        toolbarEnd={<span>extra right</span>}
+      />,
+    );
+
+    expect(
+      screen.getByRole("searchbox", { name: "Search" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("extra left")).toBeInTheDocument();
+    expect(screen.getByText("extra right")).toBeInTheDocument();
+  });
+
+  it("lets renderToolbar replace the region, slots and all", () => {
+    render(
+      <Harness
+        page={pageOf(demoRows)}
+        searchable
+        capabilities={ALL}
+        createAction={<button type="button">New widget</button>}
+        toolbarStart={<span>extra left</span>}
+        renderToolbar={({ selectedIds }) => (
+          <div>bespoke ({selectedIds.length})</div>
+        )}
+      />,
+    );
+
+    // Precedence is pinned: `renderToolbar` wins and the slots are then
+    // ignored. Composing the two would make "what is in this toolbar" a
+    // question with two answers.
+    expect(screen.getByText("bespoke (0)")).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "New widget" })).toBeNull();
+    expect(screen.queryByText("extra left")).toBeNull();
   });
 });
 

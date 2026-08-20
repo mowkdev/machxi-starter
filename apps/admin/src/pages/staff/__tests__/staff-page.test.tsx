@@ -1,4 +1,4 @@
-import type { StaffResource } from "@repo/contracts";
+import type { StaffResource, StaffRole } from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
@@ -18,6 +18,7 @@ import {
 } from "@/test/msw/handlers/staff.handlers";
 import { server } from "@/test/msw/server";
 import { renderApp } from "@/test/render";
+import { staffPrincipal } from "@/test/principals";
 
 /**
  * The staff screen end to end (`D3.7`; ADR-0034, ADR-0035, ADR-0036).
@@ -35,21 +36,37 @@ import { renderApp } from "@/test/render";
  * records.
  */
 
-const authenticated = (): SessionStore => {
+/**
+ * A signed-in operator, parameterised by role since `D4.3` (ADR-0042).
+ *
+ * `admin` is the default because it is what every assertion below assumed
+ * before the policy table existed, and `super_admin` would be the wrong default
+ * for exactly the reason it is convenient: it bypasses the table on the one line
+ * in `can` that says so, and would therefore prove nothing about it.
+ */
+const authenticated = (
+  roles: readonly StaffRole[] = ["admin"],
+): SessionStore => {
   const store = createSessionStore();
 
-  store.setSession({ accessToken: "test-access-token" });
+  store.setSession({
+    accessToken: "test-access-token",
+    principal: staffPrincipal(roles),
+  });
 
   return store;
 };
 
 let state: StaffMockState;
 
-const openStaff = (rows: readonly StaffResource[] = STAFF_ROWS) => {
+const openStaff = (
+  rows: readonly StaffResource[] = STAFF_ROWS,
+  roles: readonly StaffRole[] = ["admin"],
+) => {
   state = createStaffMockState(rows);
   server.use(...createStaffHandlers(state));
 
-  return renderApp({ initialPath: "/staff", store: authenticated() });
+  return renderApp({ initialPath: "/staff", store: authenticated(roles) });
 };
 
 /** The last query the API was actually asked for. */
@@ -67,13 +84,22 @@ describe("the staff grid", () => {
       await screen.findByRole("cell", { name: "ada@machxi.local" }),
     ).toBeInTheDocument();
 
-    // Eight `columnheader`s for eight columns — the filter row's cells are
-    // `td`, which is what keeps this count honest (ADR-0035, amended D3.6).
+    // One `columnheader` per column — the filter row's cells are `td`, which is
+    // what keeps this count honest (ADR-0035, amended D3.6).
     const headers = screen
       .getAllByRole("columnheader")
       .map((header) => header.textContent);
 
     expect(headers).toEqual([
+      /*
+       * The checkbox column, first and unlabelled, because `grid.selectable` is
+       * declared (ADR-0038). It is `AppGrid`'s and not the config's: nothing
+       * else in a `ColumnConfigMap` is positional, and a declared one would let
+       * the capability and the column disagree. Its header holds a control
+       * rather than a name, so the text is empty and the accessible name is on
+       * the checkbox.
+       */
+      "",
       "Email",
       "First name",
       "Last name",
@@ -311,5 +337,132 @@ describe("the staff screen's actions", () => {
       ).not.toBeInTheDocument();
     });
     expect(state.seen.list.length).toBeGreaterThan(1);
+  });
+});
+
+/**
+ * Selection and the bulk fan-out, through the real screen (`D4.3`, ADR-0038).
+ *
+ * The grid suite already proves the machinery against the demo config; what is
+ * here is what only a real screen can show — a selection surviving a *real*
+ * page change (a navigation, a new query key, a refetch, not a `rerender`), and
+ * a fan-out whose refusals are the ones ADR-0028 actually produces.
+ */
+describe("the staff screen's selection and bulk delete", () => {
+  it("keeps a selection across a page change, because it is keyed by id", async () => {
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 25 }, (_, index) => ({
+      ...(STAFF_ROWS[0] as StaffResource),
+      id: `0198c1f0-0000-7000-8000-${String(index).padStart(12, "0")}`,
+      email: `operator-${String(index).padStart(2, "0")}@machxi.local`,
+    }));
+    const first = rows[0] as StaffResource;
+
+    openStaff(rows);
+
+    await screen.findByRole("cell", { name: first.email });
+
+    await user.click(
+      screen.getByRole("checkbox", { name: `Select ${first.id}` }),
+    );
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    /*
+     * A genuine page change: the URL moved, the query key with it, and the
+     * server answered with rows that do not include the selected one. The count
+     * still reads 1 because selection describes *rows* — `getRowId` is the
+     * resource's own id — rather than positions in whatever page is in hand.
+     * The row is off screen and still staged, which is exactly why the count
+     * says "1 selected" and not "1 on this page".
+     */
+    expect(await screen.findByText("21–25 of 25")).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("reports both outcomes of a mixed bulk delete, and refetches once", async () => {
+    const user = userEvent.setup();
+    const [ada, mo] = STAFF_ROWS;
+
+    if (ada === undefined || mo === undefined)
+      throw new Error("fixture missing");
+
+    openStaff();
+
+    /*
+     * The refusal ADR-0028 rule 2 exists for, scripted rather than described:
+     * the last active super admin cannot be deleted, and the service answers
+     * `409 STAFF_LAST_SUPER_ADMIN` for *that* row while the others are
+     * legitimate. Returning `undefined` for everyone else is MSW's "not mine",
+     * so the working handler behind this one does the real delete.
+     */
+    server.use(
+      http.delete(`${API}/staff/:id`, ({ params }) =>
+        params["id"] === ada.id
+          ? fail(409, "STAFF_LAST_SUPER_ADMIN")
+          : undefined,
+      ),
+    );
+
+    await screen.findByRole("cell", { name: ada.email });
+    const listsBefore = state.seen.list.length;
+
+    await user.click(
+      screen.getByRole("checkbox", { name: `Select ${ada.id}` }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: `Select ${mo.id}` }));
+
+    await user.click(screen.getByRole("button", { name: "Delete 2" }));
+
+    const confirm = await screen.findByRole("alertdialog");
+    expect(
+      within(confirm).getByRole("heading", {
+        name: "Delete 2 staff accounts?",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }));
+
+    /*
+     * One summary for the whole batch, both outcomes in it, and the refusal
+     * named per item with the sentence the ADR-0034 map wrote for that code —
+     * never the API's own `message`. This is the semantic a transactional bulk
+     * endpoint could not have given: eight lawful deletions are not rolled back
+     * because a ninth was refused.
+     */
+    expect(
+      await screen.findByText("1 deleted, 1 refused."),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        `${ada.email}: This is the last super admin. Promote someone else first.`,
+      ),
+    ).toBeInTheDocument();
+
+    // The refused row is still there, and the toast says why it remains.
+    expect(
+      await screen.findByRole("cell", { name: ada.email }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("cell", { name: mo.email }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Two requests, one invalidation: the fan-out calls the plain API functions
+    // rather than N mutation hooks, so the list refetches once at the end
+    // instead of once per row (ADR-0038).
+    // Only `mo` reaches the real handler — the scripted refusal answers for
+    // `ada` before it — which is the fan-out's point: the refused row's failure
+    // is its own and does not stop the others.
+    expect(state.seen.deleted).toEqual([mo.id]);
+    expect(state.seen.list.length).toBe(listsBefore + 1);
+
+    // And the selection ends with the fan-out — `clearSelection` travelled with
+    // the action because the state that holds it lives inside `AppGrid`.
+    await waitFor(() => {
+      expect(screen.queryByText(/selected/)).toBeNull();
+    });
   });
 });

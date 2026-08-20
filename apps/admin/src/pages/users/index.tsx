@@ -10,11 +10,11 @@ import {
   type UserAction,
 } from "@/features/users-manage";
 import { toListQuery } from "@/shared/api/list-params";
+import { useAllowedCapabilities } from "@/shared/auth";
 import { AppGrid } from "@/shared/grid/app-grid";
 import {
   Button,
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -30,11 +30,21 @@ import {
  * filter, nullable names, a status the create endpoint accepts — is declared in
  * `userResourceConfig` and none of it is visible here. If this file had needed
  * to know any of it, that would have been the finding.
+ *
+ * **`D4.3` makes this the screen where ADR-0042 shows.** The one line below is
+ * the same line the staff page has, and it does more here: `/admin/users` is
+ * read by `admin` *and* `manager` while its five writes are `admin` only, so a
+ * manager sees this screen with Create and Delete absent — and with Edit, Reset
+ * password and Sign out everywhere still there, refusing with a `403`, because
+ * those three are containment controls that ADR-0042 refuses to hide. That is
+ * the D3.8 deferral answered at the layer that draws the affordances, and not
+ * an inch further: nothing here decides which requests the API accepts.
  */
 export const UsersPage = () => {
   const navigate = useNavigate();
   const listState = useSearch({ from: "/_dashboard/users" });
   const [action, setAction] = useState<UserAction | null>(null);
+  const capabilities = useAllowedCapabilities(userResourceConfig.grid, "users");
 
   const users = useUserList(toListQuery(listState));
 
@@ -53,7 +63,7 @@ export const UsersPage = () => {
     setAction(null);
   }, []);
 
-  const rowActions = useUserRowActions(onAction);
+  const rowActions = useUserRowActions(onAction, capabilities);
   const meta = useMemo(() => ({ rowActions }), [rowActions]);
 
   return (
@@ -64,23 +74,6 @@ export const UsersPage = () => {
           The customer accounts. Deleted ones stay listed, and the Deleted
           column is what says so.
         </CardDescription>
-        <CardAction>
-          {/*
-           * A link, not a `setAction` (`D4.2`, ADR-0040): composing a record is
-           * addressable state, so the entry point is a navigation and the
-           * surface it opens survives a reload. `search: true` keeps the view
-           * the operator was reading on the URL while they are away from it.
-           *
-           * ADR-0038 moves this into the toolbar at `D4.3` and gates it on
-           * `canCreate`; until then it stays where D3 put it.
-           */}
-          <Button asChild>
-            <Link to="/users/new" search={true}>
-              <PlusIcon aria-hidden />
-              New user
-            </Link>
-          </Button>
-        </CardAction>
       </CardHeader>
 
       {/*
@@ -111,6 +104,23 @@ export const UsersPage = () => {
           searchable
           isFetching={users.isFetching}
           emptyMessage="No users match this view."
+          capabilities={capabilities}
+          createAction={
+            <Button asChild size="sm">
+              <Link to="/users/new" search={true}>
+                <PlusIcon aria-hidden />
+                New user
+              </Link>
+            </Button>
+          }
+          onBulkDelete={(ids, { clearSelection }) => {
+            setAction({
+              kind: "bulk-delete",
+              ids,
+              rows: users.data?.items ?? [],
+              onSettled: clearSelection,
+            });
+          }}
         />
       </CardContent>
 
