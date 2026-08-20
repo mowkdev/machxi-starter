@@ -28,6 +28,15 @@ import type { ResourceConfig } from "@/shared/resource/types";
  */
 export const staffResourceConfig = {
   name: "staff",
+  grid: {
+    /*
+     * A modal, which is what D3 shipped and what this record wants: five
+     * fields, no reason for the list to stay legible beside them (ADR-0040).
+     * `users` declares `"drawer"` for the opposite reason, and the two configs
+     * are the whole difference between them — same form, same URL.
+     */
+    editSurface: "dialog",
+  },
   columns: {
     email: {
       header: "Email",

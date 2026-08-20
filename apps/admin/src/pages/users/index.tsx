@@ -1,5 +1,5 @@
 import type { ListQuerySearch } from "@repo/contracts";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
@@ -65,13 +65,20 @@ export const UsersPage = () => {
           column is what says so.
         </CardDescription>
         <CardAction>
-          <Button
-            onClick={() => {
-              setAction({ kind: "create" });
-            }}
-          >
-            <PlusIcon aria-hidden />
-            New user
+          {/*
+           * A link, not a `setAction` (`D4.2`, ADR-0040): composing a record is
+           * addressable state, so the entry point is a navigation and the
+           * surface it opens survives a reload. `search: true` keeps the view
+           * the operator was reading on the URL while they are away from it.
+           *
+           * ADR-0038 moves this into the toolbar at `D4.3` and gates it on
+           * `canCreate`; until then it stays where D3 put it.
+           */}
+          <Button asChild>
+            <Link to="/users/new" search={true}>
+              <PlusIcon aria-hidden />
+              New user
+            </Link>
           </Button>
         </CardAction>
       </CardHeader>

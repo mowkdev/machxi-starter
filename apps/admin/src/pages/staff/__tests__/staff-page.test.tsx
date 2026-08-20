@@ -214,18 +214,35 @@ describe("the staff grid", () => {
 });
 
 describe("the staff screen's actions", () => {
-  it("opens the create dialog from the page's own button", async () => {
+  it("reaches the create surface through the URL, not through page state", async () => {
     const user = userEvent.setup();
 
     openStaff();
 
     await screen.findByRole("cell", { name: "ada@machxi.local" });
 
-    await user.click(screen.getByRole("button", { name: "New staff member" }));
+    /*
+     * A **link**, since `D4.2` (ADR-0040): composing a record is addressable
+     * state, so the entry point is a navigation. The role is the assertion — a
+     * `button` here would mean the surface went back to being page state that
+     * a reload and the Back button cannot see.
+     */
+    await user.click(screen.getByRole("link", { name: "New staff member" }));
 
     expect(
       await screen.findByRole("heading", { name: "New staff member" }),
     ).toBeInTheDocument();
+    /*
+     * The grid is still mounted underneath — `staff` declares a dialog, and a dialog
+     * overlays the list rather than replacing it.
+     *
+     * Queried through the DOM rather than by role, and that is the modal doing
+     * its job: Radix marks the rest of the document `aria-hidden` while an
+     * overlay is open, so `getByRole` correctly cannot see the rows. Their
+     * being *there* is what this asserts; their being unreachable is the
+     * intended behaviour of the shell on top of them.
+     */
+    expect(document.querySelector('[data-slot="table"]')).not.toBeNull();
   });
 
   it("reaches every row action from a menu named for its row", async () => {

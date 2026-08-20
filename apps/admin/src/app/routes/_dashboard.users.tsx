@@ -1,8 +1,16 @@
 import { listQuerySearchSchema } from "@repo/contracts";
-import { createFileRoute, stripSearchParams } from "@tanstack/react-router";
+import {
+  Outlet,
+  createFileRoute,
+  retainSearchParams,
+  stripSearchParams,
+  useMatchRoute,
+} from "@tanstack/react-router";
 
+import { userResourceConfig } from "@/entities/user";
 import { UsersPage } from "@/pages/users";
 import { listSearchDefaults } from "@/shared/grid/list-state";
+import { editSurfaceOf } from "@/shared/resource/config";
 
 /**
  * `/users` — wiring, plus the list state (ADR-0034 §List state lives in
@@ -31,11 +39,43 @@ import { listSearchDefaults } from "@/shared/grid/list-state";
  * (`listSearchDefaults`), so the two cannot disagree about what "default"
  * means; a deep link that spells the defaults out still parses identically and
  * normalises to the bare path on the next navigation.
+ *
+ * **`D4.2`: this route grew children** (ADR-0040) — `/users/new` and
+ * `/users/$userId` render into its `<Outlet />`, and `retainSearchParams` is
+ * what carries the list's page and filters across opening and closing one. The
+ * staff parent carries the full reasoning.
  */
 export const Route = createFileRoute("/_dashboard/users")({
-  component: UsersPage,
+  component: UsersRoute,
   // A grid page is a height budget, not a document (ADR-0037, `D4.1`).
   staticData: { title: "Users", fullHeight: true },
   validateSearch: listQuerySearchSchema,
-  search: { middlewares: [stripSearchParams(listSearchDefaults)] },
+  search: {
+    middlewares: [
+      retainSearchParams(true),
+      stripSearchParams(listSearchDefaults),
+    ],
+  },
 });
+
+function UsersRoute() {
+  /*
+   * The staff parent's shape, with the same reasoning — see
+   * `_dashboard.staff.tsx`. `userResourceConfig` declares a drawer, so today
+   * this never unmounts the grid; the conditional stays because the surface is
+   * a config line and the topology has to follow it (ADR-0040).
+   */
+  const matchRoute = useMatchRoute();
+  const onRecord = Boolean(
+    matchRoute({ to: "/users/new" }) ?? matchRoute({ to: "/users/$userId" }),
+  );
+
+  return (
+    <>
+      {editSurfaceOf(userResourceConfig) === "page" && onRecord ? null : (
+        <UsersPage />
+      )}
+      <Outlet />
+    </>
+  );
+}

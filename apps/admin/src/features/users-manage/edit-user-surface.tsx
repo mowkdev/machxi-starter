@@ -4,6 +4,7 @@ import {
   type UpdateUserBody,
   type UserResource,
 } from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 
 import {
@@ -12,9 +13,13 @@ import {
   useUser,
   userResourceConfig,
 } from "@/entities/user";
-import { AppFormDialog } from "@/shared/form/app-form-dialog";
+import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
-import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
+import {
+  dirtyValuesOf,
+  editSurfaceOf,
+  fieldsForVariant,
+} from "@/shared/resource/config";
 
 /**
  * `PATCH /admin/users/:id` — names and status.
@@ -42,16 +47,22 @@ const toFormValues = (user: UserResource): UpdateUserBody => ({
   status: user.status,
 });
 
-export const EditUserDialog = ({
+export const EditUserSurface = ({
   user,
-  onClose,
 }: {
+  /** The record the route loaded (`D4.2`, ADR-0040). */
   readonly user: UserResource;
-  readonly onClose: () => void;
 }) => {
+  const navigate = useNavigate();
   const updateUser = useUpdateUser();
-  // The row seeds the form so it is filled the instant it opens; the detail
-  // query corrects it, so a stale `status` is not re-submitted whole.
+
+  /** Back to the list, page and filters intact (ADR-0040). */
+  const close = () => {
+    void navigate({ to: "/users", search: true });
+  };
+
+  // The loader primed this key, so it resolves warm; it stays a subscription so
+  // an invalidation under the open surface is noticed.
   const detail = useUser(user.id);
 
   const form = useForm<UpdateUserBody>({
@@ -74,13 +85,13 @@ export const EditUserDialog = ({
     const body = dirtyValuesOf(values, form.formState.dirtyFields);
 
     if (Object.keys(body).length === 0) {
-      onClose();
+      close();
       return;
     }
 
     try {
       await updateUser.mutateAsync({ id: user.id, body });
-      onClose();
+      close();
     } catch (error) {
       applyServerErrors(error, form.setError, {
         fields: FIELD_NAMES,
@@ -90,11 +101,9 @@ export const EditUserDialog = ({
   };
 
   return (
-    <AppFormDialog
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
+    <AppFormSurface
+      surface={editSurfaceOf(userResourceConfig)}
+      onClose={close}
       title={`Edit ${user.email}`}
       description="Email is not editable — changing the identifier a session was established with is its own flow."
       form={form}
@@ -110,6 +119,6 @@ export const EditUserDialog = ({
         <UserFormInput fieldName="lastName" />
       </div>
       <UserFormInput fieldName="status" />
-    </AppFormDialog>
+    </AppFormSurface>
   );
 };

@@ -206,17 +206,39 @@ describe("the users grid", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the create dialog from the page's own button", async () => {
+  it("reaches the create surface through the URL, and opens it in a drawer", async () => {
     const user = userEvent.setup();
 
     openUsers();
 
     await screen.findByRole("cell", { name: CARA.email });
 
-    await user.click(screen.getByRole("button", { name: "New user" }));
+    await user.click(screen.getByRole("link", { name: "New user" }));
 
     expect(
       await screen.findByRole("heading", { name: "New user" }),
     ).toBeInTheDocument();
+    /*
+     * The one place a suite names the shell (`D4.2`, ADR-0040): `users`
+     * declares `editSurface: "drawer"` where `staff` declares a dialog, and
+     * `Sheet` renders as a `dialog` role too — so what distinguishes them is
+     * the `data-slot`. Everything else about this form is asserted by the
+     * feature suite without knowing which frame it is inside, which is the
+     * property the config switch is for.
+     */
+    expect(
+      document.querySelector('[data-slot="sheet-content"]'),
+    ).not.toBeNull();
+    /*
+     * The grid is still mounted underneath — a drawer's whole argument over a modal is
+     * that the list stays on screen beside it.
+     *
+     * Queried through the DOM rather than by role, and that is the modal doing
+     * its job: Radix marks the rest of the document `aria-hidden` while an
+     * overlay is open, so `getByRole` correctly cannot see the rows. Their
+     * being *there* is what this asserts; their being unreachable is the
+     * intended behaviour of the shell on top of them.
+     */
+    expect(document.querySelector('[data-slot="table"]')).not.toBeNull();
   });
 });

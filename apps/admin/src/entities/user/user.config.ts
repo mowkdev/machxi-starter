@@ -35,6 +35,17 @@ import type { ResourceConfig } from "@/shared/resource/types";
  */
 export const userResourceConfig = {
   name: "user",
+  grid: {
+    /*
+     * A right-side drawer, deliberately not `staff`'s modal (ADR-0040).
+     *
+     * Partly because this record earns it — a customer account is read in the
+     * context of the rows around it, and a sheet leaves those on screen — and
+     * partly because a switch nothing exercises is a switch that rots. The URL
+     * is identical either way, so nothing else in this slice knows.
+     */
+    editSurface: "drawer",
+  },
   columns: {
     email: {
       header: "Email",

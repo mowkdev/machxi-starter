@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createStaffBody, type CreateStaffBody } from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 
 import {
@@ -7,9 +8,13 @@ import {
   staffResourceConfig,
   useCreateStaff,
 } from "@/entities/staff";
-import { AppFormDialog } from "@/shared/form/app-form-dialog";
+import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
-import { fieldsForVariant, initialValuesFor } from "@/shared/resource/config";
+import {
+  editSurfaceOf,
+  fieldsForVariant,
+  initialValuesFor,
+} from "@/shared/resource/config";
 
 /**
  * `POST /admin/staff` — an admin creates an operator with an initial password
@@ -24,20 +29,30 @@ import { fieldsForVariant, initialValuesFor } from "@/shared/resource/config";
  * Validation is `createStaffBody`, the object the API validates with
  * (ADR-0011/0023), so a password rule tightened in `@repo/contracts` tightens
  * this form in the same commit and there is no second copy to drift.
+ *
+ * **It is mounted by a route, not by a page's state** (`D4.2`, ADR-0040):
+ * `/staff/new` is what opens it, Back is what closes it, and a reload lands
+ * back here rather than on a bare list. So there is no `open` prop and no
+ * `onClose` to thread — every dismissal is one navigation back to the list.
  */
 /** What the create form puts on screen — the config decides, not this file. */
 const FIELD_NAMES = fieldsForVariant(staffResourceConfig.fields, "create").map(
   ([name]) => name,
 );
 
-export const CreateStaffDialog = ({
-  open,
-  onClose,
-}: {
-  readonly open: boolean;
-  readonly onClose: () => void;
-}) => {
+export const CreateStaffSurface = () => {
+  const navigate = useNavigate();
   const createStaff = useCreateStaff();
+
+  /*
+   * `search: true` is what makes ADR-0040's round trip hold: the list's
+   * validated search params are carried back verbatim, so an operator who
+   * opened this from page two of a filtered view returns to page two of that
+   * filtered view.
+   */
+  const close = () => {
+    void navigate({ to: "/staff", search: true });
+  };
 
   const form = useForm<CreateStaffBody>({
     resolver: zodResolver(createStaffBody),
@@ -59,7 +74,7 @@ export const CreateStaffDialog = ({
     try {
       await createStaff.mutateAsync(values);
       form.reset();
-      onClose();
+      close();
     } catch (error) {
       /*
        * `STAFF_EMAIL_TAKEN` is a `409` with no `details`, so without the code
@@ -86,11 +101,9 @@ export const CreateStaffDialog = ({
   };
 
   return (
-    <AppFormDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
+    <AppFormSurface
+      surface={editSurfaceOf(staffResourceConfig)}
+      onClose={close}
       title="New staff member"
       description="They can sign in as soon as this is saved."
       form={form}
@@ -114,6 +127,6 @@ export const CreateStaffDialog = ({
        */}
       <StaffFormInput fieldName="status" />
       <StaffFormInput fieldName="roles" />
-    </AppFormDialog>
+    </AppFormSurface>
   );
 };

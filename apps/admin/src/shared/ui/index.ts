@@ -134,3 +134,4 @@ export { cn } from "@repo/ui/lib/utils";
 export { AppLoader } from "./app-loader";
 export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";
 export { QueryError } from "./query-error";
+export { RecordError } from "./record-error";

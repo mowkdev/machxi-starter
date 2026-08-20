@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserBody, type CreateUserBody } from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useForm, type Resolver, type ResolverOptions } from "react-hook-form";
 
 import {
@@ -7,9 +8,13 @@ import {
   useCreateUser,
   userResourceConfig,
 } from "@/entities/user";
-import { AppFormDialog } from "@/shared/form/app-form-dialog";
+import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
-import { fieldsForVariant, initialValuesFor } from "@/shared/resource/config";
+import {
+  editSurfaceOf,
+  fieldsForVariant,
+  initialValuesFor,
+} from "@/shared/resource/config";
 
 /**
  * `POST /admin/users` — a staff member creates a customer account with an
@@ -143,13 +148,14 @@ const resolver: Resolver<CreateUserFormValues, unknown, CreateUserBody> = (
     options as unknown as ResolverOptions<CreateUserBody>,
   );
 
-export const CreateUserDialog = ({
-  open,
-  onClose,
-}: {
-  readonly open: boolean;
-  readonly onClose: () => void;
-}) => {
+export const CreateUserSurface = () => {
+  const navigate = useNavigate();
+
+  /** Back to the list, page and filters intact (ADR-0040). */
+  const close = () => {
+    void navigate({ to: "/users", search: true });
+  };
+
   const createUser = useCreateUser();
 
   const form = useForm<CreateUserFormValues, unknown, CreateUserBody>({
@@ -168,7 +174,7 @@ export const CreateUserDialog = ({
     try {
       await createUser.mutateAsync(body);
       form.reset();
-      onClose();
+      close();
     } catch (error) {
       applyServerErrors(error, form.setError, {
         // This variant's names, never the resource's whole map: a detail naming
@@ -181,11 +187,9 @@ export const CreateUserDialog = ({
   };
 
   return (
-    <AppFormDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
+    <AppFormSurface
+      surface={editSurfaceOf(userResourceConfig)}
+      onClose={close}
       title="New user"
       description="They can sign in as soon as this is saved."
       form={form}
@@ -202,6 +206,6 @@ export const CreateUserDialog = ({
         <UserFormInput fieldName="lastName" />
       </div>
       <UserFormInput fieldName="status" />
-    </AppFormDialog>
+    </AppFormSurface>
   );
 };

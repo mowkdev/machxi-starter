@@ -96,10 +96,24 @@ export interface RenderAppOptions extends ProviderOptions {
   readonly initialPath?: string;
 }
 
+/**
+ * The router comes back with the render (`D4.2`).
+ *
+ * Two things need it and neither can fake it: reading where the app *is* — a
+ * memory history does not touch `window.location`, so `router.state.location`
+ * is the only truthful answer — and driving Back and Forward, which
+ * `window.history` cannot do to a history it does not own. Both are exactly
+ * what ADR-0040's routed surfaces claim, so a suite that could not reach them
+ * could not test the claim.
+ */
+export interface RenderAppResult extends RenderResult {
+  readonly router: ReturnType<typeof createAppRouter>;
+}
+
 export const renderApp = ({
   initialPath = "/",
   ...options
-}: RenderAppOptions = {}): RenderResult => {
+}: RenderAppOptions = {}): RenderAppResult => {
   const value = providers(options);
   const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [initialPath] }),
@@ -119,5 +133,5 @@ export const renderApp = ({
     </ApiProvider>
   );
 
-  return render(tree);
+  return { ...render(tree), router };
 };

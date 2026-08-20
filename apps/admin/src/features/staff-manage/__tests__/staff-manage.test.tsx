@@ -12,8 +12,12 @@ import {
   createStaffMockState,
   type StaffMockState,
 } from "@/test/msw/handlers/staff.handlers";
+import {
+  createSessionStore,
+  type SessionStore,
+} from "@/shared/api/session-store";
 import { server } from "@/test/msw/server";
-import { renderWithProviders } from "@/test/render";
+import { renderApp, renderWithProviders } from "@/test/render";
 
 import { passwordFields } from "../reset-staff-password-dialog";
 import { StaffDialogs } from "../staff-dialogs";
@@ -47,14 +51,69 @@ const open = (action: StaffAction, onClose = vi.fn()) => {
   return { ...result, onClose };
 };
 
+/**
+ * The two routed surfaces are entered **through the router** (`D4.2`,
+ * ADR-0040), and that is the point rather than a mechanical consequence.
+ *
+ * Create and edit are addressable now: a URL is what opens them, a reload
+ * restores them, and Back closes them. A test that mounted the component
+ * directly would still pass while every one of those was broken — so these
+ * two mount the real generated route tree at the real path, and the surface
+ * appearing *is* the assertion that the route, the loader and the config's
+ * shell choice all agree. The confirms below stay on `renderWithProviders`,
+ * because ADR-0040 deliberately keeps them out of the URL.
+ */
+const signedIn = (): SessionStore => {
+  const store = createSessionStore();
+
+  store.setSession({ accessToken: "test-access-token" });
+
+  return store;
+};
+
+const openCreate = async () => {
+  const result = renderApp({ initialPath: "/staff/new", store: signedIn() });
+
+  // Awaited, because a route resolves asynchronously: the surface being on
+  // screen is what says the path matched and the shell rendered.
+  await screen.findByRole("button", { name: "Create" });
+
+  return result;
+};
+
+const openRecord = async (id: string) => {
+  const result = renderApp({ initialPath: `/staff/${id}`, store: signedIn() });
+
+  // The loader has to settle before the form exists, which is the loader being
+  // asserted rather than assumed.
+  await screen.findByRole("button", { name: "Save changes" });
+
+  return result;
+};
+
+/**
+ * The surface has closed when the control that submits it is gone.
+ *
+ * Closing is a navigation now, so there is no `onClose` spy to assert on —
+ * which is a better test: it observes what the operator observes rather than
+ * that a callback fired.
+ */
+const closed = async (submitLabel: string) => {
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: submitLabel }),
+    ).not.toBeInTheDocument();
+  });
+};
+
 beforeEach(() => {
   state = createStaffMockState();
   server.use(...createStaffHandlers(state));
 });
 
-describe("the create dialog", () => {
-  it("renders exactly the fields the config puts in the create variant", () => {
-    open({ kind: "create" });
+describe("the create surface", () => {
+  it("renders exactly the fields the config puts in the create variant", async () => {
+    await openCreate();
 
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Initial password")).toBeInTheDocument();
@@ -71,8 +130,8 @@ describe("the create dialog", () => {
     expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
   });
 
-  it("starts from the config's initial values", () => {
-    open({ kind: "create" });
+  it("starts from the config's initial values", async () => {
+    await openCreate();
 
     // `roles: { initialValue: ["editor"] }` — declared once, on the resource.
     expect(screen.getByRole("checkbox", { name: "Editor" })).toBeChecked();
@@ -82,7 +141,7 @@ describe("the create dialog", () => {
   it("validates with the contract's own schema before anything is sent", async () => {
     const user = userEvent.setup();
 
-    open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), "ada@machxi.local");
     // Six characters: under `MIN_PASSWORD_LENGTH`, so `createStaffBody`
@@ -103,7 +162,7 @@ describe("the create dialog", () => {
 
   it("sends the created staff member and closes", async () => {
     const user = userEvent.setup();
-    const { onClose } = open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), "new@machxi.local");
     await user.type(
@@ -115,9 +174,7 @@ describe("the create dialog", () => {
     await user.click(screen.getByRole("checkbox", { name: "Manager" }));
     await user.click(screen.getByRole("button", { name: "Create" }));
 
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalled();
-    });
+    await closed("Create");
     expect(state.seen.created[0]).toEqual({
       email: "new@machxi.local",
       password: "DevPassword!123",
@@ -130,7 +187,7 @@ describe("the create dialog", () => {
 
   it("lands STAFF_EMAIL_TAKEN on the email field, not at the top of the form", async () => {
     const user = userEvent.setup();
-    const { onClose } = open({ kind: "create" });
+    await openCreate();
 
     // `ada@machxi.local` already exists in the fixture, so the handler answers
     // the real `409` — a conflict with no `details`, which is exactly the case
@@ -155,7 +212,8 @@ describe("the create dialog", () => {
         "true",
       );
     });
-    expect(onClose).not.toHaveBeenCalled();
+    // Still open: a refused submit must leave the operator on their work.
+    expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
   });
 
   it("shows a detail naming a field this variant does not render", async () => {
@@ -179,7 +237,7 @@ describe("the create dialog", () => {
       ),
     );
 
-    open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), "new@machxi.local");
     await user.type(
@@ -207,7 +265,7 @@ describe("the create dialog", () => {
       }),
     );
 
-    open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), "new@machxi.local");
     await user.type(
@@ -229,9 +287,9 @@ describe("the create dialog", () => {
   });
 });
 
-describe("the edit dialog", () => {
-  it("renders the edit variant, seeded from the row", async () => {
-    open({ kind: "edit", staff: MO });
+describe("the edit surface", () => {
+  it("renders the edit variant, seeded from the record the loader fetched", async () => {
+    await openRecord(MO.id);
 
     expect(await screen.findByLabelText("First name")).toHaveValue("Mo");
     expect(screen.getByRole("checkbox", { name: "Manager" })).toBeChecked();
@@ -244,7 +302,7 @@ describe("the edit dialog", () => {
 
   it("sends only what the operator changed", async () => {
     const user = userEvent.setup();
-    const { onClose } = open({ kind: "edit", staff: MO });
+    await openRecord(MO.id);
 
     const lastName = await screen.findByLabelText("Last name");
 
@@ -252,9 +310,7 @@ describe("the edit dialog", () => {
     await user.type(lastName, "Moderator");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalled();
-    });
+    await closed("Save changes");
     /*
      * Not `{ firstName, lastName, roles, status }`. Pruning to RHF's
      * `dirtyFields` (ADR-0035) is what stops a re-send of every seeded value
@@ -270,9 +326,9 @@ describe("the edit dialog", () => {
   it("offers nothing to save until something changes", async () => {
     const user = userEvent.setup();
 
-    open({ kind: "edit", staff: MO });
+    await openRecord(MO.id);
 
-    const save = await screen.findByRole("button", { name: "Save changes" });
+    const save = screen.getByRole("button", { name: "Save changes" });
 
     expect(save).toBeDisabled();
 
@@ -290,7 +346,7 @@ describe("the edit dialog", () => {
       http.patch(`${API}/staff/:id`, () => fail(409, "STAFF_LAST_SUPER_ADMIN")),
     );
 
-    open({ kind: "edit", staff: ADA });
+    await openRecord(ADA.id);
 
     const status = await screen.findByLabelText("Status");
 

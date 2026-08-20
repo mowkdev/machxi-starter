@@ -1,4 +1,5 @@
 import type { UserResource } from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import type { RowAction } from "@/shared/grid/types";
@@ -26,17 +27,31 @@ import type { UserActionHandler } from "./types";
  * What the client does with `deletedAt` is **show** it: the grid's `Deleted`
  * column marks the account, so an operator is not surprised by the refusal —
  * they can see the reason for it before they act.
+ *
+ * **`edit` is a navigation since `D4.2`** (ADR-0040) — it puts the record in
+ * the URL, where a reload and the Back button can both reach it — while the
+ * other three still report into the page's own state, because a destructive
+ * confirm and a credential ceremony must not be addressable. The staff menu
+ * splits the same way for the same reason.
  */
 export const useUserRowActions = (
   onAction: UserActionHandler,
-): readonly RowAction<UserResource>[] =>
-  useMemo(
+): readonly RowAction<UserResource>[] => {
+  const navigate = useNavigate();
+
+  return useMemo(
     () => [
       {
         key: "edit",
         label: "Edit",
         onSelect: (user) => {
-          onAction({ kind: "edit", user });
+          void navigate({
+            to: "/users/$userId",
+            params: { userId: user.id },
+            // The list's own state stays on the URL while the record is open,
+            // so closing returns to the page and filters being read.
+            search: true,
+          });
         },
       },
       {
@@ -62,5 +77,6 @@ export const useUserRowActions = (
         },
       },
     ],
-    [onAction],
+    [navigate, onAction],
   );
+};

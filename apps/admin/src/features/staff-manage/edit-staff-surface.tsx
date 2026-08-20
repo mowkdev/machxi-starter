@@ -4,6 +4,7 @@ import {
   type StaffResource,
   type UpdateStaffBody,
 } from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 
 import {
@@ -12,9 +13,13 @@ import {
   useStaff,
   useUpdateStaff,
 } from "@/entities/staff";
-import { AppFormDialog } from "@/shared/form/app-form-dialog";
+import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
-import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
+import {
+  dirtyValuesOf,
+  editSurfaceOf,
+  fieldsForVariant,
+} from "@/shared/resource/config";
 
 /**
  * `PATCH /admin/staff/:id` — names, roles and status (ADR-0017).
@@ -31,6 +36,15 @@ import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
  * arrive as `403` / `409 STAFF_LAST_SUPER_ADMIN` and are rendered by
  * `AppFormError` through ADR-0034's map, which is the only place that decides
  * how a failure reads.
+ *
+ * **The record arrives from the route loader, not from the row that was
+ * clicked** (`D4.2`, ADR-0040). That is the substantive change the URL bought:
+ * `/staff/$staffId` is reachable by reload, by Back, and by a link from
+ * somebody else's chat window, and in none of those cases is there a grid row
+ * to hand over. The loader's `ensureQueryData` has already primed
+ * `staffKeys.detail(id)`, so `useStaff` below reads a warm cache rather than
+ * fetching again — the seed is as immediate as the row used to be, and it is
+ * the record rather than a copy of it that may be minutes old.
  */
 
 /** What the edit form puts on screen — the config decides, not this file. */
@@ -46,22 +60,28 @@ const toFormValues = (staff: StaffResource): UpdateStaffBody => ({
   status: staff.status,
 });
 
-export const EditStaffDialog = ({
+export const EditStaffSurface = ({
   staff,
-  onClose,
 }: {
+  /** The record the route loaded. */
   readonly staff: StaffResource;
-  readonly onClose: () => void;
 }) => {
+  const navigate = useNavigate();
   const updateStaff = useUpdateStaff();
+
+  /** Back to the list, page and filters intact (ADR-0040). */
+  const close = () => {
+    void navigate({ to: "/staff", search: true });
+  };
   /*
-   * `GET /admin/staff/:id`, even though the grid handed us the row.
+   * The same key the loader primed, so this resolves from cache on the first
+   * render and refetches only when ADR-0034's `staleTime` says it is worth it.
    *
-   * The row is a page that may have been fetched minutes ago, and this is the
-   * screen where being one edit behind costs the most: a stale `roles` array
-   * re-submitted whole would silently undo somebody else's change. The row is
-   * still the *seed*, so the form is filled the instant it opens rather than
-   * after a round trip — the detail query only corrects it.
+   * It stays a `useQuery` rather than reading the loader's value once, because
+   * this is the screen where being one edit behind costs the most: a stale
+   * `roles` array re-submitted whole would silently undo somebody else's
+   * change, and a subscription is what notices when the cache is invalidated
+   * under it.
    */
   const detail = useStaff(staff.id);
 
@@ -92,13 +112,13 @@ export const EditStaffDialog = ({
     // from a text field is not consistently blocked by it — and an empty body
     // is a `VALIDATION_ERROR` the operator did nothing to earn.
     if (Object.keys(body).length === 0) {
-      onClose();
+      close();
       return;
     }
 
     try {
       await updateStaff.mutateAsync({ id: staff.id, body });
-      onClose();
+      close();
     } catch (error) {
       /*
        * This variant's names — see the note in `create-staff-dialog.tsx`. Here
@@ -114,11 +134,9 @@ export const EditStaffDialog = ({
   };
 
   return (
-    <AppFormDialog
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
+    <AppFormSurface
+      surface={editSurfaceOf(staffResourceConfig)}
+      onClose={close}
       title={`Edit ${staff.email}`}
       description="Email is not editable — changing the identifier a session was established with is its own flow."
       form={form}
@@ -138,6 +156,6 @@ export const EditStaffDialog = ({
       </div>
       <StaffFormInput fieldName="status" />
       <StaffFormInput fieldName="roles" />
-    </AppFormDialog>
+    </AppFormSurface>
   );
 };

@@ -1,5 +1,3 @@
-import { CreateStaffDialog } from "./create-staff-dialog";
-import { EditStaffDialog } from "./edit-staff-dialog";
 import { ResetStaffPasswordDialog } from "./reset-staff-password-dialog";
 import {
   DeleteStaffDialog,
@@ -8,13 +6,18 @@ import {
 import type { StaffAction } from "./types";
 
 /**
- * Whichever dialog the current action names, and nothing when there is none.
+ * Whichever ephemeral dialog the current action names, and nothing when there
+ * is none.
  *
  * One switch over one union, so the page holds a single `useState` and the
  * "two dialogs open at once" state does not exist. Mounting only the active one
- * is also what makes each dialog's `useForm` and `useStaff` start fresh per
- * opening: a form that kept its values from the last staff member it edited is
- * the bug this shape rules out rather than remembers to reset.
+ * is also what makes each `useForm` start fresh per opening: a ceremony that
+ * kept its values from the last account it acted on is the bug this shape rules
+ * out rather than remembers to reset.
+ *
+ * Since `D4.2` this covers only what ADR-0040 keeps out of the URL — the two
+ * confirms and the password ceremony. Create and edit are routes now, and the
+ * router is their invariant: one URL matches one child.
  */
 export const StaffDialogs = ({
   action,
@@ -26,10 +29,6 @@ export const StaffDialogs = ({
   if (action === null) return null;
 
   switch (action.kind) {
-    case "create":
-      return <CreateStaffDialog open onClose={onClose} />;
-    case "edit":
-      return <EditStaffDialog staff={action.staff} onClose={onClose} />;
     case "reset-password":
       return (
         <ResetStaffPasswordDialog staff={action.staff} onClose={onClose} />

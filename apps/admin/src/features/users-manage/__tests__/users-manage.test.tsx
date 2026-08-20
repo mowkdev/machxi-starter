@@ -14,10 +14,14 @@ import {
 } from "@/test/msw/handlers/users.handlers";
 import { server } from "@/test/msw/server";
 import { userResourceConfig } from "@/entities/user";
+import {
+  createSessionStore,
+  type SessionStore,
+} from "@/shared/api/session-store";
 import { fieldsForVariant, initialValuesFor } from "@/shared/resource/config";
-import { renderWithProviders } from "@/test/render";
+import { renderApp, renderWithProviders } from "@/test/render";
 
-import { asCreateBody } from "../create-user-dialog";
+import { asCreateBody } from "../create-user-surface";
 import { passwordFields } from "../reset-user-password-dialog";
 import type { UserAction } from "../types";
 import { UserDialogs } from "../user-dialogs";
@@ -46,6 +50,48 @@ const open = (action: UserAction, onClose = vi.fn()) => {
   );
 
   return { ...result, onClose };
+};
+
+/**
+ * The record surfaces are entered through the router (`D4.2`, ADR-0040), and
+ * this resource is where the *shell* claim is worth something: `users` declares
+ * `editSurface: "drawer"`, so everything below renders in a `Sheet` while the
+ * staff suite's identical assertions render in a `Dialog`. Neither suite says
+ * which — they ask for controls by accessible name, and the same form answers
+ * from inside either frame. That is the ADR's "one config line, no other
+ * change" being tested rather than described.
+ */
+const signedIn = (): SessionStore => {
+  const store = createSessionStore();
+
+  store.setSession({ accessToken: "test-access-token" });
+
+  return store;
+};
+
+const openCreate = async () => {
+  const result = renderApp({ initialPath: "/users/new", store: signedIn() });
+
+  await screen.findByRole("button", { name: "Create" });
+
+  return result;
+};
+
+const openRecord = async (id: string) => {
+  const result = renderApp({ initialPath: `/users/${id}`, store: signedIn() });
+
+  await screen.findByRole("button", { name: "Save changes" });
+
+  return result;
+};
+
+/** Closing is a navigation, so the assertion is that the control is gone. */
+const closed = async (submitLabel: string) => {
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: submitLabel }),
+    ).not.toBeInTheDocument();
+  });
 };
 
 beforeEach(() => {
@@ -103,9 +149,9 @@ describe("the state-to-body conversion", () => {
   });
 });
 
-describe("the create dialog", () => {
-  it("renders the create variant, and no roles control", () => {
-    open({ kind: "create" });
+describe("the create surface", () => {
+  it("renders the create variant, and no roles control", async () => {
+    await openCreate();
 
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Initial password")).toBeInTheDocument();
@@ -119,8 +165,8 @@ describe("the create dialog", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("never offers the new account's password to the browser as the operator's own", () => {
-    open({ kind: "create" });
+  it("never offers the new account's password to the browser as the operator's own", async () => {
+    await openCreate();
 
     /*
      * The riskier of the app's two password forms, and the one that had no test
@@ -137,7 +183,7 @@ describe("the create dialog", () => {
 
   it("omits an untouched optional field rather than sending it empty", async () => {
     const user = userEvent.setup();
-    const { onClose } = open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), "new@example.test");
     await user.type(
@@ -146,11 +192,9 @@ describe("the create dialog", () => {
     );
     await user.click(screen.getByRole("button", { name: "Create" }));
 
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalled();
-    });
+    await closed("Create");
     /*
-     * The whole point of the create dialog's resolver. `createUserBody` rejects
+     * The whole point of the create surface's resolver. `createUserBody` rejects
      * `""` (`nameSchema` is `.trim().min(1)`) and rejects `null` (only the
      * *update* body is nullable), so the only way to say "the operator left
      * this blank" is an absent key — and no HTML control can hold "absent".
@@ -168,7 +212,7 @@ describe("the create dialog", () => {
   it("sends a name the operator actually typed", async () => {
     const user = userEvent.setup();
 
-    open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), "named@example.test");
     await user.type(
@@ -189,7 +233,7 @@ describe("the create dialog", () => {
 
   it("re-registers the address a deleted account released", async () => {
     const user = userEvent.setup();
-    const { onClose } = open({ kind: "create" });
+    await openCreate();
 
     /*
      * ADR-0028's partial unique index (`where deleted_at is null`) in the one
@@ -203,15 +247,13 @@ describe("the create dialog", () => {
     );
     await user.click(screen.getByRole("button", { name: "Create" }));
 
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalled();
-    });
+    await closed("Create");
   });
 
   it("lands USER_EMAIL_TAKEN on the email field", async () => {
     const user = userEvent.setup();
 
-    open({ kind: "create" });
+    await openCreate();
 
     await user.type(screen.getByLabelText("Email"), CARA.email);
     await user.type(
@@ -232,25 +274,23 @@ describe("the create dialog", () => {
   });
 });
 
-describe("the edit dialog", () => {
+describe("the edit surface", () => {
   it("renders a null name as an empty control, not as the string null", async () => {
-    open({ kind: "edit", user: PAT });
+    await openRecord(PAT.id);
 
     expect(await screen.findByLabelText("First name")).toHaveValue("");
   });
 
   it("clears a name with null, which is a different request from leaving it", async () => {
     const user = userEvent.setup();
-    const { onClose } = open({ kind: "edit", user: CARA });
+    await openRecord(CARA.id);
 
     const firstName = await screen.findByLabelText("First name");
 
     await user.clear(firstName);
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalled();
-    });
+    await closed("Save changes");
     // `null` and not `""`: the column is nullable, "unset it" is a legal
     // request, and `nameSchema` would refuse the empty string.
     expect(state.seen.updated[0]).toEqual({
@@ -267,7 +307,7 @@ describe("the edit dialog", () => {
 
     // The row carries `deletedAt`, and the menu still offered the action; the
     // API is the enforcement point and this is what it says (ADR-0028).
-    open({ kind: "edit", user: GONE });
+    await openRecord(GONE.id);
 
     const firstName = await screen.findByLabelText("First name");
 

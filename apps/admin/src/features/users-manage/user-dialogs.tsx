@@ -1,19 +1,20 @@
-import { CreateUserDialog } from "./create-user-dialog";
-import { EditUserDialog } from "./edit-user-dialog";
 import { ResetUserPasswordDialog } from "./reset-user-password-dialog";
+import type { UserAction } from "./types";
 import {
   DeleteUserDialog,
   RevokeUserSessionsDialog,
 } from "./user-confirm-dialogs";
-import type { UserAction } from "./types";
 
 /**
- * Whichever dialog the current action names, and nothing when there is none.
+ * Whichever ephemeral dialog the current action names, and nothing when there
+ * is none.
  *
  * One switch over one union, so the page holds a single `useState` and "two
  * dialogs open at once" is not a state this app can reach. Mounting only the
- * active one is also what makes each dialog's `useForm` and `useUser` start
- * fresh per opening.
+ * active one is also what makes each `useForm` start fresh per opening.
+ *
+ * Since `D4.2` this covers only what ADR-0040 keeps out of the URL; create and
+ * edit are routes, and the router is their invariant.
  */
 export const UserDialogs = ({
   action,
@@ -25,10 +26,6 @@ export const UserDialogs = ({
   if (action === null) return null;
 
   switch (action.kind) {
-    case "create":
-      return <CreateUserDialog open onClose={onClose} />;
-    case "edit":
-      return <EditUserDialog user={action.user} onClose={onClose} />;
     case "reset-password":
       return <ResetUserPasswordDialog user={action.user} onClose={onClose} />;
     case "revoke-sessions":
