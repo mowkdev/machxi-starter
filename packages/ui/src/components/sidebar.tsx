@@ -307,7 +307,14 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background",
+        // `min-w-0` is a local edit (ADR-0037 §Fix the flex floor at its root).
+        // A flex item defaults to `min-width: auto`, which floors this one at
+        // the min-content width of the widest `whitespace-nowrap` table it
+        // contains: the excess escapes as a page-level horizontal scrollbar,
+        // and the sidebar's 200ms width transition has nothing that can yield
+        // to it. With the floor gone `flex-1` resolves the way these classes
+        // always claimed it would, and the animation is absorbed with no JS.
+        "relative flex w-full min-w-0 flex-1 flex-col bg-background",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}

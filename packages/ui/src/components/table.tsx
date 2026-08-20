@@ -2,17 +2,34 @@ import * as React from "react"
 
 import { cn } from "@repo/ui/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  // `container` is a local edit (ADR-0037 §One scroll container). Upstream
+  // always wraps the table in its own `overflow-x-auto` div, so a consumer
+  // that owns a scroll container ends up with two of them: the inner one
+  // scrolls, the outer one contributes a border whose radius the inner one's
+  // scrollbar clips, and sticky offsets depend on which is currently winning.
+  // Opting out leaves exactly one owner. It defaults to `true`, so every other
+  // consumer behaves byte-identically to the generated component.
+  container = true,
+  ...props
+}: React.ComponentProps<"table"> & { container?: boolean }) {
+  const table = (
+    <table
+      data-slot="table"
+      className={cn("w-full caption-bottom text-sm", className)}
+      {...props}
+    />
+  )
+
+  if (!container) return table
+
   return (
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
-      <table
-        data-slot="table"
-        className={cn("w-full caption-bottom text-sm", className)}
-        {...props}
-      />
+      {table}
     </div>
   )
 }

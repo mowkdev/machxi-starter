@@ -144,3 +144,46 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * The design system's scrollbar (ADR-0037 §Custom scrollbar styling).
+ *
+ * Defined here rather than in the grid because it is a token concern: a pane
+ * that scrolls should answer from the same palette every other surface does,
+ * in light and in dark, and the next scrollable pane applies the same class
+ * instead of restating the rule.
+ *
+ * Two spellings, on purpose. `scrollbar-width` / `scrollbar-color` are the
+ * standard properties and are what Firefox honours; the `::-webkit-scrollbar*`
+ * pseudo-elements are non-standard and are what WebKit/Blink honour. Each
+ * engine reads the half it understands and ignores the other, so every engine
+ * gets a themed scrollbar — just not a pixel-identical one.
+ */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+
+  &::-webkit-scrollbar {
+    width: 0.625rem;
+    height: 0.625rem;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+    background-color: var(--border);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
