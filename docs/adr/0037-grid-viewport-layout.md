@@ -1,9 +1,9 @@
 # ADR-0037: Grid viewport layout — a height-budgeted shell and one scroll container
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-20
 
-> Written at the opening of D4 (data grid v2), alongside ADR-0038–0041. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.1` implements this layout ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), and the sibling ADRs' surfaces — the toolbar, the filter bar, the record panes — are budgeted for here before any of them exists. It stays amendable in place while D4 is `in progress`.
+> Written at the opening of D4 (data grid v2), alongside ADR-0038–0041. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.1` implements this layout ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), and the sibling ADRs' surfaces — the toolbar, the filter bar, the record panes — are budgeted for here before any of them exists. It stays amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.1` and not before — the per-step acceptance D4 runs on, where D3 accepted all seven of its ADRs on one day.
 
 ## Context
 
