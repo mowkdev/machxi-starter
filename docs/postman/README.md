@@ -4,10 +4,10 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 84 requests in 11 folders: `Health`,
+- `machxi-api.postman_collection.json` — 102 requests in 13 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
-  `Admin › Profile`, `User Auth`, `User › Profile`, `Public`,
-  `Errors & routing`, `Teardown`.
+  `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
+  `User › Settings`, `Public`, `Errors & routing`, `Teardown`.
 - `local.postman_environment.json` — `baseUrl` and the dev fixture addresses.
   `superAdminEmail` / `superAdminPassword` are **empty on purpose**: they come
   from `SEED_SUPER_ADMIN_*` in your `.env` and are not committed.
@@ -51,6 +51,14 @@ staff account it created, `Admin › Profile` then signs in with that new passwo
 and changes it again; `Admin › Users` resets the user it created, and
 `User › Profile` signs in with that. A reset that silently did nothing would fail
 at the next login rather than pass quietly.
+
+**The two `Settings` folders are the same nine requests twice**, and that is the
+point rather than duplication (ADR-0045): one module serves both segments, so a
+collection that exercised one of them would say nothing about the other. Unlike
+everything else here they act on an account the run does not create — a settings
+row belongs to a principal and only a hard delete removes one — so each folder
+opens by clearing the two grid ids it uses and closes by clearing them again.
+That is what makes a second run start where the first did.
 
 **It deletes what it creates.** One staff account, one user and one
 self-registered user per run, all removed by the teardown. That is a security

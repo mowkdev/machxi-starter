@@ -2308,6 +2308,453 @@
       ]
     },
     {
+      "name": "Admin › Settings",
+      "item": [
+        {
+          "name": "Start from a known state",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the two grid ids this folder uses are gone\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const envelope = pm.response.json();",
+                  "",
+                  "  pm.expect(envelope.success).to.eql(true);",
+                  "  pm.expect(envelope.meta.requestId).to.be.a(\"string\");",
+                  "  pm.expect(envelope.data.theme).to.eql(\"system\");",
+                  "  pm.expect(envelope.data.grids).to.not.have.property(\"postman-a\");",
+                  "  pm.expect(envelope.data.grids).to.not.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "A settings row survives the run, so the folder clears the two grid ids it uses before asserting anything about them. `null` per key is the delete rule (ADR-0045), doing real work rather than being asserted once in isolation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"system\",\n  \"locale\": \"en\",\n  \"grids\": {\n    \"postman-a\": null,\n    \"postman-b\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get my settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a settings resource and nothing else\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const envelope = pm.response.json();",
+                  "",
+                  "  pm.expect(envelope.success).to.eql(true);",
+                  "  pm.expect(envelope.meta.requestId).to.be.a(\"string\");",
+                  "  pm.expect(Object.keys(envelope.data).sort()).to.eql([",
+                  "    \"grids\",",
+                  "    \"locale\",",
+                  "    \"theme\",",
+                  "  ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "Never `404`: a principal who has never written a setting has the defaults, and the client is not asked to tell that from a row that holds them (ADR-0045). The resource carries no `id` and no timestamps — its subject is the caller."
+          }
+        },
+        {
+          "name": "Set a theme and one grid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the server echoes what it now holds\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.grids[\"postman-a\"].sizing.email).to.eql(240);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "The first write upserts the row. The response is the whole resource after the merge, which is what lets a client reconcile rather than assume its patch landed whole.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"dark\",\n  \"grids\": {\n    \"postman-a\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 240\n      },\n      \"order\": [\n        \"email\",\n        \"status\"\n      ],\n      \"hidden\": [\n        \"createdAt\"\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "A second grid merges rather than replaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with both grids, and the theme untouched\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.grids).to.have.property(\"postman-a\");",
+                  "  pm.expect(settings.grids[\"postman-b\"].sizing.email).to.eql(320);",
+                  "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "The property the whole design rests on: a body is a statement about the keys it names and silence about the rest, and silence cannot erase anything. This body mentions neither `theme` nor `postman-a`, and both survive.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grids\": {\n    \"postman-b\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 320\n      },\n      \"order\": [\n        \"status\",\n        \"email\"\n      ],\n      \"hidden\": []\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "null deletes one entry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and only the other grid remains\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const grids = pm.response.json().data.grids;",
+                  "",
+                  "  pm.expect(grids).to.not.have.property(\"postman-a\");",
+                  "  pm.expect(grids).to.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "`null` is how an entry goes, and it goes alone: the key beside it is untouched.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grids\": {\n    \"postman-a\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "An empty body is a no-op",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and nothing moved\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.grids).to.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "A coalescing writer that flushes with nothing left to say is a race the client should not have to detect, so an empty patch is accepted and answers the resource unchanged (ADR-0045, amended D6.1).",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "An unknown key is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const envelope = pm.response.json();",
+                  "",
+                  "  pm.expect(envelope.success).to.eql(false);",
+                  "  pm.expect(envelope.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "The body is strict, so a misspelled field is a `400` rather than a value silently dropped — which for a settings write is the difference between an error and a preference that never persists.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"them\": \"dark\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "A width below the floor is refused, naming the path",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 with a detail naming the grid\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const error = pm.response.json().error;",
+                  "",
+                  "  pm.expect(error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(",
+                  "    error.details.some(function (detail) {",
+                  "      return (detail.path || \"\").indexOf(\"grids\") !== -1;",
+                  "    }),",
+                  "  ).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "The bounds ADR-0041 set for the browser now hold on the wire: a stored `1` is a column an operator can see and cannot grab, so the server refuses it rather than storing something the client would have to discard on read.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grids\": {\n    \"postman-b\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 1\n      },\n      \"order\": [\n        \"status\",\n        \"email\"\n      ],\n      \"hidden\": []\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Leave nothing behind",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the row is back at its defaults\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.theme).to.eql(\"system\");",
+                  "  pm.expect(settings.grids).to.not.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "settings"]
+            },
+            "description": "The row stays — nothing deletes one but a hard-deleted principal, and the cascade does that — so the folder returns it to the values it would have had if the run had never happened.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"system\",\n  \"grids\": {\n    \"postman-b\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "`GET`/`PATCH /api/v1/admin/settings` (ADR-0045) — a staff member's own theme, locale and grid arrangements.\n\nMounted beside `/profile` and carrying **no** `authorize`, for the reason the router gives there: every handler reads its subject from `ctx.principal`, there is no `:id` to compare, and so the ownership question ADR-0019 §3 asks has no way to be answered wrongly.\n\nThe requests mirror `User › Settings` one for one. That is the point rather than duplication: one module serves both segments, and a collection that exercised one of them would say nothing about the other."
+    },
+    {
       "name": "User Auth",
       "description": "`/api/v1/user/auth/*` — the same endpoints, the same bodies and the same order as the admin segment. The population is carried by the URL, never by a field in the body, so a client cannot ask to be authenticated as the other one (ADR-0015, ADR-0018).",
       "item": [
@@ -2850,6 +3297,453 @@
           }
         }
       ]
+    },
+    {
+      "name": "User › Settings",
+      "item": [
+        {
+          "name": "Start from a known state",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the two grid ids this folder uses are gone\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const envelope = pm.response.json();",
+                  "",
+                  "  pm.expect(envelope.success).to.eql(true);",
+                  "  pm.expect(envelope.meta.requestId).to.be.a(\"string\");",
+                  "  pm.expect(envelope.data.theme).to.eql(\"system\");",
+                  "  pm.expect(envelope.data.grids).to.not.have.property(\"postman-a\");",
+                  "  pm.expect(envelope.data.grids).to.not.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "A settings row survives the run, so the folder clears the two grid ids it uses before asserting anything about them. `null` per key is the delete rule (ADR-0045), doing real work rather than being asserted once in isolation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"system\",\n  \"locale\": \"en\",\n  \"grids\": {\n    \"postman-a\": null,\n    \"postman-b\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get my settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a settings resource and nothing else\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const envelope = pm.response.json();",
+                  "",
+                  "  pm.expect(envelope.success).to.eql(true);",
+                  "  pm.expect(envelope.meta.requestId).to.be.a(\"string\");",
+                  "  pm.expect(Object.keys(envelope.data).sort()).to.eql([",
+                  "    \"grids\",",
+                  "    \"locale\",",
+                  "    \"theme\",",
+                  "  ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "Never `404`: a principal who has never written a setting has the defaults, and the client is not asked to tell that from a row that holds them (ADR-0045). The resource carries no `id` and no timestamps — its subject is the caller."
+          }
+        },
+        {
+          "name": "Set a theme and one grid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the server echoes what it now holds\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.grids[\"postman-a\"].sizing.email).to.eql(240);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "The first write upserts the row. The response is the whole resource after the merge, which is what lets a client reconcile rather than assume its patch landed whole.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"dark\",\n  \"grids\": {\n    \"postman-a\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 240\n      },\n      \"order\": [\n        \"email\",\n        \"status\"\n      ],\n      \"hidden\": [\n        \"createdAt\"\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "A second grid merges rather than replaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with both grids, and the theme untouched\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.grids).to.have.property(\"postman-a\");",
+                  "  pm.expect(settings.grids[\"postman-b\"].sizing.email).to.eql(320);",
+                  "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "The property the whole design rests on: a body is a statement about the keys it names and silence about the rest, and silence cannot erase anything. This body mentions neither `theme` nor `postman-a`, and both survive.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grids\": {\n    \"postman-b\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 320\n      },\n      \"order\": [\n        \"status\",\n        \"email\"\n      ],\n      \"hidden\": []\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "null deletes one entry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and only the other grid remains\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const grids = pm.response.json().data.grids;",
+                  "",
+                  "  pm.expect(grids).to.not.have.property(\"postman-a\");",
+                  "  pm.expect(grids).to.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "`null` is how an entry goes, and it goes alone: the key beside it is untouched.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grids\": {\n    \"postman-a\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "An empty body is a no-op",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and nothing moved\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.grids).to.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "A coalescing writer that flushes with nothing left to say is a race the client should not have to detect, so an empty patch is accepted and answers the resource unchanged (ADR-0045, amended D6.1).",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "An unknown key is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const envelope = pm.response.json();",
+                  "",
+                  "  pm.expect(envelope.success).to.eql(false);",
+                  "  pm.expect(envelope.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "The body is strict, so a misspelled field is a `400` rather than a value silently dropped — which for a settings write is the difference between an error and a preference that never persists.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"them\": \"dark\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "A width below the floor is refused, naming the path",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 with a detail naming the grid\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const error = pm.response.json().error;",
+                  "",
+                  "  pm.expect(error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(",
+                  "    error.details.some(function (detail) {",
+                  "      return (detail.path || \"\").indexOf(\"grids\") !== -1;",
+                  "    }),",
+                  "  ).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "The bounds ADR-0041 set for the browser now hold on the wire: a stored `1` is a column an operator can see and cannot grab, so the server refuses it rather than storing something the client would have to discard on read.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grids\": {\n    \"postman-b\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 1\n      },\n      \"order\": [\n        \"status\",\n        \"email\"\n      ],\n      \"hidden\": []\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Leave nothing behind",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the row is back at its defaults\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const settings = pm.response.json().data;",
+                  "",
+                  "  pm.expect(settings.theme).to.eql(\"system\");",
+                  "  pm.expect(settings.grids).to.not.have.property(\"postman-b\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "The row stays — nothing deletes one but a hard-deleted principal, and the cascade does that — so the folder returns it to the values it would have had if the run had never happened.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"system\",\n  \"grids\": {\n    \"postman-b\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "`GET`/`PATCH /api/v1/user/settings` (ADR-0045) — the same resource on the customer segment, from the `user_settings` table.\n\nThe pair of tables is what makes a staff member and a customer who share an email address two accounts with two arrangements; the service picks a half by `ctx.principal.kind` and by nothing a request carries."
     },
     {
       "name": "Public",
