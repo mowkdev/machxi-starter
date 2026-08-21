@@ -305,10 +305,18 @@ If the gate cannot be made green, or the step needs a decision only the operator
     let review = null;
     let rounds = 0;
     while (true) {
-      review = await workflow("review-step", {
-        range: "HEAD",
-        gate: reviewGate,
-      });
+      // scriptPath rather than the name "review-step": the top-level Workflow
+      // tool call and this nested one share one registry, and it has been
+      // observed stale for repo-authored scripts in at least one session
+      // (falling back to only the built-in "deep-research"). A path bypasses
+      // that registry entirely and always resolves the canonical file.
+      review = await workflow(
+        {
+          scriptPath:
+            "C:\\Users\\SergejsMoskanovs\\code\\lab\\machxi-starter\\.claude\\workflows\\review-step.mjs",
+        },
+        { range: "HEAD", gate: reviewGate },
+      );
       const blocking = review
         ? review.confirmed.filter((f) => f.severity !== "MINOR")
         : [];
