@@ -25,14 +25,18 @@ export {
   sessions,
   staff,
   staffRoles,
+  staffSettings,
   userRoles,
+  userSettings,
   users,
 } from "./schema/index.js";
 
 export {
+  localeEnum,
   principalTypeEnum,
   staffRoleEnum,
   staffStatusEnum,
+  themeEnum,
   userRoleEnum,
   userStatusEnum,
 } from "./schema/index.js";
@@ -41,11 +45,15 @@ export type {
   NewSession,
   NewStaff,
   NewStaffRoleGrant,
+  NewStaffSettings,
   NewUser,
   NewUserRoleGrant,
+  NewUserSettings,
   Session,
   Staff,
   StaffRoleGrant,
+  StaffSettings,
   User,
   UserRoleGrant,
+  UserSettings,
 } from "./types.js";

@@ -2,7 +2,14 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DbClient } from "../client.js";
-import { sessions, staff, staffRoles, users } from "../index.js";
+import {
+  sessions,
+  staff,
+  staffRoles,
+  staffSettings,
+  userSettings,
+  users,
+} from "../index.js";
 import { migrateFreshTestDatabase } from "./helpers.int.js";
 
 /**
@@ -65,11 +72,16 @@ describe("migration 0001", () => {
           order by table_name`,
     );
 
+    // The whole public schema, not only `0001`'s share of it: an exact list is
+    // what makes a table arriving without a decision behind it visible here.
+    // `staff_settings` and `user_settings` came with `0003` (ADR-0045).
     expect(rows.map((row) => row.table_name)).toEqual([
       "sessions",
       "staff",
       "staff_roles",
+      "staff_settings",
       "user_roles",
+      "user_settings",
       "users",
     ]);
   });
@@ -129,9 +141,13 @@ describe("migration 0001", () => {
     expect(
       Object.fromEntries(rows.map((row) => [row.typname, row.labels])),
     ).toEqual({
+      // `locale` and `theme` came with `0003` (ADR-0045); `locale` is the one
+      // enum here expected to grow, and D7's `"lv"` must *append*.
+      locale: ["en"],
       principal_type: ["staff", "user"],
       staff_role: ["super_admin", "admin", "manager", "editor"],
       staff_status: ["active", "invited", "disabled"],
+      theme: ["light", "dark", "system"],
       user_role: ["customer"],
       user_status: ["active", "pending_verification", "disabled"],
     });
@@ -395,6 +411,148 @@ describe("role grants", () => {
       .where(eq(staffRoles.staffId, granteeId));
 
     expect(remaining).toHaveLength(0);
+  });
+});
+
+describe("migration 0003 — settings", () => {
+  const addStaff = async (email: string) => {
+    const [row] = await client.db
+      .insert(staff)
+      .values({
+        email,
+        passwordHash: "not-a-real-hash",
+        firstName: "Sett",
+        lastName: "Ings",
+      })
+      .returning({ id: staff.id });
+
+    return row?.id ?? "";
+  };
+
+  const addUser = async (email: string) => {
+    const [row] = await client.db
+      .insert(users)
+      .values({ email })
+      .returning({ id: users.id });
+
+    return row?.id ?? "";
+  };
+
+  it("defaults a row to system, en and no grids at all (ADR-0045)", async () => {
+    // The defaults are the floor, and they are the database's rather than the
+    // service's: a row inserted with nothing but its principal is the same
+    // answer `GET /settings` gives a principal who has no row.
+    const staffId = await addStaff("defaults@machxi.test");
+
+    const [row] = await client.db
+      .insert(staffSettings)
+      .values({ staffId })
+      .returning();
+
+    expect(row?.theme).toBe("system");
+    expect(row?.locale).toBe("en");
+    expect(row?.grids).toEqual({});
+  });
+
+  it("holds an arrangement in the jsonb column and returns it unchanged", async () => {
+    // The one column whose shape the database does not check. What it must do
+    // is give back exactly what was stored, because the client validates on
+    // the way out and a value the database reshaped would fail that check.
+    const staffId = await addStaff("grids@machxi.test");
+    const grids = {
+      staff: {
+        v: 1 as const,
+        sizing: { email: 240 },
+        order: ["email"],
+        hidden: [],
+      },
+    };
+
+    const [row] = await client.db
+      .insert(staffSettings)
+      .values({ staffId, grids })
+      .returning();
+
+    expect(row?.grids).toEqual(grids);
+  });
+
+  it("allows one settings row per principal, in each population", async () => {
+    const staffId = await addStaff("one-row@machxi.test");
+    const userId = await addUser("one-row@machxi.test");
+
+    await client.db.insert(staffSettings).values({ staffId });
+    await client.db.insert(userSettings).values({ userId });
+
+    // The `unique` is what makes "this principal's settings" a single row and
+    // the service's upsert a single statement.
+    await expectUniqueViolation(
+      client.db.insert(staffSettings).values({ staffId }),
+    );
+    await expectUniqueViolation(
+      client.db.insert(userSettings).values({ userId }),
+    );
+  });
+
+  it("keeps the two populations' rows in separate tables, sharing an address", async () => {
+    // A staff member and a customer with the same email are different
+    // accounts (ADR-0017), and the row above proves the settings follow the
+    // account rather than the address: two rows, two tables, one string.
+    const rows = await client.db
+      .select()
+      .from(staffSettings)
+      .innerJoin(staff, eq(staffSettings.staffId, staff.id))
+      .where(eq(staff.email, "one-row@machxi.test"));
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it("takes the settings row with a hard-deleted staff account", async () => {
+    // The whole of ADR-0045's deletion story, and the reason the pair has a
+    // real foreign key where `sessions` could not: the database sweeps, so
+    // ADR-0028's hard delete needs no settings code and no hard-delete path
+    // added later can forget it.
+    const staffId = await addStaff("cascade@machxi.test");
+
+    await client.db.insert(staffSettings).values({ staffId });
+    await client.db.delete(staff).where(eq(staff.id, staffId));
+
+    const remaining = await client.db
+      .select()
+      .from(staffSettings)
+      .where(eq(staffSettings.staffId, staffId));
+
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("keeps a soft-deleted user's row, because their account stays", async () => {
+    // Users have no hard delete (ADR-0028): the account is retained by
+    // design, so the arrangement should still be there if a restore path ever
+    // exists. The cascade above is not a contradiction — nothing deletes the
+    // `users` row for it to fire on.
+    const userId = await addUser("soft-deleted@machxi.test");
+
+    await client.db.insert(userSettings).values({ userId });
+    await client.db
+      .update(users)
+      .set({ deletedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    const remaining = await client.db
+      .select()
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId));
+
+    expect(remaining).toHaveLength(1);
+  });
+
+  it("refuses a settings row for a principal that does not exist", async () => {
+    // The constraint `sessions.principal_id` cannot carry. An orphan here is
+    // not merely unusable, it is unwritable.
+    await expect(
+      client.db
+        .insert(staffSettings)
+        .values({ staffId: "00000000-0000-7000-8000-00000000dead" }),
+    ).rejects.toThrow();
   });
 });
 

@@ -4,7 +4,9 @@ import type {
   sessions,
   staff,
   staffRoles,
+  staffSettings,
   userRoles,
+  userSettings,
   users,
 } from "./schema/index.js";
 
@@ -34,3 +36,14 @@ export type NewUserRoleGrant = InferInsertModel<typeof userRoles>;
 
 export type Session = InferSelectModel<typeof sessions>;
 export type NewSession = InferInsertModel<typeof sessions>;
+
+/**
+ * The settings pair (ADR-0045). Two row types for what is one shape today,
+ * because the tables are the split point: the day a customer setting arrives
+ * that staff have no use for, one of these grows and the other does not.
+ */
+export type StaffSettings = InferSelectModel<typeof staffSettings>;
+export type NewStaffSettings = InferInsertModel<typeof staffSettings>;
+
+export type UserSettings = InferSelectModel<typeof userSettings>;
+export type NewUserSettings = InferInsertModel<typeof userSettings>;
