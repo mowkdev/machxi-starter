@@ -156,9 +156,7 @@
         "sessions_refresh_token_hash_unique": {
           "name": "sessions_refresh_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "refresh_token_hash"
-          ]
+          "columns": ["refresh_token_hash"]
         }
       },
       "policies": {},
@@ -251,9 +249,7 @@
         "staff_email_unique": {
           "name": "staff_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -313,12 +309,8 @@
           "name": "staff_roles_staff_id_staff_id_fk",
           "tableFrom": "staff_roles",
           "tableTo": "staff",
-          "columnsFrom": [
-            "staff_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["staff_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -326,12 +318,8 @@
           "name": "staff_roles_granted_by_staff_id_fk",
           "tableFrom": "staff_roles",
           "tableTo": "staff",
-          "columnsFrom": [
-            "granted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["granted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -339,10 +327,7 @@
       "compositePrimaryKeys": {
         "staff_roles_staff_id_role_pk": {
           "name": "staff_roles_staff_id_role_pk",
-          "columns": [
-            "staff_id",
-            "role"
-          ]
+          "columns": ["staff_id", "role"]
         }
       },
       "uniqueConstraints": {},
@@ -410,12 +395,8 @@
           "name": "staff_settings_staff_id_staff_id_fk",
           "tableFrom": "staff_settings",
           "tableTo": "staff",
-          "columnsFrom": [
-            "staff_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["staff_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -425,9 +406,7 @@
         "staff_settings_staff_id_unique": {
           "name": "staff_settings_staff_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "staff_id"
-          ]
+          "columns": ["staff_id"]
         }
       },
       "policies": {},
@@ -481,12 +460,8 @@
           "name": "user_roles_user_id_users_id_fk",
           "tableFrom": "user_roles",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -494,10 +469,7 @@
       "compositePrimaryKeys": {
         "user_roles_user_id_role_pk": {
           "name": "user_roles_user_id_role_pk",
-          "columns": [
-            "user_id",
-            "role"
-          ]
+          "columns": ["user_id", "role"]
         }
       },
       "uniqueConstraints": {},
@@ -565,12 +537,8 @@
           "name": "user_settings_user_id_users_id_fk",
           "tableFrom": "user_settings",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -580,9 +548,7 @@
         "user_settings_user_id_unique": {
           "name": "user_settings_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         }
       },
       "policies": {},
@@ -703,61 +669,37 @@
     "public.locale": {
       "name": "locale",
       "schema": "public",
-      "values": [
-        "en"
-      ]
+      "values": ["en"]
     },
     "public.principal_type": {
       "name": "principal_type",
       "schema": "public",
-      "values": [
-        "staff",
-        "user"
-      ]
+      "values": ["staff", "user"]
     },
     "public.staff_role": {
       "name": "staff_role",
       "schema": "public",
-      "values": [
-        "super_admin",
-        "admin",
-        "manager",
-        "editor"
-      ]
+      "values": ["super_admin", "admin", "manager", "editor"]
     },
     "public.staff_status": {
       "name": "staff_status",
       "schema": "public",
-      "values": [
-        "active",
-        "invited",
-        "disabled"
-      ]
+      "values": ["active", "invited", "disabled"]
     },
     "public.theme": {
       "name": "theme",
       "schema": "public",
-      "values": [
-        "light",
-        "dark",
-        "system"
-      ]
+      "values": ["light", "dark", "system"]
     },
     "public.user_role": {
       "name": "user_role",
       "schema": "public",
-      "values": [
-        "customer"
-      ]
+      "values": ["customer"]
     },
     "public.user_status": {
       "name": "user_status",
       "schema": "public",
-      "values": [
-        "active",
-        "pending_verification",
-        "disabled"
-      ]
+      "values": ["active", "pending_verification", "disabled"]
     }
   },
   "schemas": {},
