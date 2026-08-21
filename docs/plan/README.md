@@ -4,24 +4,24 @@ The ledger of staged work in this repository. A **deliverable** is the unit defi
 
 Read this file first; open a plan only when you are working in it.
 
-| #                                  | Title                                | Status                 | Scope in one line                                                                                                                                   |
-| ---------------------------------- | ------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [D1](0001-api-foundation.md)       | API foundation                       | **shipped 2026-08-18** | A running, testable API: config, logging, DB, migrations, seeds, both auth flows, staff/users admin, profile.                                       |
-| [D2](0002-api-hardening.md)        | API hardening and D3 prerequisites   | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                                    |
-| [D3](0003-admin-app.md)            | Admin panel (`apps/admin`)           | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                        |
-| [D4](0004-data-grid-v2.md)         | Data grid v2 (`apps/admin`)          | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.            |
-| [D5](0005-grid-url-readability.md) | Grid URL readability                 | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                        |
-| [D6](0006-user-settings.md)        | User settings                        | planned                | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments. Opens when D5 ships. |
-| [D7](0007-localization.md)         | Interface localization               | planned                | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.         |
-| [D8](0008-customer-app.md)         | Customer app and platform extraction | planned                | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1.  |
-| [D9](0009-impersonation.md)        | Customer impersonation               | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.    |
-| D10                                | Marketing site (`apps/web`)          | planned                | The Next.js app, re-scoped from "user-facing" to marketing only — the operator's call, recorded in §How D6–D10 were scoped. Built last.             |
+| #                                  | Title                                | Status                 | Scope in one line                                                                                                                                  |
+| ---------------------------------- | ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [D1](0001-api-foundation.md)       | API foundation                       | **shipped 2026-08-18** | A running, testable API: config, logging, DB, migrations, seeds, both auth flows, staff/users admin, profile.                                      |
+| [D2](0002-api-hardening.md)        | API hardening and D3 prerequisites   | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                                   |
+| [D3](0003-admin-app.md)            | Admin panel (`apps/admin`)           | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                       |
+| [D4](0004-data-grid-v2.md)         | Data grid v2 (`apps/admin`)          | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.           |
+| [D5](0005-grid-url-readability.md) | Grid URL readability                 | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                       |
+| [D6](0006-user-settings.md)        | User settings                        | **in progress**        | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments. Opened 2026-08-22.  |
+| [D7](0007-localization.md)         | Interface localization               | planned                | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.        |
+| [D8](0008-customer-app.md)         | Customer app and platform extraction | planned                | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1. |
+| [D9](0009-impersonation.md)        | Customer impersonation               | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.   |
+| D10                                | Marketing site (`apps/web`)          | planned                | The Next.js app, re-scoped from "user-facing" to marketing only — the operator's call, recorded in §How D6–D10 were scoped. Built last.            |
 
 ## Rules
 
 - **One deliverable is in progress at a time** (ADR-0025 rule 5).
 - **Steps are written `D<n>.<step>`** — `D1.7`, `D2.3`. Inside a plan file they are numbered plainly; the prefix is how they are cited from the ADR index and from commits.
-- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D5 have shipped, so **ADRs 0001–0044 are closed**: change any of them with a superseding ADR that carries the whole decision. **No amendment window is open** — the next one opens with D6 and covers only the ADRs written for it.
+- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D5 have shipped, so **ADRs 0001–0044 are closed**: change any of them with a superseding ADR that carries the whole decision. **The open window is D6's, and it covers ADR-0045 only.**
 - **A deliverable closes on an executable acceptance checklist** (ADR-0025 rule 4), the ledger row moves to `shipped YYYY-MM-DD`, and the amendment window shuts. All three or it is not closed.
 
 ## Executing a step
@@ -97,6 +97,17 @@ Its scope is what D4 built and never read out loud. D4 put three things in the U
 **Ordered ahead of settings deliberately.** Both halves are contracts that later work builds on rather than features beside it: D8 extracts `shared/grid` and `shared/api` into packages and gives them a second consumer, and a serialization changed _after_ that is changed in two apps and a package instead of in one app. That is the argument this ledger already makes for putting localization before the customer app — pay the sweep once — applied one deliverable earlier. It is also the smallest deliverable in the table, and it leaves ADR-0041's adapter seam untouched, so D6's own opening argument survives the insertion intact.
 
 Its two ADRs — [0043](../adr/0043-readable-list-search-params.md) and [0044](../adr/0044-record-routes-without-list-state.md) — were written 2026-08-21 and are `proposed`. **Both supersede rather than amend**, which makes this the first deliverable here whose content is entirely supersession: their parents shipped with D3 and D4 and are frozen, so ADR-0024 rule 1 applies and each successor carries the whole of its parent rather than the delta. Per-step acceptance continues from D4 — `D5.1` and `D5.2` are gated on ADR-0043, `D5.3` on ADR-0044.
+
+## How D6 opened
+
+**D6 opened 2026-08-22**, the day D5 shipped, and it is the first deliverable since D2 to touch every tier at once — tables and a migration, a contracts folder, a new API module on both segments, and the admin app adopting it — which is also why it is small: one resource, two mounts, one adapter.
+
+Its one ADR — [0045](../adr/0045-user-settings.md) — was written the day it opened and is `proposed`; it is accepted at the head of `D6.1` and governs `D6.1`–`D6.3`, per-step acceptance continuing from D4 and D5. It is **additive rather than superseding**, the first such ADR since D4: [ADR-0041](../adr/0041-grid-preferences.md) reserved the seam, the value schema and the claim — "when it lands, the store and AppGrid do not change" — and this deliverable's definition of done item 2 is that claim as a `git diff`.
+
+Two operator decisions at opening, both recorded here because they changed the scoping document's sketch:
+
+- **One settings table per population, not one discriminated table.** The sketch leaned on the `sessions` precedent; the operator's point is that staff settings and customer settings will diverge, and a discriminated table diverges by sprouting nullable columns — what ADR-0017 rejected for accounts. The pair also gets what `sessions` could not: a real foreign key, so hard deletes cascade with no settings code at all.
+- **Both populations from the first migration**, confirmed rather than assumed; and `lv` as the second locale, which is D7's to ship but shapes D6's enum so that adding it is an appended value and nothing else.
 
 ## How D6–D10 were scoped
 
