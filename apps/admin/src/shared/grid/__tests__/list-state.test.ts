@@ -15,7 +15,6 @@ import {
   toListFilters,
 } from "../column-filters";
 import {
-  RETAINED_SEARCH_PARAMS,
   clearedFilters,
   containsPattern,
   filterKey,
@@ -270,28 +269,6 @@ describe("what the grid writes is what the API accepts", () => {
         filter: { status: "active" },
       }).success,
     ).toBe(true);
-  });
-});
-
-describe("what the routes retain (ADR-0040, amended D4.7)", () => {
-  it("names every list param except `q`", () => {
-    /*
-     * Completeness, which `satisfies readonly (keyof ListQuerySearch)[]` cannot
-     * check: that annotation says every name is a real param, not that every
-     * real param is named. A sixth param added to the schema would silently
-     * stop being retained across a record surface, and nothing would notice.
-     *
-     * `q` is the deliberate omission, and the reason is the whole amendment:
-     * it is the one param removed by *dropping its key*, so a middleware that
-     * carried it forward made a cleared search unclearable.
-     */
-    const params = Object.keys(listQuerySearchSchema.shape);
-
-    expect([...RETAINED_SEARCH_PARAMS].sort()).toEqual(
-      params.filter((name) => name !== "q").sort(),
-    );
-    expect(params).toContain("q");
-    expect([...RETAINED_SEARCH_PARAMS]).not.toContain("q");
   });
 });
 

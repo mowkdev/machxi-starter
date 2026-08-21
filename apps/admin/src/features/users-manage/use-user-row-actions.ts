@@ -1,5 +1,7 @@
 import type { UserResource } from "@repo/contracts";
 import { useNavigate } from "@tanstack/react-router";
+
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useMemo } from "react";
 
 import type { RowAction } from "@/shared/grid/types";
@@ -51,6 +53,7 @@ export const useUserRowActions = (
   capabilities: GridCapabilities | undefined,
 ): readonly RowAction<UserResource>[] => {
   const navigate = useNavigate();
+  const { openState } = useRecordNavigation();
 
   return useMemo(() => {
     const actions: RowAction<UserResource>[] = [];
@@ -63,9 +66,9 @@ export const useUserRowActions = (
           void navigate({
             to: "/users/$userId",
             params: { userId: user.id },
-            // The list's own state stays on the URL while the record is open,
-            // so closing returns to the page and filters being read.
-            search: true,
+            // The record's URL carries the record and nothing else; the list's
+            // page and filters travel as history state (ADR-0044, `D5.3`).
+            state: openState,
           });
         },
       });
@@ -98,5 +101,5 @@ export const useUserRowActions = (
       });
 
     return actions;
-  }, [capabilities, navigate, onAction]);
+  }, [capabilities, navigate, onAction, openState]);
 };

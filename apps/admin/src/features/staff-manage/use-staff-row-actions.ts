@@ -1,5 +1,7 @@
 import type { StaffResource } from "@repo/contracts";
 import { useNavigate } from "@tanstack/react-router";
+
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useMemo } from "react";
 
 import type { RowAction } from "@/shared/grid/types";
@@ -63,6 +65,7 @@ export const useStaffRowActions = (
   capabilities: GridCapabilities | undefined,
 ): readonly RowAction<StaffResource>[] => {
   const navigate = useNavigate();
+  const { openState } = useRecordNavigation();
 
   return useMemo(() => {
     const actions: RowAction<StaffResource>[] = [];
@@ -73,14 +76,15 @@ export const useStaffRowActions = (
         label: "Edit",
         onSelect: (staff) => {
           /*
-           * `search: true` keeps the list's own state on the URL while the
-           * record is open, which is what lets closing return the operator to
-           * the page and filters they were reading (ADR-0040).
+           * The record's URL is the record's alone (ADR-0044, `D5.3`): the
+           * list's page and filters ride along as **history state**, so
+           * closing still returns the operator to the view they were reading
+           * and "look at this account" is a link to an account.
            */
           void navigate({
             to: "/staff/$staffId",
             params: { staffId: staff.id },
-            search: true,
+            state: openState,
           });
         },
       });
@@ -113,5 +117,5 @@ export const useStaffRowActions = (
       });
 
     return actions;
-  }, [capabilities, navigate, onAction]);
+  }, [capabilities, navigate, onAction, openState]);
 };

@@ -13,6 +13,10 @@ import { toListQuery } from "@/shared/api/list-params";
 import { useAllowedCapabilities } from "@/shared/auth";
 import { AppGrid } from "@/shared/grid/app-grid";
 import {
+  useCarriedListState,
+  useRecordNavigation,
+} from "@/shared/grid/record-navigation";
+import {
   Button,
   Card,
   CardContent,
@@ -42,7 +46,17 @@ import {
  */
 export const UsersPage = () => {
   const navigate = useNavigate();
-  const listState = useSearch({ from: "/_dashboard/users" });
+  /*
+   * The route's search, **or the snapshot a record surface is carrying**
+   * (ADR-0044, `D5.3`). While a dialog or drawer is open the URL is the
+   * record's and holds no list params, so reading `useSearch` alone would
+   * render this grid at page one, unfiltered, behind the overlay — and
+   * closing would land the operator there.
+   */
+  const listState = useCarriedListState(
+    useSearch({ from: "/_dashboard/users" }),
+  );
+  const { openState } = useRecordNavigation();
   const [action, setAction] = useState<UserAction | null>(null);
   const capabilities = useAllowedCapabilities(userResourceConfig.grid, "users");
 
@@ -120,7 +134,7 @@ export const UsersPage = () => {
           capabilities={capabilities}
           createAction={
             <Button asChild size="sm">
-              <Link to="/users/new" search={true}>
+              <Link to="/users/new" state={openState}>
                 <PlusIcon aria-hidden />
                 New user
               </Link>

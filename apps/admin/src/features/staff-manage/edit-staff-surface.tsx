@@ -5,6 +5,8 @@ import {
   type UpdateStaffBody,
 } from "@repo/contracts";
 import { useNavigate } from "@tanstack/react-router";
+
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useForm } from "react-hook-form";
 
 import {
@@ -67,11 +69,18 @@ export const EditStaffSurface = ({
   readonly staff: StaffResource;
 }) => {
   const navigate = useNavigate();
+  const { closeSearch } = useRecordNavigation();
   const updateStaff = useUpdateStaff();
 
-  /** Back to the list, page and filters intact (ADR-0040). */
+  /*
+   * The way back is history state, not the URL (ADR-0044, `D5.3`): this record
+   * carries no list params, so the view the operator left comes from the
+   * navigation that opened it. A record reached by a link from somebody else
+   * carries none, and closes to the bare list — which is honest, because the
+   * recipient never had the sender's view.
+   */
   const close = () => {
-    void navigate({ to: "/staff", search: true });
+    void navigate({ to: "/staff", search: closeSearch });
   };
   /*
    * The same key the loader primed, so this resolves from cache on the first

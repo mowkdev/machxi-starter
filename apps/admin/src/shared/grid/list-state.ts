@@ -3,8 +3,14 @@ import type { Filter, ListQuerySearch, SortSpec } from "@repo/contracts";
 import type { SortingState } from "@tanstack/react-table";
 
 /**
- * The translation layer between the URL's list state (ADR-0034) and the
+ * The translation layer between the URL's list state (ADR-0043) and the
  * engine's own state shape (ADR-0035).
+ *
+ * These functions are about the *shape* of that state, never its spelling: how
+ * a list query is written into characters is one codec in `@repo/contracts`,
+ * reached through `shared/api/search-params` for the address bar and
+ * `shared/api/list-params` for a request. Nothing here changed when the URL
+ * did, which is the property `D5.2` set out to demonstrate.
  *
  * Pure functions over plain data, deliberately: this is the seam where a bug
  * would be invisible in a component test and obvious in a unit one, so it is
@@ -17,7 +23,7 @@ import type { SortingState } from "@tanstack/react-table";
 
 /**
  * The schema's own defaults, for the routes' `stripSearchParams` middleware
- * (ADR-0034, amended D3.8).
+ * (ADR-0043 §List state, carrying D3.8's amendment to ADR-0034).
  *
  * Derived by parsing an empty object rather than restated, so the URL's idea
  * of "default" cannot drift from the schema's. A param equal to its default is
@@ -136,35 +142,6 @@ export const clearedFilters = (state: ListQuerySearch): ListQuerySearch => {
 
   return atFirstPage({ ...rest, filters: [] });
 };
-
-/**
- * The list-state params `retainSearchParams` may carry forward, and **`q` is
- * deliberately not among them** (`D4.7`).
- *
- * Every other param says "no opinion" by carrying its default — `filters: []`,
- * `offset: 0` — which `stripSearchParams` then removes from the built link.
- * `q` says it by **omitting the key**, because ADR-0014's schema has no empty
- * term to carry: `q=` is a `VALIDATION_ERROR`, not a search for nothing.
- *
- * `retainSearchParams(true)` builds its result as `{ ...search, ...next }` —
- * it spreads the *incoming* search wholesale and then removes only what was
- * explicitly removed. So a param dropped by omission is put straight back, and
- * `q` became unclearable: emptying the search box left the box empty and the
- * term applied, and Clear all cleared the filters but not the search. Passing
- * an explicit list takes the other branch, which only ever *adds* the keys it
- * is given — so `q` is simply never carried, and {@link withSearch} and
- * {@link clearedFilters} keep working exactly as they always did.
- *
- * Introduced by `D4.2`'s middleware, found by D4's own acceptance checklist at
- * `D4.7`, and invisible to every suite in between because the pure functions
- * were right and the tests asserted *setting* a term rather than clearing one.
- */
-export const RETAINED_SEARCH_PARAMS = [
-  "offset",
-  "limit",
-  "sort",
-  "filters",
-] as const satisfies readonly (keyof ListQuerySearch)[];
 
 /** The free-text term. An empty term is removed, never sent as `q=`. */
 export const withSearch = (

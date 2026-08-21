@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { createUserApi, userKeys, userResourceConfig } from "@/entities/user";
 import { EditUserSurface } from "@/features/users-manage";
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { editSurfaceOf } from "@/shared/resource/config";
 import { Button, RecordError } from "@/shared/ui";
 
@@ -36,10 +37,13 @@ function UserRecordRoute() {
 }
 
 function UserRecordError({ error }: { readonly error: Error }) {
+  // The way back survives a failed load too (ADR-0044, `D5.3`).
+  const { closeSearch } = useRecordNavigation();
+
   return (
     <RecordError error={error}>
       <Button asChild variant="outline">
-        <Link to="/users" search={true}>
+        <Link to="/users" search={closeSearch}>
           Back to users
         </Link>
       </Button>

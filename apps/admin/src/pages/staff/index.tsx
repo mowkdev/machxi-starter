@@ -13,6 +13,10 @@ import { toListQuery } from "@/shared/api/list-params";
 import { useAllowedCapabilities } from "@/shared/auth";
 import { AppGrid } from "@/shared/grid/app-grid";
 import {
+  useCarriedListState,
+  useRecordNavigation,
+} from "@/shared/grid/record-navigation";
+import {
   Button,
   Card,
   CardContent,
@@ -46,7 +50,17 @@ import {
  */
 export const StaffPage = () => {
   const navigate = useNavigate();
-  const listState = useSearch({ from: "/_dashboard/staff" });
+  /*
+   * The route's search, **or the snapshot a record surface is carrying**
+   * (ADR-0044, `D5.3`). While a dialog or drawer is open the URL is the
+   * record's and holds no list params, so reading `useSearch` alone would
+   * render this grid at page one, unfiltered, behind the overlay — and
+   * closing would land the operator there.
+   */
+  const listState = useCarriedListState(
+    useSearch({ from: "/_dashboard/staff" }),
+  );
+  const { openState } = useRecordNavigation();
   const [action, setAction] = useState<StaffAction | null>(null);
   const capabilities = useAllowedCapabilities(
     staffResourceConfig.grid,
@@ -139,8 +153,10 @@ export const StaffPage = () => {
             /*
              * A link, not a handler (`D4.2`, ADR-0040): composing a record is
              * addressable state, so the entry point is a navigation and the
-             * surface it opens survives a reload. `search: true` keeps the view
-             * the operator was reading on the URL while they are away from it.
+             * surface it opens survives a reload. Since `D5.3` the view the
+             * operator was reading travels as history state rather than on the
+             * URL, so the create surface's address is `/staff/new` and nothing
+             * more (ADR-0044).
              *
              * It is passed as a node rather than as `onCreate` because a
              * `() => void` cannot produce an `<a>` — the amendment ADR-0038
@@ -148,7 +164,7 @@ export const StaffPage = () => {
              * renders at all.
              */
             <Button asChild size="sm">
-              <Link to="/staff/new" search={true}>
+              <Link to="/staff/new" state={openState}>
                 <PlusIcon aria-hidden />
                 New staff member
               </Link>

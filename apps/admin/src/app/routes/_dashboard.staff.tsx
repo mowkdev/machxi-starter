@@ -2,17 +2,13 @@ import { listQuerySearchSchema } from "@repo/contracts";
 import {
   Outlet,
   createFileRoute,
-  retainSearchParams,
   stripSearchParams,
   useMatchRoute,
 } from "@tanstack/react-router";
 
 import { staffResourceConfig } from "@/entities/staff";
 import { StaffPage } from "@/pages/staff";
-import {
-  RETAINED_SEARCH_PARAMS,
-  listSearchDefaults,
-} from "@/shared/grid/list-state";
+import { listSearchDefaults } from "@/shared/grid/list-state";
 import { editSurfaceOf } from "@/shared/resource/config";
 
 /**
@@ -46,22 +42,20 @@ import { editSurfaceOf } from "@/shared/resource/config";
  * **`D4.2`: this route grew children** (ADR-0040). It renders the grid *and* an
  * `<Outlet />`; `/staff/new` and `/staff/$staffId` render a record surface into
  * it. `validateSearch` stays here rather than moving down, so the list state is
- * validated once and is visible to the index and the children alike — which is
- * what makes `search: true` on a close navigation mean something.
+ * validated once and is visible to the index and the children alike.
  *
- * `retainSearchParams` is the purpose-built middleware for the round trip
- * the ADR requires: open row three of page two, close it, and be on page two.
- * Hand-propagating `search` on every `Link` and `navigate` would do the same
- * thing until the first call site forgot to. Order matters and it is
- * retain-then-strip: retaining puts the current search on the navigation, and
- * stripping then removes whatever equals the defaults, so a link out of the
- * default view is still the bare path.
+ * **`D5.3`: the list state is no longer retained onto the children**
+ * (ADR-0044). `retainSearchParams` is gone, so `/staff/new` and
+ * `/staff/$staffId` carry the record and nothing else — "look at this account"
+ * is a link to an account rather than to somebody's page 2. What replaces it is
+ * `shared/grid/record-navigation`: the opening navigation carries the list
+ * state as **history state**, and the closing one puts it back on the URL.
  *
- * **It takes an explicit key list, not `true` (`D4.7`).** `true` carries every
- * param forward, including one a navigation dropped by omitting it — which is
- * how `q` is removed — so a cleared search came straight back. `RETAINED_SEARCH_PARAMS`
- * names the four that legitimately survive omission; see its own note.
- *
+ * The consequence to know before touching this file: the grid rendered below
+ * reads *this route's* search, and while a record is open that search is the
+ * record URL's — which now has no list params. `StaffPage` therefore reads the
+ * carried snapshot, not `useSearch` alone, or the drawer would float over page
+ * one of an unfiltered grid.
  */
 export const Route = createFileRoute("/_dashboard/staff")({
   component: StaffRoute,
@@ -69,12 +63,7 @@ export const Route = createFileRoute("/_dashboard/staff")({
   staticData: { title: "Staff", fullHeight: true },
   validateSearch: listQuerySearchSchema,
   search: {
-    middlewares: [
-      // Spread: the middleware wants a mutable array, and the constant is
-      // `as const` so a fifth entry cannot be added without a decision.
-      retainSearchParams([...RETAINED_SEARCH_PARAMS]),
-      stripSearchParams(listSearchDefaults),
-    ],
+    middlewares: [stripSearchParams(listSearchDefaults)],
   },
 });
 
@@ -102,8 +91,9 @@ function StaffRoute() {
    *   as the path by default, so asking about `/staff/new` while the URL is
    *   `/staff/new?limit=50` answers *no* — and the grid stayed mounted under a
    *   `page` surface that had already replaced it. The question here is about
-   *   the path; the list's search is retained on purpose and must not be part
-   *   of the answer.
+   *   the path, and it stays that way after `D5.3`: a record URL carries no
+   *   list params now, but this route's *own* URL still does, so comparing
+   *   search would still answer the wrong question.
    * - **`||`, not `??`.** A miss is `false`, not `undefined`, so `??` would
    *   return the first miss and never ask about the second path — leaving
    *   `/staff/$staffId` permanently unrecognised.

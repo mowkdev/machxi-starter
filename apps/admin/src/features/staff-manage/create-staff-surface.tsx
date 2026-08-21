@@ -1,6 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createStaffBody, type CreateStaffBody } from "@repo/contracts";
 import { useNavigate } from "@tanstack/react-router";
+
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useForm } from "react-hook-form";
 
 import {
@@ -42,16 +44,18 @@ const FIELD_NAMES = fieldsForVariant(staffResourceConfig.fields, "create").map(
 
 export const CreateStaffSurface = () => {
   const navigate = useNavigate();
+  const { closeSearch } = useRecordNavigation();
   const createStaff = useCreateStaff();
 
   /*
-   * `search: true` is what makes ADR-0040's round trip hold: the list's
-   * validated search params are carried back verbatim, so an operator who
-   * opened this from page two of a filtered view returns to page two of that
-   * filtered view.
+   * The way back is history state, not the URL (ADR-0044, `D5.3`): this record
+   * carries no list params, so the view the operator left comes from the
+   * navigation that opened it. A record reached by a link from somebody else
+   * carries none, and closes to the bare list — which is honest, because the
+   * recipient never had the sender's view.
    */
   const close = () => {
-    void navigate({ to: "/staff", search: true });
+    void navigate({ to: "/staff", search: closeSearch });
   };
 
   const form = useForm<CreateStaffBody>({

@@ -6,6 +6,7 @@ import {
   staffResourceConfig,
 } from "@/entities/staff";
 import { EditStaffSurface } from "@/features/staff-manage";
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { editSurfaceOf } from "@/shared/resource/config";
 import { Button, RecordError } from "@/shared/ui";
 
@@ -58,11 +59,17 @@ function StaffRecordRoute() {
 }
 
 function StaffRecordError({ error }: { readonly error: Error }) {
+  /*
+   * Even a record that failed to load has a way back to the view it was opened
+   * from, because the carrier is the navigation rather than the record
+   * (ADR-0044). A cold link that 404s closes to the bare list.
+   */
+  const { closeSearch } = useRecordNavigation();
+
   return (
     <RecordError error={error}>
       <Button asChild variant="outline">
-        {/* `search: true` so the way back is the view they left. */}
-        <Link to="/staff" search={true}>
+        <Link to="/staff" search={closeSearch}>
           Back to staff
         </Link>
       </Button>

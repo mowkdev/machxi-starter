@@ -2,17 +2,13 @@ import { listQuerySearchSchema } from "@repo/contracts";
 import {
   Outlet,
   createFileRoute,
-  retainSearchParams,
   stripSearchParams,
   useMatchRoute,
 } from "@tanstack/react-router";
 
 import { userResourceConfig } from "@/entities/user";
 import { UsersPage } from "@/pages/users";
-import {
-  RETAINED_SEARCH_PARAMS,
-  listSearchDefaults,
-} from "@/shared/grid/list-state";
+import { listSearchDefaults } from "@/shared/grid/list-state";
 import { editSurfaceOf } from "@/shared/resource/config";
 
 /**
@@ -44,11 +40,12 @@ import { editSurfaceOf } from "@/shared/resource/config";
  * normalises to the bare path on the next navigation.
  *
  * **`D4.2`: this route grew children** (ADR-0040) — `/users/new` and
- * `/users/$userId` render into its `<Outlet />`, and `retainSearchParams` is
- * what carries the list's page and filters across opening and closing one. It
- * takes an explicit key list rather than `true`, because `true` also carries
- * back a `q` a navigation had just dropped (`D4.7`). The staff parent carries
- * the full reasoning.
+ * `/users/$userId` render into its `<Outlet />`. **`D5.3`: they carry the
+ * record and nothing else** (ADR-0044); the list's page and filters travel
+ * across opening and closing as history state instead, through
+ * `shared/grid/record-navigation`. The staff parent carries the full
+ * reasoning, including the trap — the grid below reads this route's search,
+ * which on a record URL no longer describes the list.
  */
 export const Route = createFileRoute("/_dashboard/users")({
   component: UsersRoute,
@@ -56,12 +53,7 @@ export const Route = createFileRoute("/_dashboard/users")({
   staticData: { title: "Users", fullHeight: true },
   validateSearch: listQuerySearchSchema,
   search: {
-    middlewares: [
-      // Spread: the middleware wants a mutable array, and the constant is
-      // `as const` so a fifth entry cannot be added without a decision.
-      retainSearchParams([...RETAINED_SEARCH_PARAMS]),
-      stripSearchParams(listSearchDefaults),
-    ],
+    middlewares: [stripSearchParams(listSearchDefaults)],
   },
 });
 

@@ -131,8 +131,8 @@ describe("the list state survives the round trip", () => {
      * A view that is not the default. `limit` rather than `offset` because the
      * fixture is two rows deep — a deep link to page two of a two-row list is
      * a stranded offset, which `AppGrid` correctly repairs by navigating, and
-     * that repair would be doing the work this test means to attribute to
-     * `retainSearchParams`.
+     * that repair would be doing the work this test means to attribute to the
+     * carrier.
      */
     const { router } = open("/staff?limit=50");
 
@@ -150,10 +150,12 @@ describe("the list state survives the round trip", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     /*
-     * Back on the list, and back on *that* list. `retainSearchParams` is what
-     * carries the search across both navigations; without it this returns to
-     * page one of the default sort and the operator loses their place — the
-     * ADR's own example of what the middleware exists to prevent.
+     * Back on the list, and back on *that* list. Since `D5.3` the carrier is
+     * history state rather than the record's URL (ADR-0044): the opening
+     * navigation took a snapshot, the closing one put it back. Without it this
+     * returns to page one of the default sort and the operator loses their
+     * place — which is what the round trip exists to prevent, whichever
+     * mechanism is carrying it.
      */
     await waitFor(() => {
       expect(
@@ -199,5 +201,130 @@ describe("navigation closes and reopens the surface", () => {
     expect(
       await screen.findByRole("heading", { name: "New staff member" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("a record URL carries only the record (ADR-0044, `D5.3`)", () => {
+  /**
+   * Opening a record from a view that is not the default, so "the list state
+   * went somewhere" and "the list state went nowhere" are distinguishable.
+   */
+  const openFromAFilteredView = async (
+    user: ReturnType<typeof userEvent.setup>,
+  ) => {
+    const rendered = open("/staff?limit=50&sort=-email");
+
+    await screen.findByRole("cell", { name: MO.email });
+
+    await user.click(
+      screen.getByRole("button", { name: `Row actions for ${MO.id}` }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+    expect(
+      await screen.findByRole("heading", { name: `Edit ${MO.email}` }),
+    ).toBeInTheDocument();
+
+    return rendered;
+  };
+
+  it("puts nothing after the id when a record is opened from a filtered page", async () => {
+    const user = userEvent.setup();
+    const { router } = await openFromAFilteredView(user);
+
+    /*
+     * The complaint this step answers: "look at this account" was a link to
+     * somebody's offset, page size, sort and filters. Now it is a link to an
+     * account.
+     */
+    expect(router.state.location.pathname).toBe(`/staff/${MO.id}`);
+    expect(router.state.location.searchStr).toBe("");
+  });
+
+  it("keeps the grid behind the overlay on the view it was opened from", async () => {
+    const user = userEvent.setup();
+    const { router } = await openFromAFilteredView(user);
+
+    /*
+     * The trap ADR-0044 names, and the reason the list state needed a carrier
+     * rather than just deleting the middleware: the grid behind a dialog reads
+     * *the parent route's search*, which is now the record URL's — empty.
+     *
+     * Asserted on **what the grid renders**, not on the carrier's contents: the
+     * pager still says 50, which it can only know from the snapshot, because
+     * the URL underneath it says nothing at all. A test that checked
+     * `location.state.list` would pass just as well with the grid reading
+     * `useSearch` and quietly showing page one of everything.
+     */
+    expect(screen.getByLabelText("Rows per page")).toHaveTextContent("50");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+    });
+    expect(router.state.location.searchStr).toBe("?limit=50&sort=-email");
+  });
+
+  it("closes a cold record link to the bare list, having no view to return to", async () => {
+    const user = userEvent.setup();
+
+    // The link as a colleague receives it: a record, and nothing else.
+    const { router } = open(`/staff/${MO.id}`);
+
+    expect(
+      await screen.findByRole("heading", { name: `Edit ${MO.email}` }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    /*
+     * The honest answer rather than a degradation: the recipient never had the
+     * sender's view, and the old behaviour only appeared to give it to them
+     * because it was stapled to the link.
+     */
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+    });
+    expect(router.state.location.searchStr).toBe("");
+  });
+
+  it("gives the create surface a bare URL too", async () => {
+    const user = userEvent.setup();
+
+    const { router } = open("/staff?limit=50");
+
+    await screen.findByRole("cell", { name: MO.email });
+    await user.click(screen.getByRole("link", { name: "New staff member" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "New staff member" }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/staff/new");
+    expect(router.state.location.searchStr).toBe("");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // …and still returns to the view it was opened from.
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+    });
+    expect(router.state.location.searchStr).toBe("?limit=50");
+  });
+
+  it("does the same for the other resource, whose surface is a drawer", async () => {
+    const user = userEvent.setup();
+
+    const { router } = open("/users?limit=50");
+
+    await screen.findByRole("cell", { name: CARA.email });
+    await user.click(
+      screen.getByRole("button", { name: `Row actions for ${CARA.id}` }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+    expect(await screen.findByLabelText("First name")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/users/${CARA.id}`);
+    expect(router.state.location.searchStr).toBe("");
   });
 });
