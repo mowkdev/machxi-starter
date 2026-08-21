@@ -96,6 +96,16 @@ describe("grid preferences, through the real wiring", () => {
    * that the id reaching the store is the resource's own name rather than a
    * constant somebody typed twice.
    */
+  /*
+   * The one test in this app with an explicit timeout, and the number is
+   * measured rather than guessed (`D5.4`): it takes ~3.7s on its own and over
+   * 15s — the global default — when the whole suite runs in parallel, because
+   * it is the heaviest case here, mounting the app twice and driving a real
+   * pointer drag. D5.4 added one test elsewhere and that was enough to tip it,
+   * which says the margin was already thin rather than that anything slowed
+   * down. Raising it here keeps the diagnosis at the test that needs it instead
+   * of loosening the default for every suite.
+   */
   it("persists one resource's columns across a reload without touching the other's", async () => {
     const user = userEvent.setup();
 
@@ -150,7 +160,7 @@ describe("grid preferences, through the real wiring", () => {
     expect(
       window.localStorage.getItem(gridStorageKey(userResourceConfig.name)),
     ).toBeNull();
-  });
+  }, 30_000);
 });
 
 describe("the staff grid", () => {

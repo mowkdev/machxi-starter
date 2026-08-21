@@ -183,11 +183,13 @@ export const createApiClient = ({
      */
     timeout: REQUEST_TIMEOUT_MS,
     /*
-     * Pinned here so no call site ever builds a query string by hand (ADR-0034
+     * Pinned here so no call site ever builds a query string by hand (ADR-0043
      * §List state). axios's default serializer would write
      * `filter[0][field]=...` for the parsed filter array, which
-     * `listQuerySchema` rejects; the bracket form the API's Express parsing
-     * consumes is `filter[status][in]=a,b`.
+     * `listQuerySchema` rejects; the language's own form is
+     * `filter[status][in]=a,b`, and since `D5.1` it has exactly one writer —
+     * `@repo/contracts`' `stringifyListSearch`, which also spells the address
+     * bar, so this request and that URL are the same string.
      */
     paramsSerializer: serializeListParams,
   });
