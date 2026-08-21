@@ -74,6 +74,13 @@ export const TRUNCATED_TABLES = [
   "sessions",
   "staff_roles",
   "user_roles",
+  // Named although `cascade` on `staff` and `users` already empties them
+  // (ADR-0045 gives each settings table a real foreign key): this list is
+  // read as "every application table", and a table that is only cleaned as a
+  // side effect of another one's constraint is a leak waiting for the day
+  // that constraint changes.
+  "staff_settings",
+  "user_settings",
   "staff",
   "users",
 ] as const;
