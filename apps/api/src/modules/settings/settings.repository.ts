@@ -132,7 +132,9 @@ const createTableRepository = (
         // Unreachable: the insert above guarantees the row, and the lock is
         // held for the rest of the transaction. Loud rather than a `!`,
         // because the alternative is a merge against a silently empty row.
-        throw internal("Settings row vanished between insert and lock");
+        throw internal(
+          new Error("settings.lockForUpdate found no row after inserting one"),
+        );
       }
 
       return row;
@@ -151,7 +153,9 @@ const createTableRepository = (
         .returning(columns);
 
       if (row === undefined) {
-        throw internal("Settings row vanished before its update");
+        throw internal(
+          new Error("settings.save updated no row for a locked principal"),
+        );
       }
 
       return row;
