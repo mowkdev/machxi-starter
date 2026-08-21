@@ -10,7 +10,7 @@ Read this file first; open a plan only when you are working in it.
 | [D2](0002-api-hardening.md)        | API hardening and D3 prerequisites   | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                                    |
 | [D3](0003-admin-app.md)            | Admin panel (`apps/admin`)           | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                        |
 | [D4](0004-data-grid-v2.md)         | Data grid v2 (`apps/admin`)          | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.            |
-| [D5](0005-grid-url-readability.md) | Grid URL readability                 | **in progress**        | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                        |
+| [D5](0005-grid-url-readability.md) | Grid URL readability                 | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                        |
 | [D6](0006-user-settings.md)        | User settings                        | planned                | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments. Opens when D5 ships. |
 | [D7](0007-localization.md)         | Interface localization               | planned                | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.         |
 | [D8](0008-customer-app.md)         | Customer app and platform extraction | planned                | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1.  |
@@ -21,7 +21,7 @@ Read this file first; open a plan only when you are working in it.
 
 - **One deliverable is in progress at a time** (ADR-0025 rule 5).
 - **Steps are written `D<n>.<step>`** — `D1.7`, `D2.3`. Inside a plan file they are numbered plainly; the prefix is how they are cited from the ADR index and from commits.
-- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D4 have shipped, so **ADRs 0001–0042 are closed**: change any of them with a superseding ADR that carries the whole decision. **The open window is D5's, and it covers ADRs 0043–0044 only** — the two written for it, each `proposed` until the head of its own implementing step.
+- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D5 have shipped, so **ADRs 0001–0044 are closed**: change any of them with a superseding ADR that carries the whole decision. **No amendment window is open** — the next one opens with D6 and covers only the ADRs written for it.
 - **A deliverable closes on an executable acceptance checklist** (ADR-0025 rule 4), the ledger row moves to `shipped YYYY-MM-DD`, and the amendment window shuts. All three or it is not closed.
 
 ## Executing a step
@@ -60,6 +60,30 @@ The evidence is separated the way `D3.10` separated it, because rule 4 is about 
 Its six ADRs — [0037](../adr/0037-grid-viewport-layout.md)–[0042](../adr/0042-client-side-authorization.md) — were written 2026-08-20, while D3 was still in progress, and were `proposed` when it opened. **Writing is not opening and opening is not accepting**: the window opened with the deliverable, and each ADR was accepted before its own implementing step started, which is what the plan's Gate line meant. That was a change from how D3 opened, where all seven were accepted the same day; per-step acceptance is the stricter reading of ADR-0025 rule 3 and cost one edit per step. All six were accepted that way and all six closed with the deliverable.
 
 [ADR-0042](../adr/0042-client-side-authorization.md) is the one D4 inherited rather than scoped: `D3.8` found a `manager` being offered five writes `/admin/users` refuses, `D3.10` wrote the decision, and `D4.3` builds it beside ADR-0038's capabilities because the two are halves of one question.
+
+## How D5 closed, and on what evidence
+
+**D5 shipped 2026-08-22**, five steps built, and ADR-0025 rule 4's three parts happened together: the checklist was run, this row moved, and the window on ADRs 0043–0044 shut.
+
+Two things about how it was verified are worth more than the numbers.
+
+**The checklist's fourth item had never been run by anything, and it is the one the deliverable exists for.** Copy a grid's query string onto `/api/v1/admin/staff` and get the page the grid is showing. Run for the first time here: `?limit=50&sort=-lastName&filter[status]=active` answered `200` with `total: 7`, `sort` and `filters` echoed as the operator set them, and `qa-staff-1787068789671@machxi.local` first — while the same string in the address bar showed **1–7 of 7** with that same row at the top. One string, two ends, same page. Everything else in this deliverable is machinery; this is the property.
+
+**A green suite is not a running app, and `D5.2` proved it the embarrassing way.** The operator reported still seeing JSON URLs after that step reported done, and they were right: its own isolation check restored `router.tsx` with `mv` from a backup, which put back an **older mtime** than the stripped version Vite had already transformed, so the dev server kept serving code the repository no longer contained. Every suite was green against a file the browser was not being given. `touch` was the whole fix, and the lesson is recorded rather than tidied away: restore by writing, never by moving, and check what the dev server serves rather than what the tree holds.
+
+The evidence is separated the way D3 and D4 separated it.
+
+**Machine-verified, and re-runnable by anyone:** `pnpm lint`, `pnpm check-types` and `pnpm format:check` clean. `pnpm test` green at `0 cached, 8 total` — admin 432, `@repo/contracts` 152, and **API integration 434 with the non-integration tier at 446**, which is the sharpest evidence that D5 touched no API surface: the only integration test it added is the one proving Express reads a literal bracket. `pnpm test:unit` twice, the second at **`8 cached, 8 total`, FULL TURBO** — the ADR-0026 property that item exists to prove. `pnpm test:postman` at **84 requests, 260 assertions, none failed** — identical to the numbers D3.10 and D4.7 closed on, which is what item 6's "green _and untouched_" actually claims.
+
+**Walked in Chrome against the dev stack:** a sort and a header filter writing `?sort=email&filter[email][like]=%25ada%25` — literal brackets in a real address bar, with the LIKE pattern's `%` still encoded beside them; Clear all dropping the filter and leaving the sort; a record opened from a filtered page landing on `/staff/<id>` with nothing after it and the grid behind it still on that page; `history.state` carrying the snapshot, read directly; a **real `location.reload()` restoring both the record surface and the grid behind it**, which is the one claim jsdom cannot make; a cold record link rendering the bare list and closing to it; and item 4 above.
+
+**Accepted by the operator rather than machine-verified**, named individually rather than folded into the word "shipped":
+
+- **Item 1's fresh clone.** The stack these steps ran against is an existing one, with a dev database that has been walked through four deliverables.
+- **Item 5's third edit surface.** No resource declares `page`, and flipping the config in a test needs module mocking, which ADR-0036 forbids. The URL claims are surface-independent by construction and the shell has its own suite; **the config path into it is untested, unchanged from D4**, which recorded the same gap twice.
+- **The users record walk in a browser.** Covered in the MSW tier at `D5.3`, and walked for `staff` only.
+
+One finding that belongs to the repository rather than to this deliverable: `pnpm check` — the parallel loop — failed on a loaded machine with individual tests reporting 274s, while the gate (`turbo run test --concurrency=1`) was green. The heaviest test now carries a measured 30s timeout. This is the first time the difference between those two commands has mattered, and it will matter again as the admin suite grows.
 
 ## How D5 opened
 

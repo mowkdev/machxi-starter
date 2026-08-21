@@ -1,6 +1,6 @@
 # D5 — Grid URL readability
 
-- Status: **in progress**, opened 2026-08-21 — the day D4 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time). The amendment window is open on **ADRs 0043–0044 only**; ADRs 0001–0042 stay frozen.
+- Status: **shipped 2026-08-22**, opened 2026-08-21 — the day D4 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time). The window on ADRs 0043–0044 shut with it; **ADRs 0001–0044 are frozen**.
 - Steps: `D5.1` – `D5.5`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -135,7 +135,7 @@ What does move is every document that shows a URL or explains the two serializat
 
 **Verified:** `pnpm lint`, `pnpm check-types` and `pnpm format:check` clean. `pnpm test` green at `0 cached, 8 total` — admin **432 (+1)**, contracts 152, API integration 434 and non-integration 446 both unchanged across the whole deliverable, which is what "no API surface" means.
 
-### 5. Close-out
+### ~~5. Close-out~~ — **done 2026-08-22**
 
 **ADRs:** [0025](../adr/0025-deliverables.md) rule 4
 
@@ -143,6 +143,26 @@ What does move is every document that shows a URL or explains the two serializat
 - Sync `CLAUDE.md`, `docs/README.md` and the ledger's frozen-set sentence — all four of the places D4's close-out found saying different things about which window is open.
 - Run the acceptance checklist below on a fresh clone.
 - Move the D5 row in `docs/plan/README.md` to `shipped YYYY-MM-DD`, which shuts the amendment window on ADRs 0043–0044 and freezes 0001–0044.
+
+**Closed.** The _Implemented_ column filled for ADRs 0043–0044 in `D5.N` form; ADR-0034 and ADR-0040 moved to `superseded by` as their successors were accepted, not at close-out, which is what this deliverable said it would do and the first time a parent has gone out of force here. The four documents D4's close-out found disagreeing — the ledger, the ADR index, `docs/README.md` and `CLAUDE.md` — now say the same thing: D5 shipped, ADRs 0001–0044 frozen, no window open, and the next opens with D6.
+
+**The checklist ran, and item 4 ran for the first time in the deliverable's life.** It is the one that states the property everything else is machinery for, and nothing before this step had executed it: `?limit=50&sort=-lastName&filter[status]=active` copied out of the address bar and onto `/api/v1/admin/staff` answered `200`, `total: 7`, with `sort` and `filters` echoed as set and `qa-staff-1787068789671@machxi.local` first — the same 1–7 of 7 and the same first row the grid was showing for that URL.
+
+**What did not run, named rather than folded into the word "shipped":** item 1's fresh clone; item 5's `page` surface, which no resource declares and which cannot be reached in a test without the module mocking ADR-0036 forbids; and the users record walk in a browser. §Evidence, separated below carries all three with their reasons.
+
+## Evidence, separated
+
+**Machine-verified, and re-runnable by anyone:** `pnpm lint`, `pnpm check-types` and `pnpm format:check` clean. `pnpm test` green at `0 cached, 8 total` — admin 432, `@repo/contracts` 152, `@repo/db` 56 + 37, `@repo/ui` 12, `@repo/crypto` 39, `@repo/logger` 14, and **API integration 434 with the non-integration tier at 446**. That API number is the sharpest evidence D5 touched no API surface: the single test it added there exists only to prove Express reads a literal bracket the same way it reads `%5B`. `pnpm test:unit` twice, the second at **`8 cached, 8 total`, FULL TURBO**. `pnpm test:postman` at **84 requests, 260 assertions, none failed** — the same numbers D3.10 and D4.7 closed on, which is what "green _and untouched_" means.
+
+**Walked in Chrome against the dev stack**, across `D5.2`, `D5.3` and this step: literal brackets in a real address bar (`?sort=email&filter[email][like]=%25ada%25`) with the LIKE pattern's `%` still encoded; Clear all dropping the filter and leaving the sort; a record opened from a filtered page landing on `/staff/<id>` with nothing after it, the grid behind it still on that page; `history.state` carrying the snapshot, read directly; a real `location.reload()` restoring both halves; a cold record link rendering and closing to the bare list; and the paste test above.
+
+**Accepted by the operator rather than machine-verified:**
+
+- **A genuinely fresh clone.** The stack these steps ran against is an existing one, with a dev database four deliverables of walking have been through.
+- **The `page` edit surface through a resource's config.** Unchanged from D4, which recorded the same gap at `D4.2` and again at `D4.6`.
+- **The users record surface in a browser.** Covered in the MSW tier at `D5.3`; `staff` is what was walked.
+
+**And one thing this deliverable learned about its own tooling**, worth as much as any of the above. `D5.2` reported done while the operator was still seeing JSON URLs, and the operator was right: that step's isolation check restored `router.tsx` with `mv`, which put back an **older mtime** than the stripped version Vite had already transformed, so the dev server served code the repository no longer contained. A green suite proved nothing about the running app. Restore by writing, never by moving — and when a walk contradicts a suite, check what the dev server is serving before doubting either.
 
 ## Definition of done
 
