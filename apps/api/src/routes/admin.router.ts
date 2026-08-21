@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Container } from "../core/container.js";
 import { authorize } from "../core/middleware/index.js";
 import { createAuthRouter } from "../modules/auth/index.js";
+import { createSettingsRouter } from "../modules/settings/index.js";
 import {
   createStaffProfileRouter,
   createStaffRouter,
@@ -26,6 +27,10 @@ import { createUsersRouter } from "../modules/users/index.js";
  *   `ctx.principal`, there is no `:id` to compare, and every staff role —
  *   `editor` included — may read its own account and change its own password
  *   (ADR-0019 §3, ADR-0027).
+ * - `/settings` carries none for word-for-word the same reason (ADR-0045):
+ *   its subject is `ctx.principal` and it has no `:id` either. It is mounted
+ *   beside `/profile` because it is the same kind of thing — the account
+ *   acting on itself.
  * - `/staff` is `admin` throughout. Managing operators is not a manager's job.
  * - `/users` is `admin` **or** `manager` to read, and the router narrows its
  *   five writing routes back to `admin`.
@@ -51,6 +56,14 @@ export const createAdminRouter = (container: Container): Router => {
   router.use(
     "/profile",
     createStaffProfileRouter(container.controllers.staffProfile),
+  );
+
+  router.use(
+    "/settings",
+    createSettingsRouter({
+      controller: container.controllers.settings,
+      population: "staff",
+    }),
   );
 
   router.use(

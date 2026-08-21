@@ -1,4 +1,11 @@
-export { LOCALES, THEMES, type Locale, type Theme } from "./enums.js";
+export {
+  DEFAULT_LOCALE,
+  DEFAULT_THEME,
+  LOCALES,
+  THEMES,
+  type Locale,
+  type Theme,
+} from "./enums.js";
 export {
   MAX_COLUMN_WIDTH,
   MAX_GRID_COLUMNS,

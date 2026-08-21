@@ -30,3 +30,16 @@ export type Theme = (typeof THEMES)[number];
  */
 export const LOCALES = ["en"] as const;
 export type Locale = (typeof LOCALES)[number];
+
+/**
+ * The value a principal has when they have never said otherwise.
+ *
+ * Declared here rather than only on the Postgres column, under the same
+ * one-declaration rule as the tuples: `GET /settings` answers these for a
+ * principal with **no row**, and the column defaults them for a row created by
+ * a `PATCH` that named neither. Two spellings of "the default" is exactly the
+ * drift ADR-0023 exists to prevent — and the drift would be invisible, because
+ * both paths answer a valid resource and only the values differ.
+ */
+export const DEFAULT_THEME = "system" satisfies Theme;
+export const DEFAULT_LOCALE = "en" satisfies Locale;

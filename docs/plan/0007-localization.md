@@ -1,29 +1,34 @@
 # D7 — Interface localization
 
-- Status: **planned** — opens when D6 ships
-- Steps: written when the deliverable opens; this file carries scope, order rationale and the assumptions taken
+- Status: **planned** — opens when D6 ships. Its ADR, [0046](../adr/0046-interface-localization.md), was **written ahead on 2026-08-22** while D6 was in progress (writing is not opening — the D4 precedent) and is `proposed` until accepted at the head of D7's first step.
+- Steps: written when the deliverable opens; this file carries scope, order rationale and the decisions taken
 - Ledger: [`docs/plan/README.md`](README.md)
 
-Scope: **every operator-facing string in `apps/admin` moves into a typed dictionary**, the locale switch lands and persists through D6's settings, and — the part that makes this a strategy rather than a chore — the i18n foundation is **designed for two SPAs and the shared packages between them**, because D8 extracts machinery into packages and D9's customer app must be _born_ localized. The ADR index's Planned list has carried "Internationalization" since D1; this is that entry becoming a deliverable.
+Scope: **every operator-facing string in `apps/admin` moves into a typed dictionary**, the locale switch lands and persists through D6's settings, and — the part that makes this a strategy rather than a chore — the i18n foundation is **designed for two SPAs and the shared packages between them**, because D8 extracts machinery into packages and builds the customer app on them, and that app must be _born_ localized. The ADR index's Planned list has carried "Internationalization" since D1; this is that entry becoming a deliverable.
 
 ## Why before the customer app
 
 Retrofitting i18n is the expensive half — sweeping an app for hardcoded strings, restructuring copy into keys, threading formatters through every date and count. That price is paid **once**, for `apps/admin`, which already exists. Sequenced after the customer app it would be paid twice. And D8's extraction then moves components that are already dictionary-fed, so the packages never exist in a hardcoded state that would need its own sweep.
 
-## Strategy requirements (the ADR chooses the library; these are the constraints it must satisfy)
+## Strategy requirements (the constraints ADR-0046 satisfies)
 
 - **Typed keys.** A missing or misspelled key is a type error, not a runtime fallback — the same lint-mechanized posture ADR-0002 takes everywhere else.
 - **ICU-grade formatting**: plurals, interpolation, and locale-aware dates and numbers (the grid's timestamp formatters become locale consumers).
 - **Lazy per-locale bundles.** A locale costs its user, not every user.
 - **Packages can declare strings without owning dictionaries.** Shared machinery (grid chrome — "No results", pager copy, form errors) ships its keys, likely namespaced per package; the apps own the dictionaries that satisfy them. This constraint exists so D8's extraction has a rule to follow.
 - **Lint enforcement.** An ESLint rule (restricted-syntax on literal JSX text, in the ADR-0002 "lint half of the ADRs" tradition) makes a hardcoded string fail `pnpm lint` rather than depend on review.
-- **The two-catalogue rule evolves rather than breaks.** D3 settled that operator copy has exactly two catalogues: error _codes_ in `shared/notifications/messages.ts`, field _rules_ in the contracts schemas. The first becomes a dictionary namespace mechanically. The second is the subtle one: **`@repo/contracts` depends only on zod (ADR-0023) and must not grow translations** — so contract validation messages become stable keys-plus-params resolved by a locale-aware zod error map applied in the apps, and contracts stays locale-free. The API's own `error.message` remains never-rendered, which is what makes server-side localization unnecessary.
+- **The two-catalogue rule evolves rather than breaks.** D3 settled that operator copy has exactly two catalogues: error _codes_ in `shared/notifications/messages.ts`, field _rules_ in the contracts schemas. The first becomes a dictionary namespace mechanically. The second turned out to be simpler than it looked: the contracts schemas carry almost no hand-written messages — field rules surface as **zod's own default messages**, which the API copies into `VALIDATION_ERROR` details and the admin renders (a D3.9 decision whose comment already names the mechanism: _"localising the latter is zod's own error map on the contracts package"_). So the answer is zod's error map, switched with the locale on the client. Zod 4 ships locale maps but **no Latvian one**; ours lives in `@repo/contracts` as zod-only code, which ADR-0023 permits. The API keeps its developer-facing English (ADR-0013) and is untouched.
 
-Candidates the ADR weighs: react-i18next (the ecosystem default), FormatJS/react-intl (ICU-first), Paraglide (compile-time, fully typed, tree-shaken — the best fit on paper for a typed Vite monorepo, and the least battle-tested of the three). The choice is deliberately **not** made here.
+## Decisions (taken 2026-08-22, recorded in ADR-0046)
 
-## Decisions this deliverable needs
+Made by the operator after a comparison of react-i18next, FormatJS/react-intl, Lingui and Paraglide; the ADR carries the reasoning and the trade-offs, this file carries the outcome.
 
-- **One new ADR**: the i18n strategy — library, key scheme, package/dictionary boundary, the zod error map, the lint rule, and the pseudo-locale verification tier. Additive beside frozen ADR-0031–0036; the messages-catalogue evolution touches what D3 decided, so the ADR must say explicitly why it is an extension and not a divergence — or supersede.
+- **react-i18next** — the boring choice on purpose: ubiquity and hiring outweighed Lingui's smaller runtime and built-in pseudo-locale. No ICU plugin: `Intl.PluralRules` through i18next's `_zero` / `_one` / `_other` keys covers Latvian's three forms.
+- **Validation copy is localized on the client; the API stays English.** No frozen ADR is touched, no envelope change; a server detail that matches a rendered field is re-derived from the same contracts schema under the active locale.
+- **`@repo/ui`'s hard-coded a11y strings** (`Close`, `Previous`, `Toggle Sidebar`…) go through a `UiStrings` context with English defaults — six owned, commented edits to generated files under ADR-0031's existing rule, and no i18n dependency in the design system.
+- **Latvian is machine-drafted in D7 and marked `pending native review`** until the operator signs it off — a real second locale with an honest status, rather than a catalogue waiting for a translator.
+- **`en` means en-GB**: British spelling for the source copy (the repository's own voice) and European date order through Intl; `lv` maps to `lv-LV`.
+- Typed keys by declaration merging over the `en` catalogue; one `locales/` tree with a namespace per slice; `en` eager, other locales lazy per namespace; locale precedence settings → `localStorage` → `navigator.languages` → `en`, and `Accept-Language` used nowhere; `eslint-plugin-i18next` as the mechanical half; `i18next-parser` extraction with a drift check in `pnpm check`; a dev-only pseudo-locale behind `VITE_I18N_PSEUDO`; and an i18n factory rather than a singleton, so D8 lifts it into a package unchanged.
 
 ## Locales (decided 2026-08-20)
 

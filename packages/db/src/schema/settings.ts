@@ -1,7 +1,11 @@
 import { relations } from "drizzle-orm";
 import { jsonb, pgTable, uuid } from "drizzle-orm/pg-core";
 
-import type { GridPreferencesV1 } from "@repo/contracts";
+import {
+  DEFAULT_LOCALE,
+  DEFAULT_THEME,
+  type GridPreferencesV1,
+} from "@repo/contracts";
 
 import { localeEnum, primaryId, themeEnum, timestamps } from "./_shared.js";
 import { staff } from "./staff.js";
@@ -49,8 +53,8 @@ import { users } from "./users.js";
  */
 const settingsColumns = () => ({
   /** `"system"` means the media query, resolved by the client at apply time. */
-  theme: themeEnum().notNull().default("system"),
-  locale: localeEnum().notNull().default("en"),
+  theme: themeEnum().notNull().default(DEFAULT_THEME),
+  locale: localeEnum().notNull().default(DEFAULT_LOCALE),
   /**
    * `gridId` → arrangement, `{}` for a principal who has never touched one.
    *

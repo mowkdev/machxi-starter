@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import type { Container } from "../core/container.js";
 import { createAuthRouter } from "../modules/auth/index.js";
+import { createSettingsRouter } from "../modules/settings/index.js";
 import { createUserProfileRouter } from "../modules/users/index.js";
 
 /**
@@ -20,7 +21,9 @@ import { createUserProfileRouter } from "../modules/users/index.js";
  * `customer` is the only user role in v1, so authentication already implies
  * it, and the profile endpoints address `ctx.principal` rather than an `:id`
  * — the ownership question ADR-0019 §3 asks has no way to be answered wrongly
- * when there is no id to compare.
+ * when there is no id to compare. `/settings` joins on the same footing
+ * (ADR-0045): same subject, same absence of an id, same table selected by the
+ * population rather than by anything a request carries.
  */
 export const createUserRouter = (container: Container): Router => {
   const router = Router();
@@ -41,6 +44,14 @@ export const createUserRouter = (container: Container): Router => {
   router.use(
     "/profile",
     createUserProfileRouter(container.controllers.userProfile),
+  );
+
+  router.use(
+    "/settings",
+    createSettingsRouter({
+      controller: container.controllers.settings,
+      population: "user",
+    }),
   );
 
   return router;

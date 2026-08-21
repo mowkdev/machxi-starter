@@ -25,6 +25,11 @@ import {
   createHealthService,
 } from "../modules/health/index.js";
 import {
+  createSettingsController,
+  createSettingsRepository,
+  createSettingsService,
+} from "../modules/settings/index.js";
+import {
   createStaffController,
   createStaffProfileController,
   createStaffRepository,
@@ -86,6 +91,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
   const staffRepository = createStaffRepository(db.db);
   const usersRepository = createUsersRepository(db.db);
   const sessions = createSessionsRepository(db.db);
+  const settingsRepository = createSettingsRepository(db.db);
 
   // The one place that knows how to open a transaction. Repositories take a
   // `DbExecutor` (ADR-0006), so a service composes them without ever importing
@@ -150,6 +156,14 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     transaction,
   });
 
+  // One service for both segments and both tables (ADR-0045). It takes no
+  // hasher and no session dependency: a settings row holds display state and
+  // nothing a credential or a session could be reached through.
+  const settingsService = createSettingsService({
+    repository: settingsRepository,
+    transaction,
+  });
+
   // Built **here**, not in the route factories, because a limiter holds the
   // counter: constructing one per mount would give the same IP+email a fresh
   // budget on every segment, so ADR-0020's "10 per 15 minutes on login" would
@@ -173,6 +187,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       staff: staffRepository,
       users: usersRepository,
       sessions,
+      settings: settingsRepository,
     } as const,
     services: {
       health,
@@ -180,6 +195,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       userAuth,
       staff: staffService,
       users: usersService,
+      settings: settingsService,
     } as const,
     controllers: {
       health: createHealthController(health),
@@ -209,6 +225,10 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       // `ctx.principal`, so no handler taking an `:id` is reachable from it
       // (ADR-0027).
       staffProfile: createStaffProfileController(staffService),
+      // **One** controller for both segments, unlike the profile pairs above:
+      // neither of its handlers takes an id, so there is nothing a second
+      // factory would withhold from the other mount (ADR-0045).
+      settings: createSettingsController(settingsService),
     } as const,
 
     /**
