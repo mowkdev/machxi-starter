@@ -151,6 +151,27 @@ describe("the update body", () => {
     ).toBe(false);
   });
 
+  it("drops a __proto__ grid key rather than carrying it into the merge", () => {
+    // Not a bound this schema declares — a property of `z.record` this one
+    // relies on, pinned because the service's per-key merge depends on it.
+    // `JSON.parse('{"__proto__": ...}')` produces an **own** property, so the
+    // key survives transport as an ordinary string; a merge that deletes on
+    // `null` has to assign per key rather than spread, and
+    // `merged["__proto__"] = entry` would set the merged object's prototype
+    // instead of adding an entry to it. Zod never hands the key over: it
+    // parses, and the entry is simply absent from the result.
+    const parsed = JSON.parse(
+      String.raw`{"grids": {"__proto__": {"v": 1, "sizing": {}, "order": [], "hidden": []}}}`,
+    ) as unknown;
+    const result = updateStaffSettingsBody.safeParse(parsed);
+
+    expect(result.success).toBe(true);
+    expect(Object.keys(result.data?.grids ?? {})).toEqual([]);
+    expect(Object.getPrototypeOf(result.data?.grids ?? {})).toBe(
+      Object.prototype,
+    );
+  });
+
   it("bounds the grid id and the number of grids one body may carry", () => {
     expect(
       updateStaffSettingsBody.safeParse({
