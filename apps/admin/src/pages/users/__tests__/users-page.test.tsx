@@ -213,6 +213,29 @@ describe("the users grid", () => {
     expect(within(row).getAllByRole("cell").at(-2)?.textContent).not.toBe("—");
   });
 
+  it("clears a search here too, because the fix is per route", async () => {
+    const user = userEvent.setup();
+
+    openUsers();
+
+    await screen.findByRole("cell", { name: CARA.email });
+
+    await user.type(screen.getByRole("searchbox"), "cara");
+    expect(await screen.findByText(/^Search/)).toBeInTheDocument();
+
+    /*
+     * `D4.7`'s fix is an argument on each list route's middleware, not one
+     * shared call — so it is two edits, and a suite that only covered staff
+     * would certify half of it. The users route changed in the same commit and
+     * this is what says so.
+     */
+    await user.clear(screen.getByRole("searchbox"));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/^Search/)).not.toBeInTheDocument();
+    });
+  });
+
   it("reaches every row action from a menu named for its row", async () => {
     const user = userEvent.setup();
 

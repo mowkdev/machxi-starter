@@ -9,7 +9,10 @@ import {
 
 import { userResourceConfig } from "@/entities/user";
 import { UsersPage } from "@/pages/users";
-import { listSearchDefaults } from "@/shared/grid/list-state";
+import {
+  RETAINED_SEARCH_PARAMS,
+  listSearchDefaults,
+} from "@/shared/grid/list-state";
 import { editSurfaceOf } from "@/shared/resource/config";
 
 /**
@@ -42,8 +45,10 @@ import { editSurfaceOf } from "@/shared/resource/config";
  *
  * **`D4.2`: this route grew children** (ADR-0040) — `/users/new` and
  * `/users/$userId` render into its `<Outlet />`, and `retainSearchParams` is
- * what carries the list's page and filters across opening and closing one. The
- * staff parent carries the full reasoning.
+ * what carries the list's page and filters across opening and closing one. It
+ * takes an explicit key list rather than `true`, because `true` also carries
+ * back a `q` a navigation had just dropped (`D4.7`). The staff parent carries
+ * the full reasoning.
  */
 export const Route = createFileRoute("/_dashboard/users")({
   component: UsersRoute,
@@ -52,7 +57,9 @@ export const Route = createFileRoute("/_dashboard/users")({
   validateSearch: listQuerySearchSchema,
   search: {
     middlewares: [
-      retainSearchParams(true),
+      // Spread: the middleware wants a mutable array, and the constant is
+      // `as const` so a fifth entry cannot be added without a decision.
+      retainSearchParams([...RETAINED_SEARCH_PARAMS]),
       stripSearchParams(listSearchDefaults),
     ],
   },

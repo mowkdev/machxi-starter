@@ -97,22 +97,31 @@ export type FilterControlConfig =
     }
   | {
       /**
-       * A checkbox over a nullability question — `filter[deletedAt][null]=false`
-       * on the users list.
+       * A checkbox over a nullability question, in a column's header dialog.
+       *
+       * **No resource declares one today** (`D4.6`). The app's only nullability
+       * question is the users grid's `deletedAt`, and `D4.4` made it a toolbar
+       * *stance* — the same kind, in {@link HotFilterConfig} — because it is
+       * pressed and released many times a session rather than composed. `D4.6`
+       * then dropped the duplicate control this kind provided, so what remains
+       * here is the vocabulary for the day a resource wants a nullability
+       * question that belongs in a header rather than in the toolbar. The demo
+       * fixture and the hot-filter tests keep it exercised.
        *
        * `value` is what the box writes when it is checked; unchecked clears the
        * filter rather than writing the opposite, because "no opinion" and "only
        * the live ones" are the same request to an endpoint whose default scope
        * already hides them (ADR-0014, step-9 amendment).
        *
-       * **This is a scope switch, not an additive filter** (D3.8). It once read
-       * "show deleted users" here, which is what one would want and is not what
-       * the endpoint does: `null: false` compiles to `deleted_at is not null`,
-       * and the users repository drops its default live-only scope as soon as a
-       * filter names `deletedAt` — so checking the box *replaces* the live rows
-       * with the deleted ones. `label` is the config's to get right, and it is
-       * the one part of a config no schema can check, so it is the one part
-       * worth reading twice.
+       * **This is a scope switch, not an additive filter** (D3.8), and the
+       * reasoning belongs to the kind wherever it renders. It once read "show
+       * deleted users", which is what one would want and is not what the
+       * endpoint does: `null: false` compiles to `deleted_at is not null`, and
+       * the users repository drops its default live-only scope as soon as a
+       * filter names `deletedAt` — so pressing it *replaces* the live rows with
+       * the deleted ones. `label` is the config's to get right, and it is the
+       * one part of a config no schema can check, so it is the one part worth
+       * reading twice.
        */
       readonly kind: "presence";
       readonly op: Extract<FilterOp, "null">;

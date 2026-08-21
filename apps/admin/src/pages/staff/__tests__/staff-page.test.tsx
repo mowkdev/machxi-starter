@@ -374,6 +374,95 @@ describe("the staff grid", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("clears a search, which is the one param removed by omission", async () => {
+    const user = userEvent.setup();
+
+    openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+
+    await user.type(screen.getByRole("searchbox"), "eve");
+    await waitFor(
+      () => {
+        expect(lastList()?.q).toBe("eve");
+      },
+      { timeout: 2000 },
+    );
+
+    await user.clear(screen.getByRole("searchbox"));
+
+    /*
+     * Asserted on the **router's** state, not on the last request, and the
+     * distinction is the reason an earlier version of this test lied in both
+     * directions. Returning to a term-less view is returning to a query key
+     * this session already fetched, and ADR-0034's 30-second `staleTime` means
+     * TanStack Query serves it from cache without going near the network — so
+     * `lastList()` still names the `q=eve` request and proves nothing about
+     * whether `q` was cleared. The applied-filters chip reads `listState.q`
+     * straight off the URL, which is the thing under test.
+     */
+    await waitFor(() => {
+      expect(screen.queryByText(/^Search/)).not.toBeInTheDocument();
+    });
+    expect(
+      await screen.findByRole("cell", { name: "ada@machxi.local" }),
+    ).toBeInTheDocument();
+  });
+
+  it("clears the search along with the filters on Clear all", async () => {
+    const user = userEvent.setup();
+
+    openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+
+    await user.type(screen.getByRole("searchbox"), "eve");
+    await waitFor(
+      () => {
+        expect(lastList()?.q).toBe("eve");
+      },
+      { timeout: 2000 },
+    );
+
+    expect(screen.getByText("Search “eve”")).toBeInTheDocument();
+
+    // ADR-0039: "Clear all clears filters **and** `q`."
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/^Search/)).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+  });
+
+  it("clears a search from its own chip, the third way into the same seam", async () => {
+    const user = userEvent.setup();
+
+    openStaff();
+
+    await screen.findByRole("cell", { name: "ada@machxi.local" });
+
+    await user.type(screen.getByRole("searchbox"), "eve");
+
+    /*
+     * The bar's remove button calls `withSearch(state, "")` exactly as the
+     * search box and Clear all do, so it met the same middleware — and it was
+     * covered only in the grid suite against a stubbed `onChange`, which is the
+     * blindness that hid the defect in the first place. Through the real router
+     * it is a different assertion.
+     */
+    const chip = await screen.findByRole("button", {
+      name: /^Remove filter: Search/,
+    });
+
+    await user.click(chip);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/^Search/)).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+  });
+
   it("says so when the list is refused, instead of loading forever", async () => {
     const user = userEvent.setup();
 

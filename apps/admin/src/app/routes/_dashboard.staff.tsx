@@ -9,7 +9,10 @@ import {
 
 import { staffResourceConfig } from "@/entities/staff";
 import { StaffPage } from "@/pages/staff";
-import { listSearchDefaults } from "@/shared/grid/list-state";
+import {
+  RETAINED_SEARCH_PARAMS,
+  listSearchDefaults,
+} from "@/shared/grid/list-state";
 import { editSurfaceOf } from "@/shared/resource/config";
 
 /**
@@ -46,13 +49,19 @@ import { editSurfaceOf } from "@/shared/resource/config";
  * validated once and is visible to the index and the children alike — which is
  * what makes `search: true` on a close navigation mean something.
  *
- * `retainSearchParams(true)` is the purpose-built middleware for the round trip
+ * `retainSearchParams` is the purpose-built middleware for the round trip
  * the ADR requires: open row three of page two, close it, and be on page two.
  * Hand-propagating `search` on every `Link` and `navigate` would do the same
  * thing until the first call site forgot to. Order matters and it is
  * retain-then-strip: retaining puts the current search on the navigation, and
  * stripping then removes whatever equals the defaults, so a link out of the
  * default view is still the bare path.
+ *
+ * **It takes an explicit key list, not `true` (`D4.7`).** `true` carries every
+ * param forward, including one a navigation dropped by omitting it — which is
+ * how `q` is removed — so a cleared search came straight back. `RETAINED_SEARCH_PARAMS`
+ * names the four that legitimately survive omission; see its own note.
+ *
  */
 export const Route = createFileRoute("/_dashboard/staff")({
   component: StaffRoute,
@@ -61,7 +70,9 @@ export const Route = createFileRoute("/_dashboard/staff")({
   validateSearch: listQuerySearchSchema,
   search: {
     middlewares: [
-      retainSearchParams(true),
+      // Spread: the middleware wants a mutable array, and the constant is
+      // `as const` so a fifth entry cannot be added without a decision.
+      retainSearchParams([...RETAINED_SEARCH_PARAMS]),
       stripSearchParams(listSearchDefaults),
     ],
   },

@@ -1,6 +1,6 @@
 # D4 — Data grid v2
 
-- Status: **in progress**, opened 2026-08-20 — the day D3 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time)
+- Status: **shipped 2026-08-21**, opened 2026-08-20 — the day D3 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time). The window on ADRs 0037–0042 shut with it.
 - Steps: `D4.1` – `D4.7`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -10,9 +10,9 @@ Everything here builds on decisions that stand unchanged: the server owns data o
 
 Each step names the ADRs that govern it. Read them before implementing — they carry the reasoning, this file carries the work. Every step ends green on `pnpm lint && pnpm check-types && pnpm test` and a conventional commit.
 
-**Amendment window.** ADRs 0037–0042 were written for this deliverable (while D3 was still in progress — writing is not opening) and may be amended in place while D4 is in progress, labelled `**Amended YYYY-MM-DD (D4.N).**` at the point of change (ADR-0025 rule 2). **ADRs 0001–0036 are closed** — 0030–0036 shut with D3 on 2026-08-20 — so if the work below needs any of them to say something different, stop and write a superseding ADR (ADR-0024 rule 1). That is the live constraint for this deliverable rather than a formality: D4 rebuilds surfaces ADR-0034 and ADR-0035 describe, and those two are now frozen.
+**Amendment window — shut.** ADRs 0037–0042 were written for this deliverable (while D3 was still in progress — writing is not opening) and were amended in place while D4 was, labelled `**Amended YYYY-MM-DD (D4.N).**` at the point of change (ADR-0025 rule 2). **D4 shipped 2026-08-21, so all six are now closed and ADRs 0001–0042 change only by supersession** (ADR-0024 rule 1). Every amendment dated 2026-08-20 or 2026-08-21 inside them is the last of its kind for those records.
 
-**Gate.** ADRs 0037–0042 are `proposed`, and opening the deliverable did not change that. Each is accepted before its own implementing step starts (ADR-0025 rule 3) — the stricter reading of the precedent D3 set by accepting all seven of its ADRs on one day, and the reason a step below is un-startable until somebody has read its ADR and agreed with it.
+**Gate.** ADRs 0037–0042 were `proposed` when this deliverable opened, and opening it did not change that. Each was accepted before its own implementing step started (ADR-0025 rule 3) — the stricter reading of the precedent D3 set by accepting all seven of its ADRs on one day, and the reason a step below could not be started until somebody had read its ADR and agreed with it. All six were accepted that way, in step order, between 2026-08-20 and 2026-08-21.
 
 ## Build order
 
@@ -170,14 +170,39 @@ The other two were prose contradicting code in the places this step said prose m
 
 **The walk also cost two seeded fixtures**, deliberately and with the operator's agreement: `qa-staff-1787088733273@` and `qa-staff-1787088710685@` are really gone from the dev database, which is what made the refusal real. `pnpm db:seed -- --dev` restores the fixture set.
 
-### 7. Close-out
+### ~~7. Close-out~~ — **done 2026-08-21**
 
 **ADRs:** [0025](../adr/0025-deliverables.md) rule 4
 
-- Fill the _Implemented_ column in `docs/adr/README.md` for ADRs 0037–0041 in `D4.N` form.
+- Fill the _Implemented_ column in `docs/adr/README.md` for ADRs 0037–0042 in `D4.N` form.
 - Sync `CLAUDE.md` (the frontend non-negotiables bullet gains capabilities, edit surfaces, preferences) and anything else the steps changed.
 - Run the acceptance checklist below on a fresh clone.
-- Move the D4 row in `docs/plan/README.md` to `shipped YYYY-MM-DD`, which shuts the amendment window on ADRs 0037–0041.
+- Move the D4 row in `docs/plan/README.md` to `shipped YYYY-MM-DD`, which shuts the amendment window on ADRs 0037–0042.
+
+**Closed, and the checklist earned its place by failing.** ADR-0025 rule 4 says a deliverable closes on something a person can run and watch pass or fail, and warns that one closing on a judgement call "closes whenever somebody is tired". At the last step of the last item, the walk found that **`q` could not be cleared at all**.
+
+`retainSearchParams(true)` builds its result as `{ ...search, ...next }` — it spreads the _incoming_ search wholesale and removes only what was explicitly removed — so any param a navigation drops **by omitting its key** is put straight back. Exactly one list param is removed that way: `q`, because ADR-0014's schema has no empty term to carry, so `withSearch(state, "")` expresses "no search" by dropping the key. The consequences were plain once seen: emptying the search box left the box empty and the term still applied, and ADR-0039's "Clear all clears filters and `q`" was false in writing. `D4.2` introduced it; every suite since missed it for one structural reason — **the pure functions were right, and the tests asserted _setting_ a term rather than clearing one**, so the regression lived entirely in the seam between two correct pieces. The fix names the four params that legitimately survive omission, which takes the middleware's other branch (it only ever _adds_ the keys it is given). Amended into ADR-0040, where the middleware was decided and whose window was still open.
+
+Two things about the fix are worth as much as the fix. It was **isolated rather than assumed**: both new tests fail on `HEAD` and pass with this change alone, checked by reverting. And a **second change was written and then reverted** — expressing removal as an explicit `q: undefined` in `withSearch`/`clearedFilters` — because it fixed the symptom and broke a different test under `retain(true)`; shipping it would have been two changes for a one-line cause, and the same failure mode as the defect. The two regression tests assert on the applied-filters chip (router state) rather than on the last request, because returning to a term-less view hits a fresh cache entry and issues no request at all — an earlier draft asserted `lastList()?.q` and was untrustworthy in both directions.
+
+Also done: `docs/adr/README.md`'s _Implemented_ column completed for 0037–0042 (0037's cell still read "D4.1 planned") and its two D4 narrative paragraphs moved to the closed state; `CLAUDE.md` updated — D4 shipped, **ADRs 0001–0042 frozen**, no amendment window open; and the one item `D4.6` deliberately carried, `shared/resource/types.ts`'s `presence` doc, which described itself as the users list's filter and is now the vocabulary for a nullability question no resource currently asks in a header.
+
+**The `adr-reviewer` pass called the close-out incomplete, and it was right in the way that matters most for a close-out.** The code fix it called correct, minimal and properly amended; what it found was that **four documents still told a reader the window was open** — including `docs/README.md`, the docs entry point, which this step had never opened, and `CLAUDE.md`'s frontend bullet, which is the first thing an agent reads. A freeze asserted in the ledger and denied in the entry point is not a freeze; it is a note. All four now say the same thing, and `CLAUDE.md`'s frontend bullet gained the v2 grid surface this step's own body asked for and the first draft forgot. Three smaller ones: ADR-0040's _Implemented_ cell named only `D4.2` when `D4.7` changed the code under it, `RETAINED_SEARCH_PARAMS` was checked for membership but not completeness (a sixth list param could have stopped being retained in silence), and two of the three ways into the fixed seam — the users route, and the chip's own remove button — had no router-level test, which is the same blindness that hid the defect.
+
+## Evidence, separated
+
+**Machine-verified, and re-runnable by anyone:** `pnpm lint`, `pnpm check-types`, `pnpm format:check` clean. `pnpm test` green at `0 cached, 8 total` — 433 API integration unchanged across the whole deliverable, 412 admin, 12 `@repo/ui`, and the API's non-integration tier at 446. `pnpm test:unit` twice in a row at **`8 cached, 8 total`, FULL TURBO**, which is the ADR-0026 property that item exists to prove; the first attempt read `7 cached` and was discarded because an edit of this step's own had landed between the runs. `pnpm test:postman` at **84 requests, 260 assertions, none failed** — identical to the numbers D3.10 recorded, which is item 6's actual claim: green _and untouched_, because D4 changed no API surface.
+
+**Walked in a browser against the dev stack**, across `D4.1` and `D4.6` and again here: the shell's height budget and single scroll container; selection keyed by id surviving a page change; a bulk delete whose summary reported "2 deleted, 1 refused" with the refusal named per item; all four filter kinds through their header dialogs, committing on Apply and not before; hot filters agreeing with those dialogs in both directions; a foreign deep-linked filter rendering a removable chip beside the error panel; record surfaces opening as a dialog for staff and a drawer for users from cold URLs; column resize truncating for real, and order, visibility and width surviving a reload per grid.
+
+**Accepted by the operator rather than machine-verified**, and named individually rather than folded into the word "shipped":
+
+- **Item 1's fresh clone.** The stack these steps ran against is an existing one. Signing in as the seeded super admin was verified; `pnpm i` into an empty directory against an empty database was not.
+- **Narrow-width toolbar wrapping and the short-viewport floor** (item 3, in part). `D4.1` walked the equivalent geometry in a working browser and recorded the scroll body flexing to its 256px floor and overflowing rather than crushing — but the toolbar, the applied-filters bar and the Columns menu did not exist then, so how _those_ wrap below roughly 900px is unseen. The automated tab reports a fixed `innerWidth` however the window is resized.
+- **The sidebar's 200ms reflow and overlay dismissal** (items 3 and 5, in part). `requestAnimationFrame` never ticks in the automated tab — zero frames in two seconds, measured — so CSS transitions and exit animations cannot complete there. `D4.1` walked the sidebar transition when it could. This limit nearly produced a false finding at `D4.6`: a dialog sitting at `data-state="closed"` and still painted reads exactly like a bug until you notice its exit animation is "running" at zero progress.
+- **ADR-0042's role narrowing on a live `manager` session.** Covered in the MSW tier at `D4.3`; not re-walked, because it needs a second account's credentials.
+
+The four above are the honest residue, and they are the ones a fresh-clone run by a person would close.
 
 ## Definition of done
 

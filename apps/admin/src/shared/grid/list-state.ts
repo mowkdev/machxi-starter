@@ -137,6 +137,35 @@ export const clearedFilters = (state: ListQuerySearch): ListQuerySearch => {
   return atFirstPage({ ...rest, filters: [] });
 };
 
+/**
+ * The list-state params `retainSearchParams` may carry forward, and **`q` is
+ * deliberately not among them** (`D4.7`).
+ *
+ * Every other param says "no opinion" by carrying its default — `filters: []`,
+ * `offset: 0` — which `stripSearchParams` then removes from the built link.
+ * `q` says it by **omitting the key**, because ADR-0014's schema has no empty
+ * term to carry: `q=` is a `VALIDATION_ERROR`, not a search for nothing.
+ *
+ * `retainSearchParams(true)` builds its result as `{ ...search, ...next }` —
+ * it spreads the *incoming* search wholesale and then removes only what was
+ * explicitly removed. So a param dropped by omission is put straight back, and
+ * `q` became unclearable: emptying the search box left the box empty and the
+ * term applied, and Clear all cleared the filters but not the search. Passing
+ * an explicit list takes the other branch, which only ever *adds* the keys it
+ * is given — so `q` is simply never carried, and {@link withSearch} and
+ * {@link clearedFilters} keep working exactly as they always did.
+ *
+ * Introduced by `D4.2`'s middleware, found by D4's own acceptance checklist at
+ * `D4.7`, and invisible to every suite in between because the pure functions
+ * were right and the tests asserted *setting* a term rather than clearing one.
+ */
+export const RETAINED_SEARCH_PARAMS = [
+  "offset",
+  "limit",
+  "sort",
+  "filters",
+] as const satisfies readonly (keyof ListQuerySearch)[];
+
 /** The free-text term. An empty term is removed, never sent as `q=`. */
 export const withSearch = (
   state: ListQuerySearch,
