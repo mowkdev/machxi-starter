@@ -1,4 +1,7 @@
+import type { z } from "zod";
+
 import type { Locale, Theme } from "./enums.js";
+import type { gridPreferencesSchema } from "./schemas.js";
 
 /**
  * The settings resources as the API returns them (ADR-0012 §Resource shape
@@ -10,19 +13,24 @@ import type { Locale, Theme } from "./enums.js";
  */
 
 /**
- * One grid's arrangement as it is stored and returned — the output of
- * `gridPreferencesSchema`, hand-written here because it is part of a resource
- * and readonly for the same reason every other resource type is.
+ * One grid's arrangement as it is stored and returned: `v`, `sizing` (column
+ * id → px), `order` (every movable column, in render order) and `hidden`.
+ *
+ * **Derived from the schema rather than hand-written**, which is the one place
+ * this package departs from writing resource types by hand — and it departs
+ * because this type is on **both** sides of the wire. It is the value in the
+ * resource's `grids` and the value in the `PATCH` body's `grids`, so a
+ * hand-written twin would have to agree with the schema exactly or a caller
+ * could not put back what it was given. The first attempt was hand-written and
+ * they did not agree: zod infers mutable arrays, the interface declared
+ * `readonly string[]`, and a value read from a resource could not be sent in a
+ * patch. One declaration cannot drift from itself.
+ *
+ * `Readonly` is applied where the type is *used* — on the record in
+ * {@link SettingsCore} — rather than inside it, so the resource still refuses
+ * to be mutated where that costs nothing.
  */
-export interface GridPreferencesV1 {
-  readonly v: 1;
-  /** Column id → px. An absent id means "whatever the content needs". */
-  readonly sizing: Readonly<Record<string, number>>;
-  /** Every movable column, in render order. */
-  readonly order: readonly string[];
-  /** The movable columns currently hidden. */
-  readonly hidden: readonly string[];
-}
+export type GridPreferencesV1 = z.infer<typeof gridPreferencesSchema>;
 
 /**
  * What a settings row says, for either population. **Display state and nothing

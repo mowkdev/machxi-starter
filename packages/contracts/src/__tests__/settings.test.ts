@@ -32,8 +32,9 @@ describe("gridPreferencesSchema", () => {
     const result = gridPreferencesSchema.safeParse(arrangement);
 
     expect(result.success).toBe(true);
-    // The hand-written resource type and the schema's output agree; a drift
-    // between the two is a compile error rather than a runtime surprise.
+    // `GridPreferencesV1` *is* this schema's output (see types.ts): the value
+    // a resource carries and the value a patch may send are one type, so what
+    // a client reads it can put back.
     expect(result.data satisfies GridPreferencesV1 | undefined).toEqual(
       arrangement,
     );
