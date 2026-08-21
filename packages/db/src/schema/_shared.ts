@@ -2,9 +2,11 @@ import { customType, pgEnum, timestamp, uuid } from "drizzle-orm/pg-core";
 import { uuidv7 } from "uuidv7";
 
 import {
+  LOCALES,
   POPULATIONS,
   STAFF_ROLES,
   STAFF_STATUSES,
+  THEMES,
   USER_ROLES,
   USER_STATUSES,
 } from "@repo/contracts";
@@ -75,3 +77,16 @@ export const userStatusEnum = pgEnum("user_status", USER_STATUSES);
  * for a foreign key that Postgres cannot express polymorphically.
  */
 export const principalTypeEnum = pgEnum("principal_type", POPULATIONS);
+
+/**
+ * The settings enums (ADR-0045), built from the `@repo/contracts` tuples like
+ * every other one here — one type per fact, shared by both settings tables.
+ *
+ * `locale` is the one enum in this schema expected to grow: D7 appends `"lv"`
+ * to `LOCALES` and writes the `ALTER TYPE … ADD VALUE`, which appends, so no
+ * row and no sort order moves. `theme` is complete as it stands; `"system"` is
+ * the deferral to `prefers-color-scheme`, stored as a value rather than as the
+ * absence of one, so a client can tell "follow the device" from "never said".
+ */
+export const themeEnum = pgEnum("theme", THEMES);
+export const localeEnum = pgEnum("locale", LOCALES);

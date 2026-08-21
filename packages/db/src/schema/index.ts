@@ -7,10 +7,12 @@
  */
 export {
   citext,
+  localeEnum,
   primaryId,
   principalTypeEnum,
   staffRoleEnum,
   staffStatusEnum,
+  themeEnum,
   timestamps,
   userRoleEnum,
   userStatusEnum,
@@ -28,3 +30,9 @@ export {
   usersRelations,
 } from "./users.js";
 export { sessions } from "./sessions.js";
+export {
+  staffSettings,
+  staffSettingsRelations,
+  userSettings,
+  userSettingsRelations,
+} from "./settings.js";
