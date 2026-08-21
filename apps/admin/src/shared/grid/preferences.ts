@@ -1,4 +1,8 @@
-import { z } from "zod";
+import {
+  MAX_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTH,
+  gridPreferencesSchema,
+} from "@repo/contracts";
 
 /**
  * The grid preferences store (ADR-0041, `D4.5`).
@@ -68,50 +72,28 @@ export interface GridPreferenceDefaults {
 }
 
 /**
- * The stored value, versioned in the key *and* in the payload.
+ * The stored value, versioned in the key *and* in the payload — and now in
+ * `@repo/contracts`.
  *
- * Client-only, and beside the store rather than in `@repo/contracts`: nothing
- * on the wire speaks this today. The day a user-settings API does, moving it
- * there is that deliverable's work, and the adapter plus this schema are the
- * whole contract it inherits.
- */
-/**
+ * ADR-0041 kept the schema here because "nothing on the wire speaks this
+ * today. The day a user-settings API does, moving it there is that
+ * deliverable's work." `D6.1` is that day (ADR-0045): the schema, its `v: 1`
+ * literal and the three bounds its `D4.5` amendment set are the same values in
+ * a new file, and the widths are re-exported from here so that everything
+ * reading them through this module keeps reading them through this module.
+ *
  * Narrow enough to be a choice, wide enough to still be a column; and an upper
- * bound so a hand-edited entry cannot make one column the whole table.
- *
- * Both live here rather than beside the drag, because **the read path has to
- * agree with the write path**: `setColumnWidth` clamps, and a schema that
- * accepted anything finite and positive would let a stored `1` through — a
- * column an operator can see but cannot grab, reachable only through a Reset
- * that would undo their other columns too.
+ * bound so a hand-edited entry cannot make one column the whole table. Both
+ * bounds belong with the schema rather than beside the drag, because **the
+ * read path has to agree with the write path**: `setColumnWidth` clamps, and a
+ * schema that accepted anything finite and positive would let a stored `1`
+ * through — a column an operator can see but cannot grab, reachable only
+ * through a Reset that would undo their other columns too.
  */
-export const MIN_COLUMN_WIDTH = 64;
-export const MAX_COLUMN_WIDTH = 2_000;
+export { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH };
 
 export const clampColumnWidth = (width: number): number =>
   Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
-
-/**
- * A column id, bounded — it is a config key, not free text.
- *
- * The bound is what stops a crafted entry turning the Columns menu into
- * something that cannot be opened, which matters because "Reset to defaults"
- * lives inside it.
- */
-const columnId = z.string().min(1).max(64);
-
-/** More columns than any grid this vocabulary can describe will ever have. */
-const MAX_COLUMNS = 200;
-
-const storedPreferences = z.object({
-  v: z.literal(1),
-  sizing: z.record(
-    columnId,
-    z.number().int().min(MIN_COLUMN_WIDTH).max(MAX_COLUMN_WIDTH),
-  ),
-  order: z.array(columnId).max(MAX_COLUMNS),
-  hidden: z.array(columnId).max(MAX_COLUMNS),
-});
 
 export const gridStorageKey = (gridId: string): string =>
   `machxi.admin.grid:${gridId}:v1`;
@@ -234,7 +216,7 @@ export const createGridPreferences = ({
 
       if (raw === null) return fromDefaults();
 
-      const parsed = storedPreferences.safeParse(JSON.parse(raw));
+      const parsed = gridPreferencesSchema.safeParse(JSON.parse(raw));
 
       return parsed.success ? reconcile(parsed.data, defaults) : fromDefaults();
     } catch {
