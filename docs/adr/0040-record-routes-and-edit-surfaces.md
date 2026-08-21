@@ -1,6 +1,6 @@
 # ADR-0040: Record routes and edit surfaces — dialog, drawer, page
 
-- Status: accepted
+- Status: superseded by [ADR-0044](0044-record-routes-without-list-state.md)
 - Date: 2026-08-20
 
 > One of the D4 (data grid v2) decision set, written together with ADR-0037–0039 and ADR-0041 while D3's screens are the freshest evidence available. `D4.2` is the planned implementing step (`docs/plan/0004-data-grid-v2.md`). It stays amendable in place while D4 is `in progress` in `docs/plan/README.md` (ADR-0025 rule 2). **Accepted 2026-08-20**, at the head of `D4.2` — the per-step acceptance D4 runs on.

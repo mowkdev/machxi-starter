@@ -1,6 +1,6 @@
 # ADR-0034: Server state and notifications — TanStack Query conventions and sonner
 
-- Status: accepted
+- Status: superseded by [ADR-0043](0043-readable-list-search-params.md)
 - Date: 2026-08-19
 
 > One of the D3 (admin panel) decision set, written together with ADR-0030–0033, 0035 and 0036 before the first screen exists. `D3.5` is the planned implementing step. It stays amendable in place while D3 is `in progress` in `docs/plan/README.md` (ADR-0025 rule 2).

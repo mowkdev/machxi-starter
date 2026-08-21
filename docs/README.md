@@ -28,7 +28,7 @@ rule 2), not to a date. An ADR is amendable only while its deliverable is
 disagree are reconciled by a superseding ADR, never by editing the record. D1
 shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20 and D4 2026-08-21, so **ADRs
 0001–0042 are closed** — including every frontend decision the admin panel was
-built on and every grid decision the data-grid rebuild made. **No amendment
-window is open.** The next one opens with D5 and covers only the ADRs written
-for it; each of those is accepted at the head of the step that builds it, so a
-step whose ADR is still `proposed` is gated and must not be started.
+built on and every grid decision the data-grid rebuild made. **The one open
+window is D5's (grid URL readability, opened 2026-08-21), and it covers ADRs
+0043–0044 only.** Each of those is accepted at the head of the step that builds
+it, so a step whose ADR is still `proposed` is gated and must not be started.
