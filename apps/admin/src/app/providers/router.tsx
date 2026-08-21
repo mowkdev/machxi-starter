@@ -7,6 +7,10 @@ import {
 
 import type { ApiClient } from "@/shared/api/client";
 import {
+  parseAdminSearch,
+  stringifyAdminSearch,
+} from "@/shared/api/search-params";
+import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
@@ -98,6 +102,15 @@ export const createAppRouter = ({
       client,
     },
     defaultPreload: "intent",
+    /*
+     * One serialization for the list-query language, here rather than on the
+     * routes (ADR-0043, `D5.2`). `validateSearch` has to round-trip its own
+     * output, so the routes keep holding the parsed object and the spelling
+     * changes underneath them; every name the language does not define is
+     * handed to the router's own implementation.
+     */
+    parseSearch: parseAdminSearch,
+    stringifySearch: stringifyAdminSearch,
     // Spread rather than passed as `undefined`: `exactOptionalPropertyTypes`
     // (ADR-0002) distinguishes "absent" from "explicitly undefined", and the
     // router's own option is the former.
