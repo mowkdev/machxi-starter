@@ -1,9 +1,9 @@
 # ADR-0045: User settings — one resource on both segments, and the server adapter behind ADR-0041's seam
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-22
 
-> The D6 (user settings) decision set, which is this record alone. `D6.1`–`D6.3` are the implementing steps (`docs/plan/0006-user-settings.md`). Written 2026-08-22, the day D6 opened; `proposed` until accepted at the head of `D6.1` (ADR-0025 rule 3), and amendable in place from then until D6 ships (rule 2). It is additive beside frozen [ADR-0033](0033-browser-api-client-and-session.md), [ADR-0041](0041-grid-preferences.md) and [ADR-0043](0043-readable-list-search-params.md), and supersedes nothing.
+> The D6 (user settings) decision set, which is this record alone. `D6.1`–`D6.3` are the implementing steps (`docs/plan/0006-user-settings.md`). Written 2026-08-22, the day D6 opened. **Accepted 2026-08-22**, at the head of `D6.1` — the per-step acceptance D4 established and D5 continued (ADR-0025 rule 3); it stays amendable in place while D6 is `in progress` in `docs/plan/README.md` (rule 2). It is additive beside frozen [ADR-0033](0033-browser-api-client-and-session.md), [ADR-0041](0041-grid-preferences.md) and [ADR-0043](0043-readable-list-search-params.md), and supersedes nothing.
 
 ## Context
 
