@@ -1,4 +1,4 @@
-import { listEnvelopeSchema } from "@repo/contracts";
+import { listEnvelopeSchema, stringifyListSearch } from "@repo/contracts";
 import { users } from "@repo/db";
 import { eq } from "drizzle-orm";
 import supertest from "supertest";
@@ -332,6 +332,46 @@ describe("list queries (ADR-0014)", () => {
       // query string that produced it (ADR-0012).
       expect(response.body.meta.filters).toEqual({ status: "active" });
       expect(response.body.meta.pagination.total).toBe(statuses.length);
+    });
+
+    it("accepts the literal brackets a client's canonical query string writes", async () => {
+      /*
+       * ADR-0043 makes one string serve the address bar and the wire, and it
+       * writes `filter[status]` rather than `filter%5Bstatus%5D` because a URL
+       * an operator can read is the point of that decision. The two are the
+       * same query once decoded — which is a claim about `qs` and Express, so
+       * it is checked here against a real request rather than reasoned about
+       * in the package that produces the string.
+       *
+       * Built with the contracts writer itself, so this fails if the canonical
+       * spelling ever changes underneath the API.
+       */
+      const canonical = stringifyListSearch({
+        offset: 0,
+        limit: 20,
+        sort: [{ field: "email", direction: "asc" }],
+        filters: [{ field: "status", op: "in", value: ["active", "disabled"] }],
+      });
+
+      expect(canonical).toContain("filter[status][in]=");
+
+      const response = await request()
+        .get(`${USERS_BASE}?${canonical}`)
+        .set("Authorization", bearer(tokens.accessToken))
+        .expect(200);
+
+      const encoded = await list(USERS_BASE, {
+        offset: 0,
+        limit: 20,
+        sort: "email",
+        "filter[status][in]": "active,disabled",
+      }).expect(200);
+
+      // Same rows, same echo, same total: one query, two spellings.
+      expect(response.body.data).toEqual(encoded.body.data);
+      expect(response.body.meta.filters).toEqual({
+        "status[in]": ["active", "disabled"],
+      });
     });
 
     it("filters by a list and echoes the parsed members", async () => {

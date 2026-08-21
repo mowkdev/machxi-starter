@@ -85,7 +85,7 @@ describe("staffKeys", () => {
 });
 
 describe("useStaffList", () => {
-  it("sends the ADR-0014 wire form and reads the envelope's own meta", async () => {
+  it("sends the one canonical query string and reads the envelope's own meta", async () => {
     const seen: string[] = [];
 
     server.use(
@@ -111,7 +111,12 @@ describe("useStaffList", () => {
 
     expect(await screen.findByText("ada@machxi.local")).toBeInTheDocument();
     expect(seen[0]).toContain("sort=-createdAt");
-    expect(seen[0]).toContain("filter%5Bstatus%5D=active");
+    /*
+     * Literal brackets, not `%5B` (ADR-0043, `D5.1`): one serialization now
+     * serves the request and the address bar, and this is the tier that sees
+     * the URL a real request actually carries.
+     */
+    expect(seen[0]).toContain("filter[status]=active");
   });
 
   it("refetches when the params change, because the key changed", async () => {

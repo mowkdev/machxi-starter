@@ -10,7 +10,6 @@ import type {
 } from "@repo/contracts";
 
 import type { ApiClient } from "@/shared/api/client";
-import { toListParams } from "@/shared/api/list-params";
 
 /**
  * The staff endpoints as plain typed functions (ADR-0034 §Entity API).
@@ -29,7 +28,7 @@ export const createStaffApi = (client: ApiClient) =>
     list: async (params: ListStaffQuery): Promise<Page<StaffResource>> => {
       const { data } = await client.instance.get<ListEnvelope<StaffResource>>(
         "/staff",
-        { params: toListParams(params) },
+        { params },
       );
 
       return {

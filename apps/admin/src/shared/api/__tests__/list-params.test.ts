@@ -1,75 +1,63 @@
 import { listStaffQuery } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
-import { serializeListParams, toListParams } from "../list-params";
+import { serializeListParams, toListQuery } from "../list-params";
 
 /**
- * The wire form of a list query (ADR-0014), which is the one thing between the
- * grid and the API that is a *string* rather than a validated object.
+ * The axios adapter, which after ADR-0043 is the only thing left here: the
+ * list-query *syntax* lives in `@repo/contracts` and is tested there, as one
+ * round-trip property.
  *
- * The test that matters most is the round trip: what this writes must be what
- * `listStaffQuery` accepts. A serializer that looks right and produces
- * `sort=email:asc` is a `VALIDATION_ERROR` at runtime and nothing at build
- * time, which is exactly the failure the single pinned serializer exists to
- * prevent.
+ * What this file still owes is the branch — a list query goes through the
+ * canonical writer, an ordinary parameter bag does not — and the cross-check
+ * that the string the client sends is one the endpoint's own schema accepts.
+ * That second test is the one that fails loudly if either side ever moves.
  */
 
-const serialize = (query: Parameters<typeof toListParams>[0]) =>
-  serializeListParams(toListParams(query));
-
 describe("list params", () => {
-  it("writes the ADR-0014 shapes", () => {
-    const search = serialize({
+  it("writes a list query with the canonical, readable syntax", () => {
+    const written = serializeListParams({
       offset: 20,
       limit: 50,
-      sort: [
-        { field: "createdAt", direction: "desc" },
-        { field: "email", direction: "asc" },
-      ],
+      sort: [{ field: "createdAt", direction: "desc" }],
       filters: [
         { field: "status", op: "eq", value: "active" },
         { field: "roles", op: "in", value: ["admin", "manager"] },
-        { field: "createdAt", op: "gte", value: "2026-01-01" },
       ],
       q: "ada",
     });
 
-    const params = new URLSearchParams(search);
-
-    // A leading `-` is descending, comma-separated, in order.
-    expect(params.get("sort")).toBe("-createdAt,email");
-    // `eq` is the bare shorthand; every other operator carries its bracket.
-    expect(params.get("filter[status]")).toBe("active");
-    expect(params.get("filter[roles][in]")).toBe("admin,manager");
-    expect(params.get("filter[createdAt][gte]")).toBe("2026-01-01");
-    expect(params.get("offset")).toBe("20");
-    expect(params.get("limit")).toBe("50");
-    expect(params.get("q")).toBe("ada");
+    // Brackets literal, `eq` bare, `-` for descending — the same string the
+    // address bar shows for the same grid state.
+    expect(written).toBe(
+      "offset=20&limit=50&sort=-createdAt&filter[status]=active" +
+        "&filter[roles][in]=admin%2Cmanager&q=ada",
+    );
   });
 
-  it("produces a query string the API's own schema accepts", () => {
+  it("leaves an ordinary object alone", () => {
+    // Every non-list request goes through the same serializer.
+    expect(serializeListParams({ id: "abc", page: 2 })).toBe("id=abc&page=2");
+  });
+
+  it("produces a query string the endpoint's own schema accepts", () => {
     /*
-     * The round trip, against the real contract. `listStaffQuery` parses the
-     * bracket syntax the API receives, so parsing what we wrote proves the two
-     * halves agree — and it fails the moment either one moves.
+     * The cross-check, against the real contract. `listStaffQuery` parses what
+     * the API receives after Express has nested the brackets, so parsing what
+     * the client wrote proves the two halves agree — and it fails the moment
+     * either one moves. Driven from a parsed query rather than a literal, so
+     * a `Date` value really is a `Date` (ADR-0014 step 7).
      */
-    const query = serialize({
-      offset: 0,
-      limit: 20,
-      sort: [{ field: "email", direction: "asc" }],
-      filters: [{ field: "status", op: "eq", value: "active" }],
+    const query = listStaffQuery.parse({
+      sort: "-createdAt",
+      filter: { status: "active", createdAt: { gte: "2026-01-01" } },
     });
 
-    const asRequest = Object.fromEntries(
-      // Express nests `filter[status]` into `{ filter: { status } }`; this is
-      // the minimum of that shape the schema needs to see.
-      [...new URLSearchParams(query)].map(([key, value]) => [key, value]),
-    );
-
+    const written = new URLSearchParams(serializeListParams(query));
     const nested: Record<string, unknown> = {};
     const filter: Record<string, unknown> = {};
 
-    for (const [key, value] of Object.entries(asRequest)) {
+    for (const [key, value] of written) {
       const match = /^filter\[([^\]]+)\](?:\[([^\]]+)\])?$/.exec(key);
 
       if (match) {
@@ -81,49 +69,19 @@ describe("list params", () => {
       nested[key] = value;
     }
 
-    const parsed = listStaffQuery.safeParse({ ...nested, filter });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("omits an empty search rather than sending one the schema rejects", () => {
-    const search = serialize({
-      offset: 0,
-      limit: 20,
-      sort: [],
-      filters: [],
-      q: "",
-    });
-
-    expect(new URLSearchParams(search).has("q")).toBe(false);
-    // An empty sort is absent too, not `sort=`.
-    expect(new URLSearchParams(search).has("sort")).toBe(false);
-  });
-
-  it("writes a date filter as an ISO instant, not a JS date string", () => {
-    /*
-     * Driven from the *contract* rather than hand-built, which is the whole
-     * point: `listStaffQuery` declares its date fields `z.coerce.date()`, so
-     * the parsed value really is a `Date` and `String(date)` would write a
-     * locale- and timezone-dependent sentence. The earlier version of this
-     * test passed a string literal, which `ListQuery`'s `unknown` value happily
-     * accepted — and that is exactly why the bug was invisible.
-     */
-    const query = listStaffQuery.parse({
-      filter: { createdAt: { gte: "2026-01-01" } },
-    });
-
-    const params = new URLSearchParams(
-      serializeListParams(toListParams(query)),
+    expect(written.get("filter[createdAt][gte]")).toBe(
+      "2026-01-01T00:00:00.000Z",
     );
-    const written = params.get("filter[createdAt][gte]");
-
-    expect(written).toBe("2026-01-01T00:00:00.000Z");
-    expect(written).not.toContain("GMT");
+    expect(listStaffQuery.safeParse({ ...nested, filter }).success).toBe(true);
   });
 
-  it("leaves an ordinary object alone", () => {
-    // Every non-list request goes through the same serializer.
-    expect(serializeListParams({ id: "abc", page: 2 })).toBe("id=abc&page=2");
+  it("drops an absent search term rather than passing `undefined` through", () => {
+    // The `exactOptionalPropertyTypes` hand-off `toListQuery` exists for.
+    expect(
+      toListQuery({ offset: 0, limit: 20, sort: [], filters: [] }),
+    ).not.toHaveProperty("q");
+    expect(
+      toListQuery({ offset: 0, limit: 20, sort: [], filters: [], q: "ada" }),
+    ).toHaveProperty("q", "ada");
   });
 });

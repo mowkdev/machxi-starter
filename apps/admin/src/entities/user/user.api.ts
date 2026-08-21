@@ -10,7 +10,6 @@ import type {
 } from "@repo/contracts";
 
 import type { ApiClient } from "@/shared/api/client";
-import { toListParams } from "@/shared/api/list-params";
 
 /**
  * The user endpoints as plain typed functions (ADR-0034 §Entity API).
@@ -29,7 +28,7 @@ export const createUserApi = (client: ApiClient) =>
     list: async (params: ListUsersQuery): Promise<Page<UserResource>> => {
       const { data } = await client.instance.get<ListEnvelope<UserResource>>(
         "/users",
-        { params: toListParams(params) },
+        { params },
       );
 
       return {

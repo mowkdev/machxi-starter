@@ -78,6 +78,13 @@ export {
 } from "./list-query.js";
 
 export {
+  isListSearchState,
+  parseListSearch,
+  stringifyListSearch,
+  type ListSearchState,
+} from "./list-search.js";
+
+export {
   MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
