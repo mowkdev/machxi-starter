@@ -30,11 +30,16 @@ A composition over `@repo/ui`'s `sidebar-07` primitives, which **knows nothing a
 - **`headerStart`** / **`headerEnd`** — the fix for the stranded chrome. The trigger stays the shell's; everything beside it is the app's, on either side.
 - **`breadcrumbs`** — `packages/ui/src/components/breadcrumb.tsx` has been in the package since D3.1 and has never been rendered. The shell is where it belongs.
 - **The page header** — a title-and-actions row for a page, replacing the ad-hoc `CardHeader` / `CardAction` usage. The grid toolbar keeps its own actions (ADR-0038 put Create there deliberately at D4.3); this serves the pages that are not grids.
+- **`banner`** — a full-width region above the header, and a standard shell region rather than a speculative one: every app of this shape eventually needs somewhere to say something about the whole session. It is **dumb by construction** — it renders what it is handed and reserves no space when handed nothing. The shell must not learn _why_ a banner is showing, because a shell that read the principal would drag the session store and `@repo/contracts`'s principal type into `@repo/ui`, which ADR-0031's dependency rule and [ADR-0023](../adr/0023-shared-contracts-package.md) both exist to prevent.
+
+  It comes with a generic **`Banner`** component beside it — variants, a message, an action slot, and a **`dismissible`** flag, because its first real consumer needs `dismissible={false}`. `@repo/ui` has no `alert` primitive today, so whether this is built on shadcn's or hand-written is the ADR's call.
+
+  **The named consumers, in order of certainty**: [D12](0012-impersonation.md)'s impersonation banner, which reads `principal.impersonatedBy` and renders into this slot — the field on the principal and the banner itself are D12's to add, not this deliverable's; then offline, maintenance and read-only notices. In `apps/admin` today the honest consumer is the dev-only pseudo-locale notice: `VITE_I18N_PSEUDO` (D7) is on and nothing says so on screen, which is a real if small need and makes the slot _exercised_ rather than merely offered. A slot with no consumer at all is the defect this repository recorded twice about the `page` edit surface, and the deliverable should not add a third.
+
 - **The page container**, carrying [ADR-0037](../adr/0037-grid-viewport-layout.md)'s height contract unchanged — `min-w-0` always, `min-h-0` and `h-svh` in full-height mode. This is load-bearing for every grid and is the part of the shell most easily broken by a redesign; the deliverable's definition of done says so explicitly.
 
 **Deliberately out of scope, each with its consequence stated rather than left to be discovered:**
 
-- **A banner slot** — a full-width strip above the header. [D12](0012-impersonation.md) needs exactly this for the impersonation banner, and D8 not building it means D12 amends or supersedes D8's ADR to add it. Recorded as the accepted cost of a smaller deliverable, not as an oversight.
 - **Navigation as a typed data array.** Nav stays a JSX slot: a data-driven nav would pull the `can()` filtering and the route-tree types into the shell, and ADR-0042's containment carve-out means "which entries render" is a per-app judgement, not a shell rule.
 - **Command palette, global search, tenant switcher.** Named so that nobody wonders whether they were forgotten.
 
