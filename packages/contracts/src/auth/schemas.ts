@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { customRule } from "../locales/source.js";
 import {
   emailSchema,
   nameSchema,
@@ -95,7 +96,7 @@ export const changePasswordBody = z
   })
   .refine((body) => body.newPassword !== body.currentPassword, {
     path: ["newPassword"],
-    error: "The new password must differ from the current one",
+    ...customRule("passwordMustDiffer"),
   });
 export type ChangePasswordBody = z.infer<typeof changePasswordBody>;
 

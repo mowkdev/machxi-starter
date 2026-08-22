@@ -13,7 +13,10 @@ import {
 } from "@/entities/profile";
 import { AppFormProvider } from "@/shared/form/context";
 import { AppFormError } from "@/shared/form/form-error";
-import { applyServerErrors } from "@/shared/form/server-errors";
+import {
+  applyServerErrors,
+  schemaFieldRules,
+} from "@/shared/form/server-errors";
 import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
@@ -107,6 +110,14 @@ export const ProfileDetailsForm = ({
       applyServerErrors(error, form.setError, {
         fields: FIELD_NAMES,
         messageForError,
+        /*
+         * The same schema, caught a second time and in this operator's
+         * language (`D7.5`, ADR-0046 §6). A detail whose path this form
+         * renders is answered by the schema the form validates with rather
+         * than echoed from the wire, because the wire's English is the API's
+         * and not necessarily the operator's.
+         */
+        rules: schemaFieldRules(updateStaffProfileBody, form.getValues()),
       });
     }
   };

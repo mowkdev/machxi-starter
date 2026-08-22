@@ -1,5 +1,6 @@
 import type { ErrorCode } from "@repo/contracts";
 import type { FieldValues, Path, UseFormSetError } from "react-hook-form";
+import type { ZodType } from "zod";
 
 import { isApiClientError } from "@/shared/api/api-error";
 import type { ErrorMessage } from "@/shared/notifications/messages";
@@ -43,9 +44,17 @@ import type { ErrorMessage } from "@/shared/notifications/messages";
  *
  * `D7.2` moved the first half of that sentence from `ERROR_MESSAGES` into
  * `locales/en/errors.json` (ADR-0046 §2) and changed nothing about the
- * argument. The second half is `D7.5`'s, and it is where the verbatim rendering
- * below is revisited: the words will still be the schema's, but the schema will
- * be re-run under the active locale rather than echoed from the wire.
+ * argument. `D7.5` spent the second half, and it is the smallest possible
+ * change to the paragraph above: **the words are still the schema's, and the
+ * schema is re-run rather than echoed.**
+ *
+ * The API's `message` is English (ADR-0013) and the operator's may not be, so
+ * echoing a detail verbatim would have made this the one place a localised form
+ * spoke a second language. {@link schemaFieldRules} re-runs the same schema on
+ * the form's current values under the active locale and its message for that
+ * path is preferred; the wire's sentence is what answers when the client-side
+ * parse produces no issue there. Everything about *which* details are ours and
+ * *where* they land is unchanged.
  *
  * Two boundaries keep it true, and both are checks rather than conventions: the
  * error's **code** must be `VALIDATION_ERROR`, because only zod produces these,
@@ -60,11 +69,71 @@ import type { ErrorMessage } from "@/shared/notifications/messages";
  * string, received null") is a sentence the client-side resolver would never
  * have produced. It still lands somewhere visible — that is what the field
  * check is for — but it is the one shape of validation copy this design cannot
- * promise an operator has seen before.
+ * promise an operator has seen before. `D7.5` gives it one more property and
+ * not a second life: the re-derivation cannot produce an issue for a path the
+ * form's state does not carry, so that residual keeps the API's English and is
+ * now an **un-localised** residual — the same narrow case, not a new one.
  */
 
 /** Where the form-level message lives, for {@link AppFormError} to render. */
 export const FORM_ERROR_PATH = "root.server";
+
+/** What the form's own schema says about one dotted path, in this locale. */
+export type FieldRules = (path: string) => string | undefined;
+
+/**
+ * The form's schema, caught a second time (ADR-0046 §6, `D7.5`).
+ *
+ * `zodResolver` runs this schema on every submit and throws the issues away
+ * once react-hook-form has the messages; this runs it again, on the values the
+ * form holds *now*, and answers by path. The active zod locale is global
+ * (`shared/i18n/zod-locale.ts`), so "in the operator's language" needs no
+ * argument here — the same call under `lv` produces Latvian.
+ *
+ * **Lazy, and parsed at most once.** A rejected submit that names no field
+ * never parses at all; one that names three parses once. The memo is per call
+ * of this factory, which is per rejection, so it can never be stale.
+ *
+ * **First issue per path wins**, which is what `zodResolver` shows the operator
+ * for the same values — the alternative is a field whose message changes
+ * depending on whether the server or the client noticed it.
+ *
+ * A schema with an async refinement would make `safeParse` throw; none in
+ * `@repo/contracts` has one, and the `catch` is there so that adding one is a
+ * form that falls back to the API's words rather than a form that crashes on a
+ * failed submit.
+ */
+export const schemaFieldRules = (
+  schema: ZodType,
+  values: unknown,
+): FieldRules => {
+  let byPath: Map<string, string> | null = null;
+
+  const parse = (): Map<string, string> => {
+    const found = new Map<string, string>();
+
+    try {
+      const parsed = schema.safeParse(values);
+
+      for (const issue of parsed.success ? [] : parsed.error.issues) {
+        const path = issue.path.join(".");
+
+        if (!found.has(path)) found.set(path, issue.message);
+      }
+    } catch {
+      // An async schema, or one that threw on values it never expected to see.
+      // Either way the API's own sentence is still on screen.
+    }
+
+    return found;
+  };
+
+  return (path) => {
+    byPath ??= parse();
+
+    return byPath.get(path);
+  };
+};
 
 export interface ServerErrorOptions {
   /** The form's own field names — anything else is not ours to set. */
@@ -90,6 +159,18 @@ export interface ServerErrorOptions {
    * `useMessageForError()` is one line away.
    */
   readonly messageForError: ErrorMessage;
+  /**
+   * The form's own reading of its current values, for a detail whose path it
+   * renders (`D7.5`, ADR-0046 §6). Built with {@link schemaFieldRules} from the
+   * schema the caller already handed `zodResolver`.
+   *
+   * Optional rather than required, unlike `messageForError`, and the asymmetry
+   * is deliberate: omitting it degrades to the API's English for *validation*
+   * copy only, which is exactly the behaviour this function shipped with and a
+   * strictly better failure than a form with no message at all. A caller that
+   * has a schema has no reason to omit it.
+   */
+  readonly rules?: FieldRules;
 }
 
 /**
@@ -102,7 +183,7 @@ export interface ServerErrorOptions {
 export const applyServerErrors = <TValues extends FieldValues>(
   error: unknown,
   setError: UseFormSetError<TValues>,
-  { fields, codeFields = {}, messageForError }: ServerErrorOptions,
+  { fields, codeFields = {}, messageForError, rules }: ServerErrorOptions,
 ): boolean => {
   const formLevel = (message: string) => {
     setError(FORM_ERROR_PATH as Path<TValues>, { type: "server", message });
@@ -146,7 +227,12 @@ export const applyServerErrors = <TValues extends FieldValues>(
 
     setError(detail.path as Path<TValues>, {
       type: "server",
-      message: detail.message,
+      /*
+       * The schema's words in the operator's language when the schema can
+       * still produce them, and the wire's English when it cannot (`D7.5`).
+       * Both are the same rule; only the language and the moment differ.
+       */
+      message: rules?.(detail.path) ?? detail.message,
     });
     landed = true;
   }

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { LogoutMenuItem } from "@/features/auth";
+import { LocaleMenuItems } from "@/features/locale";
 import { ThemeMenuItems } from "@/features/theme";
 import { useSession } from "@/shared/api/context";
 import { useCan, type ResourceName } from "@/shared/auth";
@@ -204,6 +205,15 @@ const AccountMenu = () => {
          * "display state" and "device state" were never the same category.
          */}
         <ThemeMenuItems />
+        <DropdownMenuSeparator />
+        {/*
+         * And the language beside it (`D7.5`, ADR-0046 §4). The same account
+         * row holds both, so they are one menu apart rather than one screen
+         * apart — and an operator who has landed in the wrong language finds
+         * the way out where they were already looking for a preference about
+         * themselves, in the menu named after them.
+         */}
+        <LocaleMenuItems />
         <DropdownMenuSeparator />
         <LogoutMenuItem />
       </DropdownMenuContent>

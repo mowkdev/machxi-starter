@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { STAFF_ROLES, STAFF_STATUSES } from "../enums.js";
 import { listQuerySchema } from "../list-query.js";
+import { customRule } from "../locales/source.js";
 import {
   emailSchema,
   idSchema,
@@ -31,9 +32,10 @@ export const staffRolesSchema = z
   .array(z.enum(STAFF_ROLES))
   .min(1)
   .max(STAFF_ROLES.length)
-  .refine((roles) => new Set(roles).size === roles.length, {
-    error: "Roles must not repeat",
-  });
+  .refine(
+    (roles) => new Set(roles).size === roles.length,
+    customRule("rolesUnique"),
+  );
 
 /**
  * `POST /api/v1/admin/staff` — an admin creates a staff member with an initial
@@ -63,9 +65,7 @@ export const updateStaffBody = z
     roles: staffRolesSchema.optional(),
     status: z.enum(STAFF_STATUSES).optional(),
   })
-  .refine((body) => Object.keys(body).length > 0, {
-    error: "Provide at least one field to update",
-  });
+  .refine((body) => Object.keys(body).length > 0, customRule("updateNotEmpty"));
 export type UpdateStaffBody = z.infer<typeof updateStaffBody>;
 
 /**
@@ -87,9 +87,7 @@ export const updateStaffProfileBody = z
     firstName: nameSchema.optional(),
     lastName: nameSchema.optional(),
   })
-  .refine((body) => Object.keys(body).length > 0, {
-    error: "Provide at least one field to update",
-  });
+  .refine((body) => Object.keys(body).length > 0, customRule("updateNotEmpty"));
 export type UpdateStaffProfileBody = z.infer<typeof updateStaffProfileBody>;
 
 /**

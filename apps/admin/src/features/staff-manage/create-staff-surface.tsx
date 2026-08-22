@@ -12,7 +12,10 @@ import {
 } from "@/entities/staff";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { useT } from "@/shared/i18n";
-import { applyServerErrors } from "@/shared/form/server-errors";
+import {
+  applyServerErrors,
+  schemaFieldRules,
+} from "@/shared/form/server-errors";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
   editSurfaceOf,
@@ -105,6 +108,14 @@ export const CreateStaffSurface = () => {
         fields: FIELD_NAMES,
         codeFields: staffResourceConfig.errorFields,
         messageForError,
+        /*
+         * The same schema, caught a second time and in this operator's
+         * language (`D7.5`, ADR-0046 §6). A detail whose path this form
+         * renders is answered by the schema the form validates with rather
+         * than echoed from the wire, because the wire's English is the API's
+         * and not necessarily the operator's.
+         */
+        rules: schemaFieldRules(createStaffBody, form.getValues()),
       });
     }
   };

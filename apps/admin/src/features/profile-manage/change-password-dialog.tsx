@@ -10,7 +10,10 @@ import { useChangePassword } from "@/entities/profile";
 import { useSession } from "@/shared/api/context";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { createAppFormInput } from "@/shared/form/app-form-input";
-import { applyServerErrors } from "@/shared/form/server-errors";
+import {
+  applyServerErrors,
+  schemaFieldRules,
+} from "@/shared/form/server-errors";
 import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import type { FieldConfigMap } from "@/shared/resource/types";
@@ -100,6 +103,14 @@ export const ChangePasswordDialog = ({
         fields: Object.keys(changePasswordFields),
         codeFields: PASSWORD_ERROR_FIELDS,
         messageForError,
+        /*
+         * The same schema, caught a second time and in this operator's
+         * language (`D7.5`, ADR-0046 §6). A detail whose path this form
+         * renders is answered by the schema the form validates with rather
+         * than echoed from the wire, because the wire's English is the API's
+         * and not necessarily the operator's.
+         */
+        rules: schemaFieldRules(changePasswordBody, form.getValues()),
       });
     }
   };

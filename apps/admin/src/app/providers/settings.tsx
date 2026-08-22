@@ -1,4 +1,5 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import type { Locale } from "@repo/contracts";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
 import {
   createServerPreferenceAdapter,
@@ -108,6 +109,28 @@ export const SettingsProvider = ({
     if (settings.data !== undefined) writer.sync(settings.data);
   }, [settings.data, writer]);
 
+  /*
+   * The locale's account half (`D7.5`, ADR-0046 §6).
+   *
+   * Straight through `useUpdateSettings` rather than through the coalescing
+   * writer, and the difference from the theme is the interaction rather than
+   * the value: a column drag produces a write per frame and a language is
+   * chosen once, deliberately, by an operator who has just opened a menu to do
+   * it. There is nothing to coalesce, and a second's debounce on the one write
+   * an operator would notice failing is a second of not knowing.
+   *
+   * The rejection is swallowed here for the reason the writer's is: ADR-0043's
+   * global mutation handler has already turned it into the one toast the
+   * operator sees, and an unhandled rejection would be noise nobody can act on.
+   * The language itself has already changed — the account row is what did not.
+   */
+  const publishLocale = useCallback(
+    (locale: Locale) => {
+      void patchSettings({ locale }).catch(() => undefined);
+    },
+    [patchSettings],
+  );
+
   const serverStorage = useMemo(
     () => createServerPreferenceAdapter({ writer, cache: LOCAL_CACHE }),
     [writer],
@@ -151,7 +174,10 @@ export const SettingsProvider = ({
        * component that holds it — anonymous, `adopted` is `undefined` and the
        * device's cache answers instead.
        */}
-      <I18nProvider adopted={account?.locale}>
+      <I18nProvider
+        adopted={account?.locale}
+        publish={account === undefined ? undefined : publishLocale}
+      >
         <PreferenceStorageProvider value={storage}>
           {children}
         </PreferenceStorageProvider>

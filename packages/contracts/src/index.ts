@@ -97,6 +97,23 @@ export {
   type IsoDateTime,
 } from "./primitives.js";
 
+/**
+ * The keyed custom messages and their source catalogue (ADR-0046 §6).
+ *
+ * Importing this barrel installs the source error map, because
+ * `./locales/source.js` does so on evaluation — which is what keeps the API's
+ * validation copy exactly what it was with no line of API code. The Latvian
+ * map is **not** here: it lives behind the `@repo/contracts/locales/lv`
+ * subpath so a client that never switches to Latvian never bundles it.
+ */
+export {
+  CUSTOM_MESSAGES,
+  CUSTOM_MESSAGE_KEYS,
+  createCustomMessageError,
+  customRule,
+  type CustomMessageKey,
+} from "./locales/source.js";
+
 export {
   HEALTH_STATUSES,
   type HealthCheckResource,

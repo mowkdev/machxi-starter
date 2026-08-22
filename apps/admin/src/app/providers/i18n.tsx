@@ -1,12 +1,20 @@
 import type { Locale } from "@repo/contracts";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { I18nextProvider } from "react-i18next";
 
 import {
   EN_RESOURCES,
+  LocalePublisherProvider,
   NAMESPACES,
   createI18n,
   preferredLocale,
+  type LocalePublisher,
 } from "@/shared/i18n";
 
 /**
@@ -41,9 +49,19 @@ export interface I18nProviderProps {
    * they sign in, every morning.
    */
   readonly adopted?: Locale | undefined;
+  /**
+   * Where a chosen locale also goes when there is an account to hold it
+   * (`D7.5`). `undefined` signed out: the device cache is then the only owner,
+   * which is the app an operator has before they sign in.
+   */
+  readonly publish?: LocalePublisher | undefined;
 }
 
-export const I18nProvider = ({ children, adopted }: I18nProviderProps) => {
+export const I18nProvider = ({
+  children,
+  adopted,
+  publish,
+}: I18nProviderProps) => {
   /*
    * A lazy `useState` rather than a module-level constant: the instance is per
    * mounted app, which is what lets the suite render two of them at two
@@ -72,5 +90,28 @@ export const I18nProvider = ({ children, adopted }: I18nProviderProps) => {
     void i18n.changeLocale(adopted);
   }, [adopted, i18n]);
 
-  return <I18nextProvider i18n={i18n.instance}>{children}</I18nextProvider>;
+  /*
+   * The latch is moved by an operator's own choice as well as by the account's
+   * answer, and that is what stops the round trip coming back as a second
+   * language change. `useUpdateSettings` writes the response into the settings
+   * cache, so `adopted` arrives a moment later holding exactly what the
+   * operator just picked; without this line the effect above would see a value
+   * differing from the *previous* adoption and ask i18next to change to the
+   * language it is already in.
+   */
+  const publishChoice = useCallback(
+    (next: Locale) => {
+      lastAdopted.current = next;
+      publish?.(next);
+    },
+    [publish],
+  );
+
+  return (
+    <I18nextProvider i18n={i18n.instance}>
+      <LocalePublisherProvider publish={publishChoice}>
+        {children}
+      </LocalePublisherProvider>
+    </I18nextProvider>
+  );
 };

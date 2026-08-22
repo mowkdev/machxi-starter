@@ -4,5 +4,10 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "lv": "Latviešu"
   }
 }

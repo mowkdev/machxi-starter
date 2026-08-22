@@ -5,6 +5,7 @@ import { initReactI18next } from "react-i18next";
 
 import { setIntlLocale } from "./intl";
 import { readStoredLocale, writeStoredLocale } from "./locale-storage";
+import type { TranslateKey } from "./keys";
 import { DEFAULT_NAMESPACE, type Namespace } from "./namespaces";
 import type { Catalogues } from "./resources";
 import {
@@ -13,6 +14,11 @@ import {
   resolveInitialLocale,
 } from "./resolve-locale";
 import { INTL_TAGS } from "./tags";
+import {
+  applyZodLocale,
+  createRuleTranslator,
+  zodLocaleReady,
+} from "./zod-locale";
 
 /**
  * The i18n seam (ADR-0046 §3, §5, §13). `D7.1` landed it empty; `D7.2`, `D7.3`
@@ -63,10 +69,21 @@ const loadCatalogue = async (
  * react-i18next's own — is what makes a locale switch move the dates in the
  * same paint as the headers rather than one render later.
  */
-const applyLocale = (locale: Locale): void => {
+const applyLocale = (locale: Locale, translate: TranslateKey): void => {
   setIntlLocale(locale);
   document.documentElement.lang = INTL_TAGS[locale];
   writeStoredLocale(locale);
+  /*
+   * And the schemas with them (`D7.5`, ADR-0046 §6). The field rules an
+   * operator reads are zod's own messages, so a locale that moved the headers
+   * and left `Too small: expected string to have >=12 characters` underneath
+   * the password box would have localised everything except the sentence the
+   * operator is being asked to act on.
+   *
+   * Fire-and-forget: `lv`'s map is a chunk, and nothing on this tick is waiting
+   * for a validation message. `changeLocale` awaits it for the caller that is.
+   */
+  applyZodLocale(locale, createRuleTranslator(translate));
 };
 
 export interface CreateI18nOptions {
@@ -90,7 +107,10 @@ export const createI18n = ({
    * what a locale means before there is any copy to translate.
    */
   instance.on("languageChanged", (language: string) => {
-    applyLocale(asLocale(language) ?? DEFAULT_LOCALE);
+    applyLocale(
+      asLocale(language) ?? DEFAULT_LOCALE,
+      instance.t as TranslateKey,
+    );
   });
 
   void instance
@@ -148,12 +168,19 @@ export const createI18n = ({
       react: { useSuspense: false },
     });
 
-  applyLocale(locale);
+  applyLocale(locale, instance.t as TranslateKey);
 
   return {
     instance,
     changeLocale: async (next: Locale): Promise<void> => {
       await instance.changeLanguage(next);
+      /*
+       * The zod maps are installed by the listener above, which does not wait
+       * for `lv`'s chunk. Awaiting it here is what lets a caller — a test, or
+       * a control that wants the next submit to be in the new language — treat
+       * "the locale changed" as one settled event rather than two.
+       */
+      await zodLocaleReady();
     },
     t: instance.t,
   } as const;
@@ -186,9 +213,23 @@ export {
   writeStoredLocale,
 } from "./locale-storage";
 export { INTL_TAGS } from "./tags";
+export {
+  LocalePublisherProvider,
+  useLocale,
+  type LocalePublisher,
+  type LocalePublisherProviderProps,
+  type LocaleView,
+} from "./locale-context";
 export { activeIntlTag, dateTimeFormat, setIntlLocale } from "./intl";
 export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
 export { EN_RESOURCES, type Catalogue, type Catalogues } from "./resources";
+export {
+  RULE_KEYS,
+  applyZodLocale,
+  createRuleTranslator,
+  zodLocaleReady,
+  type RuleTranslator,
+} from "./zod-locale";
 export {
   createDeferredTranslate,
   dynamicKey,

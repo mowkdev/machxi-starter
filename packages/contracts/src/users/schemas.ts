@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { USER_ROLES, USER_STATUSES } from "../enums.js";
 import { listQuerySchema } from "../list-query.js";
+import { customRule } from "../locales/source.js";
 import {
   emailSchema,
   idSchema,
@@ -32,9 +33,10 @@ export const userRolesSchema = z
   .array(z.enum(USER_ROLES))
   .min(1)
   .max(USER_ROLES.length)
-  .refine((roles) => new Set(roles).size === roles.length, {
-    error: "Roles must not repeat",
-  });
+  .refine(
+    (roles) => new Set(roles).size === roles.length,
+    customRule("rolesUnique"),
+  );
 
 /**
  * `POST /api/v1/admin/users` — a staff member creates a user account directly,
@@ -64,9 +66,7 @@ export const updateUserBody = z
     status: z.enum(USER_STATUSES).optional(),
     roles: userRolesSchema.optional(),
   })
-  .refine((body) => Object.keys(body).length > 0, {
-    error: "Provide at least one field to update",
-  });
+  .refine((body) => Object.keys(body).length > 0, customRule("updateNotEmpty"));
 export type UpdateUserBody = z.infer<typeof updateUserBody>;
 
 /**
@@ -79,9 +79,7 @@ export const updateProfileBody = z
     firstName: nameSchema.nullable().optional(),
     lastName: nameSchema.nullable().optional(),
   })
-  .refine((body) => Object.keys(body).length > 0, {
-    error: "Provide at least one field to update",
-  });
+  .refine((body) => Object.keys(body).length > 0, customRule("updateNotEmpty"));
 export type UpdateProfileBody = z.infer<typeof updateProfileBody>;
 
 /**

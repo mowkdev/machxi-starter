@@ -1,5 +1,10 @@
 {
   "select": {
     "placeholder": "Select…"
+  },
+  "rules": {
+    "rolesUnique": "Roles must not repeat",
+    "updateNotEmpty": "Provide at least one field to update",
+    "passwordMustDiffer": "The new password must differ from the current one"
   }
 }
