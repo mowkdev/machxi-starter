@@ -4,18 +4,21 @@ The ledger of staged work in this repository. A **deliverable** is the unit defi
 
 Read this file first; open a plan only when you are working in it.
 
-| #                                  | Title                                | Status                 | Scope in one line                                                                                                                                  |
-| ---------------------------------- | ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [D1](0001-api-foundation.md)       | API foundation                       | **shipped 2026-08-18** | A running, testable API: config, logging, DB, migrations, seeds, both auth flows, staff/users admin, profile.                                      |
-| [D2](0002-api-hardening.md)        | API hardening and D3 prerequisites   | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                                   |
-| [D3](0003-admin-app.md)            | Admin panel (`apps/admin`)           | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                       |
-| [D4](0004-data-grid-v2.md)         | Data grid v2 (`apps/admin`)          | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.           |
-| [D5](0005-grid-url-readability.md) | Grid URL readability                 | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                       |
-| [D6](0006-user-settings.md)        | User settings                        | **shipped 2026-08-22** | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments.                     |
-| [D7](0007-localization.md)         | Interface localization               | **shipped 2026-08-22** | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.        |
-| [D8](0008-customer-app.md)         | Customer app and platform extraction | planned                | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1. |
-| [D9](0009-impersonation.md)        | Customer impersonation               | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.   |
-| D10                                | Marketing site (`apps/web`)          | planned                | The Next.js app, re-scoped from "user-facing" to marketing only — the operator's call, recorded in §How D6–D10 were scoped. Built last.            |
+| #                                           | Title                              | Status                 | Scope in one line                                                                                                                                 |
+| ------------------------------------------- | ---------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [D1](0001-api-foundation.md)                | API foundation                     | **shipped 2026-08-18** | A running, testable API: config, logging, DB, migrations, seeds, both auth flows, staff/users admin, profile.                                     |
+| [D2](0002-api-hardening.md)                 | API hardening and D3 prerequisites | **shipped 2026-08-19** | Close the gaps D1's review found, and make the decisions the frontend apps cannot start without.                                                  |
+| [D3](0003-admin-app.md)                     | Admin panel (`apps/admin`)         | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                      |
+| [D4](0004-data-grid-v2.md)                  | Data grid v2 (`apps/admin`)        | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.          |
+| [D5](0005-grid-url-readability.md)          | Grid URL readability               | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                      |
+| [D6](0006-user-settings.md)                 | User settings                      | **shipped 2026-08-22** | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments.                    |
+| [D7](0007-localization.md)                  | Interface localization             | **shipped 2026-08-22** | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.       |
+| [D8](0008-app-shell-and-record-surfaces.md) | App shell and record surfaces      | planned                | The two compositions both SPAs are built from, designed with slots in `@repo/ui`: a slotted shell, and one record container in modal/drawer/page. |
+| [D9](0009-platform-extraction.md)           | Platform extraction                | planned                | The behavioural machinery leaves `apps/admin/src/shared` for packages; admin becomes its first consumer through thin doors. Mechanical by design. |
+| [D10](0010-grid-and-admin-followups.md)     | Data grid and admin follow-ups     | planned                | The grid and admin work still owed, done after extraction so it lands in the packages both apps use. **Placeholder — scope not yet named.**       |
+| [D11](0011-customer-app.md)                 | Customer app                       | planned                | `apps/customer` (Vite SPA over `/user`) as the second consumer of D8 and D9 — self-service v1, localized from the first screen.                   |
+| [D12](0012-impersonation.md)                | Customer impersonation             | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.  |
+| D13                                         | Marketing site (`apps/web`)        | planned                | The Next.js app, re-scoped from "user-facing" to marketing only — the operator's call, recorded below. Built last.                                |
 
 ## Rules
 
@@ -173,7 +176,21 @@ Nothing about the scope changed on the way in — the scoping document's decisio
 
 The deliverable is the **inverse of D6's shape**. D6 moved every tier a little and closed on that as evidence; D7 moves one migration and then nothing but `apps/admin`, `packages/ui`, `packages/contracts` and `packages/config-eslint`. What it costs instead is breadth — the sweep touches nearly every file that renders a string — which is why it is seven steps rather than four, and why four of them are sweeps whose mechanical check does not arrive until the fifth.
 
+## How D8–D13 were re-scoped
+
+**Re-scoped 2026-08-22, at the desk, after D7 shipped.** The ledger ran extraction-with-the-customer-app → impersonation → marketing; it now runs **shell and surfaces → extraction → grid follow-ups → customer app → impersonation → marketing**, and what was D8–D10 is now D11–D13. Like the D5 insertion and the D3 split, **this is a ledger decision, not an edit to a frozen record** — no numbered rule of [ADR-0025](../adr/0025-deliverables.md) is touched, and renumbering three planned files is cheap precisely because none of them had steps.
+
+Three operator judgements produced it.
+
+- **The extraction moves ahead of the app that was going to force it.** The old D8 bundled extraction and customer app on the argument that "an extraction with one consumer is speculation with extra folders". That argument is answered rather than ignored: the second consumer's requirements are known now — a collapsing nav drawer, header chrome placed differently, create/edit surfaces in three shells — so the extraction is generalising against named needs rather than guessing. `docs/plan/0008-app-shell-and-record-surfaces.md` carries the rule that keeps it honest: every slot and variant must answer a need this repository can name today.
+- **Design comes before the move, and they are separate deliverables.** `apps/admin` is a working consumer with a full test tier; generalising the shell and the surfaces against it, in place, is the cheapest verification available, and it leaves D9 mechanical enough that its "no behaviour change" claim is a matter of comparing test totals. That also makes D9 the first row in this ledger genuinely suited to an unattended run.
+- **The remaining grid and admin work is real, and belongs after the extraction** — a grid capability added before D9 is added to code that is moving, and one added after D11 is added twice. D10 is a placeholder with a candidate list drawn from the index's _Planned_ entries; its scope is the operator's to name.
+
+Two design decisions were taken at the same desk and are recorded in the D8 file rather than here: the compositions live in **`@repo/ui`**, which means superseding frozen [ADR-0031](../adr/0031-ui-design-system.md) and carrying the whole of it (ADR-0024 rule 1) — the accepted price of one door per app; and the shell ships **header slots, breadcrumbs and a page header but no banner slot**, with [D12](0012-impersonation.md) named as the consequence that will have to add one.
+
 ## How D6–D10 were scoped
+
+> **Superseded numbering.** This section records the scoping of 2026-08-20 and uses the numbers of that day: what it calls D8 (customer app + extraction) is now D9 and D11, its D9 (impersonation) is D12, and its D10 (marketing) is D13. See §How D8–D13 were re-scoped above. Its reasoning about the ordering of settings, localization and the customer app stands unchanged.
 
 Scoped 2026-08-20, while D4 was in progress — **scoping is not opening**: each of them opens when the one before it ships, one at a time as ever, and each plan file above carries scope, rationale and explicitly-labelled assumptions rather than steps. Steps are written when a deliverable opens, and every assumption is revisable until then.
 

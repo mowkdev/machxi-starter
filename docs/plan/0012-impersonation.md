@@ -1,10 +1,10 @@
-# D9 — Customer impersonation
+# D12 — Customer impersonation
 
-- Status: **planned** — opens when D8 ships
+- Status: **planned** — opens when [D11](0011-customer-app.md) ships
 - Steps: written when the deliverable opens; this file carries scope, order rationale and the assumptions taken
 - Ledger: [`docs/plan/README.md`](README.md)
 
-Scope: staff open the customer app **as a chosen customer**. An admin endpoint mints an impersonated `user`-population session; the customer app runs on it exactly as it would on a real one, with a persistent banner naming both identities and an explicit exit; every impersonated request is attributable to the staff member behind it. This is deliberately **last in the customer-app cluster**: it needs the app it signs into (D8), the settings and locale that app runs on (D6/D7), and it is the highest-risk security surface in the ledger — everything it touches must already stand still.
+Scope: staff open the customer app **as a chosen customer**. An admin endpoint mints an impersonated `user`-population session; the customer app runs on it exactly as it would on a real one, with a persistent banner naming both identities and an explicit exit; every impersonated request is attributable to the staff member behind it. This is deliberately **last in the customer-app cluster**: it needs the app it signs into ([D11](0011-customer-app.md)), the settings and locale that app runs on (D6/D7), and it is the highest-risk security surface in the ledger — everything it touches must already stand still.
 
 ## Design sketch (the ADR decides; these are the constraints it starts from)
 
@@ -17,6 +17,7 @@ Scope: staff open the customer app **as a chosen customer**. An admin endpoint m
 ## Decisions this deliverable needs
 
 - **One new ADR**: impersonation sessions — the mint, the handoff, the TTL/no-refresh rule, the exclusion list, the audit events, and which staff roles hold the capability. Written as an **additive** decision beside frozen ADR-0017/0018/0019; if any of the three needs to say something different, that is a superseding ADR, discovered at writing time rather than during implementation.
+- **A banner slot in the D8 shell**, which [D8](0008-app-shell-and-record-surfaces.md) deliberately left out of its scope with this deliverable named as the consequence. The unremovable banner below needs a full-width region above the header that the shell does not have, so this deliverable amends or supersedes D8's shell ADR to add it — a known, accepted cost of keeping D8 small, not a surprise.
 - `security-reviewer` is mandatory on every step of this deliverable, not just the PR gate — this is the feature the agent exists for.
 
 ## Assumptions taken 2026-08-20 (revisable until the deliverable opens)
