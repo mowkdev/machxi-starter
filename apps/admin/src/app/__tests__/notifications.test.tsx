@@ -10,11 +10,10 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { apiClientError } from "@/shared/api/api-error";
-import {
-  ERROR_MESSAGES,
-  messageForError,
-} from "@/shared/notifications/messages";
+import enErrors from "@/shared/i18n/locales/en/errors.json";
+import { createMessageForError } from "@/shared/notifications/messages";
 import { Toaster } from "@/shared/ui";
+import { createTestI18n } from "@/test/render";
 
 import { createQueryClient } from "../providers/query-client";
 
@@ -27,8 +26,22 @@ import { createQueryClient } from "../providers/query-client";
  * no mutation implements it.
  */
 
+/**
+ * The catalogue, and the lookup built from it (`D7.2`, ADR-0046 §2).
+ *
+ * `ERROR_MESSAGES` is `locales/en/errors.json` now, keyed by the same
+ * `ErrorCode`s and holding the same sentences — so every assertion below reads
+ * exactly as it did, which is the property "keeping `en` as the test locale"
+ * was supposed to buy.
+ */
+const ERROR_MESSAGES = enErrors;
+
+const messageForError = createMessageForError(
+  createTestI18n().instance.getFixedT(null, "errors"),
+);
+
 const wrap = (ui: ReactNode) => {
-  const queryClient = createQueryClient();
+  const queryClient = createQueryClient({ messageForError });
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -61,11 +74,24 @@ const Trigger = ({
 
 describe("the error message map", () => {
   it("covers every code in the contracts union", () => {
-    // `Record<ErrorCode, string>` already makes a gap a build failure; this is
-    // the runtime half of the same claim, and it catches a key that was typed
-    // but left empty.
+    /*
+     * `shared/i18n/__checks__/errors.ts` makes a *missing* key a build failure,
+     * the way `Record<ErrorCode, string>` used to; this is the runtime half of
+     * the same claim and catches what a type cannot — a key that exists and is
+     * empty, which renders as a blank toast rather than as a red build.
+     *
+     * It goes through `messageForError` rather than reading the JSON, so it
+     * also proves the lookup resolves each code rather than falling back: a key
+     * i18next could not find would answer with the fallback sentence.
+     */
     for (const code of ERROR_CODES) {
       expect(ERROR_MESSAGES[code], code).toBeTruthy();
+      expect(
+        messageForError(
+          apiClientError({ status: 400, code, message: "developer-facing" }),
+        ),
+        code,
+      ).toBe(ERROR_MESSAGES[code]);
     }
   });
 

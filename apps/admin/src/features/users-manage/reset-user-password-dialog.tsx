@@ -11,6 +11,7 @@ import { useSetUserPassword } from "@/entities/user";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useMessageForError } from "@/shared/notifications/messages";
 import type { FieldConfigMap } from "@/shared/resource/types";
 
 /**
@@ -71,6 +72,7 @@ export const ResetUserPasswordDialog = ({
   readonly onClose: () => void;
 }) => {
   const setPassword = useSetUserPassword();
+  const messageForError = useMessageForError();
 
   const form = useForm<SetPasswordBody>({
     resolver: zodResolver(setPasswordBody),
@@ -87,6 +89,7 @@ export const ResetUserPasswordDialog = ({
       applyServerErrors(error, form.setError, {
         fields: Object.keys(passwordFields),
         codeFields: PASSWORD_ERROR_FIELDS,
+        messageForError,
       });
     }
   };

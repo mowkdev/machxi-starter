@@ -24,6 +24,7 @@ import type {
   FieldValues,
 } from "react-hook-form";
 
+import { useT } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type { FieldConfig } from "@/shared/resource/types";
 import {
@@ -191,31 +192,37 @@ export const SelectField = ({
   config,
   field,
   fieldState,
-}: FieldAdapterProps) => (
-  <Frame id={id} config={config} fieldState={fieldState}>
-    <Select
-      value={asText(field.value)}
-      disabled={field.disabled ?? false}
-      onValueChange={field.onChange}
-    >
-      <SelectTrigger
-        id={id}
-        ref={field.ref}
-        onBlur={field.onBlur}
-        aria-invalid={fieldState.invalid}
+}: FieldAdapterProps) => {
+  const { t } = useT("form");
+
+  return (
+    <Frame id={id} config={config} fieldState={fieldState}>
+      <Select
+        value={asText(field.value)}
+        disabled={field.disabled ?? false}
+        onValueChange={field.onChange}
       >
-        <SelectValue placeholder={config.placeholder ?? "Select…"} />
-      </SelectTrigger>
-      <SelectContent>
-        {resolveOptions(config.options).map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  </Frame>
-);
+        <SelectTrigger
+          id={id}
+          ref={field.ref}
+          onBlur={field.onBlur}
+          aria-invalid={fieldState.invalid}
+        >
+          <SelectValue
+            placeholder={config.placeholder ?? t("select.placeholder")}
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {resolveOptions(config.options).map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Frame>
+  );
+};
 
 export const CheckboxField = ({
   id,

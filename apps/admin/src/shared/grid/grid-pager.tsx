@@ -6,6 +6,7 @@ import {
   ChevronsRightIcon,
 } from "lucide-react";
 
+import { useT } from "@/shared/i18n";
 import {
   Button,
   Label,
@@ -90,6 +91,7 @@ export const GridPager = ({
   pageSizes = DEFAULT_PAGE_SIZES,
   disabled = false,
 }: GridPagerProps) => {
+  const { t } = useT("grid");
   const sizes = offeredSizes(pageSizes, limit);
   const first = rowCount === 0 ? 0 : offset + 1;
   const last = offset + rowCount;
@@ -105,16 +107,29 @@ export const GridPager = ({
   const canGoBack = offset > 0;
   const canGoForward = isOpenEnded ? rowCount === limit : offset < lastOffset;
 
+  /*
+   * The three numbers are interpolated as **strings**, deliberately.
+   *
+   * i18next's built-in `number` formatter would localise a group separator into
+   * them, and this is a row range rather than a quantity: `1–20 of 1,432`
+   * reading `1–20 no 1 432` in another locale is fine, but `1,000–1,020` in
+   * *this* one would put a comma inside a range that already uses an en dash as
+   * its separator. The count on a pager is an address, not an amount.
+   */
   const range =
     rowCount === 0
-      ? "No results"
+      ? t("pager.none")
       : isOpenEnded
-        ? `${String(first)}–${String(last)}`
-        : `${String(first)}–${String(last)} of ${String(total)}`;
+        ? t("pager.rangeOpen", { first: String(first), last: String(last) })
+        : t("pager.range", {
+            first: String(first),
+            last: String(last),
+            total: String(total),
+          });
 
   return (
     <nav
-      aria-label="Pagination"
+      aria-label={t("pager.label")}
       /*
        * `shrink-0` because this is the budget's static footer (ADR-0037): it
        * declares its height and the scroll body takes the rest, so a page of
@@ -129,7 +144,7 @@ export const GridPager = ({
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <Label htmlFor="grid-page-size" className="text-sm font-normal">
-            Rows per page
+            {t("pager.rowsPerPage")}
           </Label>
           <Select
             value={String(limit)}
@@ -155,7 +170,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="First page"
+            aria-label={t("pager.first")}
             disabled={disabled || !canGoBack}
             onClick={() => {
               onOffsetChange(0);
@@ -166,7 +181,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Previous page"
+            aria-label={t("pager.previous")}
             disabled={disabled || !canGoBack}
             onClick={() => {
               onOffsetChange(Math.max(0, offset - limit));
@@ -177,7 +192,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Next page"
+            aria-label={t("pager.next")}
             disabled={disabled || !canGoForward}
             onClick={() => {
               onOffsetChange(offset + limit);
@@ -188,7 +203,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Last page"
+            aria-label={t("pager.last")}
             // Open-ended means there is no last page to reach, so the control
             // says so instead of guessing one.
             disabled={disabled || isOpenEnded || offset >= lastOffset}

@@ -1,6 +1,7 @@
 import type { Filter } from "@repo/contracts";
 import { XIcon } from "lucide-react";
 
+import { useT } from "@/shared/i18n";
 import type { ColumnConfig, HotFilterConfig } from "@/shared/resource/types";
 import { Badge, Button } from "@/shared/ui";
 
@@ -51,6 +52,16 @@ export const AppliedFilters = ({
   onClearAll,
 }: AppliedFiltersProps) => {
   /*
+   * Two hooks rather than `useT(["grid", "common"])`, and it is a type
+   * decision rather than a style one: `chipsForState` takes a `TFunction<"grid">`
+   * — one namespace, so a key it resolves is a `grid` key and the compiler says
+   * so — and an array-bound translator is a different, wider type that would
+   * have to be cast on the way in.
+   */
+  const { t } = useT("grid");
+  const { t: tCommon } = useT("common");
+
+  /*
    * Suppressed, not omitted: the chip is skipped exactly while a hot-filter
    * button *displays* the same entry, because the pressed button already is its
    * visible, removable representation and two removal affordances for one
@@ -59,7 +70,7 @@ export const AppliedFilters = ({
    * represent gets its chip as before.
    */
   const displayed = displayedByHotFilters(filters, hotFilters);
-  const chips = chipsForState(filters, columns).filter(
+  const chips = chipsForState(filters, columns, t).filter(
     (chip) => !displayed.has(chip.filter),
   );
 
@@ -82,11 +93,7 @@ export const AppliedFilters = ({
        * flow, is not a flex item of ADR-0037's column, and costs no `gap`.
        */}
       <span role="status" aria-live="polite" className="sr-only">
-        {applied === 0
-          ? ""
-          : applied === 1
-            ? "1 filter applied"
-            : `${applied} filters applied`}
+        {applied === 0 ? "" : t("applied.announce", { count: applied })}
       </span>
 
       {/*
@@ -102,7 +109,10 @@ export const AppliedFilters = ({
           className="flex shrink-0 flex-wrap items-center gap-2"
         >
           {q === "" ? null : (
-            <Chip label={`Search “${q}”`} onRemove={onRemoveSearch} />
+            <Chip
+              label={t("applied.search", { term: q })}
+              onRemove={onRemoveSearch}
+            />
           )}
 
           {chips.map((chip) => (
@@ -121,7 +131,7 @@ export const AppliedFilters = ({
             className="h-7"
             onClick={onClearAll}
           >
-            Clear all
+            {tCommon("actions.clearAll")}
           </Button>
         </div>
       )}
@@ -142,16 +152,20 @@ const Chip = ({
 }: {
   readonly label: string;
   readonly onRemove: () => void;
-}) => (
-  <Badge variant="secondary" className="gap-1 py-1 pr-1 pl-2 font-normal">
-    {label}
-    <button
-      type="button"
-      aria-label={`Remove filter: ${label}`}
-      className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      onClick={onRemove}
-    >
-      <XIcon aria-hidden className="size-3.5" />
-    </button>
-  </Badge>
-);
+}) => {
+  const { t } = useT("grid");
+
+  return (
+    <Badge variant="secondary" className="gap-1 py-1 pr-1 pl-2 font-normal">
+      {label}
+      <button
+        type="button"
+        aria-label={t("applied.remove", { label })}
+        className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        onClick={onRemove}
+      >
+        <XIcon aria-hidden className="size-3.5" />
+      </button>
+    </Badge>
+  );
+};

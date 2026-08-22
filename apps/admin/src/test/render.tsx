@@ -14,6 +14,7 @@ import {
   type SessionStore,
 } from "@/shared/api/session-store";
 import { EN_RESOURCES, NAMESPACES, createI18n, type I18n } from "@/shared/i18n";
+import { createMessageForError } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
 import { Toaster } from "@/shared/ui";
 
@@ -39,6 +40,23 @@ import { Toaster } from "@/shared/ui";
  * factories in `shared/api` and `app/providers` exist to give, and it is why a
  * test needs no `vi.mock`.
  */
+
+/**
+ * A standalone instance, for a test with no tree (`D7.2`).
+ *
+ * The pure halves of the sweep — `chipsForState`, `summariseBulk`,
+ * `applyServerErrors` — take a translator as an argument now, so their table
+ * tests need one without rendering anything. Building it from the same factory
+ * the app calls is what keeps those tables asserting the **catalogue's** words
+ * rather than a stub's, which is the whole reason a missing key should be a
+ * failure rather than a blank.
+ */
+export const createTestI18n = (locale: Locale = "en"): I18n =>
+  createI18n({
+    resources: { en: EN_RESOURCES },
+    namespaces: NAMESPACES,
+    locale,
+  });
 
 export interface ProviderOptions {
   readonly store?: SessionStore;
@@ -74,21 +92,38 @@ const providers = ({
   locale = "en",
 }: ProviderOptions) => {
   const sessionStore = store ?? createSessionStore();
+  // One instance per render, from the same factory the app calls: a test
+  // that switched the locale must not leave the next one in Latvian, which
+  // a module-level singleton could not promise (ADR-0046 §13).
+  const i18n = createI18n({
+    resources: { en: EN_RESOURCES },
+    namespaces: NAMESPACES,
+    locale,
+  });
 
   return {
     store: sessionStore,
     client:
       client ??
       createApiClient({ store: sessionStore, baseUrl: "http://api.test" }),
-    queryClient: queryClient ?? createQueryClient(),
-    // One instance per render, from the same factory the app calls: a test
-    // that switched the locale must not leave the next one in Latvian, which
-    // a module-level singleton could not promise (ADR-0046 §13).
-    i18n: createI18n({
-      resources: { en: EN_RESOURCES },
-      namespaces: NAMESPACES,
-      locale,
-    }),
+    /*
+     * The client is built *from* this render's instance (`D7.2`).
+     *
+     * ADR-0034's global handlers turn a failed mutation into a toast, and the
+     * sentence now comes out of the `errors` catalogue — so a suite whose
+     * client had no translator would assert English toasts while every other
+     * string on screen followed the requested locale. The app joins the same
+     * two ends with a deferred binding, because there the client is older than
+     * the instance; here they are born together.
+     */
+    queryClient:
+      queryClient ??
+      createQueryClient({
+        messageForError: createMessageForError(
+          i18n.instance.getFixedT(null, "errors"),
+        ),
+      }),
+    i18n,
   };
 };
 

@@ -11,6 +11,7 @@ import { useSession } from "@/shared/api/context";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useMessageForError } from "@/shared/notifications/messages";
 import type { FieldConfigMap } from "@/shared/resource/types";
 
 import { useInvalidateOwnStaffRow } from "./use-invalidate-own-staff-row";
@@ -74,6 +75,7 @@ export const ChangePasswordDialog = ({
   readonly onClose: () => void;
 }) => {
   const changePassword = useChangePassword();
+  const messageForError = useMessageForError();
   const invalidateOwnStaffRow = useInvalidateOwnStaffRow();
   const { principal } = useSession();
 
@@ -96,6 +98,7 @@ export const ChangePasswordDialog = ({
       applyServerErrors(error, form.setError, {
         fields: Object.keys(changePasswordFields),
         codeFields: PASSWORD_ERROR_FIELDS,
+        messageForError,
       });
     }
   };

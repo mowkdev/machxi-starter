@@ -1,6 +1,7 @@
 import { Button } from "@repo/ui/components/button";
 
-import { messageForError } from "@/shared/notifications/messages";
+import { useT } from "@/shared/i18n";
+import { useMessageForError } from "@/shared/notifications/messages";
 
 /**
  * A failed query, in the place its data would have been (ADR-0034, amended
@@ -28,15 +29,20 @@ export const QueryError = ({
 }: {
   readonly error: unknown;
   readonly onRetry?: (() => void) | undefined;
-}) => (
-  <>
-    <p className="text-sm text-destructive" role="alert">
-      {messageForError(error)}
-    </p>
-    {onRetry === undefined ? null : (
-      <Button className="mt-3" onClick={onRetry} size="sm" variant="outline">
-        Try again
-      </Button>
-    )}
-  </>
-);
+}) => {
+  const { t } = useT("common");
+  const messageForError = useMessageForError();
+
+  return (
+    <>
+      <p className="text-sm text-destructive" role="alert">
+        {messageForError(error)}
+      </p>
+      {onRetry === undefined ? null : (
+        <Button className="mt-3" onClick={onRetry} size="sm" variant="outline">
+          {t("actions.retry")}
+        </Button>
+      )}
+    </>
+  );
+};

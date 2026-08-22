@@ -1,3 +1,4 @@
+import { useT } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type { FilterControlConfig } from "@/shared/resource/types";
 import {
@@ -57,12 +58,14 @@ export const FilterControl = ({
   value,
   onChange,
 }: FilterControlProps) => {
+  const { t } = useT("grid");
+
   switch (config.kind) {
     case "text":
       return (
         <Input
-          aria-label={`Filter by ${label}`}
-          placeholder={config.placeholder ?? "Filter…"}
+          aria-label={t("filter.trigger", { column: label })}
+          placeholder={config.placeholder ?? t("filter.placeholder")}
           value={value?.kind === "text" ? value.term : ""}
           onChange={(event) => {
             const term = event.target.value;
@@ -85,11 +88,16 @@ export const FilterControl = ({
             );
           }}
         >
-          <SelectTrigger className="w-full" aria-label={`Filter by ${label}`}>
-            <SelectValue placeholder={config.placeholder ?? "Any"} />
+          <SelectTrigger
+            className="w-full"
+            aria-label={t("filter.trigger", { column: label })}
+          >
+            <SelectValue placeholder={config.placeholder ?? t("filter.any")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>{config.placeholder ?? "Any"}</SelectItem>
+            <SelectItem value={ANY}>
+              {config.placeholder ?? t("filter.any")}
+            </SelectItem>
             {options.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
@@ -121,7 +129,7 @@ export const FilterControl = ({
         <div className="flex items-center gap-2">
           <Input
             type="date"
-            aria-label={`${label} from`}
+            aria-label={t("filter.from", { column: label })}
             value={range.from}
             onChange={(event) => {
               commit({ from: event.target.value, to: range.to });
@@ -129,7 +137,7 @@ export const FilterControl = ({
           />
           <Input
             type="date"
-            aria-label={`${label} to`}
+            aria-label={t("filter.to", { column: label })}
             value={range.to}
             onChange={(event) => {
               commit({ from: range.from, to: event.target.value });

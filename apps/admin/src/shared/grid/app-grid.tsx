@@ -20,6 +20,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useT } from "@/shared/i18n";
 import { mergeColumns } from "@/shared/resource/config";
 import type {
   ColumnConfigMap,
@@ -155,7 +156,15 @@ export interface AppGridProps<TRow> {
    */
   readonly hotFilters?: readonly HotFilterConfig[] | undefined;
   readonly isFetching?: boolean | undefined;
-  /** Shown in place of rows when the page is empty. */
+  /**
+   * Shown in place of rows when the page is empty.
+   *
+   * Still a *sentence*, not a key, and that is `D7.4`'s line rather than an
+   * oversight: `emptyMessage` reaches this component from a `ResourceConfig`,
+   * and turning config copy into `TranslationKey`s is one step's worth of work
+   * done in one place. What `D7.2` owns is the **default** — the grid's own
+   * words for "there is nothing here", which no resource wrote.
+   */
   readonly emptyMessage?: string | undefined;
   /**
    * What this resource's grid surface offers (ADR-0038), already narrowed by
@@ -291,7 +300,7 @@ export const AppGrid = <TRow,>({
   searchable = false,
   hotFilters = NO_HOT_FILTERS,
   isFetching = false,
-  emptyMessage = "No results.",
+  emptyMessage,
   capabilities,
   createAction = null,
   onBulkDelete,
@@ -302,6 +311,7 @@ export const AppGrid = <TRow,>({
   preferenceStorage,
   pageSizes,
 }: AppGridProps<TRow>) => {
+  const { t } = useT("grid");
   const merged = useMemo(
     () => mergeColumns(columns, overrides),
     [columns, overrides],
@@ -974,7 +984,7 @@ export const AppGrid = <TRow,>({
                   colSpan={columnCount}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  {emptyMessage}
+                  {emptyMessage ?? t("empty")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -1113,6 +1123,8 @@ const ResizeHandle = ({
    * One `AbortController` per drag, aborted on unmount, so the closure over the
    * table cannot be held by a grid that is gone.
    */
+  const { t } = useT("grid");
+
   const drag = useRef<AbortController | null>(null);
 
   useEffect(
@@ -1125,7 +1137,7 @@ const ResizeHandle = ({
   return (
     <button
       type="button"
-      aria-label={`Resize ${label}`}
+      aria-label={t("columns.resize", { column: label })}
       data-slot="grid-resize-handle"
       className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-transparent hover:bg-border focus-visible:bg-border focus-visible:outline-none"
       onDoubleClick={onReset}

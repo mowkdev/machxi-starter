@@ -17,6 +17,7 @@ import {
 } from "@/entities/staff";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useMessageForError } from "@/shared/notifications/messages";
 import {
   dirtyValuesOf,
   editSurfaceOf,
@@ -71,6 +72,7 @@ export const EditStaffSurface = ({
   const navigate = useNavigate();
   const { closeSearch } = useRecordNavigation();
   const updateStaff = useUpdateStaff();
+  const messageForError = useMessageForError();
 
   /*
    * The way back is history state, not the URL (ADR-0044, `D5.3`): this record
@@ -138,6 +140,7 @@ export const EditStaffSurface = ({
       applyServerErrors(error, form.setError, {
         fields: FIELD_NAMES,
         codeFields: staffResourceConfig.errorFields,
+        messageForError,
       });
     }
   };

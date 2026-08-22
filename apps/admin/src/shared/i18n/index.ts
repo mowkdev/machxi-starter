@@ -7,12 +7,14 @@ import enCommon from "./locales/en/common.json";
 import enErrors from "./locales/en/errors.json";
 import enForm from "./locales/en/form.json";
 import enGrid from "./locales/en/grid.json";
+import { setIntlLocale } from "./intl";
 import { readStoredLocale, writeStoredLocale } from "./locale-storage";
 import {
   asLocale,
   navigatorLocales,
   resolveInitialLocale,
 } from "./resolve-locale";
+import { INTL_TAGS } from "./tags";
 
 /**
  * The i18n seam (ADR-0046 §3, §5, §13). `D7.1` lands it empty on purpose: the
@@ -39,22 +41,6 @@ export type Namespace = (typeof NAMESPACES)[number];
 
 /** `common` is chrome and generic actions, so it is what an unprefixed key means. */
 export const DEFAULT_NAMESPACE = "common" satisfies Namespace;
-
-/**
- * BCP 47 tags, one per locale, and the **only** place a locale becomes one
- * (ADR-0046 §5).
- *
- * It lives here rather than in `@repo/contracts` because a tag is a
- * presentation fact: the package holds the enum the database stores, and
- * `en-GB` is a decision about spelling and date order that no server makes.
- * Everything that constructs an `Intl.*` reads this map — `D7.2`'s grid
- * formatters and filter chips first — so "the browser's locale", which is what
- * an `undefined` argument means, is never what a formatter follows.
- */
-export const INTL_TAGS: Record<Locale, string> = {
-  en: "en-GB",
-  lv: "lv-LV",
-};
 
 /**
  * `en` is bundled eagerly: it is the fallback for every other locale, the type
@@ -107,8 +93,14 @@ const loadCatalogue = async (
  * `en-GB` is the decision ADR-0046 §5 made about what `en` means here. The
  * device cache is written in the same breath, because a locale that is not
  * remembered is one the login screen has to guess again tomorrow.
+ *
+ * `setIntlLocale` joined it at `D7.2`: the grid's date formatters read the tag
+ * from `intl.ts`, and swapping it *here* — inside the listener that runs before
+ * react-i18next's own — is what makes a locale switch move the dates in the
+ * same paint as the headers rather than one render later.
  */
 const applyLocale = (locale: Locale): void => {
+  setIntlLocale(locale);
   document.documentElement.lang = INTL_TAGS[locale];
   writeStoredLocale(locale);
 };
@@ -229,6 +221,8 @@ export {
   readStoredLocale,
   writeStoredLocale,
 } from "./locale-storage";
+export { INTL_TAGS } from "./tags";
+export { activeIntlTag, dateTimeFormat, setIntlLocale } from "./intl";
 export type { TranslationKey } from "./types";
 
 /**

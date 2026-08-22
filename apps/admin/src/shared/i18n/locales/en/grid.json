@@ -1,1 +1,75 @@
-{}
+{
+  "empty": "No results.",
+  "pager": {
+    "label": "Pagination",
+    "none": "No results",
+    "rangeOpen": "{{first}}–{{last}}",
+    "range": "{{first}}–{{last}} of {{total}}",
+    "rowsPerPage": "Rows per page",
+    "first": "First page",
+    "previous": "Previous page",
+    "next": "Next page",
+    "last": "Last page"
+  },
+  "search": {
+    "label": "Search",
+    "placeholder": "Search…"
+  },
+  "selection": {
+    "selectAll": "Select all rows on this page",
+    "selectRow": "Select {{id}}",
+    "count": "{{count}} selected",
+    "clear": "Clear selection",
+    "delete": "Delete {{count}}",
+    "rowActions": "Row actions for {{id}}"
+  },
+  "columns": {
+    "label": "Columns",
+    "moveUp": "Move {{column}} up",
+    "moveDown": "Move {{column}} down",
+    "reset": "Reset to defaults",
+    "resize": "Resize {{column}}"
+  },
+  "filter": {
+    "trigger": "Filter by {{column}}",
+    "triggerActive": "Filter by {{column}} (filtered)",
+    "title": "Filter by {{column}}",
+    "placeholder": "Filter…",
+    "any": "Any",
+    "from": "{{column}} from",
+    "to": "{{column}} to",
+    "group": "{{label}} filter",
+    "hint": {
+      "textLike": "Matches rows containing this text, ignoring case.",
+      "textEq": "Matches rows equal to this value.",
+      "enum": "Pick one value, or Any to remove the filter.",
+      "dateRange": "Either bound may be left empty. Both days are included.",
+      "presence": "A scope switch: it replaces the current rows rather than adding to them."
+    }
+  },
+  "applied": {
+    "announce_one": "{{count}} filter applied",
+    "announce_other": "{{count}} filters applied",
+    "search": "Search “{{term}}”",
+    "remove": "Remove filter: {{label}}"
+  },
+  "chip": {
+    "is": "{{column}} is {{value}}",
+    "isText": "{{column}} is “{{value}}”",
+    "contains": "{{column}} contains “{{value}}”",
+    "anyOf": "{{column}} is any of {{values}}",
+    "from": "{{column}} from {{day}}",
+    "to": "{{column}} to {{day}}",
+    "raw": "{{field}} {{op}} {{value}}"
+  },
+  "bulk": {
+    "deleted_one": "{{count}} {{noun}} deleted.",
+    "deleted_other": "{{count}} {{noun}}s deleted.",
+    "refusal": "{{label}}: {{message}}",
+    "unattemptedLine": "{{count}} not attempted — the API is rate limiting this session. Wait a few minutes and try the rest.",
+    "partDeleted": "{{count}} deleted",
+    "partRefused": "{{count}} refused",
+    "partUnattempted": "{{count}} not attempted",
+    "headline": "{{parts}}."
+  }
+}

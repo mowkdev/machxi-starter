@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentProps } from "react";
 
+import { useT } from "@/shared/i18n";
 import { Input } from "@/shared/ui";
 
 /**
@@ -89,13 +90,17 @@ export const GridSearch = ({
 }: {
   readonly value: string;
   readonly onCommit: (next: string) => void;
-}) => (
-  <DebouncedInput
-    type="search"
-    aria-label="Search"
-    placeholder="Search…"
-    className="h-8 max-w-xs"
-    value={value}
-    onCommit={onCommit}
-  />
-);
+}) => {
+  const { t } = useT("grid");
+
+  return (
+    <DebouncedInput
+      type="search"
+      aria-label={t("search.label")}
+      placeholder={t("search.placeholder")}
+      className="h-8 max-w-xs"
+      value={value}
+      onCommit={onCommit}
+    />
+  );
+};

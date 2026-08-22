@@ -5,7 +5,9 @@ import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 
 import { apiClientError } from "@/shared/api/api-error";
+import { createMessageForError } from "@/shared/notifications/messages";
 import { Button, Input } from "@/shared/ui";
+import { createTestI18n } from "@/test/render";
 
 import { AppFormProvider } from "../context";
 import { AppFormError } from "../form-error";
@@ -28,6 +30,19 @@ interface Values {
 }
 
 const FIELDS = ["email", "firstName"] as const;
+
+/**
+ * The code catalogue's lookup, built from the real `en` resources (`D7.2`).
+ *
+ * `applyServerErrors` takes it as a required option now — a default would have
+ * been English, and a form whose fields are Latvian and whose form-level
+ * failure is English is the drift the argument in `server-errors.ts` exists to
+ * prevent. The assertions below are unchanged because the catalogue holds the
+ * same sentences `ERROR_MESSAGES` did.
+ */
+const messageForError = createMessageForError(
+  createTestI18n().instance.getFixedT(null, "errors"),
+);
 
 const Harness = ({
   error,
@@ -55,6 +70,7 @@ const Harness = ({
           onClick={() => {
             applyServerErrors(error, form.setError, {
               fields: FIELDS,
+              messageForError,
               ...(codeFields === undefined ? {} : { codeFields }),
             });
           }}
@@ -181,7 +197,7 @@ describe("applyServerErrors", () => {
         details: [{ path: "email", message: "Taken" }],
       }),
       setError,
-      { fields: FIELDS },
+      { fields: FIELDS, messageForError },
     );
 
     expect(landed).toBe(true);
@@ -194,7 +210,7 @@ describe("applyServerErrors", () => {
       applyServerErrors(
         fail({ status: 403, code: "FORBIDDEN", message: "No" }),
         setError,
-        { fields: FIELDS },
+        { fields: FIELDS, messageForError },
       ),
     ).toBe(false);
   });
@@ -212,7 +228,7 @@ describe("applyServerErrors", () => {
         details: [{ path: "firstName.0", message: "Bad" }],
       }),
       setError,
-      { fields: FIELDS },
+      { fields: FIELDS, messageForError },
     );
 
     expect(setError).toHaveBeenCalledWith("firstName.0", {

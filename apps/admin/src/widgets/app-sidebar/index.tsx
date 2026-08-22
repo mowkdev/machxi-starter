@@ -11,6 +11,7 @@ import { LogoutMenuItem } from "@/features/auth";
 import { ThemeMenuItems } from "@/features/theme";
 import { useSession } from "@/shared/api/context";
 import { useCan, type ResourceName } from "@/shared/auth";
+import { useT } from "@/shared/i18n";
 
 import {
   Sidebar,
@@ -91,10 +92,21 @@ import {
  */
 interface NavItem {
   readonly to: "/" | "/staff" | "/users" | "/profile";
-  readonly label: string;
+  /**
+   * A key in `common:nav`, not a sentence (`D7.2`).
+   *
+   * ADR-0046 §3 puts navigation in `common` and names the tension it creates:
+   * two of these four are *resources*, whose own namespaces land in `D7.4`. The
+   * shell's word for a destination is chrome — it is what the sidebar calls the
+   * place, and it is read next to "Dashboard" rather than next to a staff
+   * record — so it stays here, and the resource screens' own titles are theirs.
+   */
+  readonly label: NavKey;
   readonly icon: typeof LayoutDashboardIcon;
   readonly resource?: ResourceName;
 }
+
+type NavKey = "nav.dashboard" | "nav.staff" | "nav.users" | "nav.profile";
 
 /*
  * Annotated rather than `as const satisfies`, which is the shape the rest of
@@ -104,10 +116,10 @@ interface NavItem {
  * what makes "absent means not gated" expressible at all.
  */
 const NAVIGATION: readonly NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboardIcon },
-  { to: "/staff", label: "Staff", icon: ShieldIcon, resource: "staff" },
-  { to: "/users", label: "Users", icon: UsersIcon, resource: "users" },
-  { to: "/profile", label: "Profile", icon: UserIcon },
+  { to: "/", label: "nav.dashboard", icon: LayoutDashboardIcon },
+  { to: "/staff", label: "nav.staff", icon: ShieldIcon, resource: "staff" },
+  { to: "/users", label: "nav.users", icon: UsersIcon, resource: "users" },
+  { to: "/profile", label: "nav.profile", icon: UserIcon },
 ];
 
 /**
@@ -121,13 +133,14 @@ const NAVIGATION: readonly NavItem[] = [
  */
 const AccountMenu = () => {
   const { principal } = useSession();
+  const { t } = useT("common");
 
   const fullName =
     principal === null
       ? ""
       : [principal.firstName, principal.lastName].filter(Boolean).join(" ");
   const displayName =
-    fullName === "" ? (principal?.email ?? "Account") : fullName;
+    fullName === "" ? (principal?.email ?? t("account.unnamed")) : fullName;
   const monogram = (fullName === "" ? displayName : fullName)
     .split(" ")
     .slice(0, 2)
@@ -143,7 +156,11 @@ const AccountMenu = () => {
          * without it the control would be found by whoever happens to be signed
          * in — the button's *job* is constant and the label should be too.
          */}
-        <SidebarMenuButton aria-label="Account" size="lg" tooltip="Account">
+        <SidebarMenuButton
+          aria-label={t("account.menu")}
+          size="lg"
+          tooltip={t("account.menu")}
+        >
           <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-accent text-xs font-medium">
             {monogram === "" ? <UserIcon className="size-4" /> : monogram}
           </div>
@@ -176,7 +193,7 @@ const AccountMenu = () => {
         <DropdownMenuItem asChild>
           <Link to="/profile">
             <UserIcon />
-            Profile
+            {t("account.profile")}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -203,6 +220,7 @@ const AccountMenu = () => {
  */
 const NavigationMenu = () => {
   const can = useCan();
+  const { t } = useT("common");
 
   return (
     <SidebarMenu>
@@ -210,14 +228,14 @@ const NavigationMenu = () => {
         (item) => item.resource === undefined || can("read", item.resource),
       ).map(({ to, label, icon: Icon }) => (
         <SidebarMenuItem key={to}>
-          <SidebarMenuButton asChild tooltip={label}>
+          <SidebarMenuButton asChild tooltip={t(label)}>
             <Link
               activeOptions={{ exact: to === "/" }}
               activeProps={{ "data-active": true }}
               to={to}
             >
               <Icon />
-              <span>{label}</span>
+              <span>{t(label)}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -226,42 +244,48 @@ const NavigationMenu = () => {
   );
 };
 
-export const AppSidebar = () => (
-  <Sidebar collapsible="icon">
-    <SidebarHeader>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton asChild size="lg">
-            <Link to="/">
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <span className="text-sm font-semibold">m</span>
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">machxi</span>
-                <span className="truncate text-xs">Admin</span>
-              </div>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </SidebarHeader>
+export const AppSidebar = () => {
+  const { t } = useT("common");
 
-    <SidebarContent>
-      <SidebarGroup>
-        <SidebarGroupLabel>Manage</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <NavigationMenu />
-        </SidebarGroupContent>
-      </SidebarGroup>
-    </SidebarContent>
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild size="lg">
+              <Link to="/">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <span className="text-sm font-semibold">m</span>
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">
+                    {t("brand.name")}
+                  </span>
+                  <span className="truncate text-xs">{t("brand.product")}</span>
+                </div>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-    <SidebarFooter>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <AccountMenu />
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </SidebarFooter>
-    <SidebarRail />
-  </Sidebar>
-);
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>{t("nav.group")}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <NavigationMenu />
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <AccountMenu />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+};

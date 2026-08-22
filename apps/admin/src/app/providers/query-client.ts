@@ -1,7 +1,10 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 
 import { isApiClientError } from "@/shared/api/api-error";
-import { messageForError } from "@/shared/notifications/messages";
+import {
+  englishMessageForError,
+  type ErrorMessage,
+} from "@/shared/notifications/messages";
 // Side-effect import: the module declares the `meta` augmentation every layer
 // relies on, and a type-only import would be erased before it applied.
 import "@/shared/api/query-meta";
@@ -28,7 +31,7 @@ import { toast } from "@/shared/ui";
  * *suppression* that has to be asked for, by a form that will show the error
  * next to the field it belongs to.
  */
-export const createNotifyingMutationCache = () =>
+export const createNotifyingMutationCache = (messageForError: ErrorMessage) =>
   new MutationCache({
     onSuccess: (_data, _variables, _context, mutation) => {
       const success = mutation.meta?.success;
@@ -51,7 +54,7 @@ export const createNotifyingMutationCache = () =>
  * only when it asks to, which is the mirror of the mutation rule above and
  * deliberately not the same default.
  */
-export const createNotifyingQueryCache = () =>
+export const createNotifyingQueryCache = (messageForError: ErrorMessage) =>
   new QueryCache({
     onError: (error, query) => {
       if (query.meta?.errorToast !== true) return;
@@ -60,7 +63,26 @@ export const createNotifyingQueryCache = () =>
     },
   });
 
-export const createQueryClient = (): QueryClient =>
+export interface QueryClientOptions {
+  /**
+   * How a failure becomes a sentence (ADR-0046 §2, `D7.2`).
+   *
+   * Passed in because this factory runs at the composition root, **before** the
+   * i18next instance exists: the instance is created inside `SettingsProvider`,
+   * where the account's locale is already known (`D7.1`). `app/index.tsx`
+   * therefore hands a deferred lookup that a component under the provider binds
+   * — see `createDeferredErrorMessage`.
+   *
+   * The default is the eagerly bundled English, which is what the app shows
+   * anyway in the window before the provider mounts, and what a test that
+   * builds its own client gets.
+   */
+  readonly messageForError?: ErrorMessage;
+}
+
+export const createQueryClient = ({
+  messageForError = englishMessageForError,
+}: QueryClientOptions = {}): QueryClient =>
   new QueryClient({
     defaultOptions: {
       queries: {
@@ -98,6 +120,6 @@ export const createQueryClient = (): QueryClient =>
        */
       mutations: { retry: false },
     },
-    mutationCache: createNotifyingMutationCache(),
-    queryCache: createNotifyingQueryCache(),
+    mutationCache: createNotifyingMutationCache(messageForError),
+    queryCache: createNotifyingQueryCache(messageForError),
   });

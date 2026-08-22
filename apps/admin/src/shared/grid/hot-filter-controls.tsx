@@ -1,5 +1,6 @@
 import type { Filter } from "@repo/contracts";
 
+import { useT } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type { HotFilterConfig } from "@/shared/resource/types";
 import { Button, cn } from "@/shared/ui";
@@ -70,6 +71,7 @@ const EnumHotFilter = ({
   readonly filters: readonly Filter[];
   readonly onChange: (field: string, next: readonly Filter[]) => void;
 }) => {
+  const { t } = useT("grid");
   const options = resolveOptions(config.options);
   const selection = hotFilterSelection(filters, config);
 
@@ -90,7 +92,7 @@ const EnumHotFilter = ({
      */
     <div
       role="group"
-      aria-label={`${config.label} filter`}
+      aria-label={t("filter.group", { label: config.label })}
       data-slot="hot-filter"
       className="flex items-center gap-0.5 rounded-md border p-0.5"
     >

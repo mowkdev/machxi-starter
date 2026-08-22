@@ -1,1 +1,5 @@
-{}
+{
+  "select": {
+    "placeholder": "Select…"
+  }
+}

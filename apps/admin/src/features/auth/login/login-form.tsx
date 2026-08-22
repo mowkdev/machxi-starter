@@ -3,7 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { useApiClient } from "@/shared/api/context";
-import { messageForError } from "@/shared/notifications/messages";
+import { useMessageForError } from "@/shared/notifications/messages";
 import {
   Button,
   Field,
@@ -31,6 +31,7 @@ import {
  */
 export const LoginForm = () => {
   const client = useApiClient();
+  const messageForError = useMessageForError();
   const navigate = useNavigate();
   const { redirect } = useSearch({ from: "/_auth/login" });
 

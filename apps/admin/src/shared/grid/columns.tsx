@@ -1,5 +1,6 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, Row, Table } from "@tanstack/react-table";
 
+import { useT } from "@/shared/i18n";
 import { mergeColumns } from "@/shared/resource/config";
 import type {
   ColumnConfig,
@@ -97,33 +98,63 @@ export const structuralColumns = (
  * `[&:has([role=checkbox])]:pr-0` hooks shadcn ships for exactly this column,
  * so it needs no width or padding of its own.
  */
-export const buildSelectionColumn = (): ColumnDef<GridFeatures, GridRow> => ({
-  id: SELECTION_COLUMN_ID,
-  header: ({ table }) => (
+/**
+ * The two checkboxes are **components**, not inline render functions, since
+ * `D7.2`.
+ *
+ * Their accessible names are copy now, so they need `useT()` — and a hook may
+ * only be called from a component. A `header`/`cell` arrow is invoked through
+ * `FlexRender`, which is close enough to a component to look safe and is not a
+ * promise the engine makes; naming them makes the rule the compiler's rather
+ * than the reader's.
+ */
+const SelectAllCell = ({
+  table,
+}: {
+  readonly table: Table<GridFeatures, GridRow>;
+}) => {
+  const { t } = useT("grid");
+
+  return (
     <Checkbox
-      aria-label="Select all rows on this page"
+      aria-label={t("selection.selectAll")}
       checked={table.getIsAllPageRowsSelected()}
       onCheckedChange={(checked) => {
         table.toggleAllPageRowsSelected(checked === true);
       }}
     />
-  ),
-  cell: ({ row }) => (
-    /*
-     * Named by the row's own id, for the reason `RowActions` is: a page of
-     * twenty otherwise has twenty controls called "Select row", which is what
-     * the role-and-label discipline exists to prevent and what would force a
-     * test to reach for a positional index. The id comes from `getRowId`, so it
-     * is the resource's own identifier.
-     */
+  );
+};
+
+/*
+ * Named by the row's own id, for the reason `RowActions` is: a page of twenty
+ * otherwise has twenty controls called "Select row", which is what the
+ * role-and-label discipline exists to prevent and what would force a test to
+ * reach for a positional index. The id comes from `getRowId`, so it is the
+ * resource's own identifier.
+ */
+const SelectRowCell = ({
+  row,
+}: {
+  readonly row: Row<GridFeatures, GridRow>;
+}) => {
+  const { t } = useT("grid");
+
+  return (
     <Checkbox
-      aria-label={`Select ${row.id}`}
+      aria-label={t("selection.selectRow", { id: row.id })}
       checked={row.getIsSelected()}
       onCheckedChange={(checked) => {
         row.toggleSelected(checked === true);
       }}
     />
-  ),
+  );
+};
+
+export const buildSelectionColumn = (): ColumnDef<GridFeatures, GridRow> => ({
+  id: SELECTION_COLUMN_ID,
+  header: ({ table }) => <SelectAllCell table={table} />,
+  cell: ({ row }) => <SelectRowCell row={row} />,
   enableSorting: false,
   // Structural (ADR-0041): never hidden, never resized, never in the menu.
   enableHiding: false,

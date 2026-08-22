@@ -11,6 +11,7 @@ import {
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
+import { I18nextProvider } from "react-i18next";
 import { describe, expect, it, vi } from "vitest";
 
 import { initialValuesFor } from "@/shared/resource/config";
@@ -20,6 +21,7 @@ import {
   demoResourceConfig,
   type DemoCreateBody,
 } from "@/test/fixtures/demo-resource";
+import { createTestI18n } from "@/test/render";
 
 import { createAppFormInput } from "../app-form-input";
 import { AppFormSurface } from "../app-form-surface";
@@ -131,8 +133,18 @@ const renderSurface = (props: Parameters<typeof DemoSurface>[0]) => {
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
 
+  /*
+   * The frame's own copy is translated since `D7.2` — Cancel, at least — so
+   * the harness mounts an instance the way `renderWithProviders` does. `en`,
+   * loaded synchronously, so every assertion below is still by the English
+   * accessible name (ADR-0046 §14).
+   */
   return {
-    ...render(<RouterProvider router={router as never} />),
+    ...render(
+      <I18nextProvider i18n={createTestI18n().instance}>
+        <RouterProvider router={router as never} />
+      </I18nextProvider>,
+    ),
     router,
   };
 };

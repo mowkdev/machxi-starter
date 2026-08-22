@@ -12,6 +12,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
+import { I18nextProvider } from "react-i18next";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -24,6 +25,8 @@ import {
   demoRows,
   type DemoRow,
 } from "@/test/fixtures/demo-resource";
+
+import { createTestI18n } from "@/test/render";
 
 import { AppGrid } from "../app-grid";
 import {
@@ -101,30 +104,40 @@ const Harness = ({
   readonly renderToolbar?: (context: GridToolbarContext) => ReactNode;
 }) => {
   const [listState, setListState] = useState(initial);
+  /*
+   * The grid's chrome speaks keys since `D7.2`, so the harness mounts an
+   * instance of its own — `en`, loaded synchronously, which is why every
+   * assertion in this file is still by the English accessible name it was
+   * written with (ADR-0046 §14). One per mounted harness, from the same factory
+   * the app uses, so no case inherits another's language.
+   */
+  const [i18n] = useState(createTestI18n);
 
   return (
-    <AppGrid<DemoRow>
-      columns={demoResourceConfig.columns}
-      overrides={overrides}
-      page={page}
-      listState={listState}
-      searchable={searchable}
-      hotFilters={hotFilters}
-      gridId={gridId}
-      preferenceStorage={storage}
-      meta={meta}
-      capabilities={capabilities}
-      createAction={createAction}
-      onBulkDelete={onBulkDelete}
-      toolbarStart={toolbarStart}
-      toolbarEnd={toolbarEnd}
-      renderToolbar={renderToolbar}
-      getRowId={(row) => row.id}
-      onListStateChange={(next) => {
-        setListState(next);
-        onChange?.(next);
-      }}
-    />
+    <I18nextProvider i18n={i18n.instance}>
+      <AppGrid<DemoRow>
+        columns={demoResourceConfig.columns}
+        overrides={overrides}
+        page={page}
+        listState={listState}
+        searchable={searchable}
+        hotFilters={hotFilters}
+        gridId={gridId}
+        preferenceStorage={storage}
+        meta={meta}
+        capabilities={capabilities}
+        createAction={createAction}
+        onBulkDelete={onBulkDelete}
+        toolbarStart={toolbarStart}
+        toolbarEnd={toolbarEnd}
+        renderToolbar={renderToolbar}
+        getRowId={(row) => row.id}
+        onListStateChange={(next) => {
+          setListState(next);
+          onChange?.(next);
+        }}
+      />
+    </I18nextProvider>
   );
 };
 

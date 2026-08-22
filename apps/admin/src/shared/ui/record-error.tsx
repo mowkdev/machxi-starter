@@ -6,6 +6,9 @@ import {
   CardDescription,
   CardHeader,
 } from "@repo/ui/components/card";
+
+import { useT } from "@/shared/i18n";
+
 import { QueryError } from "./query-error";
 
 /**
@@ -28,25 +31,25 @@ export const RecordError = ({
   readonly error: unknown;
   /** The way back — a typed `Link` from the route that owns the path. */
   readonly children: ReactNode;
-}) => (
-  <Card className="max-w-2xl">
-    <CardHeader>
-      {/*
-       * A real `h2` rather than `CardTitle`, which is a styled `div`. An error
-       * surface is the whole content of the screen when it renders, so its
-       * title is a document heading — and ADR-0036 asks a suite to name things
-       * the way a screen reader does, which it cannot do for a `div`.
-       */}
-      <h2 className="leading-none font-semibold">
-        That record could not be opened
-      </h2>
-      <CardDescription>
-        It may have been deleted, or the address may be wrong.
-      </CardDescription>
-    </CardHeader>
-    <CardContent className="flex flex-col items-start gap-4">
-      <QueryError error={error} />
-      {children}
-    </CardContent>
-  </Card>
-);
+}) => {
+  const { t } = useT("common");
+
+  return (
+    <Card className="max-w-2xl">
+      <CardHeader>
+        {/*
+         * A real `h2` rather than `CardTitle`, which is a styled `div`. An error
+         * surface is the whole content of the screen when it renders, so its
+         * title is a document heading — and ADR-0036 asks a suite to name things
+         * the way a screen reader does, which it cannot do for a `div`.
+         */}
+        <h2 className="leading-none font-semibold">{t("record.errorTitle")}</h2>
+        <CardDescription>{t("record.errorDescription")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col items-start gap-4">
+        <QueryError error={error} />
+        {children}
+      </CardContent>
+    </Card>
+  );
+};

@@ -2,7 +2,7 @@ import type { ErrorCode } from "@repo/contracts";
 import type { FieldValues, Path, UseFormSetError } from "react-hook-form";
 
 import { isApiClientError } from "@/shared/api/api-error";
-import { messageForError } from "@/shared/notifications/messages";
+import type { ErrorMessage } from "@/shared/notifications/messages";
 
 /**
  * Server-side failures, landed next to the field they belong to (ADR-0035).
@@ -36,10 +36,16 @@ import { messageForError } from "@/shared/notifications/messages";
  * rule read two ways depending on which side happened to notice it.
  *
  * That fixes both seams rather than leaving one open. **Codes are catalogued in
- * `ERROR_MESSAGES`; field rules are catalogued in the schema that defines
+ * the `errors` namespace; field rules are catalogued in the schema that defines
  * them** — and localising the latter is zod's own error map on the contracts
  * package, applied once for both sides, not a per-field map maintained here
  * that could drift from the rule it describes.
+ *
+ * `D7.2` moved the first half of that sentence from `ERROR_MESSAGES` into
+ * `locales/en/errors.json` (ADR-0046 §2) and changed nothing about the
+ * argument. The second half is `D7.5`'s, and it is where the verbatim rendering
+ * below is revisited: the words will still be the schema's, but the schema will
+ * be re-run under the active locale rather than echoed from the wire.
  *
  * Two boundaries keep it true, and both are checks rather than conventions: the
  * error's **code** must be `VALIDATION_ERROR`, because only zod produces these,
@@ -73,6 +79,17 @@ export interface ServerErrorOptions {
    * resource declares it beside its config.
    */
   readonly codeFields?: Readonly<Partial<Record<ErrorCode, string>>>;
+  /**
+   * The code catalogue's lookup, in the operator's locale (`D7.2`,
+   * ADR-0046 §2).
+   *
+   * Required rather than defaulted, and deliberately: a default would be
+   * English, and the one thing worse than a form that shows nothing is a form
+   * that shows the right sentence in the wrong language while every field
+   * around it is translated. The caller is always a component, so
+   * `useMessageForError()` is one line away.
+   */
+  readonly messageForError: ErrorMessage;
 }
 
 /**
@@ -85,7 +102,7 @@ export interface ServerErrorOptions {
 export const applyServerErrors = <TValues extends FieldValues>(
   error: unknown,
   setError: UseFormSetError<TValues>,
-  { fields, codeFields = {} }: ServerErrorOptions,
+  { fields, codeFields = {}, messageForError }: ServerErrorOptions,
 ): boolean => {
   const formLevel = (message: string) => {
     setError(FORM_ERROR_PATH as Path<TValues>, { type: "server", message });

@@ -2,6 +2,7 @@ import type { Filter } from "@repo/contracts";
 import { Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useT } from "@/shared/i18n";
 import type {
   GridCapabilities,
   HotFilterConfig,
@@ -86,6 +87,7 @@ export const GridToolbar = ({
   selectedIds,
   clearSelection,
 }: GridToolbarProps) => {
+  const { t } = useT("grid");
   const selectedCount = selectedIds.length;
   const showCreate =
     capabilities?.canCreate === true && isPresent(createAction);
@@ -156,10 +158,10 @@ export const GridToolbar = ({
               aria-live="polite"
               className="text-sm text-muted-foreground tabular-nums"
             >
-              {selectedCount} selected
+              {t("selection.count", { count: selectedCount })}
             </span>
             <Button variant="ghost" size="sm" onClick={clearSelection}>
-              Clear selection
+              {t("selection.clear")}
             </Button>
           </div>
         ) : null}
@@ -177,7 +179,7 @@ export const GridToolbar = ({
             }}
           >
             <Trash2Icon aria-hidden />
-            Delete {selectedCount}
+            {t("selection.delete", { count: selectedCount })}
           </Button>
         ) : null}
 

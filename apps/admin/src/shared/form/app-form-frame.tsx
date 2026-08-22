@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
 
+import { useT } from "@/shared/i18n";
 import type { FieldConfigMap, FieldVariant } from "@/shared/resource/types";
 import { Button, FieldGroup, FieldSet, Spinner } from "@/shared/ui";
 
@@ -127,14 +128,18 @@ export const AppFormActions = ({
   readonly submitLabel: string;
   /** `false` while there is nothing worth submitting — an untouched edit. */
   readonly canSubmit?: boolean;
-}) => (
-  <>
-    <Button type="button" variant="outline" onClick={onCancel}>
-      Cancel
-    </Button>
-    <Button type="submit" disabled={!canSubmit}>
-      {isPending ? <Spinner /> : null}
-      {submitLabel}
-    </Button>
-  </>
-);
+}) => {
+  const { t } = useT("common");
+
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={onCancel}>
+        {t("actions.cancel")}
+      </Button>
+      <Button type="submit" disabled={!canSubmit}>
+        {isPending ? <Spinner /> : null}
+        {submitLabel}
+      </Button>
+    </>
+  );
+};

@@ -1,3 +1,5 @@
+import { dateTimeFormat } from "@/shared/i18n";
+
 import type { Formatter } from "./types";
 
 /**
@@ -19,18 +21,26 @@ import type { Formatter } from "./types";
 export const EMPTY_CELL = "—";
 
 /**
- * Rendered in the operator's own locale and timezone.
+ * Rendered in **the app's** locale and the operator's timezone (ADR-0046 §5,
+ * `D7.2`).
  *
  * The wire is always UTC ISO-8601 (ADR-0012), and a staff member reading a
- * table wants the local reading of it. `undefined` as the locale is the browser
- * default, which is the operator's, not the bundle's.
+ * table wants the local reading of it. The timezone is still implicit — that is
+ * the browser's and is correct, because an instant on screen should read in the
+ * time the operator is living in. The **locale** was implicit too, and that was
+ * wrong: `undefined` means the browser's language, not the app's, so a Latvian
+ * operator on an English OS would have read `lv` headers over `en-GB` dates.
+ *
+ * The options are module constants because {@link dateTimeFormat} caches on
+ * them: an object built inline would key the cache on a fresh string every
+ * cell.
  */
-const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
+const DATE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
   dateStyle: "medium",
   timeStyle: "short",
-});
+};
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = { dateStyle: "medium" };
 
 /**
  * Parses what the envelope actually carries.
@@ -50,19 +60,29 @@ const toDate = (value: unknown): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+/*
+ * The formatter is resolved **per call**, not captured once.
+ *
+ * That is what makes a locale switch move the dates without a remount: the
+ * registry's entries have to stay `(value) => string` (ADR-0035), so they
+ * cannot take a locale, and a formatter built at module load would hold
+ * whichever locale the app started in for the rest of the session.
+ * `dateTimeFormat` caches on the active tag, so this costs a `Map` lookup per
+ * cell rather than a constructor.
+ */
 const format =
-  (formatter: Intl.DateTimeFormat): Formatter =>
+  (options: Intl.DateTimeFormatOptions): Formatter =>
   (value) => {
     const date = toDate(value);
 
-    return date === null ? EMPTY_CELL : formatter.format(date);
+    return date === null ? EMPTY_CELL : dateTimeFormat(options).format(date);
   };
 
 /** `12 Aug 2026` */
-export const date: Formatter = format(dateFormat);
+export const date: Formatter = format(DATE_OPTIONS);
 
 /** `12 Aug 2026, 14:05` */
-export const dateTime: Formatter = format(dateTimeFormat);
+export const dateTime: Formatter = format(DATE_TIME_OPTIONS);
 
 /** The fallback for a column that declares no formatter and no renderer. */
 export const text: Formatter = (value) =>

@@ -74,6 +74,12 @@ const _complete: MissingErrorKeys extends never ? true : MissingErrorKeys = true
 
 — so a new code is still a red `check-types` rather than a raw `SCREAMING_SNAKE` on screen. `messageForError(error)` survives with the same signature, now `t(\`errors:${code}\`)` behind it with the same runtime fallback for a code this bundle has never heard of.
 
+**Amended 2026-08-22 (D7.2): the signature survives; the export does not.** "Same signature" is the right requirement and it cannot be met by a module-level function, because §13 forbids the module-level instance such a function would have to read. So the thing that keeps `(error) => string` is what `createMessageForError(t)` **returns**, and the exports are that factory, a `useMessageForError()` hook over `useT("errors")` for components, and `englishMessageForError` — the same lookup against the eagerly bundled `en` JSON, for a caller that has no instance yet. Every consumer that had `messageForError` imported now receives one: `applyServerErrors` takes it as a required option (a defaulted English would be a form whose fields are translated and whose form-level failure is not), and `runBulkAction` takes it as an argument, both from callers that are components or hooks.
+
+The one consumer that is **older than the instance** is ADR-0034's global cache handler. `createQueryClient` runs at the composition root and the instance is created inside `SettingsProvider`, where the account's locale is already known (§4, amended `D7.1`) — neither end moves, so `createDeferredErrorMessage()` joins them: a stable `messageForError` the client closes over at construction, and a `bind(t)` that a one-line component under the provider calls. It is a factory rather than a module-level box, so the suite gets one per render; the harness needs none, because there the client and the instance are born together.
+
+The type-level completeness check of the snippet above lives at `shared/i18n/__checks__/errors.ts`. Removing a code from `en/errors.json` fails `check-types` with `Type 'true' is not assignable to type '"USER_DELETED"'` — the missing code by name, which is the whole reason the check is written as an assignment rather than as a conditional type nobody reads.
+
 ### 3. Catalogue layout: one `locales/` tree, a namespace per slice
 
 ```
@@ -108,6 +114,14 @@ apps/admin/src/shared/i18n/
 - **`locales/lv/`**, present from `D7.1` holding the same four `{}` files as `en`. The catalogues are empty until `D7.6` drafts them, and they exist now because the lazy loader's template-literal `import()` over `./locales/<locale>/<namespace>.json` is compiled by Vite into a fixed map of what is on disk: a locale with no directory is not a missing translation at runtime, it is a chunk that does not exist. Creating them empty makes the `lv` path real from the first step rather than at the step that fills it, which is what let `D7.1` assert `changeLocale("lv")` end to end with nothing to translate.
 
 `zod.ts` (§6) and `pseudo.ts` (§10) are not yet written; they arrive with `D7.5` and `D7.6`, which is the tree describing the deliverable's end state rather than its first step.
+
+**Amended 2026-08-22 (D7.2): three more files, and the one screen that is outside the provider.**
+
+- **`tags.ts`** holds `INTL_TAGS`, which `D7.1` had in `index.ts`. It moved because `intl.ts` needs it and `index.ts` needs `intl.ts`; leaving it in the barrel would have made the two a cycle. `index.ts` re-exports it, so nothing outside `shared/i18n` learns the difference.
+- **`intl.ts`** is §5's formatter holder — see that section.
+- **`__checks__/errors.ts`** is §2's completeness check. A directory of its own, because a file whose entire purpose is to be type-checked and never imported should not sit among files that are.
+
+And the residual this layout has, stated rather than discovered later: **`AppLoader` renders above `I18nextProvider`.** It is the fallback of both boot gates, and the instance is created inside the inner one, so `useTranslation` there does not degrade — it warns and returns the key, and an operator would read `loading.starting` while the app started. It therefore reads `I18nContext` and falls back to the bundled `en`, which is the only catalogue that could be in memory that early in any case: every other locale is a dynamic `import()` nobody has asked for yet. The key stays a key, so `D7.6`'s extractor still finds it. This is the honest floor of "the app is localized" — the first paint is in the source language, and there is no ordering that changes it.
 
 ### 4. Locale resolution, in order
 
@@ -145,6 +159,10 @@ export const INTL_TAGS: Record<Locale, string> = { en: "en-GB", lv: "lv-LV" };
 - **`shared/grid/formatters.ts` and `filter-chips.ts` build their `Intl.DateTimeFormat`s from the active locale**, not from `undefined`, and rebuild on `languageChanged`. Today's `undefined` means "the browser's locale", and a Latvian operator on an English OS would otherwise read Latvian headers over English dates. The formatter registry's entries stay `(value) => string` — they close over a formatter holder that the language listener swaps, so ADR-0035's "configs carry keys, registries carry functions" is unchanged. `filter-chips.ts`'s `timeZone: "UTC"` day formatter keeps its timezone reasoning intact and only changes locale.
 - **Numbers and dates in copy go through i18next's built-in Intl formatters** — `"{{total, number}}"`, `"{{since, datetime(dateStyle: medium)}}"` — or through those Intl objects. **Never `toLocaleString()` with an implicit locale**, anywhere in `apps/admin`, which the lint rule of §8 cannot see and a grep in `pnpm i18n:check` (§9) does.
 
+**Amended 2026-08-22 (D7.2): the formatters read a holder, and the holder is app-wide.** `shared/i18n/intl.ts` owns the active tag and hands out `Intl.DateTimeFormat`s cached per tag and options; `createI18n`'s `languageChanged` listener calls `setIntlLocale` as part of `applyLocale`, **before** `document.documentElement.lang` and before react-i18next's own listener has run — so the dates have already moved by the time the tree is asked to render, rather than lagging it by a paint. `formatters.ts` and `filter-chips.ts` resolve the formatter **per call** rather than capturing one, which is what keeps a registry entry `(value) => string` (ADR-0035) while still following a switch.
+
+The holder is module-level state and therefore **app-wide, not per-instance** — the one place in `shared/i18n` that is. It has to be: an entry in ADR-0035's formatter registry takes a value and nothing else, so there is no parameter for an instance to arrive through. The cost is named rather than hidden: two instances at two locales in one test file share it and the last `languageChanged` wins, so a locale-sensitive assertion belongs in a file that renders one tree. `en` being the suite's locale (§14) is what makes that a rule about one file rather than about all of them.
+
 ### 6. Validation copy: zod's error map on the client; the API stays English
 
 This is the plan's "subtle one", and the D3.9 argument in `server-errors.ts` already named the mechanism: _"localising the latter is zod's own error map on the contracts package, applied once for both sides."_ That sentence is adopted, with one refinement.
@@ -180,6 +198,8 @@ meta: { success: "staff:outcomes.created" },
 - **ADR-0035's "config is serializable data" holds — a key is data.** A config still diffs, snapshots and deep-merges; nothing in it is a function; `as const satisfies ResourceConfig` now also checks that every key exists in `en`, because `TranslationKey` is a union of literals. A typo'd key is a compile error, the same property the registries already have for formatter names.
 - **A registry function never formats copy itself.** `rowActions`, `statusBadge`, the filter dialogs and the chips bar call `t()` on the keys the config handed them; an enum option's label is `t(\`${ns}:options.${value}\`)` from a namespace the config names. `filter-chips.ts`'s `labelFor` becomes a function of `(filter, column, t)` and stays pure and table-tested.
 - **The `meta` type changes one field's type**: `mutationMeta.success?: TranslationKey`, and the global handler calls `t()` before `toast.success`. That is the D7 amendment ADR-0043's own last consequence said it would need, made as an additive type narrowing beside a frozen record: the string-typed field is replaced by a key-typed one, and nothing about where `meta` is read or who delivers it moves.
+
+**Amended 2026-08-22 (D7.2): the line between the two sweeps is not a directory.** The plan gives `D7.2` "`src/shared`, `src/widgets` and `src/app`" and gives this section route `staticData.title`, `meta.success` and confirm-dialog copy — and those live in `src/app` and in the features. `D7.2` therefore finished with `src/shared` and `src/widgets` at **zero** operator-facing literals and `src/app` holding exactly the ones this section claims: eight `staticData.title`s, the two shell fallbacks that back them (`useRouteTitle("Sign in")`, `useRouteTitle("Admin")`), and two "Back to \<resource\>" links. Every one of them names a resource or a route, and every one of them needs a namespace `D7.4` creates. Splitting them earlier would have meant `auth`, `dashboard`, `profile`, `staff` and `users` landing in the step that was supposed to own the cross-cutting four — so the seam is the *namespace*, not the folder, and the plan's "no operator-facing literal remains under `src/app`" is read against that.
 
 ### 8. Lint: the mechanical half
 

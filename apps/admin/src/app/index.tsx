@@ -1,5 +1,8 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 
+import { useT } from "@/shared/i18n";
+import { createDeferredErrorMessage } from "@/shared/notifications/messages";
 import { AppLoader } from "@/shared/ui";
 
 import { createQueryClient } from "./providers/query-client";
@@ -33,12 +36,46 @@ import "./styles.css";
  * one and never hear otherwise. Anonymous, it costs nothing and provides the
  * `localStorage` adapter the app has always used.
  */
-const queryClient = createQueryClient();
+/**
+ * The wire between the global toast handler and the i18next instance
+ * (`D7.2`, ADR-0046 §2).
+ *
+ * The two are built at opposite ends of the tree on purpose: ADR-0034 gives one
+ * query client to the whole app and it is constructed here, while `D7.1` put
+ * the instance *inside* `SettingsProvider` so the account's locale is the one
+ * it starts in rather than one it switches to. Neither end moves; a deferred
+ * lookup is what joins them, and it is a factory rather than a module-level box
+ * so the suite gets its own per render.
+ */
+const errorMessages = createDeferredErrorMessage();
+const queryClient = createQueryClient({
+  messageForError: errorMessages.messageForError,
+});
+
+/**
+ * Binds that lookup, from inside the provider.
+ *
+ * A component rather than a prop threaded down through `SettingsProvider`,
+ * because the binding is not something the settings gate has an opinion about:
+ * `SettingsProvider` renders its children inside `I18nProvider`, so anything
+ * mounted here is already under the instance. Rendering nothing is the whole of
+ * its output.
+ */
+const BindErrorMessages = () => {
+  const { t } = useT("errors");
+
+  useEffect(() => {
+    errorMessages.bind(t);
+  }, [t]);
+
+  return null;
+};
 
 const App = () => (
   <SessionProvider fallback={<AppLoader />}>
     <QueryClientProvider client={queryClient}>
       <SettingsProvider fallback={<AppLoader />}>
+        <BindErrorMessages />
         <AppRouter queryClient={queryClient} />
       </SettingsProvider>
     </QueryClientProvider>

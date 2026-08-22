@@ -1,1 +1,33 @@
-{}
+{
+  "actions": {
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "clearAll": "Clear all",
+    "retry": "Try again"
+  },
+  "brand": {
+    "name": "machxi",
+    "product": "Admin",
+    "authTagline": "machxi admin"
+  },
+  "nav": {
+    "group": "Manage",
+    "dashboard": "Dashboard",
+    "staff": "Staff",
+    "users": "Users",
+    "profile": "Profile"
+  },
+  "account": {
+    "menu": "Account",
+    "unnamed": "Account",
+    "profile": "Profile"
+  },
+  "loading": {
+    "starting": "Starting…"
+  },
+  "record": {
+    "errorTitle": "That record could not be opened",
+    "errorDescription": "It may have been deleted, or the address may be wrong."
+  }
+}

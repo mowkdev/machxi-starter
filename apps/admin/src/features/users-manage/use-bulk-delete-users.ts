@@ -3,7 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createUserApi, userKeys } from "@/entities/user";
 import { runBulkAction, type BulkTarget } from "@/shared/api/bulk-outcome";
 import { useApiClient } from "@/shared/api/context";
+import { useT } from "@/shared/i18n";
 import { summariseBulk } from "@/shared/notifications/bulk-summary";
+import { useMessageForError } from "@/shared/notifications/messages";
 import { toast } from "@/shared/ui";
 
 /**
@@ -22,16 +24,19 @@ import { toast } from "@/shared/ui";
 export const useBulkDeleteUsers = () => {
   const api = createUserApi(useApiClient());
   const queryClient = useQueryClient();
+  const { t } = useT("grid");
+  const messageForError = useMessageForError();
 
   return useMutation({
     mutationFn: (targets: readonly BulkTarget[]) =>
-      runBulkAction(targets, (id) => api.remove(id)),
+      runBulkAction(targets, (id) => api.remove(id), messageForError),
     onSuccess: (outcome) => {
       void queryClient.invalidateQueries({ queryKey: userKeys.all });
 
       const { tone, headline, description } = summariseBulk(
         outcome,
         "user account",
+        t,
       );
 
       toast[tone](headline, description === undefined ? {} : { description });

@@ -1,5 +1,7 @@
 import type { Filter } from "@repo/contracts";
+import type { TFunction } from "i18next";
 
+import { dateTimeFormat } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type {
   ColumnConfig,
@@ -40,9 +42,13 @@ export interface FilterChip {
   readonly filter: Filter;
 }
 
+/** The `grid` namespace's translator — the chips' phrasing lives in `chip.*`. */
+export type ChipTranslate = TFunction<"grid">;
+
 export const chipsForState = (
   filters: readonly Filter[],
   columns: readonly (readonly [string, ColumnConfig])[],
+  t: ChipTranslate,
 ): readonly FilterChip[] => {
   /*
    * Field + op is the *filter's* identity and is what removal works on — but it
@@ -66,6 +72,7 @@ export const chipsForState = (
       label: labelFor(
         filter,
         columns.find(([name]) => name === filter.field)?.[1],
+        t,
       ),
       filter,
     };
@@ -82,25 +89,34 @@ export const chipsForState = (
  * `lte` somebody deep-linked onto the same field, so guessing would be the
  * config claiming knowledge it does not have.
  */
-const labelFor = (filter: Filter, column: ColumnConfig | undefined): string => {
+export const labelFor = (
+  filter: Filter,
+  column: ColumnConfig | undefined,
+  t: ChipTranslate,
+): string => {
   const config = column?.filter;
 
-  if (column === undefined || config === undefined) return rawLabel(filter);
+  if (column === undefined || config === undefined) return rawLabel(filter, t);
 
-  const owned = ownedLabel(filter, column.header, config);
+  const owned = ownedLabel(filter, column.header, config, t);
 
-  return owned ?? rawLabel(filter);
+  return owned ?? rawLabel(filter, t);
 };
 
 const ownedLabel = (
   filter: Filter,
   header: string,
   config: FilterControlConfig,
+  t: ChipTranslate,
 ): string | undefined => {
   switch (config.kind) {
     case "text": {
       if (filter.op !== config.op) return undefined;
-      if (config.op !== "like") return `${header} is “${asText(filter.value)}”`;
+      if (config.op !== "like")
+        return t("chip.isText", {
+          column: header,
+          value: asText(filter.value),
+        });
 
       /*
        * "Contains" only where the pattern is one this app wrote.
@@ -124,7 +140,7 @@ const ownedLabel = (
       const term = unescapeContains(pattern);
 
       return containsPattern(term) === pattern
-        ? `${header} contains “${term}”`
+        ? t("chip.contains", { column: header, value: term })
         : undefined;
     }
 
@@ -137,8 +153,11 @@ const ownedLabel = (
         asText(value);
 
       return Array.isArray(filter.value)
-        ? `${header} is any of ${filter.value.map(label).join(", ")}`
-        : `${header} is ${label(filter.value)}`;
+        ? t("chip.anyOf", {
+            column: header,
+            values: filter.value.map(label).join(", "),
+          })
+        : t("chip.is", { column: header, value: label(filter.value) });
     }
 
     case "dateRange":
@@ -148,9 +167,9 @@ const ownedLabel = (
        * a range without re-composing the other.
        */
       return filter.op === config.from
-        ? `${header} from ${boundDay(filter.value)}`
+        ? t("chip.from", { column: header, day: boundDay(filter.value) })
         : filter.op === config.to
-          ? `${header} to ${boundDay(filter.value)}`
+          ? t("chip.to", { column: header, day: boundDay(filter.value) })
           : undefined;
 
     case "presence":
@@ -176,8 +195,14 @@ const ownedLabel = (
  * narrowing this list that the screen has no vocabulary for. The alternative is
  * not a prettier chip, it is no chip, which is the failure ADR-0039 opens on.
  */
-const rawLabel = (filter: Filter): string =>
-  clamp(`${filter.field} ${filter.op} ${asText(filter.value)}`);
+const rawLabel = (filter: Filter, t: ChipTranslate): string =>
+  clamp(
+    t("chip.raw", {
+      field: filter.field,
+      op: filter.op,
+      value: asText(filter.value),
+    }),
+  );
 
 /**
  * The bound as the **day the operator picked**, which is a UTC day.
@@ -193,16 +218,22 @@ const rawLabel = (filter: Filter): string =>
  *
  * Cell values keep the local formatter. A bound is not an event; it is the day
  * that was typed.
+ *
+ * `D7.2` changed the **locale** and nothing else: the timezone reasoning above
+ * is untouched, and `dateTimeFormat` resolves the tag per call so a chip
+ * re-renders in the language its column header is in.
  */
-const dayFormat = new Intl.DateTimeFormat(undefined, {
+const DAY_OPTIONS: Intl.DateTimeFormatOptions = {
   dateStyle: "medium",
   timeZone: "UTC",
-});
+};
 
 const boundDay = (value: unknown): string => {
   const day = value instanceof Date ? value : new Date(String(value));
 
-  return Number.isNaN(day.getTime()) ? asText(value) : dayFormat.format(day);
+  return Number.isNaN(day.getTime())
+    ? asText(value)
+    : dateTimeFormat(DAY_OPTIONS).format(day);
 };
 
 /**

@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type { BulkOutcome } from "@/shared/api/bulk-outcome";
 
 /**
@@ -27,21 +29,32 @@ export interface BulkSummary {
  * `noun` is the resource's singular ("staff account", "user account"), because
  * the two populations differ in what deletion *means* (ADR-0028: staff hard,
  * users soft) and the copy should not pretend otherwise.
+ *
+ * **Its plural belongs to the catalogue, not to this function** (`D7.2`). The
+ * `${noun}s` that used to live here is English grammar written in TypeScript;
+ * `grid:bulk.deleted` now carries `_one` and `_other` forms and forms the
+ * plural inside the sentence, which is the only place a locale with different
+ * rules can answer differently. It is a partial answer and the plan should know
+ * it: a language that *declines* the noun — Latvian does — needs the noun
+ * itself in three forms, and the noun is still a caller's string here. `D7.4`
+ * turns it into a key, which is what closes that.
  */
 export const summariseBulk = (
   outcome: BulkOutcome,
   noun: string,
+  t: TFunction<"grid">,
 ): BulkSummary => {
   const { deleted, refused, unattempted } = outcome;
-  const plural = (count: number) => (count === 1 ? noun : `${noun}s`);
 
   if (refused.length === 0 && unattempted.length === 0)
     return {
       tone: "success",
-      headline: `${deleted.length} ${plural(deleted.length)} deleted.`,
+      headline: t("bulk.deleted", { count: deleted.length, noun }),
     };
 
-  const lines = refused.map((item) => `${item.label}: ${item.message}`);
+  const lines = refused.map((item) =>
+    t("bulk.refusal", { label: item.label, message: item.message }),
+  );
 
   /*
    * The stopped remainder is its own sentence, not another refusal. A refusal
@@ -51,20 +64,20 @@ export const summariseBulk = (
    * operator hunting for a permission problem that does not exist.
    */
   if (unattempted.length > 0)
-    lines.push(
-      `${unattempted.length} not attempted — the API is rate limiting this session. Wait a few minutes and try the rest.`,
-    );
+    lines.push(t("bulk.unattemptedLine", { count: unattempted.length }));
 
-  const parts = [`${deleted.length} deleted`];
+  const parts = [t("bulk.partDeleted", { count: deleted.length })];
 
-  if (refused.length > 0) parts.push(`${refused.length} refused`);
-  if (unattempted.length > 0) parts.push(`${unattempted.length} not attempted`);
+  if (refused.length > 0)
+    parts.push(t("bulk.partRefused", { count: refused.length }));
+  if (unattempted.length > 0)
+    parts.push(t("bulk.partUnattempted", { count: unattempted.length }));
 
   return {
     // Nothing deleted is a failure; a mixed result is not, and calling it one
     // would tell an operator to undo work that succeeded.
     tone: deleted.length === 0 ? "error" : "warning",
-    headline: `${parts.join(", ")}.`,
+    headline: t("bulk.headline", { parts: parts.join(", ") }),
     description: lines.join("\n"),
   };
 };

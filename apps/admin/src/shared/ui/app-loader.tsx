@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { I18nContext } from "react-i18next";
 
 import { Spinner } from "@repo/ui/components/spinner";
+
+import { EN_RESOURCES } from "@/shared/i18n";
 
 /**
  * The screen the app shows while it is starting (ADR-0033 §Boot).
@@ -25,12 +28,36 @@ import { Spinner } from "@repo/ui/components/spinner";
  */
 export const AppLoader = ({
   delayMs = 250,
-  label = "Starting…",
+  label,
 }: {
   /** How long to wait before drawing anything. `0` draws immediately. */
   delayMs?: number;
+  /**
+   * Overrides the default, which is the app's own "Starting…" from `common`.
+   *
+   * A default parameter cannot call a hook, so the fallback moved into the body
+   * (`D7.2`). A caller with words of its own still passes them; the point of
+   * the prop is that a boot screen for something other than the app can say so.
+   */
   label?: string;
 }) => {
+  /*
+   * **The one screen that renders before i18next exists** (`D7.2`).
+   *
+   * It is the boot gate's fallback and the settings gate's, and both sit above
+   * `I18nProvider` — which is mounted *inside* `SettingsProvider`, where the
+   * account's locale is already known (`D7.1`, ADR-0046 §4). So there is no
+   * instance to ask when this first paints, and `useTranslation` outside a
+   * provider does not degrade, it warns and hands back the key: the operator
+   * would read `loading.starting` while the app started.
+   *
+   * The context is therefore read rather than the hook called, and the answer
+   * degrades to the eagerly bundled `en` — which is the fallback locale
+   * (ADR-0046 §3) and the only catalogue that could be in memory this early
+   * anyway, every other one being a dynamic `import()` that has not been asked
+   * for yet. The key stays a key, so the extractor of `D7.6` still finds it.
+   */
+  const context = useContext(I18nContext);
   const [visible, setVisible] = useState(delayMs === 0);
 
   useEffect(() => {
@@ -67,7 +94,11 @@ export const AppLoader = ({
         className="size-6 text-muted-foreground motion-reduce:animate-none"
         role={undefined}
       />
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground">
+        {label ??
+          context?.i18n.t("loading.starting") ??
+          EN_RESOURCES.common.loading.starting}
+      </span>
     </div>
   );
 };

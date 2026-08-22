@@ -3,7 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createStaffApi, staffKeys } from "@/entities/staff";
 import { runBulkAction, type BulkTarget } from "@/shared/api/bulk-outcome";
 import { useApiClient } from "@/shared/api/context";
+import { useT } from "@/shared/i18n";
 import { summariseBulk } from "@/shared/notifications/bulk-summary";
+import { useMessageForError } from "@/shared/notifications/messages";
 import { toast } from "@/shared/ui";
 
 /**
@@ -39,10 +41,12 @@ import { toast } from "@/shared/ui";
 export const useBulkDeleteStaff = () => {
   const api = createStaffApi(useApiClient());
   const queryClient = useQueryClient();
+  const { t } = useT("grid");
+  const messageForError = useMessageForError();
 
   return useMutation({
     mutationFn: (targets: readonly BulkTarget[]) =>
-      runBulkAction(targets, (id) => api.remove(id)),
+      runBulkAction(targets, (id) => api.remove(id), messageForError),
     /*
      * No `meta.success`: the sentence is composed below, from what happened.
      * `errorToast` stays on, and it is not dead — `allSettled` never rejects,
@@ -63,6 +67,7 @@ export const useBulkDeleteStaff = () => {
       const { tone, headline, description } = summariseBulk(
         outcome,
         "staff account",
+        t,
       );
 
       toast[tone](headline, description === undefined ? {} : { description });

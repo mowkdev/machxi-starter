@@ -12,6 +12,7 @@ import {
 } from "@/entities/user";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useMessageForError } from "@/shared/notifications/messages";
 import {
   editSurfaceOf,
   fieldsForVariant,
@@ -167,6 +168,7 @@ export const CreateUserSurface = () => {
   };
 
   const createUser = useCreateUser();
+  const messageForError = useMessageForError();
 
   const form = useForm<CreateUserFormValues, unknown, CreateUserBody>({
     resolver,
@@ -192,6 +194,7 @@ export const CreateUserSurface = () => {
         // that is not on screen and suppress the form-level fallback.
         fields: FIELD_NAMES,
         codeFields: userResourceConfig.errorFields,
+        messageForError,
       });
     }
   };

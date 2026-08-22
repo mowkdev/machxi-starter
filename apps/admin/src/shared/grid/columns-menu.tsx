@@ -1,5 +1,6 @@
 import { ArrowDownIcon, ArrowUpIcon, Columns3Icon } from "lucide-react";
 
+import { useT } from "@/shared/i18n";
 import {
   Button,
   Checkbox,
@@ -73,6 +74,8 @@ export const ColumnsMenu = ({
   onReset,
   isDirty,
 }: ColumnsMenuProps) => {
+  const { t } = useT("grid");
+
   if (entries.length === 0) return null;
 
   return (
@@ -80,13 +83,13 @@ export const ColumnsMenu = ({
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-8">
           <Columns3Icon aria-hidden />
-          Columns
+          {t("columns.label")}
         </Button>
       </PopoverTrigger>
 
       <PopoverContent align="end" className="w-64 p-2">
         <PopoverTitle className="px-2 py-1.5 text-sm font-medium">
-          Columns
+          {t("columns.label")}
         </PopoverTitle>
 
         <div className="flex flex-col py-1">
@@ -120,7 +123,7 @@ export const ColumnsMenu = ({
                 variant="ghost"
                 size="icon"
                 className="size-6"
-                aria-label={`Move ${entry.label} up`}
+                aria-label={t("columns.moveUp", { column: entry.label })}
                 disabled={index === 0}
                 onClick={() => {
                   onMove(entry.id, -1);
@@ -132,7 +135,7 @@ export const ColumnsMenu = ({
                 variant="ghost"
                 size="icon"
                 className="size-6"
-                aria-label={`Move ${entry.label} down`}
+                aria-label={t("columns.moveDown", { column: entry.label })}
                 disabled={index === entries.length - 1}
                 onClick={() => {
                   onMove(entry.id, 1);
@@ -158,7 +161,7 @@ export const ColumnsMenu = ({
           disabled={!isDirty}
           onClick={onReset}
         >
-          Reset to defaults
+          {t("columns.reset")}
         </Button>
       </PopoverContent>
     </Popover>

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createMessageForError } from "@/shared/notifications/messages";
+import { createTestI18n } from "@/test/render";
+
 import { apiClientError } from "../api-error";
 import {
   BULK_CONCURRENCY,
@@ -15,6 +18,18 @@ import {
  * global limiter shares with `/auth/login` and `/auth/refresh`, for every
  * operator behind the same egress IP.
  */
+
+/**
+ * The real `errors` catalogue behind the refusal sentences (`D7.2`).
+ *
+ * A refusal's words are the code catalogue's, and since the catalogue is JSON
+ * resolved through i18next, the only way this table keeps asserting the
+ * operator's sentence rather than a stub's is to build the lookup the app
+ * builds.
+ */
+const messageForError = createMessageForError(
+  createTestI18n().instance.getFixedT(null, "errors"),
+);
 
 const targets = (count: number): readonly BulkTarget[] =>
   Array.from({ length: count }, (_, index) => ({
@@ -38,7 +53,11 @@ const refused = () =>
 
 describe("runBulkAction", () => {
   it("reports every success when nothing refuses", async () => {
-    const outcome = await runBulkAction(targets(3), () => Promise.resolve());
+    const outcome = await runBulkAction(
+      targets(3),
+      () => Promise.resolve(),
+      messageForError,
+    );
 
     expect(outcome.deleted).toEqual(["0", "1", "2"]);
     expect(outcome.refused).toEqual([]);
@@ -46,8 +65,10 @@ describe("runBulkAction", () => {
   });
 
   it("keeps a refusal to its own row, and names it from the code", async () => {
-    const outcome = await runBulkAction(targets(3), (id) =>
-      id === "1" ? Promise.reject(refused()) : Promise.resolve(),
+    const outcome = await runBulkAction(
+      targets(3),
+      (id) => (id === "1" ? Promise.reject(refused()) : Promise.resolve()),
+      messageForError,
     );
 
     /*
@@ -70,12 +91,16 @@ describe("runBulkAction", () => {
     let inFlight = 0;
     let peak = 0;
 
-    await runBulkAction(targets(BULK_CONCURRENCY * 3), async () => {
-      inFlight += 1;
-      peak = Math.max(peak, inFlight);
-      await Promise.resolve();
-      inFlight -= 1;
-    });
+    await runBulkAction(
+      targets(BULK_CONCURRENCY * 3),
+      async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await Promise.resolve();
+        inFlight -= 1;
+      },
+      messageForError,
+    );
 
     expect(peak).toBeLessThanOrEqual(BULK_CONCURRENCY);
   });
@@ -86,7 +111,7 @@ describe("runBulkAction", () => {
     );
 
     const all = targets(BULK_CONCURRENCY * 3);
-    const outcome = await runBulkAction(all, action);
+    const outcome = await runBulkAction(all, action, messageForError);
 
     /*
      * ADR-0020's global limiter does not set `skipFailedRequests`, so a
@@ -113,7 +138,7 @@ describe("runBulkAction", () => {
     );
 
     const all = targets(BULK_CONCURRENCY * 2);
-    const outcome = await runBulkAction(all, action);
+    const outcome = await runBulkAction(all, action, messageForError);
 
     // A `409` is an answer about one row, not a signal about the connection.
     // Stopping on it would refuse work the operator is entitled to do.

@@ -1,8 +1,10 @@
 import type { Filter } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
+import { activeIntlTag } from "@/shared/i18n";
 import { mergeColumns } from "@/shared/resource/config";
 import { demoResourceConfig } from "@/test/fixtures/demo-resource";
+import { createTestI18n } from "@/test/render";
 
 import { chipsForState } from "../filter-chips";
 
@@ -24,16 +26,30 @@ import { chipsForState } from "../filter-chips";
 
 const columns = mergeColumns(demoResourceConfig.columns);
 
+/**
+ * The real `en` catalogue, not a stub (`D7.2`).
+ *
+ * `labelFor` composes its sentences from `grid:chip.*` now, so a table that
+ * translated through a fake would prove the composition and not the copy — and
+ * a key deleted from the catalogue would still pass. Building the instance the
+ * app builds is what keeps these assertions the operator's words.
+ */
+const t = createTestI18n().instance.getFixedT(null, "grid");
+
 const labels = (filters: readonly Filter[]): readonly string[] =>
-  chipsForState(filters, columns).map((chip) => chip.label);
+  chipsForState(filters, columns, t).map((chip) => chip.label);
 
 /**
  * The day a range bound names, formatted the one way that agrees with the
  * dialog.
  *
- * The **timezone** is what these assertions pin, not the locale — the locale is
- * the runner's and the app's alike, so leaving it alone keeps the test off the
- * machine's language settings. Timezone is the part that was wrong: a bound is
+ * The **timezone** is what these assertions pin, not the locale — but the
+ * locale had to be named at `D7.2`, because it stopped being the runner's.
+ * `undefined` meant "the machine's language", and the app now formats through
+ * `INTL_TAGS`, so a runner set to `en-US` would have read `Aug 12, 2026` while
+ * the chip said `12 Aug 2026`. `activeIntlTag()` is the app's own answer, so
+ * the assertion follows the decision rather than restating it. Timezone is the
+ * part that was wrong: a bound is
  * UTC midnight or UTC end-of-day of the day the operator picked, the dialog
  * re-reads it with `toISOString().slice(0, 10)`, and formatting the same
  * instant in the operator's own zone moved an end-of-day bound forward a day
@@ -43,7 +59,7 @@ const labels = (filters: readonly Filter[]): readonly string[] =>
  * itself no matter what.
  */
 const utcDay = (instant: string): string =>
-  new Intl.DateTimeFormat(undefined, {
+  new Intl.DateTimeFormat(activeIntlTag(), {
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(new Date(instant));
@@ -55,14 +71,14 @@ describe("chipsForState", () => {
       { field: "status", op: "eq", value: "active" },
     ];
 
-    expect(chipsForState(filters, columns)).toHaveLength(2);
-    expect(chipsForState(filters, columns).map((chip) => chip.key)).toEqual([
+    expect(chipsForState(filters, columns, t)).toHaveLength(2);
+    expect(chipsForState(filters, columns, t).map((chip) => chip.key)).toEqual([
       "name:like",
       "status:eq",
     ]);
     // The chip carries the filter itself, so removing it removes exactly what
     // the label described — no re-derivation, nothing to get out of step.
-    expect(chipsForState(filters, columns)[0]?.filter).toBe(filters[0]);
+    expect(chipsForState(filters, columns, t)[0]?.filter).toBe(filters[0]);
   });
 
   it("says a `like` filter in the words that were typed, not the wire's", () => {
@@ -194,6 +210,7 @@ describe("chipsForState", () => {
     const [chip] = chipsForState(
       [{ field: "x".repeat(5_000), op: "eq", value: "y" }],
       columns,
+      t,
     );
 
     expect(chip?.label.length).toBeLessThanOrEqual(81);
@@ -215,6 +232,7 @@ describe("chipsForState", () => {
           { field: "status", op: "eq", value: "disabled" },
         ],
         columns,
+        t,
       ).map((chip) => chip.key),
     ).toEqual(["status:eq", "status:eq#1"]);
   });

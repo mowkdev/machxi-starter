@@ -12,6 +12,8 @@ import {
 } from "@repo/ui/components/alert-dialog";
 import { Spinner } from "@repo/ui/components/spinner";
 
+import { useT } from "@/shared/i18n";
+
 /**
  * "Are you sure?" for an action with no form to host it.
  *
@@ -52,35 +54,41 @@ export const ConfirmDialog = ({
   destructive = false,
   isPending,
   onConfirm,
-}: ConfirmDialogProps) => (
-  <AlertDialog
-    open={open}
-    onOpenChange={(next) => {
-      if (!isPending) onOpenChange(next);
-    }}
-  >
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>{title}</AlertDialogTitle>
-        <AlertDialogDescription>{description}</AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-        <AlertDialogAction
-          variant={destructive ? "destructive" : "default"}
-          disabled={isPending}
-          onClick={(event) => {
-            // Keeps the dialog open so the pending state is visible and a
-            // refusal arrives while the operator is still looking at what they
-            // asked for.
-            event.preventDefault();
-            onConfirm();
-          }}
-        >
-          {isPending ? <Spinner /> : null}
-          {confirmLabel}
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-);
+}: ConfirmDialogProps) => {
+  const { t } = useT("common");
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!isPending) onOpenChange(next);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>
+            {t("actions.cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant={destructive ? "destructive" : "default"}
+            disabled={isPending}
+            onClick={(event) => {
+              // Keeps the dialog open so the pending state is visible and a
+              // refusal arrives while the operator is still looking at what they
+              // asked for.
+              event.preventDefault();
+              onConfirm();
+            }}
+          >
+            {isPending ? <Spinner /> : null}
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};

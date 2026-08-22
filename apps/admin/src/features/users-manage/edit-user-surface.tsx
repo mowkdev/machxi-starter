@@ -17,6 +17,7 @@ import {
 } from "@/entities/user";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useMessageForError } from "@/shared/notifications/messages";
 import {
   dirtyValuesOf,
   editSurfaceOf,
@@ -58,6 +59,7 @@ export const EditUserSurface = ({
   const navigate = useNavigate();
   const { closeSearch } = useRecordNavigation();
   const updateUser = useUpdateUser();
+  const messageForError = useMessageForError();
 
   /** Back to the list, page and filters intact (ADR-0040). */
   /*
@@ -106,6 +108,7 @@ export const EditUserSurface = ({
       applyServerErrors(error, form.setError, {
         fields: FIELD_NAMES,
         codeFields: userResourceConfig.errorFields,
+        messageForError,
       });
     }
   };

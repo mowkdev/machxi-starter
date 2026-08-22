@@ -1,5 +1,6 @@
 import { MoreHorizontalIcon } from "lucide-react";
 
+import { useT } from "@/shared/i18n";
 import { humanize } from "@/shared/resource/config";
 import {
   Badge,
@@ -96,6 +97,7 @@ export const RolesList = ({ value }: ValueOnlyProps) => {
  * onto a blank panel.
  */
 export const RowActions = ({ row, rowId, meta }: CellRendererProps) => {
+  const { t } = useT("grid");
   const actions = meta.rowActions ?? [];
 
   if (actions.length === 0) return null;
@@ -118,7 +120,7 @@ export const RowActions = ({ row, rowId, meta }: CellRendererProps) => {
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Row actions for ${rowId}`}
+          aria-label={t("selection.rowActions", { id: rowId })}
         >
           <MoreHorizontalIcon aria-hidden />
         </Button>

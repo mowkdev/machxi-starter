@@ -14,6 +14,7 @@ import {
 import { AppFormProvider } from "@/shared/form/context";
 import { AppFormError } from "@/shared/form/form-error";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useMessageForError } from "@/shared/notifications/messages";
 import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
 import { Button, FieldGroup, FieldSet, Spinner } from "@/shared/ui";
 
@@ -56,6 +57,7 @@ export const ProfileDetailsForm = ({
   readonly profile: StaffResource;
 }) => {
   const updateProfile = useUpdateProfile();
+  const messageForError = useMessageForError();
   const invalidateOwnStaffRow = useInvalidateOwnStaffRow();
 
   const form = useForm<UpdateStaffProfileBody>({
@@ -100,7 +102,10 @@ export const ProfileDetailsForm = ({
       // hold these fields dirty against every later refetch.
       form.reset(toFormValues(updated));
     } catch (error) {
-      applyServerErrors(error, form.setError, { fields: FIELD_NAMES });
+      applyServerErrors(error, form.setError, {
+        fields: FIELD_NAMES,
+        messageForError,
+      });
     }
   };
 

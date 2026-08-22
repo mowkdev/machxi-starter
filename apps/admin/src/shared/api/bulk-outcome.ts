@@ -1,5 +1,5 @@
 import { isApiClientError } from "@/shared/api/api-error";
-import { messageForError } from "@/shared/notifications/messages";
+import type { ErrorMessage } from "@/shared/notifications/messages";
 
 /**
  * Running a per-row action over a selection, and reporting what happened
@@ -78,12 +78,16 @@ export interface BulkOutcome {
   readonly unattempted: readonly BulkTarget[];
 }
 
-const refusalFor = (target: BulkTarget, reason: unknown): BulkRefusal => ({
+const refusalFor = (
+  target: BulkTarget,
+  reason: unknown,
+  messageForError: ErrorMessage,
+): BulkRefusal => ({
   id: target.id,
   label: target.label,
-  // The sentence comes from the code, in one file, exactly as a toast for a
-  // single refusal would (ADR-0034). The API's own `message` is a
-  // developer-facing default and is never rendered (ADR-0013).
+  // The sentence comes from the code, in one catalogue, exactly as a toast for
+  // a single refusal would (ADR-0034, ADR-0046 §2). The API's own `message` is
+  // a developer-facing default and is never rendered (ADR-0013).
   message: messageForError(reason),
 });
 
@@ -111,6 +115,16 @@ const isRateLimited = (reason: unknown): boolean =>
 export const runBulkAction = async (
   targets: readonly BulkTarget[],
   action: (id: string) => Promise<unknown>,
+  /**
+   * The code catalogue's lookup, passed in since `D7.2`.
+   *
+   * It used to be imported, and could not stay that way: the sentence is now
+   * resolved in the operator's locale, and ADR-0046 §13 keeps the i18next
+   * instance out of module scope, so the translator reaches a plain async
+   * function the only way it can — as an argument. The caller is a hook, which
+   * is where `useMessageForError()` lives.
+   */
+  messageForError: ErrorMessage,
 ): Promise<BulkOutcome> => {
   const deleted: string[] = [];
   const refused: BulkRefusal[] = [];
@@ -134,7 +148,7 @@ export const runBulkAction = async (
 
       if (isRateLimited(result?.reason)) limited = true;
 
-      refused.push(refusalFor(target, result?.reason));
+      refused.push(refusalFor(target, result?.reason, messageForError));
     });
 
     /*

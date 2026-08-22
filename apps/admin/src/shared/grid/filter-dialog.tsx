@@ -1,6 +1,8 @@
+import type { TFunction } from "i18next";
 import { FilterIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useT } from "@/shared/i18n";
 import type { FilterControlConfig } from "@/shared/resource/types";
 import {
   Button,
@@ -55,6 +57,8 @@ export const ColumnFilterDialog = ({
   value,
   onCommit,
 }: ColumnFilterDialogProps) => {
+  const { t } = useT("grid");
+  const { t: tCommon } = useT("common");
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -107,7 +111,9 @@ export const ColumnFilterDialog = ({
            * never hears.
            */
           aria-label={
-            active ? `Filter by ${label} (filtered)` : `Filter by ${label}`
+            active
+              ? t("filter.triggerActive", { column: label })
+              : t("filter.trigger", { column: label })
           }
           data-active={active ? "true" : undefined}
         >
@@ -128,8 +134,8 @@ export const ColumnFilterDialog = ({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Filter by {label}</DialogTitle>
-            <DialogDescription>{hintFor(config)}</DialogDescription>
+            <DialogTitle>{t("filter.title", { column: label })}</DialogTitle>
+            <DialogDescription>{hintFor(config, t)}</DialogDescription>
           </DialogHeader>
 
           <div>
@@ -155,9 +161,9 @@ export const ColumnFilterDialog = ({
                 commit(undefined);
               }}
             >
-              Clear
+              {tCommon("actions.clear")}
             </Button>
-            <Button type="submit">Apply</Button>
+            <Button type="submit">{tCommon("actions.apply")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -172,17 +178,17 @@ export const ColumnFilterDialog = ({
  * means to a person, and a range that includes both endpoints is worth saying
  * because the upper bound is silently pushed to end-of-day.
  */
-const hintFor = (config: FilterControlConfig): string => {
+const hintFor = (config: FilterControlConfig, t: TFunction<"grid">): string => {
   switch (config.kind) {
     case "text":
       return config.op === "like"
-        ? "Matches rows containing this text, ignoring case."
-        : "Matches rows equal to this value.";
+        ? t("filter.hint.textLike")
+        : t("filter.hint.textEq");
     case "enum":
-      return "Pick one value, or Any to remove the filter.";
+      return t("filter.hint.enum");
     case "dateRange":
-      return "Either bound may be left empty. Both days are included.";
+      return t("filter.hint.dateRange");
     case "presence":
-      return "A scope switch: it replaces the current rows rather than adding to them.";
+      return t("filter.hint.presence");
   }
 };
