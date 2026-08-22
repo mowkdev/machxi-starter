@@ -7,6 +7,7 @@ import { I18nextProvider } from "react-i18next";
 
 import { createQueryClient } from "@/app/providers/query-client";
 import { createAppRouter } from "@/app/providers/router";
+import { AppUiStrings } from "@/app/providers/ui-strings";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
 import { ApiProvider } from "@/shared/api/context";
 import {
@@ -161,8 +162,19 @@ export const renderWithProviders = (
            */}
           <ThemeProvider>
             <I18nextProvider i18n={value.i18n.instance}>
-              {ui}
-              <Toaster />
+              {/*
+               * The design system's six strings, wired the way the app wires
+               * them (`D7.3`). Mounted here for the reason the `<Toaster>` is:
+               * a component test should not have to remember the app's own
+               * wiring to render a dialog whose close button the app has
+               * localised. Without it the primitives answer with their English
+               * defaults, which is a different code path from the one that
+               * ships.
+               */}
+              <AppUiStrings>
+                {ui}
+                <Toaster />
+              </AppUiStrings>
             </I18nextProvider>
           </ThemeProvider>
         </QueryClientProvider>
@@ -212,7 +224,9 @@ export const renderApp = ({
         {/* The root route mounts its own `<Toaster>`; this tree adds none. */}
         <ThemeProvider>
           <I18nextProvider i18n={value.i18n.instance}>
-            <RouterProvider router={router} />
+            <AppUiStrings>
+              <RouterProvider router={router} />
+            </AppUiStrings>
           </I18nextProvider>
         </ThemeProvider>
       </QueryClientProvider>

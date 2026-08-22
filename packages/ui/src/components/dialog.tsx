@@ -6,6 +6,14 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@repo/ui/lib/utils"
 import { Button } from "@repo/ui/components/button"
+/*
+ * Diverges from the generated component (ADR-0031: owned source). ADR-0046 §12
+ * routes the primitives' six operator-read strings through `UiStrings` so an
+ * app can translate them; `useUiStrings` falls back to English with no provider
+ * mounted, so this package still has no i18n dependency and no behaviour change
+ * for a consumer that has not localised.
+ */
+import { useUiStrings } from "@repo/ui/ui-strings"
 
 function Dialog({
   ...props
@@ -55,6 +63,9 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -73,7 +84,8 @@ function DialogContent({
             className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            {/* `Close` upstream — ADR-0046 §12. */}
+            <span className="sr-only">{strings.close}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
@@ -99,6 +111,9 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <div
       data-slot="dialog-footer"
@@ -111,7 +126,8 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          {/* `Close` upstream — ADR-0046 §12. */}
+          <Button variant="outline">{strings.close}</Button>
         </DialogPrimitive.Close>
       )}
     </div>

@@ -29,5 +29,13 @@
   "record": {
     "errorTitle": "That record could not be opened",
     "errorDescription": "It may have been deleted, or the address may be wrong."
+  },
+  "ui": {
+    "close": "Close",
+    "previous": "Previous",
+    "next": "Next",
+    "morePages": "More pages",
+    "more": "More",
+    "toggleSidebar": "Toggle Sidebar"
   }
 }

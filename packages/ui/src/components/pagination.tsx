@@ -7,6 +7,13 @@ import {
 
 import { cn } from "@repo/ui/lib/utils"
 import { buttonVariants, type Button } from "@repo/ui/components/button"
+/*
+ * Diverges from the generated component (ADR-0031: owned source). ADR-0046 §12
+ * routes the primitives' six operator-read strings through `UiStrings` so an
+ * app can translate them; `useUiStrings` falls back to English with no provider
+ * mounted, so this package still has no i18n dependency.
+ */
+import { useUiStrings } from "@repo/ui/ui-strings"
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
@@ -69,6 +76,9 @@ function PaginationPrevious({
   className,
   ...props
 }: React.ComponentProps<typeof PaginationLink>) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <PaginationLink
       aria-label="Go to previous page"
@@ -77,7 +87,8 @@ function PaginationPrevious({
       {...props}
     >
       <ChevronLeftIcon />
-      <span className="hidden sm:block">Previous</span>
+      {/* `Previous` upstream — ADR-0046 §12. */}
+      <span className="hidden sm:block">{strings.previous}</span>
     </PaginationLink>
   )
 }
@@ -86,6 +97,9 @@ function PaginationNext({
   className,
   ...props
 }: React.ComponentProps<typeof PaginationLink>) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <PaginationLink
       aria-label="Go to next page"
@@ -93,7 +107,8 @@ function PaginationNext({
       className={cn("gap-1 px-2.5 sm:pr-2.5", className)}
       {...props}
     >
-      <span className="hidden sm:block">Next</span>
+      {/* `Next` upstream — ADR-0046 §12. */}
+      <span className="hidden sm:block">{strings.next}</span>
       <ChevronRightIcon />
     </PaginationLink>
   )
@@ -103,6 +118,9 @@ function PaginationEllipsis({
   className,
   ...props
 }: React.ComponentProps<"span">) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <span
       aria-hidden
@@ -111,7 +129,8 @@ function PaginationEllipsis({
       {...props}
     >
       <MoreHorizontalIcon className="size-4" />
-      <span className="sr-only">More pages</span>
+      {/* `More pages` upstream — ADR-0046 §12. */}
+      <span className="sr-only">{strings.morePages}</span>
     </span>
   )
 }

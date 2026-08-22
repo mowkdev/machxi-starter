@@ -11,7 +11,8 @@
     "./globals.css": "./src/styles/globals.css",
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
-    "./lib/*": "./src/lib/*.ts"
+    "./lib/*": "./src/lib/*.ts",
+    "./ui-strings": "./src/ui-strings.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

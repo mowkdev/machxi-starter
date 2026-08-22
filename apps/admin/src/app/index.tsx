@@ -9,6 +9,7 @@ import { createQueryClient } from "./providers/query-client";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
 import { SettingsProvider } from "./providers/settings";
+import { AppUiStrings } from "./providers/ui-strings";
 import "./styles.css";
 
 /**
@@ -76,7 +77,16 @@ const App = () => (
     <QueryClientProvider client={queryClient}>
       <SettingsProvider fallback={<AppLoader />}>
         <BindErrorMessages />
-        <AppRouter queryClient={queryClient} />
+        {/*
+         * The design system's six strings, fed from `common` (`D7.3`,
+         * ADR-0046 §12). Inside `SettingsProvider` because that is where
+         * `I18nProvider` is, and above the router because a dialog's close
+         * button is chrome no route owns. Radix renders its overlays into a
+         * portal, and React context reaches through one.
+         */}
+        <AppUiStrings>
+          <AppRouter queryClient={queryClient} />
+        </AppUiStrings>
       </SettingsProvider>
     </QueryClientProvider>
   </SessionProvider>

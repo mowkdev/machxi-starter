@@ -3,6 +3,13 @@ import { ChevronRight, MoreHorizontal } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { cn } from "@repo/ui/lib/utils"
+/*
+ * Diverges from the generated component (ADR-0031: owned source). ADR-0046 §12
+ * routes the primitives' six operator-read strings through `UiStrings` so an
+ * app can translate them; `useUiStrings` falls back to English with no provider
+ * mounted, so this package still has no i18n dependency.
+ */
+import { useUiStrings } from "@repo/ui/ui-strings"
 
 function Breadcrumb({ ...props }: React.ComponentProps<"nav">) {
   return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />
@@ -84,6 +91,9 @@ function BreadcrumbEllipsis({
   className,
   ...props
 }: React.ComponentProps<"span">) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <span
       data-slot="breadcrumb-ellipsis"
@@ -93,7 +103,8 @@ function BreadcrumbEllipsis({
       {...props}
     >
       <MoreHorizontal className="size-4" />
-      <span className="sr-only">More</span>
+      {/* `More` upstream — ADR-0046 §12. */}
+      <span className="sr-only">{strings.more}</span>
     </span>
   )
 }

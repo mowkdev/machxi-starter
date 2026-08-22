@@ -200,6 +200,11 @@ export default defineConfig(
                 // `lib/*` too: `cn` is re-exported through the door like
                 // everything else, and a rule with a gap teaches the gap.
                 "@repo/ui/lib/*",
+                // The `UiStrings` seam of ADR-0046 §12 is design-system
+                // surface like the rest, so it comes through the door: the
+                // provider is mounted from `app/providers`, and `app` is the
+                // one layer that must not reach past `shared` (`D7.3`).
+                "@repo/ui/ui-strings",
               ],
               message:
                 "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0032).",

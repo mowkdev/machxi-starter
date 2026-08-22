@@ -140,6 +140,14 @@ export { Textarea } from "@repo/ui/components/textarea";
 export { Toaster, toast } from "@repo/ui/components/sonner";
 export { useIsMobile } from "@repo/ui/hooks/use-mobile";
 export { cn } from "@repo/ui/lib/utils";
+// Not a component: the design system's six operator-read strings, injectable
+// (ADR-0046 §12, `D7.3`). It comes through the door for the door's own reason —
+// `app/providers` mounts the provider, and `app` may not reach past `shared`.
+export {
+  DEFAULT_UI_STRINGS,
+  UiStringsProvider,
+  type UiStrings,
+} from "@repo/ui/ui-strings";
 
 // Not re-exports: app components with behaviour of their own (see their files).
 export { AppLoader } from "./app-loader";
