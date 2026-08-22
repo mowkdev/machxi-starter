@@ -29,8 +29,8 @@ disagree are reconciled by a superseding ADR, never by editing the record. D1
 shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22
 and D6 2026-08-22, so **ADRs 0001–0045 are closed** — including every frontend
 decision the admin panel was built on, every grid decision the data-grid rebuild
-made, D5's pair of supersessions, and D6's user-settings record. **No amendment
-window is open.** The next one opens with D7 and covers only the ADRs written
-for it — [ADR-0046](adr/0046-interface-localization.md) today, still `proposed`;
-each is accepted at the head of the step that builds it, so a step whose ADR is
-still `proposed` is gated and must not be started.
+made, D5's pair of supersessions, and D6's user-settings record. **D7 opened
+2026-08-22**, so exactly one window is open and it holds one record —
+[ADR-0046](adr/0046-interface-localization.md), `proposed` until it is accepted
+at the head of `D7.1`. An ADR is accepted at the head of the step that builds
+it, so a step whose ADR is still `proposed` is gated and must not be started.

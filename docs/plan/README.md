@@ -12,7 +12,7 @@ Read this file first; open a plan only when you are working in it.
 | [D4](0004-data-grid-v2.md)         | Data grid v2 (`apps/admin`)          | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.           |
 | [D5](0005-grid-url-readability.md) | Grid URL readability                 | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                       |
 | [D6](0006-user-settings.md)        | User settings                        | **shipped 2026-08-22** | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments.                     |
-| [D7](0007-localization.md)         | Interface localization               | planned                | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.        |
+| [D7](0007-localization.md)         | Interface localization               | **in progress**        | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.        |
 | [D8](0008-customer-app.md)         | Customer app and platform extraction | planned                | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1. |
 | [D9](0009-impersonation.md)        | Customer impersonation               | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.   |
 | D10                                | Marketing site (`apps/web`)          | planned                | The Next.js app, re-scoped from "user-facing" to marketing only — the operator's call, recorded in §How D6–D10 were scoped. Built last.            |
@@ -21,7 +21,7 @@ Read this file first; open a plan only when you are working in it.
 
 - **One deliverable is in progress at a time** (ADR-0025 rule 5).
 - **Steps are written `D<n>.<step>`** — `D1.7`, `D2.3`. Inside a plan file they are numbered plainly; the prefix is how they are cited from the ADR index and from commits.
-- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D6 have shipped, so **ADRs 0001–0045 are closed**: change any of them with a superseding ADR that carries the whole decision. **No window is open**; the next opens with D7 and covers the ADRs written for it — [ADR-0046](../adr/0046-interface-localization.md) today, still `proposed`.
+- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D6 have shipped, so **ADRs 0001–0045 are closed**: change any of them with a superseding ADR that carries the whole decision. **D7 is in progress**, so exactly one window is open and it covers only the ADRs written for that deliverable — [ADR-0046](../adr/0046-interface-localization.md) alone, `proposed` until it is accepted at the head of `D7.1`.
 - **A deliverable closes on an executable acceptance checklist** (ADR-0025 rule 4), the ledger row moves to `shipped YYYY-MM-DD`, and the amendment window shuts. All three or it is not closed.
 
 ## Executing a step
@@ -135,6 +135,17 @@ Two operator decisions at opening, both recorded here because they changed the s
 
 - **One settings table per population, not one discriminated table.** The sketch leaned on the `sessions` precedent; the operator's point is that staff settings and customer settings will diverge, and a discriminated table diverges by sprouting nullable columns — what ADR-0017 rejected for accounts. The pair also gets what `sessions` could not: a real foreign key, so hard deletes cascade with no settings code at all.
 - **Both populations from the first migration**, confirmed rather than assumed; and `lv` as the second locale, which is D7's to ship but shapes D6's enum so that adding it is an appended value and nothing else.
+
+## How D7 opened
+
+**D7 opened 2026-08-22**, the day D6 shipped — the second same-day open in a row, and for the same reason: the decisions were already written. Its one ADR, [0046](../adr/0046-interface-localization.md), was written 2026-08-22 **ahead of the deliverable** while D6 was still in progress, which is the D4 precedent (writing is not opening) used for the third time; it is `proposed` at opening and is **accepted at the head of `D7.1`**, per-step acceptance continuing from D4, D5 and D6. It is additive: it supersedes nothing, no frozen record is edited, and the only thing it asks of another record is the `LOCALES` append that [ADR-0045](../adr/0045-user-settings.md) reserved by name.
+
+Nothing about the scope changed on the way in — the scoping document's decisions were taken 2026-08-20 and 2026-08-22 and are carried in the ADR — so this is the shortest opening in the ledger: seven steps written, and two things about their **order** worth recording, because both are constraints rather than preferences.
+
+- **The lint rule lands last, not first.** [ADR-0002](../adr/0002-monorepo-layout-and-tooling.md)'s posture is that a rule is the half of a decision that does not depend on a reviewer noticing, which argues for `no-literal-string` on day one. It cannot be: a rule that fires on every literal is red until the app has none, and the app has thousands. So the sweep runs first (`D7.2`–`D7.5`) and the rule closes it (`D7.6`), which means those four steps are held to their own "no literal remains under X" done-when rather than to the gate. That is the weaker guarantee, and it is the one available; `D7.6` is where it becomes the strong one.
+- **`lv` enters the enum before anything can choose it.** ADR-0045 fixed the order — `ALTER TYPE … ADD VALUE`, then the tuple in `@repo/contracts` — so `D7.1` carries the only server-side change in the whole deliverable and every step after it is a client step. The acceptance item that the API never learned a locale is therefore checkable as a diff over `apps/api/src`, which is what `D7.5` and the close-out do with it.
+
+The deliverable is the **inverse of D6's shape**. D6 moved every tier a little and closed on that as evidence; D7 moves one migration and then nothing but `apps/admin`, `packages/ui`, `packages/contracts` and `packages/config-eslint`. What it costs instead is breadth — the sweep touches nearly every file that renders a string — which is why it is seven steps rather than four, and why four of them are sweeps whose mechanical check does not arrive until the fifth.
 
 ## How D6–D10 were scoped
 
