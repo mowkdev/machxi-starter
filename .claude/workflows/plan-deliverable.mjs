@@ -567,14 +567,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
     mode: "draft",
     drafted: true,
     deliverable: scope.deliverable,
-    adrs: verified
-      .filter(Boolean)
-      .map(({ file, summary, issues, fixed }) => ({
-        file,
-        summary,
-        issues,
-        fixed,
-      })),
+    adrs: verified.filter(Boolean).map(({ file, summary, issues, fixed }) => ({
+      file,
+      summary,
+      issues,
+      fixed,
+    })),
     steps: steps ? steps.steps : [],
     consistency: consistency ? consistency.issues : [],
     committed,
