@@ -11,7 +11,7 @@ Read this file first; open a plan only when you are working in it.
 | [D3](0003-admin-app.md)            | Admin panel (`apps/admin`)           | **shipped 2026-08-20** | The staff-facing SPA over the admin segment, plus its two prerequisites: `packages/ui` and `GET /auth/csrf`.                                       |
 | [D4](0004-data-grid-v2.md)         | Data grid v2 (`apps/admin`)          | **shipped 2026-08-21** | Selection and bulk actions, capability-driven toolbars, filter UX, viewport layout, edit surfaces in the URL, persisted column settings.           |
 | [D5](0005-grid-url-readability.md) | Grid URL readability                 | **shipped 2026-08-22** | The two grid screens' address bar: list state in the API's own query language, and record routes that carry only the record.                       |
-| [D6](0006-user-settings.md)        | User settings                        | **in progress**        | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments. Opened 2026-08-22.  |
+| [D6](0006-user-settings.md)        | User settings                        | **shipped 2026-08-22** | Server-persisted per-account settings — theme, locale, per-grid preferences behind ADR-0041's adapter seam — on both segments.                     |
 | [D7](0007-localization.md)         | Interface localization               | planned                | Every operator-facing string into a typed dictionary; the strategy designed for both SPAs and the shared packages, locale persisted via D6.        |
 | [D8](0008-customer-app.md)         | Customer app and platform extraction | planned                | The shared machinery leaves `apps/admin/src/shared` for packages; `apps/customer` (Vite SPA over `/user`) is its first consumer — self-service v1. |
 | [D9](0009-impersonation.md)        | Customer impersonation               | planned                | Staff open the customer app as a chosen customer: minted `user` session, audit on every request, banner and exit, credential operations refused.   |
@@ -21,7 +21,7 @@ Read this file first; open a plan only when you are working in it.
 
 - **One deliverable is in progress at a time** (ADR-0025 rule 5).
 - **Steps are written `D<n>.<step>`** — `D1.7`, `D2.3`. Inside a plan file they are numbered plainly; the prefix is how they are cited from the ADR index and from commits.
-- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D5 have shipped, so **ADRs 0001–0044 are closed**: change any of them with a superseding ADR that carries the whole decision. **The open window is D6's, and it covers ADR-0045 only.**
+- **An ADR may be amended in place only while its deliverable is in progress** (ADR-0025 rule 2). D1–D6 have shipped, so **ADRs 0001–0045 are closed**: change any of them with a superseding ADR that carries the whole decision. **No window is open**; the next opens with D7 and covers the ADRs written for it — [ADR-0046](../adr/0046-interface-localization.md) today, still `proposed`.
 - **A deliverable closes on an executable acceptance checklist** (ADR-0025 rule 4), the ledger row moves to `shipped YYYY-MM-DD`, and the amendment window shuts. All three or it is not closed.
 
 ## Executing a step
@@ -97,6 +97,33 @@ Its scope is what D4 built and never read out loud. D4 put three things in the U
 **Ordered ahead of settings deliberately.** Both halves are contracts that later work builds on rather than features beside it: D8 extracts `shared/grid` and `shared/api` into packages and gives them a second consumer, and a serialization changed _after_ that is changed in two apps and a package instead of in one app. That is the argument this ledger already makes for putting localization before the customer app — pay the sweep once — applied one deliverable earlier. It is also the smallest deliverable in the table, and it leaves ADR-0041's adapter seam untouched, so D6's own opening argument survives the insertion intact.
 
 Its two ADRs — [0043](../adr/0043-readable-list-search-params.md) and [0044](../adr/0044-record-routes-without-list-state.md) — were written 2026-08-21 and are `proposed`. **Both supersede rather than amend**, which makes this the first deliverable here whose content is entirely supersession: their parents shipped with D3 and D4 and are frozen, so ADR-0024 rule 1 applies and each successor carries the whole of its parent rather than the delta. Per-step acceptance continues from D4 — `D5.1` and `D5.2` are gated on ADR-0043, `D5.3` on ADR-0044.
+
+## How D6 closed, and on what evidence
+
+**D6 shipped 2026-08-22**, four steps built, and ADR-0025 rule 4's three parts happened together: the checklist was run, this row moved, and the window on ADR-0045 shut. It opened and closed on the same day, which is a first here and says more about the size of the deliverable than about the speed of the work — one resource, two mounts, one adapter, exactly as §How D6 opened predicted.
+
+Three things about it are worth more than the numbers.
+
+**It is the first deliverable since D2 whose gate was a target on every tier, and every tier moved.** `@repo/contracts` 152 → 166, `@repo/db` 37 → 44 at the integration tier, `apps/api` 434 → 467, `apps/admin` 432 → 462, Postman 84 requests → 102. D4 and D5 closed on an API number that had not moved, and said so as evidence they had touched no API surface; this one closes on the opposite claim, and the numbers are the same kind of evidence pointed the other way.
+
+**ADR-0041's claim was falsified in the letter and confirmed in the substance, and the plan's own item is left saying so.** §Definition of done item 2 asked `preferences.ts` to show "the schema import and nothing else"; it shows three changes, because ADR-0045 §The server adapter put `parseGridStorageKey` in that file itself, one bullet after asking for the audit. `app-grid.tsx` has **no diff at all** since D5 — which is the claim ADR-0041 actually made, and it holds exactly. `D6.3` recorded the gap and amended the ADR rather than reword the item, and `D6.4` ran the item as written and reported what came out. An acceptance item that a later decision made unsatisfiable is worth keeping visible: the alternative is a checklist that has been quietly edited to pass.
+
+**Twelve amendments to one ADR in one window** — two at `D6.1`, four at `D6.2`, five at `D6.3`, one at `D6.4` — where D3's records took one or two each and D5's pair took a handful between them. None of them is a reversal. Every one is a question the record left to whoever wrote the code and that the code could not avoid answering: whether an empty `PATCH` body is a mistake, what "moved intact" does to a schema's strictness, whether `select … for update` locks a row that does not exist yet, who holds a React mutation, what "a settled query" means to a query that is disabled, and — at the close-out — what a `GET` does with a row somebody edited round the back. That is what an ADR written for four tiers at once costs, and it is cheaper than the alternative, which is four tiers deciding those questions separately and silently.
+
+The evidence is separated the way D3, D4 and D5 separated it.
+
+**Machine-verified, and re-runnable by anyone:** `pnpm lint`, `pnpm check-types` and `pnpm format:check` clean. `pnpm test` green **twice** at `0 cached, 8 total` — admin 462, `@repo/contracts` 166, `@repo/db` 56 + 44, `@repo/crypto` 39, `@repo/ui` 12, `@repo/logger` 14, API 461 non-integration and **467 integration**. `pnpm test:unit` twice, the second at **`8 cached, 8 total`, FULL TURBO** — the ADR-0026 property that item exists to prove, on a run where `apps/admin` and three packages had all changed. `pnpm test:postman` at **102 requests, 314 assertions, none failed**, with the previous 84 requests byte-identical — compared as parsed collections at `D6.2`, since inserting a folder rewrites the array and git renders the shift as deletions. `.env.example`, `apps/admin/.env.example` and `turbo.json` unchanged since D5, checked as a diff: this deliverable added no variable and no task that reads one. Four migrations applied to the dev database, `staff_settings` and `user_settings` present, and migration `0003_settings` re-applied from nothing on every integration run.
+
+**Nothing in this deliverable was walked in a browser**, and that is the honest summary rather than a caveat at the end. D5 closed on a Chrome walk that made claims jsdom cannot make; D6 closes without one, so **every client-side claim here rests on jsdom and MSW**. Named individually:
+
+- **The property the deliverable exists for — one account, two browsers** (item 3). Its stand-in is a unit test that carries one client's column width to a second client of the same account with the API stood in for by a shared resource. That is the mechanism, not the round trip.
+- **Item 4's second half in a browser**: a row hand-edited to garbage rendering the grid at config defaults with no toast. Both ends of it are now asserted — the API hands the garbage over (`D6.4`'s new integration test), the store discards it (`D6.3`'s) — and the two have never been joined by an actual request from an actual browser.
+- **The theme's pre-paint apply of `"system"`** against a real `prefers-color-scheme`, and the new control writing both halves on a live session. The control is `D6.3`'s and is the first time this theme has been changeable at all.
+- **The debounce under a real pointer drag.** Asserted with fake timers; sized for a human.
+- **Item 1's fresh clone**, as in every close-out since D3.
+- **`/user/settings` from a client**, which does not exist to have one: `apps/customer` is D8's. The user segment is covered by integration tests and Postman on both segments, and by nothing above them.
+
+One thing the close-out found about this repository rather than about this deliverable: `docs/README.md` still said "no amendment window is open — the next one opens with D6" for the whole of D6. Nothing reads that paragraph during a step, which is exactly how it stayed wrong, and it is the third close-out in a row to find one of the four window-describing documents out of step with the other three. The four are the ledger, the ADR index, `docs/README.md` and `CLAUDE.md`; the count is not going down on its own.
 
 ## How D6 opened
 

@@ -1,6 +1,6 @@
 # D6 — User settings
 
-- Status: **in progress**, opened 2026-08-22 — the day D5 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time). The amendment window is open on **ADR-0045 only**; ADRs 0001–0044 stay frozen.
+- Status: **shipped 2026-08-22**, opened 2026-08-22 — the day D5 shipped ([ADR-0025](../adr/0025-deliverables.md) rule 5: one at a time). The window on ADR-0045 shut with it; **ADRs 0001–0045 are frozen**.
 - Steps: `D6.1` – `D6.4`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -24,7 +24,7 @@ Each step names the ADRs that govern it. Read them before implementing — they 
 
 ## Build order
 
-### 1. The contract and the tables
+### ~~1. The contract and the tables~~ — **done 2026-08-22**
 
 **ADRs:** [0045](../adr/0045-user-settings.md), [0023](../adr/0023-shared-contracts-package.md), [0006](../adr/0006-database-and-orm.md), [0008](../adr/0008-migrations-and-seeds.md), [0041](../adr/0041-grid-preferences.md)
 
@@ -48,7 +48,7 @@ Five things the step found, recorded rather than folded into "done":
 
 **ADR-0045 amended twice (D6.1)**, both on questions the record left to whoever wrote the schema: an empty `PATCH` body is accepted rather than refused, because the caller is a coalescing writer and not a person; and "moved intact" includes the moved schema staying `z.object`, since a strict _entry_ would discard a whole arrangement over one field a newer client added, which is the opposite of the version tolerance the same section asks for.
 
-### 2. The `settings` module on both segments
+### ~~2. The `settings` module on both segments~~ — **done 2026-08-22**
 
 **ADRs:** [0045](../adr/0045-user-settings.md), [0009](../adr/0009-functional-layering.md), [0010](../adr/0010-request-context.md), [0011](../adr/0011-validation.md), [0012](../adr/0012-response-envelope.md), [0015](../adr/0015-route-segments.md), [0019](../adr/0019-authorization.md), [0021](../adr/0021-testing-strategy.md), [0028](../adr/0028-account-deletion.md)
 
@@ -72,7 +72,7 @@ Five things the step found:
 
 **ADR-0045 amended four times (D6.2)**: the create-then-lock sequence, the derived `GridPreferencesV1`, the single declaration of the defaults, and `no-store` on the router.
 
-### ~~3. The admin app adopts its account~~ — closed 2026-08-22
+### ~~3. The admin app adopts its account~~ — **done 2026-08-22**
 
 **ADRs:** [0045](../adr/0045-user-settings.md), [0041](../adr/0041-grid-preferences.md), [0043](../adr/0043-readable-list-search-params.md), [0033](../adr/0033-browser-api-client-and-session.md), [0032](../adr/0032-admin-app-architecture.md), [0036](../adr/0036-admin-testing-strategy.md)
 
@@ -102,13 +102,36 @@ Six things the step found:
 
 **Not walked — pending operator acceptance.** Everything above is jsdom and MSW. §Definition of done item 3 in a real browser (two browsers, one account, a width changed in one and reloaded in the other), item 4's second half (a row hand-edited to garbage in Postgres rendering the grid at config defaults), the pre-paint apply of a `"system"` theme against a real `prefers-color-scheme`, and the coalescing window under a real pointer drag are all `D6.4`'s to walk. `apps/customer` does not exist, so `/user/settings` has no client and this step built none.
 
-### 4. Close-out
+### ~~4. Close-out~~ — **done 2026-08-22**
 
 **ADRs:** none of its own — the checklist below
 
 The acceptance checklist run end to end, the browser walk that jsdom cannot make (two browsers, one account), `pnpm test:unit` twice to prove the ADR-0026 cache property on the packages this deliverable touched, ADR-0045 amended with whatever `D6.1`–`D6.3` found, the ADR index's _Implemented_ column filled per step, `.env.example` untouched or updated, the ledger's row moved and its §How D6 closed written with the evidence separated the way D3–D5 separated it, and `CLAUDE.md` told that ADRs 0001–0045 are frozen and D7 is next.
 
 **Done when:** every item in §Definition of done is checked or explicitly recorded as operator-accepted, the ledger row reads `shipped`, and the window on ADR-0045 is shut.
+
+**Closed.** The checklist ran; ADR-0045 took its twelfth and last amendment; the _Implemented_ column names all four steps; `.env.example`, `apps/admin/.env.example` and `turbo.json` are byte-identical to D5, because this deliverable introduced no variable and no task that reads one — checked as a `git diff` rather than assumed, since ADR-0004 makes "no new variable" a claim and not a default. The four documents that describe which window is open — the ledger, the ADR index, `docs/README.md` and `CLAUDE.md` — now say the same thing: D6 shipped, ADRs 0001–0045 frozen, no window open, and the next opens with D7. `docs/README.md` had been left behind at D5's wording ("the next one opens with D6") through the whole of this deliverable; nothing read it, which is exactly how it stayed wrong, and it is the third close-out in a row to find one of those four disagreeing. A fifth document had the same problem for a different reason: `/frontend-conventions` says of itself that it is condensed from ADRs 0030–0044, and it is the file an agent loads **instead of** the ADRs before touching `apps/admin`. D5 had a sweep step to catch that; D6 has none, so the close-out did it — the range, the `localStorage` carve-out's new owner, the schema's move to `@repo/contracts`, and one paragraph on the second adapter behind ADR-0041's seam.
+
+Three things the step found:
+
+**The checklist's item 4 had one half no tier could reach, and the API was the half nobody had asked about.** "A row edited in the database to garbage renders the grid at config defaults with no toast" is written as a client claim, and `D6.3` covered it in jsdom by handing the store a resource with `{ v: 2, nonsense: true }` in it. What no test anywhere made was the request in between. The client's guard is only reachable if `GET /settings` answers, and nothing said what it does with a `jsonb` column that no longer satisfies the schema the body was validated against — the mapper is `record ?? settingsDefaults` and `respond.ok` does not re-validate, so the honest answer is "hands it over", but "honest answer" and "asserted" are different words. It is now the thirty-third test in `apps/api/test/settings.int.test.ts`: a staff row patched normally, then updated to garbage through `harness.db.db`, then read back — `200`, with the garbage intact in `data.grids`. API integration goes 466 → 467, the only number this step moved. ADR-0045 is amended to say the division out loud, because the opposite reading is the one a reviewer proposes: validating on read would turn one hand-edited row into a `500` that locks an operator out of every grid, and repairing on read would overwrite a value somebody meant with one nobody asked for.
+
+**Item 2 was already known false and is left false on purpose.** `git diff 6c65e1e..HEAD -- apps/admin/src/shared/grid/{preferences.ts,app-grid.tsx}` — `6c65e1e` being D5's closing commit — reports one file changed, 43 insertions, 38 deletions, and `app-grid.tsx` absent from the diff entirely. That is the claim ADR-0041 actually asked to be held to, and it holds exactly. The item as written asks for "the schema import and nothing else" from `preferences.ts` and gets three changes, the third being `parseGridStorageKey`, which ADR-0045 §The server adapter put there itself. `D6.3` found this and amended the ADR rather than reword the item; the close-out's job was to run the item, not to make it pass, so the diff is recorded here as it came out.
+
+**Item 1 is the fresh-clone item, and it is the same partial answer as the last three deliverables — with one clause that did run.** No fresh clone: the stack is the one four deliverables have been walked through. But "the `settings` migration is among those applied" is machine-checkable on any stack and was checked: `drizzle.__drizzle_migrations` on the dev database holds four rows, and `information_schema` lists `staff_settings` and `user_settings` beside the five tables D1 created. The migration also applies to a database built from nothing on every integration run, which is what the harness does before each tier.
+
+## Evidence, separated
+
+**Machine-verified, and re-runnable by anyone:** `pnpm lint`, `pnpm check-types` and `pnpm format:check` clean. `pnpm test` green **twice** at `0 cached, 8 total` — admin 462, `@repo/contracts` 166, `@repo/db` 56 + 44, `@repo/crypto` 39, `@repo/ui` 12, `@repo/logger` 14, and **API 461 on the non-integration tier with integration at 467**. Every one of those numbers except the API's moved during this deliverable, which is what "a target on every tier" meant when the plan opened, and is the first time since D2 that the sentence has been true. `pnpm test:unit` twice, the second at **`8 cached, 8 total`, FULL TURBO** — the ADR-0026 property item 6 exists to prove. `pnpm test:postman` at **102 requests, 314 assertions, none failed**, up from the 84 and 260 that D3, D4 and D5 all closed on, with the previous 84 unchanged — verified at `D6.2` by comparing parsed collections rather than by reading a diff, because inserting a folder rewrites the array. Item 4's first half runs in three places at once: the integration suite refuses a width outside the bounds and names the path, and so does a Postman request on **each** segment. Item 6's "clean tree afterwards" is about the gates leaving nothing behind, and they leave nothing behind: `git status` names only this step's own edits — the new integration test and these documents — and no build output, no regenerated lockfile and no migration metadata churn.
+
+**Not walked — pending operator acceptance.** Everything this deliverable built on the client was verified in jsdom with MSW, and the items below need a browser against the dev stack. They are named individually rather than folded into the word "shipped":
+
+- **Item 3, one account and two browsers** — the property the deliverable exists for. Its stand-in is `apps/admin/src/entities/settings/__tests__/settings.storage.test.ts`, which carries one client's column width to a second client of the same account through a shared resource with the API stood in for. That is the mechanism; it is not the round trip.
+- **Item 4's second half in a browser.** The API end of it is now asserted (above) and the client end is asserted in jsdom; what has not happened is one operator seeing a garbage row render as a plain grid with no toast.
+- **The pre-paint apply of a `"system"` theme** against a real `prefers-color-scheme`, and the theme control's write-both on a live session.
+- **The coalescing window under a real pointer drag.** The debounce is asserted with fake timers; a human resizing a column is what it was sized for.
+- **Item 1's fresh clone**, as above, and `pnpm dev --filter admin` against it.
+- **`/user/settings` from a client.** `apps/customer` does not exist (D8), so the user segment is verified by integration tests and Postman on both segments and by nothing else. That is deliberate and was deliberate at `D6.3`.
 
 ## Definition of done
 

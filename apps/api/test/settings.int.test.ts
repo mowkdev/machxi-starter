@@ -416,6 +416,57 @@ describe("settings", () => {
     expect(after).toHaveLength(0);
   });
 
+  it("hands a row hand-edited to garbage straight through, for the client to discard", async () => {
+    // §Definition of done item 4's second half, at the tier this repository
+    // can re-run. The browser's half of that item is that the grid renders at
+    // its config defaults, and it only ever gets the chance to if `GET`
+    // answers rather than throws: the API validates what it **writes**
+    // (ADR-0011) and does not re-validate what it reads back, so a `jsonb`
+    // column somebody edited round the outside is handed on exactly as it was
+    // found. The guard is the client's schema, which discards the entry and
+    // falls back to defaults (ADR-0041 `D4.5`, ADR-0045 §The server adapter) —
+    // and that guard is unreachable if this request is a 500.
+    const strayEmail = `stray-settings-${String(Date.now())}@machxi.test`;
+
+    const stray = await createStaffMember(
+      harness.app,
+      superAdminTokens.accessToken,
+      {
+        email: strayEmail,
+        firstName: "Stray",
+        lastName: "Operator",
+        roles: ["editor"],
+      },
+    );
+
+    const strayTokens = await login(harness.app, "staff", {
+      email: strayEmail,
+      password: NEW_ACCOUNT_PASSWORD,
+    });
+
+    await request()
+      .patch("/api/v1/admin/settings")
+      .set("Authorization", bearer(strayTokens.accessToken))
+      .send({ grids: { staff: arrangement(300) } })
+      .expect(200);
+
+    const garbage = { staff: { v: 2, nonsense: true } };
+
+    await harness.db.db
+      .update(staffSettings)
+      .set({
+        grids: garbage as unknown as Record<string, GridPreferencesV1>,
+      })
+      .where(eq(staffSettings.staffId, stray.id));
+
+    const response = await request()
+      .get("/api/v1/admin/settings")
+      .set("Authorization", bearer(strayTokens.accessToken))
+      .expect(200);
+
+    expect(response.body.data.grids).toEqual(garbage);
+  });
+
   it("leaks no credential through either segment", async () => {
     for (const { population, path } of SEGMENTS) {
       const response = await get(population, path).expect(200);
