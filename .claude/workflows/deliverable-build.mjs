@@ -10,8 +10,8 @@
  * findings refuted once), bounded fix rounds, one commit by explicit path.
  * Then the ADR-0025 rule 4 close, the branch pushed and a PR opened (or a
  * fast-forward push to main, by choice), and — in chain mode — the next
- * deliverable only when `deliverable-plan` reports it decided. No planning
- * judgement lives here.
+ * deliverable only when `deliverable-verify` reports it ready — the operator
+ * wrote its ADRs by hand; stage 2 checked them; nothing is drafted here.
  *
  * Invoke by scriptPath, from the worktree (the /run-deliverable skill does
  * this: EnterWorktree, then Workflow with root = the worktree path):
@@ -45,7 +45,7 @@
 export const meta = {
   name: "deliverable-build",
   description:
-    "In a worktree: build every pending step of the in-progress deliverable — build, step-review, fix, commit — close it, push the branch and open a PR, and chain only when deliverable-plan says decided",
+    "In a worktree: build every pending step of the in-progress deliverable — build, step-review, fix, commit — close it, push the branch and open a PR, and chain only when deliverable-verify says ready",
   whenToUse:
     "Launched by /run-deliverable from a worktree when the operator steps away",
   phases: [
@@ -58,8 +58,7 @@ export const meta = {
     { title: "Ship", detail: "push the branch; PR or fast-forward to main" },
     {
       title: "Next",
-      detail:
-        "deliverable-plan readiness, then open — or stop with its questions",
+      detail: "deliverable-verify, then open — or stop with its issues",
     },
   ],
 };
@@ -75,7 +74,7 @@ const cwdNote = root
   ? `Work in ${root} — run every command from that directory and read/write files only under it.`
   : "";
 const STEP_REVIEW = `${root}/.claude/workflows/step-review.mjs`;
-const PLAN = `${root}/.claude/workflows/deliverable-plan.mjs`;
+const VERIFY = `${root}/.claude/workflows/deliverable-verify.mjs`;
 
 let agents = 0;
 const spawn = (prompt, opts) => {
@@ -181,6 +180,16 @@ const CLOSE = {
   },
 };
 
+const OPENED = {
+  type: "object",
+  required: ["opened", "files", "summary"],
+  properties: {
+    opened: { type: "boolean" },
+    files: { type: "array", items: { type: "string" } },
+    summary: { type: "string" },
+  },
+};
+
 // ------------------------------------------------------------------ helpers
 
 const stop = (where, why, state) => {
@@ -236,7 +245,8 @@ while (true) {
 4. If node_modules/ is missing run \`pnpm i\` (the store makes it fast). If .env or apps/admin/.env is missing, copy each from the main checkout (the parent of \`git rev-parse --git-common-dir\`); if that copy fails, ok=false.
 5. Read docs/plan/README.md; find the ONE row **in progress** (none → ok=false). Read its plan file in full and docs/adr/README.md's table.
 6. For every "## Build order" step, in order: id, title, done (struck-through heading / "**done**" / a "**Closed.**" paragraph), the ADR numbers on "**ADRs:**", acceptsAdr (the ADR the Gate paragraph says THIS step accepts at its head), gatedOn (an ADR it names that the index still lists \`proposed\` and that neither this step nor an earlier pending step accepts), body (its descriptive paragraphs verbatim, not the Closed/evidence notes), doneWhen (the "**Done when:**" text).
-7. ok=false if a PENDING step (a step titled Close-out exempt from the ADR requirement) has no adrs, no doneWhen, or a gatedOn — name it.`,
+7. ok=false if a PENDING step (a step titled Close-out exempt from the ADR requirement) has no adrs, no doneWhen, or a gatedOn — name it.
+8. THE STAMP. The plan's header list must carry a line beginning "- Verified for build" with a short hash (deliverable-verify wrote it); none → ok=false "not verified — run /verify-deliverable". Then check drift since that hash: \`git diff --name-only <hash> HEAD -- docs/adr/\` — every changed ADR must be one of this deliverable's own (named on the pending steps' ADRs lines), and its diff (\`git diff <hash> HEAD -- <file>\`) must consist only of its acceptance (the Status line, the index row) or amendments labelled "Amended … (<this deliverable>.N)" — any other ADR changed, or an unlabelled change, → ok=false naming it. And for every PENDING step, its "**ADRs:**" line and "**Done when:**" text must be identical to \`git show <hash>:<planFile>\` — a changed decision is not the verified one → ok=false. Step notes, struck headings and the ledger may change freely.`,
     {
       label: "preflight",
       phase: "Preflight",
@@ -437,54 +447,42 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
   if (mode === "ship") break;
 
   phase("Next");
-  const plan = await workflow({ scriptPath: PLAN }, { mode: "analyze", root });
-  if (!plan || plan.error)
+  // Stage 2 decides whether stage 3 may continue. Nothing is ever drafted here:
+  // the operator writes decisions; this only checks and opens.
+  const verdict = await workflow({ scriptPath: VERIFY }, { root });
+  if (!verdict || verdict.error)
     return stop(
       "next",
-      `deliverable-plan analyze failed: ${plan ? plan.error : "unavailable"}`,
+      `deliverable-verify failed: ${verdict ? verdict.error : "unavailable"}`,
       { shipped, opened, metrics },
     );
-  if (plan.questions && plan.questions.length) {
+  if (!verdict.ready) {
     log(
-      `${plan.deliverable} needs the operator: ${plan.questions.length} question(s)`,
+      `${verdict.deliverable} is not verified: ${verdict.issues.length} issue(s)`,
     );
     return {
       stopped: true,
       where: "next",
-      why: "operator decisions required — run /plan-deliverable",
-      deliverable: plan.deliverable,
-      questions: plan.questions,
-      findings: plan.findings,
+      why: "next deliverable not verified — fix its ADRs/plan at the desk, then /verify-deliverable",
+      deliverable: verdict.deliverable,
+      issues: verdict.issues,
       shipped,
       opened,
       metrics,
       agents,
     };
   }
-  if (!plan.ready) {
-    const drafted = await workflow(
-      { scriptPath: PLAN },
-      { mode: "draft", root, analysis: plan, answers: {} },
-    );
-    if (!drafted || !drafted.drafted)
-      return stop(
-        "next",
-        `deliverable-plan draft failed: ${drafted ? drafted.error : "unavailable"}`,
-        { shipped, opened, metrics },
-      );
-    if (
-      drafted.consistency &&
-      drafted.consistency.some((i) => i.severity !== "MINOR")
-    )
-      return stop(
-        "next",
-        `drafted ${plan.deliverable} has consistency issues: ${drafted.consistency.map((i) => i.problem).join("; ")}`,
-        { shipped, opened, metrics, drafted },
-      );
-  }
-  const openResult = await workflow(
-    { scriptPath: PLAN },
-    { mode: "open", root, deliverable: plan.deliverable },
+  const openResult = await spawn(
+    `Open ${verdict.deliverable} MECHANICALLY; refuse if not ready. Read docs/plan/README.md, ${verdict.planFile}, docs/adr/README.md, CLAUDE.md, and the ledger's "## How D6 opened" / "## How D7 opened" as the template. The plan carries a "Verified for build" stamp from deliverable-verify — that is the readiness evidence; cite it.
+REFUSE (opened=false, say why, change nothing) if another row is in progress, or the stamp is missing.
+Otherwise: plan status line → "**in progress**, opened 2026-08-22" naming the ADR(s) and that each is accepted at the head of its first implementing step (do NOT accept any ADR); ledger row → in progress (opened 2026-08-22); §Rules → the open window names this deliverable's ADR(s) only; a short "## How ${verdict.deliverable} opened" above "## How D6–D10 were scoped" that names the verification; CLAUDE.md's deliverable and amendable-set sentences; the ADR index's window bullet. \`pnpm exec prettier --write\` each .md touched. Return the files.`,
+    {
+      label: `open:${verdict.deliverable}`,
+      phase: "Next",
+      schema: OPENED,
+      effort: "medium",
+      agentType: "general-purpose",
+    },
   );
   if (!openResult || !openResult.opened)
     return stop(
@@ -492,8 +490,27 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
       `open refused: ${openResult ? openResult.summary : "unavailable"}`,
       { shipped, opened, metrics },
     );
-  opened.push({ deliverable: plan.deliverable, summary: openResult.summary });
-  log(`${plan.deliverable} opened`);
+  const openCommit = await commitPaths(
+    openResult.files,
+    `docs(plan): open ${verdict.deliverable}
+
+Verified for build by deliverable-verify at ${verdict.head}; the ledger row moves to in progress and the window opens on its ADR(s), which stay proposed until the first step accepts them.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
+    `commit:open:${verdict.deliverable}`,
+    "Next",
+  );
+  if (openCommit && openCommit.result === "FAILED")
+    return stop("next", `open commit failed: ${openCommit.detail}`, {
+      shipped,
+      opened,
+      metrics,
+    });
+  opened.push({
+    deliverable: verdict.deliverable,
+    summary: openResult.summary,
+  });
+  log(`${verdict.deliverable} opened`);
   if (mode !== "chain" || deliverablesRun >= maxDeliverables) break;
 }
 

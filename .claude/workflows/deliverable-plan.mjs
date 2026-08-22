@@ -1,12 +1,14 @@
 /**
- * deliverable-plan — decide ahead of building. v2, from scratch.
+ * deliverable-plan — an ASSISTANT for stage 1, not part of the pipeline.
  *
- * A background workflow cannot ask, so this one never does. It turns a
- * planned deliverable into the exact questions an ADR must answer
- * (`analyze`), writes the ADR(s) and build order once the answers exist
- * (`draft`, verified adversarially, the ledger untouched — writing is not
- * opening), and flips the ledger mechanically when everything is decided
- * (`open`). The `/plan-deliverable` skill asks the questions in between.
+ * The loop is: (1) the operator writes the ADR(s) and build order by hand,
+ * with Claude in the session; (2) `deliverable-verify` checks them and
+ * stamps the plan; (3) `deliverable-build` runs on the stamp. This script
+ * helps with (1) only. `analyze` turns a planned deliverable into the exact
+ * questions an ADR must answer, with the code facts behind them — the right
+ * opener for the session that writes the ADRs. `draft` and `open` remain for
+ * an operator who wants them, but nothing downstream calls them:
+ * `deliverable-build` never drafts and opens through the verify stamp.
  *
  * Invoke by scriptPath:
  *   { mode: "analyze", root, deliverable? }
