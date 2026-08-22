@@ -154,6 +154,29 @@ describe("settings", () => {
       expect(response.body.data).toMatchObject({ theme: "dark", locale: "en" });
     });
 
+    it("stores the locale D7.1 appended, and hands it back (D7.1)", async () => {
+      // The whole of the server-side change, asserted where it actually has
+      // to hold: `LOCALES` feeds `z.enum` in the body *and* `pgEnum` in the
+      // column, so a value the tuple gained must survive validation, the
+      // `ALTER TYPE … ADD VALUE` of `0004_locale_lv`, and the read back.
+      // Nothing in `apps/api/src` was touched to make this pass, which is the
+      // claim ADR-0046 makes about the API and D7.5 checks as a diff.
+      const written = await patch(population, path, { locale: "lv" }).expect(
+        200,
+      );
+
+      expect(settingsEnvelope.safeParse(written.body).success).toBe(true);
+      expect(written.body.data.locale).toBe("lv");
+
+      const read = await get(population, path).expect(200);
+
+      expect(read.body.data.locale).toBe("lv");
+
+      // Back to the default, so the parameterised cases below this one keep
+      // reading the resource they were written against.
+      await patch(population, path, { locale: "en" }).expect(200);
+    });
+
     it("merges grids per key, and a jsonb round trip changes nothing", async () => {
       await patch(population, path, {
         grids: { staff: arrangement(240) },

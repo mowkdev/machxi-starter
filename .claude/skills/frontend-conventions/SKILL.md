@@ -1,11 +1,11 @@
 ---
 name: frontend-conventions
-description: Quick reference of the machxi admin-app conventions (FSD layers, design system, session, server state, resource UI, the v2 data grid, testing) condensed from ADRs 0030-0045. Load before writing or reviewing any code under apps/admin or packages/ui.
+description: Quick reference of the machxi admin-app conventions (FSD layers, design system, session, server state, resource UI, the v2 data grid, localization, testing) condensed from ADRs 0030-0046. Load before writing or reviewing any code under apps/admin or packages/ui.
 ---
 
 # Frontend conventions (condensed from docs/adr — ADRs win on conflict)
 
-ADRs 0030–0036 (D3), 0037–0042 (D4), 0043–0044 (D5) and 0045 (D6).
+ADRs 0030–0036 (D3), 0037–0042 (D4), 0043–0044 (D5), 0045 (D6) and 0046 (D7, **in progress** — accepted at the head of `D7.1` and amendable while D7 is open; 0030–0045 are frozen).
 
 Covers `apps/admin` and `packages/ui`. The API side is `/api-conventions`.
 
@@ -81,11 +81,21 @@ Everything below is additive over ADR-0035; the config is still data and the ser
 - **Settings are the second adapter behind that seam (0045).** `entities/settings` owns the account's `theme`, `locale` and `grids`; `createServerPreferenceAdapter` implements the same three `PreferenceStorage` functions over an in-memory mirror seeded by the settings query, and one debounced writer coalesces every change into a single `PATCH /settings`. It is supplied through `PreferenceStorageProvider` in `shared/grid`, so **`createGridPreferences` and `AppGrid` did not change and must not**. The adapter owns the `machxi.admin.grid:<gridId>:v1` ↔ `grids[gridId]` mapping; the store never learns a `gridId` is on the wire. Signed out, the local adapter is used alone — read that from the **session**, not from whether the query has data. A local-only entry is adopted on its first read and uploaded once; a server entry wins; an entry either schema refuses is discarded rather than repaired, on the device and on the wire.
 - **Structural columns are the grid's, not the resource's.** The selection checkbox and any column whose `cellRenderer` is `rowActions` are pinned first and last by `AppGrid`, absent from the Columns menu, and never hidden, reordered, resized or stored.
 
+## Localization (ADR-0046, D7 — in progress)
+
+- **`shared/i18n` is the seam, and `createI18n` is a factory** — never a module-level singleton. `app/providers/i18n.tsx` builds one instance inside `SettingsProvider` and hands it to `I18nextProvider`; the harness builds its own per render. D8 lifts the module into a package unchanged, so nothing under it may learn which app mounted it.
+- **Locale precedence, in order: the account's `settings.locale` → `localStorage` `machxi.admin.locale` → `navigator.languages` → `en`.** `lv-LV` matches `lv` by primary subtag; anything else is **not guessed at**. `Accept-Language` is used nowhere, by either side. The pure half is `resolveInitialLocale` and it is table-tested.
+- **`en` is bundled eagerly** — it is the fallback, the type source and the locale the suite runs in — and every other locale is one dynamic `import()` per `<locale>/<namespace>.json`. No `public/locales`, no runtime fetch: catalogues are code.
+- **Keys are typed.** `types.d.ts` declaration-merges the `en` catalogue into `CustomTypeOptions`, so a missing or misspelled key is a `check-types` failure; `TranslationKey` is what a `ResourceConfig`, a route's `staticData.title` and a mutation's `meta.success` carry instead of a sentence (`D7.4`).
+- **One `locales/` tree, one namespace per slice, and the namespace name _is_ the slice name.** `common`/`grid`/`form`/`errors` are the cross-cutting four that belong to `shared/*`. A `staff:` key used in `features/users-manage` is a review finding — lint cannot see a string prefix, and ADR-0046 says so rather than pretending it can.
+- **`en` means en-GB**, and `INTL_TAGS` (`en → en-GB`, `lv → lv-LV`) is the only place a locale becomes a formatting tag. `<html lang>` carries the tag. Never `toLocaleString()`/`toLocaleDateString()` with an implicit locale anywhere in `apps/admin`.
+- **Steps after `D7.1` are what fills it.** `D7.2` sweeps `shared`/`widgets`/`app` and moves `ERROR_MESSAGES` into `errors.json`; `D7.3` gives `@repo/ui` a `UiStrings` context; `D7.4` turns config copy into keys; `D7.5` lands zod's error map and the switch; `D7.6` adds the lint rule, the extractor, the drift check and Latvian. The API is **untouched** by all of it.
+
 ## Testing (ADR-0036)
 
 - Vitest + Testing Library + MSW (`msw/node`). **No live-API tier**; an unhandled request is an error.
 - Handlers are built from `@repo/contracts` — parse the request with the schema the API validates with, answer through the envelope builders. A handler modelling a refusal names the service function it mirrors, and must never be more permissive than it.
-- `renderWithProviders` for a component; `renderApp` for anything about routing (real generated route tree on a memory history). Every dependency is passed, never `vi.mock`ed.
+- `renderWithProviders` for a component; `renderApp` for anything about routing (real generated route tree on a memory history). Every dependency is passed, never `vi.mock`ed. Both take a **`locale`, default `en` loaded synchronously**, and return the instance as `i18n` — assertions stay by English accessible name, which is what keeps the suite unmoved through D7.
 - Query by **role and accessible name**. A control the suite cannot name is one a screen reader cannot name.
 - Cover: config-versus-contract (columns **and** hot filters, every declared option), the URL↔query round trip, form validation and server-error placement, the submit lock, and each session state (bootstrapped, expired-and-refreshed, terminal).
 - **Grid preferences are tested at two levels, and they use different storage on purpose.** The store's own suite runs against an in-memory `PreferenceStorage`, which is what the adapter seam is for; a _page_ suite exercises the real wiring (`gridId={config.name}` reaching the real adapter) and therefore writes real `localStorage` — so it clears `window.localStorage` in `beforeEach`, or one case's column arrangement is handed to the next and the file's result depends on its order.

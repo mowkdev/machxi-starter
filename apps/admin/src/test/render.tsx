@@ -1,7 +1,9 @@
+import type { Locale } from "@repo/contracts";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
+import { I18nextProvider } from "react-i18next";
 
 import { createQueryClient } from "@/app/providers/query-client";
 import { createAppRouter } from "@/app/providers/router";
@@ -11,6 +13,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import { EN_RESOURCES, NAMESPACES, createI18n, type I18n } from "@/shared/i18n";
 import { ThemeProvider } from "@/shared/theme";
 import { Toaster } from "@/shared/ui";
 
@@ -42,13 +45,34 @@ export interface ProviderOptions {
   readonly client?: ApiClient;
   /** A cache of the test's own, so nothing leaks between cases. */
   readonly queryClient?: QueryClient;
+  /**
+   * The language the tree renders in (`D7.1`, ADR-0046 §14).
+   *
+   * `en` by default and **loaded synchronously**, which is the property the
+   * whole harness rests on: the eager catalogue is in the bundle, nothing is
+   * awaited, and `test:unit` stays a pure function of the tree and stays
+   * cached under ADR-0026. It also keeps the suite's four hundred-odd
+   * assertions by accessible name in English, so localising a screen does not
+   * rewrite the tests that prove it works.
+   *
+   * A test that passes `"lv"` gets a real instance in Latvian, whose
+   * catalogues arrive through the same lazy `import()` the app uses — so such
+   * a test must await the copy it expects rather than assume it is there on
+   * the first render.
+   */
+  readonly locale?: Locale;
 }
 
 /**
  * Builds the trio every rendered tree needs, so a caller that cares about none
  * of them still gets a working `useApiClient` and a working `useQuery`.
  */
-const providers = ({ store, client, queryClient }: ProviderOptions) => {
+const providers = ({
+  store,
+  client,
+  queryClient,
+  locale = "en",
+}: ProviderOptions) => {
   const sessionStore = store ?? createSessionStore();
 
   return {
@@ -57,6 +81,14 @@ const providers = ({ store, client, queryClient }: ProviderOptions) => {
       client ??
       createApiClient({ store: sessionStore, baseUrl: "http://api.test" }),
     queryClient: queryClient ?? createQueryClient(),
+    // One instance per render, from the same factory the app calls: a test
+    // that switched the locale must not leave the next one in Latvian, which
+    // a module-level singleton could not promise (ADR-0046 §13).
+    i18n: createI18n({
+      resources: { en: EN_RESOURCES },
+      namespaces: NAMESPACES,
+      locale,
+    }),
   };
 };
 
@@ -71,6 +103,7 @@ export interface ProviderResult extends RenderResult {
   readonly store: SessionStore;
   readonly client: ApiClient;
   readonly queryClient: QueryClient;
+  readonly i18n: I18n;
 }
 
 export const renderWithProviders = (
@@ -92,8 +125,10 @@ export const renderWithProviders = (
            * ships. A test about *adoption* builds its own `SettingsProvider`.
            */}
           <ThemeProvider>
-            {ui}
-            <Toaster />
+            <I18nextProvider i18n={value.i18n.instance}>
+              {ui}
+              <Toaster />
+            </I18nextProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </ApiProvider>,
@@ -119,6 +154,7 @@ export interface RenderAppOptions extends ProviderOptions {
  */
 export interface RenderAppResult extends RenderResult {
   readonly router: ReturnType<typeof createAppRouter>;
+  readonly i18n: I18n;
 }
 
 export const renderApp = ({
@@ -140,11 +176,13 @@ export const renderApp = ({
       <QueryClientProvider client={value.queryClient}>
         {/* The root route mounts its own `<Toaster>`; this tree adds none. */}
         <ThemeProvider>
-          <RouterProvider router={router} />
+          <I18nextProvider i18n={value.i18n.instance}>
+            <RouterProvider router={router} />
+          </I18nextProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ApiProvider>
   );
 
-  return { ...render(tree), router };
+  return { ...render(tree), router, i18n: value.i18n };
 };

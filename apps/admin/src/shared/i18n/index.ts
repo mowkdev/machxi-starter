@@ -1,0 +1,239 @@
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "@repo/contracts";
+import i18next, { type Resource, type ResourceKey } from "i18next";
+import resourcesToBackend from "i18next-resources-to-backend";
+import { initReactI18next } from "react-i18next";
+
+import enCommon from "./locales/en/common.json";
+import enErrors from "./locales/en/errors.json";
+import enForm from "./locales/en/form.json";
+import enGrid from "./locales/en/grid.json";
+import { readStoredLocale, writeStoredLocale } from "./locale-storage";
+import {
+  asLocale,
+  navigatorLocales,
+  resolveInitialLocale,
+} from "./resolve-locale";
+
+/**
+ * The i18n seam (ADR-0046 §3, §5, §13). `D7.1` lands it empty on purpose: the
+ * catalogues below hold `{}` and every later step of D7 fills them.
+ *
+ * **A factory, never a module-level singleton.** ADR-0009's `create*` rule
+ * carried across the wire, for the reason it has on the API: the seam is a
+ * parameter. `app/providers/i18n.tsx` calls this once and hands the instance to
+ * `I18nextProvider`; a test calls it with a locale and nothing else; and D8
+ * lifts the module into a package without an app wired into it.
+ *
+ * A singleton would also be wrong twice over in the suite ADR-0036 specifies:
+ * two files rendering at different locales would share one instance, and the
+ * cached `test:unit` loop would stop being a pure function of the tree.
+ */
+
+/**
+ * The cross-cutting namespaces, which are the four that belong to `shared/*`
+ * and the four D8 moves with it (ADR-0046 §3). The per-slice namespaces —
+ * `auth`, `staff`, `users`, … — land with the slices that own them in `D7.4`.
+ */
+export const NAMESPACES = ["common", "grid", "form", "errors"] as const;
+export type Namespace = (typeof NAMESPACES)[number];
+
+/** `common` is chrome and generic actions, so it is what an unprefixed key means. */
+export const DEFAULT_NAMESPACE = "common" satisfies Namespace;
+
+/**
+ * BCP 47 tags, one per locale, and the **only** place a locale becomes one
+ * (ADR-0046 §5).
+ *
+ * It lives here rather than in `@repo/contracts` because a tag is a
+ * presentation fact: the package holds the enum the database stores, and
+ * `en-GB` is a decision about spelling and date order that no server makes.
+ * Everything that constructs an `Intl.*` reads this map — `D7.2`'s grid
+ * formatters and filter chips first — so "the browser's locale", which is what
+ * an `undefined` argument means, is never what a formatter follows.
+ */
+export const INTL_TAGS: Record<Locale, string> = {
+  en: "en-GB",
+  lv: "lv-LV",
+};
+
+/**
+ * `en` is bundled eagerly: it is the fallback for every other locale, the type
+ * source `types.d.ts` merges over, and the locale the suite runs in.
+ */
+export const EN_RESOURCES = {
+  common: enCommon,
+  grid: enGrid,
+  form: enForm,
+  errors: enErrors,
+} as const;
+
+export type Catalogue = Readonly<Record<Namespace, object>>;
+
+/**
+ * At least `en`, and any other locale a caller wants in memory before the
+ * first render. Production hands only `en` and lets the backend below fetch
+ * the rest; the test harness hands every locale, which is what keeps
+ * `test:unit` synchronous and cached (ADR-0046 §14).
+ */
+export type Catalogues = Readonly<Partial<Record<Locale, Catalogue>>> & {
+  readonly en: Catalogue;
+};
+
+/**
+ * One dynamic `import()` per `<locale>/<namespace>.json`, so Vite emits a
+ * chunk per catalogue and a Latvian operator downloads Latvian while an
+ * English one downloads nothing extra (ADR-0046 §3).
+ *
+ * No HTTP backend and no `public/locales`: the catalogues are code, hashed and
+ * shipped like code, and nothing fetches JSON from the page origin at runtime
+ * — which is the CSP reason as much as the bundling one.
+ */
+const loadCatalogue = async (
+  language: string,
+  namespace: string,
+): Promise<ResourceKey> => {
+  const catalogue: unknown = await import(
+    `./locales/${language}/${namespace}.json`
+  );
+
+  return catalogue as ResourceKey;
+};
+
+/**
+ * The active locale, written where the rest of the document can see it.
+ *
+ * `<html lang>` carries the **Intl tag**, not the bare enum member: it is what
+ * a screen reader picks a voice from and what a browser hyphenates by, and
+ * `en-GB` is the decision ADR-0046 §5 made about what `en` means here. The
+ * device cache is written in the same breath, because a locale that is not
+ * remembered is one the login screen has to guess again tomorrow.
+ */
+const applyLocale = (locale: Locale): void => {
+  document.documentElement.lang = INTL_TAGS[locale];
+  writeStoredLocale(locale);
+};
+
+export interface CreateI18nOptions {
+  readonly resources: Catalogues;
+  readonly namespaces: readonly Namespace[];
+  readonly locale: Locale;
+}
+
+export const createI18n = ({
+  resources,
+  namespaces,
+  locale,
+}: CreateI18nOptions) => {
+  const instance = i18next.createInstance();
+
+  /*
+   * Subscribed before `init`, so the listener catches the language i18next
+   * settles on rather than only the ones changed afterwards. `D7.5` adds the
+   * zod error map to this handler and `D7.2` the formatter rebuild; today it
+   * is the document's language and the device cache, which is the whole of
+   * what a locale means before there is any copy to translate.
+   */
+  instance.on("languageChanged", (language: string) => {
+    applyLocale(asLocale(language) ?? DEFAULT_LOCALE);
+  });
+
+  void instance
+    .use(initReactI18next)
+    .use(resourcesToBackend(loadCatalogue))
+    .init({
+      /*
+       * The bare enum member and not the Intl tag: `lng` is what selects a
+       * catalogue and what `Intl.PluralRules` resolves a category from, and
+       * `lv` and `lv-LV` answer the same categories. Regional tags belong to
+       * the formatters, which read `INTL_TAGS` (ADR-0046 §5, amended `D7.1`);
+       * putting one here would make i18next look for an `en-GB` catalogue that
+       * does not exist and then fall back to find the one that does.
+       */
+      lng: locale,
+      fallbackLng: DEFAULT_LOCALE,
+      supportedLngs: [...LOCALES],
+      ns: [...namespaces],
+      defaultNS: DEFAULT_NAMESPACE,
+      resources: resources as Resource,
+      /*
+       * Without this, a bundled `resources` switches the backend off entirely
+       * and `lv` would silently never load — the failure mode is a Latvian
+       * operator reading English with no error anywhere.
+       */
+      partialBundledLanguages: true,
+      returnNull: false,
+      // React escapes its own children; i18next doing it again turns an
+      // apostrophe into `&#39;` on screen.
+      interpolation: { escapeValue: false },
+      /*
+       * Synchronous init for a locale already in `resources`, which is what
+       * lets a test render at `en` without awaiting anything — and therefore
+       * what keeps `test:unit` a pure function of the tree (ADR-0046 §14).
+       *
+       * The option is `initAsync` in i18next 26; `initImmediate` was its name
+       * up to v25 and is the spelling every recipe still carries. It is not
+       * merely renamed — the sense is the same and the *default* is the same,
+       * so a copied `initImmediate: false` is silently ignored and the
+       * instance initialises asynchronously anyway.
+       */
+      initAsync: false,
+      /*
+       * **No suspense** (ADR-0046 §13, amended `D7.1`). react-i18next's
+       * default is to suspend a component whose namespace has not arrived,
+       * and every locale but `en` arrives through a dynamic `import()` — so
+       * the default would unmount whole subtrees on a locale switch and
+       * demand a `<Suspense>` boundary above every translated component in
+       * the app.
+       *
+       * Not suspending costs one render in the `en` fallback, which is the
+       * fallback the operator would have seen anyway for a key `lv` is
+       * missing; react-i18next re-renders on `loaded`.
+       */
+      react: { useSuspense: false },
+    });
+
+  applyLocale(locale);
+
+  return {
+    instance,
+    changeLocale: async (next: Locale): Promise<void> => {
+      await instance.changeLanguage(next);
+    },
+    t: instance.t,
+  } as const;
+};
+
+export type I18n = ReturnType<typeof createI18n>;
+
+/**
+ * The precedence of ADR-0046 §4 with its two impure sources read.
+ *
+ * The pure half is {@link resolveInitialLocale}, which is where the decision
+ * is tested; this is the two lines that touch the browser.
+ */
+export const preferredLocale = (settings: Locale | null = null): Locale =>
+  resolveInitialLocale({
+    settings,
+    stored: readStoredLocale(),
+    navigator: navigatorLocales(),
+  });
+
+export {
+  asLocale,
+  navigatorLocales,
+  resolveInitialLocale,
+  type LocaleSources,
+} from "./resolve-locale";
+export {
+  LOCALE_STORAGE_KEY,
+  readStoredLocale,
+  writeStoredLocale,
+} from "./locale-storage";
+export type { TranslationKey } from "./types";
+
+/**
+ * The hook, under the name the rest of the app uses. Re-exported here so a
+ * slice imports one module for its keys and its translator, and so the day the
+ * library changes there is one import to rewrite (ADR-0046 §13).
+ */
+export { useTranslation as useT } from "react-i18next";

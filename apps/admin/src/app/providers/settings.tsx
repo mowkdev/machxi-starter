@@ -11,6 +11,8 @@ import { createLocalStorageAdapter } from "@/shared/grid/preferences";
 import { PreferenceStorageProvider } from "@/shared/grid/use-grid-preferences";
 import { ThemeProvider } from "@/shared/theme";
 
+import { I18nProvider } from "./i18n";
+
 /**
  * The account's settings, wired into the running app (ADR-0045 §The client).
  *
@@ -142,9 +144,18 @@ export const SettingsProvider = ({
       adopted={account?.theme}
       publish={account === undefined ? undefined : writer.setTheme}
     >
-      <PreferenceStorageProvider value={storage}>
-        {children}
-      </PreferenceStorageProvider>
+      {/*
+       * The locale is the theme's sibling and is adopted the same way (`D7.1`,
+       * ADR-0046 §4). It is mounted *here*, below the gate, because the first
+       * step of its precedence is the account's settings row and this is the
+       * component that holds it — anonymous, `adopted` is `undefined` and the
+       * device's cache answers instead.
+       */}
+      <I18nProvider adopted={account?.locale}>
+        <PreferenceStorageProvider value={storage}>
+          {children}
+        </PreferenceStorageProvider>
+      </I18nProvider>
     </ThemeProvider>
   );
 };

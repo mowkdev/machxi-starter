@@ -21,9 +21,13 @@ const arrangement = {
 };
 
 describe("the settings enums", () => {
-  it("declares the three themes and the one locale D7 will append to", () => {
+  it("declares the three themes and the two locales, in label order", () => {
     expect(THEMES).toEqual(["light", "dark", "system"]);
-    expect(LOCALES).toEqual(["en"]);
+    // `D7.1` appended `"lv"` (ADR-0046). The order is the Postgres label
+    // order, so this assertion is about the *sequence* and not the set: a
+    // locale inserted rather than appended would reorder every sort by the
+    // column, which is why `_shared.ts` calls the append the cheap half.
+    expect(LOCALES).toEqual(["en", "lv"]);
   });
 });
 
@@ -126,11 +130,25 @@ describe("the update body", () => {
     );
   });
 
+  it("takes the appended locale on both segments' body (D7.1)", () => {
+    // The whole of the server-side change: the tuple feeds `z.enum`, so
+    // `PATCH /settings` accepts `"lv"` on `admin` and `user` alike without
+    // either segment learning anything (ADR-0046 §Consequences).
+    expect(updateStaffSettingsBody.safeParse({ locale: "lv" }).success).toBe(
+      true,
+    );
+    expect(updateUserSettingsBody.safeParse({ locale: "lv" }).success).toBe(
+      true,
+    );
+  });
+
   it("refuses a theme or a locale outside the tuples", () => {
     expect(updateStaffSettingsBody.safeParse({ theme: "sepia" }).success).toBe(
       false,
     );
-    expect(updateStaffSettingsBody.safeParse({ locale: "lv" }).success).toBe(
+    // The pseudo-locale of ADR-0046 §10 is deliberately not a member: it is a
+    // lens over `en`, not a language an account can have.
+    expect(updateStaffSettingsBody.safeParse({ locale: "en-XA" }).success).toBe(
       false,
     );
   });

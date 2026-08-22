@@ -23,12 +23,19 @@ export const THEMES = ["light", "dark", "system"] as const;
 export type Theme = (typeof THEMES)[number];
 
 /**
- * The interface language. One value today: the slot exists before D7 has
- * anything to put in it, which is the cheap half of the arrangement — adding
- * `"lv"` is an appended tuple entry plus `ALTER TYPE … ADD VALUE`, and no row
- * and no sort order moves.
+ * The interface language.
+ *
+ * **`"lv"` appended by `D7.1`** (ADR-0046), which is the arrangement ADR-0045
+ * reserved being spent exactly as it was written: an appended tuple entry plus
+ * `ALTER TYPE … ADD VALUE` (migration `0004_locale_lv`), so no row and no sort
+ * order moves. Order here is the Postgres label order, so a value is appended
+ * and never inserted — alphabetising this tuple would be a schema change.
+ *
+ * The set is the **production** one, because it is a database column: the
+ * dev-only pseudo-locale of ADR-0046 §10 is a lens over `en`, not a language
+ * an account can have, and is deliberately not a member.
  */
-export const LOCALES = ["en"] as const;
+export const LOCALES = ["en", "lv"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 /**

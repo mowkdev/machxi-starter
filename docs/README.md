@@ -31,6 +31,7 @@ and D6 2026-08-22, so **ADRs 0001–0045 are closed** — including every fronte
 decision the admin panel was built on, every grid decision the data-grid rebuild
 made, D5's pair of supersessions, and D6's user-settings record. **D7 opened
 2026-08-22**, so exactly one window is open and it holds one record —
-[ADR-0046](adr/0046-interface-localization.md), `proposed` until it is accepted
-at the head of `D7.1`. An ADR is accepted at the head of the step that builds
-it, so a step whose ADR is still `proposed` is gated and must not be started.
+[ADR-0046](adr/0046-interface-localization.md), **accepted 2026-08-22 at the
+head of `D7.1`** and amendable in place until D7 ships. An ADR is accepted at
+the head of the step that builds it, so a step whose ADR is still `proposed` is
+gated and must not be started.

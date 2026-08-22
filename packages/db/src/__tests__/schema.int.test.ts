@@ -142,8 +142,10 @@ describe("migration 0001", () => {
       Object.fromEntries(rows.map((row) => [row.typname, row.labels])),
     ).toEqual({
       // `locale` and `theme` came with `0003` (ADR-0045); `locale` is the one
-      // enum here expected to grow, and D7's `"lv"` must *append*.
-      locale: ["en"],
+      // enum here expected to grow, and `D7.1`'s `"lv"` did *append*
+      // (`0004_locale_lv`, ADR-0046) — this list is what says so, because a
+      // value inserted rather than appended would reorder every sort by it.
+      locale: ["en", "lv"],
       principal_type: ["staff", "user"],
       staff_role: ["super_admin", "admin", "manager", "editor"],
       staff_status: ["active", "invited", "disabled"],
