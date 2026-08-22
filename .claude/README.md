@@ -11,6 +11,6 @@
 - `skills/` — slash-command workflows, split by where the code lives:
   - API and data: `/api-conventions`, `/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/postman-sync`.
   - Admin app and design system (D3.10): `/frontend-conventions`, `/new-resource-ui`, `/ui-component`.
-  - Everything else: `/new-adr`, `/local-dev`, `/plan-step`.
+  - Process: `/plan-deliverable` (decide ahead, asks), `/plan-step` (one step at the desk), `/run-deliverable` (unattended, in a worktree), `/new-adr`, `/local-dev`.
 
 Root `CLAUDE.md` is the always-loaded summary; the ADRs in `docs/adr/` are the source of truth.
