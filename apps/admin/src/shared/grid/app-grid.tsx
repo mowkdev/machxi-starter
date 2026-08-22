@@ -20,7 +20,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useT } from "@/shared/i18n";
+import { useKeyT, useT, type TranslationKey } from "@/shared/i18n";
 import { mergeColumns } from "@/shared/resource/config";
 import type {
   ColumnConfigMap,
@@ -159,13 +159,14 @@ export interface AppGridProps<TRow> {
   /**
    * Shown in place of rows when the page is empty.
    *
-   * Still a *sentence*, not a key, and that is `D7.4`'s line rather than an
-   * oversight: `emptyMessage` reaches this component from a `ResourceConfig`,
-   * and turning config copy into `TranslationKey`s is one step's worth of work
-   * done in one place. What `D7.2` owns is the **default** — the grid's own
-   * words for "there is nothing here", which no resource wrote.
+   * A **key** since `D7.4` (ADR-0046 §7), resolved here like every other piece
+   * of copy a screen hands the machinery: the sentence belongs to the resource
+   * ("No staff match this view.") and the namespace it lives in is the
+   * resource's, so this component resolves it without learning which resource
+   * it is. Absent falls back to the grid's own `grid:empty`, which is what
+   * `D7.2` gave it and what a screen that wrote nothing still gets.
    */
-  readonly emptyMessage?: string | undefined;
+  readonly emptyMessage?: TranslationKey | undefined;
   /**
    * What this resource's grid surface offers (ADR-0038), already narrowed by
    * the operator's role (ADR-0042) — the screen conjoins the two once, above
@@ -312,6 +313,13 @@ export const AppGrid = <TRow,>({
   pageSizes,
 }: AppGridProps<TRow>) => {
   const { t } = useT("grid");
+  /*
+   * The translator for the keys the **resource** wrote (`D7.4`). `useT("grid")`
+   * above resolves this component's own copy; `tk` resolves the column headers,
+   * filter labels and empty message a config handed down, whose namespace is
+   * one `shared/grid` must never name (ADR-0032).
+   */
+  const tk = useKeyT();
   const merged = useMemo(
     () => mergeColumns(columns, overrides),
     [columns, overrides],
@@ -371,10 +379,10 @@ export const AppGrid = <TRow,>({
    * `meta={{ rowActions: [...] }}` without rebuilding every column def.
    */
   const tableColumns = useMemo(() => {
-    const built = buildColumns(columns, overrides);
+    const built = buildColumns(columns, overrides, tk);
 
     return selectable ? [buildSelectionColumn(), ...built] : built;
-  }, [columns, overrides, selectable]);
+  }, [columns, overrides, selectable, tk]);
 
   const rows = (page?.items ?? NO_ROWS) as readonly GridRow[];
 
@@ -616,10 +624,10 @@ export const AppGrid = <TRow,>({
     () =>
       preferences.order.map((id) => ({
         id,
-        label: String(merged.find(([name]) => name === id)?.[1].header ?? id),
+        label: labelOf(merged, id, tk),
         isVisible: !preferences.hidden.includes(id),
       })),
-    [preferences.order, preferences.hidden, merged],
+    [preferences.order, preferences.hidden, merged, tk],
   );
 
   /*
@@ -984,7 +992,7 @@ export const AppGrid = <TRow,>({
                   colSpan={columnCount}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  {emptyMessage ?? t("empty")}
+                  {emptyMessage === undefined ? t("empty") : tk(emptyMessage)}
                 </TableCell>
               </TableRow>
             ) : (
@@ -1064,6 +1072,24 @@ export const AppGrid = <TRow,>({
       />
     </div>
   );
+};
+
+/**
+ * A column's header as words, for the two menus that name a column rather than
+ * render it.
+ *
+ * It reads the *config*'s key rather than the built `ColumnDef`'s resolved
+ * header, so there is one place a header becomes a sentence per render and no
+ * `String()` over a value that might be a React node.
+ */
+const labelOf = (
+  columns: readonly (readonly [string, { readonly header: TranslationKey }])[],
+  id: string,
+  t: (key: TranslationKey) => string,
+): string => {
+  const header = columns.find(([name]) => name === id)?.[1].header;
+
+  return header === undefined ? id : t(header);
 };
 
 /**

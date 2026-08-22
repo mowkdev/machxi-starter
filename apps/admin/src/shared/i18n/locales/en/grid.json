@@ -35,6 +35,7 @@
     "triggerActive": "Filter by {{column}} (filtered)",
     "title": "Filter by {{column}}",
     "placeholder": "Filter…",
+    "containsPlaceholder": "Contains…",
     "any": "Any",
     "from": "{{column}} from",
     "to": "{{column}} to",
@@ -64,7 +65,7 @@
   },
   "bulk": {
     "deleted_one": "{{count}} {{noun}} deleted.",
-    "deleted_other": "{{count}} {{noun}}s deleted.",
+    "deleted_other": "{{count}} {{noun}} deleted.",
     "refusal": "{{label}}: {{message}}",
     "unattemptedLine": "{{count}} not attempted — the API is rate limiting this session. Wait a few minutes and try the rest.",
     "partDeleted": "{{count}} deleted",

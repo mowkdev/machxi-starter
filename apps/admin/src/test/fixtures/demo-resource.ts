@@ -14,17 +14,29 @@ import type { ResourceConfig } from "@/shared/resource/types";
  * It is deliberately wider than either real resource, so the registries are
  * exercised end to end: every field component, every filter kind, a formatter,
  * two cell renderers, a create-only field and an edit-only one.
+ *
+ * **Its copy is keys in a namespace of its own since `D7.4`** — `demo:`,
+ * declared through `ResourceNamespaceMap` in `demo-i18n.d.ts` and registered on
+ * the harness's instance. A fixture's words are nobody's resource, so they must
+ * not land in a shipped catalogue, and borrowing `staff:` keys would be this
+ * fixture pretending to be a resource it is not. The one exception is the
+ * `Contains…` placeholder, which really is the grid's own generic copy and is
+ * the same key the two real configs carry.
  */
 export const demoResourceConfig = {
   name: "widget",
   columns: {
     name: {
-      header: "Name",
+      header: "demo:columns.name",
       sortable: true,
-      filter: { kind: "text", op: "like", placeholder: "Contains…" },
+      filter: {
+        kind: "text",
+        op: "like",
+        placeholder: "grid:filter.containsPlaceholder",
+      },
     },
     status: {
-      header: "Status",
+      header: "demo:columns.status",
       sortable: true,
       cellRenderer: "statusBadge",
       filter: {
@@ -33,54 +45,66 @@ export const demoResourceConfig = {
         options: ["active", "disabled"],
       },
     },
-    tags: { header: "Tags", cellRenderer: "rolesList" },
+    tags: { header: "demo:columns.tags", cellRenderer: "rolesList" },
     createdAt: {
-      header: "Created",
+      header: "demo:columns.createdAt",
       sortable: true,
       formatter: "date",
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     archivedAt: {
-      header: "Archived",
+      header: "demo:columns.archivedAt",
       formatter: "dateTime",
       filter: {
         kind: "presence",
         op: "null",
         value: false,
-        label: "Show archived",
+        label: "demo:filters.showArchived",
       },
     },
-    actions: { header: "Actions", cellRenderer: "rowActions", align: "end" },
+    actions: {
+      header: "demo:columns.actions",
+      cellRenderer: "rowActions",
+      align: "end",
+    },
   },
   fields: {
-    name: { label: "Name", component: "input", initialValue: "" },
+    name: {
+      label: "demo:fields.name.label",
+      component: "input",
+      initialValue: "",
+    },
     secret: {
-      label: "Initial password",
+      label: "demo:fields.secret.label",
       component: "input",
       props: { type: "password" },
       variants: ["create"],
     },
     notes: {
-      label: "Notes",
+      label: "demo:fields.notes.label",
       component: "textarea",
       nullable: true,
-      description: "Optional. Clearing it removes the note.",
+      description: "demo:fields.notes.description",
     },
     status: {
-      label: "Status",
+      label: "demo:fields.status.label",
       component: "select",
       options: ["active", "disabled"],
       variants: ["edit"],
     },
     tags: {
-      label: "Tags",
+      label: "demo:fields.tags.label",
       component: "multiCheckbox",
       options: ["alpha", "beta"],
       initialValue: ["alpha"],
     },
-    featured: { label: "Featured", component: "switch", initialValue: false },
+    featured: {
+      label: "demo:fields.featured.label",
+      component: "switch",
+      initialValue: false,
+    },
     accepted: {
-      label: "Accept terms",
+      label: "demo:fields.accepted.label",
       component: "checkbox",
       initialValue: false,
     },

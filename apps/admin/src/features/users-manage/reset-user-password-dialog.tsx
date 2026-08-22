@@ -11,6 +11,7 @@ import { useSetUserPassword } from "@/entities/user";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import type { FieldConfigMap } from "@/shared/resource/types";
 
@@ -35,21 +36,20 @@ import type { FieldConfigMap } from "@/shared/resource/types";
  */
 const passwordFields = {
   password: {
-    label: "New password",
+    label: "users:resetPassword.fields.password.label",
     component: "input",
     // `off`, never `new-password`: this box holds the customer's credential,
     // not the operator's, and a browser reading it as theirs would offer to
     // save somebody else's password into their password manager.
     props: { type: "password", autoComplete: "off" },
-    description:
-      "Hand it over out of band. Every session of this account is signed out.",
+    description: "users:resetPassword.fields.password.description",
   },
   currentPassword: {
-    label: "Your own current password",
+    label: "users:resetPassword.fields.currentPassword.label",
     component: "input",
     // The one field here that really is this operator's own credential.
     props: { type: "password", autoComplete: "current-password" },
-    description: "Confirms it is you making the change, not a stolen session.",
+    description: "users:resetPassword.fields.currentPassword.description",
   },
 } as const satisfies FieldConfigMap;
 
@@ -71,6 +71,7 @@ export const ResetUserPasswordDialog = ({
   readonly user: UserResource;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("users");
   const setPassword = useSetUserPassword();
   const messageForError = useMessageForError();
 
@@ -100,15 +101,15 @@ export const ResetUserPasswordDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Reset the password for ${user.email}`}
-      description="They stay signed out until they use the new password. Nothing forces them to change it afterwards."
+      title={t("resetPassword.title", { email: user.email })}
+      description={t("resetPassword.description")}
       form={form}
       fields={passwordFields}
       // Neither a create nor an edit of a user — see `FieldVariant`.
       variant="action"
       onSubmit={onSubmit}
       isPending={setPassword.isPending}
-      submitLabel="Reset password"
+      submitLabel={t("resetPassword.submit")}
     >
       <PasswordFormInput fieldName="password" />
       <PasswordFormInput fieldName="currentPassword" />

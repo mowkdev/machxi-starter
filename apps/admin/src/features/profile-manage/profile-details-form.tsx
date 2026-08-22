@@ -14,6 +14,7 @@ import {
 import { AppFormProvider } from "@/shared/form/context";
 import { AppFormError } from "@/shared/form/form-error";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import { dirtyValuesOf, fieldsForVariant } from "@/shared/resource/config";
 import { Button, FieldGroup, FieldSet, Spinner } from "@/shared/ui";
@@ -56,6 +57,7 @@ export const ProfileDetailsForm = ({
 }: {
   readonly profile: StaffResource;
 }) => {
+  const { t } = useT("profile");
   const updateProfile = useUpdateProfile();
   const messageForError = useMessageForError();
   const invalidateOwnStaffRow = useInvalidateOwnStaffRow();
@@ -132,7 +134,7 @@ export const ProfileDetailsForm = ({
           <div className="mt-6 flex justify-end">
             <Button type="submit" disabled={!form.formState.isDirty}>
               {isPending ? <Spinner /> : null}
-              Save changes
+              {t("save")}
             </Button>
           </div>
         </FieldSet>

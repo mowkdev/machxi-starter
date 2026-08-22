@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
   demoResourceConfig,
   type DemoCreateBody,
 } from "@/test/fixtures/demo-resource";
+import { renderWithProviders } from "@/test/render";
 
 import { createAppFormInput } from "../app-form-input";
 import { AppFormProvider } from "../context";
@@ -23,6 +24,13 @@ import { AppFormError } from "../form-error";
  * Everything on screen below was declared once, as data, on
  * `demoResourceConfig` — which is the claim the whole design rests on. The
  * page's only contribution is *where* each field goes.
+ *
+ * **Rendered through the providers since `D7.4`.** A field's label,
+ * description and placeholder are keys now (ADR-0046 §7), so the adapters call
+ * `useKeyT()` — and a bare `render` would leave them with no instance and put
+ * `demo:fields.name.label` on screen where the accessible name should be. The
+ * assertions are unchanged, which is the point: the words come from the
+ * fixture's own catalogue and they are the words the config used to carry.
  */
 
 const DemoFormInput = createAppFormInput(demoResourceConfig.fields);
@@ -74,7 +82,7 @@ const DemoForm = ({
 
 describe("AppFormInput", () => {
   it("renders every registered field kind from config alone", () => {
-    render(<DemoForm />);
+    renderWithProviders(<DemoForm />);
 
     // Each one is queryable by its accessible name, which is both the ADR-0036
     // discipline and the minimum a screen reader needs.
@@ -91,7 +99,7 @@ describe("AppFormInput", () => {
   });
 
   it("passes a config's `props` through to the control", () => {
-    render(<DemoForm />);
+    renderWithProviders(<DemoForm />);
 
     // `{ type: "password" }` is data in the config; a password box has no
     // `textbox` role, which is how the assertion knows it arrived.
@@ -102,7 +110,7 @@ describe("AppFormInput", () => {
   });
 
   it("renders a config's description next to the field", () => {
-    render(<DemoForm />);
+    renderWithProviders(<DemoForm />);
 
     expect(
       screen.getByText("Optional. Clearing it removes the note."),
@@ -110,7 +118,7 @@ describe("AppFormInput", () => {
   });
 
   it("seeds the form from the config's initial values", () => {
-    render(<DemoForm />);
+    renderWithProviders(<DemoForm />);
 
     expect(screen.getByRole("checkbox", { name: "Alpha" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Beta" })).not.toBeChecked();
@@ -124,14 +132,21 @@ describe("AppFormInput", () => {
      * config has to tell the same story as the contract (`updateStaffBody`
      * deliberately omits the email).
      */
-    const { rerender } = render(<DemoForm variant="create" />);
+    const { unmount } = renderWithProviders(<DemoForm variant="create" />);
 
     expect(screen.getByLabelText("Initial password")).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Status" }),
     ).not.toBeInTheDocument();
 
-    rerender(<DemoForm variant="edit" />);
+    /*
+     * Unmount and render again rather than `rerender`, since `D7.4` put the
+     * form under the providers: Testing Library's `rerender` replaces the whole
+     * tree with the element it is given, wrappers included, so the second half
+     * would have rendered with no i18next instance and read the keys back.
+     */
+    unmount();
+    renderWithProviders(<DemoForm variant="edit" />);
 
     expect(screen.queryByLabelText("Initial password")).not.toBeInTheDocument();
     expect(
@@ -151,7 +166,7 @@ describe("AppFormInput", () => {
 
 describe("the submit lock", () => {
   it("disables every field while a mutation is pending", () => {
-    render(<DemoForm isPending />);
+    renderWithProviders(<DemoForm isPending />);
 
     /*
      * Every control, not a sample: the lock is the thing that stops an operator
@@ -174,7 +189,7 @@ describe("the submit lock", () => {
   });
 
   it("says so to assistive technology, not only visually", () => {
-    render(<DemoForm isPending />);
+    renderWithProviders(<DemoForm isPending />);
 
     expect(
       screen.getByRole("form", { name: "Demo" }).querySelector("fieldset"),
@@ -182,7 +197,7 @@ describe("the submit lock", () => {
   });
 
   it("leaves everything usable when nothing is pending", () => {
-    render(<DemoForm />);
+    renderWithProviders(<DemoForm />);
 
     expect(screen.getByRole("textbox", { name: "Name" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
@@ -194,7 +209,7 @@ describe("validation", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
-    render(<DemoForm onSubmit={onSubmit} />);
+    renderWithProviders(<DemoForm onSubmit={onSubmit} />);
 
     await user.type(screen.getByRole("textbox", { name: "Name" }), "a");
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -211,7 +226,7 @@ describe("validation", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
-    render(<DemoForm onSubmit={onSubmit} />);
+    renderWithProviders(<DemoForm onSubmit={onSubmit} />);
 
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Sprocket");
     await user.type(
@@ -238,7 +253,7 @@ describe("validation", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
-    render(<DemoForm onSubmit={onSubmit} />);
+    renderWithProviders(<DemoForm onSubmit={onSubmit} />);
 
     const notes = screen.getByRole("textbox", { name: "Notes" });
 

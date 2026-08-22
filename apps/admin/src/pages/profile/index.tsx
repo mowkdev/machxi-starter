@@ -6,6 +6,7 @@ import {
   ProfileDetailsForm,
 } from "@/features/profile-manage";
 import { RolesList, StatusBadge } from "@/shared/grid/cells";
+import { useT } from "@/shared/i18n";
 import { dateTime } from "@/shared/grid/formatters";
 import {
   Button,
@@ -54,6 +55,7 @@ const Summary = ({
 );
 
 export const ProfilePage = () => {
+  const { t } = useT("profile");
   const profile = useProfile();
   const [changingPassword, setChangingPassword] = useState(false);
 
@@ -61,12 +63,8 @@ export const ProfilePage = () => {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Your account</CardTitle>
-          <CardDescription>
-            Your name is the only thing you can change here. Email, roles and
-            status are somebody else&apos;s to set — an operator who could
-            promote themselves would not need the guard that stops them.
-          </CardDescription>
+          <CardTitle>{t("account.title")}</CardTitle>
+          <CardDescription>{t("account.description")}</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -90,7 +88,9 @@ export const ProfilePage = () => {
           ) : (
             <>
               <dl className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                <Summary label="Email">{profile.data.email}</Summary>
+                <Summary label={t("summary.email")}>
+                  {profile.data.email}
+                </Summary>
                 {/*
                  * The grid's own renderers, not a second pair (D3.9 review).
                  * They are resource-agnostic by ADR-0035's rule — `statusBadge`
@@ -100,13 +100,13 @@ export const ProfilePage = () => {
                  * hand-rolled version this replaces had already drifted:
                  * `invited` read destructive here and secondary in the grid.
                  */}
-                <Summary label="Status">
+                <Summary label={t("summary.status")}>
                   <StatusBadge value={profile.data.status} />
                 </Summary>
-                <Summary label="Roles">
+                <Summary label={t("summary.roles")}>
                   <RolesList value={profile.data.roles} />
                 </Summary>
-                <Summary label="Last sign-in">
+                <Summary label={t("summary.lastLogin")}>
                   {/* This session's own sign-in, so it is never `null` here —
                       the formatter still handles it, because the type says it
                       can be and a page is not the place to argue with a
@@ -125,11 +125,8 @@ export const ProfilePage = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Password</CardTitle>
-          <CardDescription>
-            Changing it signs out every other session and leaves this one signed
-            in.
-          </CardDescription>
+          <CardTitle>{t("password.title")}</CardTitle>
+          <CardDescription>{t("password.description")}</CardDescription>
           <CardAction>
             <Button
               onClick={() => {
@@ -137,7 +134,7 @@ export const ProfilePage = () => {
               }}
               variant="outline"
             >
-              Change password
+              {t("password.action")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -152,8 +149,7 @@ export const ProfilePage = () => {
              * is for, and this one survives because it is the one already
              * proven to belong to whoever is typing.
              */}
-            You will be asked for your current password. Your other devices stay
-            signed out until they use the new one.
+            {t("password.note")}
           </p>
         </CardContent>
       </Card>

@@ -1,3 +1,4 @@
+import { useT } from "@/shared/i18n";
 import {
   Card,
   CardContent,
@@ -13,16 +14,18 @@ import {
  * nothing to compose yet. It exists so the route tree, the guard and the
  * dashboard shell are exercised end to end before any data layer exists.
  */
-export const DashboardPage = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>Dashboard</CardTitle>
-      <CardDescription>The landing screen behind the guard.</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <p className="text-sm text-muted-foreground">
-        Nothing to show until there is data to show it from.
-      </p>
-    </CardContent>
-  </Card>
-);
+export const DashboardPage = () => {
+  const { t } = useT("dashboard");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("title")}</CardTitle>
+        <CardDescription>{t("description")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{t("empty")}</p>
+      </CardContent>
+    </Card>
+  );
+};

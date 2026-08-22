@@ -1,0 +1,4 @@
+# Untracked files Claude Code copies into a worktree it creates (EnterWorktree / `claude --worktree`).
+# A worktree is a fresh checkout; without these the API and the admin app cannot start there (ADR-0004, ADR-0033).
+.env
+apps/admin/.env

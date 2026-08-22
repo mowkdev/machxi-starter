@@ -1,7 +1,7 @@
 import { MoreHorizontalIcon } from "lucide-react";
 
-import { useT } from "@/shared/i18n";
-import { humanize } from "@/shared/resource/config";
+import { useKeyT, useT } from "@/shared/i18n";
+import { optionLabel } from "@/shared/resource/config";
 import {
   Badge,
   Button,
@@ -59,15 +59,29 @@ export interface ValueOnlyProps {
   readonly value: unknown;
 }
 
-/** An enum value as a coloured label. */
+/**
+ * An enum value as a coloured label.
+ *
+ * The words come from `common:options.<value>` (`D7.4`, ADR-0046 §7), not from
+ * `humanize` alone: this renderer is handed a cell value and nothing else, so
+ * there is no config for a label to travel on, and leaving it un-catalogued
+ * would have been a Latvian grid with `Active` in every status cell. `humanize`
+ * survives as the `defaultValue` inside {@link optionLabel}, which is what
+ * keeps a status added to `@repo/contracts` rendering a word rather than a key.
+ */
 export const StatusBadge = ({ value }: ValueOnlyProps) => {
+  const t = useKeyT();
+
   if (typeof value !== "string" || value === "") return <>{EMPTY_CELL}</>;
 
-  return <Badge variant={badgeVariantFor(value)}>{humanize(value)}</Badge>;
+  return (
+    <Badge variant={badgeVariantFor(value)}>{optionLabel(t, value)}</Badge>
+  );
 };
 
 /** A string array as badges — roles, tags, anything repeated and short. */
 export const RolesList = ({ value }: ValueOnlyProps) => {
+  const t = useKeyT();
   const values = Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
@@ -78,7 +92,7 @@ export const RolesList = ({ value }: ValueOnlyProps) => {
     <span className="flex flex-wrap gap-1">
       {values.map((entry) => (
         <Badge key={entry} variant="outline">
-          {humanize(entry)}
+          {optionLabel(t, entry)}
         </Badge>
       ))}
     </span>

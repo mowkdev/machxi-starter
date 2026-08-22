@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
+import type { TranslationKey } from "@/shared/i18n";
 import { apiClientError } from "@/shared/api/api-error";
 import enErrors from "@/shared/i18n/locales/en/errors.json";
 import { createMessageForError } from "@/shared/notifications/messages";
@@ -56,7 +57,9 @@ const Trigger = ({
   meta,
 }: {
   run: () => Promise<unknown>;
-  meta?: { success?: string; errorToast?: boolean };
+  // `success` is a `TranslationKey` since `D7.4`; the harness takes the same
+  // shape the real mutations declare.
+  meta?: { success?: TranslationKey; errorToast?: boolean };
 }) => {
   const mutation = useMutation({ mutationFn: run, ...(meta ? { meta } : {}) });
 
@@ -114,9 +117,16 @@ describe("mutation notifications", () => {
   it("toasts what the mutation declared, with no call-site toast()", async () => {
     const user = userEvent.setup();
 
+    /*
+     * A **key**, resolved by the one global handler (`D7.4`, ADR-0046 §7). The
+     * assertion is still the sentence, because `en` is the suite's locale — so
+     * what this proves is the same thing it proved in D3 plus one: the handler
+     * translates, and a mutation that declared a key nobody catalogued would
+     * show the key here rather than quietly passing.
+     */
     wrap(
       <Trigger
-        meta={{ success: "The staff member was created." }}
+        meta={{ success: "staff:outcomes.created" }}
         run={() => Promise.resolve("ok")}
       />,
     );

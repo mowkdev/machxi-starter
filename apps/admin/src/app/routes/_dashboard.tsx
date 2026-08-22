@@ -39,7 +39,7 @@ function DashboardShell() {
   return (
     <DashboardLayout
       sidebar={<AppSidebar />}
-      title={useRouteTitle("Admin")}
+      title={useRouteTitle("dashboard:shellFallback")}
       fullHeight={useRouteFullHeight()}
     >
       <Outlet />

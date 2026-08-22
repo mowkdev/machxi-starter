@@ -11,6 +11,7 @@ import {
 } from "@/features/users-manage";
 import { toListQuery } from "@/shared/api/list-params";
 import { useAllowedCapabilities } from "@/shared/auth";
+import { useT } from "@/shared/i18n";
 import { AppGrid } from "@/shared/grid/app-grid";
 import {
   useCarriedListState,
@@ -45,6 +46,7 @@ import {
  * an inch further: nothing here decides which requests the API accepts.
  */
 export const UsersPage = () => {
+  const { t } = useT("users");
   const navigate = useNavigate();
   /*
    * The route's search, **or the snapshot a record surface is carrying**
@@ -83,11 +85,8 @@ export const UsersPage = () => {
   return (
     <Card className="min-h-0 flex-1">
       <CardHeader>
-        <CardTitle>Users</CardTitle>
-        <CardDescription>
-          The customer accounts. Deleted ones stay listed, and the Deleted
-          column is what says so.
-        </CardDescription>
+        <CardTitle>{t("title")}</CardTitle>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
 
       {/*
@@ -130,13 +129,13 @@ export const UsersPage = () => {
            */
           gridId={userResourceConfig.name}
           isFetching={users.isFetching}
-          emptyMessage="No users match this view."
+          emptyMessage="users:empty"
           capabilities={capabilities}
           createAction={
             <Button asChild size="sm">
               <Link to="/users/new" state={openState}>
                 <PlusIcon aria-hidden />
-                New user
+                {t("actions.create")}
               </Link>
             </Button>
           }

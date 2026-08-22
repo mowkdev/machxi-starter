@@ -1,7 +1,6 @@
 import type { Filter } from "@repo/contracts";
-import type { TFunction } from "i18next";
 
-import { dateTimeFormat } from "@/shared/i18n";
+import { dateTimeFormat, type TranslateKey } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type {
   ColumnConfig,
@@ -42,8 +41,19 @@ export interface FilterChip {
   readonly filter: Filter;
 }
 
-/** The `grid` namespace's translator — the chips' phrasing lives in `chip.*`. */
-export type ChipTranslate = TFunction<"grid">;
+/**
+ * The translator these functions take — the **app-wide** one, since `D7.4`.
+ *
+ * `D7.2` typed it `TFunction<"grid">`, which was right while every key here was
+ * a `grid` one and is wrong now: a chip's words are half this module's phrasing
+ * (`grid:chip.*`) and half the *column's* — its header, a `presence` filter's
+ * label, an enum option's — and those are keys from a namespace this file must
+ * never name. One translator over every namespace is what lets both be resolved
+ * without a second parameter, at the price of spelling `grid:` on the keys this
+ * module wrote itself. That price is the honest one: the prefix now says which
+ * of the two kinds a key is.
+ */
+export type ChipTranslate = TranslateKey;
 
 export const chipsForState = (
   filters: readonly Filter[],
@@ -98,7 +108,7 @@ export const labelFor = (
 
   if (column === undefined || config === undefined) return rawLabel(filter, t);
 
-  const owned = ownedLabel(filter, column.header, config, t);
+  const owned = ownedLabel(filter, t(column.header), config, t);
 
   return owned ?? rawLabel(filter, t);
 };
@@ -113,7 +123,7 @@ const ownedLabel = (
     case "text": {
       if (filter.op !== config.op) return undefined;
       if (config.op !== "like")
-        return t("chip.isText", {
+        return t("grid:chip.isText", {
           column: header,
           value: asText(filter.value),
         });
@@ -140,24 +150,24 @@ const ownedLabel = (
       const term = unescapeContains(pattern);
 
       return containsPattern(term) === pattern
-        ? t("chip.contains", { column: header, value: term })
+        ? t("grid:chip.contains", { column: header, value: term })
         : undefined;
     }
 
     case "enum": {
       if (filter.op !== config.op) return undefined;
 
-      const options = resolveOptions(config.options);
+      const options = resolveOptions(config.options, t);
       const label = (value: unknown): string =>
         options.find((option) => option.value === value)?.label ??
         asText(value);
 
       return Array.isArray(filter.value)
-        ? t("chip.anyOf", {
+        ? t("grid:chip.anyOf", {
             column: header,
             values: filter.value.map(label).join(", "),
           })
-        : t("chip.is", { column: header, value: label(filter.value) });
+        : t("grid:chip.is", { column: header, value: label(filter.value) });
     }
 
     case "dateRange":
@@ -167,9 +177,9 @@ const ownedLabel = (
        * a range without re-composing the other.
        */
       return filter.op === config.from
-        ? t("chip.from", { column: header, day: boundDay(filter.value) })
+        ? t("grid:chip.from", { column: header, day: boundDay(filter.value) })
         : filter.op === config.to
-          ? t("chip.to", { column: header, day: boundDay(filter.value) })
+          ? t("grid:chip.to", { column: header, day: boundDay(filter.value) })
           : undefined;
 
     case "presence":
@@ -183,7 +193,7 @@ const ownedLabel = (
        * config's words would be the bar describing a request nobody made.
        */
       return filter.op === "null" && filter.value === config.value
-        ? config.label
+        ? t(config.label)
         : undefined;
   }
 };
@@ -197,7 +207,7 @@ const ownedLabel = (
  */
 const rawLabel = (filter: Filter, t: ChipTranslate): string =>
   clamp(
-    t("chip.raw", {
+    t("grid:chip.raw", {
       field: filter.field,
       op: filter.op,
       value: asText(filter.value),

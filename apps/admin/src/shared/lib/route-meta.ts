@@ -1,5 +1,7 @@
 import { useMatches } from "@tanstack/react-router";
 
+import { useKeyT, type TranslationKey } from "@/shared/i18n";
+
 /**
  * What the current route declares about itself, for the shell that frames it.
  *
@@ -15,13 +17,21 @@ import { useMatches } from "@tanstack/react-router";
  *
  * Both shells need it, and ADR-0032's dependency rule says a pattern two
  * widgets share is demoted rather than imported sideways — so it lives here.
+ *
+ * **The route declares a key and this returns words** (`D7.4`, ADR-0046 §7).
+ * Resolving it here rather than in the two shells is what keeps them free of
+ * i18next: a widget renders whatever string it is given, and the one place that
+ * reads `staticData` is the one place that knows the field is a key. The
+ * fallback is a key too, because the two shells' own defaults — `Sign in`,
+ * `Admin` — are copy an operator reads whenever a route declares nothing.
  */
-export const useRouteTitle = (fallback: string): string => {
+export const useRouteTitle = (fallback: TranslationKey): string => {
   const matches = useMatches();
+  const t = useKeyT();
 
-  return (
+  return t(
     [...matches].reverse().find((match) => match.staticData.title)?.staticData
-      .title ?? fallback
+      .title ?? fallback,
   );
 };
 

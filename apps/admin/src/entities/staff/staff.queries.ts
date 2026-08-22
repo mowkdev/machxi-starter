@@ -74,7 +74,7 @@ export const useCreateStaff = () => {
     // The body carries the new operator's initial password.
     ...CREDENTIAL_MUTATION,
     mutationFn: (body: CreateStaffBody) => api.create(body),
-    meta: { ...FORM_MUTATION_META, success: "The staff member was created." },
+    meta: { ...FORM_MUTATION_META, success: "staff:outcomes.created" },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
     },
@@ -88,7 +88,7 @@ export const useUpdateStaff = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateStaffBody }) =>
       api.update(id, body),
-    meta: { ...FORM_MUTATION_META, success: "The staff member was updated." },
+    meta: { ...FORM_MUTATION_META, success: "staff:outcomes.updated" },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
       void queryClient.invalidateQueries({ queryKey: staffKeys.detail(id) });
@@ -114,8 +114,7 @@ export const useSetStaffPassword = () => {
       api.setPassword(id, body),
     meta: {
       ...FORM_MUTATION_META,
-      success:
-        "The password was reset and every session of that account was signed out.",
+      success: "staff:outcomes.passwordReset",
     },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
@@ -139,7 +138,7 @@ export const useRevokeStaffSessions = () => {
 
   return useMutation({
     mutationFn: (id: string) => api.revokeSessions(id),
-    meta: { success: "Every session of that account was signed out." },
+    meta: { success: "staff:outcomes.sessionsRevoked" },
   });
 };
 
@@ -149,7 +148,7 @@ export const useDeleteStaff = () => {
 
   return useMutation({
     mutationFn: (id: string) => api.remove(id),
-    meta: { success: "The staff member was deleted." },
+    meta: { success: "staff:outcomes.deleted" },
     onSuccess: (_data, id) => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
       void queryClient.invalidateQueries({ queryKey: staffKeys.detail(id) });

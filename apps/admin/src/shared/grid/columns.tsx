@@ -1,6 +1,6 @@
 import type { ColumnDef, Row, Table } from "@tanstack/react-table";
 
-import { useT } from "@/shared/i18n";
+import { useT, type TranslateKey } from "@/shared/i18n";
 import { mergeColumns } from "@/shared/resource/config";
 import type {
   ColumnConfig,
@@ -161,9 +161,19 @@ export const buildSelectionColumn = (): ColumnDef<GridFeatures, GridRow> => ({
   meta: { align: "start", filter: undefined, structural: true },
 });
 
+/**
+ * `t` is the app-wide translator, not the `grid` one (`D7.4`, ADR-0046 §7).
+ *
+ * A column's `header` is a key from **the resource's** namespace — `staff:` or
+ * `users:` — and this function renders both without learning either name, which
+ * is exactly what ADR-0032 asks of `shared/grid`. Resolving it here, once, is
+ * also what keeps every downstream reader (`FlexRender`, the columns menu, the
+ * filter dialog's title, the resize handle's label) working on plain strings.
+ */
 export const buildColumns = (
   columns: ColumnConfigMap,
   overrides: ColumnOverrides | undefined,
+  t: TranslateKey,
 ): ColumnDef<GridFeatures, GridRow>[] =>
   mergeColumns(columns, overrides).map(([name, column]) => {
     const Renderer =
@@ -179,7 +189,7 @@ export const buildColumns = (
     return {
       id: name,
       accessorKey: name,
-      header: column.header,
+      header: t(column.header),
       /*
        * `cellRenderer` wins over `formatter`: a renderer receives the raw value
        * and decides its own presentation, so handing it a pre-formatted string

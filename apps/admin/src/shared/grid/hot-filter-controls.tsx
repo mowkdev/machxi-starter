@@ -1,6 +1,6 @@
 import type { Filter } from "@repo/contracts";
 
-import { useT } from "@/shared/i18n";
+import { useKeyT, useT } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type { HotFilterConfig } from "@/shared/resource/types";
 import { Button, cn } from "@/shared/ui";
@@ -72,7 +72,8 @@ const EnumHotFilter = ({
   readonly onChange: (field: string, next: readonly Filter[]) => void;
 }) => {
   const { t } = useT("grid");
-  const options = resolveOptions(config.options);
+  const tk = useKeyT();
+  const options = resolveOptions(config.options, tk);
   const selection = hotFilterSelection(filters, config);
 
   return (
@@ -92,7 +93,7 @@ const EnumHotFilter = ({
      */
     <div
       role="group"
-      aria-label={t("filter.group", { label: config.label })}
+      aria-label={t("filter.group", { label: tk(config.label) })}
       data-slot="hot-filter"
       className="flex items-center gap-0.5 rounded-md border p-0.5"
     >
@@ -131,6 +132,7 @@ const PresenceHotFilter = ({
   readonly filters: readonly Filter[];
   readonly onChange: (field: string, next: readonly Filter[]) => void;
 }) => {
+  const tk = useKeyT();
   const on = isPresenceOn(filters, config);
 
   return (
@@ -145,7 +147,7 @@ const PresenceHotFilter = ({
         onChange(config.field, toggledPresence(config, on));
       }}
     >
-      {config.label}
+      {tk(config.label)}
     </Button>
   );
 };

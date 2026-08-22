@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { useApiClient } from "@/shared/api/context";
+import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
   Button,
@@ -30,6 +31,7 @@ import {
  * the same either way, which is why it is written as behaviour now.
  */
 export const LoginForm = () => {
+  const { t } = useT("auth");
   const client = useApiClient();
   const messageForError = useMessageForError();
   const navigate = useNavigate();
@@ -93,7 +95,7 @@ export const LoginForm = () => {
       <fieldset aria-busy={pending} disabled={pending}>
         <FieldGroup>
           <Field data-invalid={Boolean(fieldErrors.email)}>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <FieldLabel htmlFor="email">{t("fields.email")}</FieldLabel>
             <Input
               autoComplete="username"
               id="email"
@@ -110,7 +112,7 @@ export const LoginForm = () => {
           </Field>
 
           <Field data-invalid={Boolean(fieldErrors.password)}>
-            <FieldLabel htmlFor="password">Password</FieldLabel>
+            <FieldLabel htmlFor="password">{t("fields.password")}</FieldLabel>
             <Input
               autoComplete="current-password"
               id="password"
@@ -130,7 +132,9 @@ export const LoginForm = () => {
             <FieldError role="alert">{formError}</FieldError>
           )}
 
-          <Button type="submit">{pending ? "Signing in…" : "Sign in"}</Button>
+          <Button type="submit">
+            {pending ? t("submitting") : t("submit")}
+          </Button>
         </FieldGroup>
       </fieldset>
     </form>

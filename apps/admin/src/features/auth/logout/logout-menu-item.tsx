@@ -3,6 +3,7 @@ import { LogOutIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useApiClient } from "@/shared/api/context";
+import { useT } from "@/shared/i18n";
 import { DropdownMenuItem } from "@/shared/ui";
 
 /**
@@ -16,6 +17,7 @@ import { DropdownMenuItem } from "@/shared/ui";
  * whatever `redirect` the guard computed rather than plainly on `/login`.
  */
 export const LogoutMenuItem = () => {
+  const { t } = useT("auth");
   const client = useApiClient();
   const navigate = useNavigate();
   const [pending, setPending] = useState(false);
@@ -40,7 +42,7 @@ export const LogoutMenuItem = () => {
       }}
     >
       <LogOutIcon />
-      Sign out
+      {t("signOut")}
     </DropdownMenuItem>
   );
 };

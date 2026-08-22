@@ -2,6 +2,7 @@ import type { UserResource } from "@repo/contracts";
 
 import { useDeleteUser, useRevokeUserSessions } from "@/entities/user";
 import type { BulkTarget } from "@/shared/api/bulk-outcome";
+import { useT } from "@/shared/i18n";
 import { ConfirmDialog } from "@/shared/ui";
 
 import { useBulkDeleteUsers } from "./use-bulk-delete-users";
@@ -20,6 +21,7 @@ export const DeleteUserDialog = ({
   readonly user: UserResource;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("users");
   const deleteUser = useDeleteUser();
 
   return (
@@ -28,7 +30,7 @@ export const DeleteUserDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Delete ${user.email}?`}
+      title={t("delete.title", { email: user.email })}
       /*
        * Three sentences because a soft delete is three facts, and the staff
        * dialog's "this cannot be undone" would be a lie about every one of
@@ -39,8 +41,8 @@ export const DeleteUserDialog = ({
        * Copy is per-call for exactly this reason; the frame is shared, the
        * sentences are not.
        */
-      description="The account is kept and marked deleted, and every session ends. It cannot sign in, and admin edits are refused. The email address becomes available to register again — there is no undo."
-      confirmLabel="Delete"
+      description={t("delete.description")}
+      confirmLabel={t("delete.confirm")}
       destructive
       isPending={deleteUser.isPending}
       onConfirm={() => {
@@ -70,6 +72,7 @@ export const BulkDeleteUsersDialog = ({
   readonly onSettled: () => void;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("users");
   const bulkDelete = useBulkDeleteUsers();
 
   const targets: readonly BulkTarget[] = ids.map((id) => ({
@@ -83,9 +86,9 @@ export const BulkDeleteUsersDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Delete ${ids.length} user ${ids.length === 1 ? "account" : "accounts"}?`}
-      description="Each account is kept and marked deleted, and every session ends. They cannot sign in, and admin edits are refused. Their email addresses become available to register again — there is no undo. An account that is already deleted will be refused, and you will be told which."
-      confirmLabel="Delete"
+      title={t("bulkDelete.title", { count: ids.length })}
+      description={t("bulkDelete.description")}
+      confirmLabel={t("bulkDelete.confirm")}
       destructive
       isPending={bulkDelete.isPending}
       onConfirm={() => {
@@ -107,6 +110,7 @@ export const RevokeUserSessionsDialog = ({
   readonly user: UserResource;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("users");
   const revokeSessions = useRevokeUserSessions();
 
   return (
@@ -115,9 +119,9 @@ export const RevokeUserSessionsDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Sign ${user.email} out everywhere?`}
-      description="Every session of this account ends immediately. The account itself is unchanged and they can sign in again."
-      confirmLabel="Sign out everywhere"
+      title={t("revokeSessions.title", { email: user.email })}
+      description={t("revokeSessions.description")}
+      confirmLabel={t("revokeSessions.confirm")}
       isPending={revokeSessions.isPending}
       onConfirm={() => {
         revokeSessions.mutate(user.id, { onSuccess: onClose });

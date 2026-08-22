@@ -1,0 +1,26 @@
+{
+  "columns": {
+    "name": "Name",
+    "status": "Status",
+    "tags": "Tags",
+    "createdAt": "Created",
+    "archivedAt": "Archived",
+    "actions": "Actions"
+  },
+  "filters": {
+    "showArchived": "Show archived"
+  },
+  "fields": {
+    "name": { "label": "Name" },
+    "secret": { "label": "Initial password" },
+    "notes": {
+      "label": "Notes",
+      "description": "Optional. Clearing it removes the note."
+    },
+    "status": { "label": "Status" },
+    "tags": { "label": "Tags" },
+    "featured": { "label": "Featured" },
+    "accepted": { "label": "Accept terms" }
+  },
+  "empty": "No widgets match this view."
+}

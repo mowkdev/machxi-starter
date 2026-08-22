@@ -4,5 +4,5 @@ import { DashboardPage } from "@/pages/dashboard";
 
 export const Route = createFileRoute("/_dashboard/")({
   component: DashboardPage,
-  staticData: { title: "Dashboard" },
+  staticData: { title: "dashboard:title" },
 });

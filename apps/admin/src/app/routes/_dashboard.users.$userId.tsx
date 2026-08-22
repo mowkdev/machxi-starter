@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { createUserApi, userKeys, userResourceConfig } from "@/entities/user";
 import { EditUserSurface } from "@/features/users-manage";
+import { useT } from "@/shared/i18n";
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { editSurfaceOf } from "@/shared/resource/config";
 import { Button, RecordError } from "@/shared/ui";
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/_dashboard/users/$userId")({
   component: UserRecordRoute,
   errorComponent: UserRecordError,
   staticData: {
-    title: "Edit user",
+    title: "users:edit.routeTitle",
     fullHeight: editSurfaceOf(userResourceConfig) !== "page",
   },
 });
@@ -38,13 +39,14 @@ function UserRecordRoute() {
 
 function UserRecordError({ error }: { readonly error: Error }) {
   // The way back survives a failed load too (ADR-0044, `D5.3`).
+  const { t } = useT("users");
   const { closeSearch } = useRecordNavigation();
 
   return (
     <RecordError error={error}>
       <Button asChild variant="outline">
         <Link to="/users" search={closeSearch}>
-          Back to users
+          {t("backToList")}
         </Link>
       </Button>
     </RecordError>

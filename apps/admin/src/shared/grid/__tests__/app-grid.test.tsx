@@ -725,7 +725,7 @@ describe("hot filters", () => {
     {
       kind: "enum",
       field: "status",
-      label: "Status",
+      label: "demo:columns.status",
       op: "eq",
       options: ["active", "disabled"],
     },

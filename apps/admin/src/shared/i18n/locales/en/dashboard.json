@@ -1,0 +1,6 @@
+{
+  "title": "Dashboard",
+  "description": "The landing screen behind the guard.",
+  "empty": "Nothing to show until there is data to show it from.",
+  "shellFallback": "Admin"
+}

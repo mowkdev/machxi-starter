@@ -1,0 +1,93 @@
+{
+  "title": "Users",
+  "description": "The customer accounts. Deleted ones stay listed, and the Deleted column is what says so.",
+  "empty": "No users match this view.",
+  "backToList": "Back to users",
+  "noun_one": "user account",
+  "noun_other": "user accounts",
+  "columns": {
+    "email": "Email",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "roles": "Roles",
+    "status": "Status",
+    "lastLoginAt": "Last login",
+    "createdAt": "Created",
+    "deletedAt": "Deleted",
+    "actions": "Actions"
+  },
+  "filters": {
+    "status": "Status",
+    "deletedOnly": "Deleted only"
+  },
+  "fields": {
+    "email": { "label": "Email" },
+    "password": {
+      "label": "Initial password",
+      "description": "Hand this over out of band and ask them to change it. Nothing forces a change at first sign-in."
+    },
+    "firstName": { "label": "First name" },
+    "lastName": { "label": "Last name" },
+    "status": {
+      "label": "Status",
+      "placeholder": "Default (active)"
+    }
+  },
+  "actions": {
+    "create": "New user",
+    "edit": "Edit",
+    "resetPassword": "Reset password",
+    "revokeSessions": "Sign out everywhere",
+    "delete": "Delete"
+  },
+  "create": {
+    "routeTitle": "New user",
+    "title": "New user",
+    "description": "They can sign in as soon as this is saved.",
+    "submit": "Create"
+  },
+  "edit": {
+    "routeTitle": "Edit user",
+    "title": "Edit {{email}}",
+    "description": "Email is not editable — changing the identifier a session was established with is its own flow.",
+    "submit": "Save changes"
+  },
+  "delete": {
+    "title": "Delete {{email}}?",
+    "description": "The account is kept and marked deleted, and every session ends. It cannot sign in, and admin edits are refused. The email address becomes available to register again — there is no undo.",
+    "confirm": "Delete"
+  },
+  "bulkDelete": {
+    "title_one": "Delete {{count}} user account?",
+    "title_other": "Delete {{count}} user accounts?",
+    "description": "Each account is kept and marked deleted, and every session ends. They cannot sign in, and admin edits are refused. Their email addresses become available to register again — there is no undo. An account that is already deleted will be refused, and you will be told which.",
+    "confirm": "Delete"
+  },
+  "revokeSessions": {
+    "title": "Sign {{email}} out everywhere?",
+    "description": "Every session of this account ends immediately. The account itself is unchanged and they can sign in again.",
+    "confirm": "Sign out everywhere"
+  },
+  "resetPassword": {
+    "title": "Reset the password for {{email}}",
+    "description": "They stay signed out until they use the new password. Nothing forces them to change it afterwards.",
+    "submit": "Reset password",
+    "fields": {
+      "password": {
+        "label": "New password",
+        "description": "Hand it over out of band. Every session of this account is signed out."
+      },
+      "currentPassword": {
+        "label": "Your own current password",
+        "description": "Confirms it is you making the change, not a stolen session."
+      }
+    }
+  },
+  "outcomes": {
+    "created": "The user was created.",
+    "updated": "The user was updated.",
+    "deleted": "The user was deleted.",
+    "passwordReset": "The password was reset and every session of that account was signed out.",
+    "sessionsRevoked": "Every session of that account was signed out."
+  }
+}

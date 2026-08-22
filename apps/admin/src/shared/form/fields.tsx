@@ -24,7 +24,7 @@ import type {
   FieldValues,
 } from "react-hook-form";
 
-import { useT } from "@/shared/i18n";
+import { useKeyT, useT } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type { FieldConfig } from "@/shared/resource/types";
 import {
@@ -90,6 +90,12 @@ const Frame = ({
   readonly children: React.ReactNode;
   readonly orientation?: "vertical" | "horizontal";
 }) => {
+  /*
+   * A field's label and description are keys from the *resource's* namespace
+   * (`D7.4`, ADR-0046 §7), which `shared/form` must not name — so the frame
+   * takes the app-wide translator rather than one bound to a namespace.
+   */
+  const t = useKeyT();
   const invalid = fieldState.invalid;
 
   return (
@@ -98,9 +104,9 @@ const Frame = ({
         <>
           {children}
           <FieldContent>
-            <FieldLabel htmlFor={id}>{config.label}</FieldLabel>
+            <FieldLabel htmlFor={id}>{t(config.label)}</FieldLabel>
             {config.description === undefined ? null : (
-              <FieldDescription>{config.description}</FieldDescription>
+              <FieldDescription>{t(config.description)}</FieldDescription>
             )}
             <FieldError
               errors={fieldState.error === undefined ? [] : [fieldState.error]}
@@ -109,10 +115,10 @@ const Frame = ({
         </>
       ) : (
         <>
-          <FieldLabel htmlFor={id}>{config.label}</FieldLabel>
+          <FieldLabel htmlFor={id}>{t(config.label)}</FieldLabel>
           {children}
           {config.description === undefined ? null : (
-            <FieldDescription>{config.description}</FieldDescription>
+            <FieldDescription>{t(config.description)}</FieldDescription>
           )}
           <FieldError
             errors={fieldState.error === undefined ? [] : [fieldState.error]}
@@ -136,56 +142,68 @@ export const InputField = ({
   config,
   field,
   fieldState,
-}: FieldAdapterProps) => (
-  <Frame id={id} config={config} fieldState={fieldState}>
-    <Input
-      /*
-       * `config.props` first, so nothing declared in data can overwrite the
-       * wiring below it. A config carrying `{ disabled: false }` would
-       * otherwise defeat the submit lock from the resource file — a control
-       * still editable while its request is in flight, configured into
-       * existence rather than coded.
-       */
-      {...config.props}
-      id={id}
-      name={field.name}
-      ref={field.ref}
-      value={asText(field.value)}
-      onChange={(event) => {
-        field.onChange(emptyAs(config, event.target.value));
-      }}
-      onBlur={field.onBlur}
-      disabled={field.disabled ?? false}
-      placeholder={config.placeholder}
-      aria-invalid={fieldState.invalid}
-    />
-  </Frame>
-);
+}: FieldAdapterProps) => {
+  const t = useKeyT();
+
+  return (
+    <Frame id={id} config={config} fieldState={fieldState}>
+      <Input
+        /*
+         * `config.props` first, so nothing declared in data can overwrite the
+         * wiring below it. A config carrying `{ disabled: false }` would
+         * otherwise defeat the submit lock from the resource file — a control
+         * still editable while its request is in flight, configured into
+         * existence rather than coded.
+         */
+        {...config.props}
+        id={id}
+        name={field.name}
+        ref={field.ref}
+        value={asText(field.value)}
+        onChange={(event) => {
+          field.onChange(emptyAs(config, event.target.value));
+        }}
+        onBlur={field.onBlur}
+        disabled={field.disabled ?? false}
+        placeholder={
+          config.placeholder === undefined ? undefined : t(config.placeholder)
+        }
+        aria-invalid={fieldState.invalid}
+      />
+    </Frame>
+  );
+};
 
 export const TextareaField = ({
   id,
   config,
   field,
   fieldState,
-}: FieldAdapterProps) => (
-  <Frame id={id} config={config} fieldState={fieldState}>
-    <Textarea
-      // `config.props` first, for the reason `InputField` records.
-      {...config.props}
-      id={id}
-      name={field.name}
-      ref={field.ref}
-      value={asText(field.value)}
-      onChange={(event) => {
-        field.onChange(emptyAs(config, event.target.value));
-      }}
-      onBlur={field.onBlur}
-      disabled={field.disabled ?? false}
-      placeholder={config.placeholder}
-      aria-invalid={fieldState.invalid}
-    />
-  </Frame>
-);
+}: FieldAdapterProps) => {
+  const t = useKeyT();
+
+  return (
+    <Frame id={id} config={config} fieldState={fieldState}>
+      <Textarea
+        // `config.props` first, for the reason `InputField` records.
+        {...config.props}
+        id={id}
+        name={field.name}
+        ref={field.ref}
+        value={asText(field.value)}
+        onChange={(event) => {
+          field.onChange(emptyAs(config, event.target.value));
+        }}
+        onBlur={field.onBlur}
+        disabled={field.disabled ?? false}
+        placeholder={
+          config.placeholder === undefined ? undefined : t(config.placeholder)
+        }
+        aria-invalid={fieldState.invalid}
+      />
+    </Frame>
+  );
+};
 
 export const SelectField = ({
   id,
@@ -194,6 +212,7 @@ export const SelectField = ({
   fieldState,
 }: FieldAdapterProps) => {
   const { t } = useT("form");
+  const tk = useKeyT();
 
   return (
     <Frame id={id} config={config} fieldState={fieldState}>
@@ -209,11 +228,15 @@ export const SelectField = ({
           aria-invalid={fieldState.invalid}
         >
           <SelectValue
-            placeholder={config.placeholder ?? t("select.placeholder")}
+            placeholder={
+              config.placeholder === undefined
+                ? t("select.placeholder")
+                : tk(config.placeholder)
+            }
           />
         </SelectTrigger>
         <SelectContent>
-          {resolveOptions(config.options).map((option) => (
+          {resolveOptions(config.options, tk).map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>
@@ -290,6 +313,7 @@ export const MultiCheckboxField = ({
   field,
   fieldState,
 }: FieldAdapterProps) => {
+  const t = useKeyT();
   const selected = Array.isArray(field.value)
     ? (field.value as readonly string[])
     : [];
@@ -308,9 +332,9 @@ export const MultiCheckboxField = ({
       role="group"
       aria-labelledby={`${id}-legend`}
     >
-      <FieldTitle id={`${id}-legend`}>{config.label}</FieldTitle>
+      <FieldTitle id={`${id}-legend`}>{t(config.label)}</FieldTitle>
       <div className="flex flex-wrap gap-4">
-        {resolveOptions(config.options).map((option) => {
+        {resolveOptions(config.options, t).map((option) => {
           const optionId = `${id}-${option.value}`;
 
           return (
@@ -331,7 +355,7 @@ export const MultiCheckboxField = ({
         })}
       </div>
       {config.description === undefined ? null : (
-        <FieldDescription>{config.description}</FieldDescription>
+        <FieldDescription>{t(config.description)}</FieldDescription>
       )}
       <FieldError
         errors={fieldState.error === undefined ? [] : [fieldState.error]}

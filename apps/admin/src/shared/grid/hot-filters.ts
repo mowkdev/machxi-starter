@@ -1,6 +1,6 @@
 import type { Filter } from "@repo/contracts";
 
-import { resolveOptions } from "@/shared/resource/config";
+import { optionValues } from "@/shared/resource/config";
 import type { HotFilterConfig } from "@/shared/resource/types";
 
 /**
@@ -22,7 +22,7 @@ export const hotFilterSelection = (
   filters: readonly Filter[],
   config: Extract<HotFilterConfig, { kind: "enum" }>,
 ): readonly string[] => {
-  const options = resolveOptions(config.options).map((option) => option.value);
+  const options = optionValues(config.options);
 
   const match = filters.find(
     (filter) => filter.field === config.field && filter.op === config.op,

@@ -16,6 +16,7 @@ import {
   useUpdateStaff,
 } from "@/entities/staff";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
+import { useT } from "@/shared/i18n";
 import { applyServerErrors } from "@/shared/form/server-errors";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
@@ -69,6 +70,7 @@ export const EditStaffSurface = ({
   /** The record the route loaded. */
   readonly staff: StaffResource;
 }) => {
+  const { t } = useT("staff");
   const navigate = useNavigate();
   const { closeSearch } = useRecordNavigation();
   const updateStaff = useUpdateStaff();
@@ -149,14 +151,14 @@ export const EditStaffSurface = ({
     <AppFormSurface
       surface={editSurfaceOf(staffResourceConfig)}
       onClose={close}
-      title={`Edit ${staff.email}`}
-      description="Email is not editable — changing the identifier a session was established with is its own flow."
+      title={t("edit.title", { email: staff.email })}
+      description={t("edit.description")}
       form={form}
       fields={staffResourceConfig.fields}
       variant="edit"
       onSubmit={onSubmit}
       isPending={updateStaff.isPending}
-      submitLabel="Save changes"
+      submitLabel={t("edit.submit")}
       // Nothing changed is nothing to send, and saying so on the button is
       // kinder than a validation error that says the same thing afterwards.
       canSubmit={form.formState.isDirty}

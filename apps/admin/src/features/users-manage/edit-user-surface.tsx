@@ -16,6 +16,7 @@ import {
   userResourceConfig,
 } from "@/entities/user";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
+import { useT } from "@/shared/i18n";
 import { applyServerErrors } from "@/shared/form/server-errors";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
@@ -56,6 +57,7 @@ export const EditUserSurface = ({
   /** The record the route loaded (`D4.2`, ADR-0040). */
   readonly user: UserResource;
 }) => {
+  const { t } = useT("users");
   const navigate = useNavigate();
   const { closeSearch } = useRecordNavigation();
   const updateUser = useUpdateUser();
@@ -117,14 +119,14 @@ export const EditUserSurface = ({
     <AppFormSurface
       surface={editSurfaceOf(userResourceConfig)}
       onClose={close}
-      title={`Edit ${user.email}`}
-      description="Email is not editable — changing the identifier a session was established with is its own flow."
+      title={t("edit.title", { email: user.email })}
+      description={t("edit.description")}
       form={form}
       fields={userResourceConfig.fields}
       variant="edit"
       onSubmit={onSubmit}
       isPending={updateUser.isPending}
-      submitLabel="Save changes"
+      submitLabel={t("edit.submit")}
       canSubmit={form.formState.isDirty}
     >
       <div className="grid gap-4 sm:grid-cols-2">

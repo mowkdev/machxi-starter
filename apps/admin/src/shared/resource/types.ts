@@ -1,5 +1,7 @@
 import type { ErrorCode, FilterOp } from "@repo/contracts";
 
+import type { TranslationKey } from "@/shared/i18n";
+
 /**
  * The `ResourceConfig` vocabulary (ADR-0035).
  *
@@ -18,6 +20,16 @@ import type { ErrorCode, FilterOp } from "@repo/contracts";
  * added, and buys two things: there is no cycle to be careful about, and a key
  * declared with no implementation is a compile error where it used to be
  * inexpressible.
+ *
+ * **Since `D7.4`, every operator-facing string here is a {@link TranslationKey}
+ * rather than a sentence** (ADR-0046 §7), and the rule above is what made that
+ * cheap: *a key is data*. A config still diffs, snapshots and deep-merges,
+ * nothing in it is a function, and `as const satisfies ResourceConfig` now also
+ * checks that every key exists in the `en` catalogue — the same compile-time
+ * property the registry names have had since D3, extended to the words. The
+ * rendering machinery resolves them through a translator over every namespace
+ * (`useKeyT`), which is what keeps `shared/grid` from ever learning a resource
+ * name.
  */
 
 /** A `gridRegistry.formatters` key: a cell value rendered as text. */
@@ -49,11 +61,18 @@ export type FieldVariant = "create" | "edit" | "action";
  *
  * A bare string is the common case — the contracts enums (`STAFF_ROLES`,
  * `USER_STATUSES`) are readonly string tuples, and ADR-0035's own example
- * passes one straight through. The object form is for the times the stored
- * value and the shown label genuinely differ.
+ * passes one straight through. **A bare string keeps being the common case
+ * after `D7.4`**, and deliberately: its label is looked up under
+ * `common:options.<value>`, so a config still names the contracts tuple and
+ * ADR-0023's "declared once" property is not copied into a list of labels that
+ * a new enum member would silently fall out of.
+ *
+ * The object form is for the times the stored value and the shown label
+ * genuinely differ, and its `label` is a key like every other piece of config
+ * copy (ADR-0046 §7).
  */
 export type OptionConfig =
-  string | { readonly value: string; readonly label: string };
+  string | { readonly value: string; readonly label: TranslationKey };
 
 /**
  * Props a registry component may be given from config.
@@ -80,14 +99,14 @@ export type FilterControlConfig =
       /** A text box. `eq` matches exactly; `like` wraps the escaped term in `%…%`. */
       readonly kind: "text";
       readonly op: Extract<FilterOp, "eq" | "like">;
-      readonly placeholder?: string;
+      readonly placeholder?: TranslationKey;
     }
   | {
       /** A select over an allow-listed enum. */
       readonly kind: "enum";
       readonly op: Extract<FilterOp, "eq" | "in">;
       readonly options: readonly OptionConfig[];
-      readonly placeholder?: string;
+      readonly placeholder?: TranslationKey;
     }
   | {
       /** A date range, written as two comparisons on the same field. */
@@ -126,7 +145,7 @@ export type FilterControlConfig =
       readonly kind: "presence";
       readonly op: Extract<FilterOp, "null">;
       readonly value: boolean;
-      readonly label: string;
+      readonly label: TranslationKey;
     };
 
 /**
@@ -160,7 +179,7 @@ export type HotFilterConfig =
       readonly kind: "enum";
       readonly field: string;
       /** Names the group for assistive technology; not shown as a legend. */
-      readonly label: string;
+      readonly label: TranslationKey;
       /**
        * `eq` is single-select with an implicit "All" — pressing the active
        * option releases it. `in` is multi-toggle, accumulating into one
@@ -181,14 +200,14 @@ export type HotFilterConfig =
        */
       readonly kind: "presence";
       readonly field: string;
-      readonly label: string;
+      readonly label: TranslationKey;
       readonly op: Extract<FilterOp, "null">;
       readonly value: boolean;
     };
 
 /** One column of a resource's grid. */
 export interface ColumnConfig {
-  readonly header: string;
+  readonly header: TranslationKey;
   /**
    * Renders a sort control in the header. Set it only where the endpoint's
    * `sortable` allow-list contains the field.
@@ -220,11 +239,11 @@ export type ColumnConfigMap = Readonly<Record<string, ColumnConfig>>;
 
 /** One field of a resource's forms. */
 export interface FieldConfig {
-  readonly label: string;
+  readonly label: TranslationKey;
   /** A `fieldRegistry` key. */
   readonly component: FieldComponentKey;
-  readonly description?: string;
-  readonly placeholder?: string;
+  readonly description?: TranslationKey;
+  readonly placeholder?: TranslationKey;
   /** Choices for `select` and `multiCheckbox`. */
   readonly options?: readonly OptionConfig[];
   /** The create form's starting value. */

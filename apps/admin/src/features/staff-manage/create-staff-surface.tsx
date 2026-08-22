@@ -11,6 +11,7 @@ import {
   useCreateStaff,
 } from "@/entities/staff";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
+import { useT } from "@/shared/i18n";
 import { applyServerErrors } from "@/shared/form/server-errors";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
@@ -44,6 +45,7 @@ const FIELD_NAMES = fieldsForVariant(staffResourceConfig.fields, "create").map(
 );
 
 export const CreateStaffSurface = () => {
+  const { t } = useT("staff");
   const navigate = useNavigate();
   const { closeSearch } = useRecordNavigation();
   const createStaff = useCreateStaff();
@@ -111,14 +113,14 @@ export const CreateStaffSurface = () => {
     <AppFormSurface
       surface={editSurfaceOf(staffResourceConfig)}
       onClose={close}
-      title="New staff member"
-      description="They can sign in as soon as this is saved."
+      title={t("create.title")}
+      description={t("create.description")}
       form={form}
       fields={staffResourceConfig.fields}
       variant="create"
       onSubmit={onSubmit}
       isPending={createStaff.isPending}
-      submitLabel="Create"
+      submitLabel={t("create.submit")}
     >
       <StaffFormInput fieldName="email" />
       <StaffFormInput fieldName="password" />

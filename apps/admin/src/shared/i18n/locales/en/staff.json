@@ -1,0 +1,92 @@
+{
+  "title": "Staff",
+  "description": "The operators who can reach this panel.",
+  "empty": "No staff match this view.",
+  "backToList": "Back to staff",
+  "noun_one": "staff account",
+  "noun_other": "staff accounts",
+  "columns": {
+    "email": "Email",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "roles": "Roles",
+    "status": "Status",
+    "lastLoginAt": "Last login",
+    "createdAt": "Created",
+    "actions": "Actions"
+  },
+  "filters": {
+    "status": "Status"
+  },
+  "fields": {
+    "email": { "label": "Email" },
+    "password": {
+      "label": "Initial password",
+      "description": "Hand this over out of band and ask them to change it. Nothing forces a change at first sign-in."
+    },
+    "firstName": { "label": "First name" },
+    "lastName": { "label": "Last name" },
+    "roles": {
+      "label": "Roles",
+      "description": "At least one. Granting super admin is refused unless you are one."
+    },
+    "status": { "label": "Status" }
+  },
+  "actions": {
+    "create": "New staff member",
+    "edit": "Edit",
+    "resetPassword": "Reset password",
+    "revokeSessions": "Sign out everywhere",
+    "delete": "Delete"
+  },
+  "create": {
+    "routeTitle": "New staff member",
+    "title": "New staff member",
+    "description": "They can sign in as soon as this is saved.",
+    "submit": "Create"
+  },
+  "edit": {
+    "routeTitle": "Edit staff member",
+    "title": "Edit {{email}}",
+    "description": "Email is not editable — changing the identifier a session was established with is its own flow.",
+    "submit": "Save changes"
+  },
+  "delete": {
+    "title": "Delete {{email}}?",
+    "description": "The account and its role grants are deleted outright. This cannot be undone.",
+    "confirm": "Delete"
+  },
+  "bulkDelete": {
+    "title_one": "Delete {{count}} staff account?",
+    "title_other": "Delete {{count}} staff accounts?",
+    "description": "The accounts and their role grants are deleted outright. This cannot be undone. Some may be refused — the last super admin, an account that outranks you, or your own — and you will be told which.",
+    "confirm": "Delete"
+  },
+  "revokeSessions": {
+    "title": "Sign {{email}} out everywhere?",
+    "description": "Every session of this account ends immediately. The account itself is unchanged and they can sign in again.",
+    "confirm": "Sign out everywhere"
+  },
+  "resetPassword": {
+    "title": "Reset the password for {{email}}",
+    "description": "They stay signed out until they use the new password. Nothing forces them to change it afterwards.",
+    "submit": "Reset password",
+    "fields": {
+      "password": {
+        "label": "New password",
+        "description": "Hand it over out of band. Every session of this account is signed out."
+      },
+      "currentPassword": {
+        "label": "Your own current password",
+        "description": "Confirms it is you making the change, not a stolen session."
+      }
+    }
+  },
+  "outcomes": {
+    "created": "The staff member was created.",
+    "updated": "The staff member was updated.",
+    "deleted": "The staff member was deleted.",
+    "passwordReset": "The password was reset and every session of that account was signed out.",
+    "sessionsRevoked": "Every session of that account was signed out."
+  }
+}

@@ -6,6 +6,7 @@ import {
   staffResourceConfig,
 } from "@/entities/staff";
 import { EditStaffSurface } from "@/features/staff-manage";
+import { useT } from "@/shared/i18n";
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { editSurfaceOf } from "@/shared/resource/config";
 import { Button, RecordError } from "@/shared/ui";
@@ -39,7 +40,7 @@ export const Route = createFileRoute("/_dashboard/staff/$staffId")({
   component: StaffRecordRoute,
   errorComponent: StaffRecordError,
   staticData: {
-    title: "Edit staff member",
+    title: "staff:edit.routeTitle",
     fullHeight: editSurfaceOf(staffResourceConfig) !== "page",
   },
 });
@@ -64,13 +65,14 @@ function StaffRecordError({ error }: { readonly error: Error }) {
    * from, because the carrier is the navigation rather than the record
    * (ADR-0044). A cold link that 404s closes to the bare list.
    */
+  const { t } = useT("staff");
   const { closeSearch } = useRecordNavigation();
 
   return (
     <RecordError error={error}>
       <Button asChild variant="outline">
         <Link to="/staff" search={closeSearch}>
-          Back to staff
+          {t("backToList")}
         </Link>
       </Button>
     </RecordError>

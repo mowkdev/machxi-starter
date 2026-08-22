@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { BulkOutcome } from "@/shared/api/bulk-outcome";
+import type { TranslateKey } from "@/shared/i18n";
 import { createTestI18n } from "@/test/render";
 
 import { summariseBulk } from "../bulk-summary";
@@ -21,7 +22,12 @@ import { summariseBulk } from "../bulk-summary";
  * `en` as the test locale" buys — localising the summary did not reword it.
  */
 
-const t = createTestI18n().instance.getFixedT(null, "grid");
+/*
+ * The **app-wide** translator since `D7.4`: the noun is a key in the
+ * resource's own namespace now (`staff:noun`, with its own plural forms), so a
+ * `grid`-bound `t` could not resolve it. The sentences are otherwise unchanged.
+ */
+const t = createTestI18n().t as TranslateKey;
 
 const outcome = (over: Partial<BulkOutcome> = {}): BulkOutcome => ({
   deleted: [],
@@ -33,18 +39,17 @@ const outcome = (over: Partial<BulkOutcome> = {}): BulkOutcome => ({
 describe("summariseBulk", () => {
   it("picks the singular form for one row and the plural for more", () => {
     expect(
-      summariseBulk(outcome({ deleted: ["1"] }), "staff account", t).headline,
+      summariseBulk(outcome({ deleted: ["1"] }), "staff:noun", t).headline,
     ).toBe("1 staff account deleted.");
 
     expect(
-      summariseBulk(outcome({ deleted: ["1", "2"] }), "staff account", t)
-        .headline,
+      summariseBulk(outcome({ deleted: ["1", "2"] }), "staff:noun", t).headline,
     ).toBe("2 staff accounts deleted.");
   });
 
   it("calls a clean run a success", () => {
     expect(
-      summariseBulk(outcome({ deleted: ["1"] }), "user account", t).tone,
+      summariseBulk(outcome({ deleted: ["1"] }), "users:noun", t).tone,
     ).toBe("success");
   });
 
@@ -54,7 +59,7 @@ describe("summariseBulk", () => {
         deleted: ["1"],
         refused: [{ id: "2", label: "ada@example.com", message: "Refused." }],
       }),
-      "staff account",
+      "staff:noun",
       t,
     );
 
@@ -72,7 +77,7 @@ describe("summariseBulk", () => {
         refused: [{ id: "2", label: "row-2", message: "Refused." }],
         unattempted: [{ id: "3", label: "row-3" }],
       }),
-      "user account",
+      "users:noun",
       t,
     );
 
@@ -91,7 +96,7 @@ describe("summariseBulk", () => {
         outcome({
           refused: [{ id: "1", label: "row-1", message: "Refused." }],
         }),
-        "staff account",
+        "staff:noun",
         t,
       ).tone,
     ).toBe("error");

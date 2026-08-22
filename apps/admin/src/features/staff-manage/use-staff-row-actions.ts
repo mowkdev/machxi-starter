@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useMemo } from "react";
 
+import { useT } from "@/shared/i18n";
 import type { RowAction } from "@/shared/grid/types";
 import type { GridCapabilities } from "@/shared/resource/types";
 
@@ -64,6 +65,7 @@ export const useStaffRowActions = (
    */
   capabilities: GridCapabilities | undefined,
 ): readonly RowAction<StaffResource>[] => {
+  const { t } = useT("staff");
   const navigate = useNavigate();
   const { openState } = useRecordNavigation();
 
@@ -73,7 +75,7 @@ export const useStaffRowActions = (
     if (capabilities?.canEdit === true)
       actions.push({
         key: "edit",
-        label: "Edit",
+        label: t("actions.edit"),
         onSelect: (staff) => {
           /*
            * The record's URL is the record's alone (ADR-0044, `D5.3`): the
@@ -92,14 +94,14 @@ export const useStaffRowActions = (
     actions.push(
       {
         key: "reset-password",
-        label: "Reset password",
+        label: t("actions.resetPassword"),
         onSelect: (staff) => {
           onAction({ kind: "reset-password", staff });
         },
       },
       {
         key: "revoke-sessions",
-        label: "Sign out everywhere",
+        label: t("actions.revokeSessions"),
         onSelect: (staff) => {
           onAction({ kind: "revoke-sessions", staff });
         },
@@ -109,7 +111,7 @@ export const useStaffRowActions = (
     if (capabilities?.canDelete === true)
       actions.push({
         key: "delete",
-        label: "Delete",
+        label: t("actions.delete"),
         destructive: true,
         onSelect: (staff) => {
           onAction({ kind: "delete", staff });
@@ -117,5 +119,5 @@ export const useStaffRowActions = (
       });
 
     return actions;
-  }, [capabilities, navigate, onAction, openState]);
+  }, [capabilities, navigate, onAction, openState, t]);
 };

@@ -3,12 +3,10 @@ import i18next, { type Resource, type ResourceKey } from "i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
 import { initReactI18next } from "react-i18next";
 
-import enCommon from "./locales/en/common.json";
-import enErrors from "./locales/en/errors.json";
-import enForm from "./locales/en/form.json";
-import enGrid from "./locales/en/grid.json";
 import { setIntlLocale } from "./intl";
 import { readStoredLocale, writeStoredLocale } from "./locale-storage";
+import { DEFAULT_NAMESPACE, type Namespace } from "./namespaces";
+import type { Catalogues } from "./resources";
 import {
   asLocale,
   navigatorLocales,
@@ -17,8 +15,8 @@ import {
 import { INTL_TAGS } from "./tags";
 
 /**
- * The i18n seam (ADR-0046 §3, §5, §13). `D7.1` lands it empty on purpose: the
- * catalogues below hold `{}` and every later step of D7 fills them.
+ * The i18n seam (ADR-0046 §3, §5, §13). `D7.1` landed it empty; `D7.2`, `D7.3`
+ * and `D7.4` filled the ten `en` catalogues it now initialises from.
  *
  * **A factory, never a module-level singleton.** ADR-0009's `create*` rule
  * carried across the wire, for the reason it has on the API: the seam is a
@@ -30,40 +28,6 @@ import { INTL_TAGS } from "./tags";
  * two files rendering at different locales would share one instance, and the
  * cached `test:unit` loop would stop being a pure function of the tree.
  */
-
-/**
- * The cross-cutting namespaces, which are the four that belong to `shared/*`
- * and the four D8 moves with it (ADR-0046 §3). The per-slice namespaces —
- * `auth`, `staff`, `users`, … — land with the slices that own them in `D7.4`.
- */
-export const NAMESPACES = ["common", "grid", "form", "errors"] as const;
-export type Namespace = (typeof NAMESPACES)[number];
-
-/** `common` is chrome and generic actions, so it is what an unprefixed key means. */
-export const DEFAULT_NAMESPACE = "common" satisfies Namespace;
-
-/**
- * `en` is bundled eagerly: it is the fallback for every other locale, the type
- * source `types.d.ts` merges over, and the locale the suite runs in.
- */
-export const EN_RESOURCES = {
-  common: enCommon,
-  grid: enGrid,
-  form: enForm,
-  errors: enErrors,
-} as const;
-
-export type Catalogue = Readonly<Record<Namespace, object>>;
-
-/**
- * At least `en`, and any other locale a caller wants in memory before the
- * first render. Production hands only `en` and lets the backend below fetch
- * the rest; the test harness hands every locale, which is what keeps
- * `test:unit` synchronous and cached (ADR-0046 §14).
- */
-export type Catalogues = Readonly<Partial<Record<Locale, Catalogue>>> & {
-  readonly en: Catalogue;
-};
 
 /**
  * One dynamic `import()` per `<locale>/<namespace>.json`, so Vite emits a
@@ -223,6 +187,16 @@ export {
 } from "./locale-storage";
 export { INTL_TAGS } from "./tags";
 export { activeIntlTag, dateTimeFormat, setIntlLocale } from "./intl";
+export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
+export { EN_RESOURCES, type Catalogue, type Catalogues } from "./resources";
+export {
+  createDeferredTranslate,
+  dynamicKey,
+  englishTranslation,
+  useKeyT,
+  type DeferredTranslate,
+  type TranslateKey,
+} from "./keys";
 export type { TranslationKey } from "./types";
 
 /**

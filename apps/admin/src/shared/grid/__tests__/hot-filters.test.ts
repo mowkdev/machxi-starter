@@ -23,7 +23,7 @@ import {
 const STATUS: Extract<HotFilterConfig, { kind: "enum" }> = {
   kind: "enum",
   field: "status",
-  label: "Status",
+  label: "demo:columns.status",
   op: "eq",
   options: ["active", "disabled"],
 };
@@ -31,7 +31,7 @@ const STATUS: Extract<HotFilterConfig, { kind: "enum" }> = {
 const TAGS: Extract<HotFilterConfig, { kind: "enum" }> = {
   kind: "enum",
   field: "tags",
-  label: "Tags",
+  label: "demo:columns.tags",
   op: "in",
   options: ["alpha", "beta"],
 };
@@ -39,7 +39,7 @@ const TAGS: Extract<HotFilterConfig, { kind: "enum" }> = {
 const ARCHIVED: Extract<HotFilterConfig, { kind: "presence" }> = {
   kind: "presence",
   field: "archivedAt",
-  label: "Show archived",
+  label: "demo:filters.showArchived",
   op: "null",
   value: false,
 };

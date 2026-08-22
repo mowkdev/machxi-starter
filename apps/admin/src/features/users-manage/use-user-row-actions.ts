@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useMemo } from "react";
 
+import { useT } from "@/shared/i18n";
 import type { RowAction } from "@/shared/grid/types";
 import type { GridCapabilities } from "@/shared/resource/types";
 
@@ -52,6 +53,7 @@ export const useUserRowActions = (
   /** Required, never optional — `use-staff-row-actions.ts` says why. */
   capabilities: GridCapabilities | undefined,
 ): readonly RowAction<UserResource>[] => {
+  const { t } = useT("users");
   const navigate = useNavigate();
   const { openState } = useRecordNavigation();
 
@@ -61,7 +63,7 @@ export const useUserRowActions = (
     if (capabilities?.canEdit === true)
       actions.push({
         key: "edit",
-        label: "Edit",
+        label: t("actions.edit"),
         onSelect: (user) => {
           void navigate({
             to: "/users/$userId",
@@ -76,14 +78,14 @@ export const useUserRowActions = (
     actions.push(
       {
         key: "reset-password",
-        label: "Reset password",
+        label: t("actions.resetPassword"),
         onSelect: (user) => {
           onAction({ kind: "reset-password", user });
         },
       },
       {
         key: "revoke-sessions",
-        label: "Sign out everywhere",
+        label: t("actions.revokeSessions"),
         onSelect: (user) => {
           onAction({ kind: "revoke-sessions", user });
         },
@@ -93,7 +95,7 @@ export const useUserRowActions = (
     if (capabilities?.canDelete === true)
       actions.push({
         key: "delete",
-        label: "Delete",
+        label: t("actions.delete"),
         destructive: true,
         onSelect: (user) => {
           onAction({ kind: "delete", user });
@@ -101,5 +103,5 @@ export const useUserRowActions = (
       });
 
     return actions;
-  }, [capabilities, navigate, onAction, openState]);
+  }, [capabilities, navigate, onAction, openState, t]);
 };

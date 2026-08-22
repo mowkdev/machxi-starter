@@ -1,4 +1,4 @@
-import { useT } from "@/shared/i18n";
+import { useKeyT, useT } from "@/shared/i18n";
 import { resolveOptions } from "@/shared/resource/config";
 import type { FilterControlConfig } from "@/shared/resource/types";
 import {
@@ -59,13 +59,22 @@ export const FilterControl = ({
   onChange,
 }: FilterControlProps) => {
   const { t } = useT("grid");
+  /*
+   * The config's own keys — a placeholder, a `presence` label — come from the
+   * resource's namespace, which this file must not name (`D7.4`, ADR-0032).
+   */
+  const tk = useKeyT();
 
   switch (config.kind) {
     case "text":
       return (
         <Input
           aria-label={t("filter.trigger", { column: label })}
-          placeholder={config.placeholder ?? t("filter.placeholder")}
+          placeholder={
+            config.placeholder === undefined
+              ? t("filter.placeholder")
+              : tk(config.placeholder)
+          }
           value={value?.kind === "text" ? value.term : ""}
           onChange={(event) => {
             const term = event.target.value;
@@ -76,8 +85,12 @@ export const FilterControl = ({
       );
 
     case "enum": {
-      const options = resolveOptions(config.options);
+      const options = resolveOptions(config.options, tk);
       const selected = value?.kind === "enum" ? (value.values[0] ?? ANY) : ANY;
+      const anyLabel =
+        config.placeholder === undefined
+          ? t("filter.any")
+          : tk(config.placeholder);
 
       return (
         <Select
@@ -92,12 +105,10 @@ export const FilterControl = ({
             className="w-full"
             aria-label={t("filter.trigger", { column: label })}
           >
-            <SelectValue placeholder={config.placeholder ?? t("filter.any")} />
+            <SelectValue placeholder={anyLabel} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>
-              {config.placeholder ?? t("filter.any")}
-            </SelectItem>
+            <SelectItem value={ANY}>{anyLabel}</SelectItem>
             {options.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
@@ -162,7 +173,7 @@ export const FilterControl = ({
             }}
           />
           <Label htmlFor={id} className="font-normal">
-            {config.label}
+            {tk(config.label)}
           </Label>
         </div>
       );

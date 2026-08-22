@@ -1,6 +1,7 @@
 import { THEMES, type Theme } from "@repo/contracts";
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 
+import { useKeyT, useT, type TranslationKey } from "@/shared/i18n";
 import { useTheme } from "@/shared/theme";
 import {
   DropdownMenuLabel,
@@ -28,10 +29,20 @@ import {
  * is what keeps the signed-out login screen's theming identical to before.
  */
 
-const THEME_LABELS: Record<Theme, string> = {
-  light: "Light",
-  dark: "Dark",
-  system: "System",
+/**
+ * One key per theme, `Record<Theme, …>` so the contracts tuple still cannot
+ * leave a control behind (`D7.4`).
+ *
+ * A table rather than a `t(`theme.${option}`)` template, and the reason is the
+ * one ADR-0046 §7 gives for configs generally: a composed key is checked by
+ * nothing, while these three are literals the compiler measures against the
+ * `en` catalogue — and `Record<Theme, …>` makes a fourth theme a red build
+ * here rather than a raw key in the menu.
+ */
+const THEME_LABEL_KEYS: Record<Theme, TranslationKey> = {
+  light: "settings:theme.light",
+  dark: "settings:theme.dark",
+  system: "settings:theme.system",
 };
 
 const THEME_ICONS: Record<Theme, typeof SunIcon> = {
@@ -41,12 +52,19 @@ const THEME_ICONS: Record<Theme, typeof SunIcon> = {
 };
 
 export const ThemeMenuItems = () => {
+  /*
+   * `settings`, not a namespace of this feature's own (ADR-0046 §3): the
+   * appearance control and `D7.5`'s locale switch are two views of one account
+   * settings row, so their copy is catalogued together.
+   */
+  const { t } = useT("settings");
+  const tk = useKeyT();
   const { theme, setTheme } = useTheme();
 
   return (
     <>
       <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-        Appearance
+        {t("appearance")}
       </DropdownMenuLabel>
       <DropdownMenuRadioGroup
         onValueChange={(value) => {
@@ -68,7 +86,7 @@ export const ThemeMenuItems = () => {
           return (
             <DropdownMenuRadioItem key={option} value={option}>
               <Icon className="size-4" />
-              {THEME_LABELS[option]}
+              {tk(THEME_LABEL_KEYS[option])}
             </DropdownMenuRadioItem>
           );
         })}

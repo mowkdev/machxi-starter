@@ -1,7 +1,7 @@
 import type { Filter } from "@repo/contracts";
 import { XIcon } from "lucide-react";
 
-import { useT } from "@/shared/i18n";
+import { useKeyT, useT } from "@/shared/i18n";
 import type { ColumnConfig, HotFilterConfig } from "@/shared/resource/types";
 import { Badge, Button } from "@/shared/ui";
 
@@ -52,14 +52,16 @@ export const AppliedFilters = ({
   onClearAll,
 }: AppliedFiltersProps) => {
   /*
-   * Two hooks rather than `useT(["grid", "common"])`, and it is a type
-   * decision rather than a style one: `chipsForState` takes a `TFunction<"grid">`
-   * — one namespace, so a key it resolves is a `grid` key and the compiler says
-   * so — and an array-bound translator is a different, wider type that would
-   * have to be cast on the way in.
+   * Three translators, and the split is a type decision rather than a style
+   * one. The first two are this component's own copy, one namespace each, so a
+   * key either resolves is checked as that namespace's. The third is the
+   * **app-wide** one `D7.4` gave `chipsForState`: a chip's words are partly the
+   * column's — its header, a `presence` label, an enum option — and those are
+   * keys from a namespace `shared/grid` must never name (ADR-0032).
    */
   const { t } = useT("grid");
   const { t: tCommon } = useT("common");
+  const tk = useKeyT();
 
   /*
    * Suppressed, not omitted: the chip is skipped exactly while a hot-filter
@@ -70,7 +72,7 @@ export const AppliedFilters = ({
    * represent gets its chip as before.
    */
   const displayed = displayedByHotFilters(filters, hotFilters);
-  const chips = chipsForState(filters, columns, t).filter(
+  const chips = chipsForState(filters, columns, tk).filter(
     (chip) => !displayed.has(chip.filter),
   );
 

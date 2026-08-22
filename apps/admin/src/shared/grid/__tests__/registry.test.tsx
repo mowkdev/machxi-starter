@@ -1,7 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import type { TranslateKey } from "@/shared/i18n";
 import type { ColumnConfigMap } from "@/shared/resource/types";
+import { createTestI18n, renderWithProviders } from "@/test/render";
 
 import { buildColumns } from "../columns";
 import { EMPTY_CELL, date, dateTime, text } from "../formatters";
@@ -44,6 +46,16 @@ describe("formatters", () => {
   });
 });
 
+/**
+ * The translator `buildColumns` resolves a config's header keys through
+ * (`D7.4`).
+ *
+ * A real instance rather than an identity stub, so these assertions read the
+ * **catalogue's** words: a header key that no catalogue answers would render as
+ * the key here, which is the failure the type system cannot see.
+ */
+const t = createTestI18n().t as TranslateKey;
+
 /** The slice of TanStack's cell context a resolved `cell` actually reads. */
 const cellContext = (value: unknown) => ({
   getValue: () => value,
@@ -53,18 +65,32 @@ const cellContext = (value: unknown) => ({
 
 describe("buildColumns", () => {
   const columns: ColumnConfigMap = {
-    email: { header: "Email", sortable: true },
-    status: { header: "Status", cellRenderer: "statusBadge" },
-    createdAt: { header: "Created", formatter: "date", align: "end" },
+    email: { header: "demo:columns.name", sortable: true },
+    status: { header: "demo:columns.status", cellRenderer: "statusBadge" },
+    createdAt: {
+      header: "demo:columns.createdAt",
+      formatter: "date",
+      align: "end",
+    },
   };
 
-  const built = buildColumns(columns, undefined);
+  const built = buildColumns(columns, undefined, t);
 
   it("builds one def per column, in declaration order", () => {
     expect(built.map((column) => column.id)).toEqual([
       "email",
       "status",
       "createdAt",
+    ]);
+  });
+
+  it("resolves each header key to the catalogue's words", () => {
+    // The `D7.4` property: a config carries a key and the machinery renders a
+    // sentence, without `shared/grid` learning which namespace it came from.
+    expect(built.map((column) => column.header)).toEqual([
+      "Name",
+      "Status",
+      "Created",
     ]);
   });
 
@@ -98,10 +124,14 @@ describe("buildColumns", () => {
      */
     const withChrome = buildColumns(
       {
-        actions: { header: "Nothing special" },
-        operations: { header: "Operations", cellRenderer: "rowActions" },
+        actions: { header: "demo:columns.name" },
+        operations: {
+          header: "demo:columns.actions",
+          cellRenderer: "rowActions",
+        },
       },
       undefined,
+      t,
     );
 
     expect(withChrome.map((column) => column.meta?.structural)).toEqual([
@@ -123,7 +153,12 @@ describe("buildColumns", () => {
       cellContext("active"),
     );
 
-    render(<>{rendered}</>);
+    /*
+     * Through the providers, because `statusBadge` reads `common:options.*`
+     * since `D7.4` — a bare `render` would leave `useKeyT` with no instance and
+     * assert the key rather than the word.
+     */
+    renderWithProviders(<>{rendered}</>);
 
     expect(screen.getByText("Active")).toBeInTheDocument();
   });
@@ -144,19 +179,20 @@ describe("buildColumns", () => {
     const [column] = buildColumns(
       {
         status: {
-          header: "Status",
+          header: "demo:columns.status",
           formatter: "date",
           cellRenderer: "statusBadge",
         },
       },
       undefined,
+      t,
     );
 
     const rendered = (column?.cell as (context: unknown) => React.ReactNode)(
       cellContext("disabled"),
     );
 
-    render(<>{rendered}</>);
+    renderWithProviders(<>{rendered}</>);
 
     expect(screen.getByText("Disabled")).toBeInTheDocument();
   });
@@ -166,14 +202,14 @@ describe("a typo'd registry key", () => {
   it("is a compile error, not a blank cell", () => {
     const columns = {
       createdAt: {
-        header: "Created",
+        header: "demo:columns.createdAt",
         // @ts-expect-error `dateTiem` is not a registry key — this is the
         // property the named registry exists to buy, and `pnpm check-types`
         // is what asserts it.
         formatter: "dateTiem",
       },
       status: {
-        header: "Status",
+        header: "demo:columns.status",
         // @ts-expect-error nor is `statusBdage`.
         cellRenderer: "statusBdage",
       },

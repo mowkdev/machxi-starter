@@ -12,7 +12,12 @@
  * file is a global script, and `declare module "…"` in a script *replaces* the
  * module's types instead of merging with them — which manifests as
  * `@tanstack/react-query` suddenly having no `useQuery`, several files away.
+ * The `import type` below now makes this a module too; the export stays,
+ * because a type-only import is erased and the property should not depend on
+ * which imports happen to survive compilation.
  */
+import type { TranslationKey } from "@/shared/i18n";
+
 export {};
 /**
  * Makes `meta` typed rather than stringly-typed, so `meta: { succes: "…" }` is
@@ -22,8 +27,16 @@ export {};
 declare module "@tanstack/react-query" {
   interface Register {
     mutationMeta: {
-      /** Shown as a success toast. Absent means the mutation says nothing. */
-      readonly success?: string;
+      /**
+       * Shown as a success toast. Absent means the mutation says nothing.
+       *
+       * A **key**, not a sentence, since `D7.4` — the additive narrowing
+       * ADR-0043's own last consequence said D7 would need (ADR-0046 §7).
+       * Nothing about where `meta` is read or who delivers it moved: the one
+       * global handler calls `t()` before `toast.success`, and a misspelled
+       * outcome is now a compile error at the mutation that declared it.
+       */
+      readonly success?: TranslationKey;
       /** `false` where a form renders the failure inline (ADR-0034). */
       readonly errorToast?: boolean;
     };

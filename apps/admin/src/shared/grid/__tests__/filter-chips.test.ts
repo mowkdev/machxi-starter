@@ -1,7 +1,7 @@
 import type { Filter } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
-import { activeIntlTag } from "@/shared/i18n";
+import { activeIntlTag, type TranslateKey } from "@/shared/i18n";
 import { mergeColumns } from "@/shared/resource/config";
 import { demoResourceConfig } from "@/test/fixtures/demo-resource";
 import { createTestI18n } from "@/test/render";
@@ -33,8 +33,12 @@ const columns = mergeColumns(demoResourceConfig.columns);
  * translated through a fake would prove the composition and not the copy — and
  * a key deleted from the catalogue would still pass. Building the instance the
  * app builds is what keeps these assertions the operator's words.
+ *
+ * **App-wide rather than `grid`-bound since `D7.4`**: half of a chip's words
+ * are the column's — its header, an enum option, a `presence` label — and those
+ * are keys in the resource's namespace (here the fixture's `demo:`).
  */
-const t = createTestI18n().instance.getFixedT(null, "grid");
+const t = createTestI18n().t as TranslateKey;
 
 const labels = (filters: readonly Filter[]): readonly string[] =>
   chipsForState(filters, columns, t).map((chip) => chip.label);

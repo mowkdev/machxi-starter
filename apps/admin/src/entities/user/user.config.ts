@@ -83,14 +83,14 @@ export const userResourceConfig = {
       {
         kind: "enum",
         field: "status",
-        label: "Status",
+        label: "users:filters.status",
         op: "eq",
         options: USER_STATUSES,
       },
       {
         kind: "presence",
         field: "deletedAt",
-        label: "Deleted only",
+        label: "users:filters.deletedOnly",
         op: "null",
         value: false,
       },
@@ -98,35 +98,39 @@ export const userResourceConfig = {
   },
   columns: {
     email: {
-      header: "Email",
+      header: "users:columns.email",
       sortable: true,
       // `like` and not `eq`, for the reason the staff config records: the
       // field's value schema is `emailSchema`, which no partial term satisfies.
-      filter: { kind: "text", op: "like", placeholder: "Contains…" },
+      filter: {
+        kind: "text",
+        op: "like",
+        placeholder: "grid:filter.containsPlaceholder",
+      },
     },
-    firstName: { header: "First name", sortable: true },
-    lastName: { header: "Last name", sortable: true },
-    roles: { header: "Roles", cellRenderer: "rolesList" },
+    firstName: { header: "users:columns.firstName", sortable: true },
+    lastName: { header: "users:columns.lastName", sortable: true },
+    roles: { header: "users:columns.roles", cellRenderer: "rolesList" },
     status: {
-      header: "Status",
+      header: "users:columns.status",
       sortable: true,
       cellRenderer: "statusBadge",
       filter: { kind: "enum", op: "eq", options: USER_STATUSES },
     },
     lastLoginAt: {
-      header: "Last login",
+      header: "users:columns.lastLoginAt",
       sortable: true,
       formatter: "dateTime",
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     createdAt: {
-      header: "Created",
+      header: "users:columns.createdAt",
       sortable: true,
       formatter: "date",
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     deletedAt: {
-      header: "Deleted",
+      header: "users:columns.deletedAt",
       /*
        * The visible mark ADR-0028's read path needs. A deleted account is
        * listed like any other and reports `status: "disabled"`, so without a
@@ -163,24 +167,27 @@ export const userResourceConfig = {
        * promising what the contract cannot keep (ADR-0035, amended D3.8).
        */
     },
-    actions: { header: "Actions", cellRenderer: "rowActions", align: "end" },
+    actions: {
+      header: "users:columns.actions",
+      cellRenderer: "rowActions",
+      align: "end",
+    },
   },
   fields: {
     email: {
-      label: "Email",
+      label: "users:fields.email.label",
       component: "input",
       props: { type: "email", autoComplete: "off" },
       variants: ["create"],
     },
     password: {
-      label: "Initial password",
+      label: "users:fields.password.label",
       component: "input",
       // `off`, never `new-password`: this box holds the new customer's
       // credential, not the operator's, and the browser must not offer to save
       // it as theirs. Same reasoning as the staff config records.
       props: { type: "password", autoComplete: "off" },
-      description:
-        "Hand this over out of band and ask them to change it. Nothing forces a change at first sign-in.",
+      description: "users:fields.password.description",
       variants: ["create"],
     },
     /*
@@ -199,22 +206,22 @@ export const userResourceConfig = {
      * express and blank there can only mean "not provided".
      */
     firstName: {
-      label: "First name",
+      label: "users:fields.firstName.label",
       component: "input",
       nullable: true,
       initialValue: null,
     },
     lastName: {
-      label: "Last name",
+      label: "users:fields.lastName.label",
       component: "input",
       nullable: true,
       initialValue: null,
     },
     status: {
-      label: "Status",
+      label: "users:fields.status.label",
       component: "select",
       options: USER_STATUSES,
-      placeholder: "Default (active)",
+      placeholder: "users:fields.status.placeholder",
       /*
        * `""` rather than a status: `createUserBody.status` is optional and the
        * service decides the default (ADR-0018 starts users `active`). An

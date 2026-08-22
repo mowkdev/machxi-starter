@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 
 import type { ApiClient } from "@/shared/api/client";
+import type { TranslationKey } from "@/shared/i18n";
 import {
   parseAdminSearch,
   stringifyAdminSearch,
@@ -51,7 +52,13 @@ declare module "@tanstack/react-router" {
    * and a typo is a compile error rather than a blank header.
    */
   interface StaticDataRouteOption {
-    title?: string;
+    /**
+     * A {@link TranslationKey} since `D7.4` (ADR-0046 §7), not a sentence: a
+     * route title is copy that travels as data, so it follows the same rule the
+     * resource configs and `meta.success` follow, and a typo is a compile error
+     * at the route rather than a raw `staff:titel` in the header.
+     */
+    title?: TranslationKey;
     /**
      * Whether this page is height-budgeted rather than document-flowed
      * (ADR-0037 §A height-budgeted grid shell). Grid pages opt in; a form

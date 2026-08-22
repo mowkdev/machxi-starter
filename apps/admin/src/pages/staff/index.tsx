@@ -11,6 +11,7 @@ import {
 } from "@/features/staff-manage";
 import { toListQuery } from "@/shared/api/list-params";
 import { useAllowedCapabilities } from "@/shared/auth";
+import { useT } from "@/shared/i18n";
 import { AppGrid } from "@/shared/grid/app-grid";
 import {
   useCarriedListState,
@@ -49,6 +50,7 @@ import {
  * the `<Link>` `D4.2` made it.
  */
 export const StaffPage = () => {
+  const { t } = useT("staff");
   const navigate = useNavigate();
   /*
    * The route's search, **or the snapshot a record surface is carrying**
@@ -96,10 +98,8 @@ export const StaffPage = () => {
   return (
     <Card className="min-h-0 flex-1">
       <CardHeader>
-        <CardTitle>Staff</CardTitle>
-        <CardDescription>
-          The operators who can reach this panel.
-        </CardDescription>
+        <CardTitle>{t("title")}</CardTitle>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
 
       {/*
@@ -147,7 +147,7 @@ export const StaffPage = () => {
            */
           gridId={staffResourceConfig.name}
           isFetching={staff.isFetching}
-          emptyMessage="No staff match this view."
+          emptyMessage="staff:empty"
           capabilities={capabilities}
           createAction={
             /*
@@ -166,7 +166,7 @@ export const StaffPage = () => {
             <Button asChild size="sm">
               <Link to="/staff/new" state={openState}>
                 <PlusIcon aria-hidden />
-                New staff member
+                {t("actions.create")}
               </Link>
             </Button>
           }

@@ -15,7 +15,7 @@ import { editSurfaceOf } from "@/shared/resource/config";
 export const Route = createFileRoute("/_dashboard/users/new")({
   component: CreateUserSurface,
   staticData: {
-    title: "New user",
+    title: "users:create.routeTitle",
     fullHeight: editSurfaceOf(userResourceConfig) !== "page",
   },
 });

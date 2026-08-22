@@ -28,8 +28,8 @@ import type { FieldConfigMap } from "@/shared/resource/types";
  * `null`.
  */
 export const profileFields = {
-  firstName: { label: "First name", component: "input" },
-  lastName: { label: "Last name", component: "input" },
+  firstName: { label: "profile:fields.firstName.label", component: "input" },
+  lastName: { label: "profile:fields.lastName.label", component: "input" },
 } as const satisfies FieldConfigMap;
 
 /**

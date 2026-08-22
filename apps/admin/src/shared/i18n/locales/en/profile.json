@@ -1,0 +1,43 @@
+{
+  "title": "Profile",
+  "account": {
+    "title": "Your account",
+    "description": "Your name is the only thing you can change here. Email, roles and status are somebody else's to set — an operator who could promote themselves would not need the guard that stops them."
+  },
+  "summary": {
+    "email": "Email",
+    "status": "Status",
+    "roles": "Roles",
+    "lastLogin": "Last sign-in"
+  },
+  "fields": {
+    "firstName": { "label": "First name" },
+    "lastName": { "label": "Last name" }
+  },
+  "save": "Save changes",
+  "password": {
+    "title": "Password",
+    "description": "Changing it signs out every other session and leaves this one signed in.",
+    "action": "Change password",
+    "note": "You will be asked for your current password. Your other devices stay signed out until they use the new one.",
+    "dialog": {
+      "title": "Change your password",
+      "description": "Signing out your other sessions is the point of a password change, so it is not optional. Nothing forces a change again afterwards.",
+      "submit": "Change password"
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Current password",
+        "description": "Required even though you are signed in — a stolen session must not be able to set a new password."
+      },
+      "newPassword": {
+        "label": "New password",
+        "description": "Every other session is signed out. This one stays signed in."
+      }
+    }
+  },
+  "outcomes": {
+    "updated": "Your profile was updated.",
+    "passwordChanged": "Your password was changed. Every other session was signed out; this one stays."
+  }
+}

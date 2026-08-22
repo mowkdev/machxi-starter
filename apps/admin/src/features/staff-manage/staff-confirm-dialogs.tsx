@@ -2,6 +2,7 @@ import type { StaffResource } from "@repo/contracts";
 
 import { useDeleteStaff, useRevokeStaffSessions } from "@/entities/staff";
 import type { BulkTarget } from "@/shared/api/bulk-outcome";
+import { useT } from "@/shared/i18n";
 import { ConfirmDialog } from "@/shared/ui";
 
 import { useBulkDeleteStaff } from "./use-bulk-delete-staff";
@@ -26,6 +27,7 @@ export const DeleteStaffDialog = ({
   readonly staff: StaffResource;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("staff");
   const deleteStaff = useDeleteStaff();
 
   return (
@@ -34,15 +36,15 @@ export const DeleteStaffDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Delete ${staff.email}?`}
+      title={t("delete.title", { email: staff.email })}
       /*
        * "Cannot be undone" is literally true for staff and would be a lie on
        * the users grid: staff are hard-deleted, the row goes and its role
        * grants cascade with it, while a user is soft-deleted and keeps its row
        * (ADR-0028). Two populations, two sentences.
        */
-      description="The account and its role grants are deleted outright. This cannot be undone."
-      confirmLabel="Delete"
+      description={t("delete.description")}
+      confirmLabel={t("delete.confirm")}
       destructive
       isPending={deleteStaff.isPending}
       onConfirm={() => {
@@ -76,6 +78,7 @@ export const BulkDeleteStaffDialog = ({
   readonly onSettled: () => void;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("staff");
   const bulkDelete = useBulkDeleteStaff();
 
   /*
@@ -96,9 +99,9 @@ export const BulkDeleteStaffDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Delete ${ids.length} staff ${ids.length === 1 ? "account" : "accounts"}?`}
-      description="The accounts and their role grants are deleted outright. This cannot be undone. Some may be refused — the last super admin, an account that outranks you, or your own — and you will be told which."
-      confirmLabel="Delete"
+      title={t("bulkDelete.title", { count: ids.length })}
+      description={t("bulkDelete.description")}
+      confirmLabel={t("bulkDelete.confirm")}
       destructive
       isPending={bulkDelete.isPending}
       onConfirm={() => {
@@ -126,6 +129,7 @@ export const RevokeStaffSessionsDialog = ({
   readonly staff: StaffResource;
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("staff");
   const revokeSessions = useRevokeStaffSessions();
 
   return (
@@ -134,9 +138,9 @@ export const RevokeStaffSessionsDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Sign ${staff.email} out everywhere?`}
-      description="Every session of this account ends immediately. The account itself is unchanged and they can sign in again."
-      confirmLabel="Sign out everywhere"
+      title={t("revokeSessions.title", { email: staff.email })}
+      description={t("revokeSessions.description")}
+      confirmLabel={t("revokeSessions.confirm")}
       isPending={revokeSessions.isPending}
       onConfirm={() => {
         revokeSessions.mutate(staff.id, { onSuccess: onClose });

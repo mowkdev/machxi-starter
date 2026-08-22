@@ -1,3 +1,5 @@
+import { dynamicKey, type TranslateKey } from "@/shared/i18n";
+
 import type {
   ColumnConfig,
   ColumnConfigMap,
@@ -28,9 +30,14 @@ export interface ResolvedOption {
  * `super_admin` → `Super admin`.
  *
  * Resource-agnostic on purpose (ADR-0032 keeps domain knowledge out of
- * `shared`): it is a rule about snake_case identifiers, not about roles. A
- * config whose label needs to differ from this says so with the object form of
- * {@link OptionConfig}.
+ * `shared`): it is a rule about snake_case identifiers, not about roles.
+ *
+ * **Since `D7.4` it is the fallback rather than the answer**: it is what
+ * {@link optionLabel} passes as `defaultValue`, so an enum member with no
+ * catalogue entry renders exactly what it rendered before D7 instead of a raw
+ * key. That keeps the failure mode of a value added to `@repo/contracts` the
+ * one it has always been — a plausible English word in grey — rather than a new
+ * one.
  */
 export const humanize = (value: string): string => {
   const spaced = value.replace(/[_-]+/g, " ").trim();
@@ -40,14 +47,55 @@ export const humanize = (value: string): string => {
     : spaced.charAt(0).toUpperCase() + spaced.slice(1);
 };
 
-export const resolveOption = (option: OptionConfig): ResolvedOption =>
+/**
+ * The words for an enum value, from `common:options.<value>` (ADR-0046 §7).
+ *
+ * **One catalogue block for the whole app, not one per resource**, and the
+ * reason is that this is also the answer for the two renderers that have no
+ * config at all: `StatusBadge` and `RolesList` receive a cell value and
+ * nothing else (`shared/grid/cells.tsx`), so a per-config label map could not
+ * reach them and the staff grid would read `Active` in a Latvian panel. The
+ * values themselves — `active`, `super_admin` — are app-wide vocabulary that
+ * belongs to no single slice, which is what `common` is.
+ *
+ * The key is composed at runtime, which is the one thing D7 admits doing:
+ * spelling the members out in each config would copy the contracts tuple that
+ * ADR-0023 declares once. See `dynamicKey` for the cost that carries into
+ * `D7.6`.
+ */
+export const optionLabel = (t: TranslateKey, value: string): string =>
+  t(dynamicKey(`common:options.${value}`), { defaultValue: humanize(value) });
+
+/**
+ * The values a config's options name, with no words attached.
+ *
+ * Pure, and separated from {@link resolveOptions} at `D7.4` because the two
+ * questions stopped being one: "which values may this control write" is
+ * answered by the contract and asserted in every config test, and "what do they
+ * say on screen" needs a translator. Anything that only needs the first — the
+ * hot filters' pressed-state maths, the config-versus-contract suites — takes
+ * this and stays a pure function.
+ */
+export const optionValues = (
+  options: readonly OptionConfig[] | undefined,
+): readonly string[] =>
+  (options ?? []).map((option) =>
+    typeof option === "string" ? option : option.value,
+  );
+
+export const resolveOption = (
+  option: OptionConfig,
+  t: TranslateKey,
+): ResolvedOption =>
   typeof option === "string"
-    ? { value: option, label: humanize(option) }
-    : option;
+    ? { value: option, label: optionLabel(t, option) }
+    : { value: option.value, label: t(option.label) };
 
 export const resolveOptions = (
   options: readonly OptionConfig[] | undefined,
-): readonly ResolvedOption[] => (options ?? []).map(resolveOption);
+  t: TranslateKey,
+): readonly ResolvedOption[] =>
+  (options ?? []).map((option) => resolveOption(option, t));
 
 /**
  * A resource's columns with a usage's overrides applied, in declaration order,

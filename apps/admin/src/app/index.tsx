@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { useT } from "@/shared/i18n";
+import { createDeferredTranslate, useKeyT, useT } from "@/shared/i18n";
 import { createDeferredErrorMessage } from "@/shared/notifications/messages";
 import { AppLoader } from "@/shared/ui";
 
@@ -49,8 +49,15 @@ import "./styles.css";
  * so the suite gets its own per render.
  */
 const errorMessages = createDeferredErrorMessage();
+/*
+ * The same wire, for the same handler, one field along (`D7.4`): a mutation's
+ * `meta.success` is a key now, and the cache that turns it into a toast is
+ * built here — beside the deferred error lookup and for the identical reason.
+ */
+const outcomes = createDeferredTranslate();
 const queryClient = createQueryClient({
   messageForError: errorMessages.messageForError,
+  translate: outcomes.translate,
 });
 
 /**
@@ -62,12 +69,17 @@ const queryClient = createQueryClient({
  * mounted here is already under the instance. Rendering nothing is the whole of
  * its output.
  */
-const BindErrorMessages = () => {
+const BindTranslations = () => {
   const { t } = useT("errors");
+  const tk = useKeyT();
 
   useEffect(() => {
     errorMessages.bind(t);
   }, [t]);
+
+  useEffect(() => {
+    outcomes.bind(tk);
+  }, [tk]);
 
   return null;
 };
@@ -76,7 +88,7 @@ const App = () => (
   <SessionProvider fallback={<AppLoader />}>
     <QueryClientProvider client={queryClient}>
       <SettingsProvider fallback={<AppLoader />}>
-        <BindErrorMessages />
+        <BindTranslations />
         {/*
          * The design system's six strings, fed from `common` (`D7.3`,
          * ADR-0046 §12). Inside `SettingsProvider` because that is where

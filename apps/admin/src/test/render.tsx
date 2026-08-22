@@ -14,10 +14,18 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { EN_RESOURCES, NAMESPACES, createI18n, type I18n } from "@/shared/i18n";
+import {
+  EN_RESOURCES,
+  NAMESPACES,
+  createI18n,
+  type I18n,
+  type TranslateKey,
+} from "@/shared/i18n";
 import { createMessageForError } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
 import { Toaster } from "@/shared/ui";
+
+import demoCatalogue from "./fixtures/demo-catalogue.json";
 
 /**
  * The two ways this app is rendered under test (ADR-0036).
@@ -53,11 +61,33 @@ import { Toaster } from "@/shared/ui";
  * failure rather than a blank.
  */
 export const createTestI18n = (locale: Locale = "en"): I18n =>
-  createI18n({
-    resources: { en: EN_RESOURCES },
-    namespaces: NAMESPACES,
-    locale,
-  });
+  withDemoCatalogue(
+    createI18n({
+      resources: { en: EN_RESOURCES },
+      namespaces: NAMESPACES,
+      locale,
+    }),
+  );
+
+/**
+ * The demo fixture's namespace, added to an instance after it is built
+ * (`D7.4`).
+ *
+ * This is `register(i18n)` from ADR-0046 §13 in miniature, and it is here for
+ * the reason the ADR gives: a package — and a fixture — **declares** strings
+ * and never owns the app's dictionary. `createI18n` takes the app's ten
+ * namespaces and knows nothing about `demo:`; the harness adds the bundle,
+ * exactly as D8's extracted packages will add theirs.
+ *
+ * `en` only, and that is honest rather than lazy: the fixture exists to prove
+ * the machinery renders what a config declares, and the machinery does not care
+ * which language it is.
+ */
+const withDemoCatalogue = (i18n: I18n): I18n => {
+  i18n.instance.addResourceBundle("en", "demo", demoCatalogue);
+
+  return i18n;
+};
 
 export interface ProviderOptions {
   readonly store?: SessionStore;
@@ -96,11 +126,13 @@ const providers = ({
   // One instance per render, from the same factory the app calls: a test
   // that switched the locale must not leave the next one in Latvian, which
   // a module-level singleton could not promise (ADR-0046 §13).
-  const i18n = createI18n({
-    resources: { en: EN_RESOURCES },
-    namespaces: NAMESPACES,
-    locale,
-  });
+  const i18n = withDemoCatalogue(
+    createI18n({
+      resources: { en: EN_RESOURCES },
+      namespaces: NAMESPACES,
+      locale,
+    }),
+  );
 
   return {
     store: sessionStore,
@@ -123,6 +155,12 @@ const providers = ({
         messageForError: createMessageForError(
           i18n.instance.getFixedT(null, "errors"),
         ),
+        /*
+         * And the outcome sentences with them (`D7.4`): `meta.success` is a
+         * key, so a suite whose client had no translator would assert raw
+         * `staff:outcomes.created` in every success toast.
+         */
+        translate: i18n.instance.t as TranslateKey,
       }),
     i18n,
   };

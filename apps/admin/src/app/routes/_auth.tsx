@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_auth")({
 
 function AuthShell() {
   return (
-    <AuthLayout title={useRouteTitle("Sign in")}>
+    <AuthLayout title={useRouteTitle("auth:title")}>
       <Outlet />
     </AuthLayout>
   );

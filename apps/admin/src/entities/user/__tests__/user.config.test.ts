@@ -5,7 +5,8 @@ import {
 } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
-import { fieldsForVariant, resolveOptions } from "@/shared/resource/config";
+import { EN_RESOURCES, NAMESPACES, createI18n } from "@/shared/i18n";
+import { fieldsForVariant, optionValues } from "@/shared/resource/config";
 import type {
   ColumnConfigMap,
   GridConfig,
@@ -48,13 +49,10 @@ const wireFilterFor = (
           filter.op === "like" ? { like: "%cara%" } : "cara@example.test",
       };
     case "enum": {
-      const [first] = resolveOptions(filter.options);
+      const [first] = optionValues(filter.options);
 
       return {
-        [field]:
-          filter.op === "eq"
-            ? (first?.value ?? "")
-            : { in: first?.value ?? "" },
+        [field]: filter.op === "eq" ? (first ?? "") : { in: first ?? "" },
       };
     }
     case "dateRange":
@@ -231,13 +229,13 @@ describe("the users form config against the request bodies", () => {
 /** A value the contract accepts for a field, chosen from the config's options. */
 const sampleFor = (name: string): unknown => {
   const field = fields[name];
-  const options = resolveOptions(field?.options);
+  const options = optionValues(field?.options);
 
   switch (field?.component) {
     case "multiCheckbox":
-      return [options[0]?.value ?? ""];
+      return [options[0] ?? ""];
     case "select":
-      return options[0]?.value ?? "";
+      return options[0] ?? "";
     default:
       return name === "email"
         ? "new.customer@example.test"
@@ -296,11 +294,10 @@ const wireHotFilterFor = (config: HotFilterConfig): Record<string, unknown> => {
   if (config.kind === "presence")
     return { [config.field]: { null: String(config.value) } };
 
-  const [first] = resolveOptions(config.options);
+  const [first] = optionValues(config.options);
 
   return {
-    [config.field]:
-      config.op === "eq" ? (first?.value ?? "") : { in: first?.value ?? "" },
+    [config.field]: config.op === "eq" ? (first ?? "") : { in: first ?? "" },
   };
 };
 
@@ -343,15 +340,73 @@ describe("the users hot filters against listUsersQuery", () => {
     for (const config of hotFilters) {
       if (config.kind !== "enum") continue;
 
-      for (const option of resolveOptions(config.options)) {
+      for (const option of optionValues(config.options)) {
         // Through the same builder the case above uses, so an `in` group is
         // probed as `in` rather than silently as the `eq` shorthand.
         const parsed = listUsersQuery.safeParse({
-          filter: wireHotFilterFor({ ...config, options: [option.value] }),
+          filter: wireHotFilterFor({ ...config, options: [option] }),
         });
 
-        expect(parsed.success, `${config.field} = ${option.value}`).toBe(true);
+        expect(parsed.success, `${config.field} = ${option}`).toBe(true);
       }
     }
+  });
+});
+
+describe("the users config's copy is keys, and the keys resolve", () => {
+  /*
+   * The compiler owns most of this: `header`, `label`, `description`,
+   * `placeholder` and a hot filter's `label` are `TranslationKey`s since
+   * `D7.4`, so a misspelled key is a failed `check-types` at the line that
+   * wrote it (asserted below with `@ts-expect-error`, which is how this file
+   * already asserts the registry keys).
+   *
+   * What it does **not** own is `common:options.<value>`: that key is composed
+   * at runtime from the contracts tuple, deliberately, so that a config never
+   * restates an enum ADR-0023 declares once — and a value with no catalogue
+   * entry degrades silently to `humanize`, which is a plausible English word
+   * and therefore the kind of gap a review reads straight past. So it gets a
+   * test.
+   */
+  const t = createI18n({
+    resources: { en: EN_RESOURCES },
+    namespaces: NAMESPACES,
+    locale: "en",
+  }).instance.getFixedT(null, "common");
+
+  const declaredOptions = [
+    ...new Set(
+      [
+        ...userResourceConfig.grid.hotFilters.flatMap((config) =>
+          config.kind === "enum" ? optionValues(config.options) : [],
+        ),
+        ...Object.values(fields).flatMap((field) =>
+          optionValues(field.options),
+        ),
+        ...Object.values(columns).flatMap((column) =>
+          column.filter?.kind === "enum"
+            ? optionValues(column.filter.options)
+            : [],
+        ),
+      ].flat(),
+    ),
+  ];
+
+  it.each(declaredOptions)("catalogues the option label for `%s`", (value) => {
+    expect(t(`options.${value}` as "options.active")).not.toBe(
+      `options.${value}`,
+    );
+  });
+
+  it("makes a misspelled key a compile error rather than a blank header", () => {
+    const typo = {
+      email: {
+        // @ts-expect-error `colums` — the property `TranslationKey` exists to
+        // buy, and `pnpm check-types` is what asserts it (ADR-0046 §7).
+        header: "users:colums.email",
+      },
+    } satisfies ColumnConfigMap;
+
+    expect(Object.keys(typo)).toHaveLength(1);
   });
 });

@@ -67,7 +67,7 @@ export const useUpdateProfile = () => {
 
   return useMutation({
     mutationFn: (body: UpdateStaffProfileBody) => api.update(body),
-    meta: { ...FORM_MUTATION_META, success: "Your profile was updated." },
+    meta: { ...FORM_MUTATION_META, success: "profile:outcomes.updated" },
     onSuccess: (profile) => {
       void queryClient.invalidateQueries({ queryKey: profileKeys.all });
       // The account whose name is in the sidebar footer is this one, and it
@@ -105,8 +105,7 @@ export const useChangePassword = () => {
     mutationFn: (body: ChangePasswordBody) => api.changePassword(body),
     meta: {
       ...FORM_MUTATION_META,
-      success:
-        "Your password was changed. Every other session was signed out; this one stays.",
+      success: "profile:outcomes.passwordChanged",
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: profileKeys.all });

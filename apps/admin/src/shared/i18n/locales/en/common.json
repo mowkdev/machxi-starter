@@ -26,6 +26,17 @@
   "loading": {
     "starting": "Starting…"
   },
+  "options": {
+    "active": "Active",
+    "invited": "Invited",
+    "disabled": "Disabled",
+    "pending_verification": "Pending verification",
+    "super_admin": "Super admin",
+    "admin": "Admin",
+    "manager": "Manager",
+    "editor": "Editor",
+    "customer": "Customer"
+  },
   "record": {
     "errorTitle": "That record could not be opened",
     "errorDescription": "It may have been deleted, or the address may be wrong."

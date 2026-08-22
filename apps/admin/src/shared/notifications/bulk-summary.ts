@@ -1,6 +1,5 @@
-import type { TFunction } from "i18next";
-
 import type { BulkOutcome } from "@/shared/api/bulk-outcome";
+import type { TranslateKey, TranslationKey } from "@/shared/i18n";
 
 /**
  * A bulk outcome as the one sentence an operator reads (ADR-0038, ADR-0034).
@@ -26,34 +25,43 @@ export interface BulkSummary {
 }
 
 /**
- * `noun` is the resource's singular ("staff account", "user account"), because
- * the two populations differ in what deletion *means* (ADR-0028: staff hard,
- * users soft) and the copy should not pretend otherwise.
+ * `noun` is a **key** into the resource's own namespace (`staff:noun`,
+ * `users:noun`) rather than a word, which is `D7.4` closing the half-answer
+ * `D7.2` left recorded here.
  *
- * **Its plural belongs to the catalogue, not to this function** (`D7.2`). The
- * `${noun}s` that used to live here is English grammar written in TypeScript;
- * `grid:bulk.deleted` now carries `_one` and `_other` forms and forms the
- * plural inside the sentence, which is the only place a locale with different
- * rules can answer differently. It is a partial answer and the plan should know
- * it: a language that *declines* the noun — Latvian does — needs the noun
- * itself in three forms, and the noun is still a caller's string here. `D7.4`
- * turns it into a key, which is what closes that.
+ * The two populations differ in what deletion *means* (ADR-0028: staff hard,
+ * users soft), so the noun has always been the caller's. What changed twice is
+ * where its **plural** comes from. `D7.2` moved the English `${noun}s` out of
+ * this function and into `grid:bulk.deleted`'s `_one` / `_other` forms — which
+ * pluralises the sentence and leaves the noun inside it singular, and is
+ * therefore wrong for any language that declines. So the noun is now resolved
+ * *with the same count* in its own namespace, where it carries its own plural
+ * categories: `t("staff:noun", { count })` is `staff account` at one and
+ * `staff accounts` at three, and a Latvian catalogue can answer with three
+ * forms because `_zero` / `_one` / `_other` is grammar rather than style.
+ *
+ * `t` is the app-wide translator for the same reason: this module's own keys
+ * are `grid:`, the noun's is the resource's, and `shared/notifications` may
+ * name neither resource (ADR-0032).
  */
 export const summariseBulk = (
   outcome: BulkOutcome,
-  noun: string,
-  t: TFunction<"grid">,
+  noun: TranslationKey,
+  t: TranslateKey,
 ): BulkSummary => {
   const { deleted, refused, unattempted } = outcome;
 
   if (refused.length === 0 && unattempted.length === 0)
     return {
       tone: "success",
-      headline: t("bulk.deleted", { count: deleted.length, noun }),
+      headline: t("grid:bulk.deleted", {
+        count: deleted.length,
+        noun: t(noun, { count: deleted.length }),
+      }),
     };
 
   const lines = refused.map((item) =>
-    t("bulk.refusal", { label: item.label, message: item.message }),
+    t("grid:bulk.refusal", { label: item.label, message: item.message }),
   );
 
   /*
@@ -64,20 +72,20 @@ export const summariseBulk = (
    * operator hunting for a permission problem that does not exist.
    */
   if (unattempted.length > 0)
-    lines.push(t("bulk.unattemptedLine", { count: unattempted.length }));
+    lines.push(t("grid:bulk.unattemptedLine", { count: unattempted.length }));
 
-  const parts = [t("bulk.partDeleted", { count: deleted.length })];
+  const parts = [t("grid:bulk.partDeleted", { count: deleted.length })];
 
   if (refused.length > 0)
-    parts.push(t("bulk.partRefused", { count: refused.length }));
+    parts.push(t("grid:bulk.partRefused", { count: refused.length }));
   if (unattempted.length > 0)
-    parts.push(t("bulk.partUnattempted", { count: unattempted.length }));
+    parts.push(t("grid:bulk.partUnattempted", { count: unattempted.length }));
 
   return {
     // Nothing deleted is a failure; a mixed result is not, and calling it one
     // would tell an operator to undo work that succeeded.
     tone: deleted.length === 0 ? "error" : "warning",
-    headline: t("bulk.headline", { parts: parts.join(", ") }),
+    headline: t("grid:bulk.headline", { parts: parts.join(", ") }),
     description: lines.join("\n"),
   };
 };

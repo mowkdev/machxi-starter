@@ -11,6 +11,7 @@ import {
   userResourceConfig,
 } from "@/entities/user";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
+import { useT } from "@/shared/i18n";
 import { applyServerErrors } from "@/shared/form/server-errors";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
@@ -152,6 +153,7 @@ const resolver: Resolver<CreateUserFormValues, unknown, CreateUserBody> = (
   );
 
 export const CreateUserSurface = () => {
+  const { t } = useT("users");
   const navigate = useNavigate();
   const { closeSearch } = useRecordNavigation();
 
@@ -203,14 +205,14 @@ export const CreateUserSurface = () => {
     <AppFormSurface
       surface={editSurfaceOf(userResourceConfig)}
       onClose={close}
-      title="New user"
-      description="They can sign in as soon as this is saved."
+      title={t("create.title")}
+      description={t("create.description")}
       form={form}
       fields={userResourceConfig.fields}
       variant="create"
       onSubmit={onSubmit}
       isPending={createUser.isPending}
-      submitLabel="Create"
+      submitLabel={t("create.submit")}
     >
       <UserFormInput fieldName="email" />
       <UserFormInput fieldName="password" />

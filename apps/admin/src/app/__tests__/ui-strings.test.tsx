@@ -46,7 +46,24 @@ const withLatvian = (): I18n =>
   createI18n({
     resources: {
       en: EN_RESOURCES,
-      lv: { common: { ui: LV_UI }, grid: {}, form: {}, errors: {} },
+      /*
+       * Every namespace, empty but for the two strings under test: `Catalogue`
+       * is `Record<Namespace, object>`, and `D7.4` took the namespace count
+       * from four to ten. The empty ones are what a partly-translated locale
+       * looks like, which is the state this test is about.
+       */
+      lv: {
+        common: { ui: LV_UI },
+        grid: {},
+        form: {},
+        errors: {},
+        auth: {},
+        dashboard: {},
+        profile: {},
+        staff: {},
+        users: {},
+        settings: {},
+      },
     },
     namespaces: NAMESPACES,
     locale: "en",

@@ -11,6 +11,7 @@ import { useSession } from "@/shared/api/context";
 import { AppFormDialog } from "@/shared/form/app-form-dialog";
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import { applyServerErrors } from "@/shared/form/server-errors";
+import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import type { FieldConfigMap } from "@/shared/resource/types";
 
@@ -35,15 +36,14 @@ import { useInvalidateOwnStaffRow } from "./use-invalidate-own-staff-row";
  */
 export const changePasswordFields = {
   currentPassword: {
-    label: "Current password",
+    label: "profile:password.fields.currentPassword.label",
     component: "input",
     // The one thing here that a password manager should offer to fill.
     props: { type: "password", autoComplete: "current-password" },
-    description:
-      "Required even though you are signed in — a stolen session must not be able to set a new password.",
+    description: "profile:password.fields.currentPassword.description",
   },
   newPassword: {
-    label: "New password",
+    label: "profile:password.fields.newPassword.label",
     component: "input",
     /*
      * `new-password`, and the contrast with the two reset forms is the point.
@@ -53,7 +53,7 @@ export const changePasswordFields = {
      * person typing it, so offering to save it is the browser doing its job.
      */
     props: { type: "password", autoComplete: "new-password" },
-    description: "Every other session is signed out. This one stays signed in.",
+    description: "profile:password.fields.newPassword.description",
   },
 } as const satisfies FieldConfigMap;
 
@@ -74,6 +74,7 @@ export const ChangePasswordDialog = ({
 }: {
   readonly onClose: () => void;
 }) => {
+  const { t } = useT("profile");
   const changePassword = useChangePassword();
   const messageForError = useMessageForError();
   const invalidateOwnStaffRow = useInvalidateOwnStaffRow();
@@ -109,14 +110,14 @@ export const ChangePasswordDialog = ({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title="Change your password"
-      description="Signing out your other sessions is the point of a password change, so it is not optional. Nothing forces a change again afterwards."
+      title={t("password.dialog.title")}
+      description={t("password.dialog.description")}
       form={form}
       fields={changePasswordFields}
       variant="action"
       onSubmit={onSubmit}
       isPending={changePassword.isPending}
-      submitLabel="Change password"
+      submitLabel={t("password.dialog.submit")}
     >
       {/*
        * The identity anchor a password manager needs (D3.9 review). Two

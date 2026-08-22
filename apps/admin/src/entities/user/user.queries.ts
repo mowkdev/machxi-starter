@@ -69,7 +69,7 @@ export const useCreateUser = () => {
     // The body carries the new account's initial password.
     ...CREDENTIAL_MUTATION,
     mutationFn: (body: CreateUserBody) => api.create(body),
-    meta: { ...FORM_MUTATION_META, success: "The user was created." },
+    meta: { ...FORM_MUTATION_META, success: "users:outcomes.created" },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
     },
@@ -83,7 +83,7 @@ export const useUpdateUser = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateUserBody }) =>
       api.update(id, body),
-    meta: { ...FORM_MUTATION_META, success: "The user was updated." },
+    meta: { ...FORM_MUTATION_META, success: "users:outcomes.updated" },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
       void queryClient.invalidateQueries({ queryKey: userKeys.detail(id) });
@@ -108,8 +108,7 @@ export const useSetUserPassword = () => {
       api.setPassword(id, body),
     meta: {
       ...FORM_MUTATION_META,
-      success:
-        "The password was reset and every session of that account was signed out.",
+      success: "users:outcomes.passwordReset",
     },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
@@ -130,7 +129,7 @@ export const useRevokeUserSessions = () => {
 
   return useMutation({
     mutationFn: (id: string) => api.revokeSessions(id),
-    meta: { success: "Every session of that account was signed out." },
+    meta: { success: "users:outcomes.sessionsRevoked" },
   });
 };
 
@@ -146,7 +145,7 @@ export const useDeleteUser = () => {
 
   return useMutation({
     mutationFn: (id: string) => api.remove(id),
-    meta: { success: "The user was deleted." },
+    meta: { success: "users:outcomes.deleted" },
     onSuccess: (_data, id) => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
       void queryClient.invalidateQueries({ queryKey: userKeys.detail(id) });

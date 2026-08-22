@@ -76,7 +76,7 @@ export const staffResourceConfig = {
       {
         kind: "enum",
         field: "status",
-        label: "Status",
+        label: "staff:filters.status",
         op: "eq",
         options: STAFF_STATUSES,
       },
@@ -84,7 +84,7 @@ export const staffResourceConfig = {
   },
   columns: {
     email: {
-      header: "Email",
+      header: "staff:columns.email",
       sortable: true,
       /*
        * `like` and not `eq`: `filterable.email.value` is `emailSchema`, so an
@@ -94,13 +94,17 @@ export const staffResourceConfig = {
        * before wrapping it, which is the half a UI writing the pattern on the
        * operator's behalf owes them.
        */
-      filter: { kind: "text", op: "like", placeholder: "Contains…" },
+      filter: {
+        kind: "text",
+        op: "like",
+        placeholder: "grid:filter.containsPlaceholder",
+      },
     },
-    firstName: { header: "First name", sortable: true },
-    lastName: { header: "Last name", sortable: true },
-    roles: { header: "Roles", cellRenderer: "rolesList" },
+    firstName: { header: "staff:columns.firstName", sortable: true },
+    lastName: { header: "staff:columns.lastName", sortable: true },
+    roles: { header: "staff:columns.roles", cellRenderer: "rolesList" },
     status: {
-      header: "Status",
+      header: "staff:columns.status",
       sortable: true,
       cellRenderer: "statusBadge",
       // `eq` rather than the `in` the contract also allows: the control is a
@@ -109,28 +113,32 @@ export const staffResourceConfig = {
       filter: { kind: "enum", op: "eq", options: STAFF_STATUSES },
     },
     lastLoginAt: {
-      header: "Last login",
+      header: "staff:columns.lastLoginAt",
       sortable: true,
       formatter: "dateTime",
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     createdAt: {
-      header: "Created",
+      header: "staff:columns.createdAt",
       sortable: true,
       formatter: "date",
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
-    actions: { header: "Actions", cellRenderer: "rowActions", align: "end" },
+    actions: {
+      header: "staff:columns.actions",
+      cellRenderer: "rowActions",
+      align: "end",
+    },
   },
   fields: {
     email: {
-      label: "Email",
+      label: "staff:fields.email.label",
       component: "input",
       props: { type: "email", autoComplete: "off" },
       variants: ["create"],
     },
     password: {
-      label: "Initial password",
+      label: "staff:fields.password.label",
       component: "input",
       /*
        * `autoComplete: "off"` and deliberately **not** `"new-password"`.
@@ -151,22 +159,28 @@ export const staffResourceConfig = {
        * of not building a forced change: an administrator-set password stays
        * valid until its holder changes it, so somebody has to ask them to.
        */
-      description:
-        "Hand this over out of band and ask them to change it. Nothing forces a change at first sign-in.",
+      description: "staff:fields.password.description",
       variants: ["create"],
     },
-    firstName: { label: "First name", component: "input", initialValue: "" },
-    lastName: { label: "Last name", component: "input", initialValue: "" },
+    firstName: {
+      label: "staff:fields.firstName.label",
+      component: "input",
+      initialValue: "",
+    },
+    lastName: {
+      label: "staff:fields.lastName.label",
+      component: "input",
+      initialValue: "",
+    },
     roles: {
-      label: "Roles",
+      label: "staff:fields.roles.label",
       component: "multiCheckbox",
       options: STAFF_ROLES,
       initialValue: ["editor"],
-      description:
-        "At least one. Granting super admin is refused unless you are one.",
+      description: "staff:fields.roles.description",
     },
     status: {
-      label: "Status",
+      label: "staff:fields.status.label",
       component: "select",
       options: STAFF_STATUSES,
       variants: ["edit"],

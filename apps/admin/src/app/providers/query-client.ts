@@ -1,6 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 
 import { isApiClientError } from "@/shared/api/api-error";
+import { englishTranslation, type TranslateKey } from "@/shared/i18n";
 import {
   englishMessageForError,
   type ErrorMessage,
@@ -31,12 +32,21 @@ import { toast } from "@/shared/ui";
  * *suppression* that has to be asked for, by a form that will show the error
  * next to the field it belongs to.
  */
-export const createNotifyingMutationCache = (messageForError: ErrorMessage) =>
+export const createNotifyingMutationCache = (
+  messageForError: ErrorMessage,
+  translate: TranslateKey,
+) =>
   new MutationCache({
     onSuccess: (_data, _variables, _context, mutation) => {
       const success = mutation.meta?.success;
 
-      if (success !== undefined) toast.success(success);
+      /*
+       * `meta.success` is a key since `D7.4` (ADR-0046 §7), so the one place
+       * that delivers an outcome is also the one place that resolves it —
+       * which is the whole of what the ADR-0043 follow-up asked for: the
+       * field's type narrowed, and nothing about who reads `meta` moved.
+       */
+      if (success !== undefined) toast.success(translate(success));
     },
     onError: (error, _variables, _context, mutation) => {
       if (mutation.meta?.errorToast === false) return;
@@ -78,10 +88,20 @@ export interface QueryClientOptions {
    * builds its own client gets.
    */
   readonly messageForError?: ErrorMessage;
+  /**
+   * How a mutation's `meta.success` key becomes a sentence (`D7.4`).
+   *
+   * The sibling of `messageForError` and deferred for the identical reason:
+   * this factory runs at the composition root, before the i18next instance
+   * exists. The default is the eagerly bundled English catalogue, which is what
+   * the app would show anyway in the window before the provider mounts.
+   */
+  readonly translate?: TranslateKey;
 }
 
 export const createQueryClient = ({
   messageForError = englishMessageForError,
+  translate = englishTranslation,
 }: QueryClientOptions = {}): QueryClient =>
   new QueryClient({
     defaultOptions: {
@@ -120,6 +140,6 @@ export const createQueryClient = ({
        */
       mutations: { retry: false },
     },
-    mutationCache: createNotifyingMutationCache(messageForError),
+    mutationCache: createNotifyingMutationCache(messageForError, translate),
     queryCache: createNotifyingQueryCache(messageForError),
   });
