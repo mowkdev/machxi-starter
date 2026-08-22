@@ -2,28 +2,39 @@
  * review-step — the close-out review of one plan step, as a workflow.
  *
  * What /plan-step step 5 does by hand, orchestrated: the architecture and
- * security reviewers run **concurrently** with the fast gate, every finding
- * is then handed to an independent refuter before it reaches the report, and
+ * security reviewers run **concurrently** with the gate, every finding is
+ * then handed to an independent refuter before it reaches the report, and
  * what comes back is one ranked list plus the gate's verdict — not three
  * transcripts to reconcile.
  *
- * Invoke (opt-in, like every workflow):
- *   Workflow({ name: "review-step" })
- *   Workflow({ name: "review-step", args: { range: "main...HEAD" } })
- *   Workflow({ name: "review-step", args: { range: "HEAD", gate: "full", security: true } })
+ * Invoke (opt-in, like every workflow; by scriptPath — the name registry has
+ * been seen stale for repo-authored scripts):
+ *   Workflow({ scriptPath: ".claude/workflows/review-step.mjs" })
+ *   Workflow({ scriptPath: "…", args: { range: "main...HEAD" } })
+ *   Workflow({ scriptPath: "…", args: { range: "HEAD", gate: "full", security: true } })
  *
  * args (all optional):
  *   range     git diff range the reviewers read. Default "HEAD" — everything
  *             uncommitted, staged or not, which is what a step in flight is.
- *   gate      "check" (default: pnpm check, cached fast loop) | "full"
- *             (lint + check-types + test, needs Postgres) | "none".
+ *   gate      "auto" (default) — the scout picks the ADR-0026 tier: "full"
+ *             (lint + check-types + test, needs Postgres) when apps/api,
+ *             packages/db, packages/contracts, turbo.json or a lockfile is
+ *             touched, else "check" (the cached fast loop). Or force
+ *             "full" | "check" | "none".
  *   security  true | false | undefined. Undefined lets the scout decide from
  *             the touched paths (core, auth, middleware, config, admin
  *             endpoints, session code — ADR-0018/0019/0020 territory).
+ *   depth     "auto" (default) — a small, non-API, non-security diff gets one
+ *             refuter lens per finding; anything else gets two lenses on
+ *             BLOCKER/MAJOR. Or force "light" | "full".
  *
- * Agent budget: 1 scout + 1 gate + up to 2 reviewers + one refuter per
- * finding (two for BLOCKER/MAJOR), capped at 12 verifications — under the
- * repo's 15-agent guideline for a typical step, and logged when the cap bites.
+ * Returns { range, files, securityReviewed, gate, gateTier, small, confirmed,
+ * refuted, unverified, reviewerVerdicts } — fields are only ever added, so a
+ * caller written against an older shape keeps working.
+ *
+ * Agent budget: 1 scout (low) + 1 gate (haiku) + 1–2 reviewers + one refuter
+ * per finding (two for BLOCKER/MAJOR at full depth), capped at 12
+ * verifications and logged when the cap bites.
  */
 export const meta = {
   name: "review-step",
@@ -32,28 +43,48 @@ export const meta = {
   whenToUse:
     "At /plan-step step 5, or before a commit that touches apps/api/src/core, auth, shared packages or shared/ machinery in apps/admin",
   phases: [
-    { title: "Scout", detail: "touched files, security relevance" },
+    {
+      title: "Scout",
+      detail: "touched files, size, gate tier, security relevance",
+    },
     {
       title: "Review",
       detail: "adr-reviewer, security-reviewer, gate — concurrently",
     },
     {
       title: "Verify",
-      detail: "one refuter per finding, two for BLOCKER/MAJOR",
+      detail: "one refuter per finding, two for BLOCKER/MAJOR at full depth",
     },
     { title: "Report", detail: "ranked findings + gate verdict" },
   ],
 };
 
 const range = (args && args.range) || "HEAD";
-const gateMode = (args && args.gate) || "check";
+const gateArg = (args && args.gate) || "auto";
 const securityArg = args ? args.security : undefined;
+const depthArg = (args && args.depth) || "auto";
 
 const SCOUT_SCHEMA = {
   type: "object",
-  required: ["files", "securityRelevant", "reason"],
+  required: [
+    "files",
+    "linesChanged",
+    "touchesApi",
+    "securityRelevant",
+    "reason",
+  ],
   properties: {
     files: { type: "array", items: { type: "string" } },
+    linesChanged: {
+      type: "integer",
+      description:
+        "insertions + deletions from `git diff --stat`, plus the line counts of untracked files",
+    },
+    touchesApi: {
+      type: "boolean",
+      description:
+        "true if any touched path is under apps/api/, packages/db/, packages/contracts/, or is turbo.json / pnpm-lock.yaml / a package.json",
+    },
     securityRelevant: { type: "boolean" },
     reason: { type: "string" },
   },
@@ -125,10 +156,19 @@ const VERDICT_SCHEMA = {
 phase("Scout");
 
 const scout = await agent(
-  `Run \`git diff --name-only ${range}\` and \`git status --short\` in the repo root. Return every touched file path (modified, staged, or untracked under apps/, packages/, docs/).
+  `Run \`git diff --stat ${range}\`, \`git diff --name-only ${range}\` and \`git status --short\` in the repo root. Return every touched file path (modified, staged, or untracked under apps/, packages/, docs/, .claude/, and root config files), the total lines changed, and two booleans:
 
-Decide whether this change is security-relevant per the repo's rule (CLAUDE.md §Subagents, ADR-0018/0019/0020): true if any touched path is under apps/api/src/core/, touches auth/session/CSRF/middleware/config code, adds or changes an admin-segment endpoint (apps/api/src/routes/admin.router.ts or a module's *.routes.ts mounted there), or touches apps/admin/src/shared/api (the browser session machinery, ADR-0033). Otherwise false. Give the one-line reason.`,
-  { label: "scout", phase: "Scout", schema: SCOUT_SCHEMA, effort: "low" },
+- touchesApi: any touched path under apps/api/, packages/db/, packages/contracts/, or turbo.json, pnpm-lock.yaml, any package.json — the paths whose change can break the integration tier or the build graph (ADR-0026).
+- securityRelevant, per the repo's rule (CLAUDE.md §Subagents, ADR-0018/0019/0020): any touched path under apps/api/src/core/, auth/session/CSRF/middleware/config code, an admin-segment endpoint (apps/api/src/routes/admin.router.ts or a module's *.routes.ts mounted there), or apps/admin/src/shared/api (the browser session machinery, ADR-0033).
+
+One-line reason.`,
+  {
+    label: "scout",
+    phase: "Scout",
+    schema: SCOUT_SCHEMA,
+    effort: "low",
+    model: "haiku",
+  },
 );
 
 const files = scout ? scout.files : [];
@@ -136,16 +176,30 @@ const securityRelevant =
   securityArg === undefined
     ? Boolean(scout && scout.securityRelevant)
     : Boolean(securityArg);
+const touchesApi = scout ? scout.touchesApi : true;
+const gateTier = gateArg === "auto" ? (touchesApi ? "full" : "check") : gateArg;
+const small =
+  Boolean(scout) &&
+  !touchesApi &&
+  !securityRelevant &&
+  files.length <= 4 &&
+  scout.linesChanged <= 200;
+const depth = depthArg === "auto" ? (small ? "light" : "full") : depthArg;
 log(
-  `${files.length} touched files; security review ${securityRelevant ? "ON" : "off"} (${scout ? scout.reason : "scout unavailable"})`,
+  `${files.length} file(s), ${scout ? scout.linesChanged : "?"} lines; gate=${gateTier}; security ${securityRelevant ? "ON" : "off"}; depth=${depth} (${scout ? scout.reason : "scout unavailable — assuming the expensive tier"})`,
 );
 
 // --------------------------------------------------------------- Review
 
+const untracked =
+  "plus any untracked files under apps/ and packages/ that `git status --short` lists — read those in full";
+
 const reviewers = [
   () =>
     agent(
-      `Review the diff \`git diff ${range}\` (plus any untracked files under apps/ and packages/ that \`git status --short\` lists — read those in full) against the ADRs, following your procedure. Report every violation as a structured finding with the ADR number, file, line, the offending line quoted in \`problem\`, and the smallest fix. Severity: BLOCKER = violates a non-negotiable in CLAUDE.md or a frozen ADR with no superseding ADR; MAJOR = violates an ADR rule in a way that will be built on; MINOR = style or a missing test the step should add. If the code is right and an ADR is wrong or silent, say so in the verdict and recommend /new-adr rather than listing it as a finding.`,
+      `Review the diff \`git diff ${range}\` (${untracked}) against the ADRs, following your procedure. Report every violation as a structured finding with the ADR number, file, line, the offending line quoted in \`problem\`, and the smallest fix. Severity: BLOCKER = violates a non-negotiable in CLAUDE.md or a frozen ADR with no superseding ADR; MAJOR = violates an ADR rule in a way that will be built on; MINOR = style or a missing test the step should add. If the code is right and an ADR is wrong or silent, say so in the verdict and recommend /new-adr rather than listing it as a finding.
+
+Precision over recall: every finding you list is handed to an independent refuter, and on the last run 26 of 27 were refuted — the cost of a false finding is a full fix round. So before listing one, you must have (1) quoted the exact ADR sentence it violates, after checking that ADR's own amendments and, if it is superseded, its successor, and (2) confirmed the quoted code is in THIS diff at that line. A suspicion that fails either check goes into the verdict paragraph as a note, not into findings.`,
       {
         label: "adr-reviewer",
         phase: "Review",
@@ -158,7 +212,7 @@ const reviewers = [
 if (securityRelevant) {
   reviewers.push(() =>
     agent(
-      `Security-review the diff \`git diff ${range}\` (plus untracked files under apps/ and packages/ listed by \`git status --short\`, read in full) per ADR-0018 (auth), 0019 (guards), 0020 (baseline), 0013 (error leakage), 0004/0005 (secrets, redaction), 0033 (browser session). Report each finding structured: severity (BLOCKER = exploitable or credential/secret exposure; MAJOR = weakens a guarantee an ADR makes; MINOR = hardening), the governing ADR or 'none', file, line, the problem with the line quoted, and the fix.`,
+      `Security-review the diff \`git diff ${range}\` (${untracked}) per ADR-0018 (auth), 0019 (guards), 0020 (baseline), 0013 (error leakage), 0004/0005 (secrets, redaction), 0033 (browser session). Report each finding structured: severity (BLOCKER = exploitable or credential/secret exposure; MAJOR = weakens a guarantee an ADR makes; MINOR = hardening), the governing ADR or 'none', file, line, the problem with the line quoted, and the fix.`,
       {
         label: "security-reviewer",
         phase: "Review",
@@ -169,14 +223,14 @@ if (securityRelevant) {
   );
 }
 
-if (gateMode !== "none") {
+if (gateTier !== "none") {
   reviewers.push(() =>
     agent(
-      gateMode === "full"
+      gateTier === "full"
         ? "Run the full gate: `pnpm lint && pnpm check-types && pnpm test`. Check `docker ps` for Postgres first; BLOCKED if it is down."
         : "Run `pnpm check`.",
       {
-        label: `gate:${gateMode}`,
+        label: `gate:${gateTier}`,
         phase: "Review",
         schema: GATE_SCHEMA,
         agentType: "gate-runner",
@@ -189,7 +243,7 @@ const reviewResults = await parallel(reviewers);
 const adrReview = reviewResults[0];
 const secReview = securityRelevant ? reviewResults[1] : null;
 const gate =
-  gateMode !== "none" ? reviewResults[reviewResults.length - 1] : null;
+  gateTier !== "none" ? reviewResults[reviewResults.length - 1] : null;
 
 const tagged = []
   .concat(
@@ -221,13 +275,17 @@ const rank = { BLOCKER: 0, MAJOR: 1, MINOR: 2 };
 const ordered = unique
   .slice()
   .sort((a, b) => rank[a.severity] - rank[b.severity]);
-const toVerify = ordered.slice(0, VERIFY_CAP);
-const unverified = ordered.slice(VERIFY_CAP);
-if (unverified.length) {
+// A MINOR never blocks, so at light depth it is reported as-is rather than
+// paid for: on the measured D6→D7 run the refuters rejected 26 of 27 findings,
+// and a refuter costs about what the reviewer did.
+const candidates =
+  depth === "light" ? ordered.filter((f) => f.severity !== "MINOR") : ordered;
+const toVerify = candidates.slice(0, VERIFY_CAP);
+const unverified = ordered.filter((f) => !toVerify.includes(f));
+if (unverified.length)
   log(
-    `verification cap: ${unverified.length} MINOR finding(s) reported unverified`,
+    `${unverified.length} finding(s) reported unverified (${depth === "light" ? "MINOR at light depth" : "over the cap"})`,
   );
-}
 
 phase("Verify");
 
@@ -245,23 +303,27 @@ Your job is to REFUTE it. Read the file at that line and the ADR it cites (docs/
       phase: "Verify",
       schema: VERDICT_SCHEMA,
       agentType: f.source === "security" ? "security-reviewer" : "adr-reviewer",
+      // A MINOR finding's refutation is a lookup, not a judgement.
+      ...(f.severity === "MINOR" ? { effort: "low" } : {}),
     },
   );
 
 const verified = await pipeline(toVerify, async (f) => {
-  const lenses =
-    f.severity === "MINOR"
-      ? ["does the ADR really say this"]
-      : [
-          "does the ADR really say this",
-          "is the quoted code really what the diff does",
-        ];
+  const twoLenses = depth === "full" && f.severity !== "MINOR";
+  const lenses = twoLenses
+    ? [
+        "does the ADR really say this",
+        "is the quoted code really what the diff does",
+      ]
+    : [
+        "does the ADR really say this, and is the quoted code really in the diff",
+      ];
   const votes = (
     await parallel(lenses.map((lens) => () => refute(f, lens)))
   ).filter(Boolean);
   const upheld = votes.filter((v) => !v.refuted);
-  // A single lens decides a MINOR; a BLOCKER/MAJOR stands if either lens upholds it —
-  // a real blocker dropped by one skeptic is worse than a false one surfacing for a human.
+  // A BLOCKER/MAJOR stands if either lens upholds it — a real blocker dropped by
+  // one skeptic is worse than a false one surfacing for a human.
   const stands = votes.length > 0 && upheld.length >= 1;
   return { ...f, stands, verdicts: votes.map((v) => v.reason) };
 });
@@ -282,6 +344,9 @@ return {
   files,
   securityReviewed: securityRelevant,
   gate,
+  gateTier,
+  small,
+  depth,
   confirmed: confirmed.map(({ verdicts, stands, ...f }) => ({
     ...f,
     upheldBecause: verdicts,

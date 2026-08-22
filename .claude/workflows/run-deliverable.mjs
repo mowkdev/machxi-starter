@@ -1,68 +1,67 @@
 /**
  * run-deliverable — a deliverable from its next pending step to `shipped`,
- * unattended.
+ * unattended. The building half; `plan-deliverable` is the deciding half.
  *
- * What an operator does at the desk with /plan-step, orchestrated for the
- * hours they are not there: every pending step of the in-progress deliverable
- * is built in order, reviewed by the `review-step` workflow, fixed when the
- * review or the gate says so, and committed; the close-out moves the ledger
- * row; the result is pushed; and, if asked, the next deliverable is opened —
- * but only as far as a `proposed` ADR and a build order, because opening is
- * where the operator's decisions live.
+ * Every pending step of the in-progress deliverable is built in order,
+ * reviewed by the `review-step` workflow, fixed when the review or the gate
+ * says so, and committed; the close-out moves the ledger row; the result is
+ * pushed; and, in chain mode, the next deliverable is opened — but ONLY when
+ * `plan-deliverable` reports it ready: every decision already in an ADR and
+ * a build order already written. This script makes no planning judgement of
+ * its own; its preflight is mechanical on purpose.
  *
- * Invoke (opt-in, like every workflow):
- *   Workflow({ name: "run-deliverable" })                       // ship the in-progress deliverable, stop
- *   Workflow({ name: "run-deliverable", args: { mode: "open-next" } })
- *   Workflow({ name: "run-deliverable", args: { mode: "chain", maxDeliverables: 2 } })
+ * Invoke (by scriptPath — the name registry has been seen stale):
+ *   Workflow({ scriptPath: ".claude/workflows/run-deliverable.mjs" })
+ *   Workflow({ scriptPath: "…", args: { mode: "chain", maxDeliverables: 2 } })
  *
  * args (all optional):
  *   mode             "ship" (default) — build every pending step, close, push, stop.
- *                    "open-next" — then open the following deliverable (ADR(s)
- *                    `proposed`, steps written, ledger flipped, committed) and stop.
- *                    "chain" — keep going into opened deliverables, but halt the
- *                    moment an opening raises a question only the operator can
- *                    answer (a contested ADR choice, an unconfirmed assumption).
+ *                    "open-next" — then open the following deliverable if
+ *                    plan-deliverable says it is ready, and stop.
+ *                    "chain" — keep building through opened deliverables; halts
+ *                    at the first one plan-deliverable cannot call ready.
  *   maxDeliverables  cap for "chain" (default 1 = the current one only).
  *   maxFixRounds     review→fix→review rounds per step before the run stops (default 2).
- *   push             false to skip `git push` entirely (default true; a denied
- *                    push is recorded, never retried, never forced).
- *   gate             "full" (default; needs Postgres) | "check" for each step's
- *                    review — the builder always runs the full gate itself.
+ *   push             false to skip `git push` (default true; a denied push is
+ *                    recorded, never retried, never forced).
  *
- * Invariants, stated so they are checkable in the transcript:
+ * Invariants, checkable in the transcript:
  *   - Steps run strictly in order; a step is never skipped and never started
  *     while the previous one is uncommitted.
- *   - A step whose gate is red after maxFixRounds STOPS the run. Nothing is
- *     marked done that is not green.
- *   - Only `git add` / `git commit` / `git push origin main`. No reset, no
- *     rebase, no force, no branch deletion.
- *   - Browser-only acceptance items are recorded as "not walked — pending
- *     operator acceptance", never claimed (the ledger's D3–D5 precedent).
- *   - A deliverable opens unattended only when its scope document's
- *     assumptions are all confirmed and its ADRs need no contested choice.
+ *   - Preflight refuses a pending step that names an ADR still `proposed`
+ *     unless the step itself accepts it at its head (ADR-0025 rule 3), or
+ *     that has no ADR list / no done-when.
+ *   - A step still red after maxFixRounds STOPS the run. Nothing is marked
+ *     done that is not green.
+ *   - Commits are by explicit path, never `git add -A`; only
+ *     `git push origin main`; no reset, rebase, force, or branch deletion.
+ *   - Browser-only acceptance items are recorded as "pending operator
+ *     acceptance", never claimed (the ledger's D3–D6 precedent).
  *
- * Budget: one deliverable of four steps is roughly 4 × (1 builder + the
- * review-step workflow's ~5–10 + up to 2 fixers + 1 committer) — well past the
- * repo's 15-agent guideline, on purpose: this is the workflow the operator
- * runs precisely when they will not be there to run the steps one at a time.
+ * Cost shape per step: 1 builder (the long one) + review-step (scout and
+ * gate on cheap tiers, 1–2 reviewers, one refuter per finding) + ≤2 fixers +
+ * 1 committer on haiku. The gate tier is the scout's call (ADR-0026): the
+ * full, serial integration gate only when apps/api, packages/db or
+ * packages/contracts moved.
  */
 export const meta = {
   name: "run-deliverable",
   description:
-    "Build every pending step of the in-progress deliverable in order — build, review-step, fix, commit — close it, push, and optionally open the next one as far as a proposed ADR",
+    "Build every pending step of the in-progress deliverable in order — build, review-step, fix, commit — close it, push, and in chain mode open the next only when plan-deliverable reports it ready",
   whenToUse:
-    "When the operator steps away and wants the in-progress deliverable carried to `shipped` unattended; the stopping rules are the safety net",
+    "When the operator steps away and wants the in-progress deliverable carried to `shipped` unattended; run /plan-deliverable first for anything that should chain",
   phases: [
     {
       title: "Preflight",
-      detail: "clean tree on main, Postgres up, plan parsed",
+      detail: "clean main, Postgres up, steps parsed and ungated",
     },
     { title: "Steps", detail: "per step: build → review-step → fix → commit" },
     { title: "Close", detail: "checklist, ledger row, window shut" },
     { title: "Ship", detail: "git push origin main (recorded, never forced)" },
     {
       title: "Next",
-      detail: "open the following deliverable as proposed, or stop",
+      detail:
+        "plan-deliverable readiness, then open — or stop with its questions",
     },
   ],
 };
@@ -72,22 +71,25 @@ const maxDeliverables = (args && args.maxDeliverables) || 1;
 const maxFixRounds =
   args && args.maxFixRounds !== undefined ? args.maxFixRounds : 2;
 const doPush = !(args && args.push === false);
-const reviewGate = (args && args.gate) || "full";
+
+const REPO = "C:\\Users\\SergejsMoskanovs\\code\\lab\\machxi-starter";
+const REVIEW_STEP = `${REPO}\\.claude\\workflows\\review-step.mjs`;
+const PLAN_DELIVERABLE = `${REPO}\\.claude\\workflows\\plan-deliverable.mjs`;
 
 // ------------------------------------------------------------------ schemas
 
 const PREFLIGHT_SCHEMA = {
   type: "object",
-  required: ["ok", "reason", "branch", "deliverable"],
+  required: ["ok", "reason", "deliverable"],
   properties: {
     ok: { type: "boolean" },
     reason: { type: "string" },
-    branch: { type: "string" },
     deliverable: {
       type: "object",
-      required: ["id", "planFile", "status", "steps"],
+      required: ["id", "title", "planFile", "status", "steps"],
       properties: {
-        id: { type: "string", description: "e.g. D6" },
+        id: { type: "string" },
+        title: { type: "string" },
         planFile: { type: "string" },
         status: {
           type: "string",
@@ -97,15 +99,43 @@ const PREFLIGHT_SCHEMA = {
           type: "array",
           items: {
             type: "object",
-            required: ["id", "title", "done", "gatedOnProposedAdr"],
+            required: [
+              "id",
+              "title",
+              "done",
+              "adrs",
+              "acceptsAdr",
+              "gatedOn",
+              "body",
+              "doneWhen",
+            ],
             properties: {
-              id: { type: "string", description: "e.g. D6.2" },
+              id: { type: "string", description: "e.g. D7.4" },
               title: { type: "string" },
               done: { type: "boolean" },
-              gatedOnProposedAdr: {
+              adrs: {
+                type: "array",
+                items: { type: "string" },
+                description: "ADR numbers on the step's **ADRs:** line",
+              },
+              acceptsAdr: {
                 type: "string",
                 description:
-                  "the ADR number if the step names an ADR still `proposed` that the step itself does not accept at its head; empty otherwise",
+                  "the ADR this step accepts at its head per the plan's Gate paragraph, or empty",
+              },
+              gatedOn: {
+                type: "string",
+                description:
+                  "an ADR the step depends on that is still `proposed` and is NOT accepted by this step or an earlier pending step; else empty",
+              },
+              body: {
+                type: "string",
+                description:
+                  "the step's descriptive paragraphs verbatim (not the Closed/evidence notes)",
+              },
+              doneWhen: {
+                type: "string",
+                description: "the **Done when:** text verbatim, or empty",
               },
             },
           },
@@ -136,7 +166,12 @@ const BUILD_SCHEMA = {
       description:
         "conventional commit, subject + body, ending with the Co-Authored-By line",
     },
-    filesTouched: { type: "array", items: { type: "string" } },
+    filesTouched: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "every file created or modified, repo-relative — the commit is by these paths",
+    },
     adrAmendments: { type: "array", items: { type: "string" } },
     unresolved: { type: "string", description: "why blocked, or empty" },
   },
@@ -144,10 +179,22 @@ const BUILD_SCHEMA = {
 
 const FIX_SCHEMA = {
   type: "object",
-  required: ["fixed", "summary"],
+  required: ["fixed", "summary", "filesTouched"],
   properties: {
     fixed: { type: "boolean" },
     summary: { type: "string" },
+    filesTouched: { type: "array", items: { type: "string" } },
+  },
+};
+
+const GATE_SCHEMA = {
+  type: "object",
+  required: ["result", "command", "summary", "failures"],
+  properties: {
+    result: { type: "string", enum: ["PASS", "FAIL", "BLOCKED"] },
+    command: { type: "string" },
+    summary: { type: "string" },
+    failures: { type: "string" },
   },
 };
 
@@ -168,28 +215,12 @@ const GIT_SCHEMA = {
 
 const CLOSE_SCHEMA = {
   type: "object",
-  required: ["shipped", "summary", "operatorAccepted"],
+  required: ["shipped", "summary", "operatorAccepted", "filesTouched"],
   properties: {
     shipped: { type: "boolean" },
     summary: { type: "string" },
-    operatorAccepted: {
-      type: "array",
-      items: { type: "string" },
-      description:
-        "checklist items that could not be machine-verified and are recorded as pending operator acceptance",
-    },
-  },
-};
-
-const OPEN_SCHEMA = {
-  type: "object",
-  required: ["opened", "deliverable", "needsOperator", "questions", "summary"],
-  properties: {
-    opened: { type: "boolean" },
-    deliverable: { type: "string" },
-    needsOperator: { type: "boolean" },
-    questions: { type: "array", items: { type: "string" } },
-    summary: { type: "string" },
+    operatorAccepted: { type: "array", items: { type: "string" } },
+    filesTouched: { type: "array", items: { type: "string" } },
   },
 };
 
@@ -200,17 +231,22 @@ const stop = (where, why, state) => {
   return { stopped: true, where, why, ...state };
 };
 
-const commit = (message, label) =>
+const commitPaths = (files, message, label, phaseName) =>
   agent(
-    `Commit the working tree. Run \`git status --short\` first; if it is empty return NOTHING_TO_DO. Otherwise \`git add -A\` then \`git commit\` with EXACTLY this message (use a heredoc; keep the Co-Authored-By trailer):
+    `Commit exactly these paths and nothing else — never \`git add -A\` or \`git add .\`; another session may have unrelated changes in this tree. Run \`git status --short\` first and ALSO include any path it lists that is under the same directories as the ones below (a builder sometimes forgets a generated file, a snapshot or a lockfile it caused); list what you added beyond the given set in \`detail\`.
+
+${files.map((f) => `  ${f}`).join("\n")}
+
+Then \`git commit\` with EXACTLY this message via a heredoc (keep the Co-Authored-By trailer):
 
 ${message}
 
-Return DONE with the short hash from \`git log --oneline -1\`. Do not amend, reset, rebase or push. If the commit is refused by a hook, return FAILED with the output verbatim.`,
+Return DONE with the short hash from \`git log --oneline -1\`; NOTHING_TO_DO if nothing was staged; FAILED with the output verbatim if a hook refuses. No amend, no reset, no rebase, no push.`,
     {
       label,
-      phase: "Steps",
+      phase: phaseName,
       schema: GIT_SCHEMA,
+      model: "haiku",
       effort: "low",
       agentType: "general-purpose",
     },
@@ -237,12 +273,11 @@ while (true) {
   const pre = await agent(
     `Preflight for an unattended deliverable run. Report facts; change nothing.
 
-1. \`git status --short\` must be empty and \`git branch --show-current\` must be \`main\`. If not, ok=false with the reason.
-2. \`docker ps\` must show a running Postgres container (the full gate needs it). If not, ok=false.
-3. Read \`docs/plan/README.md\`. Find the ONE row whose Status is **in progress**. If there is none, report status "none" and ok=false ("no deliverable in progress — open one first"). Read its plan file in full.
-4. For that plan file, list every step under "## Build order" in order: its id (\`D<n>.<k>\`), its title, whether it is done (its heading is struck through \`~~…~~\` and/or carries "**done**" / a "**Closed.**" paragraph), and — for a pending step — whether it names an ADR that is still \`proposed\` in docs/adr/README.md AND whose acceptance is NOT the step's own job ("accepted at the head of D<n>.<k>" for this very step means the step accepts it itself, which is fine; a step that merely depends on an ADR another step accepts, while that ADR is still proposed, is gated). Put the gating ADR number in gatedOnProposedAdr, else an empty string.
-
-ok=true only if 1–3 hold and the deliverable is in progress.`,
+1. \`git status --short\` must be empty and \`git branch --show-current\` must be \`main\`; else ok=false with the reason.
+2. \`docker ps\` must show a running Postgres container; else ok=false.
+3. Read docs/plan/README.md; find the ONE row whose Status is **in progress** (none → status "none", ok=false). Read its plan file in full and docs/adr/README.md's table.
+4. For every step under "## Build order", in order: id, title, done (heading struck through \`~~…~~\` / "**done**" / a "**Closed.**" paragraph); the ADR numbers on its "**ADRs:**" line; acceptsAdr — the ADR the plan's Gate paragraph says is "accepted at the head of" THIS step; gatedOn — an ADR the step names that the index still lists as \`proposed\` AND that is not acceptsAdr of this step or of an earlier pending step (empty otherwise); body — the step's descriptive paragraphs verbatim, excluding any "Closed." / evidence notes; doneWhen — the "**Done when:**" text verbatim.
+5. ok=false if any PENDING step has an empty adrs list (a close-out step titled "Close-out" is exempt), an empty doneWhen, or a gatedOn — name the step and what is missing. The run must not start on a plan it cannot execute mechanically.`,
     {
       label: "preflight",
       phase: "Preflight",
@@ -251,17 +286,16 @@ ok=true only if 1–3 hold and the deliverable is in progress.`,
     },
   );
 
-  if (!pre || !pre.ok) {
+  if (!pre || !pre.ok)
     return stop("preflight", pre ? pre.reason : "preflight agent unavailable", {
       shipped,
       opened,
     });
-  }
 
   const d = pre.deliverable;
   const pending = d.steps.filter((s) => !s.done);
   log(
-    `${d.id}: ${d.steps.length - pending.length} done, ${pending.length} pending — ${pending.map((s) => s.id).join(", ") || "none"}`,
+    `${d.id} — ${d.title}: ${d.steps.length - pending.length} done, ${pending.length} pending — ${pending.map((s) => s.id).join(", ") || "none"}`,
   );
 
   // --------------------------------------------------------------- Steps
@@ -269,22 +303,22 @@ ok=true only if 1–3 hold and the deliverable is in progress.`,
 
   const stepReports = [];
   for (const step of pending) {
-    if (step.gatedOnProposedAdr) {
-      return stop(
-        step.id,
-        `gated: ${step.gatedOnProposedAdr} is still proposed and this step does not accept it (ADR-0025 rule 3)`,
-        { shipped, opened, stepReports },
-      );
-    }
-
     log(`${step.id} — ${step.title}: building`);
 
     const build = await agent(
-      `Execute plan step ${step.id} ("${step.title}") of ${d.planFile} end to end, exactly as the \`plan-step\` skill prescribes — invoke that skill with argument ${step.id} and follow it — with TWO exceptions: (a) do NOT run adr-reviewer / security-reviewer yourself (the workflow runs the review-step workflow on your output next), and (b) do NOT commit — leave every change in the working tree and return the conventional commit message you would have used (subject \`<type>(<scope>): …\`, a body in the repo's style, ending with the line \`Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>\`).
+      `Execute plan step ${step.id} — "${step.title}" — of ${d.planFile} (deliverable ${d.id}, ${d.title}), exactly as the \`plan-step\` skill prescribes: invoke that skill with argument ${step.id} and follow it, with TWO exceptions — (a) do NOT run adr-reviewer / security-reviewer yourself (the review-step workflow runs on your output next), and (b) do NOT commit: leave every change in the working tree and return the conventional commit message you would have used (subject \`<type>(<scope>): …\`, a body in the repo's style, ending with the line \`Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>\`), plus every file you created or modified.
 
-Everything else applies in full: read the ADRs the step names; if the step's ADR is \`proposed\` and the plan says it is accepted at the head of THIS step, accept it (status line + the index row + the plan's Gate paragraph, dated today 2026-08-22) before building; build; write tests; run \`pnpm check\` in the loop and the full gate \`pnpm lint && pnpm check-types && pnpm test\` before you finish (Postgres is up); update the docs the step touches — the plan file's step notes written the way D4/D5 steps wrote theirs (the heading struck through with the date, a **Closed.** paragraph, what the step found recorded rather than folded into "done", evidence separated into machine-verified vs not walked), ADR amendments labelled \`**Amended 2026-08-22 (${step.id}).**\`, the ADR index's Implemented column, Postman via /postman-sync when an endpoint changed, .env.example when a variable did. Anything that needs a browser (a walk against the dev stack) is recorded as "not walked — pending operator acceptance", never claimed.
+The step as the plan states it — still read the ADRs it names in full, they carry the reasoning:
 
-If the gate cannot be made green, or the step needs a decision only the operator can make, return outcome "blocked" with the reason in \`unresolved\` — do not work around an ADR and do not skip tests.`,
+ADRs: ${step.adrs.map((n) => `ADR-${n}`).join(", ") || "none"}${step.acceptsAdr ? `\nThis step ACCEPTS ADR-${step.acceptsAdr} at its head (ADR-0025 rule 3): status line → accepted 2026-08-22, the index row, the plan's Gate paragraph — before building.` : ""}
+
+${step.body}
+
+Done when: ${step.doneWhen}
+
+Everything else applies in full: build; write tests; \`pnpm check\` in the loop and the full gate \`pnpm lint && pnpm check-types && pnpm test\` before you finish (Postgres is up); update the docs the step touches — the plan file's step notes written the way D6/D7 steps wrote theirs (heading struck through with the date, a **Closed.** paragraph, what the step found recorded rather than folded into "done", evidence separated into machine-verified vs not walked), ADR amendments labelled \`**Amended 2026-08-22 (${step.id}).**\`, the ADR index's Implemented column, Postman via /postman-sync when an endpoint changed, .env.example when a variable did. Anything that needs a browser is recorded as "not walked — pending operator acceptance", never claimed.
+
+If the gate cannot be made green, or the step needs a decision only the operator can make, return outcome "blocked" with the reason — do not work around an ADR and do not skip or weaken a test.`,
       {
         label: `build:${step.id}`,
         phase: "Steps",
@@ -293,30 +327,20 @@ If the gate cannot be made green, or the step needs a decision only the operator
       },
     );
 
-    if (!build || build.outcome !== "built") {
+    if (!build || build.outcome !== "built")
       return stop(step.id, build ? build.unresolved : "builder unavailable", {
         shipped,
         opened,
         stepReports,
       });
-    }
 
-    // Review → fix → review, bounded.
+    const touched = new Set(build.filesTouched);
+
+    // Review → fix → review, bounded. The scout inside review-step picks the gate tier.
     let review = null;
     let rounds = 0;
     while (true) {
-      // scriptPath rather than the name "review-step": the top-level Workflow
-      // tool call and this nested one share one registry, and it has been
-      // observed stale for repo-authored scripts in at least one session
-      // (falling back to only the built-in "deep-research"). A path bypasses
-      // that registry entirely and always resolves the canonical file.
-      review = await workflow(
-        {
-          scriptPath:
-            "C:\\Users\\SergejsMoskanovs\\code\\lab\\machxi-starter\\.claude\\workflows\\review-step.mjs",
-        },
-        { range: "HEAD", gate: reviewGate },
-      );
+      review = await workflow({ scriptPath: REVIEW_STEP }, { range: "HEAD" });
       const blocking = review
         ? review.confirmed.filter((f) => f.severity !== "MINOR")
         : [];
@@ -336,12 +360,7 @@ If the gate cannot be made green, or the step needs a decision only the operator
         return stop(
           step.id,
           `still ${gateRed ? "red on the gate" : ""}${gateRed && blocking.length ? " and " : ""}${blocking.length ? `${blocking.length} confirmed BLOCKER/MAJOR` : ""} after ${rounds} fix round(s)`,
-          {
-            shipped,
-            opened,
-            stepReports,
-            lastReview: review,
-          },
+          { shipped, opened, stepReports, lastReview: review },
         );
       }
       rounds += 1;
@@ -350,7 +369,7 @@ If the gate cannot be made green, or the step needs a decision only the operator
       );
 
       const fix = await agent(
-        `Step ${step.id} of ${d.planFile} is built in the working tree (uncommitted) and its review found the following. Fix every item, re-run \`pnpm check\` and then the full gate \`pnpm lint && pnpm check-types && pnpm test\`, and update the step's plan notes / ADR amendment if a fix changes what they claim. Do not commit. Do not skip or weaken a test to make it pass; if a finding is wrong, say so in the summary and leave it.
+        `Step ${step.id} of ${d.planFile} is built in the working tree (uncommitted) and its review found the following. Fix every item, re-run \`pnpm check\` and then the full gate \`pnpm lint && pnpm check-types && pnpm test\`, and update the step's plan notes / ADR amendment if a fix changes what they claim. Do not commit. Do not skip or weaken a test to make it pass; if a finding is wrong, say so in the summary and leave it. Return every file you touched.
 
 GATE: ${review && review.gate ? `${review.gate.result} — ${review.gate.summary}\n${review.gate.failures}` : "not run"}
 
@@ -370,9 +389,15 @@ ${fmtFindings(blocking)}${minors.length ? `\n\nMINOR (fix if cheap):\n${fmtFindi
           stepReports,
           lastReview: review,
         });
+      fix.filesTouched.forEach((f) => touched.add(f));
     }
 
-    const committed = await commit(build.commitMessage, `commit:${step.id}`);
+    const committed = await commitPaths(
+      [...touched],
+      build.commitMessage,
+      `commit:${step.id}`,
+      "Steps",
+    );
     if (!committed || committed.result !== "DONE") {
       return stop(
         step.id,
@@ -386,6 +411,7 @@ ${fmtFindings(blocking)}${minors.length ? `\n\nMINOR (fix if cheap):\n${fmtFindi
       commit: committed.detail,
       summary: build.summary,
       adrAmendments: build.adrAmendments,
+      gateTier: review ? review.gateTier : undefined,
       minorFindings: review
         ? review.confirmed.filter((f) => f.severity === "MINOR")
         : [],
@@ -397,9 +423,9 @@ ${fmtFindings(blocking)}${minors.length ? `\n\nMINOR (fix if cheap):\n${fmtFindi
   phase("Close");
 
   const close = await agent(
-    `Confirm or perform the close of ${d.id} (${d.planFile}) per ADR-0025 rule 4 — all three parts or it is not closed: the definition-of-done checklist run, the ledger row in docs/plan/README.md moved to **shipped 2026-08-22**, and the amendment window shut (the plan's status line, docs/plan/README.md §Rules, CLAUDE.md's deliverable and "amendable set" sentences, and the ADR index's window bullet all saying the deliverable's ADRs are now frozen and the NEXT planned deliverable is next).
+    `Confirm or perform the close of ${d.id} (${d.planFile}) per ADR-0025 rule 4 — all three parts or it is not closed: the definition-of-done checklist run, the ledger row in docs/plan/README.md moved to **shipped 2026-08-22**, and the amendment window shut (the plan's status line, docs/plan/README.md §Rules, CLAUDE.md's deliverable and "amendable set" sentences, and the ADR index's window bullet all saying this deliverable's ADRs are now frozen and the next planned deliverable is next).
 
-Read the plan file first. If its last step was a close-out step that already did all of this and the ledger row already reads shipped, verify and return shipped=true with nothing changed. Otherwise do it now, in the house style: run every machine-verifiable checklist item (the gate; \`pnpm test:unit\` twice with the second FULL TURBO; \`pnpm format:check\`; \`pnpm test:postman\` if the API changed and the dev API is up — if it is not, record it); write the ledger's "## How ${d.id} closed, and on what evidence" section with the evidence separated exactly as D3–D5 did (machine-verified / walked / accepted by the operator); every browser-only item is listed under operatorAccepted and written as "accepted by the operator rather than machine-verified" — never claimed as walked; mark each ADR of this deliverable as closed in the index narrative. Leave the changes uncommitted and return the summary.`,
+Read the plan file first. If its last step was a close-out step that already did all of this and the ledger row already reads shipped, verify and return shipped=true with nothing changed. Otherwise do it now, in the house style: run every machine-verifiable checklist item (the gate; \`pnpm test:unit\` twice with the second FULL TURBO; \`pnpm format:check\`; \`pnpm test:postman\` if the API changed and the dev API is up — record it if not); write the ledger's "## How ${d.id} closed, and on what evidence" section with the evidence separated exactly as D3–D6 did; every browser-only item under operatorAccepted, written as "accepted by the operator rather than machine-verified" — never claimed as walked. Leave the changes uncommitted; return the files touched.`,
     {
       label: `close:${d.id}`,
       phase: "Close",
@@ -407,33 +433,34 @@ Read the plan file first. If its last step was a close-out step that already did
       agentType: "general-purpose",
     },
   );
-  if (!close || !close.shipped) {
+  if (!close || !close.shipped)
     return stop("close", close ? close.summary : "close agent unavailable", {
       shipped,
       opened,
       stepReports,
     });
-  }
-  const closeCommit = await commit(
-    `docs(plan): ${d.id} ships
+  if (close.filesTouched.length) {
+    const closeCommit = await commitPaths(
+      close.filesTouched,
+      `docs(plan): ${d.id} ships
 
 The acceptance checklist run, the ledger row moved and the window shut — ADR-0025 rule 4's three parts together. Browser-only items are recorded as pending operator acceptance rather than claimed.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
-    `commit:close:${d.id}`,
-  );
-  if (closeCommit && closeCommit.result === "FAILED") {
-    return stop("close", `commit failed: ${closeCommit.detail}`, {
-      shipped,
-      opened,
-      stepReports,
-    });
+      `commit:close:${d.id}`,
+      "Close",
+    );
+    if (closeCommit && closeCommit.result === "FAILED")
+      return stop("close", `commit failed: ${closeCommit.detail}`, {
+        shipped,
+        opened,
+        stepReports,
+      });
   }
   shipped.push({
     deliverable: d.id,
     steps: stepReports,
     operatorAccepted: close.operatorAccepted,
-    closeCommit: closeCommit ? closeCommit.detail : "",
   });
   deliverablesRun += 1;
   log(`${d.id} shipped`);
@@ -444,11 +471,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
   let push = { result: "NOTHING_TO_DO", detail: "push disabled by args" };
   if (doPush) {
     push = await agent(
-      `Push main: run exactly \`git push origin main\`. If the command is refused by a permission prompt or policy, return DENIED with the refusal verbatim — do not retry, do not force, do not try another remote or branch. If the remote rejects it (non-fast-forward or similar), return FAILED with the output verbatim — do not pull, rebase or force. On success return DONE with the output.`,
+      `Push main: run exactly \`git push origin main\`. If refused by a permission prompt or policy, return DENIED with the refusal verbatim — do not retry, do not force, do not try another remote or branch. If the remote rejects it (non-fast-forward or similar), return FAILED with the output verbatim — do not pull, rebase or force. On success return DONE with the output.`,
       {
         label: `push:${d.id}`,
         phase: "Ship",
         schema: GIT_SCHEMA,
+        model: "haiku",
         effort: "low",
         agentType: "general-purpose",
       },
@@ -456,46 +484,78 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`,
   }
   shipped[shipped.length - 1].push = push;
   log(`push: ${push ? push.result : "unavailable"}`);
-  if (push && push.result === "FAILED") {
+  if (push && push.result === "FAILED")
     return stop("ship", `push failed: ${push.detail}`, { shipped, opened });
-  }
 
   // ---------------------------------------------------------------- Next
   if (mode === "ship") break;
 
   phase("Next");
 
-  const open = await agent(
-    `Open the next deliverable, as far as an unattended run may. Read docs/plan/README.md: the next row after ${d.id} with Status "planned" is the candidate; read its plan (scope) file in full, plus ADR-0025 and the ledger's "How D4 opened" / "How D5 opened" / "How D6 opened" sections and docs/plan/0006-user-settings.md as the template for what an opened plan looks like.
-
-FIRST decide needsOperator. The operator's decisions arrive as ADRs written ahead of opening (the D4 precedent — "writing is not opening"): check docs/adr/README.md for ADR(s) already written for this deliverable, \`proposed\` or \`accepted\`. A decision those ADRs make is decided. needsOperator is true if ANY of the following is NOT covered by an existing ADR for this deliverable: an assumption the scope file lists as unconfirmed; a "Decisions this deliverable needs" item that is a contested choice between approaches (a library, a storage shape, a protocol); a new app or package (a roster decision); a supersession of a frozen ADR. If needsOperator is true: do NOT open it. Return opened=false with the precise questions the operator must answer, one per line, each with your recommended answer — and change nothing.
-
-If needsOperator is false: open it the way D6 was opened — using the ADR(s) already written, or writing any still-missing additive one \`proposed\` via the adr-author conventions (docs/adr/README.md table row + Planned-list cleanup + narrative paragraph), rewrite the plan file with a build order of numbered steps each naming its ADRs and a done-when, a Gate paragraph, and a Definition of done; flip the ledger row to in progress with an opening date of 2026-08-22 and a "## How D<n> opened" section; update CLAUDE.md's deliverable sentences and amendable set; run \`pnpm exec prettier --write\` on the touched docs; commit with \`docs(plan): open D<n> — <title> — with ADR-<nnnn> proposed\` and the Co-Authored-By trailer. Return opened=true.`,
-    {
-      label: "open-next",
-      phase: "Next",
-      schema: OPEN_SCHEMA,
-      agentType: "general-purpose",
-    },
+  // plan-deliverable decides readiness; this script only acts on its answer.
+  const plan = await workflow(
+    { scriptPath: PLAN_DELIVERABLE },
+    { mode: "analyze" },
   );
-  if (!open)
-    return stop("open-next", "opener unavailable", { shipped, opened });
-  if (!open.opened) {
+  if (!plan || plan.error)
+    return stop(
+      "next",
+      `plan-deliverable analyze failed: ${plan ? plan.error : "unavailable"}`,
+      { shipped, opened },
+    );
+
+  if (plan.questions && plan.questions.length) {
     log(
-      `next deliverable needs the operator: ${open.questions.length} question(s)`,
+      `${plan.deliverable} needs the operator: ${plan.questions.length} question(s)`,
     );
     return {
       stopped: true,
-      where: "open-next",
-      why: "operator decision required",
-      questions: open.questions,
-      summary: open.summary,
+      where: "next",
+      why: "operator decisions required — run /plan-deliverable",
+      deliverable: plan.deliverable,
+      questions: plan.questions,
+      findings: plan.findings,
       shipped,
       opened,
     };
   }
-  opened.push({ deliverable: open.deliverable, summary: open.summary });
-  log(`${open.deliverable} opened (proposed)`);
+
+  // Decided but not yet drafted (ADRs written ahead, build order missing, or the reverse): draft, then open.
+  if (!plan.ready) {
+    const drafted = await workflow(
+      { scriptPath: PLAN_DELIVERABLE },
+      { mode: "draft", analysis: plan, answers: {} },
+    );
+    if (!drafted || !drafted.drafted)
+      return stop(
+        "next",
+        `plan-deliverable draft failed: ${drafted ? drafted.error : "unavailable"}`,
+        { shipped, opened },
+      );
+    if (
+      drafted.consistency &&
+      drafted.consistency.some((i) => i.severity !== "MINOR")
+    ) {
+      return stop(
+        "next",
+        `drafted ${plan.deliverable} has consistency issues: ${drafted.consistency.map((i) => i.problem).join("; ")}`,
+        { shipped, opened, drafted },
+      );
+    }
+  }
+
+  const openResult = await workflow(
+    { scriptPath: PLAN_DELIVERABLE },
+    { mode: "open", deliverable: plan.deliverable },
+  );
+  if (!openResult || !openResult.opened)
+    return stop(
+      "next",
+      `open refused: ${openResult ? openResult.summary : "unavailable"}`,
+      { shipped, opened },
+    );
+  opened.push({ deliverable: plan.deliverable, summary: openResult.summary });
+  log(`${plan.deliverable} opened`);
 
   if (mode !== "chain" || deliverablesRun >= maxDeliverables) break;
 }
