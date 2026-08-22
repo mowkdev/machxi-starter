@@ -26,12 +26,10 @@ The in-place amendment window is scoped to a deliverable ([ADR-0025](adr/0025-de
 rule 2), not to a date. An ADR is amendable only while its deliverable is
 `in progress` in the ledger; once that deliverable ships, code and ADR that
 disagree are reconciled by a superseding ADR, never by editing the record. D1
-shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22
-and D6 2026-08-22, so **ADRs 0001–0045 are closed** — including every frontend
-decision the admin panel was built on, every grid decision the data-grid rebuild
-made, D5's pair of supersessions, and D6's user-settings record. **D7 opened
-2026-08-22**, so exactly one window is open and it holds one record —
-[ADR-0046](adr/0046-interface-localization.md), **accepted 2026-08-22 at the
-head of `D7.1`** and amendable in place until D7 ships. An ADR is accepted at
-the head of the step that builds it, so a step whose ADR is still `proposed` is
-gated and must not be started.
+shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22,
+D6 2026-08-22 and D7 2026-08-22, so **ADRs 0001–0046 are closed** — including
+every frontend decision the admin panel was built on, every grid decision the
+data-grid rebuild made, D5's pair of supersessions, D6's user-settings record
+and D7's localization one. **No window is open**; the next opens with D8. An ADR
+is accepted at the head of the step that builds it, so a step whose ADR is still
+`proposed` is gated and must not be started.

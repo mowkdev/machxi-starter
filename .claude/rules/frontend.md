@@ -6,7 +6,7 @@ paths:
 
 # Admin app and design system (ADRs 0030–0046)
 
-Loaded when you touch `apps/admin` or `packages/ui`. Read `/frontend-conventions` before writing code here; the ADRs are the source of truth. ADRs 0030–0045 are frozen; 0034 and 0040 are superseded (by 0043 and 0044) and out of force.
+Loaded when you touch `apps/admin` or `packages/ui`. Read `/frontend-conventions` before writing code here; the ADRs are the source of truth. ADRs 0030–0046 are frozen — D7 shipped 2026-08-22 and no window is open; 0034 and 0040 are superseded (by 0043 and 0044) and out of force.
 
 - **Design system** (0031): shadcn/ui in `@repo/ui` on Tailwind v4, reached only through the `shared/ui` door. Generated primitives under `packages/ui/src/components/` stay byte-identical to the CLI output (prettier-exempt); an edit to one must earn itself with a comment naming the rule that forced it. `@repo/ui` gains no i18n dependency — its operator-facing strings come through the `UiStrings` context (0046).
 - **Architecture** (0032): FSD layers `app → pages → widgets → features → entities → shared`, downward-only imports lint-enforced, TanStack Router file-based routes; an entity may not import another entity — the feature layer is where two entities meet.
