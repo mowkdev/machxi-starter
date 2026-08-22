@@ -108,13 +108,22 @@ describe("the grid under a locale switch", () => {
     /*
      * The Latvian rendering itself is CLDR's; asserting it byte for byte would
      * make the suite fail on an ICU upgrade that improved it. What is asserted
-     * is that the switch reached the formatter — and that the *copy* did not
-     * move, because `lv`'s catalogues are empty until `D7.6` and the `en`
-     * fallback is exactly what should show meanwhile.
+     * is that the switch reached the formatter.
      */
     expect(createdCell().textContent).toContain("2026");
+
+    /*
+     * And that the copy moved with it (`D7.6`).
+     *
+     * This assertion said the opposite until the catalogues were drafted: at
+     * `D7.2` `lv` was ten empty files, so the pager stayed English through
+     * i18next's own fallback and the test proved the fallback rather than the
+     * translation. Both halves of §5's argument are now visible in one switch —
+     * a Latvian operator reads Latvian chrome *over* Latvian dates, which is the
+     * pairing the formatters were moved off `undefined` for.
+     */
     expect(
-      screen.getByRole("button", { name: "Next page" }),
+      await screen.findByRole("button", { name: "Nākamā lappuse" }),
     ).toBeInTheDocument();
   });
 });

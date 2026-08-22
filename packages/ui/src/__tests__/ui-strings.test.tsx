@@ -22,6 +22,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@repo/ui/components/pagination";
+import { Toaster } from "@repo/ui/components/sonner";
 import {
   Sheet,
   SheetContent,
@@ -41,7 +42,7 @@ import {
 } from "@repo/ui/ui-strings";
 
 /**
- * The design system's six operator-read strings (ADR-0046 §12).
+ * The design system's thirteen operator-read strings (ADR-0046 §12).
  *
  * Two claims are under test and the first one matters most: **with no provider
  * mounted, every primitive renders exactly what the shadcn CLI emitted.** That
@@ -49,18 +50,19 @@ import {
  * package's own suite, `apps/web`, and any app D8 has not written yet — and it
  * is the property a future regenerate-and-diff would otherwise quietly break.
  *
- * The second is that a mounted provider reaches all five files, including the
- * three places that are not visible text: a `sr-only` span, an `aria-label` and
- * a `title`. Four of the six exist only for a screen reader, which is the
- * audience ADR-0046 §Alternatives says a visual walk never notices — so they
- * are asserted by accessible name rather than by looking at the page.
+ * The second is that a mounted provider reaches all six files, including the
+ * places that are not visible text: a `sr-only` span, an `aria-label`, a
+ * `title` and two `<nav>` landmark names. Most of them exist only for a screen
+ * reader, which is the audience ADR-0046 §Alternatives says a visual walk never
+ * notices — so they are asserted by accessible name rather than by looking at
+ * the page.
  *
  * Each primitive gets its own render on purpose. A modal `Dialog` marks the
  * rest of the document `aria-hidden`, so one tree holding all five would hide
  * four of them from every role query and prove nothing about them.
  */
 
-/** Latvian-shaped, not Latvian: `D7.6` owns the real catalogue. */
+/** Latvian, the same words `apps/admin`'s `common` catalogue carries. */
 const TRANSLATED: UiStrings = {
   close: "Aizvērt",
   previous: "Iepriekšējā",
@@ -68,6 +70,13 @@ const TRANSLATED: UiStrings = {
   morePages: "Vairāk lappušu",
   more: "Vairāk",
   toggleSidebar: "Pārslēgt sānjoslu",
+  sidebarTitle: "Sānjosla",
+  sidebarDescription: "Rāda mobilo sānjoslu.",
+  previousPage: "Iet uz iepriekšējo lappusi",
+  nextPage: "Iet uz nākamo lappusi",
+  pagination: "lappuses",
+  breadcrumb: "navigācijas ceļš",
+  notifications: "Paziņojumi",
 };
 
 const dialogs: ReactElement = (
@@ -120,6 +129,13 @@ const rails: ReactElement = (
   </SidebarProvider>
 );
 
+/**
+ * The toast region and the mobile sheet header, which `D7.6` added (ADR-0046
+ * §12): the first is on every screen of every consumer, the second is what a
+ * screen reader below the `md` breakpoint is told the drawer is.
+ */
+const toasts: ReactElement = <Toaster />;
+
 const renderPlain = (ui: ReactElement) => render(ui);
 
 const renderTranslated = (ui: ReactElement) =>
@@ -158,6 +174,42 @@ describe("the design system with no UiStringsProvider mounted", () => {
     expect(
       screen.getAllByRole("button", { name: "Toggle Sidebar" }),
     ).toHaveLength(2);
+  });
+
+  it("keeps the pager's and breadcrumb's landmark names and the pager's two aria-labels", () => {
+    renderPlain(pager);
+
+    /*
+     * `Previous` is the visible label and `Go to previous page` is the
+     * `aria-label`; they are two strings, and before `D7.6` only one of them
+     * was injectable. The anchor carries no `href`, so it is queried by label
+     * rather than by the `link` role it does not have.
+     */
+    expect(
+      screen.getByRole("navigation", { name: DEFAULT_UI_STRINGS.pagination }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(DEFAULT_UI_STRINGS.previousPage),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(DEFAULT_UI_STRINGS.nextPage),
+    ).toBeInTheDocument();
+
+    renderPlain(crumbs);
+
+    expect(
+      screen.getByRole("navigation", { name: DEFAULT_UI_STRINGS.breadcrumb }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the toast region's `Notifications`", () => {
+    renderPlain(toasts);
+
+    // Sonner appends its own hotkey hint, so the name starts with the string
+    // rather than equalling it.
+    expect(
+      screen.getByLabelText(new RegExp(`^${DEFAULT_UI_STRINGS.notifications}`)),
+    ).toBeInTheDocument();
   });
 
   it("hands the defaults to a consumer that asks for them directly", () => {
@@ -211,6 +263,30 @@ describe("the design system under a UiStringsProvider", () => {
     // The rail writes the same string twice — `aria-label` for the screen
     // reader and `title` for the pointer — and both are one key.
     expect(buttons[1]).toHaveAttribute("title", TRANSLATED.toggleSidebar);
+  });
+
+  it("renames the two landmarks and the pager's two aria-labels", () => {
+    renderTranslated(pager);
+
+    expect(
+      screen.getByRole("navigation", { name: TRANSLATED.pagination }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(TRANSLATED.previousPage)).toBeInTheDocument();
+    expect(screen.getByLabelText(TRANSLATED.nextPage)).toBeInTheDocument();
+
+    renderTranslated(crumbs);
+
+    expect(
+      screen.getByRole("navigation", { name: TRANSLATED.breadcrumb }),
+    ).toBeInTheDocument();
+  });
+
+  it("renames the toast region", () => {
+    renderTranslated(toasts);
+
+    expect(
+      screen.getByLabelText(new RegExp(`^${TRANSLATED.notifications}`)),
+    ).toBeInTheDocument();
   });
 
   it("keeps English for a key the app has not supplied", () => {

@@ -6,7 +6,11 @@
     "clearAll": "Clear all",
     "retry": "Try again"
   },
+  "boot": {
+    "unreachable": "The API is not reachable. Check that it is running and that {{variable}} points at it."
+  },
   "brand": {
+    "mark": "m",
     "name": "machxi",
     "product": "Admin",
     "authTagline": "machxi admin"
@@ -47,6 +51,13 @@
     "next": "Next",
     "morePages": "More pages",
     "more": "More",
-    "toggleSidebar": "Toggle Sidebar"
+    "toggleSidebar": "Toggle Sidebar",
+    "sidebarTitle": "Sidebar",
+    "sidebarDescription": "Displays the mobile sidebar.",
+    "previousPage": "Go to previous page",
+    "nextPage": "Go to next page",
+    "pagination": "pagination",
+    "breadcrumb": "breadcrumb",
+    "notifications": "Notifications"
   }
 }

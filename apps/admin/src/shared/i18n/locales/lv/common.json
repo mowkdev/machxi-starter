@@ -1,1 +1,63 @@
-{}
+{
+  "actions": {
+    "apply": "Lietot",
+    "cancel": "Atcelt",
+    "clear": "Notīrīt",
+    "clearAll": "Notīrīt visu",
+    "retry": "Mēģināt vēlreiz"
+  },
+  "boot": {
+    "unreachable": "API nav sasniedzams. Pārbaudiet, vai tas darbojas un vai {{variable}} norāda uz to."
+  },
+  "brand": {
+    "mark": "m",
+    "name": "machxi",
+    "product": "Administrēšana",
+    "authTagline": "machxi administrēšana"
+  },
+  "nav": {
+    "group": "Pārvaldība",
+    "dashboard": "Vadības panelis",
+    "staff": "Darbinieki",
+    "users": "Lietotāji",
+    "profile": "Profils"
+  },
+  "account": {
+    "menu": "Konts",
+    "unnamed": "Konts",
+    "profile": "Profils"
+  },
+  "loading": {
+    "starting": "Notiek startēšana…"
+  },
+  "options": {
+    "active": "Aktīvs",
+    "invited": "Uzaicināts",
+    "disabled": "Atspējots",
+    "pending_verification": "Gaida apstiprināšanu",
+    "super_admin": "Galvenais administrators",
+    "admin": "Administrators",
+    "manager": "Vadītājs",
+    "editor": "Redaktors",
+    "customer": "Klients"
+  },
+  "record": {
+    "errorTitle": "Šo ierakstu neizdevās atvērt",
+    "errorDescription": "Iespējams, tas ir dzēsts vai arī adrese ir nepareiza."
+  },
+  "ui": {
+    "close": "Aizvērt",
+    "previous": "Iepriekšējā",
+    "next": "Nākamā",
+    "morePages": "Vairāk lappušu",
+    "more": "Vairāk",
+    "toggleSidebar": "Pārslēgt sānjoslu",
+    "sidebarTitle": "Sānjosla",
+    "sidebarDescription": "Rāda mobilo sānjoslu.",
+    "previousPage": "Iet uz iepriekšējo lappusi",
+    "nextPage": "Iet uz nākamo lappusi",
+    "pagination": "lappuses",
+    "breadcrumb": "navigācijas ceļš",
+    "notifications": "Paziņojumi"
+  }
+}

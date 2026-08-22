@@ -1,1 +1,43 @@
-{}
+{
+  "title": "Profils",
+  "account": {
+    "title": "Jūsu konts",
+    "description": "Vārds ir vienīgais, ko šeit varat mainīt. E-pastu, lomas un statusu nosaka kāds cits — operatoram, kurš varētu paaugstināt pats sevi, nebūtu vajadzīga aizsardzība, kas to neļauj."
+  },
+  "summary": {
+    "email": "E-pasts",
+    "status": "Statuss",
+    "roles": "Lomas",
+    "lastLogin": "Pēdējā pieteikšanās"
+  },
+  "fields": {
+    "firstName": { "label": "Vārds" },
+    "lastName": { "label": "Uzvārds" }
+  },
+  "save": "Saglabāt izmaiņas",
+  "password": {
+    "title": "Parole",
+    "description": "Tās maiņa atsaka visas pārējās sesijas un atstāj šo pieteiktu.",
+    "action": "Mainīt paroli",
+    "note": "Jums prasīs pašreizējo paroli. Pārējās ierīces paliek atteiktas, līdz tajās tiks izmantota jaunā parole.",
+    "dialog": {
+      "title": "Mainiet savu paroli",
+      "description": "Pārējo sesiju atteikšana ir paroles maiņas jēga, tāpēc tā nav izvēles iespēja. Pēc tam nekas neliek paroli mainīt atkārtoti.",
+      "submit": "Mainīt paroli"
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Pašreizējā parole",
+        "description": "Nepieciešama arī tad, ja esat pieteicies — nozagta sesija nedrīkst spēt uzstādīt jaunu paroli."
+      },
+      "newPassword": {
+        "label": "Jaunā parole",
+        "description": "Visas pārējās sesijas tiek atteiktas. Šī paliek pieteikta."
+      }
+    }
+  },
+  "outcomes": {
+    "updated": "Jūsu profils tika atjaunināts.",
+    "passwordChanged": "Jūsu parole tika nomainīta. Visas pārējās sesijas tika atteiktas; šī paliek."
+  }
+}

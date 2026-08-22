@@ -110,6 +110,17 @@ export interface ProviderOptions {
    * the first render.
    */
   readonly locale?: Locale;
+  /**
+   * Renders through the dev-only pseudo-locale (`D7.6`, ADR-0046 §10, §14).
+   *
+   * Off by default and deliberately so: every assertion by accessible name in
+   * this suite is English, and a lens that accents them would rewrite four
+   * hundred of them. The one suite that wants it is the route walk, which
+   * asserts the opposite property — that nothing on a page survived the lens
+   * unaccented, which is what makes a hardcoded string visible to a machine
+   * rather than to a reviewer.
+   */
+  readonly pseudo?: boolean;
 }
 
 /**
@@ -121,6 +132,7 @@ const providers = ({
   client,
   queryClient,
   locale = "en",
+  pseudo = false,
 }: ProviderOptions) => {
   const sessionStore = store ?? createSessionStore();
   // One instance per render, from the same factory the app calls: a test
@@ -131,6 +143,7 @@ const providers = ({
       resources: { en: EN_RESOURCES },
       namespaces: NAMESPACES,
       locale,
+      pseudo,
     }),
   );
 

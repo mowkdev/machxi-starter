@@ -265,7 +265,15 @@ export const AppSidebar = () => {
             <SidebarMenuButton asChild size="lg">
               <Link to="/">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <span className="text-sm font-semibold">m</span>
+                  {/*
+                   * The mark is a key too (`D7.6`). One letter reads as
+                   * decoration and is not: it is the brand's initial, so a
+                   * blueprint whose brand is not `machxi` changes it in the
+                   * catalogue beside `brand.name` rather than in a component.
+                   */}
+                  <span className="text-sm font-semibold">
+                    {t("brand.mark")}
+                  </span>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">

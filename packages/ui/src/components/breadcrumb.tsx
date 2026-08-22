@@ -12,7 +12,13 @@ import { cn } from "@repo/ui/lib/utils"
 import { useUiStrings } from "@repo/ui/ui-strings"
 
 function Breadcrumb({ ...props }: React.ComponentProps<"nav">) {
-  return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
+  /* `breadcrumb` upstream — the landmark's name, ADR-0046 §12 (`D7.6`). */
+  return (
+    <nav aria-label={strings.breadcrumb} data-slot="breadcrumb" {...props} />
+  )
 }
 
 function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {

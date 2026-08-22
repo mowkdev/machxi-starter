@@ -37,6 +37,14 @@ export default mergeConfig(
       testTimeout: 15_000,
       env: {
         VITE_API_URL: "http://api.test",
+        /*
+         * Pinned off, for the reason `VITE_API_URL` is pinned at all (`D7.6`,
+         * ADR-0046 §10): a variable read from outside the repository is
+         * invisible to Turbo's hash, and this one would silently accent every
+         * assertion by accessible name in the suite. The one test that wants
+         * the lens asks `renderApp` for it, which needs no environment.
+         */
+        VITE_I18N_PSEUDO: "false",
       },
     },
   }),

@@ -1,1 +1,80 @@
-{}
+{
+  "empty": "Nav rezultātu.",
+  "pager": {
+    "label": "Lappuses",
+    "none": "Nav rezultātu",
+    "rangeOpen": "{{first}}–{{last}}",
+    "range": "{{first}}–{{last}} no {{total}}",
+    "rowsPerPage": "Rindas lappusē",
+    "first": "Pirmā lappuse",
+    "previous": "Iepriekšējā lappuse",
+    "next": "Nākamā lappuse",
+    "last": "Pēdējā lappuse"
+  },
+  "search": {
+    "label": "Meklēt",
+    "placeholder": "Meklēt…"
+  },
+  "selection": {
+    "selectAll": "Atlasīt visas rindas šajā lappusē",
+    "selectRow": "Atlasīt {{id}}",
+    "count_zero": "Atlasītas {{count}} rindas",
+    "count_one": "Atlasīta {{count}} rinda",
+    "count_other": "Atlasītas {{count}} rindas",
+    "clear": "Notīrīt atlasi",
+    "delete": "Dzēst {{count}}",
+    "rowActions": "Rindas darbības: {{id}}"
+  },
+  "columns": {
+    "label": "Kolonnas",
+    "moveUp": "Pārvietot {{column}} uz augšu",
+    "moveDown": "Pārvietot {{column}} uz leju",
+    "reset": "Atjaunot noklusējumus",
+    "resize": "Mainīt {{column}} platumu"
+  },
+  "filter": {
+    "trigger": "Filtrēt pēc {{column}}",
+    "triggerActive": "Filtrēt pēc {{column}} (filtrēts)",
+    "title": "Filtrēt pēc {{column}}",
+    "placeholder": "Filtrēt…",
+    "containsPlaceholder": "Satur…",
+    "any": "Jebkurš",
+    "from": "{{column}} no",
+    "to": "{{column}} līdz",
+    "group": "{{label}} filtrs",
+    "hint": {
+      "textLike": "Atlasa rindas, kas satur šo tekstu, neņemot vērā burtu reģistru.",
+      "textEq": "Atlasa rindas, kas ir vienādas ar šo vērtību.",
+      "enum": "Izvēlieties vienu vērtību vai Jebkurš, lai noņemtu filtru.",
+      "dateRange": "Jebkuru robežu var atstāt tukšu. Abas dienas tiek iekļautas.",
+      "presence": "Tvēruma slēdzis: tas aizstāj pašreizējās rindas, nevis papildina tās."
+    }
+  },
+  "applied": {
+    "announce_zero": "Lietoti {{count}} filtru",
+    "announce_one": "Lietots {{count}} filtrs",
+    "announce_other": "Lietoti {{count}} filtri",
+    "search": "Meklēšana “{{term}}”",
+    "remove": "Noņemt filtru: {{label}}"
+  },
+  "chip": {
+    "is": "{{column}} ir {{value}}",
+    "isText": "{{column}} ir “{{value}}”",
+    "contains": "{{column}} satur “{{value}}”",
+    "anyOf": "{{column}} ir kāds no {{values}}",
+    "from": "{{column}} no {{day}}",
+    "to": "{{column}} līdz {{day}}",
+    "raw": "{{field}} {{op}} {{value}}"
+  },
+  "bulk": {
+    "deleted_zero": "Dzēsti {{count}} {{noun}}.",
+    "deleted_one": "Dzēsts {{count}} {{noun}}.",
+    "deleted_other": "Dzēsti {{count}} {{noun}}.",
+    "refusal": "{{label}}: {{message}}",
+    "unattemptedLine": "{{count}} netika mēģināti — API ierobežo šīs sesijas pieprasījumu skaitu. Uzgaidiet dažas minūtes un mēģiniet pārējos.",
+    "partDeleted": "dzēsti {{count}}",
+    "partRefused": "atteikti {{count}}",
+    "partUnattempted": "nemēģināti {{count}}",
+    "headline": "{{parts}}."
+  }
+}

@@ -1,1 +1,13 @@
-{}
+{
+  "appearance": "Izskats",
+  "theme": {
+    "light": "Gaišs",
+    "dark": "Tumšs",
+    "system": "Sistēmas"
+  },
+  "language": {
+    "label": "Valoda",
+    "en": "English",
+    "lv": "Latviešu"
+  }
+}

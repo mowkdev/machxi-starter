@@ -16,10 +16,14 @@ import { buttonVariants, type Button } from "@repo/ui/components/button"
 import { useUiStrings } from "@repo/ui/ui-strings"
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <nav
       role="navigation"
-      aria-label="pagination"
+      /* `pagination` upstream — the landmark's name, ADR-0046 §12 (`D7.6`). */
+      aria-label={strings.pagination}
       data-slot="pagination"
       className={cn("mx-auto flex w-full justify-center", className)}
       {...props}
@@ -81,7 +85,8 @@ function PaginationPrevious({
 
   return (
     <PaginationLink
-      aria-label="Go to previous page"
+      /* `Go to previous page` upstream — ADR-0046 §12 (`D7.6`). */
+      aria-label={strings.previousPage}
       size="default"
       className={cn("gap-1 px-2.5 sm:pl-2.5", className)}
       {...props}
@@ -102,7 +107,8 @@ function PaginationNext({
 
   return (
     <PaginationLink
-      aria-label="Go to next page"
+      /* `Go to next page` upstream — ADR-0046 §12 (`D7.6`). */
+      aria-label={strings.nextPage}
       size="default"
       className={cn("gap-1 px-2.5 sm:pr-2.5", className)}
       {...props}

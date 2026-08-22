@@ -22,6 +22,20 @@ import { z } from "zod";
 const envSchema = z.object({
   /** Where the API answers, with no trailing path: the client appends the segment. */
   VITE_API_URL: z.url(),
+  /**
+   * The dev-only pseudo-locale of ADR-0046 §10, off unless a build asks for it.
+   *
+   * `z.stringbool()` because an environment variable is a string and
+   * `Boolean("false")` is `true` — the classic way a flag ends up permanently
+   * on. Defaulted rather than required, because the variable is absent in every
+   * ordinary build and a required flag would make `.env` a prerequisite for
+   * running the app.
+   *
+   * It is **not** a locale (`LOCALES` is the production set and lives in a
+   * database column); it is a lens over `en`, which is why it arrives as
+   * configuration rather than as a member of an enum.
+   */
+  VITE_I18N_PSEUDO: z.stringbool().default(false),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

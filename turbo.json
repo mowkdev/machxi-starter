@@ -38,6 +38,12 @@
     "check-types": {
       "dependsOn": ["^check-types"]
     },
+    "i18n:check": {
+      "dependsOn": []
+    },
+    "i18n:extract": {
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "persistent": true

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { I18nextProvider } from "react-i18next";
 
+import { config } from "@/shared/config";
 import {
   EN_RESOURCES,
   LocalePublisherProvider,
@@ -73,6 +74,14 @@ export const I18nProvider = ({
       resources: { en: EN_RESOURCES },
       namespaces: NAMESPACES,
       locale: preferredLocale(adopted ?? null),
+      /*
+       * The one place the pseudo-locale is switched on in the running app
+       * (`D7.6`, ADR-0046 §10). `app` is wiring and configuration is what
+       * `shared/config` reads, so the flag travels the same road every other
+       * dependency does; `shared/i18n` takes it as a parameter and never asks
+       * the environment anything.
+       */
+      pseudo: config.VITE_I18N_PSEUDO,
     }),
   );
 

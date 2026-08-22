@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { I18nContext } from "react-i18next";
 
 import { createBootstrap, type BootstrapOutcome } from "@/shared/api/bootstrap";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
@@ -8,6 +9,18 @@ import {
   type SessionStore,
 } from "@/shared/api/session-store";
 import { config } from "@/shared/config";
+import { EN_RESOURCES } from "@/shared/i18n";
+
+/**
+ * The variable the notice below names, spelled once.
+ *
+ * It is the *name* of a configuration key rather than a value read from one, so
+ * it is not an ADR-0004 read and does not belong in `shared/config`; and it is
+ * an identifier rather than copy, which is why it is interpolated into the
+ * sentence instead of being written inside it — a translator must not be handed
+ * a string they could helpfully translate.
+ */
+const API_URL_VARIABLE = "VITE_API_URL";
 
 /**
  * The session, wired once for the running app (ADR-0032: `app` is wiring).
@@ -57,6 +70,43 @@ export interface SessionProviderProps {
   /** What renders while the boot sequence is in flight. */
   readonly fallback?: ReactNode;
 }
+
+/**
+ * The screen an operator gets when the API cannot be reached at all.
+ *
+ * **The second screen that renders before i18next exists** (`D7.6`, ADR-0046
+ * §3). `AppLoader` is the first and this is its twin: both are `SessionProvider`
+ * states, and `I18nProvider` is mounted two gates further in, so
+ * `useTranslation` here would not degrade to English — it would warn and hand
+ * back `boot.unreachable`. It reads `I18nContext` and falls back to the eagerly
+ * bundled `en`, which is the only catalogue that could be in memory this early
+ * in any case.
+ *
+ * The variable name is **interpolated rather than marked up**. It was an inline
+ * `<code>` until `D7.6`, and a sentence with an element inside it has exactly
+ * one answer in react-i18next — `<Trans>` — which needs the provider this
+ * screen renders above. One key an operator can read beats two fragments a
+ * translator has to reassemble around markup, so the sentence stayed whole and
+ * the monospace went.
+ */
+const UnreachableNotice = () => {
+  const context = useContext(I18nContext);
+  const message =
+    context?.i18n.t("boot.unreachable", { variable: API_URL_VARIABLE }) ??
+    EN_RESOURCES.common.boot.unreachable.replace(
+      "{{variable}}",
+      API_URL_VARIABLE,
+    );
+
+  return (
+    <div
+      className="flex min-h-svh items-center justify-center p-6 text-center text-sm text-muted-foreground"
+      role="alert"
+    >
+      {message}
+    </div>
+  );
+};
 
 /**
  * Holds the app behind a loading gate until the boot sequence resolves
@@ -122,15 +172,7 @@ export const SessionProvider = ({
   if (state === "booting") return <>{fallback}</>;
 
   if (state === "unreachable") {
-    return (
-      <div
-        className="flex min-h-svh items-center justify-center p-6 text-center text-sm text-muted-foreground"
-        role="alert"
-      >
-        The API is not reachable. Check that it is running and that
-        <code className="mx-1">VITE_API_URL</code> points at it.
-      </div>
-    );
+    return <UnreachableNotice />;
   }
 
   return <ApiProvider value={{ client, store }}>{children}</ApiProvider>;

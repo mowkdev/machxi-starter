@@ -1,1 +1,10 @@
-{}
+{
+  "select": {
+    "placeholder": "Izvēlieties…"
+  },
+  "rules": {
+    "rolesUnique": "Lomas nedrīkst atkārtoties",
+    "updateNotEmpty": "Norādiet vismaz vienu lauku, ko atjaunināt",
+    "passwordMustDiffer": "Jaunajai parolei jāatšķiras no pašreizējās"
+  }
+}

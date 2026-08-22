@@ -7,6 +7,7 @@ import { setIntlLocale } from "./intl";
 import { readStoredLocale, writeStoredLocale } from "./locale-storage";
 import type { TranslateKey } from "./keys";
 import { DEFAULT_NAMESPACE, type Namespace } from "./namespaces";
+import { PSEUDO_POST_PROCESSOR, createPseudoPostProcessor } from "./pseudo";
 import type { Catalogues } from "./resources";
 import {
   asLocale,
@@ -90,12 +91,22 @@ export interface CreateI18nOptions {
   readonly resources: Catalogues;
   readonly namespaces: readonly Namespace[];
   readonly locale: Locale;
+  /**
+   * The dev-only lens of ADR-0046 §10, off by default.
+   *
+   * An option on the factory rather than a read of `import.meta.env` inside it,
+   * for the reason every other seam here is a parameter: `app/providers` is
+   * where configuration is read (ADR-0004's one reader is `shared/config`), and
+   * `D7.6`'s route suite switches it on without an environment at all.
+   */
+  readonly pseudo?: boolean;
 }
 
 export const createI18n = ({
   resources,
   namespaces,
   locale,
+  pseudo = false,
 }: CreateI18nOptions) => {
   const instance = i18next.createInstance();
 
@@ -113,10 +124,23 @@ export const createI18n = ({
     );
   });
 
+  /*
+   * The lens goes on before `init`, and only when it was asked for. A
+   * post-processor that is registered and disabled still runs on every
+   * translation to decide it has nothing to do, and this is the hottest
+   * function in the app.
+   */
+  if (pseudo) instance.use(createPseudoPostProcessor());
+
   void instance
     .use(initReactI18next)
     .use(resourcesToBackend(loadCatalogue))
     .init({
+      /*
+       * Named only when the module was registered: i18next warns about a
+       * post-processor it cannot find, once per translated string.
+       */
+      ...(pseudo ? { postProcess: [PSEUDO_POST_PROCESSOR] } : {}),
       /*
        * The bare enum member and not the Intl tag: `lng` is what selects a
        * catalogue and what `Intl.PluralRules` resolves a category from, and
@@ -221,6 +245,7 @@ export {
   type LocaleView,
 } from "./locale-context";
 export { activeIntlTag, dateTimeFormat, setIntlLocale } from "./intl";
+export { PSEUDO_POST_PROCESSOR, createPseudoPostProcessor } from "./pseudo";
 export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
 export { EN_RESOURCES, type Catalogue, type Catalogues } from "./resources";
 export {

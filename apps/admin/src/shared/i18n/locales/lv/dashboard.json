@@ -1,1 +1,6 @@
-{}
+{
+  "title": "Vadības panelis",
+  "description": "Sākuma ekrāns aiz piekļuves pārbaudes.",
+  "empty": "Nav ko rādīt, kamēr nav datu, no kā to rādīt.",
+  "shellFallback": "Administrēšana"
+}

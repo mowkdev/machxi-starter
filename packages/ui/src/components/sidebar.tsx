@@ -169,6 +169,8 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
 
   if (collapsible === "none") {
     return (
@@ -201,8 +203,11 @@ function Sidebar({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            {/* `Sidebar` and `Displays the mobile sidebar.` upstream — the two
+                strings only a screen reader below `md` ever meets, ADR-0046
+                §12 (`D7.6`). */}
+            <SheetTitle>{strings.sidebarTitle}</SheetTitle>
+            <SheetDescription>{strings.sidebarDescription}</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>

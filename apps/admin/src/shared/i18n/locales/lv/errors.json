@@ -1,1 +1,30 @@
-{}
+{
+  "fallback": "Kaut kas nogāja greizi. Mēģiniet vēlreiz.",
+
+  "VALIDATION_ERROR": "Daļa no datiem nav derīga. Pārbaudiet formu un mēģiniet vēlreiz.",
+  "MALFORMED_JSON": "Šo pieprasījumu neizdevās nolasīt. Mēģiniet vēlreiz.",
+  "PAYLOAD_TOO_LARGE": "Tas ir pārāk liels, lai to nosūtītu.",
+  "UNAUTHENTICATED": "Jūsu sesija ir beigusies. Piesakieties vēlreiz.",
+  "FORBIDDEN": "Jums nav atļaujas to darīt.",
+  "NOT_FOUND": "Tas vairs nepastāv. Iespējams, tas ir dzēsts.",
+  "ROUTE_NOT_FOUND": "Šāda adrese nepastāv.",
+  "CONFLICT": "Tas ir pretrunā ar kaut ko, kas jau pastāv.",
+  "RATE_LIMITED": "Pārāk daudz mēģinājumu. Uzgaidiet brīdi un mēģiniet vēlreiz.",
+  "INTERNAL_ERROR": "Serverī radās kļūda. Mēģiniet vēlreiz.",
+  "SERVICE_UNAVAILABLE": "Neizdevās sasniegt API. Pārbaudiet savienojumu un mēģiniet vēlreiz.",
+
+  "AUTH_INVALID_CREDENTIALS": "Šis e-pasts un parole neatbilst nevienam kontam.",
+  "AUTH_TOKEN_INVALID": "Jūsu sesija vairs nav derīga. Piesakieties vēlreiz.",
+  "AUTH_TOKEN_EXPIRED": "Jūsu sesijas termiņš ir beidzies. Piesakieties vēlreiz.",
+  "AUTH_SESSION_REVOKED": "Šī sesija tika atteikta. Piesakieties vēlreiz.",
+  "AUTH_INVALID_REFRESH_TOKEN": "Jūsu sesiju neizdevās atjaunot. Piesakieties vēlreiz.",
+  "AUTH_REFRESH_REUSED": "Jūsu sesija tika pārtraukta drošības apsvērumu dēļ. Piesakieties vēlreiz.",
+  "AUTH_ACCOUNT_DISABLED": "Šis konts ir atspējots. Vērsieties pie administratora.",
+  "AUTH_CURRENT_PASSWORD_INVALID": "Šī nav jūsu pašreizējā parole.",
+  "CSRF_TOKEN_INVALID": "Šo pieprasījumu neizdevās pārbaudīt. Mēģiniet vēlreiz.",
+
+  "USER_EMAIL_TAKEN": "Šo e-pasta adresi jau izmanto cits lietotājs.",
+  "USER_DELETED": "Šis lietotājs ir dzēsts, un to nevar mainīt.",
+  "STAFF_EMAIL_TAKEN": "Šo e-pasta adresi jau izmanto cits darbinieks.",
+  "STAFF_LAST_SUPER_ADMIN": "Šis ir pēdējais galvenais administrators. Vispirms paaugstiniet kādu citu."
+}

@@ -3,10 +3,10 @@
   "tasks": {
     "build": {
       "outputs": ["dist/**"],
-      "env": ["VITE_API_URL"]
+      "env": ["VITE_API_URL", "VITE_I18N_PSEUDO"]
     },
     "dev": {
-      "env": ["VITE_API_URL"]
+      "env": ["VITE_API_URL", "VITE_I18N_PSEUDO"]
     }
   }
 }

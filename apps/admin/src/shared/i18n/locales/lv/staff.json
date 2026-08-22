@@ -1,1 +1,94 @@
-{}
+{
+  "title": "Darbinieki",
+  "description": "Operatori, kuri var piekļūt šim panelim.",
+  "empty": "Neviens darbinieks neatbilst šim skatam.",
+  "backToList": "Atpakaļ uz darbiniekiem",
+  "noun_zero": "darbinieku kontu",
+  "noun_one": "darbinieka konts",
+  "noun_other": "darbinieku konti",
+  "columns": {
+    "email": "E-pasts",
+    "firstName": "Vārds",
+    "lastName": "Uzvārds",
+    "roles": "Lomas",
+    "status": "Statuss",
+    "lastLoginAt": "Pēdējā pieteikšanās",
+    "createdAt": "Izveidots",
+    "actions": "Darbības"
+  },
+  "filters": {
+    "status": "Statuss"
+  },
+  "fields": {
+    "email": { "label": "E-pasts" },
+    "password": {
+      "label": "Sākotnējā parole",
+      "description": "Nododiet to ārpus sistēmas un palūdziet to nomainīt. Nekas neliek to mainīt pirmajā pieteikšanās reizē."
+    },
+    "firstName": { "label": "Vārds" },
+    "lastName": { "label": "Uzvārds" },
+    "roles": {
+      "label": "Lomas",
+      "description": "Vismaz viena. Galvenā administratora piešķiršana tiek atteikta, ja vien pats neesat tāds."
+    },
+    "status": { "label": "Statuss" }
+  },
+  "actions": {
+    "create": "Jauns darbinieks",
+    "edit": "Rediģēt",
+    "resetPassword": "Atiestatīt paroli",
+    "revokeSessions": "Atteikt visur",
+    "delete": "Dzēst"
+  },
+  "create": {
+    "routeTitle": "Jauns darbinieks",
+    "title": "Jauns darbinieks",
+    "description": "Viņi varēs pieteikties, tiklīdz tas būs saglabāts.",
+    "submit": "Izveidot"
+  },
+  "edit": {
+    "routeTitle": "Rediģēt darbinieku",
+    "title": "Rediģēt {{email}}",
+    "description": "E-pastu rediģēt nevar — tā identifikatora maiņa, ar kuru izveidota sesija, ir atsevišķa darbība.",
+    "submit": "Saglabāt izmaiņas"
+  },
+  "delete": {
+    "title": "Dzēst {{email}}?",
+    "description": "Konts un tā lomu piešķīrumi tiek dzēsti pilnībā. To nevar atsaukt.",
+    "confirm": "Dzēst"
+  },
+  "bulkDelete": {
+    "title_zero": "Dzēst {{count}} darbinieku kontu?",
+    "title_one": "Dzēst {{count}} darbinieka kontu?",
+    "title_other": "Dzēst {{count}} darbinieku kontus?",
+    "description": "Konti un to lomu piešķīrumi tiek dzēsti pilnībā. To nevar atsaukt. Daži var tikt atteikti — pēdējais galvenais administrators, konts, kas ir augstāks par jūsējo, vai jūsu paša — un jums tiks pateikts, kuri.",
+    "confirm": "Dzēst"
+  },
+  "revokeSessions": {
+    "title": "Atteikt {{email}} visur?",
+    "description": "Visas šī konta sesijas tiek nekavējoties pārtrauktas. Pats konts paliek nemainīgs, un tas var pieteikties atkārtoti.",
+    "confirm": "Atteikt visur"
+  },
+  "resetPassword": {
+    "title": "Atiestatīt paroli kontam {{email}}",
+    "description": "Viņi paliek atteikti, līdz izmantos jauno paroli. Nekas neliek to pēc tam mainīt.",
+    "submit": "Atiestatīt paroli",
+    "fields": {
+      "password": {
+        "label": "Jaunā parole",
+        "description": "Nododiet to ārpus sistēmas. Visas šī konta sesijas tiek atteiktas."
+      },
+      "currentPassword": {
+        "label": "Jūsu pašreizējā parole",
+        "description": "Apstiprina, ka izmaiņas veicat jūs, nevis nozagta sesija."
+      }
+    }
+  },
+  "outcomes": {
+    "created": "Darbinieks tika izveidots.",
+    "updated": "Darbinieks tika atjaunināts.",
+    "deleted": "Darbinieks tika dzēsts.",
+    "passwordReset": "Parole tika atiestatīta, un visas šī konta sesijas tika atteiktas.",
+    "sessionsRevoked": "Visas šī konta sesijas tika atteiktas."
+  }
+}

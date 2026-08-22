@@ -1,1 +1,95 @@
-{}
+{
+  "title": "Lietotāji",
+  "description": "Klientu konti. Dzēstie paliek sarakstā, un to pasaka kolonna Dzēsts.",
+  "empty": "Neviens lietotājs neatbilst šim skatam.",
+  "backToList": "Atpakaļ uz lietotājiem",
+  "noun_zero": "lietotāju kontu",
+  "noun_one": "lietotāja konts",
+  "noun_other": "lietotāju konti",
+  "columns": {
+    "email": "E-pasts",
+    "firstName": "Vārds",
+    "lastName": "Uzvārds",
+    "roles": "Lomas",
+    "status": "Statuss",
+    "lastLoginAt": "Pēdējā pieteikšanās",
+    "createdAt": "Izveidots",
+    "deletedAt": "Dzēsts",
+    "actions": "Darbības"
+  },
+  "filters": {
+    "status": "Statuss",
+    "deletedOnly": "Tikai dzēstie"
+  },
+  "fields": {
+    "email": { "label": "E-pasts" },
+    "password": {
+      "label": "Sākotnējā parole",
+      "description": "Nododiet to ārpus sistēmas un palūdziet to nomainīt. Nekas neliek to mainīt pirmajā pieteikšanās reizē."
+    },
+    "firstName": { "label": "Vārds" },
+    "lastName": { "label": "Uzvārds" },
+    "status": {
+      "label": "Statuss",
+      "placeholder": "Noklusējums (aktīvs)"
+    }
+  },
+  "actions": {
+    "create": "Jauns lietotājs",
+    "edit": "Rediģēt",
+    "resetPassword": "Atiestatīt paroli",
+    "revokeSessions": "Atteikt visur",
+    "delete": "Dzēst"
+  },
+  "create": {
+    "routeTitle": "Jauns lietotājs",
+    "title": "Jauns lietotājs",
+    "description": "Viņi varēs pieteikties, tiklīdz tas būs saglabāts.",
+    "submit": "Izveidot"
+  },
+  "edit": {
+    "routeTitle": "Rediģēt lietotāju",
+    "title": "Rediģēt {{email}}",
+    "description": "E-pastu rediģēt nevar — tā identifikatora maiņa, ar kuru izveidota sesija, ir atsevišķa darbība.",
+    "submit": "Saglabāt izmaiņas"
+  },
+  "delete": {
+    "title": "Dzēst {{email}}?",
+    "description": "Konts tiek saglabāts un atzīmēts kā dzēsts, un visas sesijas tiek pārtrauktas. Tas nevar pieteikties, un administratora izmaiņas tiek atteiktas. E-pasta adrese kļūst pieejama atkārtotai reģistrācijai — atsaukt to nevar.",
+    "confirm": "Dzēst"
+  },
+  "bulkDelete": {
+    "title_zero": "Dzēst {{count}} lietotāju kontu?",
+    "title_one": "Dzēst {{count}} lietotāja kontu?",
+    "title_other": "Dzēst {{count}} lietotāju kontus?",
+    "description": "Katrs konts tiek saglabāts un atzīmēts kā dzēsts, un visas sesijas tiek pārtrauktas. Tie nevar pieteikties, un administratora izmaiņas tiek atteiktas. To e-pasta adreses kļūst pieejamas atkārtotai reģistrācijai — atsaukt to nevar. Jau dzēsts konts tiks atteikts, un jums tiks pateikts, kurš.",
+    "confirm": "Dzēst"
+  },
+  "revokeSessions": {
+    "title": "Atteikt {{email}} visur?",
+    "description": "Visas šī konta sesijas tiek nekavējoties pārtrauktas. Pats konts paliek nemainīgs, un tas var pieteikties atkārtoti.",
+    "confirm": "Atteikt visur"
+  },
+  "resetPassword": {
+    "title": "Atiestatīt paroli kontam {{email}}",
+    "description": "Viņi paliek atteikti, līdz izmantos jauno paroli. Nekas neliek to pēc tam mainīt.",
+    "submit": "Atiestatīt paroli",
+    "fields": {
+      "password": {
+        "label": "Jaunā parole",
+        "description": "Nododiet to ārpus sistēmas. Visas šī konta sesijas tiek atteiktas."
+      },
+      "currentPassword": {
+        "label": "Jūsu pašreizējā parole",
+        "description": "Apstiprina, ka izmaiņas veicat jūs, nevis nozagta sesija."
+      }
+    }
+  },
+  "outcomes": {
+    "created": "Lietotājs tika izveidots.",
+    "updated": "Lietotājs tika atjaunināts.",
+    "deleted": "Lietotājs tika dzēsts.",
+    "passwordReset": "Parole tika atiestatīta, un visas šī konta sesijas tika atteiktas.",
+    "sessionsRevoked": "Visas šī konta sesijas tika atteiktas."
+  }
+}

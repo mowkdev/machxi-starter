@@ -6,7 +6,8 @@ import { UiStringsProvider } from "@/shared/ui";
 /**
  * The app's half of the design system's `UiStrings` seam (ADR-0046 §12).
  *
- * `packages/ui` knows that six of its strings are injectable and nothing else —
+ * `packages/ui` knows that thirteen of its strings are injectable and nothing
+ * else —
  * no i18next, no namespace, no locale. This is the join, and `app` is where a
  * join belongs (ADR-0032): `shared/i18n` knows how to translate a key and
  * nothing about the design system, `shared/ui` re-exports a provider and knows
@@ -15,11 +16,12 @@ import { UiStringsProvider } from "@/shared/ui";
  * **It re-renders on `languageChanged` because `useTranslation` does.** There is
  * no subscription here and there should not be: react-i18next already
  * re-renders every component that called `useT` when the language settles, and
- * this component's whole output is six calls to `t`. The primitives below read
+ * this component's whole output is a call to `t` per key. The primitives below
+ * read
  * them from context on their own next render, which is the same paint.
  *
  * The object is rebuilt on every render and deliberately not memoised —
- * `UiStringsProvider` memoises on the six strings themselves, precisely so no
+ * `UiStringsProvider` memoises on the strings themselves, precisely so no
  * caller has to.
  *
  * It must sit **inside** `I18nProvider`, which `SettingsProvider` renders. That
@@ -44,6 +46,21 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
         morePages: t("ui.morePages"),
         more: t("ui.more"),
         toggleSidebar: t("ui.toggleSidebar"),
+        /*
+         * The seven `D7.6` added, four of which still have no rendering site in
+         * this app — `apps/admin`'s pager is `shared/grid/grid-pager.tsx` and
+         * its breadcrumb never reached the `shared/ui` door. Supplied anyway,
+         * for the reason the four before them were: the key then has a `t()`
+         * call site the drift check can see, and D8's customer app may well
+         * mount the primitive this one declined to.
+         */
+        sidebarTitle: t("ui.sidebarTitle"),
+        sidebarDescription: t("ui.sidebarDescription"),
+        previousPage: t("ui.previousPage"),
+        nextPage: t("ui.nextPage"),
+        pagination: t("ui.pagination"),
+        breadcrumb: t("ui.breadcrumb"),
+        notifications: t("ui.notifications"),
       }}
     >
       {children}

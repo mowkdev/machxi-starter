@@ -7,6 +7,8 @@ import {
 } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
+import { useUiStrings } from "@repo/ui/ui-strings"
+
 /*
  * Deliberate divergence from the generated component (ADR-0031: these are owned
  * source). Upstream reads `theme` from `next-themes`, which is a Next.js
@@ -15,9 +17,20 @@ import { Toaster as Sonner, type ToasterProps } from "sonner"
  * else and neither app needs a theme library to make it match.
  */
 const Toaster = ({ ...props }: ToasterProps) => {
+  // ADR-0046 §12: injectable, English by default.
+  const strings = useUiStrings()
+
   return (
     <Sonner
       className="toaster group"
+      /*
+       * `Notifications` inside sonner — ADR-0046 §12 (`D7.6`). The toast
+       * region is a landmark an operator's screen reader announces, and it is
+       * the one string in this package that is on screen on *every* page, so
+       * §12's "unreachable in this app" reasoning never applied to it. Sonner
+       * appends its own hotkey hint to whatever this is.
+       */
+      containerAriaLabel={strings.notifications}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
