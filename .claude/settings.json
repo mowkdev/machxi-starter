@@ -43,7 +43,6 @@
       "Bash(pnpm db:reset*)",
       "Bash(pnpm docker:reset*)",
       "Bash(docker compose * down -v*)",
-      "Bash(git push*)",
       "Bash(git rebase*)",
       "Bash(git reset*)",
       "Bash(rm -rf *)"
