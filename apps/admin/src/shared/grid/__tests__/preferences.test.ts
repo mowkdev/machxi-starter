@@ -5,6 +5,7 @@ import {
   createLocalStorageAdapter,
   createMemoryStorage,
   gridStorageKey,
+  parseGridStorageKey,
   reconcile,
   type PreferenceStorage,
 } from "../preferences";
@@ -107,6 +108,26 @@ describe("the round trip", () => {
     // Versioned in the key as well as the payload, extending the naming the
     // theme preference began.
     expect(gridStorageKey("staff")).toBe("machxi.admin.grid:staff:v1");
+  });
+
+  /**
+   * The inverse, added by `D6.3` for the server adapter (ADR-0045).
+   *
+   * It is asserted here rather than in `entities/settings` because the format
+   * belongs to this file: the adapter is only allowed to know a `gridId`, and
+   * a key it cannot parse is one it must leave to the local cache.
+   */
+  it("reads a grid id back out of its own key", () => {
+    for (const gridId of ["staff", "users", "a:colon:inside", "x".repeat(64)]) {
+      expect(parseGridStorageKey(gridStorageKey(gridId))).toBe(gridId);
+    }
+  });
+
+  it("refuses a key it did not write", () => {
+    expect(parseGridStorageKey("machxi.admin.theme")).toBeNull();
+    // A future version is somebody else's entry, not a v1 one to upload.
+    expect(parseGridStorageKey("machxi.admin.grid:staff:v2")).toBeNull();
+    expect(parseGridStorageKey("machxi.admin.grid::v1")).toBeNull();
   });
 
   it("notifies subscribers, and stops when they leave", () => {

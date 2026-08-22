@@ -67,6 +67,11 @@ export {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  // Two names, no new component and no new dependency (`D6.3`): the theme
+  // choice is one-of-three, and a radio group is what says so to a screen
+  // reader. Widening the door is the visible line in a diff ADR-0031 wants.
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@repo/ui/components/dropdown-menu";

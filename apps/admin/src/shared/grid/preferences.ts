@@ -99,6 +99,29 @@ export const gridStorageKey = (gridId: string): string =>
   `machxi.admin.grid:${gridId}:v1`;
 
 /**
+ * The inverse of {@link gridStorageKey}, added by `D6.3` (ADR-0045).
+ *
+ * The store speaks keys and the wire speaks `grids[gridId]`, so something has
+ * to know the format in both directions — and ADR-0045 puts the pair in one
+ * file rather than letting a second module re-spell a string this one owns.
+ * It is an addition **beside** the store rather than a change to it: nothing
+ * in `createGridPreferences` reads it, and the server adapter that does lives
+ * two layers up in `entities/settings`.
+ *
+ * A key this cannot parse — a different prefix, a different version — answers
+ * `null`, which the adapter reads as "not mine": it falls through to the local
+ * cache and is never sent. So a `v2` entry written by a future client is
+ * ignored here rather than uploaded as a `v1` one.
+ *
+ * The greedy capture is deliberate: a `gridId` may contain a colon, and
+ * `gridStorageKey("a:v1")` must come back as `"a:v1"` rather than as `"a"`.
+ */
+const GRID_KEY_PATTERN = /^machxi\.admin\.grid:(.+):v1$/;
+
+export const parseGridStorageKey = (key: string): string | null =>
+  GRID_KEY_PATTERN.exec(key)?.[1] ?? null;
+
+/**
  * `window.localStorage`, best-effort in both directions.
  *
  * Every call is guarded, and that is a decision rather than defensive habit:

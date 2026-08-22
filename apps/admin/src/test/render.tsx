@@ -11,6 +11,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import { ThemeProvider } from "@/shared/theme";
 import { Toaster } from "@/shared/ui";
 
 /**
@@ -82,8 +83,18 @@ export const renderWithProviders = (
     ...render(
       <ApiProvider value={{ client: value.client, store: value.store }}>
         <QueryClientProvider client={value.queryClient}>
-          {ui}
-          <Toaster />
+          {/*
+           * The local-only theme, which is what `app/providers/settings.tsx`
+           * provides for an anonymous session (`D6.3`). `useTheme` throws
+           * outside a provider on purpose, so the harness mounts one for the
+           * same reason it mounts a `<Toaster>`: a component test should not
+           * have to remember the app's wiring to render a control the app
+           * ships. A test about *adoption* builds its own `SettingsProvider`.
+           */}
+          <ThemeProvider>
+            {ui}
+            <Toaster />
+          </ThemeProvider>
         </QueryClientProvider>
       </ApiProvider>,
     ),
@@ -128,7 +139,9 @@ export const renderApp = ({
     <ApiProvider value={{ client: value.client, store: value.store }}>
       <QueryClientProvider client={value.queryClient}>
         {/* The root route mounts its own `<Toaster>`; this tree adds none. */}
-        <RouterProvider router={router} />
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>
       </QueryClientProvider>
     </ApiProvider>
   );

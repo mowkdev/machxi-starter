@@ -5,6 +5,7 @@ import { AppLoader } from "@/shared/ui";
 import { createQueryClient } from "./providers/query-client";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
+import { SettingsProvider } from "./providers/settings";
 import "./styles.css";
 
 /**
@@ -24,13 +25,22 @@ import "./styles.css";
  * The client is built once at module scope for the same reason the router is
  * — constructing it in the component body would discard the cache on every
  * re-render.
+ *
+ * `SettingsProvider` is the third gate and the innermost (`D6.3`, ADR-0045).
+ * It needs the query client, so it cannot sit beside `SessionProvider`; it must
+ * hold the router, because ADR-0041's `read` is synchronous and a grid that
+ * mounted before the account's arrangement was in memory would show the local
+ * one and never hear otherwise. Anonymous, it costs nothing and provides the
+ * `localStorage` adapter the app has always used.
  */
 const queryClient = createQueryClient();
 
 const App = () => (
   <SessionProvider fallback={<AppLoader />}>
     <QueryClientProvider client={queryClient}>
-      <AppRouter queryClient={queryClient} />
+      <SettingsProvider fallback={<AppLoader />}>
+        <AppRouter queryClient={queryClient} />
+      </SettingsProvider>
     </QueryClientProvider>
   </SessionProvider>
 );

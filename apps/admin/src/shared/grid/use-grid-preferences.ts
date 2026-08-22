@@ -1,4 +1,9 @@
-import { useMemo, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 
 import {
   createGridPreferences,
@@ -34,6 +39,41 @@ import {
 const SEPARATOR = "\n";
 
 /**
+ * The default adapter, and the one line ADR-0045 said would change here.
+ *
+ * ADR-0041 wrote of this file that it is "the reason the future server-backed
+ * adapter changes one file rather than a component tree", and `D6.3` is the
+ * day that claim is spent. The default stops being `localStorage` outright and
+ * becomes *whatever the app has provided*, defaulting to `localStorage` when
+ * nothing has: `app/providers` puts the ADR-0045 server adapter here for an
+ * authenticated session and leaves it alone otherwise, so a grid signed out —
+ * or in any test that does not wire settings — behaves exactly as it did.
+ *
+ * The store, its guards and `AppGrid` are untouched by this, which is the
+ * whole of the ADR-0041 claim `D6.3` exists to falsify.
+ *
+ * One module-level instance rather than one per store: the store is memoised
+ * on the adapter's identity, so a fresh adapter per render would rebuild the
+ * store every render and hand `useSyncExternalStore` a new snapshot each time —
+ * an infinite loop rather than a slow path. A context default has to be stable
+ * for the same reason a prop does.
+ */
+const LOCAL_STORAGE_ADAPTER: PreferenceStorage = createLocalStorageAdapter();
+
+const PreferenceStorageContext = createContext<PreferenceStorage>(
+  LOCAL_STORAGE_ADAPTER,
+);
+
+/**
+ * Supplies the adapter every grid below it persists through.
+ *
+ * The value **must be referentially stable** for the reason the `AppGrid`
+ * prop's own doc gives; `app/providers/settings.tsx` holds it in a `useMemo`
+ * that outlives the query it is built from.
+ */
+export const PreferenceStorageProvider = PreferenceStorageContext.Provider;
+
+/**
  * A grid with **no `gridId` persists nothing**, and that is the honest default
  * rather than a disabled feature.
  *
@@ -54,6 +94,11 @@ export const useGridPreferences = ({
   readonly storage: PreferenceStorage | undefined;
 }): readonly [GridPreferences, GridPreferencesStore] => {
   const movableKey = movable.join(SEPARATOR);
+  /*
+   * The prop still wins (ADR-0045): it is the per-call-site override, the
+   * context is the app's default, and `localStorage` is the default's default.
+   */
+  const provided = useContext(PreferenceStorageContext);
 
   const store = useMemo(
     () =>
@@ -73,15 +118,13 @@ export const useGridPreferences = ({
          * to make it configurable.
          */
         storage:
-          gridId === undefined
-            ? createMemoryStorage()
-            : (storage ?? createLocalStorageAdapter()),
+          gridId === undefined ? createMemoryStorage() : (storage ?? provided),
         defaults: { order: movable },
       }),
     // `movableKey` stands in for `movable`, whose identity changes every render
     // while its contents do not; see the note on SEPARATOR above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gridId, movableKey, storage],
+    [gridId, movableKey, storage, provided],
   );
 
   return [useSyncExternalStore(store.subscribe, store.get), store];

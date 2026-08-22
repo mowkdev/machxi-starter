@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { LogoutMenuItem } from "@/features/auth";
+import { ThemeMenuItems } from "@/features/theme";
 import { useSession } from "@/shared/api/context";
 import { useCan, type ResourceName } from "@/shared/auth";
 
@@ -178,6 +179,14 @@ const AccountMenu = () => {
             Profile
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {/*
+         * A preference about the operator, in the menu named after them
+         * (`D6.3`, ADR-0045). It is the account's from here on, so it follows
+         * them to the next machine — which is the smallest visible proof that
+         * "display state" and "device state" were never the same category.
+         */}
+        <ThemeMenuItems />
         <DropdownMenuSeparator />
         <LogoutMenuItem />
       </DropdownMenuContent>
