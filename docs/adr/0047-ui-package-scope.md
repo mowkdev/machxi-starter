@@ -1,0 +1,145 @@
+# ADR-0047: UI package scope and compositions (supersedes ADR-0031)
+
+- Status: proposed
+- Date: 2026-08-22
+- Supersedes: [ADR-0031](0031-ui-design-system.md)
+
+> Written 2026-08-22 **ahead of** D8 (app shell and record surfaces, [`docs/plan/0008-app-shell-and-record-surfaces.md`](../plan/0008-app-shell-and-record-surfaces.md)) — writing is not opening, the D4 precedent used for the fourth time, and further ahead than before: D8's plan file is still a scope document without steps, and per the ledger writing the steps is itself the decision that opens the deliverable. This record stays `proposed` until it is accepted at the head of the deliverable's first implementing step (ADR-0025 rule 3), which D8's scope names as this ADR's own step; [ADR-0031](0031-ui-design-system.md) stays `accepted` and in force until that acceptance and moves to `superseded by ADR-0047` with it — the D5 mechanics. Once accepted, it is amendable in place while D8 is `in progress` in `docs/plan/README.md` (ADR-0025 rule 2).
+>
+> **This record carries the whole of ADR-0031, not the delta** (ADR-0024 rule 1). Everything that ADR decided — the shared package, the shadcn copy-in ownership model with its two dependency amendments folded in, Tailwind v4 configured in CSS, the shape and the one-door export map, the conventions, the prettier carve-out and the owned-edit comment rule — is restated here unchanged. **One section changes**: what kind of code the package may hold.
+
+## Context
+
+ADR-0031 made `@repo/ui` the shared design system and drew a line through it: _"blocks are adapted into `@repo/ui` and `apps/admin`, not treated as a vendored theme — **the layout composition an app owns lives in the app, the primitives it is built from live here**."_ That sentence is the one this record changes. Everything else in ADR-0031 has held for five deliverables and holds here.
+
+D8's scope ([`docs/plan/0008-app-shell-and-record-surfaces.md`](../plan/0008-app-shell-and-record-surfaces.md)) is the operator's call that two compositions — the slotted application shell and the record-surface container — live in `@repo/ui` as generic components, with `apps/admin` adopting them as the first consumer and the planned customer app ([D11](../plan/0011-customer-app.md)) as the second. The argument is ADR-0031's own drift argument, extended one level up: the primitives were shared so that two apps could not diverge at the `button` level, and the two compositions **every screen in both SPAs is made from** are where the same divergence would now happen — two hand-rolled shells and two hand-rolled form surfaces would drift from the first app-local fix onward. ADR-0031 is frozen (D3 shipped 2026-08-20), so admitting them is a supersession that carries the whole record, not an edit.
+
+The changed section has to answer four forces that are in the code rather than in anyone's preference:
+
+- **The prettier carve-out is wholesale.** `.prettierignore` exempts `packages/ui/src/components/` and `packages/ui/src/hooks/` entirely, because everything under them is byte-identical to CLI output by rule. A hand-written composition placed there would be silently unformatted and nominally subject to a regenerate-and-diff it can never satisfy — there is no CLI that emits it. The precedent is `ui-strings.tsx` (D7.3): a hand-written file at a path outside the carve-out, with its own `exports` entry, formatted like the rest of the repository.
+- **The dependency rule was scoped to primitives.** ADR-0031 located "what the generated components need in order to be components" in this package, and today's list is exactly that (`packages/ui/package.json`: `class-variance-authority`, `clsx`, `lucide-react`, `radix-ui`, `sonner`, `tailwind-merge`, `tailwindcss`, `tw-animate-css`, react/react-dom as peers). Two of D8's own record-surface intentions imply dependencies this package does not have: a footer that reads `isPending` / `isDirty` / `isValid` wants `react-hook-form`'s `useFormContext`, and the page variant's navigation blocker is `useBlocker` from `@tanstack/react-router` (`apps/admin/src/shared/form/app-form-surface.tsx:224`). Whether either enters is a decision this record must make explicitly, not an install a step performs.
+- **Two strings mechanisms exist and only one is legal here.** [ADR-0046](0046-interface-localization.md) §12 gives this package `UiStrings` — injectable operator-read strings with English defaults, **no i18n dependency** — while §13 states the rule for shared packages that own copy: ship `locales/<locale>/<ns>.json` and export `register(i18n)`. The §13 route would give `@repo/ui` the i18next dependency §12 forbids. D8 is the first work that has to choose for this package specifically.
+- **`apps/web` compiles this package.** `transpilePackages: ["@repo/ui"]` in `apps/web/next.config.ts` means every export must be importable from a Next server component; nine files already carry `"use client"` — eight primitives plus the hand-written `ui-strings.tsx` — while most primitives do not, including the stateful `sidebar.tsx` and `card.tsx`. A stateful hand-written composition needs the rule stated before the first one lands.
+
+## Decision
+
+### The package survives, shared, as the design system
+
+**`@repo/ui` is the shared design-system package for the frontend apps** — `apps/admin`, `apps/web`, and the planned customer app. The rationale is the one [ADR-0022](0022-frontend-apps.md) banked and ADR-0031 spent: the apps depend on it, one React version was aligned across the workspace for exactly this, and per-app copies of the same components would drift from the first divergent `shadcn add` onward.
+
+The cost is stated rather than hidden: **a shared package couples the apps' upgrade cadence.** A Tailwind major, a radix breaking change or a restyled `button` lands in every consumer at once, and the app that did not ask for it still has to absorb it. That is the price of no drift, and this record pays it knowingly — and, with compositions admitted below, pays it for layout as well as for primitives.
+
+### shadcn/ui, committed as source
+
+**Components come from shadcn/ui and are committed as source under `packages/ui/src/components`.** shadcn's copy-in model means the components are owned code, not a dependency: there is no `shadcn` package in the runtime graph, only the primitives it generated, which are edited in place when the design needs it. "Upgrading" a component means regenerating it and diffing against the local copy — §Consequences.
+
+**The runtime dependencies the generated code needs live in `packages/ui`, not in each app**: the radix primitives, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `sonner` — and `tailwindcss` with `tw-animate-css`, in `dependencies` rather than `devDependencies`, because `globals.css` opens with `@import "tailwindcss"` and `@import "tw-animate-css"` and under pnpm's non-flat layout those specifiers resolve from the directory of the file that writes them — this package's, not the importing app's. The CLI installs into the _app_ it is invoked from, so `npx shadcn add` run from an app lands the component here and its radix dependency there; moving that entry back into this package is part of adding a component, not an afterthought.
+
+The rule is about the _design system's_ dependencies — what the generated components need in order to be components — and `lucide-react` is the one entry that is also an ordinary authoring dependency: an app composing its own screens picks icons for them. Re-exporting each icon through `@repo/ui` would turn the door into an icon catalogue and make adding a nav item a two-package change. So **`lucide-react` may be a direct dependency of an app that authors its own icon usage, pinned to the same range as this package's**; every other name in the list stays here, and an app that acquires one of those has a bug to fix rather than a dependency to keep. `react` and `react-dom` stay peers. The package stays source-published per [ADR-0002](0002-monorepo-layout-and-tooling.md) — no build step; Vite compiles it directly and `apps/web` transpiles it.
+
+### Tailwind CSS v4, configured in CSS
+
+**Tailwind v4, CSS-first.** Theme tokens — colors, radii, typography — are CSS variables in the package's own stylesheet, declared with `@theme`; dark mode is the class strategy (a `dark` custom variant on a `.dark` ancestor), so it is a token concern in one file rather than a per-app one. The stylesheet is exported, the apps import it, and it declares the package's own sources with `@source`, so an app that imports it gets the utilities the package's code uses without content configuration of its own. **No `tailwind.config.js` sprawl per app** — each app's wiring is its CSS entry importing the shared stylesheet, and nothing more than content wiring beyond that.
+
+### What code the package may hold — the changed section
+
+This is the section that supersedes ADR-0031's scope rule. The package holds **two kinds of code under two regimes**, and the path tells a reader which regime applies:
+
+**1. Generated primitives — `src/components/`, `src/hooks/` — under the regenerate-and-diff regime, unchanged.** Byte-identical to what the CLI emits, exempt from prettier, upgraded by re-running the CLI and reviewing the diff. **An edit to a generated file has to earn itself: each divergence carries a comment at the point of change naming the rule that forced it** — ADR-0031's rule restated verbatim, and already exercised three times over: `sidebar.tsx`'s `min-w-0` on `SidebarInset` and `table.tsx`'s `container` opt-out ([ADR-0037](0037-grid-viewport-layout.md)), and the ten `useUiStrings()` sites across `dialog.tsx`, `sheet.tsx`, `pagination.tsx`, `breadcrumb.tsx`, `sidebar.tsx` and `sonner.tsx` ([ADR-0046](0046-interface-localization.md) §12). Any further divergence carries the same comment.
+
+**2. Hand-written compositions — `src/compositions/` — under the ordinary code regime, new.** A composition is a component both apps are built from that no CLI emits: it is written by hand, formatted by prettier (the path is outside the `.prettierignore` carve-out, which does not widen), tested in `src/__tests__/`, and upgraded by editing it — the `ui-strings.tsx` precedent (D7.3: a hand-written file outside `components/`, its own `exports` entry, prettier applying) generalised from one file to a directory.
+
+The sentence that replaces ADR-0031's: **a layout composition every app of this shape is built from lives here, as a slotted, presentation-only component; the app keeps the joins — navigation content, routing, authorization, form wiring — and supplies them through the slots.** A composition an app _owns_ — a screen, a widget joined to a session — still lives in the app.
+
+What qualifies, and what a composition may know:
+
+- **Presentation only.** A composition owns geometry, slots, size tokens and accessible structure. It knows nothing about routing, authorization, forms, server state, the session or the wire: **no import from `@repo/contracts`**, and content arrives as JSX through slots or as plain props. A composition that wants a session fact (D12's impersonation banner content, an offline notice) receives it from the app; the shell never reads a principal, which is the boundary [ADR-0023](0023-shared-contracts-package.md) and this rule jointly enforce.
+- **The dependency list does not grow for them.** Compositions use what the package already declares — radix through the primitives, `cn`, `class-variance-authority` — and specifically **neither `react-hook-form` nor `@tanstack/react-router` enters this package**. The record-surface container is therefore **geometry-only**: the fixed-header/scrolling-body/fixed-footer frame, the variants and the size tokens live here; `AppFormFrame` (ADR-0035's react-hook-form frame) renders _inside_ the container from `apps/admin`, and the page variant's `useBlocker` stays in the app as a thin wrapper around the container. This keeps the shell's own rule — it knows nothing about routing — true of the package as a whole, and it keeps the design system form-engine-agnostic, which is the same reason ADR-0031 chose the `Field` family. The known cost: [D9](../plan/0009-platform-extraction.md)'s file-count table assumes "the surfaces D8 moved to `@repo/ui`" moved whole (`docs/plan/0009-platform-extraction.md:18,27`); it gets its one-line correction — the geometry moved, the two wrappers stayed — when D8's build order is written.
+- **The compositions D8 admits are three**: the application shell, the record-surface container, and `Banner` — hand-written in `compositions/`, not built on shadcn's `alert` primitive (which is not in the package; generating it only to be a substrate would buy an upstream-diff obligation for a component used as raw material). Their design — slots, variants, tokens, the ADR-0037 height contract restated as the shell's responsibility — is ADR-0048's, not this record's. Admission is bounded by D8's own rule: **every slot and every variant must answer a need this repository can name today**; this package does not become a grab-bag of maybe-useful layouts.
+- **Strings follow [ADR-0046](0046-interface-localization.md) §12, never §13.** Anything a composition says out loud — a dismiss control's label, a landmark name — is a new `UiStrings` key with an English default, fed by each app from its `common:ui.*` namespace. §13's `register(i18n)` route is for packages that own copy; using it here would give `@repo/ui` the i18n dependency §12 forbids, so it is ruled out for this package. Content-like text (a banner's message, a page title) is a slot the app fills — it is the app's copy, in the app's catalogue.
+- **Stateful compositions carry `"use client"`.** `apps/web` compiles this package through `transpilePackages`, and a Next server component must be able to import any export; a composition that uses hooks or context declares the boundary itself rather than leaving it to the first Next consumer to discover.
+- **Every new path costs three coordinated edits, and all three land together**: an `exports` entry in `packages/ui/package.json`, a pattern in `apps/admin`'s `no-restricted-imports` group (which names `components/*`, `hooks/*`, `lib/*` and `ui-strings` today and gains `@repo/ui/compositions/*`), and a named re-export in `shared/ui/index.ts` — exactly as `@repo/ui/ui-strings` did at D7.3. A path added without its lint pattern is a hole the one-door rule cannot see, so the three edits are one change, reviewed as one.
+
+### The shape
+
+The layout follows shadcn's official monorepo layout, extended by the one hand-written directory:
+
+```
+packages/ui/
+├── src/
+│   ├── components/        # shadcn-generated primitives — byte-identical to CLI output, prettier-exempt
+│   ├── hooks/             # generator-emitted hooks — same regime
+│   ├── compositions/      # hand-written compositions (shell, record surface, banner) — formatted, tested, owned like app code
+│   ├── lib/               # utils.ts (cn())
+│   ├── styles/
+│   │   └── globals.css    # @theme tokens, dark variant, @source
+│   ├── ui-strings.tsx     # the UiStrings seam (ADR-0046 §12) — the path precedent compositions/ follows
+│   └── __tests__/         # the package's suites; hand-written code is formatted, so they live here, not beside primitives
+├── components.json        # tells the CLI this workspace is a target
+└── package.json
+```
+
+```json
+"exports": {
+  "./globals.css": "./src/styles/globals.css",
+  "./components/*": "./src/components/*.tsx",
+  "./compositions/*": "./src/compositions/*.tsx",
+  "./hooks/*": "./src/hooks/*.ts",
+  "./lib/*": "./src/lib/*.ts",
+  "./ui-strings": "./src/ui-strings.tsx"
+}
+```
+
+**Each app carries a `components.json` whose aliases point at the workspace package**, so `npx shadcn add <x>` run from any app lands the new primitive in `@repo/ui`, not in the app. That is the mechanism that keeps "shared" true for primitives; for compositions the equivalent mechanism is the door: the path of least resistance to a shell or a surface is the shared one, and an app-local fork takes deliberate effort.
+
+### The template scaffolding stays deleted
+
+ADR-0031 removed the Turborepo template's `counter-button` and `link` with their tests, and `apps/web` took the minimal edit that kept it compiling. That is history that stands; nothing template-shaped returns, and `apps/web` stays a placeholder until its own deliverable (D13 in the re-scoped ledger) dresses it.
+
+### What shipped at D3.1, and the block rule as amended
+
+D3 needed these, so they were in scope for `D3.1` rather than added ad hoc later — restated as the standing inventory:
+
+- **The `Field` family** — form-engine-agnostic label/control/description/error primitives, chosen deliberately so [ADR-0035](0035-config-driven-resource-ui.md) could decide form wiring without this package taking a side. The geometry-only stance above is the same choice made again.
+- **`sonner` for toasts** — how the apps consume it was [ADR-0034](0034-server-state-and-notifications.md)'s decision, carried today by its successor [ADR-0043](0043-readable-list-search-params.md).
+- **The `sidebar-07` and `login-01` block foundations** — the sidebar, sheet, button, input, dropdown-menu, avatar, card, dialog, select, checkbox, switch, table and the rest of what those blocks pull in.
+
+**Blocks are still adapted, never vendored as a theme.** What changes is where an adaptation may land: a block adapted into a composition both apps need (the shell over `sidebar-07`'s primitives) lands in `src/compositions/` under §What-code's rules; a block adapted into one app's screen lands in that app, as before.
+
+### Component conventions
+
+- **Functional components only, no classes.** [ADR-0009](0009-api-modular-layering.md)'s rule carried to the frontend in spirit: no `class`, no `this` — for generated and hand-written code alike.
+- **Files are kebab-case**, as shadcn generates them, and generated code is not renamed on arrival — the smaller the local diff against upstream, the cheaper regenerate-and-diff stays. Compositions use the same file naming, for one convention rather than two.
+- The D1-era package plumbing carries over unchanged: the `lint` / `check-types` / `test` / `test:unit` scripts, `@repo/vitest-config` with jsdom, the shared ESLint config. Nothing here adds a Turbo task, so [ADR-0026](0026-task-graph-caching-and-serialisation.md)'s table is untouched.
+- **The package's harness stays minimal** — a `matchMedia` stub and Testing Library cleanup, no router, no form engine, no MSW. Composition tests here assert roles, accessible names and slot presence; everything behavioural stays asserted from the consuming app's suite, which is where the real router and form context live.
+
+### What this does not decide
+
+- **The compositions' own design** — the shell's slots, the record surface's variants and size tokens, the form-wrapping rule, the height contract restated as a component responsibility. That is ADR-0048, written beside frozen [0035](0035-config-driven-resource-ui.md), [0037](0037-grid-viewport-layout.md) and [0044](0044-record-routes-without-list-state.md).
+- **The admin app's internal architecture** — [ADR-0032](0032-admin-app-architecture.md), which survives this record unamended: `widgets/dashboard-layout` remains the `widgets`-layer shell ADR-0032 names, and becomes a thin adapter that mounts the package composition and fills its slots. The layer owns the join; the package owns the geometry.
+- **Form wiring** — [ADR-0035](0035-config-driven-resource-ui.md); the geometry-only container is precisely what keeps that ADR's machinery in the app until [D9](../plan/0009-platform-extraction.md) decides how it moves.
+- **The data grid** — [ADR-0035](0035-config-driven-resource-ui.md) and ADRs [0037](0037-grid-viewport-layout.md)–[0041](0041-grid-preferences.md). The grid follows the theme because it is made of these components; nothing about it is decided here, and nothing about it moves in D8.
+
+## Consequences
+
+- **shadcn updates stay "regenerate and diff", and now the path says what the rule is.** A reviewer of a `packages/ui` diff reads `components/` and `hooks/` as byte-identical-or-commented and `compositions/` (with `ui-strings.tsx` and `lib/`) as ordinary reviewed code. The carve-out in `.prettierignore` does not change, which is what keeps the regime boundary machine-visible.
+- **The upgrade-cadence coupling now covers layout.** A change to the shell or the record surface is a change to every consumer at once — more visible than a restyled `button`, because it is every screen's frame. Reviews of `compositions/` diffs must read them that way, which is the standing fact ADR-0031 named, grown one level.
+- **Tailwind stays in every consumer's build**, the token layer in one place; dark mode stays a class toggle answered by `globals.css`.
+- **The runtime dependency list is unchanged by this record**, and that is a decision with a visible edge: the record-surface container in this package cannot read a form context or block a navigation, so two thin wrappers live on in `apps/admin`, and D9's "the surfaces D8 moved" file count gets its one-line correction when D8's build order is written. The package also keeps compiling for a consumer that has neither dependency — `apps/web` today, any Next app later.
+- **`@repo/ui`'s own suite grows real composition tests within its harness's reach** — roles, accessible names, `data-slot` presence — and no further: the three-shell parity suite and everything else behavioural stays in `apps/admin`, whose harness has the router, `react-hook-form` and MSW this package's deliberately does not.
+- **Every new export path is a three-edit change** (`exports`, `no-restricted-imports`, `shared/ui` re-export), and a review that sees one of the three without the others is looking at the hole the door rule cannot see.
+- **Operator-read strings in compositions accrete as `UiStrings` keys** — one key, one English default, one provider line per string, no new mechanism — and the no-i18n-dependency rule of ADR-0046 §12 stays intact. The corollary from D7 stands: a key without a `t()` call site in an app is one the extractor will flag, so keys land with their consumers.
+- **`"use client"` is part of a stateful composition's definition of done**, because the Next consumer that would otherwise discover its absence is not in this deliverable's test path.
+- ADR-0031 moves to `superseded by ADR-0047` when this record is accepted; its history — the D3.1 scaffolding deletion, the amendment trail on the dependency rule — remains in it, out of force but intact.
+
+## Alternatives considered
+
+- **Keep compositions per-app — ADR-0031's rule, unchanged.** The status quo, and the honest trade-off cuts both ways. For it: `apps/admin` is today the only shipped consumer, and generalising for a second app before that app exists is the speculative generality D8's own rule polices — sharpened by the fact that the customer-app requirements being generalised against are written in D8's plan and the ledger, not yet in D11's own file. Against it: both compositions are ones the customer app cannot be written without, D8 designs them **against the working admin app in place** — the cheapest verification available — and two hand-rolled shells drift exactly the way two `button.tsx` files would. Rejected by the operator's call, with the slot-honesty rule as the guard the old argument gets to keep.
+- **A separate `@repo/ui-compositions` package.** Keeps the design-system package's scope pure and its prettier story uniform. Rejected in favour of one door per app: a second package doubles the door mechanics (two export maps, two lint patterns, two re-export inventories), adds a second version-coupling surface, and its dependency list would converge on this one's — the same code in two boxes with a boundary to police between them.
+- **Admit `react-hook-form` and `@tanstack/react-router` so the whole surface moves.** The container would then own the footer's `useFormContext` reads and the page variant's `useBlocker`, D9's file count would hold as written, and no wrapper would remain in the app. Rejected because both would become peer concerns of every consumer — including `apps/web`, which uses neither — the shell's knows-nothing-about-routing rule would be false of the package that ships it, and the design system would take the form-engine side ADR-0031 deliberately chose the `Field` family to avoid. The cost accepted instead is stated in §Consequences: geometry-only, two wrappers, one plan correction.
+- **Put compositions under `src/components/`.** One directory fewer, and wrong twice over: the wholesale prettier carve-out would leave them silently unformatted, and the byte-identical rule would nominally apply to code no CLI can regenerate. The `ui-strings.tsx` precedent exists precisely because this was already discovered once.
+- **Build `Banner` on shadcn's `alert` primitive.** Would add a generated primitive nothing else consumes, only to restyle it into a full-width session region — an upstream-diff obligation bought for a substrate. Hand-written instead, at the stated cost that `Banner` gets no upstream refresh; a session-level region with variants, an action slot and a `dismissible` flag was never going to track upstream `alert` anyway.
+- **ADR-0046 §13's `register(i18n)` for composition strings.** The mechanism shared packages that own copy will use — and it requires the i18n dependency §12 forbids this package. Rejected here; if a future package under D9 owns real copy, §13 is its rule, and this package's strings stay injectable.
+- **Per-app shadcn copies, `@repo/ui` deprecated** (carried from ADR-0031). Removes the coupling and guarantees drift; a blueprint shipping two visibly different design systems demonstrates the failure it exists to prevent. Still rejected.
+- **A styled component library (MUI, Mantine)** (carried). Faster to the first screen; the components become a dependency rather than owned code and the styling engine is the library's. Still rejected.
+- **Radix primitives, hand-styled** (carried). The same ownership model with the accelerant removed; the CLI's output is a better starting point than an empty file, and diverging later is always available because the code is owned. Still rejected.
