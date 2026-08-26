@@ -23,7 +23,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/shared/ui";
 
 /**
@@ -85,7 +84,12 @@ export const UsersPage = () => {
   return (
     <Card className="min-h-0 flex-1">
       <CardHeader>
-        <CardTitle>{t("title")}</CardTitle>
+        {/*
+         * No `CardTitle` here: the shell renders the route title as the
+         * screen's single `<h1>` (ADR-0048 §2, `D8.4`). Repeating it was
+         * invisible to every test, because `CardTitle` is a `div` rather than
+         * a heading — which is exactly why it had to be removed by hand.
+         */}
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
 

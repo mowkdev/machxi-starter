@@ -1,50 +1,32 @@
 import type { ReactNode } from "react";
 
-import {
-  Separator,
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-  cn,
-} from "@/shared/ui";
+import { AppShell } from "@/shared/ui";
 
 /**
- * The `sidebar-07` shell (ADR-0031, ADR-0032): sidebar, header, outlet, behind
- * the pathless `_dashboard` route that guards every protected page.
+ * The `_dashboard` layout's widget: a thin adapter over `@repo/ui`'s `AppShell`
+ * (ADR-0049 §The-shell-adapter, ADR-0048 §2).
+ *
+ * **It renders no layout markup of its own, and that is its whole job.** The
+ * layer owns the composition's *contents* — the typed route links and the
+ * `can()` join inside `AppSidebar`, the resolved `staticData.title` — and the
+ * package owns its *geometry*. The height contract (ADR-0037) and the
+ * `data-slot="page-container"` / `data-full-height` pair moved to the
+ * composition with the markup that carries them; a widget that rendered a
+ * wrapper here would put itself between them and the page, which is the one
+ * failure this adapter has available to it.
  *
  * The sidebar arrives as a prop rather than as an import, and that is the
  * dependency rule doing its job rather than an awkward signature. `app-sidebar`
- * is a sibling widget — navigation and the current principal (`D3.9`) change
- * for different reasons than the frame around a page — and ADR-0032 allows no
+ * is a sibling widget — navigation and the current principal change for
+ * different reasons than the frame around a page — and ADR-0049 allows no
  * sideways imports, so the layer that may see both composes them: the
- * `_dashboard` route file, which is wiring. The frame stays a pure frame.
+ * `_dashboard` route file, which is wiring. It arrives as **one node**, not as
+ * region fragments: the app's `<Sidebar>` is the whole drawer, header, footer
+ * and rail included.
  *
  * `title` and `fullHeight` are props instead of router lookups because the
  * router-driven version wants route `staticData` the layout would have to read;
  * the route file reads it and passes it down for the same reason.
- *
- * **A height budget needs a definite height to divide** (ADR-0037, amended
- * `D4.1`). `SidebarProvider`'s `min-h-svh` is a floor and not a ceiling: it
- * makes the frame a viewport tall while the content fits, and the moment a
- * grid is taller the wrapper grows with it, so `flex-1` further down resolves
- * against the content's height and budgets nothing. `h-svh` on the inset is
- * what makes the height definite, and it is applied only in `fullHeight` mode
- * so a document-flowed page is left alone. When the floor inside the grid wins
- * on a very short viewport the column overflows this box and the document
- * scrolls — the graceful degradation, reached rather than designed around.
- *
- * **The page container carries the flex contract** (ADR-0037). `min-w-0` is
- * unconditional and is the second half of the fix `SidebarInset` got in
- * `@repo/ui`: without it this container is floored at the min-content width of
- * whatever it holds, and a wide table pushes a horizontal scrollbar onto the
- * document. `min-h-0` is the `fullHeight` half, and it is a choice per page
- * rather than a shell default: with it the container is a height budget its
- * child divides up, and without it the container grows with its content and the
- * document scrolls, which is what a form taller than the viewport wants.
- *
- * Anything inserted between here and a grid carries the same two classes or the
- * budget silently reverts to document scroll — ADR-0037 §Consequences states
- * that as a reviewable rule, and this is the wrapper it starts at.
  */
 export const DashboardLayout = ({
   children,
@@ -57,27 +39,7 @@ export const DashboardLayout = ({
   title: string;
   fullHeight?: boolean;
 }) => (
-  <SidebarProvider>
-    {sidebar}
-    <SidebarInset className={cn(fullHeight && "h-svh")}>
-      <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-        <SidebarTrigger className="-ml-1" />
-        <Separator
-          className="mr-2 data-[orientation=vertical]:h-4"
-          orientation="vertical"
-        />
-        <h1 className="text-base font-medium">{title}</h1>
-      </header>
-      <div
-        data-slot="page-container"
-        data-full-height={fullHeight ? "" : undefined}
-        className={cn(
-          "flex min-w-0 flex-1 flex-col gap-4 p-4",
-          fullHeight && "min-h-0",
-        )}
-      >
-        {children}
-      </div>
-    </SidebarInset>
-  </SidebarProvider>
+  <AppShell fullHeight={fullHeight} sidebar={sidebar} title={title}>
+    {children}
+  </AppShell>
 );

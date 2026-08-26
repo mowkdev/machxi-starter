@@ -1,11 +1,5 @@
 import { useT } from "@/shared/i18n";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/ui";
+import { Card, CardContent, CardDescription, CardHeader } from "@/shared/ui";
 
 /**
  * The landing screen behind the guard.
@@ -20,7 +14,12 @@ export const DashboardPage = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("title")}</CardTitle>
+        {/*
+         * No `CardTitle` here: the shell renders the route title as the
+         * screen's single `<h1>` (ADR-0048 §2, `D8.4`). This is the page the
+         * removal is easiest to miss on — it is not a grid, and no test could
+         * see the leftover, because `CardTitle` is a `div`.
+         */}
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
