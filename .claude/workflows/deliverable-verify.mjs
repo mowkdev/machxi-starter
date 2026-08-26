@@ -231,7 +231,9 @@ const adrIssues = (
               .join(", ") || "none"
           }.
 
-Report issues, ranked. BLOCKER: it changes what a frozen ADR decided without superseding it (ADR-0024 rule 1) — or claims to supersede and does not carry the whole parent decision; it contradicts a sibling ADR of this deliverable; a code fact below shows a claim in it is false in a way a step would build on. MAJOR: a decision it leaves to "the builder", "later" or "TBD" that a step will need; an alternative dismissed on a false premise; the header block, status or index row out of the house format; a consequence the builder will hit that it does not state. MINOR: voice, a cross-reference, precision.
+Report issues, ranked. BLOCKER: it changes what a frozen ADR decided without superseding it (ADR-0024 rule 1) — or claims to supersede and does not carry the whole parent decision; it contradicts a sibling ADR of this deliverable; a code fact below shows a claim in it is false in a way a step would build on. MAJOR — reserved for what would make a builder write the wrong code: a decision it leaves to "the builder", "later" or "TBD" that a step will need; a consequence the builder will hit that it does not state; a mechanism it prescribes that would not work as described. MINOR: voice, a cross-reference, precision, a stale count or line number, the header block/status/index row out of the house format, an alternative dismissed on a false premise, a claim restated inconsistently across documents where the operative decision is nonetheless clear.
+
+Report each defect ONCE. Six reviewers read these documents in parallel and one defect commonly appears in several files; give it a single entry naming every location in "where" rather than one entry per location. Before reporting, ask whether a builder following the step would actually go wrong — if the answer is no and the decision is still legible, it is MINOR.
 
 CODE FACTS:
 ${findingsText}
@@ -257,7 +259,9 @@ phase("Coverage");
 const coverage = await spawn(
   `Coverage check of ${scope.planFile} against its ADR(s) ${scope.adrs.map((a) => "ADR-" + a.number).join(", ") || "(none written!)"} — read both in full, read-only. Report issues, ranked:
 BLOCKER: no ADR written for the deliverable while the scope names decisions; a pending step naming an ADR that does not exist in docs/adr/; a pending step with no "**ADRs:**" line (a step titled Close-out is exempt) or no "**Done when:**"; a pending step gated on a \`proposed\` ADR that neither it nor an earlier pending step accepts at its head; an open marker left in the plan — these: ${scope.openMarkers.map((m) => `"${m}"`).join("; ") || "none"}.
-MAJOR: a decision an ADR makes that no step implements (list the decision); a done-when that cannot be checked by a machine or by a named browser walk ("works well", "is clean"); a definition-of-done item that is not executable or operator-acceptable as written; a step whose scope plainly needs more than one agent sitting (touches more than ~2 apps/packages or more than one ADR's worth of surface) — recommend the split.
+MAJOR — reserved for what would make a builder write the wrong code or be unable to tell whether a step is done: a decision an ADR makes that no step implements (list the decision); a done-when that cannot be checked by a machine or by a named browser walk ("works well", "is clean"); a definition-of-done item that is not executable or operator-acceptable as written; a step whose scope plainly needs more than one agent sitting (touches more than ~2 apps/packages or more than one ADR's worth of surface) — recommend the split. A done-when that is checkable but imprecisely worded, a stale count or line number, and a wording mismatch between the plan and an ADR whose operative decision is still clear are MINOR.
+
+Report each defect ONCE, naming every location in "where" rather than filing one entry per location.
 MINOR: ordering rationale missing; a step that names an ADR it does not use.
 
 STEPS:
