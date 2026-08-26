@@ -24,8 +24,8 @@ import { renderApp } from "@/test/render";
  *
  * Mounted through the **real route tree**, because half of what this step
  * builds is outside the page: the `_dashboard` guard, the shell around it and
- * the sidebar footer that names whoever is signed in. A hand-built tree would
- * quietly replace exactly those.
+ * the header's account menu that names whoever is signed in. A hand-built tree
+ * would quietly replace exactly those.
  *
  * The join this file exists to hold is the last assertion: the store is where
  * session identity lives (ADR-0033), the page is where it is edited, and
@@ -50,14 +50,19 @@ const openProfile = (store: SessionStore = signedIn()) =>
   renderApp({ initialPath: "/profile", store });
 
 /**
- * Queries scoped to the page rather than the document.
+ * Queries scoped to the account summary rather than the document.
  *
  * The operator's own email is on screen twice — once as the account's identity
- * and once in the sidebar footer that now names them — which is the step
- * working rather than a duplicate to remove. `main` is the `SidebarInset`, so
- * this asks about the page and the unscoped queries ask about the shell.
+ * and once in the account menu that names them — which is the step working
+ * rather than a duplicate to remove. **The landmark stopped separating them at
+ * `D8.5`**: `main` is the `SidebarInset` and the menu moved into the header
+ * *inside* it, so a query scoped to `main` matches both and `findByText`
+ * throws. The anchor is the account card's own named region instead
+ * (`role="region"` + `aria-labelledby`, `pages/profile/index.tsx`), which asks
+ * about the summary while the unscoped queries ask about the shell.
  */
-const page = async () => within(await screen.findByRole("main"));
+const page = async () =>
+  within(await screen.findByRole("region", { name: "Your account" }));
 
 beforeEach(() => {
   state = createProfileMockState();
@@ -96,7 +101,7 @@ describe("the profile page", () => {
     expect(await (await page()).findByText(PROFILE.email)).toBeInTheDocument();
   });
 
-  it("names the signed-in operator in the sidebar footer", async () => {
+  it("names the signed-in operator in the header's account menu", async () => {
     openProfile();
 
     const account = await screen.findByRole("button", { name: "Account" });
@@ -107,7 +112,7 @@ describe("the profile page", () => {
     expect(account).toHaveTextContent(PRINCIPAL.email);
   });
 
-  it("keeps the footer honest when the operator renames themselves", async () => {
+  it("keeps the account menu honest when the operator renames themselves", async () => {
     const user = userEvent.setup();
     const store = signedIn();
 
@@ -139,12 +144,14 @@ describe("the profile page", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Profile" }));
 
     // The menu that ends the session is also the one that opens the account it
-    // belongs to — the footer is the current-principal block ADR-0032 names,
-    // and a name with nowhere to click is half of one.
-    // By text, not by role: `CardTitle` is a `div` in the generated shadcn
-    // primitive (ADR-0031 keeps those byte-identical to upstream), so the only
-    // heading on a dashboard screen is the shell's own `h1`.
-    expect(await (await page()).findByText("Your account")).toBeInTheDocument();
+    // belongs to — the menu is the current-principal block, which ADR-0049
+    // moved from the sidebar's footer to the shell's header, and a name with
+    // nowhere to click is half of one.
+    // On the account's own data, not on the region's name: since `D8.5` the
+    // `page()` anchor is computed *from* the card's title, so asserting that
+    // title back would pass on the helper's own lookup and prove no
+    // navigation at all.
+    expect(await (await page()).findByText(PROFILE.email)).toBeInTheDocument();
   });
 
   it("reaches the change-password dialog from the password card", async () => {

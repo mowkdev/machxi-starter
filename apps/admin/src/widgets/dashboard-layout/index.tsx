@@ -21,8 +21,8 @@ import { AppShell } from "@/shared/ui";
  * different reasons than the frame around a page — and ADR-0049 allows no
  * sideways imports, so the layer that may see both composes them: the
  * `_dashboard` route file, which is wiring. It arrives as **one node**, not as
- * region fragments: the app's `<Sidebar>` is the whole drawer, header, footer
- * and rail included.
+ * region fragments: the app's `<Sidebar>` is the whole drawer, header and rail
+ * included.
  *
  * `title` and `fullHeight` are props instead of router lookups because the
  * router-driven version wants route `staticData` the layout would have to read;
@@ -31,15 +31,30 @@ import { AppShell } from "@/shared/ui";
 export const DashboardLayout = ({
   children,
   sidebar,
+  headerEnd,
   title,
   fullHeight = false,
 }: {
   children: ReactNode;
   sidebar: ReactNode;
+  /**
+   * The account menu (`D8.5`), composed by the `_dashboard` route file and
+   * placed here. It arrives as a prop rather than as an import for the reason
+   * `sidebar` does — and this file imports no `AccountMenu`, which is the
+   * assertion the layering rule turns on: `boundaries` would permit the
+   * import, so what forbids it is that a frame reaching for the account menu
+   * is a frame that knows a principal exists (ADR-0049 §The-shell-adapter).
+   */
+  headerEnd?: ReactNode;
   title: string;
   fullHeight?: boolean;
 }) => (
-  <AppShell fullHeight={fullHeight} sidebar={sidebar} title={title}>
+  <AppShell
+    fullHeight={fullHeight}
+    headerEnd={headerEnd}
+    sidebar={sidebar}
+    title={title}
+  >
     {children}
   </AppShell>
 );

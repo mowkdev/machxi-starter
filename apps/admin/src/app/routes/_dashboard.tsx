@@ -1,6 +1,6 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 
-import { AppSidebar } from "@/widgets/app-sidebar";
+import { AccountMenu, AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
 
 import { useRouteFullHeight, useRouteTitle } from "@/shared/lib/route-meta";
@@ -25,6 +25,12 @@ import { useRouteFullHeight, useRouteTitle } from "@/shared/lib/route-meta";
  * its heading cannot drift apart. `fullHeight` rides the same channel (`D4.1`,
  * ADR-0037): whether a page is a height budget or a document is a property of
  * the page, and the shell should not hold a list of which paths are grids.
+ *
+ * **This file composes the two sibling widgets** (`D8.5`, ADR-0049
+ * §The-shell-adapter). `AppSidebar` and `AccountMenu` are both `app-sidebar`'s;
+ * `dashboard-layout` is a frame that places them and imports neither. `app` is
+ * the one layer that may see both slices, and it already did the job for
+ * `sidebar` — the account menu travels the same way for the same reason.
  */
 export const Route = createFileRoute("/_dashboard")({
   beforeLoad: ({ context, location }) => {
@@ -39,6 +45,7 @@ function DashboardShell() {
   return (
     <DashboardLayout
       sidebar={<AppSidebar />}
+      headerEnd={<AccountMenu />}
       title={useRouteTitle("dashboard:shellFallback")}
       fullHeight={useRouteFullHeight()}
     >

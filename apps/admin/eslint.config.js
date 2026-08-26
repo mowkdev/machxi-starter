@@ -21,7 +21,7 @@ import { adminConfig } from "@repo/eslint-config/admin";
  * onboarding doc.
  */
 
-/** The layers of ADR-0032, in the order the dependency rule allows them. */
+/** The layers of ADR-0049, in the order the dependency rule allows them. */
 const LAYERS = ["pages", "widgets", "features", "entities"];
 
 /**
@@ -125,10 +125,7 @@ export default defineConfig(
           policies: [
             {
               from: [{ element: { type: "app" } }],
-              allow: [
-                publicApiOf(LAYERS),
-                anyFileOf(["shared", "app"]),
-              ],
+              allow: [publicApiOf(LAYERS), anyFileOf(["shared", "app"])],
             },
             {
               from: [{ element: { type: "pages" } }],
@@ -143,7 +140,13 @@ export default defineConfig(
                 publicApiOf(["features", "entities"]),
                 anyFileOf("shared"),
                 // A widget composing a sibling widget is the shell/sidebar
-                // split, which ADR-0032's own D3 tree draws.
+                // split, which ADR-0049 records as a decision rather than an
+                // accident. Note what it permits and the app declines: since
+                // `D8.5` `dashboard-layout` *could* import `AccountMenu`
+                // through `app-sidebar`'s public API, and does not — the
+                // `_dashboard` route file hands it down, because a frame that
+                // reaches for the account menu is a frame that knows a
+                // principal exists (ADR-0049 §The-shell-adapter).
                 publicApiOf("widgets"),
               ],
             },

@@ -61,9 +61,18 @@ export const ProfilePage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
+      {/*
+       * A named region, because the landmark stopped being a usable anchor
+       * (`D8.5`). `main` is the `SidebarInset` and the account menu now sits
+       * in the header inside it, so the operator's email is on screen twice
+       * within `main` and a query scoped to the landmark matches both.
+       * `aria-labelledby` points at this card's own title, which gives the
+       * page's suite something to scope to and gives a screen reader a named
+       * region it did not have (ADR-0049 §The-shell-adapter).
+       */}
+      <Card aria-labelledby="account-summary-title" role="region">
         <CardHeader>
-          <CardTitle>{t("account.title")}</CardTitle>
+          <CardTitle id="account-summary-title">{t("account.title")}</CardTitle>
           <CardDescription>{t("account.description")}</CardDescription>
         </CardHeader>
 

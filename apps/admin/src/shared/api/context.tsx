@@ -94,7 +94,7 @@ export const useSession = (): SessionView => {
  * of the same state (see `login` in `client.ts`). This is not that. It writes
  * the *display identity* of an account that has just changed its own name
  * through `PATCH /admin/profile`, and it exists because the alternative was
- * worse in both directions: the sidebar footer reads `principal`, so without it
+ * worse in both directions: the account menu reads `principal`, so without it
  * an operator renames themselves and watches the old name sit in the corner
  * until the next token refresh — and the fix of having the shell fetch
  * `/admin/profile` on every screen would put a request in a layout to keep a

@@ -15,9 +15,9 @@ import { useCan, type ResourceName } from "@/shared/auth";
 import { useT } from "@/shared/i18n";
 
 import {
+  Button,
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -48,8 +48,14 @@ import {
  * (ADR-0032 §Routing). `activeProps` is the router's own active state — no
  * `useLocation` comparison to keep in sync.
  *
- * The footer holds the account menu, which is where logout lives (ADR-0032
- * names "navigation, current-principal block, logout" as this widget's job).
+ * **The footer is gone, and with it the account menu** (`D8.5`, ADR-0049
+ * §The-shell-adapter). ADR-0032 named "navigation, current-principal block,
+ * logout" as this widget's job; ADR-0049 supersedes that and moves the whole
+ * account menu — the principal block, logout, theme and locale — to the
+ * shell's `headerEnd` slot. `AccountMenu` is still declared here, and exported
+ * below, because it is made of session facts this slice owns; `SidebarFooter`
+ * held it and nothing else, so an empty region kept "for symmetry" would be
+ * the unexercised-surface defect this deliverable is otherwise policing.
  *
  * **The principal comes from the session store, not from a query** (`D3.9`).
  * ADR-0033 puts it there because it is session identity — who is signed in —
@@ -131,8 +137,30 @@ const NAVIGATION: readonly NavItem[] = [
  * principal, and the fallback exists because the wire type covers both
  * populations and `user` names are nullable — writing the impossible branch is
  * cheaper than a runtime `?? ""` nobody would notice going wrong.
+ *
+ * **Exported, and mounted into the shell's `headerEnd` slot** (`D8.5`,
+ * ADR-0049 §The-shell-adapter). It stays in this slice because it is made of
+ * the same session facts the sidebar's author owns and changes for the same
+ * reasons; only its mount point moved. The `_dashboard` route file composes it
+ * and hands it to `dashboard-layout`, which places it — the `boundaries`
+ * config would in fact permit that widget to import it directly through this
+ * slice's public API, so the hand-off is chosen on a layering ground rather
+ * than a lint one: the adapter's job is to be a frame, and a frame that
+ * reaches for the account menu is a frame that knows a principal exists.
+ *
+ * **The header mount re-chooses the trigger and the popover, and nothing
+ * else.** A `SidebarMenuButton size="lg"` is dead outside a `<Sidebar>`
+ * ancestor — its `group-data-[collapsible=icon]` styling never matches — while
+ * its `tooltip` prop would still fire from provider state, putting a tooltip
+ * on a header control nobody asked for. `align="end" side="right"` was
+ * sidebar-footer geometry, flying the popover rightward out of a rail that is
+ * no longer there. So: a plain ghost `Button`, the popover `side="bottom"
+ * align="end"`, and an explicit `h-auto` with its own padding because the
+ * trigger keeps two lines of content and no size token is built for that. The
+ * `aria-label` and the rendered name and email come across untouched — four
+ * shipped assertions reach this control by exactly those.
  */
-const AccountMenu = () => {
+export const AccountMenu = () => {
   const { principal } = useSession();
   const { t } = useT("common");
 
@@ -157,12 +185,22 @@ const AccountMenu = () => {
          * without it the control would be found by whoever happens to be signed
          * in — the button's *job* is constant and the label should be too.
          */}
-        <SidebarMenuButton
+        <Button
           aria-label={t("account.menu")}
-          size="lg"
-          tooltip={t("account.menu")}
+          /*
+           * `has-[>svg]:px-2` is not decoration and not a duplicate. The
+           * omitted `size` defaults to `"h-9 px-4 py-2 has-[>svg]:px-3"`, and
+           * `tailwind-merge` keys by modifier *and* group: bare `px-2`
+           * displaces bare `px-4` and leaves `has-[>svg]:px-3` standing. The
+           * chevron is a direct `<svg>` child, so `:has(> svg)` matches and
+           * outranks `.px-2` on specificity — without this the trigger renders
+           * the `px-3` a size token meant for one line of content, not the
+           * `px-2` ADR-0049 §The-shell-adapter decides.
+           */
+          className="h-auto px-2 py-1.5 has-[>svg]:px-2"
+          variant="ghost"
         >
-          <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-accent text-xs font-medium">
+          <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-accent text-xs font-medium">
             {monogram === "" ? <UserIcon className="size-4" /> : monogram}
           </div>
           <div className="grid flex-1 text-left text-sm leading-tight">
@@ -173,11 +211,11 @@ const AccountMenu = () => {
               </span>
             )}
           </div>
-          <ChevronsUpDownIcon className="ml-auto size-4" />
-        </SidebarMenuButton>
+          <ChevronsUpDownIcon className="size-4" />
+        </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-56" side="right">
+      <DropdownMenuContent align="end" className="w-56" side="bottom">
         {principal === null ? null : (
           <>
             <DropdownMenuLabel className="font-normal">
@@ -296,13 +334,6 @@ export const AppSidebar = () => {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <AccountMenu />
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

@@ -14,9 +14,11 @@ import {
  *
  * A feature, because it is an interaction that changes something, and a set of
  * menu *items* rather than a menu because the shell already has one: the
- * account dropdown in the sidebar footer, which is where an operator looks for
- * a preference about themselves. Returning items keeps `widgets/app-sidebar` a
- * composition and leaves this slice free of any opinion about where it hangs.
+ * account dropdown, which is where an operator looks for a preference about
+ * themselves. Returning items keeps `widgets/app-sidebar` a composition and
+ * leaves this slice free of any opinion about where it hangs — which is what
+ * let `D8.5` move that dropdown into the shell's header without touching this
+ * file's code.
  *
  * **The three options are the contracts tuple**, not a list written here:
  * `THEMES` is declared once and consumed by `pgEnum`, by the request body and

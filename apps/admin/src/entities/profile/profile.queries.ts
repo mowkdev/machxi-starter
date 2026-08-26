@@ -70,7 +70,8 @@ export const useUpdateProfile = () => {
     meta: { ...FORM_MUTATION_META, success: "profile:outcomes.updated" },
     onSuccess: (profile) => {
       void queryClient.invalidateQueries({ queryKey: profileKeys.all });
-      // The account whose name is in the sidebar footer is this one, and it
+      // The account whose name is in the header's account menu is this one,
+      // and it
       // just changed. See `useSetPrincipal` for why the store is written here
       // rather than the shell being made to fetch.
       setPrincipal(toPrincipal(profile));

@@ -11,9 +11,10 @@ import {
  * Choosing the language the panel speaks (ADR-0046 §4, `D7.5`).
  *
  * The theme's sibling in every respect that matters, and built as its twin on
- * purpose: a set of menu *items* rather than a menu, so the account dropdown in
- * the sidebar footer stays a composition and this slice holds no opinion about
- * where it hangs. An operator looking for "a preference about me" finds both in
+ * purpose: a set of menu *items* rather than a menu, so the account dropdown
+ * stays a composition and this slice holds no opinion about where it hangs —
+ * which is what let `D8.5` move that dropdown from the sidebar's footer to the
+ * shell's header without touching this file's code. An operator looking for "a preference about me" finds both in
  * the same place, which is the whole argument `D6.3` made for putting the theme
  * there.
  *
