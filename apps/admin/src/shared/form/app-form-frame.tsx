@@ -3,10 +3,9 @@ import type { FieldValues, UseFormReturn } from "react-hook-form";
 
 import { useT } from "@/shared/i18n";
 import type { FieldConfigMap, FieldVariant } from "@/shared/resource/types";
-import { Button, FieldGroup, FieldSet, Spinner } from "@/shared/ui";
+import { Button, FieldSet, Spinner } from "@/shared/ui";
 
 import { AppFormProvider } from "./context";
-import { AppFormError } from "./form-error";
 
 /**
  * Everything a config-driven form is, minus the shell around it (ADR-0035,
@@ -26,14 +25,25 @@ import { AppFormError } from "./form-error";
  *   field composed through the escape hatch, and the button's loading state.
  *   The third is `useForm({ disabled })`, which belongs to the caller because
  *   the caller creates the form; a frame cannot retrofit it.
- * - `AppFormError`, so the failure `applyServerErrors` could not land on a
- *   field is never rendered to nobody.
  *
- * What it does **not** own is layout: `children` is the caller's JSX, placing
- * `AppFormInput`s in whatever columns and groups the form wants. ADR-0035 draws
- * that line — "config declares *what* a field is; *where* it renders is the
- * page's JSX" — and a frame that read the field map to decide what to render
- * would be the form DSL that ADR forbids.
+ * **`AppFormError` left this element at `D8.9`** and now renders one file up,
+ * inside `FieldGroup`, in `app-form-surface.tsx` and `app-form-dialog.tsx`.
+ * ADR-0035's guarantee is untouched and the reason is narrower than "same
+ * module": what left is *layout*, and the D3.7 amendment names the chrome a
+ * resource would otherwise repeat — the providers, the submit lock, the
+ * error's single home — not the boxes that chrome sits in. Both call sites are
+ * still in `shared/form`, so the failure `applyServerErrors` could not land on
+ * a field still has exactly one implementation per shell rather than one per
+ * resource, which is the property that amendment was protecting. The invariant
+ * is checked as structure rather than as a file location: the error node is a
+ * descendant of the `<form>` and of the disabled `FieldSet`, asserted in
+ * `__tests__/app-form-surface.test.tsx`.
+ *
+ * What it does **not** own is layout: since `D8.9` its `children` are the
+ * container's three rows and the field JSX lives one file up, but the rule is
+ * the same one ADR-0035 draws — "config declares *what* a field is; *where* it
+ * renders is the page's JSX" — and a frame that read the field map to decide
+ * what to render would be the form DSL that ADR forbids.
  */
 
 /**
@@ -59,17 +69,38 @@ export interface AppFormFrameProps<
   /** What the form *sends*, which the resolver may have transformed. */
   readonly onSubmit: (values: TSubmitted) => void | Promise<void>;
   readonly isPending: boolean;
-  /** The `AppFormInput`s, arranged however this form wants them. */
+  /**
+   * **The container's rows, not the field JSX** (`D8.9`, ADR-0048 §4).
+   *
+   * Under the inversion this component is the element `RecordSurface` asks for
+   * through its `column` render prop, so what it wraps is the surface's
+   * header, body and footer — all three, which is what makes a `type="submit"`
+   * button work in a *fixed* footer and lets that footer read form state
+   * through context. The fields moved up one file into `app-form-surface.tsx`,
+   * which passes them as the container's body content.
+   */
   readonly children: ReactNode;
+  /**
+   * The container's geometry classes, forwarded to the `<form>`.
+   *
+   * The row template and the body's `min-h-0` have to land on this element,
+   * because the modal primitives lay out their *direct* children and after the
+   * wrap this form is the only one.
+   */
+  readonly className?: string;
   /**
    * The shell's own footer, holding {@link AppFormActions}.
    *
-   * Passed in rather than rendered here because a dialog, a sheet and a page
-   * space their footers differently, and it has to be *inside* the `<form>` and
-   * inside the locked `FieldSet` — a submit button outside the lock is a submit
-   * button that works while the fields are frozen.
+   * **Optional since `D8.9`, and on its way out.** `RecordSurface` owns where
+   * a fixed footer goes, so the shells that adopted the container pass their
+   * footer to it and not here. `app-form-dialog.tsx` still passes one — it
+   * adopts the container at `D8.11` — and the prop stays until then so that
+   * call site keeps compiling. Where it is passed the old rule holds: it has
+   * to be *inside* the `<form>` and inside the locked `FieldSet`, because a
+   * submit button outside the lock is a submit button that works while the
+   * fields are frozen.
    */
-  readonly footer: ReactNode;
+  readonly footer?: ReactNode;
 }
 
 export const AppFormFrame = <
@@ -82,6 +113,7 @@ export const AppFormFrame = <
   onSubmit,
   isPending,
   children,
+  className,
   footer,
 }: AppFormFrameProps<TValues, TSubmitted>) => (
   <AppFormProvider fields={fields} variant={variant} form={form}>
@@ -92,17 +124,32 @@ export const AppFormFrame = <
      * server share ever ran (ADR-0035).
      */}
     <form
+      className={className}
       noValidate
       onSubmit={(event) => {
         void form.handleSubmit(onSubmit)(event);
       }}
     >
-      <FieldSet disabled={isPending} aria-busy={isPending}>
-        <FieldGroup>
-          {children}
-          <AppFormError />
-        </FieldGroup>
-
+      {/*
+       * **`display: contents` on the lock** (`D8.9`, ADR-0048 §4). The
+       * container's rows have to be the `<form>`'s own grid children — the row
+       * template is on the form and a grid lays out its direct children — so
+       * this element must stop laying out while still locking. `contents`
+       * removes the *box*, not the element: `disabled` still propagates to
+       * every control inside it, the footer's submit button included, and
+       * `aria-busy` is still on a node in the accessibility tree.
+       *
+       * The residual is named rather than assumed: some assistive technology
+       * historically dropped `display: contents` elements from that tree.
+       * `D8.12`'s browser walk checks it once; if it bites, the `contents`
+       * display moves to an inner wrapper and the `FieldSet` keeps its box.
+       *
+       * Its `flex flex-col gap-6` goes inert with the box, and that spacing
+       * was the fields-to-footer distance — absorbed by `FOOTER`'s `mt-12` in
+       * `app-form-surface.tsx`, which is where the footer now lives.
+       */}
+      <FieldSet aria-busy={isPending} className="contents" disabled={isPending}>
+        {children}
         {footer}
       </FieldSet>
     </form>

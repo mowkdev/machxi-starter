@@ -9,9 +9,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  FieldGroup,
 } from "@/shared/ui";
 
 import { AppFormActions, AppFormFrame } from "./app-form-frame";
+import { AppFormError } from "./form-error";
 
 /**
  * A config-driven form in a modal (ADR-0035).
@@ -91,7 +93,18 @@ export const AppFormDialog = <
         onSubmit={onSubmit}
         isPending={isPending}
         footer={
-          <DialogFooter className="mt-6">
+          /*
+           * `mt-12`, not `mt-6`, since `D8.9` — and this shell needs it for
+           * the same reason the other two do, even though it has not adopted
+           * `RecordSurface` yet. `AppFormFrame`'s `FieldSet` took
+           * `display: contents` for all of its call sites at once, so the
+           * `flex flex-col gap-6` that supplied the fields-to-footer distance
+           * went inert here too. Without this the shipped dialog — the default
+           * surface for staff and all three non-routed ceremonies — would have
+           * halved that gap from 3rem to 1.5rem. `D8.11` folds this into the
+           * container's footer row with the others.
+           */
+          <DialogFooter className="mt-12">
             <AppFormActions
               onCancel={() => {
                 onOpenChange(false);
@@ -103,7 +116,19 @@ export const AppFormDialog = <
           </DialogFooter>
         }
       >
-        {children}
+        {/*
+         * Wrapped here since `D8.9`, when `AppFormFrame` stopped rendering
+         * these itself: its `children` became the container's rows under
+         * ADR-0048 §4's inversion. This shell does not adopt the container
+         * until `D8.11`, so it keeps the old layout — but it takes the
+         * wrapping now, because without it the dialog path would silently
+         * lose field grouping and the form-level error for two steps while
+         * `check-types` stayed green.
+         */}
+        <FieldGroup>
+          {children}
+          <AppFormError />
+        </FieldGroup>
       </AppFormFrame>
     </DialogContent>
   </Dialog>

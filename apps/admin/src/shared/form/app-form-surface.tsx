@@ -1,5 +1,5 @@
 import { useBlocker } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
 
 import type {
@@ -8,19 +8,14 @@ import type {
   FieldVariant,
 } from "@/shared/resource/types";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
+  FieldGroup,
+  RecordSurface,
+  type RecordSurfaceColumnProps,
 } from "@/shared/ui";
 
 import { AppFormDialog } from "./app-form-dialog";
 import { AppFormActions, AppFormFrame } from "./app-form-frame";
+import { AppFormError } from "./form-error";
 
 /**
  * One footer layout for the drawer and the page, matching the dialog's.
@@ -33,7 +28,21 @@ import { AppFormActions, AppFormFrame } from "./app-form-frame";
  * a column. `DialogFooter` already resolves to this row on any non-tiny
  * viewport, so all three now read the same.
  */
-const FOOTER = "mt-6 flex justify-end gap-2";
+/*
+ * **`mt-12`, not `mt-6`, since `D8.9`** — and this is the one number the
+ * inversion moves. `FieldSet` is `flex flex-col gap-6`, `display: contents`
+ * removes its box, and that `gap-6` goes inert. Its direct children were
+ * exactly two — `FieldGroup` and the footer — so the inert gap *is* the
+ * fields-to-footer distance and nothing else. What shipped was `gap-6` +
+ * `mt-6` = 3rem; with the footer now its own grid row and the row template
+ * deliberately gapless (a row gap would open one between header and body where
+ * none ships), this margin absorbs both halves.
+ *
+ * `AppFormError` is inside `FieldGroup`, spaced by that element's own `gap-7`,
+ * so the two moved up as a unit and that distance is untouched. jsdom cannot
+ * see any of this; the browser walk at `D8.12` is what confirms it.
+ */
+const FOOTER = "mt-12 flex justify-end gap-2";
 
 /**
  * A record being composed or edited, in whichever shell its resource declared
@@ -128,61 +137,69 @@ export const AppFormSurface = <
     />
   );
 
-  const frame = (footer: ReactNode) => (
+  /*
+   * The inversion (ADR-0048 §4). `RecordSurface` owns the geometry and asks
+   * for the element that carries it; `AppFormFrame` supplies its `<form>`,
+   * which therefore wraps header, body and footer — so a `type="submit"`
+   * button in a *fixed* footer works, and that footer reads form state through
+   * the same context the fields do.
+   *
+   * The fields are the container's **body**, not the frame's children: the
+   * frame's children are now the three rows. `FieldGroup` and `AppFormError`
+   * came up one file with them, still nested the shipped way, so the body row
+   * is a single child needing no wrapper and no gap of its own.
+   */
+  const column = ({ className, children: rows }: RecordSurfaceColumnProps) => (
     <AppFormFrame
-      form={form}
+      className={className}
       fields={fields}
-      variant={variant}
-      onSubmit={onSubmit}
+      form={form}
       isPending={isPending}
-      footer={footer}
+      onSubmit={onSubmit}
+      variant={variant}
     >
-      {children}
+      {rows}
     </AppFormFrame>
+  );
+
+  const body = (
+    <FieldGroup>
+      {children}
+      <AppFormError />
+    </FieldGroup>
   );
 
   if (surface === "drawer") {
     return (
-      <Sheet
-        open
+      <RecordSurface
+        column={column}
+        dismissible={!isPending}
+        footer={<div className={FOOTER}>{actions}</div>}
         onOpenChange={(next) => {
-          // The dialog's rule, carried to the Sheet (ADR-0040): a form that
+          // The dialog's rule, carried to the drawer (ADR-0040): a form that
           // locks its fields and then lets the operator close the window has
-          // not locked anything.
-          if (!next && !isPending) onClose();
+          // not locked anything. `dismissible` above is what refuses Escape
+          // and the overlay; this only ever runs when it did not.
+          if (!next) onClose();
         }}
+        title={title}
+        variant="drawer"
+        {...(description === undefined ? {} : { description })}
       >
-        {/*
-         * `side="right"` and a width the grid survives: the drawer's argument
-         * over the dialog is that the list stays legible beside it, which a
-         * full-bleed sheet would give away.
-         */}
-        <SheetContent
-          side="right"
-          className="w-full gap-0 overflow-y-auto sm:max-w-lg"
-        >
-          <SheetHeader>
-            <SheetTitle>{title}</SheetTitle>
-            {description === undefined ? null : (
-              <SheetDescription>{description}</SheetDescription>
-            )}
-          </SheetHeader>
-
-          <div className="px-4 pb-4">
-            {frame(<div className={FOOTER}>{actions}</div>)}
-          </div>
-        </SheetContent>
-      </Sheet>
+        {body}
+      </RecordSurface>
     );
   }
 
   return (
     <AppFormPage
+      column={column}
+      footer={<div className={FOOTER}>{actions}</div>}
+      isPending={isPending}
       title={title}
       {...(description === undefined ? {} : { description })}
-      isPending={isPending}
     >
-      {frame(<div className={FOOTER}>{actions}</div>)}
+      {body}
     </AppFormPage>
   );
 };
@@ -207,41 +224,46 @@ export const AppFormSurface = <
  * site?" prompt is a different, uglier conversation that nothing here has
  * earned.
  *
- * `max-w-2xl` because a form stretched across a wide monitor is a form whose
- * labels and controls have lost each other.
+ * **It renders no heading of its own since `D8.9`** (ADR-0048 §2). The page
+ * variant is the one shell with no modal over it, so the shell's `<h1>` is
+ * already on screen and carries the record's own label — and the two strings
+ * are the same one on a create route (`staff:create.routeTitle` and
+ * `create.title` are both "New staff member"), so a heading here would be two
+ * visible headings with one accessible name the moment a resource declares
+ * `editSurface: "page"`. The dialog and the drawer keep theirs, because Radix
+ * requires them for the accessible name and `aria-hidden` keeps the shell's
+ * out of reach behind them.
+ *
+ * The width is `RecordSurface`'s `md` token, which maps to the `max-w-2xl`
+ * this component used to hardcode — because a form stretched across a wide
+ * monitor is a form whose labels and controls have lost each other.
  */
 const AppFormPage = ({
   title,
   description,
   isPending,
+  column,
+  footer,
   children,
 }: {
   readonly title: string;
   readonly description?: string;
   readonly isPending: boolean;
+  readonly column: (props: RecordSurfaceColumnProps) => ReactElement;
+  readonly footer: ReactNode;
   readonly children: ReactNode;
 }) => {
   useBlocker({ shouldBlockFn: () => isPending, enableBeforeUnload: false });
 
   return (
-    <Card className="max-w-2xl">
-      <CardHeader>
-        {/*
-         * A real `h2`, not `CardTitle` — which is a styled `div`.
-         *
-         * The other two shells title themselves with Radix's `DialogTitle` and
-         * `SheetTitle`, both of which are headings, so a `CardTitle` here would
-         * make "the same form in three shells" false for the one consumer that
-         * cannot see styling: a screen reader would find a heading in two of
-         * them and a run of bold text in the third. Caught by the suite that
-         * runs the same assertions against all three, which is what it is for.
-         */}
-        <h2 className="leading-none font-semibold">{title}</h2>
-        {description === undefined ? null : (
-          <CardDescription>{description}</CardDescription>
-        )}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <RecordSurface
+      column={column}
+      footer={footer}
+      title={title}
+      variant="page"
+      {...(description === undefined ? {} : { description })}
+    >
+      {children}
+    </RecordSurface>
   );
 };

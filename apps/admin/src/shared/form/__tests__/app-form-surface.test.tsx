@@ -8,7 +8,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { I18nextProvider } from "react-i18next";
@@ -39,6 +39,14 @@ import { AppFormSurface } from "../app-form-surface";
  * So the table below runs the *same* assertions against each shell, by
  * accessible name and nothing else. A test that had to know which frame it was
  * inside would be measuring the opposite of what the ADR promises.
+ *
+ * **One claim stopped being shell-agnostic at `D8.9`, and it is quarantined
+ * rather than smuggled into the parity cases**: the record's title is a
+ * heading rendered by the surface under `dialog` and `drawer` and by the
+ * *shell* under `page` (ADR-0048 §2), so it lives in its own case beside the
+ * other deliberate difference below rather than as a branch inside "renders
+ * the same form". Everything in the `describe.each` is still assertions that
+ * hold identically in all three.
  *
  * Everything renders inside a real router, and that is not ceremony: a routed
  * surface is what this component is for (there is no `open` prop, because the
@@ -75,25 +83,42 @@ const DemoSurface = ({
   });
 
   return (
-    <AppFormSurface
-      surface={surface}
-      title="Demo record"
-      description="The same form, whichever frame it is in."
-      form={form}
-      fields={demoResourceConfig.fields}
-      variant="create"
-      onSubmit={onSubmit}
-      isPending={isPending}
-      submitLabel="Save"
-      onClose={onClose}
-    >
-      <DemoFormInput fieldName="name" />
-      <DemoFormInput fieldName="secret" />
-      <DemoFormInput fieldName="notes" />
-      <DemoFormInput fieldName="tags" />
-      <DemoFormInput fieldName="featured" />
-      <DemoFormInput fieldName="accepted" />
-    </AppFormSurface>
+    <>
+      {/*
+       * Outside the surface on purpose (`D8.9`): it has to work while the form
+       * is locked, and anything inside the `FieldSet` is disabled then. This
+       * is the `server-errors.test.tsx` idiom — a plain button calling
+       * `setError` — which re-renders because the owner is subscribed to
+       * `errors` the moment `AppFormError` reads them.
+       */}
+      <button
+        type="button"
+        onClick={() => {
+          form.setError("root.server", { message: "Saving failed" });
+        }}
+      >
+        Fail
+      </button>
+      <AppFormSurface
+        surface={surface}
+        title="Demo record"
+        description="The same form, whichever frame it is in."
+        form={form}
+        fields={demoResourceConfig.fields}
+        variant="create"
+        onSubmit={onSubmit}
+        isPending={isPending}
+        submitLabel="Save"
+        onClose={onClose}
+      >
+        <DemoFormInput fieldName="name" />
+        <DemoFormInput fieldName="secret" />
+        <DemoFormInput fieldName="notes" />
+        <DemoFormInput fieldName="tags" />
+        <DemoFormInput fieldName="featured" />
+        <DemoFormInput fieldName="accepted" />
+      </AppFormSurface>
+    </>
   );
 };
 
@@ -153,10 +178,7 @@ describe.each(SURFACES)("the %s surface", (surface) => {
   it("renders the same form, named the same way", async () => {
     renderSurface({ surface });
 
-    expect(
-      await screen.findByRole("heading", { name: "Demo record" }),
-    ).toBeVisible();
-    expect(screen.getByLabelText("Name")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByLabelText("Notes")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
@@ -219,13 +241,44 @@ describe.each(SURFACES)("the %s surface", (surface) => {
 });
 
 describe("the frames differ in exactly one way", () => {
+  it.each(SURFACES)(
+    "titles the %s the way its shell requires",
+    async (surface) => {
+      renderSurface({ surface });
+
+      await screen.findByLabelText("Name");
+
+      /*
+       * **The one claim that is not shell-agnostic** (`D8.9`, ADR-0048 §2).
+       * Under `dialog` and `drawer` the surface is modal: Radix requires a title
+       * for the accessible name, and the shell behind is `aria-hidden`, so the
+       * surface's own heading is the only one reachable. Under `page` there is
+       * no modal — the shell's `<h1>` is on screen carrying the record's own
+       * label — so a heading here would be two visible headings with one
+       * accessible name, the duplicate `D4.2` found by testing the shells
+       * against each other.
+       *
+       * This harness mounts no shell, so the `page` case asserts the absence.
+       * `D8.10` mounts the shell around it and asserts the `<h1>` carries the
+       * label, which is the other half of the same claim.
+       */
+      if (surface === "page") {
+        expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+      } else {
+        expect(
+          screen.getByRole("heading", { name: "Demo record" }),
+        ).toBeVisible();
+      }
+    },
+  );
+
   it("puts a modal around two of them and not the third", async () => {
     const seen: Record<string, unknown>[] = [];
 
     for (const surface of SURFACES) {
       const { unmount } = renderSurface({ surface });
 
-      await screen.findByRole("heading", { name: "Demo record" });
+      await screen.findByLabelText("Name");
       seen.push({
         surface,
         modal: document.querySelector('[role="dialog"]') !== null,
@@ -262,15 +315,16 @@ describe("the page shell blocks the way out", () => {
 
     renderSurface({ surface: "page", isPending: true });
 
-    await screen.findByRole("heading", { name: "Demo record" });
+    await screen.findByLabelText("Name");
     await user.click(screen.getByRole("link", { name: "Leave" }));
 
     await waitFor(() => {
       expect(screen.queryByText("Elsewhere")).not.toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("heading", { name: "Demo record" }),
-    ).toBeInTheDocument();
+    // Still on the surface: the blocker refused the navigation. On a field
+    // rather than a heading, because the `page` variant renders none since
+    // `D8.9` — the shell's `<h1>` carries the title there (ADR-0048 §2).
+    expect(screen.getByLabelText("Name")).toBeInTheDocument();
   });
 
   it("allows it once the mutation has settled", async () => {
@@ -278,9 +332,137 @@ describe("the page shell blocks the way out", () => {
 
     renderSurface({ surface: "page" });
 
-    await screen.findByRole("heading", { name: "Demo record" });
+    await screen.findByLabelText("Name");
     await user.click(screen.getByRole("link", { name: "Leave" }));
 
     expect(await screen.findByText("Elsewhere")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The inversion's structural consequences (`D8.9`, ADR-0048 §4).
+ *
+ * These are the assertions that keep the inversion honest where jsdom can
+ * still see it. The layout itself — a long form scrolling its body while the
+ * title and Save stay put — is `D8.12`'s browser walk.
+ */
+describe("the inverted frame", () => {
+  it.each(SURFACES)(
+    "keeps the form-level error inside the %s's form and inside the locked FieldSet",
+    async (surface) => {
+      renderSurface({ isPending: true, surface });
+
+      await screen.findByLabelText("Name");
+
+      /*
+       * The error is forced from **outside** the surface, because the lock
+       * disables everything inside it and this assertion needs both at once:
+       * a rendered message *and* a disabled `FieldSet`. `fireEvent`, not
+       * `user-event`, because under `dialog` and `drawer` the modal's overlay
+       * makes the rest of the document `pointer-events: none`.
+       */
+      fireEvent.click(
+        // `{ hidden: true }`: under `dialog` and `drawer` this button is
+        // outside the modal, so Radix has `aria-hidden` over it.
+        screen.getByRole("button", { hidden: true, name: "Fail" }),
+      );
+
+      /*
+       * On the message itself, not on the element that would host it: a query
+       * for `FieldGroup` would stay green if `AppFormError` were deleted
+       * outright, which is precisely the property this test exists to pin.
+       */
+      const error = await screen.findByText("Saving failed");
+
+      /*
+       * `AppFormError` moved up one file at `D8.9`, so ADR-0035's guarantee
+       * needs an assertion that is about structure rather than about which
+       * module renders it: the failure `applyServerErrors` could not land on a
+       * field reaches the operator, inside the form that produced it and
+       * inside the lock that froze it. Nothing in the repository asserted the
+       * error's nesting before — the shipped suite pins the *footer* inside
+       * the lock, which is a different claim.
+       */
+      expect(error.closest("form")).not.toBeNull();
+      expect(error.closest('[data-slot="field-set"][disabled]')).not.toBeNull();
+    },
+  );
+
+  it("stops the FieldSet laying out, so the rows are the form's own grid children", async () => {
+    renderSurface({ surface: "drawer" });
+
+    await screen.findByLabelText("Name");
+
+    const fieldSet = document.querySelector('[data-slot="field-set"]');
+
+    /*
+     * `display: contents` removes the box, not the element — which is what
+     * lets the container's row template on the `<form>` reach the three rows
+     * while `disabled` and `aria-busy` still apply to everything inside.
+     */
+    expect(fieldSet).toHaveClass("contents");
+  });
+
+  it("keeps the drawer's title and footer outside the scrolling element", async () => {
+    renderSurface({ surface: "drawer" });
+
+    await screen.findByLabelText("Name");
+
+    const body = document.querySelector('[data-slot="surface-body"]');
+
+    expect(body).toHaveClass("overflow-y-auto", "min-h-0");
+    expect(
+      body?.contains(screen.getByRole("heading", { name: "Demo record" })),
+    ).toBe(false);
+    expect(body?.contains(screen.getByRole("button", { name: "Save" }))).toBe(
+      false,
+    );
+  });
+
+  it("gives the page variant no scrolling element at all", async () => {
+    renderSurface({ surface: "page" });
+
+    await screen.findByLabelText("Name");
+
+    /*
+     * A `page` surface renders under `fullHeight: false`, so ADR-0037's chain
+     * gives its parent no definite height — an `overflow-y-auto min-h-0` body
+     * inside an unbounded parent would scroll nothing and fix nothing. The
+     * document scrolls, as it does today.
+     */
+    expect(
+      document.querySelector('[data-slot="surface-body"]'),
+    ).not.toHaveClass("overflow-y-auto");
+  });
+
+  it("keeps both shipped widths, and the drawer's gutters", async () => {
+    const { unmount } = renderSurface({ surface: "drawer" });
+
+    await screen.findByLabelText("Name");
+
+    // What ships today, unchanged by the adoption.
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveClass(
+      "w-full",
+      "sm:max-w-lg",
+    );
+    // `SheetContent` supplies no padding; body and footer both carry it, or
+    // Cancel and Save sit flush to the drawer's edge.
+    expect(document.querySelector('[data-slot="surface-body"]')).toHaveClass(
+      "px-4",
+    );
+    expect(document.querySelector('[data-slot="surface-footer"]')).toHaveClass(
+      "px-4",
+      "pb-4",
+    );
+
+    unmount();
+    renderSurface({ surface: "page" });
+
+    await screen.findByLabelText("Name");
+
+    // The class `AppFormPage` used to hardcode, now the `md` size token.
+    expect(document.querySelector('[data-slot="record-surface"]')).toHaveClass(
+      "max-w-2xl",
+    );
   });
 });

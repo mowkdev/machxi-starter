@@ -226,7 +226,16 @@ export const RecordSurface = ({
         </SheetHeader>
       ) : null}
       {variant === "page" && description !== undefined ? (
-        <p className="text-sm text-muted-foreground" data-slot="surface-lede">
+        <p
+          /*
+           * `mb-6` because the page column is gapless: shipped, `Card`'s own
+           * `flex flex-col gap-6` put that distance between `CardHeader` and
+           * `CardContent`, and the column replaced both. Without it the lede
+           * sits flush against the first field.
+           */
+          className="mb-6 text-sm text-muted-foreground"
+          data-slot="surface-lede"
+        >
           {description}
         </p>
       ) : null}
