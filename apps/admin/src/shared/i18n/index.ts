@@ -264,6 +264,11 @@ export {
   type TranslateKey,
 } from "./keys";
 export type { TranslationKey } from "./types";
+export {
+  PseudoNoticeProvider,
+  usePseudoNotice,
+  type PseudoNoticeProviderProps,
+} from "./pseudo-notice";
 
 /**
  * The hook, under the name the rest of the app uses. Re-exported here so a

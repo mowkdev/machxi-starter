@@ -33,6 +33,7 @@ export const DashboardLayout = ({
   sidebar,
   headerEnd,
   breadcrumbs,
+  banner,
   title,
   fullHeight = false,
 }: {
@@ -53,10 +54,18 @@ export const DashboardLayout = ({
    * and hrefs would be a frame that knows about routing.
    */
   breadcrumbs?: ReactNode;
+  /**
+   * The banner region's content (`D8.7`). The dev-only pseudo-locale notice
+   * today, D12's impersonation banner next. A prop rather than something this
+   * widget decides, for the reason it decides nothing else: a frame that knew
+   * *why* a banner shows is not a frame.
+   */
+  banner?: ReactNode;
   title: string;
   fullHeight?: boolean;
 }) => (
   <AppShell
+    banner={banner}
     breadcrumbs={breadcrumbs}
     fullHeight={fullHeight}
     headerEnd={headerEnd}

@@ -60,5 +60,8 @@
     "breadcrumb": "navigācijas ceļš",
     "notifications": "Paziņojumi",
     "dismiss": "Aizvērt paziņojumu"
+  },
+  "dev": {
+    "pseudoNotice": "Ieslēgta pseidolokāle: katra tulkotā virkne tiek pagarināta un akcentēta, lai netulkotais teksts izceltos. Šis būvējums paredzēts tulkojuma pārskatīšanai, nevis ražošanai."
   }
 }

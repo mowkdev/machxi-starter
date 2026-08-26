@@ -4,12 +4,13 @@ import {
   createFileRoute,
   redirect,
 } from "@tanstack/react-router";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { AccountMenu, AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
 
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
+import { usePseudoNotice, useT } from "@/shared/i18n";
 import {
   useRouteCrumbs,
   useRouteFullHeight,
@@ -17,6 +18,7 @@ import {
   useRouteTitle,
 } from "@/shared/lib/route-meta";
 import {
+  Banner,
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
@@ -149,13 +151,50 @@ function RouteBreadcrumbs() {
   );
 }
 
+/**
+ * The dev-only pseudo-locale notice, and the banner slot's proving consumer
+ * (`D8.7`, ADR-0048 §3).
+ *
+ * **A hook returning a node or `undefined`, not a component returning
+ * `null`** — and the difference is the whole contract. `AppShell` renders its
+ * banner region only when the slot is filled, and it decides that by the
+ * truthiness of what it was handed: `<PseudoLocaleNotice />` is a truthy
+ * element whatever the component then returns, so a component form would have
+ * given the shell an empty `div` on every screen with the notice off. The
+ * emptiness has to be visible to the *caller*, which means the decision
+ * happens before the JSX exists. Found by the test that asserts the region
+ * leaves no node.
+ *
+ * The copy is the **app's**, keyed in the admin's own catalogues rather than
+ * the design system's: `Banner` takes a `message` and knows nothing about why
+ * it is showing, which is the boundary that lets the same component carry
+ * D12's impersonation warning.
+ *
+ * **Not dismissible.** The open item `D8.2` left for this step is settled by
+ * what the notice is *for*: it says the build in front of the operator is not
+ * a production one, and a warning about the whole session that can be waved
+ * away stops being true after the first click. Nothing here would hold the
+ * dismissed state anyway — the notice's provider is the obvious owner, and it
+ * has nothing else to own.
+ */
+const usePseudoLocaleNotice = (): ReactNode => {
+  const enabled = usePseudoNotice();
+  const { t } = useT("common");
+
+  return enabled ? (
+    <Banner message={t("dev.pseudoNotice")} variant="info" />
+  ) : undefined;
+};
+
 function DashboardShell() {
+  const banner = usePseudoLocaleNotice();
   const fullHeight = useRouteFullHeight();
   const routeTitle = useRouteTitle("dashboard:shellFallback");
   const recordLabel = useRouteRecordLabel();
 
   return (
     <DashboardLayout
+      banner={banner}
       breadcrumbs={<RouteBreadcrumbs />}
       sidebar={<AppSidebar />}
       headerEnd={<AccountMenu />}

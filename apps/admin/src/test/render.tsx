@@ -17,6 +17,7 @@ import {
 import {
   EN_RESOURCES,
   NAMESPACES,
+  PseudoNoticeProvider,
   createI18n,
   type I18n,
   type TranslateKey,
@@ -238,6 +239,22 @@ export const renderWithProviders = (
 export interface RenderAppOptions extends ProviderOptions {
   /** Where the app starts. Defaults to the dashboard index. */
   readonly initialPath?: string;
+  /**
+   * Shows the dev-only pseudo-locale **notice** (`D8.7`, ADR-0048 §3).
+   *
+   * **A different option from `pseudo` above, on purpose.** That one selects
+   * the pseudo-locale *lens* and reaches only `createI18n`; reusing it here
+   * would mount the notice on all nine routes of ADR-0046 §14's pseudo-locale
+   * walk, whose copy would then have to survive `unaccented()`. In the app the
+   * two do travel together — `config.VITE_I18N_PSEUDO` feeds both — but the
+   * suite needs to drive them apart, and the notice is the one with a
+   * consumer to prove.
+   *
+   * It exists at all because the admin's vitest config pins
+   * `VITE_I18N_PSEUDO` to `"false"` for the whole suite, so a notice gated on
+   * the variable directly would render in no test in this repository.
+   */
+  readonly pseudoNotice?: boolean;
 }
 
 /**
@@ -257,6 +274,7 @@ export interface RenderAppResult extends RenderResult {
 
 export const renderApp = ({
   initialPath = "/",
+  pseudoNotice = false,
   ...options
 }: RenderAppOptions = {}): RenderAppResult => {
   const value = providers(options);
@@ -276,7 +294,16 @@ export const renderApp = ({
         <ThemeProvider>
           <I18nextProvider i18n={value.i18n.instance}>
             <AppUiStrings>
-              <RouterProvider router={router} />
+              {/*
+               * This tree is hand-built, so a provider the app mounts in
+               * `app/index.tsx` reaches no test unless it is added here too
+               * (`D8.7`, ADR-0048 §3). Off by default: the notice is a
+               * dev-build warning, and every other suite renders the app the
+               * operator gets.
+               */}
+              <PseudoNoticeProvider enabled={pseudoNotice}>
+                <RouterProvider router={router} />
+              </PseudoNoticeProvider>
             </AppUiStrings>
           </I18nextProvider>
         </ThemeProvider>

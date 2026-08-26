@@ -1,7 +1,13 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { createDeferredTranslate, useKeyT, useT } from "@/shared/i18n";
+import { config } from "@/shared/config";
+import {
+  PseudoNoticeProvider,
+  createDeferredTranslate,
+  useKeyT,
+  useT,
+} from "@/shared/i18n";
 import { createDeferredErrorMessage } from "@/shared/notifications/messages";
 import { AppLoader } from "@/shared/ui";
 
@@ -97,7 +103,16 @@ const App = () => (
          * portal, and React context reaches through one.
          */}
         <AppUiStrings>
-          <AppRouter queryClient={queryClient} />
+          {/*
+           * Whether the dev-only pseudo-locale notice shows (`D8.7`,
+           * ADR-0048 §3). The context lives in `shared/i18n` and this is the
+           * `app` layer connecting it to the build flag — the same
+           * relationship `settings.tsx` has with `shared/theme`'s provider.
+           * `_dashboard.tsx` is its only reader.
+           */}
+          <PseudoNoticeProvider enabled={config.VITE_I18N_PSEUDO}>
+            <AppRouter queryClient={queryClient} />
+          </PseudoNoticeProvider>
         </AppUiStrings>
       </SettingsProvider>
     </QueryClientProvider>
