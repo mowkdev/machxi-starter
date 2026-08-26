@@ -61,9 +61,14 @@ describe("the pseudo-locale notice", () => {
 
     const notice = await screen.findByRole("status");
 
-    expect(
-      within(notice).queryByRole("button", { name: "Dismiss" }),
-    ).not.toBeInTheDocument();
+    /*
+     * Any button, not one named "Dismiss": that name is `UiStrings.dismiss`,
+     * which this test does not own, and a negative query filtered on a string
+     * someone else can rename goes green while the control it forbids sits
+     * on screen. The notice renders no other control, so the filter buys
+     * nothing and costs the assertion its teeth.
+     */
+    expect(within(notice).queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("leaves no node in the banner region when it is off", async () => {
