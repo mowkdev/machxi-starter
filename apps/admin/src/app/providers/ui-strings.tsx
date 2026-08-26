@@ -6,8 +6,7 @@ import { UiStringsProvider } from "@/shared/ui";
 /**
  * The app's half of the design system's `UiStrings` seam (ADR-0046 §12).
  *
- * `packages/ui` knows that thirteen of its strings are injectable and nothing
- * else —
+ * `packages/ui` knows which of its strings are injectable and nothing else —
  * no i18next, no namespace, no locale. This is the join, and `app` is where a
  * join belongs (ADR-0032): `shared/i18n` knows how to translate a key and
  * nothing about the design system, `shared/ui` re-exports a provider and knows
@@ -51,7 +50,7 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
          * this app — `apps/admin`'s pager is `shared/grid/grid-pager.tsx` and
          * its breadcrumb never reached the `shared/ui` door. Supplied anyway,
          * for the reason the four before them were: the key then has a `t()`
-         * call site the drift check can see, and D8's customer app may well
+         * call site the drift check can see, and D11's customer app may well
          * mount the primitive this one declined to.
          */
         sidebarTitle: t("ui.sidebarTitle"),
@@ -61,6 +60,14 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
         pagination: t("ui.pagination"),
         breadcrumb: t("ui.breadcrumb"),
         notifications: t("ui.notifications"),
+        /*
+         * The first key a *composition* asked for rather than a generated
+         * primitive (`D8.2`): `Banner`'s dismiss control. It arrives through
+         * the same seam for the same reason — the design system still names no
+         * i18n dependency, and the key still has a `t()` call site the drift
+         * check can see.
+         */
+        dismiss: t("ui.dismiss"),
       }}
     >
       {children}

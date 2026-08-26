@@ -24,7 +24,7 @@ import {
 } from "@repo/ui/components/tooltip"
 /*
  * Diverges from the generated component (ADR-0031: owned source). ADR-0046 §12
- * routes the primitives' six operator-read strings through `UiStrings` so an
+ * routes the primitives' operator-read strings through `UiStrings` so an
  * app can translate them; `useUiStrings` falls back to English with no provider
  * mounted, so this package still has no i18n dependency.
  */

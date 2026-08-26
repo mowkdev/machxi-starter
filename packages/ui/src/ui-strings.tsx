@@ -19,14 +19,17 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
  * the failure ADR-0046 §Alternatives rejected leaving in place. `data-slot`,
  * `role` and the class names beside them are identifiers, not sentences.
  *
- * **It was six at `D7.3` and is thirteen at `D7.6`.** §12 enumerated six and
- * named five more as a residual, on the reasoning that four of the five are
- * unreachable in `apps/admin` — and then asked `D7.6` to decide how many. The
- * answer is all of them, plus the one nobody had counted: `sonner`'s toast
- * region announces itself, and that one *is* reachable, on every screen. A
- * residual whose whole justification is "this app does not mount that
- * primitive" is a residual D8's customer app inherits as a surprise, and §12's
- * own consequence already said the price — one more key, not a new mechanism.
+ * **The set grows a key at a time, and the interface below is the count.**
+ * §12 enumerated six at `D7.3` and named five more as a residual, on the
+ * reasoning that four of the five are unreachable in `apps/admin` — and then
+ * asked `D7.6` to decide how many. The answer was all of them, plus the one
+ * nobody had counted: `sonner`'s toast region announces itself, and that one
+ * *is* reachable, on every screen. A residual whose whole justification is
+ * "this app does not mount that primitive" is a residual D11's customer app
+ * inherits as a surprise, and §12's own consequence already said the price —
+ * one more key, not a new mechanism. `D8.2` took that price for the first
+ * composition's dismiss control, and no comment here states a total, because
+ * the next key would falsify it.
  *
  * This file is **hand-written, not generated**: prettier applies to it, it
  * lives outside `src/components/`, and it is therefore not part of ADR-0031's
@@ -60,6 +63,8 @@ export interface UiStrings {
   readonly breadcrumb: string;
   /** `sonner.tsx` — the toast region's accessible name; sonner appends its own hotkey hint. */
   readonly notifications: string;
+  /** `compositions/banner.tsx` — the dismiss control's `aria-label`. The first key a *composition* asked for rather than a generated primitive (`D8.2`, ADR-0048 §1). */
+  readonly dismiss: string;
 }
 
 /**
@@ -84,6 +89,7 @@ export const DEFAULT_UI_STRINGS: UiStrings = {
   pagination: "pagination",
   breadcrumb: "breadcrumb",
   notifications: "Notifications",
+  dismiss: "Dismiss",
 };
 
 /**
@@ -105,9 +111,9 @@ export interface UiStringsProviderProps {
 }
 
 /**
- * Supplies the six from above the tree.
+ * Supplies them from above the tree.
  *
- * The value is memoised **on the six strings themselves**, not on the object
+ * The value is memoised **on the strings themselves**, not on the object
  * they arrive in, which is the difference between a design-system seam and a
  * trap: the app's natural call site is a component that rebuilds the object on
  * every render (`{ close: t("common:ui.close"), … }`), and memoising on that
@@ -133,6 +139,7 @@ export const UiStringsProvider = ({
     pagination,
     breadcrumb,
     notifications,
+    dismiss,
   } = {
     ...DEFAULT_UI_STRINGS,
     ...strings,
@@ -153,6 +160,7 @@ export const UiStringsProvider = ({
       pagination,
       breadcrumb,
       notifications,
+      dismiss,
     }),
     [
       close,
@@ -168,6 +176,7 @@ export const UiStringsProvider = ({
       pagination,
       breadcrumb,
       notifications,
+      dismiss,
     ],
   );
 

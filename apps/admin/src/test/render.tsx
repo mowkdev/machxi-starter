@@ -214,7 +214,7 @@ export const renderWithProviders = (
           <ThemeProvider>
             <I18nextProvider i18n={value.i18n.instance}>
               {/*
-               * The design system's six strings, wired the way the app wires
+               * The design system's injectable strings, wired the way the app wires
                * them (`D7.3`). Mounted here for the reason the `<Toaster>` is:
                * a component test should not have to remember the app's own
                * wiring to render a dialog whose close button the app has

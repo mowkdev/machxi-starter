@@ -16,7 +16,7 @@ import {
 } from "@/shared/ui";
 
 /**
- * The design system's six strings, fed from `common` (`D7.3`, ADR-0046 §12).
+ * The design system's injectable strings, fed from `common` (`D7.3`, ADR-0046 §12).
  *
  * `packages/ui`'s own suite proves the seam works and that its English defaults
  * answer with no provider mounted. What only this side can prove is the two
@@ -161,10 +161,12 @@ describe("AppUiStrings", () => {
     await i18n.changeLocale("lv");
 
     /*
-     * `lv` above carries two of the six. The other four come back in English
-     * through i18next's own fallback and never reach the design system's
-     * defaults — which is what keeps a half-finished catalogue a readable app
-     * rather than a mixed one, and is the state `D7.6` starts from.
+     * `lv` above carries two of the fourteen. The other twelve come back in
+     * English through i18next's own fallback and never reach the design
+     * system's defaults — which is what keeps a half-finished catalogue a
+     * readable app rather than a mixed one, and is the state `D7.6` starts
+     * from. The fourteenth is `D8.2`'s `ui.dismiss`, the first key a
+     * composition rather than a generated primitive asked for.
      */
     expect(i18n.instance.t("common:ui.close")).toBe(LV_UI.close);
     expect(i18n.instance.t("common:ui.morePages")).toBe(enCommon.ui.morePages);

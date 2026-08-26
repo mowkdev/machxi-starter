@@ -42,12 +42,12 @@ import {
 } from "@repo/ui/ui-strings";
 
 /**
- * The design system's thirteen operator-read strings (ADR-0046 §12).
+ * The design system's operator-read strings (ADR-0046 §12).
  *
  * Two claims are under test and the first one matters most: **with no provider
  * mounted, every primitive renders exactly what the shadcn CLI emitted.** That
  * is what makes the seam free for a consumer that has not localised — this
- * package's own suite, `apps/web`, and any app D8 has not written yet — and it
+ * package's own suite, `apps/web`, and any app D11 has not written yet — and it
  * is the property a future regenerate-and-diff would otherwise quietly break.
  *
  * The second is that a mounted provider reaches all six files, including the
@@ -77,6 +77,7 @@ const TRANSLATED: UiStrings = {
   pagination: "lappuses",
   breadcrumb: "navigācijas ceļš",
   notifications: "Paziņojumi",
+  dismiss: "Aizvērt paziņojumu",
 };
 
 const dialogs: ReactElement = (
@@ -342,7 +343,7 @@ describe("the design system under a UiStringsProvider", () => {
     /*
      * A fresh object with identical contents, which is exactly what the app's
      * bridge hands over on every render: `{ close: t("common:ui.close"), … }`
-     * is a new object each time. Memoising on the six values rather than on the
+     * is a new object each time. Memoising on the values rather than on the
      * object they arrive in is what keeps a context value stable through that,
      * and therefore what keeps every memoised consumer below it from
      * re-rendering for nothing (ADR-0046 §12).

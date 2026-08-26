@@ -58,6 +58,7 @@
     "nextPage": "Iet uz nākamo lappusi",
     "pagination": "lappuses",
     "breadcrumb": "navigācijas ceļš",
-    "notifications": "Paziņojumi"
+    "notifications": "Paziņojumi",
+    "dismiss": "Aizvērt paziņojumu"
   }
 }

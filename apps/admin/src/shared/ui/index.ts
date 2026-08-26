@@ -1,5 +1,7 @@
 /**
- * The one door `@repo/ui` comes through (ADR-0032 §The D3 shape).
+ * The one door `@repo/ui` comes through (ADR-0047 §What-code, which owns the
+ * rule since it superseded ADR-0031 at `D8.1`; ADR-0049 §The D3 shape places
+ * the file).
  *
  * Every layer above `shared` imports design-system components from here, and a
  * lint rule refuses `@repo/ui/components/*` anywhere else. The point is that a
@@ -140,7 +142,7 @@ export { Textarea } from "@repo/ui/components/textarea";
 export { Toaster, toast } from "@repo/ui/components/sonner";
 export { useIsMobile } from "@repo/ui/hooks/use-mobile";
 export { cn } from "@repo/ui/lib/utils";
-// Not a component: the design system's six operator-read strings, injectable
+// Not a component: the design system's operator-read strings, injectable
 // (ADR-0046 §12, `D7.3`). It comes through the door for the door's own reason —
 // `app/providers` mounts the provider, and `app` may not reach past `shared`.
 export {
@@ -148,6 +150,16 @@ export {
   UiStringsProvider,
   type UiStrings,
 } from "@repo/ui/ui-strings";
+
+// A composition, not a generated primitive: hand-written in `@repo/ui`'s
+// `compositions/` path (ADR-0047 §What-code, ADR-0048 §3), through the same
+// door as the rest. Its consumer is the pseudo-locale notice at `D8.7`; the
+// door line lands with the symbol, per ADR-0047's per-symbol rule.
+export {
+  Banner,
+  type BannerProps,
+  type BannerVariant,
+} from "@repo/ui/compositions/banner";
 
 // Not re-exports: app components with behaviour of their own (see their files).
 export { AppLoader } from "./app-loader";

@@ -90,7 +90,7 @@ const App = () => (
       <SettingsProvider fallback={<AppLoader />}>
         <BindTranslations />
         {/*
-         * The design system's six strings, fed from `common` (`D7.3`,
+         * The design system's injectable strings, fed from `common` (`D7.3`,
          * ADR-0046 §12). Inside `SettingsProvider` because that is where
          * `I18nProvider` is, and above the router because a dialog's close
          * button is chrome no route owns. Radix renders its overlays into a

@@ -58,6 +58,7 @@
     "nextPage": "Go to next page",
     "pagination": "pagination",
     "breadcrumb": "breadcrumb",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "dismiss": "Dismiss"
   }
 }
