@@ -15,7 +15,7 @@ Roughly in dependency order, with today's sizes (excluding tests) as the honest 
 | Slice           | LOC   | Notes                                                                                                                                  |
 | --------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `grid`          | 4,775 | The largest by far; `record-navigation.ts` is its one router dependency                                                                |
-| `form`          | 1,378 | Minus the surfaces D8 moved to `@repo/ui`                                                                                              |
+| `form`          | 1,472 | Grew: D8 moved the record surface's _geometry_ to `@repo/ui` and both behavioural wrappers stayed (`D8.10`, ADR-0047 §What-code)       |
 | `api`           | 1,238 | The client, session, CSRF bootstrap — **the one real generalisation this extraction demands**: parameterised by population and segment |
 | `i18n`          | 1,070 | D7 built it as a factory (`createI18n`) for exactly this day                                                                           |
 | `resource`      | 614   | `ResourceConfig` and the registries                                                                                                    |
@@ -24,7 +24,7 @@ Roughly in dependency order, with today's sizes (excluding tests) as the honest 
 | `notifications` | 210   |                                                                                                                                        |
 | `lib`           | 58    | `route-meta.ts` is router-coupled                                                                                                      |
 
-Four files under `shared/` import `@tanstack/react-router`: `api/search-params.ts`, `grid/record-navigation.ts`, `lib/route-meta.ts`, and the form surface D8 relocates. **Whether the router is a peer dependency of the extracted packages or an injected seam is the extraction ADR's sharpest question** — both apps use TanStack Router, so a peer dependency is honest and cheap; an injected seam is purer and costs a boundary at every one of those four call sites.
+Four files under `shared/` import `@tanstack/react-router`: `api/search-params.ts`, `grid/record-navigation.ts`, `lib/route-meta.ts`, and `form/app-form-surface.tsx` — whose `AppFormPage` keeps its `useBlocker` here, because D8 moved the container's geometry to `@repo/ui` and left both behavioural wrappers behind (`D8.10`, ADR-0047 §What-code). The count is four either way; what changed is that the fourth is not going anywhere. **Whether the router is a peer dependency of the extracted packages or an injected seam is the extraction ADR's sharpest question** — both apps use TanStack Router, so a peer dependency is honest and cheap; an injected seam is purer and costs a boundary at every one of those four call sites.
 
 Package granularity is the ADR's decision. House precedent (`contracts`, `crypto`, `logger`, `ui`) favours focused packages over one `@repo/app-platform`, and the dependency order above is a plausible package order.
 

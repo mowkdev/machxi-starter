@@ -10,6 +10,12 @@
   "filters": {
     "showArchived": "Show archived"
   },
+  "create": {
+    "routeTitle": "New widget"
+  },
+  "edit": {
+    "routeTitle": "Edit widget"
+  },
   "fields": {
     "name": { "label": "Name" },
     "secret": { "label": "Initial password" },

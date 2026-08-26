@@ -10,12 +10,19 @@ import {
 } from "@tanstack/react-router";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { I18nextProvider } from "react-i18next";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  useRouteFullHeight,
+  useRouteRecordLabel,
+  useRouteTitle,
+} from "@/shared/lib/route-meta";
 import { initialValuesFor } from "@/shared/resource/config";
 import type { EditSurfaceKey } from "@/shared/resource/types";
+import { AppShell } from "@/shared/ui";
 import {
   demoCreateBody,
   demoResourceConfig,
@@ -47,6 +54,20 @@ import { AppFormSurface } from "../app-form-surface";
  * other deliberate difference below rather than as a branch inside "renders
  * the same form". Everything in the `describe.each` is still assertions that
  * hold identically in all three.
+ *
+ * **And since `D8.10` this file is the `page` variant's exerciser end to
+ * end**: `AppShell` is mounted around that variant and around no other, fed
+ * from route `staticData` through `shared/lib/route-meta` rather than from a
+ * literal prop, so "exactly one heading on the screen, carrying the record's
+ * own label" (ADR-0048 §2, ADR-0044) is asserted against the two ends of the
+ * real channel — and only under `page`, which is the only variant where the
+ * shell and the surface are on screen together. The shell is mounted only
+ * there because Radix hides the rest of the document from role queries behind
+ * a modal, so a shell under `dialog` or `drawer` would be cost without an
+ * assertion. What this file still cannot claim is the *route* channel — its
+ * routes are hand-built, so that
+ * `/staff/$staffId` declares `recordLabel` and `route-meta.ts` reads it off
+ * the generated tree is `app/__tests__/breadcrumbs.test.tsx`'s assertion.
  *
  * Everything renders inside a real router, and that is not ceremony: a routed
  * surface is what this component is for (there is no `open` prop, because the
@@ -123,29 +144,152 @@ const DemoSurface = ({
 };
 
 /**
- * A two-route memory router around the surface.
+ * The label the edit route's loader carries, and the shell's `<h1>` under it.
  *
- * The second route is not decoration — it is the only way to ask whether a
+ * An email, like the two shipped record routes' labels, and deliberately not a
+ * translated string: `recordLabel` is loaded data, so it bypasses the `t()`
+ * wrap `useRouteTitle` applies and is asserted literally (ADR-0048 §2).
+ */
+const RECORD_LABEL = "ada@example.com";
+
+/**
+ * The shell around the `page` variant, and around no other (`D8.10`, ADR-0048
+ * §2).
+ *
+ * **Why only there.** Under `dialog` and `drawer` the surface is modal, so
+ * Radix marks the rest of the document `aria-hidden` — a shell mounted behind
+ * one is outside every role query this file makes, which is cost with no
+ * assertion attached. Under `page` there is no modal, the shell's `<h1>` is on
+ * screen beside the form, and "exactly one heading" is a claim about the two
+ * of them together.
+ *
+ * **And the title comes through `route-meta.ts`, not through a prop.** The
+ * branch below is `_dashboard.tsx`'s, copied because it is the thing under
+ * test: a `page` record route is `fullHeight: false`, so the loaded record's
+ * own label wins where one is declared and the route's translated title stands
+ * in where none is. A harness that passed the string it expected would be
+ * asserting its own wiring.
+ *
+ * **Only the `false` arm of that branch runs here**, and that is a scope
+ * statement rather than an oversight. The `fullHeight: true` arm — a grid or
+ * modal route keeping its route title even though it declares a
+ * `recordLabel`, which is what both shipped record routes do — has no shell
+ * mounted around it in this file, so it is `app/__tests__/breadcrumbs.test.tsx`'s
+ * to assert, the way the route channel itself is.
+ *
+ * `sidebar` is `null` on purpose. The prop is required because every real
+ * consumer has a drawer, and a harness that built one would be exercising
+ * `AppSidebar` — whose own screen is `app/__tests__/` — rather than the
+ * heading channel this file is here for.
+ */
+const Shelled = ({
+  surface,
+  children,
+}: {
+  readonly surface: EditSurfaceKey;
+  readonly children: ReactNode;
+}) => {
+  const fullHeight = useRouteFullHeight();
+  const routeTitle = useRouteTitle("dashboard:shellFallback");
+  const recordLabel = useRouteRecordLabel();
+
+  if (surface !== "page") {
+    return <>{children}</>;
+  }
+
+  return (
+    <AppShell
+      fullHeight={fullHeight}
+      sidebar={null}
+      title={fullHeight ? routeTitle : (recordLabel ?? routeTitle)}
+    >
+      {children}
+    </AppShell>
+  );
+};
+
+/*
+ * An intersection rather than an `interface … extends`: the left-hand side is
+ * an indexed access type, which an interface may not extend.
+ */
+type HarnessOptions = Parameters<typeof DemoSurface>[0] & {
+  /**
+   * Which of the two surface routes mounts it (`D8.10`).
+   *
+   * `create` declares a `title` and no `recordLabel`, the way `/staff/new`
+   * does; `edit` declares both and they differ, the way `/staff/$staffId`
+   * does — where the route title is "Edit staff member" and the label is the
+   * record's email. Asserting the heading on the create route alone would not
+   * distinguish the two channels, because there they resolve to the same
+   * string.
+   */
+  readonly route?: "create" | "edit";
+};
+
+/**
+ * A three-route memory router around the surface.
+ *
+ * `/elsewhere` is not decoration — it is the only way to ask whether a
  * navigation *out* of a pending form is refused, which is what ADR-0040 means
  * by the in-flight rule reaching "the page shell's navigation affordances".
+ *
+ * The other two are the surface's own, and they carry `staticData` since
+ * `D8.10` — the channel `Shelled` reads above, declared here the way a record
+ * route declares it: a `demo:` `TranslationKey` for the title (no cast: the
+ * fixture's namespace is augmented into `ResourceNamespaceMap`), `fullHeight`
+ * computed from the surface exactly as the record routes compute it
+ * (`editSurfaceOf(config) !== "page"`, so `false` for `page` and `true` for
+ * the two modal shells), and a `recordLabel` narrowing its own loader's
+ * `unknown` on the edit route.
  */
-const renderSurface = (props: Parameters<typeof DemoSurface>[0]) => {
+const renderSurface = ({ route = "create", ...props }: HarnessOptions) => {
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
+
+  // The record routes' own expression, `editSurfaceOf(config) !== "page"`,
+  // with the surface under test standing in for the config.
+  const fullHeight = props.surface !== "page";
+
+  const surfaceScreen = (
+    <Shelled surface={props.surface}>
+      <DemoSurface {...props} />
+      {/*
+       * The cast is the price of a harness router. `Link`'s `to` is typed
+       * against the *registered* route tree (ADR-0049 — that is the typed-path
+       * guarantee working), and this three-route tree is not it. Casting here
+       * is confined to the harness; every `Link` in `src/` stays checked.
+       */}
+      <Link to={"/elsewhere" as never}>Leave</Link>
+    </Shelled>
+  );
+
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/",
-    component: () => (
-      <>
-        <DemoSurface {...props} />
-        {/*
-         * The cast is the price of a harness router. `Link`'s `to` is typed
-         * against the *registered* route tree (ADR-0032 — that is the typed-path
-         * guarantee working), and this two-route tree is not it. Casting here
-         * is confined to the harness; every `Link` in `src/` stays checked.
-         */}
-        <Link to={"/elsewhere" as never}>Leave</Link>
-      </>
-    ),
+    component: () => surfaceScreen,
+    staticData: { title: "demo:create.routeTitle", fullHeight },
+  });
+  const editRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/edit",
+    loader: () => ({ email: RECORD_LABEL }),
+    component: () => surfaceScreen,
+    staticData: {
+      title: "demo:edit.routeTitle",
+      fullHeight,
+      /*
+       * The narrowing is here rather than in the reader, exactly as it is on
+       * `/staff/$staffId`: the channel's parameter is `unknown` because
+       * `strictFunctionTypes` checks it contravariantly, so the route that
+       * knows what its own loader returns is the one place that may prove it.
+       */
+      recordLabel: (loaderData) =>
+        typeof loaderData === "object" &&
+        loaderData !== null &&
+        "email" in loaderData &&
+        typeof loaderData.email === "string"
+          ? loaderData.email
+          : undefined,
+    },
   });
   const elsewhereRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -154,8 +298,10 @@ const renderSurface = (props: Parameters<typeof DemoSurface>[0]) => {
   });
 
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, elsewhereRoute]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+    routeTree: rootRoute.addChildren([indexRoute, editRoute, elsewhereRoute]),
+    history: createMemoryHistory({
+      initialEntries: [route === "edit" ? "/edit" : "/"],
+    }),
   });
 
   /*
@@ -253,24 +399,53 @@ describe("the frames differ in exactly one way", () => {
        * Under `dialog` and `drawer` the surface is modal: Radix requires a title
        * for the accessible name, and the shell behind is `aria-hidden`, so the
        * surface's own heading is the only one reachable. Under `page` there is
-       * no modal — the shell's `<h1>` is on screen carrying the record's own
-       * label — so a heading here would be two visible headings with one
-       * accessible name, the duplicate `D4.2` found by testing the shells
-       * against each other.
+       * no modal — the shell's `<h1>` is on screen carrying the route's own
+       * title — so a heading from the surface would be two visible headings
+       * with one accessible name, the duplicate `D4.2` found by testing the
+       * shells against each other.
        *
-       * This harness mounts no shell, so the `page` case asserts the absence.
-       * `D8.10` mounts the shell around it and asserts the `<h1>` carries the
-       * label, which is the other half of the same claim.
+       * **Exactly one** (`D8.10`), which is the half a name-only query cannot
+       * state: `getByRole` would pass just as happily with a second heading
+       * beside the one it found, and a second heading is the whole defect
+       * ADR-0044's invariant names. Its reach differs by shell, and honestly
+       * so: under `page` the count is over the whole screen, shell `<h1>` and
+       * surface together, which is the invariant itself; under the other two
+       * no shell is mounted, so it counts the surface alone and catches a
+       * stray heading from inside the frame rather than a duplicate of the
+       * shell's — which in the real app is `aria-hidden` behind the modal
+       * anyway.
        */
-      if (surface === "page") {
-        expect(screen.queryByRole("heading")).not.toBeInTheDocument();
-      } else {
-        expect(
-          screen.getByRole("heading", { name: "Demo record" }),
-        ).toBeVisible();
-      }
+      expect(screen.getAllByRole("heading")).toHaveLength(1);
+      expect(
+        screen.getByRole("heading", {
+          // The shell's, resolved through `t()` from the route's `demo:` key;
+          // the surface's own, under the other two, is the literal prop.
+          name: surface === "page" ? "New widget" : "Demo record",
+        }),
+      ).toBeVisible();
     },
   );
+
+  it("gives the page's shell the loaded record's label, not the route's title", async () => {
+    renderSurface({ route: "edit", surface: "page" });
+
+    await screen.findByLabelText("Name");
+
+    /*
+     * The other end of the channel `D8.6` built, asserted on an **edit** route
+     * because that is the only place the two strings differ: on a create route
+     * `staff:create.routeTitle` and the record's label are the same words, so
+     * a heading there is satisfied by either and proves neither.
+     *
+     * `RECORD_LABEL` is asserted literally and "Edit widget" is the resolved
+     * translation of the route's key — the asymmetry is the rule (ADR-0048
+     * §2): a title is copy and goes through `t()`, a label is loaded data and
+     * does not.
+     */
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: RECORD_LABEL })).toBeVisible();
+    expect(screen.queryByText("Edit widget")).not.toBeInTheDocument();
+  });
 
   it("puts a modal around two of them and not the third", async () => {
     const seen: Record<string, unknown>[] = [];
@@ -298,6 +473,47 @@ describe("the frames differ in exactly one way", () => {
       { surface: "drawer", modal: true, sheet: true },
       { surface: "page", modal: false, sheet: false },
     ]);
+  });
+});
+
+describe("the drawer refuses its own dismissal in flight", () => {
+  /*
+   * The gesture half of the submit lock, for the shell that owns one
+   * (`D8.10`, ADR-0048 §4). The parity case above proves Cancel is *disabled*
+   * in all three; Escape is a different route out — it never touches a
+   * control, so a disabled button refuses nothing about it, and it is
+   * `dismissible={!isPending}` that has to.
+   *
+   * Asserted here rather than in the package suite because it is a gesture,
+   * and `@repo/ui`'s harness has no `user-event`. The dialog variant's Escape
+   * and overlay click are `D8.11`'s, once that shell is on the same container.
+   *
+   * **What it pins, stated exactly, because the obvious stronger assertions
+   * are both worthless here.** `RecordSurface` refuses in two ways while
+   * `dismissible={false}` (`D8.8`) — the `onEscapeKeyDown` /
+   * `onPointerDownOutside` / `onInteractOutside` handlers, and the
+   * `onOpenChange` it withholds from the Radix root entirely — and **neither
+   * is separately observable**, because either alone already produces silence.
+   * The event's `defaultPrevented` flag cannot tell them apart either: Radix's
+   * dismissable layer calls `event.preventDefault()` itself on the dismiss
+   * path (`react-dismissable-layer/dist/index.mjs:97`) before running
+   * `onDismiss`, so the flag is `true` whichever branch ran. And a mount check
+   * cannot fail at all — the routed drawer is `open={open ?? true}`, so no
+   * gesture can unmount it. What is left is the honest claim at this layer,
+   * and it is a real one: the operator pressed Escape mid-mutation and the
+   * caller was told nothing, so nothing navigated the record away. It goes red
+   * with `isPending` false, which is the check that it is live.
+   */
+  it("reports no close when Escape is pressed", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    renderSurface({ isPending: true, onClose, surface: "drawer" });
+
+    await screen.findByLabelText("Name");
+    await user.keyboard("{Escape}");
+
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 
