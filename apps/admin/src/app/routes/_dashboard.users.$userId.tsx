@@ -28,6 +28,17 @@ export const Route = createFileRoute("/_dashboard/users/$userId")({
   staticData: {
     title: "users:edit.routeTitle",
     fullHeight: editSurfaceOf(userResourceConfig) !== "page",
+    // The staff route's twin, and narrowed here for the same reason (`D8.6`,
+    // ADR-0048 §2): the channel's parameter is `unknown` because
+    // `strictFunctionTypes` checks it contravariantly, so the route that owns
+    // its loader's type is the one place the check can be justified.
+    recordLabel: (loaderData) =>
+      typeof loaderData === "object" &&
+      loaderData !== null &&
+      "email" in loaderData &&
+      typeof loaderData.email === "string"
+        ? loaderData.email
+        : undefined,
   },
 });
 

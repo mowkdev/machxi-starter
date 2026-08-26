@@ -32,6 +32,7 @@ export const DashboardLayout = ({
   children,
   sidebar,
   headerEnd,
+  breadcrumbs,
   title,
   fullHeight = false,
 }: {
@@ -46,10 +47,17 @@ export const DashboardLayout = ({
    * is a frame that knows a principal exists (ADR-0049 §The-shell-adapter).
    */
   headerEnd?: ReactNode;
+  /**
+   * The trail, composed by the `_dashboard` route file (`D8.6`). JSX, not
+   * crumb data, for the reason `sidebar` is one node: a frame that took labels
+   * and hrefs would be a frame that knows about routing.
+   */
+  breadcrumbs?: ReactNode;
   title: string;
   fullHeight?: boolean;
 }) => (
   <AppShell
+    breadcrumbs={breadcrumbs}
     fullHeight={fullHeight}
     headerEnd={headerEnd}
     sidebar={sidebar}

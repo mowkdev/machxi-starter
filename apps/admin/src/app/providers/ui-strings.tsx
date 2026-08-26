@@ -46,12 +46,14 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
         more: t("ui.more"),
         toggleSidebar: t("ui.toggleSidebar"),
         /*
-         * The seven `D7.6` added, four of which still have no rendering site in
-         * this app — `apps/admin`'s pager is `shared/grid/grid-pager.tsx` and
-         * its breadcrumb never reached the `shared/ui` door. Supplied anyway,
-         * for the reason the four before them were: the key then has a `t()`
-         * call site the drift check can see, and D11's customer app may well
-         * mount the primitive this one declined to.
+         * The seven `D7.6` added. Three still have no rendering site in this
+         * app — `apps/admin`'s pager is `shared/grid/grid-pager.tsx`, not the
+         * `pagination` primitive — while `breadcrumb` gained one at `D8.6`,
+         * when the shell's trail became the first screen to compose the
+         * primitives the door has exported since D3.3. Supplied anyway, for
+         * the reason the four before them were: the key then has a `t()` call
+         * site the drift check can see, and D11's customer app may well mount
+         * the primitive this one declined to.
          */
         sidebarTitle: t("ui.sidebarTitle"),
         sidebarDescription: t("ui.sidebarDescription"),

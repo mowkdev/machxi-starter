@@ -70,6 +70,25 @@ declare module "@tanstack/react-router" {
      * what it is.
      */
     fullHeight?: boolean;
+    /**
+     * The loaded record's own label, for the routes that have one (`D8.6`,
+     * ADR-0048 §2). Unlike the two above it is **not** a `TranslationKey`: a
+     * record's label is loaded data, not copy, so it bypasses the `t()` wrap
+     * `useRouteTitle` applies.
+     *
+     * **The parameter stays `unknown` and each route narrows inside its own
+     * body.** Under `strictFunctionTypes` a declared `(loaderData: unknown)`
+     * is checked contravariantly, so a callback written as
+     * `(staff: StaffResource) => staff.email` would not satisfy it. What the
+     * shape buys is therefore not the absence of a narrowing but its
+     * *location*: one per route, written by the code that knows the type, and
+     * no cast anywhere in `route-meta.ts` or its hooks.
+     *
+     * A match that carries no loader data yields `undefined`, and the shell
+     * falls back to `staticData.title` — which is correct for the `new`
+     * routes, where a record being created has no label yet.
+     */
+    recordLabel?: (loaderData: unknown) => string | undefined;
   }
 }
 

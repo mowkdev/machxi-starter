@@ -56,3 +56,91 @@ export const useRouteFullHeight = (): boolean => {
       .fullHeight ?? false
   );
 };
+
+/**
+ * The loaded record's own label, where the route declares one (`D8.6`,
+ * ADR-0048 §2).
+ *
+ * Beside {@link useRouteTitle} rather than inside it, and the difference is the
+ * `t()` wrap: a title is a `TranslationKey` and a label is loaded data, so one
+ * must be translated and the other must not. They also scan independently —
+ * the deepest match declaring `recordLabel` is not necessarily the deepest one
+ * declaring `title` — which is why this is a third reader rather than a second
+ * return value.
+ *
+ * **No cast here, by construction.** The callback's parameter is `unknown` and
+ * each `$id` route narrows inside its own body, because it owns the type of
+ * its own loader data and is the only place the narrowing can be justified.
+ * A match with no loader data, or a callback that cannot recognise what it was
+ * handed, yields `undefined` and the caller falls back to the route title.
+ *
+ * Two consumers, one channel: the breadcrumb's last crumb takes the label
+ * unconditionally, while the shell's `<h1>` takes it only where the record
+ * renders as a page (ADR-0048 §2). The place that decides is the `_dashboard`
+ * route file, not this reader.
+ */
+export const useRouteRecordLabel = (): string | undefined => {
+  const matches = useMatches();
+
+  const match = [...matches]
+    .reverse()
+    .find((candidate) => candidate.staticData.recordLabel !== undefined);
+
+  return match?.staticData.recordLabel?.(match.loaderData);
+};
+
+/** One entry in the breadcrumb trail: what it says, and where it goes. */
+export interface RouteCrumb {
+  /**
+   * The match's own id, for React's key. Not `to`: a layout route and its
+   * index child share a `pathname`, so keying on the target is collision-free
+   * only for as long as no index route declares a `title` — a trap that would
+   * spring silently on whoever adds one.
+   */
+  readonly id: string;
+  readonly label: string;
+  /**
+   * The resolved pathname, not a route pattern. It is a `string` rather than
+   * one of the router's typed paths, which is the honest cost of linking to
+   * whatever the current matches resolved to: a renamed route is a crumb that
+   * 404s at runtime rather than a red `check-types`.
+   */
+  readonly to: string;
+}
+
+/**
+ * The ancestor trail, in order, for the breadcrumbs the shell frames (`D8.6`,
+ * ADR-0048 §2).
+ *
+ * The two readers above answer about the *deepest* match; this one is the
+ * first that enumerates. It keeps the matches that declare a `title` — the
+ * pathless `_dashboard` declares none, so it drops out on its own without
+ * anything having to name it — translates each through the same `useKeyT` the
+ * title reader uses (ADR-0046 §8: an ancestor crumb is operator-facing copy),
+ * and pairs it with the resolved pathname to link to.
+ *
+ * It returns the record's own crumb as a **title**, because that is all
+ * `staticData` carries; the caller appends the loaded label from
+ * {@link useRouteRecordLabel} where there is one. Keeping the two apart is
+ * what lets the trail's last crumb and the shell's heading disagree — which
+ * they do on an edit route, where the route title is "Edit staff member" and
+ * the label is the record's email.
+ */
+export const useRouteCrumbs = (): readonly RouteCrumb[] => {
+  const matches = useMatches();
+  const t = useKeyT();
+
+  /*
+   * `flatMap` rather than `filter().map()`: a filter does not narrow the
+   * element type, so the map would need a cast to hand `title` to `t()` — and
+   * this file is meant to be cast-free (`D8.6`). Dropping the empty array is
+   * the same predicate, expressed where the compiler can follow it.
+   */
+  return matches.flatMap((match) => {
+    const { title } = match.staticData;
+
+    return title === undefined
+      ? []
+      : [{ id: match.id, label: t(title), to: match.pathname }];
+  });
+};

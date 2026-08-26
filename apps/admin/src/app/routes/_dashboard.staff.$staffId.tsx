@@ -42,6 +42,26 @@ export const Route = createFileRoute("/_dashboard/staff/$staffId")({
   staticData: {
     title: "staff:edit.routeTitle",
     fullHeight: editSurfaceOf(staffResourceConfig) !== "page",
+    /*
+     * The record's own label, for the breadcrumb's last crumb and — where a
+     * resource renders records as pages — the shell's heading (`D8.6`,
+     * ADR-0048 §2).
+     *
+     * **The narrowing is here rather than in the reader, and it is a real
+     * check rather than a cast.** The channel's parameter is `unknown`
+     * because `strictFunctionTypes` checks it contravariantly: a callback
+     * declared `(staff: StaffResource) => …` would not satisfy the field's
+     * type. So this route — the one place that knows what its own loader
+     * returns — proves the shape it relies on, and anything else yields
+     * `undefined` and falls back to the route title.
+     */
+    recordLabel: (loaderData) =>
+      typeof loaderData === "object" &&
+      loaderData !== null &&
+      "email" in loaderData &&
+      typeof loaderData.email === "string"
+        ? loaderData.email
+        : undefined,
   },
 });
 
