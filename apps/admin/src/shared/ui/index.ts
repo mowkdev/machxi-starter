@@ -151,10 +151,13 @@ export {
   type UiStrings,
 } from "@repo/ui/ui-strings";
 
-// A composition, not a generated primitive: hand-written in `@repo/ui`'s
-// `compositions/` path (ADR-0047 §What-code, ADR-0048 §3), through the same
-// door as the rest. Its consumer is the pseudo-locale notice at `D8.7`; the
-// door line lands with the symbol, per ADR-0047's per-symbol rule.
+// Compositions, not generated primitives: hand-written in `@repo/ui`'s
+// `compositions/` path (ADR-0047 §What-code, ADR-0048), through the same door
+// as the rest. Each door line lands with the symbol it re-exports, per
+// ADR-0047's per-symbol rule, and may precede its first consumer inside the
+// same deliverable — `Banner`'s is the pseudo-locale notice at `D8.7`,
+// `AppShell`'s is the `dashboard-layout` adapter at `D8.4`.
+export { AppShell, type AppShellProps } from "@repo/ui/compositions/app-shell";
 export {
   Banner,
   type BannerProps,
