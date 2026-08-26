@@ -125,9 +125,9 @@ ADR-0048 was written 2026-08-22 **ahead of** the planned **D8 — app shell and 
 
 | #                                             | Title                                                                                               | Status   | Implemented                                     |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------- |
-| [0047](0047-ui-package-scope.md)              | UI package scope and compositions                                                                   | proposed | D8.1 — not yet opened; written ahead 2026-08-22 |
-| [0048](0048-app-shell-and-record-surfaces.md) | App shell and record surfaces: a slotted shell and one geometry-only record container in `@repo/ui` | proposed | D8.1 — not yet opened; written ahead 2026-08-22 |
-| [0049](0049-admin-app-architecture.md)        | Admin app architecture — Feature-Sliced Design and TanStack Router                                  | proposed | D8.1 — not yet opened; written ahead 2026-08-26 |
+| [0047](0047-ui-package-scope.md)              | UI package scope and compositions                                                                   | proposed | D8 (not yet built) — written ahead 2026-08-22          |
+| [0048](0048-app-shell-and-record-surfaces.md) | App shell and record surfaces: a slotted shell and one geometry-only record container in `@repo/ui` | proposed | D8 (not yet built) — written ahead 2026-08-22          |
+| [0049](0049-admin-app-architecture.md)        | Admin app architecture — Feature-Sliced Design and TanStack Router                                  | proposed | D8 (not yet built) — written ahead 2026-08-26          |
 
 ### Planned (not yet written)
 
