@@ -161,6 +161,13 @@ export {
   type BannerProps,
   type BannerVariant,
 } from "@repo/ui/compositions/banner";
+export {
+  RecordSurface,
+  type RecordSurfaceColumnProps,
+  type RecordSurfaceProps,
+  type RecordSurfaceSize,
+  type RecordSurfaceVariant,
+} from "@repo/ui/compositions/record-surface";
 
 // Not re-exports: app components with behaviour of their own (see their files).
 export { AppLoader } from "./app-loader";
