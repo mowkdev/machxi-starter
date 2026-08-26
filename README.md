@@ -126,7 +126,7 @@ pnpm db:sessions:prune       # delete expired sessions (nothing schedules this y
   composition root.
 - `apps/admin` — Vite + React SPA, port 3001 (ADR-0022), the staff-facing panel
   over the admin segment. Feature-Sliced layers with a lint-enforced downward-only
-  import direction (ADR-0032): `src/{app,pages,widgets,features,entities,shared}`.
+  import direction (ADR-0049): `src/{app,pages,widgets,features,entities,shared}`.
   A resource is an entity slice that declares it, a feature slice that writes it
   and a thin page that arranges them (ADR-0035).
 - `apps/web` — Next.js app, port 3002 (ADR-0022)
@@ -140,7 +140,7 @@ this one.
 - `@repo/db` — Postgres schema, client, migrations and seeds (ADR-0006, ADR-0008)
 - `@repo/crypto` — argon2id hashing and token generation (ADR-0018)
 - `@repo/logger` — structured logger (ADR-0005)
-- `@repo/ui` — the shadcn/ui design system, owned as source (ADR-0031)
+- `@repo/ui` — the shadcn/ui design system and the compositions both apps are built from, owned as source (ADR-0047)
 - `@repo/eslint-config` — shared ESLint flat configs, including the rules that enforce the ADRs
 - `@repo/typescript-config` — shared tsconfig bases
 - `@repo/vitest-config` — shared Vitest presets (`node`, `react`)

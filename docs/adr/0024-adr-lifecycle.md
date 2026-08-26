@@ -1,6 +1,6 @@
 # ADR-0024: ADR lifecycle: format, statuses and how a decision changes
 
-- Status: accepted
+- Status: superseded by [ADR-0050](0050-adr-lifecycle-and-verification.md)
 - Date: 2026-08-18
 - Supersedes: [ADR-0001](0001-record-architecture-decisions.md)
 

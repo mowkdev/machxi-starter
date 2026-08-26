@@ -1,6 +1,6 @@
 # ADR-0031: `packages/ui` — shadcn/ui design system on Tailwind v4
 
-- Status: accepted
+- Status: superseded by [ADR-0047](0047-ui-package-scope.md)
 - Date: 2026-08-19
 
 > Written at the opening of D3, whose first step (`D3.1`) implements it. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: this is the agreement, and it stays amendable in place while D3 is `in progress` ([`docs/plan/README.md`](../plan/README.md)). It fulfils the _Planned_ entry the ADR index carried since D1 — "`packages/ui` and the design system" — which the ledger ([`docs/plan/README.md`](../plan/README.md), now §How D3 opened) records as the one decision D3 could not start without.

@@ -207,6 +207,12 @@ export default defineConfig(
             {
               group: [
                 "@repo/ui/components/*",
+                // The compositions path of ADR-0047 §What-code — hand-written
+                // shell, record surface and banner. It is design-system
+                // surface like the primitives, so it comes through the same
+                // door, and the pattern lands when the path opens (`D8.1`)
+                // rather than with the first composition.
+                "@repo/ui/compositions/*",
                 "@repo/ui/hooks/*",
                 // `lib/*` too: `cn` is re-exported through the door like
                 // everything else, and a rule with a gap teaches the gap.
@@ -218,7 +224,7 @@ export default defineConfig(
                 "@repo/ui/ui-strings",
               ],
               message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0032).",
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
             },
           ],
         },

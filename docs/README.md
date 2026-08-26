@@ -10,7 +10,7 @@
 
 ## Where to look for what
 
-- **"Why is it built this way?"** → the ADR. `docs/adr/README.md` indexes them all, and [ADR-0024](adr/0024-adr-lifecycle.md) + [ADR-0025](adr/0025-deliverables.md) govern how they change.
+- **"Why is it built this way?"** → the ADR. `docs/adr/README.md` indexes them all, and [ADR-0050](adr/0050-adr-lifecycle-and-verification.md) (superseding [ADR-0024](adr/0024-adr-lifecycle.md)) + [ADR-0025](adr/0025-deliverables.md) govern how they change.
 - **"What does the API answer for X?"** → the Postman collection; the requests that turn on a decision name the ADR that made it.
 - **"How do I run it?"** → the root [`README.md`](../README.md) quick-start, or [`docker/README.md`](../docker/README.md) when Postgres is the problem.
 - **"How do I add an endpoint / a module / a migration?"** → the skills in [`.claude/skills/`](../.claude/README.md); they encode the ADR checklists.
@@ -30,6 +30,13 @@ shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22,
 D6 2026-08-22 and D7 2026-08-22, so **ADRs 0001–0046 are closed** — including
 every frontend decision the admin panel was built on, every grid decision the
 data-grid rebuild made, D5's pair of supersessions, D6's user-settings record
-and D7's localization one. **No window is open**; the next opens with D8. An ADR
+and D7's localization one. **D8 opened 2026-08-26 and its window covers exactly
+0047, 0048, 0049 and 0050**, which are amendable in place while it runs;
+**[0031](adr/0031-ui-design-system.md) is superseded by
+[0047](adr/0047-ui-package-scope.md),
+[0032](adr/0032-admin-app-architecture.md) by
+[0049](adr/0049-admin-app-architecture.md) and
+[0024](adr/0024-adr-lifecycle.md) by
+[0050](adr/0050-adr-lifecycle-and-verification.md)**. An ADR
 is accepted at the head of the step that builds it, so a step whose ADR is still
 `proposed` is gated and must not be started.

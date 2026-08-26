@@ -1,6 +1,6 @@
 # ADR-0032: Admin app architecture — Feature-Sliced Design and TanStack Router
 
-- Status: accepted
+- Status: superseded by [ADR-0049](0049-admin-app-architecture.md)
 - Date: 2026-08-19
 
 ## Context

@@ -1,11 +1,11 @@
 ---
 name: new-resource-ui
-description: Checklist for adding a resource screen to apps/admin — entity slice (config, keys, api, queries), feature slice (dialogs and bulk actions), a thin page, the record routes, MSW handlers and tests, per ADR-0032/0035/0036/0043 and the v2 grid of 0037-0044. Use for "add the <x> screen", "put <x> in the admin panel".
+description: Checklist for adding a resource screen to apps/admin — entity slice (config, keys, api, queries), feature slice (dialogs and bulk actions), a thin page, the record routes, MSW handlers and tests, per ADR-0049 (superseding 0032)/0035/0036/0043, the v2 grid of 0037-0044 and the shell and record surfaces of 0047-0048. Use for "add the <x> screen", "put <x> in the admin panel".
 ---
 
 # New resource UI — `$ARGUMENTS` (resource name, singular, camelCase)
 
-Read `/frontend-conventions` first. Mirror `entities/user` + `features/users-manage` + `pages/users` for exact style; for a **singleton** (no list endpoint, no `:id`) mirror `entities/profile` instead — it declares a `FieldConfigMap`, not a `ResourceConfig`, because a resource with no grid declaring `columns: {}` would be claiming an empty table exists.
+Read `/frontend-conventions` first. **The architecture record is ADR-0049**, superseding ADR-0032 since `D8.1` (2026-08-26); 0047 supersedes 0031 and 0050 supersedes 0024 in the same motion, and 0047–0050 are amendable in place while D8 is `in progress` in `docs/plan/README.md`. Mirror `entities/user` + `features/users-manage` + `pages/users` for exact style; for a **singleton** (no list endpoint, no `:id`) mirror `entities/profile` instead — it declares a `FieldConfigMap`, not a `ResourceConfig`, because a resource with no grid declaring `columns: {}` would be claiming an empty table exists.
 
 The contract comes first: everything below is derived from `@repo/contracts`. If the endpoints do not exist yet, that is `/new-api-module`, not this.
 
