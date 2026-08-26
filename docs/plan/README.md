@@ -29,7 +29,7 @@ Read this file first; open a plan only when you are working in it.
 
 ## Executing a step
 
-`/plan-step D2.3` — the skill reads the step, reads the ADRs it names, implements, tests and reports. Every step below names the ADRs that govern it precisely so that it can be handed to an agent without further context.
+`/step` builds the next unchecked step of the in-progress deliverable (`/step D8.3` for a specific one): it reads the step, reads the ADRs it names, implements, ends green on the gate, takes one bounded diff review, and commits (ADR-0050). Every step below names the ADRs that govern it precisely so that it can be handed to an agent without further context.
 
 ## How D3 opened
 
