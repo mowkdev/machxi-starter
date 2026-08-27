@@ -39,6 +39,15 @@ import { AppFormProvider } from "./context";
  * descendant of the `<form>` and of the disabled `FieldSet`, asserted in
  * `__tests__/app-form-surface.test.tsx`.
  *
+ * **And it no longer takes a `footer` since `D8.11`.** The prop existed for
+ * one step, to keep `app-form-dialog.tsx` compiling while the drawer and the
+ * page moved to the container ahead of it; with all three shells now handing
+ * their footer to `RecordSurface`, which owns where a fixed footer goes, the
+ * last caller is gone and the prop with it. The rule it carried is not lost —
+ * the footer is still inside the `<form>` and inside the locked `FieldSet`,
+ * because it arrives as one of the container's rows, which are this
+ * component's `children`.
+ *
  * What it does **not** own is layout: since `D8.9` its `children` are the
  * container's three rows and the field JSX lives one file up, but the rule is
  * the same one ADR-0035 draws — "config declares *what* a field is; *where* it
@@ -88,19 +97,6 @@ export interface AppFormFrameProps<
    * wrap this form is the only one.
    */
   readonly className?: string;
-  /**
-   * The shell's own footer, holding {@link AppFormActions}.
-   *
-   * **Optional since `D8.9`, and on its way out.** `RecordSurface` owns where
-   * a fixed footer goes, so the shells that adopted the container pass their
-   * footer to it and not here. `app-form-dialog.tsx` still passes one — it
-   * adopts the container at `D8.11` — and the prop stays until then so that
-   * call site keeps compiling. Where it is passed the old rule holds: it has
-   * to be *inside* the `<form>` and inside the locked `FieldSet`, because a
-   * submit button outside the lock is a submit button that works while the
-   * fields are frozen.
-   */
-  readonly footer?: ReactNode;
 }
 
 export const AppFormFrame = <
@@ -114,7 +110,6 @@ export const AppFormFrame = <
   isPending,
   children,
   className,
-  footer,
 }: AppFormFrameProps<TValues, TSubmitted>) => (
   <AppFormProvider fields={fields} variant={variant} form={form}>
     {/*
@@ -145,12 +140,12 @@ export const AppFormFrame = <
        * display moves to an inner wrapper and the `FieldSet` keeps its box.
        *
        * Its `flex flex-col gap-6` goes inert with the box, and that spacing
-       * was the fields-to-footer distance — absorbed by `FOOTER`'s `mt-12` in
-       * `app-form-surface.tsx`, which is where the footer now lives.
+       * was the fields-to-footer distance — absorbed by the `mt-12` each shell
+       * now puts on the footer it hands `RecordSurface`: `FOOTER` in
+       * `app-form-surface.tsx`, `DialogFooter` in `app-form-dialog.tsx`.
        */}
       <FieldSet aria-busy={isPending} className="contents" disabled={isPending}>
         {children}
-        {footer}
       </FieldSet>
     </form>
   </AppFormProvider>

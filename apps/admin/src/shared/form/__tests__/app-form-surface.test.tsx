@@ -619,6 +619,41 @@ describe("the inverted frame", () => {
     expect(fieldSet).toHaveClass("contents");
   });
 
+  it("bounds the dialog on DialogContent, and keeps its title and footer outside the scrolling element", async () => {
+    renderSurface({ surface: "dialog" });
+
+    await screen.findByLabelText("Name");
+
+    const content = document.querySelector('[data-slot="dialog-content"]');
+    const body = document.querySelector('[data-slot="surface-body"]');
+
+    /*
+     * **On `DialogContent`, not on the column** (`D8.11`, ADR-0048 §4). The
+     * shipped dialog carried no `className` and therefore no `max-h` at all —
+     * the element is centred by transform — so a bound on the inner form
+     * bounded nothing and a long form grew the modal past the viewport.
+     */
+    expect(content).toHaveClass("max-h-[calc(100svh-2rem)]");
+    /*
+     * Asserted separately and as explicitly as the bound itself, because it
+     * is the class that makes the bound *reach* the column: `DialogContent`
+     * is `grid` and its implicit row track is `auto`, which sizes to the
+     * column's content instead of shrinking to the container's `max-height`.
+     * Without it the column's `1fr` body row resolves against content height
+     * and `overflow-y-auto` never engages — and every other assertion here
+     * would still be green.
+     */
+    expect(content).toHaveClass("grid-rows-[minmax(0,1fr)]");
+
+    expect(body).toHaveClass("overflow-y-auto", "min-h-0");
+    expect(
+      body?.contains(screen.getByRole("heading", { name: "Demo record" })),
+    ).toBe(false);
+    expect(body?.contains(screen.getByRole("button", { name: "Save" }))).toBe(
+      false,
+    );
+  });
+
   it("keeps the drawer's title and footer outside the scrolling element", async () => {
     renderSurface({ surface: "drawer" });
 

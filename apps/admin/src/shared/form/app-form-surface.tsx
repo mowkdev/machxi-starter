@@ -113,9 +113,11 @@ export const AppFormSurface = <
     /*
      * Delegated rather than re-implemented: the modal shell already exists for
      * the ephemeral ceremonies, and two Dialogs with slightly different padding
-     * is exactly the drift ADR-0035 built one frame to prevent. `open` is
-     * always `true` — the route match is what opens it — and every dismissal
-     * resolves to the same navigation.
+     * is exactly the drift ADR-0035 built one frame to prevent. Since `D8.11`
+     * that shell is on `RecordSurface` too, so all three variants now come out
+     * of the same container and the delegation is one hop rather than a second
+     * implementation. `open` is always `true` — the route match is what opens
+     * it — and every dismissal resolves to the same navigation.
      */
     return (
       <AppFormDialog

@@ -134,8 +134,12 @@ const DIALOG_BOUND = "max-h-[calc(100svh-2rem)] grid-rows-[minmax(0,1fr)]";
  * children and the column is now the only one; `min-h-0` so the `1fr` body row
  * may shrink below its content, which is what lets `overflow-y-auto` on that
  * row scroll instead of growing the box. The template is deliberately
- * **gapless**: a row gap would open one between header and body where none
- * ships. Under `page` there is no scroll row, so the column is plain flex.
+ * **gapless**, but for a narrower reason than an earlier draft gave: the
+ * fields-to-footer distance is already carried whole by the app's own footer
+ * margin, so a row gap would double it. Where a header-to-body distance
+ * *does* ship it is restored on the header row instead — see
+ * {@link DIALOG_HEADER}. Under `page` there is no scroll row, so the column is
+ * plain flex.
  */
 const COLUMN = {
   dialog: "grid min-h-0 grid-rows-[auto_1fr_auto]",
@@ -152,6 +156,50 @@ const COLUMN = {
  */
 const DRAWER_BODY = "px-4";
 const DRAWER_FOOTER = "px-4 pb-4";
+
+/**
+ * The one distance the wrap takes away from the `dialog` variant, restored on
+ * the row that lost it (`D8.11`, ADR-0048 §4).
+ *
+ * `DialogContent` is `grid … gap-4 p-6` and its children were the header and
+ * the form; after the inversion the column is its only child, so that `gap-4`
+ * goes inert exactly the way `FieldSet`'s `gap-6` does — and it was the
+ * header-to-fields distance. `DialogHeader` has no padding of its own, so
+ * without this the title sits flush against the first field.
+ *
+ * **The two shells that adopted the container first did not need it, which is
+ * why the rule was written the other way round.** The shipped drawer set
+ * `gap-0` on `SheetContent` and let `SheetHeader`'s own `p-4` do the work, and
+ * the `page` variant's lede carries `mb-6`. The dialog is the one shell where
+ * a header gap really does ship, and it is a margin on the header rather than
+ * a gap on the row template because the template's other seam —
+ * fields-to-footer — is already carried whole by the app's `mt-12`.
+ */
+const DIALOG_HEADER = "mb-4";
+
+/**
+ * Paint room for the focus ring, cancelled out so nothing moves (`D8.11`).
+ *
+ * **A scrolling body is a scroll container on *both* axes**, whatever the
+ * `overflow-y-auto` shorthand suggests: CSS Overflow 3 computes a `visible`
+ * `overflow-x` to `auto` when the other axis is not `visible`. A scroll
+ * container clips ink overflow at its padding box — and `Input`'s
+ * `focus-visible:ring-[3px]` is a box-shadow painted 3px *outside* the border
+ * box, while `FieldGroup` and `Field` add no gutter of their own, so a
+ * `w-full` field sits exactly on that edge. The dialog's fields would have
+ * had their focus and `aria-invalid` rings shaved off on every side.
+ *
+ * The other two variants escape it for reasons that are theirs rather than
+ * general: the drawer's body carries `px-4` for the gutters `SheetContent`
+ * does not supply, and the `page` variant has no scroll container at all. The
+ * shipped dialog had none either, which is why the adoption is what
+ * introduces this.
+ *
+ * `-m-1` against the `p-1` so the fields land exactly where they do today and
+ * the row's outer size is unchanged; the 4px of border box that escapes is
+ * absorbed by `DialogContent`'s own `p-6`.
+ */
+const DIALOG_BODY = "p-1 -m-1";
 
 export interface RecordSurfaceColumnProps {
   readonly className: string;
@@ -210,7 +258,7 @@ export const RecordSurface = ({
   const rows = (
     <>
       {variant === "dialog" ? (
-        <DialogHeader>
+        <DialogHeader className={DIALOG_HEADER}>
           <DialogTitle>{title}</DialogTitle>
           {description === undefined ? null : (
             <DialogDescription>{description}</DialogDescription>
@@ -243,6 +291,7 @@ export const RecordSurface = ({
       <div
         className={cn(
           scrolls && "min-h-0 overflow-y-auto",
+          variant === "dialog" && DIALOG_BODY,
           /*
            * With no footer the body is the drawer's last row, so it takes the
            * bottom gutter the footer would have carried — otherwise a detail

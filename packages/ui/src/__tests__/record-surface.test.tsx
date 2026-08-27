@@ -292,6 +292,50 @@ describe("RecordSurface", () => {
       );
       expect(column()).not.toHaveClass("max-h-[calc(100svh-2rem)]");
     });
+
+    it("restores on the dialog's header the gap the wrap makes inert", () => {
+      renderSurface({ variant: "dialog" });
+
+      /*
+       * `DialogContent` is `grid … gap-4 p-6` and its children were the header
+       * and the app's form; under the inversion the column is its only child,
+       * so that `gap-4` goes inert exactly the way `FieldSet`'s `gap-6` does —
+       * and it was the header-to-fields distance. `DialogHeader` has no
+       * padding of its own, so without this the title sits flush against the
+       * first field (`D8.11`, ADR-0048 §4).
+       *
+       * Pinned here rather than left to the browser walk because it is a class
+       * on a specific element and therefore the one half of this geometry
+       * jsdom *can* see. The other two variants need no equivalent: the
+       * shipped drawer set `gap-0` and leans on `SheetHeader`'s own `p-4`, and
+       * the `page` lede carries `mb-6`.
+       */
+      expect(document.querySelector('[data-slot="dialog-header"]')).toHaveClass(
+        "mb-4",
+      );
+    });
+
+    it("gives the dialog's scrolling body paint room the fields do not move into", () => {
+      renderSurface({ variant: "dialog" });
+
+      /*
+       * A scroll container clips **ink** overflow at its padding box, and
+       * `overflow-y-auto` makes one on both axes — CSS Overflow 3 computes a
+       * `visible` `overflow-x` to `auto` beside it. `Input`'s
+       * `focus-visible:ring-[3px]` is a box-shadow painted outside the border
+       * box and neither `FieldGroup` nor `Field` supplies a gutter, so without
+       * this a `w-full` field's focus and `aria-invalid` rings are shaved off
+       * on every side (`D8.11`, ADR-0048 §4).
+       *
+       * **Both classes, because either alone is a bug**: `p-1` without `-m-1`
+       * moves every field 4px inwards from where the shipped dialog puts it,
+       * and `-m-1` without `p-1` pulls the row's border box in over the
+       * content it was meant to protect.
+       */
+      expect(surfaceBody()).toHaveClass("p-1", "-m-1");
+      // The drawer needs none: its `px-4` gutters are already paint room.
+      expect(surfaceBody()).toHaveClass("overflow-y-auto");
+    });
   });
 
   describe("the inversion", () => {

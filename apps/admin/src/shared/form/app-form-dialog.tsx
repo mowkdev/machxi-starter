@@ -3,13 +3,10 @@ import type { FieldValues, UseFormReturn } from "react-hook-form";
 
 import type { FieldConfigMap, FieldVariant } from "@/shared/resource/types";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
   FieldGroup,
+  RecordSurface,
+  type RecordSurfaceColumnProps,
 } from "@/shared/ui";
 
 import { AppFormActions, AppFormFrame } from "./app-form-frame";
@@ -26,9 +23,33 @@ import { AppFormError } from "./form-error";
  * {@link AppFormSurface} is the routed door to the same frame, and it renders
  * this component when a resource's `editSurface` is `"dialog"`.
  *
+ * **Rebuilt over `RecordSurface` at `D8.11`**, the last of the three shells to
+ * adopt the container, and the one that gains the most by it: this file owned
+ * a `DialogContent` with **no `className` and therefore no viewport bound at
+ * all**. A form longer than the screen grew the modal *past* the viewport
+ * instead of scrolling inside it — and because the element is centred by
+ * transform, it grew past both ends at once, putting the title and the Save
+ * button off-screen with no way to reach either. That is a different defect
+ * from the drawer's, which did scroll and scrolled its own title away; this
+ * one had no scroll element anywhere. The container supplies both halves of
+ * the fix on `DialogContent` itself (ADR-0048 §4): `max-h-[calc(100svh-2rem)]`
+ * to bound it, and the `grid-rows-[minmax(0,1fr)]` track that lets the bound
+ * reach the column, so the body is what scrolls and the title and footer stay.
+ *
  * The one thing this shell owns beyond the frame: **it cannot be dismissed
  * while the request is in flight.** A form that locks its fields and then lets
- * the operator close the window has not locked anything.
+ * the operator close the window has not locked anything. That used to be an
+ * `if (!isPending)` guard around the caller's `onOpenChange`; it is
+ * `dismissible={!isPending}` now, which is the same refusal made structural —
+ * the container withholds `onOpenChange` from the Radix root, prevents Escape
+ * and the overlay, and withholds the corner button rather than rendering one
+ * that refuses the close it offers. So there is no route out left for this
+ * shell to have to catch, and the button hiding while pending is what the
+ * drawer already does.
+ *
+ * The controlled mount stays: `open` and `onOpenChange` are the caller's, and
+ * that is the difference from {@link AppFormSurface}, whose route match is
+ * what opens it.
  */
 export interface AppFormDialogProps<
   TValues extends FieldValues,
@@ -68,68 +89,74 @@ export const AppFormDialog = <
   submitLabel,
   canSubmit = true,
   children,
-}: AppFormDialogProps<TValues, TSubmitted>) => (
-  <Dialog
-    open={open}
-    onOpenChange={(next) => {
-      // Escape, the overlay and the close button all arrive here. A request in
-      // flight is the one time the answer is no: the mutation would land
-      // anyway, and its result would have nowhere to be shown.
-      if (!isPending) onOpenChange(next);
-    }}
-  >
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-        {description === undefined ? null : (
-          <DialogDescription>{description}</DialogDescription>
-        )}
-      </DialogHeader>
+}: AppFormDialogProps<TValues, TSubmitted>) => {
+  /*
+   * The inversion (ADR-0048 §4), identical to the drawer's and the page's in
+   * `app-form-surface.tsx`: `RecordSurface` owns the geometry and asks for the
+   * element that carries it, and the frame supplies its `<form>` — so the
+   * `<form>` wraps header, body and footer, `type="submit"` works from a fixed
+   * footer, and that footer reads form state through the same context the
+   * fields do.
+   */
+  const column = ({ className, children: rows }: RecordSurfaceColumnProps) => (
+    <AppFormFrame
+      className={className}
+      fields={fields}
+      form={form}
+      isPending={isPending}
+      onSubmit={onSubmit}
+      variant={variant}
+    >
+      {rows}
+    </AppFormFrame>
+  );
 
-      <AppFormFrame
-        form={form}
-        fields={fields}
-        variant={variant}
-        onSubmit={onSubmit}
-        isPending={isPending}
-        footer={
-          /*
-           * `mt-12`, not `mt-6`, since `D8.9` — and this shell needs it for
-           * the same reason the other two do, even though it has not adopted
-           * `RecordSurface` yet. `AppFormFrame`'s `FieldSet` took
-           * `display: contents` for all of its call sites at once, so the
-           * `flex flex-col gap-6` that supplied the fields-to-footer distance
-           * went inert here too. Without this the shipped dialog — the default
-           * surface for staff and all three non-routed ceremonies — would have
-           * halved that gap from 3rem to 1.5rem. `D8.11` folds this into the
-           * container's footer row with the others.
-           */
-          <DialogFooter className="mt-12">
-            <AppFormActions
-              onCancel={() => {
-                onOpenChange(false);
-              }}
-              isPending={isPending}
-              submitLabel={submitLabel}
-              canSubmit={canSubmit}
-            />
-          </DialogFooter>
-        }
-      >
-        {/*
-         * Wrapped here since `D8.9`, when `AppFormFrame` stopped rendering
-         * these itself: its `children` became the container's rows under
-         * ADR-0048 §4's inversion. This shell does not adopt the container
-         * until `D8.11`, so it keeps the old layout — but it takes the
-         * wrapping now, because without it the dialog path would silently
-         * lose field grouping and the form-level error for two steps while
-         * `check-types` stayed green.
-         */}
-        <FieldGroup>
-          {children}
-          <AppFormError />
-        </FieldGroup>
-      </AppFormFrame>
-    </DialogContent>
-  </Dialog>
-);
+  return (
+    <RecordSurface
+      column={column}
+      dismissible={!isPending}
+      footer={
+        /*
+         * **`DialogFooter`, not the `FOOTER` row the other two shells use.**
+         * They reach for a hand-written row because `SheetFooter` is
+         * `flex-col` and would stack the buttons full-width with Cancel above
+         * Save; `DialogFooter` is the shape they are matching, so the dialog
+         * keeping its own is what makes all three read the same rather than a
+         * divergence. It also keeps the one thing the hand-written row does
+         * not have: `flex-col-reverse` below `sm`, which is real behaviour on
+         * a phone and nothing in jsdom would have noticed going.
+         *
+         * `mt-12` since `D8.9` — `FieldSet`'s inert `gap-6` plus the shipped
+         * `mt-6`, the full 3rem, now that the footer is its own grid row and
+         * the row template is gapless.
+         */
+        <DialogFooter className="mt-12">
+          <AppFormActions
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+            isPending={isPending}
+            submitLabel={submitLabel}
+            canSubmit={canSubmit}
+          />
+        </DialogFooter>
+      }
+      onOpenChange={onOpenChange}
+      open={open}
+      title={title}
+      variant="dialog"
+      {...(description === undefined ? {} : { description })}
+    >
+      {/*
+       * The container's **body**, not the frame's children: since `D8.9` the
+       * frame's children are the three rows. `AppFormError` stays inside
+       * `FieldGroup`, spaced by that element's own `gap-7`, so the body row is
+       * a single child needing no wrapper and no gap of its own.
+       */}
+      <FieldGroup>
+        {children}
+        <AppFormError />
+      </FieldGroup>
+    </RecordSurface>
+  );
+};
