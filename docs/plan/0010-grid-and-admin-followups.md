@@ -1,7 +1,7 @@
 # D10 — Data grid and admin follow-ups
 
-- Status: **planned** — opens when [D9](0009-platform-extraction.md) ships. **This file is a placeholder**: the operator has said there is remaining grid and admin work and that it belongs here, after the extraction and before the customer app. Its scope is written when the deliverable is scoped, not now.
-- Steps: written when the deliverable opens
+- Status: **planned** — opens when [D9](0009-platform-extraction.md) ships; **scoped 2026-08-28** (`/scope`, ADR-0050) from the two operator-named sections below. The decisions are in [ADR-0052](../adr/0052-grid-and-admin-followups.md), `proposed`, accepted at the head of `D10.1`, where [ADR-0039](../adr/0039-grid-filter-ux.md) and [ADR-0048](../adr/0048-app-shell-and-record-surfaces.md) move to `superseded by` (deltas — everything else in both stands by reference). Opening is the ledger row moving to `in progress` — the operator's decision, not a formality
+- Steps: `D10.1` – `D10.6`
 - Ledger: [`docs/plan/README.md`](README.md)
 
 Scope: the work `apps/admin` and the data grid still owe, done **after** the extraction so that it lands in the packages both apps will use rather than in one app that then has to be re-extracted. That ordering is the whole reason this row exists here rather than earlier: a grid capability added in D8 or D9 would be added to code that is moving, and a grid capability added after the customer app exists is added twice.
@@ -48,6 +48,62 @@ One opportunistic note for scoping: `app-grid.tsx` is the largest hand-written f
 
 Not a redesign of anything D8 or D9 touched. If the grid needs a different shape than the one that lands in the packages, that is a finding against those deliverables, made at their review rather than worked around here.
 
-## Decisions this deliverable needs
+## The decisions, taken 2026-08-28
 
-Unknown until the scope is named. Several of the candidates above (negated operators, bulk endpoints, a bounded filter schema) are supersessions of frozen ADRs rather than additive decisions, and the scoping session is where that gets established.
+All in [ADR-0052](../adr/0052-grid-and-admin-followups.md): the hot-filter chip suppression is retired (delta on 0039), `AppShell` gains a `navigating` prop with the app computing router state (delta on 0048), the columns menu takes `@dnd-kit` as `@repo/grid`'s dependency, striping is an opt-in prop, the nav-delay work is measure-first, Playwright lands as `test:e2e` beside the cached gate (the slot 0036 reserved), the bundle budget fails the gate when exceeded, and virtualization stays out at a written ~100-rows threshold. The remaining candidates above (negated operators, bulk endpoints, the bounded filter schema, saved views) are **not** in D10 — each is a supersession or an API change that waits for a deliverable that wants it.
+
+## Build order
+
+### 1. The records, the profile, and the felt click
+
+**ADRs:** [0052](../adr/0052-grid-and-admin-followups.md) (accepted at the head of this step; 0039 and 0048 move to `superseded by`), [0047](../adr/0047-ui-package-scope.md), [0037](../adr/0037-grid-viewport-layout.md)
+
+Acceptance mechanics first, then the nav-delay package in its decided order: profile a **production build** (`pnpm build --filter admin`, `vite preview`, React Profiler over the left-nav walk) and record the numbers here; `AppShell` gains the `navigating?: boolean` prop and its indeterminate bar; `apps/admin` computes `useRouterState().status === "pending"` and hands it down; `vite.config.ts` gains `server.warmup` over the page files. Grid-mount work only if the profile's numbers earn it — recorded either way.
+
+**Done when:** the profile numbers are written into this section as an amendment; a `@repo/ui` test asserts the bar renders under `navigating` and leaves no node otherwise; an admin test asserts the wiring; ADR statuses and index cells flipped; the gate green.
+
+### 2. Visible state: the chip, the handle, the stripes
+
+**ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0039](../adr/0039-grid-filter-ux.md) as carried
+
+In `@repo/grid`: the applied-filters bar renders a chip for a pressed hot filter (suppression retired; Clear all unchanged); the resize handle gets its at-rest affordance in both themes; the `striped` prop lands, off by default.
+
+**Done when:** the bar's suite asserts a chip for a pressed hot filter and its removal unpressing the filter; a test asserts stripes only when the prop is set; the handle's visibility is a named `test:e2e` spec at `D10.4`; the gate green.
+
+### 3. The columns menu learns to drag
+
+**ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0041](../adr/0041-grid-preferences.md)
+
+`@dnd-kit` (core + sortable) enters `@repo/grid`; the columns menu rows gain a left drag handle, keep the right-side up/down buttons, and drags land in ADR-0041's preferences exactly as button clicks do. If a split of `app-grid.tsx` happens, it happens here, inside the step already editing it.
+
+**Done when:** a suite asserts keyboard-operated reorder through the sortable updates the preference and reset-to-defaults still works; `@dnd-kit` appears in `packages/grid` only; the gate green.
+
+### 4. The browser tier
+
+**ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0036](../adr/0036-admin-testing-strategy.md) as carried
+
+Playwright, chromium, `test:e2e` (`cache: false`) against the dev stack: sign-in; both grids with static header and pager, rows the only scroller, no page-level horizontal scrollbar; sort, filter and a pressed hot filter visible in the bar; a record opened in each surface variant; a long form keeping title and Save visible; the resize handle at rest; the navigation indicator during a slow route.
+
+**Done when:** `pnpm test:e2e` green against the local stack; the specs cover every recurring close-out walk item this file's history names; `pnpm test`'s shape and caching are untouched.
+
+### 5. The budget
+
+**ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0026](../adr/0026-task-graph-caching-and-serialisation.md)
+
+The committed budget file, the check script wired into the gate for `apps/admin`'s build, the baseline recorded in the budget file's first commit.
+
+**Done when:** the check passes at baseline and fails on a deliberately breached budget (asserted once, then reverted); the gate green.
+
+### 6. Close-out
+
+**ADRs:** none of its own — the checklist below
+
+**Done when:** every §Definition-of-done item is checked or recorded as pending operator acceptance; the row reads `shipped`; the window on 0052 is shut.
+
+## Definition of done
+
+1. **The numbers exist**: the production-build profile is recorded in `D10.1`, before and (where work happened) after.
+2. **Visible state is asserted**: hot-filter chips, stripes and DnD reorder by unit suites; the handle, the indicator and the walk by `test:e2e`.
+3. **The gate keeps its shape**: `pnpm lint && pnpm check-types && pnpm test` green and cached exactly as before; `test:e2e` green beside it against the dev stack.
+4. **The budget stands**: the size check is in the gate, its baseline committed.
+5. **Records agree**: 0052 `accepted` with labelled amendments; 0039 and 0048 `superseded by ADR-0052`; index cells and window documents in one reading pass.
