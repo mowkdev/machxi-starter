@@ -1,7 +1,7 @@
 import type { TFunction } from "i18next";
 import { useMemo } from "react";
 
-import { isApiClientError } from "@/shared/api/api-error";
+import { isApiClientError, type ErrorMessage } from "@/shared/api/api-error";
 import { useT } from "@/shared/i18n";
 import enErrors from "@/shared/i18n/locales/en/errors.json";
 
@@ -40,7 +40,15 @@ import enErrors from "@/shared/i18n/locales/en/errors.json";
  * somewhere, and a closure is the only place it can arrive without being an
  * argument at every call site.
  */
-export type ErrorMessage = (error: unknown) => string;
+/*
+ * **The type moved to `@repo/api-client` at `D9.5`; the name did not.** Two
+ * consumers now ask for one of these across a package boundary — this app's
+ * `bulk-outcome.ts` and `@repo/form`'s `applyServerErrors` — so the alias
+ * lives beside the error it is asked about rather than being written twice.
+ * What stays here is the half only an app can have: the `errors` catalogue and
+ * the translators that read it (ADR-0046 §13).
+ */
+export type { ErrorMessage };
 
 /**
  * A translator fixed to the `errors` namespace, which is the namespace keyed by

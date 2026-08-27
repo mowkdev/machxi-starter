@@ -14,10 +14,7 @@ import { apiClientError } from "@/shared/api/api-error";
 import {
   EN_RESOURCES,
   NAMESPACES,
-  applyZodLocale,
   createI18n,
-  createRuleTranslator,
-  zodLocaleReady,
   type I18n,
   type TranslateKey,
 } from "@/shared/i18n";
@@ -26,6 +23,11 @@ import { Button, Input } from "@/shared/ui";
 
 import { AppFormProvider } from "../context";
 import { applyServerErrors, schemaFieldRules } from "../server-errors";
+import {
+  applyZodLocale,
+  createRuleTranslator,
+  zodLocaleReady,
+} from "../zod-locale";
 
 /**
  * A field the API refused, read back in the operator's language (`D7.5`,
@@ -50,18 +52,20 @@ interface Values {
   readonly email: string;
 }
 
-/** Not Latvian, and not claiming to be: `D7.6` writes the real catalogue. */
-const LV_FORM = {
-  rules: { passwordMustDiffer: "Jaunajai parolei jāatšķiras no pašreizējās" },
-} as const;
-
 const build = (): I18n =>
   createI18n({
     resources: {
       en: EN_RESOURCES,
+      /*
+       * **No `form` block since `D9.5`**: that namespace is `@repo/form`'s, so
+       * this app's `Catalogue` no longer has a slot for it and the instance
+       * gets it from the package instead — `en` composed at `init`, `lv`
+       * through the package's own loader. Nothing here asserts on it; what the
+       * Latvian cases below read is zod's generic locale map, which is
+       * `@repo/contracts`'.
+       */
       lv: {
         common: {},
-        form: LV_FORM,
         errors: {},
         auth: {},
         dashboard: {},

@@ -61,17 +61,11 @@ export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
 export { EN_RESOURCES, type Catalogue, type Catalogues } from "./resources";
 export { createDeferredTranslate, englishTranslation } from "./keys";
 /*
- * The zod installer stayed in this app because its `RULE_KEYS` name keys in
- * the app's own `form` namespace (`D9.2`, ADR-0046 §13).
+ * The zod installer left at `D9.5`, following the `form` namespace whose keys
+ * its `RULE_KEYS` name: it is `@repo/form`'s now and comes through that
+ * slice's door, `@/shared/form/zod-locale` (`D9.2` found the coupling,
+ * ADR-0046 §13).
  */
-export {
-  RULE_KEYS,
-  applyZodLocale,
-  createRuleTranslator,
-  zodLocaleReady,
-  type RuleTranslator,
-} from "./zod-locale";
-
 /**
  * The hook, under the name the rest of the app uses. Re-exported here so a
  * slice imports one module for its keys and its translator, and so the day the

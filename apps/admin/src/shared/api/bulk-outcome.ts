@@ -1,5 +1,4 @@
-import { isApiClientError } from "@/shared/api/api-error";
-import type { ErrorMessage } from "@/shared/notifications/messages";
+import { isApiClientError, type ErrorMessage } from "@/shared/api/api-error";
 
 /**
  * Running a per-row action over a selection, and reporting what happened

@@ -28,6 +28,7 @@ export {
   TRANSPORT_ERROR_CODE,
   type ApiClientError,
   type ApiClientErrorData,
+  type ErrorMessage,
 } from "./api-error";
 
 export { createBootstrap, type BootstrapOutcome } from "./bootstrap";

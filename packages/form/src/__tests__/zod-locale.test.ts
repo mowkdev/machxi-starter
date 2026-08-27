@@ -4,20 +4,17 @@ import {
   changePasswordBody,
   passwordSchema,
 } from "@repo/contracts";
+import { createI18n, type I18n, type TranslateKey } from "@repo/i18n";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { FORM_NAMESPACE, bundles } from "../i18n";
+import lvForm from "../locales/lv.json";
 import {
-  EN_RESOURCES,
-  NAMESPACES,
   RULE_KEYS,
   applyZodLocale,
-  createI18n,
   createRuleTranslator,
   zodLocaleReady,
-  type I18n,
-  type TranslateKey,
-} from "@/shared/i18n";
-import enForm from "@/shared/i18n/locales/en/form.json";
+} from "../zod-locale";
 
 /**
  * Validation copy under the active locale (`D7.5`, ADR-0046 §6, §14).
@@ -30,31 +27,50 @@ import enForm from "@/shared/i18n/locales/en/form.json";
  * `z.config` is process-global, so every case here restores `en` before it
  * finishes — the same discipline `intl.ts`'s holder needs, for the same reason,
  * and the reason ADR-0046 §5 named it rather than hid it.
+ *
+ * **It moved here from `apps/admin/src/shared/i18n/__tests__` at `D9.5`, with
+ * its cases unchanged.** The installer and the sentences it resolves are this
+ * package's, so the questions asked about them are too — including which
+ * locales are translated, which the harness below decides by handing `init` a
+ * catalogue rather than by letting the lazy backend fetch one. Posing that in
+ * the app would now mean widening its `Catalogue` to hold a namespace it does
+ * not own, which is the thing that type exists to refuse. `@repo/i18n`'s
+ * factory rather than a stub, so the translator these cases install is the
+ * kind an app supplies.
  */
 
-/** Not Latvian, and not claiming to be: `D7.6` writes the real catalogue. */
-const LV_RULES = {
-  rules: { passwordMustDiffer: "Jaunajai parolei jāatšķiras no pašreizējās" },
-} as const;
+const enForm = bundles.en;
 
-const build = (lvForm: object = {}): I18n =>
+/**
+ * An instance carrying this package's namespace and nothing else.
+ *
+ * `lv` is what the Latvian catalogue holds — `{}` for the partly-translated
+ * locale every case but one wants, so that the source sentence is what a keyed
+ * rule has to fall back to. Supplying it eagerly is what keeps the namespace
+ * out of the lazy backend, which is what makes that emptiness stick.
+ */
+const build = (lv: object = {}): I18n =>
   createI18n({
     resources: {
-      en: EN_RESOURCES,
-      lv: {
-        common: {},
-        form: lvForm,
-        errors: {},
-        auth: {},
-        dashboard: {},
-        profile: {},
-        staff: {},
-        users: {},
-        settings: {},
-      },
+      en: { [FORM_NAMESPACE]: enForm },
+      lv: { [FORM_NAMESPACE]: lv },
     },
-    namespaces: NAMESPACES,
+    namespaces: [FORM_NAMESPACE],
+    defaultNamespace: FORM_NAMESPACE,
     locale: "en",
+    /*
+     * **The two seams a consuming app binds, bound here.** `@repo/i18n`'s
+     * factory does not install zod's error map — it is a parameter precisely
+     * because a consumer with no schemas should not pay for one (`D9.2`) — so
+     * a harness that omitted them would build an instance whose
+     * `changeLocale` moves i18next and leaves zod behind, and would then be
+     * asserting nothing about the installer at all. `apps/admin` binds the
+     * same pair in `shared/i18n/create-app-i18n.ts`.
+     */
+    onLocaleApplied: (locale, translate) => {
+      applyZodLocale(locale, createRuleTranslator(translate));
+    },
+    localeSideEffectsReady: zodLocaleReady,
   });
 
 const translator = (i18n: I18n) =>
@@ -123,7 +139,7 @@ describe("the active zod locale", () => {
    * the refinement at all.
    */
   it("moves a keyed rule with the language", async () => {
-    const i18n = build(LV_RULES);
+    const i18n = build(lvForm);
     const same = {
       currentPassword: "same-password-12",
       newPassword: "same-password-12",
@@ -136,7 +152,7 @@ describe("the active zod locale", () => {
     await i18n.changeLocale("lv");
 
     expect(changePasswordBody.safeParse(same).error?.issues[0]?.message).toBe(
-      LV_RULES.rules.passwordMustDiffer,
+      lvForm.rules.passwordMustDiffer,
     );
   });
 

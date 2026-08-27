@@ -1,4 +1,7 @@
 {
+  "actions": {
+    "cancel": "Cancel"
+  },
   "select": {
     "placeholder": "Select…"
   },

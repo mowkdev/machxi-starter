@@ -12,4 +12,5 @@ export {
   TRANSPORT_ERROR_CODE,
   type ApiClientError,
   type ApiClientErrorData,
+  type ErrorMessage,
 } from "@repo/api-client";

@@ -5,12 +5,12 @@ import {
   type UseFormReturn,
 } from "react-hook-form";
 
-import type {
-  FieldConfig,
-  FieldConfigMap,
-  FieldVariant,
-} from "@/shared/resource/types";
-import { isInVariant } from "@/shared/resource/config";
+import {
+  isInVariant,
+  type FieldConfig,
+  type FieldConfigMap,
+  type FieldVariant,
+} from "@repo/resource";
 
 /**
  * The config half of a form's context (ADR-0035 §Two contexts, one join point).

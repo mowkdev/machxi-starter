@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
 
-import { useT } from "@/shared/i18n";
-import type { FieldConfigMap, FieldVariant } from "@/shared/resource/types";
-import { Button, FieldSet, Spinner } from "@/shared/ui";
+import { useT } from "@repo/i18n";
+import type { FieldConfigMap, FieldVariant } from "@repo/resource";
+import { Button } from "@repo/ui/components/button";
+import { FieldSet } from "@repo/ui/components/field";
+import { Spinner } from "@repo/ui/components/spinner";
 
 import { AppFormProvider } from "./context";
 
@@ -171,7 +173,17 @@ export const AppFormActions = ({
   /** `false` while there is nothing worth submitting — an untouched edit. */
   readonly canSubmit?: boolean;
 }) => {
-  const { t } = useT("common");
+  /*
+   * **`form:actions.cancel`, not `common:actions.cancel`** (`D9.5`,
+   * ADR-0046 §13). The word is the same one the admin's `common` namespace
+   * carries and the ownership is not: a package declares the strings it
+   * renders and never reads an app's dictionary, so this button's label is
+   * this package's copy. That the admin still has its own `actions.cancel` —
+   * `ConfirmDialog`'s, which no form renders — is two owners of one English
+   * word rather than a duplicate, and the grid took the same route at `D9.4`
+   * for the three it was the only reader of.
+   */
+  const { t } = useT("form");
 
   return (
     <>

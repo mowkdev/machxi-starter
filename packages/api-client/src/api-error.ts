@@ -57,3 +57,22 @@ export const isApiClientError = (error: unknown): error is ApiClientError =>
  * union describe two different things.
  */
 export const TRANSPORT_ERROR_CODE = "SERVICE_UNAVAILABLE" satisfies ErrorCode;
+
+/**
+ * A failure, turned into the sentence an operator reads (`D9.5`, ADR-0043
+ * §Notifications, carrying ADR-0034's).
+ *
+ * **The type is here and the catalogue is not**, which is the whole of the
+ * split: producing the sentence needs an app's `errors` namespace and belongs
+ * to that app (ADR-0046 §13), while *asking* for one is what every consumer of
+ * this client does — the toast handlers, the bulk-outcome summariser and
+ * `@repo/form`'s `applyServerErrors` alike. `unknown` rather than
+ * {@link ApiClientError} because a thrown value is unknown until
+ * {@link isApiClientError} has looked at it, and a lookup that refused
+ * everything else would push that branch onto every caller.
+ *
+ * It lives beside the error it is usually asked about so that the two packages
+ * that need it — this one's consumers and `@repo/form` — share one definition
+ * rather than two structurally-identical aliases that can drift in intent.
+ */
+export type ErrorMessage = (error: unknown) => string;

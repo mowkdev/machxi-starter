@@ -2,7 +2,6 @@ import type auth from "./locales/en/auth.json";
 import type common from "./locales/en/common.json";
 import type dashboard from "./locales/en/dashboard.json";
 import type errors from "./locales/en/errors.json";
-import type form from "./locales/en/form.json";
 import type profile from "./locales/en/profile.json";
 import type settings from "./locales/en/settings.json";
 import type staff from "./locales/en/staff.json";
@@ -29,7 +28,6 @@ declare module "i18next" {
     returnNull: false;
     resources: {
       common: typeof common;
-      form: typeof form;
       errors: typeof errors;
       auth: typeof auth;
       dashboard: typeof dashboard;
@@ -40,6 +38,15 @@ declare module "i18next" {
     };
   }
 }
+
+/*
+ * **`grid` and `form` are absent on purpose** (`D9.4`, `D9.5`). Each is a
+ * package's namespace, declared by that package through `ResourceNamespaceMap`
+ * rather than here — which is what stops two packages colliding on this one
+ * field (TS2717, ADR-0046 §13 as amended at `D7.1`). Both feed
+ * `TypeOptions['resources']`, so `TranslationKey` sees a `form:` key exactly as
+ * it sees a `staff:` one.
+ */
 
 /*
  * `TranslationKey` moved to `@repo/i18n` at `D9.2` and is re-exported through

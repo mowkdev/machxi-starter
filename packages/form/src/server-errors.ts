@@ -2,8 +2,7 @@ import type { ErrorCode } from "@repo/contracts";
 import type { FieldValues, Path, UseFormSetError } from "react-hook-form";
 import type { ZodType } from "zod";
 
-import { isApiClientError } from "@/shared/api/api-error";
-import type { ErrorMessage } from "@/shared/notifications/messages";
+import { isApiClientError, type ErrorMessage } from "@repo/api-client";
 
 /**
  * Server-side failures, landed next to the field they belong to (ADR-0035).
@@ -87,8 +86,9 @@ export type FieldRules = (path: string) => string | undefined;
  * `zodResolver` runs this schema on every submit and throws the issues away
  * once react-hook-form has the messages; this runs it again, on the values the
  * form holds *now*, and answers by path. The active zod locale is global
- * (`shared/i18n/zod-locale.ts`), so "in the operator's language" needs no
- * argument here — the same call under `lv` produces Latvian.
+ * (`./zod-locale`, this package since `D9.5`), so "in the operator's
+ * language" needs no argument here — the same call under `lv` produces
+ * Latvian.
  *
  * **Lazy, and parsed at most once.** A rejected submit that names no field
  * never parses at all; one that names three parses once. The memo is per call

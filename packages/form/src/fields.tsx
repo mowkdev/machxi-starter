@@ -24,26 +24,27 @@ import type {
   FieldValues,
 } from "react-hook-form";
 
-import { useKeyT, useT } from "@/shared/i18n";
-import { resolveOptions } from "@/shared/resource/config";
-import type { FieldConfig } from "@/shared/resource/types";
+import { useKeyT, useT } from "@repo/i18n";
+import { resolveOptions, type FieldConfig } from "@repo/resource";
+import { Checkbox } from "@repo/ui/components/checkbox";
 import {
-  Checkbox,
   Field,
   FieldContent,
   FieldDescription,
   FieldError,
   FieldLabel,
   FieldTitle,
-  Input,
+} from "@repo/ui/components/field";
+import { Input } from "@repo/ui/components/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
-  Textarea,
-} from "@/shared/ui";
+} from "@repo/ui/components/select";
+import { Switch } from "@repo/ui/components/switch";
+import { Textarea } from "@repo/ui/components/textarea";
 
 /**
  * The field adapters (ADR-0035 §The form half).

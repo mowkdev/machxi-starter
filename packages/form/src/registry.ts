@@ -1,4 +1,4 @@
-import type { FieldComponentKey } from "@/shared/resource/types";
+import type { FieldComponentKey } from "@repo/resource";
 
 import {
   CheckboxField,

@@ -1,4 +1,7 @@
 {
+  "actions": {
+    "cancel": "Atcelt"
+  },
   "select": {
     "placeholder": "Izvēlieties…"
   },

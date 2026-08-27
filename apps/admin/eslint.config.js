@@ -265,6 +265,14 @@ export default defineConfig(
               message:
                 "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
             },
+            {
+              // The form door (`D9.5`). The adapters, the frame, the three
+              // record shells and the server-error landing come through
+              // `@/shared/form/*`.
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
           ],
         },
       ],
@@ -305,6 +313,14 @@ export default defineConfig(
                 "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
             },
             {
+              // The form door (`D9.5`). The adapters, the frame, the three
+              // record shells and the server-error landing come through
+              // `@/shared/form/*`.
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
+            {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
@@ -327,6 +343,11 @@ export default defineConfig(
         "error",
         {
           patterns: [
+            {
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
@@ -372,6 +393,11 @@ export default defineConfig(
                 "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
             },
             {
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
+            {
               group: ["@repo/i18n", "@repo/i18n/*"],
               message:
                 "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
@@ -412,15 +438,69 @@ export default defineConfig(
               message:
                 "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
             },
-            /*
-             * **No `@repo/grid` group here, deliberately** (`D9.4`). This slice
-             * holds `create-app-i18n.ts`, which is where this app composes the
-             * namespaces its packages ship (ADR-0046 §13) — so it is the one
-             * place that must reach a package's catalogues directly. Routing
-             * that through `@/shared/grid` would make the grid door export
-             * translation bundles, which is copy travelling through a door
-             * built for a table.
-             */
+            {
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  /*
+   * **The one file that is exempt, and it is a file rather than a slice**
+   * (`D9.4`, `D9.5`).
+   *
+   * `create-app-i18n.ts` is where this app composes the namespaces its
+   * packages ship (ADR-0046 §13), so it is the one place that must reach a
+   * package's catalogues directly — routing that through `@/shared/grid` or
+   * `@/shared/form` would make those doors export translation bundles, which
+   * is copy travelling through a door built for a table and a door built for a
+   * form. It is also where the zod installer's two seams now come from, for the
+   * same reason: the sentences they resolve are `@repo/form`'s.
+   *
+   * **Named as a file because `D9.4` named it as a slice, and that was wider
+   * than the reason.** `index.ts`, `keys.ts`, `namespaces.ts`, `resources.ts`
+   * and this slice's suites need no such reach, and an exemption that covers
+   * them is a hole rather than a permission — the same invariant the door
+   * blocks above keep, one level finer. `D9.6` adds its package to the two
+   * dropped here and to nothing else.
+   */
+  {
+    files: ["src/shared/i18n/create-app-i18n.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
@@ -465,9 +545,61 @@ export default defineConfig(
                 "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
             },
             {
+              // The form door (`D9.5`). The adapters, the frame, the three
+              // record shells and the server-error landing come through
+              // `@/shared/form/*`.
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
+            {
               group: ["@repo/i18n", "@repo/i18n/*"],
               message:
                 "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ["src/shared/form/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
             },
             {
               group: [

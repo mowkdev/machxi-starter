@@ -83,9 +83,10 @@ export type Catalogues = Readonly<Partial<Record<Locale, Catalogue>>> & {
  * operator reads are zod's own messages and a locale that moved the headers
  * and left `Too small: expected string to have >=12 characters` under the
  * password box would have localised everything except the sentence the
- * operator is being asked to act on. But those rules are keys in the *app's*
- * `form` namespace, so the installer stayed in `apps/admin`; the package
- * cannot name a key it does not own (ADR-0046 §13).
+ * operator is being asked to act on. Those rules are keys in the `form`
+ * namespace, which is `@repo/form`'s since `D9.5` and never this package's —
+ * so the installer lives there and arrives here as a parameter, because a
+ * package cannot name a key it does not own (ADR-0046 §13).
  */
 const applyLocale = (
   locale: Locale,
@@ -117,10 +118,12 @@ export interface CreateI18nOptions {
    * What else a locale change must do, beyond Intl, `<html lang>` and the
    * stored preference (`D9.2`, ADR-0051).
    *
-   * `apps/admin` installs zod's error map here. It is a parameter rather than
-   * a step in this factory because the rule copy is keyed in the *app's* `form`
-   * namespace — a package may not name a key it does not own (ADR-0046 §13) —
-   * and because a consumer with no zod schemas should not pay for one.
+   * `apps/admin` installs zod's error map here, from the installer `@repo/form`
+   * owns since `D9.5`. It is a parameter rather than a step in this factory
+   * because the rule copy is keyed in the `form` namespace, which is that
+   * package's and not this one's — a package may not name a key it does not
+   * own (ADR-0046 §13) — and because a consumer with no zod schemas should not
+   * pay for one.
    */
   readonly onLocaleApplied?: (locale: Locale, translate: TranslateKey) => void;
   /**

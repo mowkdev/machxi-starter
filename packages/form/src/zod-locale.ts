@@ -13,7 +13,7 @@ import type { TranslateKey, TranslationKey } from "@repo/i18n";
  * Validation copy, in the operator's language (ADR-0046 §6, `D7.5`).
  *
  * This is the half of the sweep that never appears in a `t()` call, and the
- * `D3.9` argument in `shared/form/server-errors.ts` named the mechanism years
+ * `D3.9` argument in `./server-errors` named the mechanism years
  * of deliverables ago: *"localising the latter is zod's own error map on the
  * contracts package"*. This module is that sentence, executed.
  *
@@ -38,7 +38,7 @@ import type { TranslateKey, TranslationKey } from "@repo/i18n";
  */
 
 /**
- * Where a keyed rule's sentence lives in this app's catalogues.
+ * Where a keyed rule's sentence lives in this package's catalogues.
  *
  * `Record<CustomMessageKey, TranslationKey>` is the completeness check and the
  * spelling check at once: a key added to `@repo/contracts` is a red build here

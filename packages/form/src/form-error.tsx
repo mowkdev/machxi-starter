@@ -1,6 +1,6 @@
 import { useFormContext } from "react-hook-form";
 
-import { FieldError } from "@/shared/ui";
+import { FieldError } from "@repo/ui/components/field";
 
 /**
  * The form-level failure, where {@link applyServerErrors} puts what no field

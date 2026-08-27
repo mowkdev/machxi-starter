@@ -6,12 +6,12 @@ import type {
   EditSurfaceKey,
   FieldConfigMap,
   FieldVariant,
-} from "@/shared/resource/types";
+} from "@repo/resource";
+import { FieldGroup } from "@repo/ui/components/field";
 import {
-  FieldGroup,
   RecordSurface,
   type RecordSurfaceColumnProps,
-} from "@/shared/ui";
+} from "@repo/ui/compositions/record-surface";
 
 import { AppFormDialog } from "./app-form-dialog";
 import { AppFormActions, AppFormFrame } from "./app-form-frame";

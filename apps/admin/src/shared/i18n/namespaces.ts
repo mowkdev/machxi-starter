@@ -21,9 +21,9 @@
 export const NAMESPACES = [
   "common",
   /*
-   * **`grid` is declared here but its catalogue is not this app's** since
-   * `D9.4`: `@repo/grid` ships the namespace and registers it onto the
-   * instance (ADR-0046 §13). The name stays in this list because the instance
+   * **`grid` and `form` are declared here but their catalogues are not this
+   * app's** since `D9.4` and `D9.5`: `@repo/grid` and `@repo/form` each ship
+   * their own namespace and hand it over (ADR-0046 §13). The name stays in this list because the instance
    * must still *load* it — `createI18n` passes the list to `init`, and a
    * namespace absent from it is one `useKeyT` would not bind to.
    */

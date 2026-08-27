@@ -1,6 +1,15 @@
 import type { ResourceKey } from "i18next";
 
 import {
+  FORM_NAMESPACE,
+  applyZodLocale,
+  bundles as formBundles,
+  createRuleTranslator,
+  loadCatalogue as loadFormCatalogue,
+  zodLocaleReady,
+} from "@repo/form";
+
+import {
   GRID_NAMESPACE,
   bundles as gridBundles,
   loadCatalogue as loadGridCatalogue,
@@ -14,11 +23,6 @@ import {
 
 import { DEFAULT_NAMESPACE, type Namespace } from "./namespaces";
 import type { Catalogues, PackageNamespace } from "./resources";
-import {
-  applyZodLocale,
-  createRuleTranslator,
-  zodLocaleReady,
-} from "./zod-locale";
 
 /**
  * This app's instance factory: `@repo/i18n`'s, with the three things only this
@@ -107,7 +111,10 @@ export type CreateAppI18nOptions = Omit<
  * operator-facing copy declares its own namespace and exports a `register`;
  * the app calls each one on the instance it just built. `@repo/grid` is the
  * first — `grid.json` used to be one of this app's ten catalogues and is the
- * package's now — and `@repo/form` joins it at `D9.5`.
+ * package's now — and `@repo/form` joined it at `D9.5`,
+ * bringing the zod installer with it: `RULE_KEYS` name keys in the `form`
+ * namespace, so the two seams this factory binds are imported from the package
+ * that owns the sentences they resolve.
  *
  * The name stays in `NAMESPACES` even though the catalogue does not live here
  * any more, because `init` must still load it; what moved is who owns the
@@ -134,6 +141,10 @@ const PACKAGE_BUNDLES: Readonly<
   [GRID_NAMESPACE]: {
     bundles: gridBundles,
     loadCatalogue: loadGridCatalogue,
+  },
+  [FORM_NAMESPACE]: {
+    bundles: formBundles,
+    loadCatalogue: loadFormCatalogue,
   },
 };
 

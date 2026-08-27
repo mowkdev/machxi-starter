@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
 
-import type { FieldConfigMap, FieldVariant } from "@/shared/resource/types";
+import type { FieldConfigMap, FieldVariant } from "@repo/resource";
+import { DialogFooter } from "@repo/ui/components/dialog";
+import { FieldGroup } from "@repo/ui/components/field";
 import {
-  DialogFooter,
-  FieldGroup,
   RecordSurface,
   type RecordSurfaceColumnProps,
-} from "@/shared/ui";
+} from "@repo/ui/compositions/record-surface";
 
 import { AppFormActions, AppFormFrame } from "./app-form-frame";
 import { AppFormError } from "./form-error";

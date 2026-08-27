@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Controller, useFormContext } from "react-hook-form";
 
-import type { FieldConfig, FieldConfigMap } from "@/shared/resource/types";
+import type { FieldConfig, FieldConfigMap } from "@repo/resource";
 
 import { useFieldConfig } from "./context";
 import { fieldRegistry } from "./registry";

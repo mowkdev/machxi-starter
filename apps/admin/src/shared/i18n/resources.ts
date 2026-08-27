@@ -4,7 +4,6 @@ import enAuth from "./locales/en/auth.json";
 import enCommon from "./locales/en/common.json";
 import enDashboard from "./locales/en/dashboard.json";
 import enErrors from "./locales/en/errors.json";
-import enForm from "./locales/en/form.json";
 import enProfile from "./locales/en/profile.json";
 import enSettings from "./locales/en/settings.json";
 import enStaff from "./locales/en/staff.json";
@@ -26,7 +25,6 @@ import type { Namespace } from "./namespaces";
  */
 export const EN_RESOURCES = {
   common: enCommon,
-  form: enForm,
   errors: enErrors,
   auth: enAuth,
   dashboard: enDashboard,
@@ -37,15 +35,16 @@ export const EN_RESOURCES = {
 } as const;
 
 /**
- * Namespaces the instance loads but this app does not own (`D9.4`, ADR-0046
- * §13).
+ * Namespaces the instance loads but this app does not own (`D9.4`, `D9.5`,
+ * ADR-0046 §13).
  *
- * `grid` is `@repo/grid`'s: the package declares it, ships its catalogues and
- * registers them onto the instance. The name is still in {@link NAMESPACES}
- * because `init` must load it, so the two lists are no longer the same list —
- * and this type is what keeps that difference checked rather than implied.
+ * `grid` is `@repo/grid`'s and `form` is `@repo/form`'s: each package declares
+ * its namespace, ships its catalogues and hands them over. The names are still
+ * in {@link NAMESPACES} because `init` must load them, so the two lists are no
+ * longer the same list — and this type is what keeps that difference checked
+ * rather than implied.
  */
-export type PackageNamespace = "grid";
+export type PackageNamespace = "grid" | "form";
 
 /** The namespaces whose words are this app's, and whose catalogues it ships. */
 export type AppNamespace = Exclude<Namespace, PackageNamespace>;
