@@ -1,12 +1,12 @@
 # D9 — Platform extraction
 
-- Status: **planned** — opens when [D8](0008-app-shell-and-record-surfaces.md) ships
-- Steps: written when the deliverable opens; this file carries scope, order rationale and the decisions taken
+- Status: **planned** — D8 shipped 2026-08-27; **scoped 2026-08-27** (`/scope`, ADR-0050): the decisions are taken, [ADR-0051](../adr/0051-platform-extraction.md) is written `proposed` and is accepted at the head of `D9.1`, and the build order below is ready for `/step`. Opening is the ledger row moving to `in progress` — the operator's decision, not a formality
+- Steps: `D9.1` – `D9.7`
 - Ledger: [`docs/plan/README.md`](README.md)
 
 Scope: the app-agnostic **behavioural** machinery leaves `apps/admin/src/shared` for workspace packages, and `apps/admin` becomes its first consumer through thin doors. D8 generalised the presentation; this moves the rest. Nothing is redesigned here — a step that finds itself wanting to change behaviour has found D8's work unfinished or D10's work early, and says so rather than doing it.
 
-**The deliverable is mechanical by construction, and that is the point.** Every claim it makes is checkable: `apps/admin` green with the same test totals, the same Postman numbers, the same browser walk. That makes it the first deliverable in this ledger genuinely suited to an unattended run.
+**The deliverable is mechanical by construction, and that is the point.** Every claim it makes is checkable: `apps/admin` green with the workspace test total unchanged, the same Postman numbers, the same browser walk. Steps are sized for the `/step` loop (ADR-0050 — the old unattended runner is retired), and their mechanical nature is what keeps each one a small, reviewable diff.
 
 ## What moves, and the shape of the question
 
@@ -35,11 +35,71 @@ Package granularity is the ADR's decision. House precedent (`contracts`, `crypto
 - **Strings inside extracted machinery follow D7's package boundary** ([ADR-0046](../adr/0046-interface-localization.md)): a shared package ships its own namespace JSON and a `register(i18n)`, and each app composes its own bundle. This is why extraction runs after localization — the components move already dictionary-fed rather than needing a second sweep.
 - **The `@repo/contracts` rule is not relaxed** ([ADR-0023](../adr/0023-shared-contracts-package.md)): zod and nothing else. A package that needs a contract imports it; contracts imports nobody.
 
-## Decisions this deliverable needs
+## The decisions, taken 2026-08-27
 
-- **The extraction ADR** — the package set, the parameterised session machinery, the router question above, the per-app door rule, and its relationship to frozen [ADR-0032](../adr/0032-admin-app-architecture.md) and [ADR-0033](../adr/0033-browser-api-client-and-session.md), both of which describe this machinery as living _in_ `apps/admin`. The ADR must carry that move explicitly. Whether it supersedes those two or lands additively beside them is a writing-time discovery, and the honest answer may well be supersession.
-- **A superseding ADR for [ADR-0022](../adr/0022-frontend-apps.md)** — the app roster, stacks and dev ports. `apps/web` is re-scoped from "public/user-facing" to marketing-only and moves last; `apps/customer` is named. 0022 gave 3002 to `web`; the roster ADR reassigns. This can be written here or deferred to [D11](0011-customer-app.md) — it is only strictly needed the day an app actually changes, and this deliverable adds no app.
+All in [ADR-0051](../adr/0051-platform-extraction.md) (`proposed`, accepted at the head of `D9.1`, delta-superseding [ADR-0033](../adr/0033-browser-api-client-and-session.md) and [ADR-0049](../adr/0049-admin-app-architecture.md)'s `shared/` tree annotations): **six focused packages** (`api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`), **the router as a peer dependency** of the packages that call it (the injected seam rejected — no planned app uses another router), the **door rule** generalised from ADR-0047, and **strings via ADR-0046 §13's `register(i18n)`**, its first real use. The [ADR-0022](../adr/0022-frontend-apps.md) roster supersession is **deferred to D11**, the deliverable that changes a roster fact.
 
-## Acceptance sketch
+## Build order
 
-`apps/admin` fully green on the extracted packages with **no behaviour change** — the same test totals per package, `pnpm test:postman` at its unchanged numbers, and a browser walk that finds nothing different; every `shared/` door re-exports rather than implements; no package imports another app; `@repo/contracts` still depends on zod alone; both `apps/admin` and `apps/web` build; and the gate is green across the workspace with `pnpm test:unit` FULL TURBO on the second run.
+### 1. `@repo/api-client` — the client, parameterised
+
+**ADRs:** [0051](../adr/0051-platform-extraction.md) (accepted at the head of this step; 0033 and 0049 move to `superseded by`), [0029](../adr/0029-csrf-strategy.md), [0030](../adr/0030-csrf-bootstrap-endpoint.md), [0023](../adr/0023-shared-contracts-package.md)
+
+First because everything else sits on it, and because it carries the deliverable's one generalisation: the client, envelope/error handling, session store, CSRF bootstrap and URL⇄query serialization move to `@repo/api-client`, parameterised by segment — `apps/admin` configures `admin`, nothing else changes. `shared/api` becomes a named re-export door; the router peer lands here (`search-params.ts`).
+
+**Done when:** ADR-0051 reads `accepted`, 0033 and 0049 read `superseded by ADR-0051`, the index says so; `apps/admin/src/shared/api` contains re-exports and app-specific config only; the package's suite carries the moved tests; `pnpm lint && pnpm check-types && pnpm test` green; `pnpm test:postman` at unchanged numbers.
+
+### 2. `@repo/i18n` — the factory, and §13's first register
+
+**ADRs:** [0051](../adr/0051-platform-extraction.md), [0046](../adr/0046-interface-localization.md) §13
+
+`createI18n` and its helpers move; the package ships the `register(i18n)` mechanism ADR-0046 §13 designed, which the later packages' namespaces will use; the admin's catalogues stay in the app. `shared/i18n` becomes the door plus app-owned catalogues.
+
+**Done when:** the door re-exports; `pnpm i18n:check` green; the pseudo-locale route suite green; the gate green.
+
+### 3. `@repo/resource` — the vocabulary
+
+**ADRs:** [0051](../adr/0051-platform-extraction.md), [0035](../adr/0035-config-driven-resource-ui.md)
+
+`ResourceConfig` and the registries move; `shared/resource` becomes the door. Small, and unblocks the two big moves that both depend on it.
+
+**Done when:** the door re-exports; no package imports an app; the gate green.
+
+### 4. `@repo/grid` — the largest move
+
+**ADRs:** [0051](../adr/0051-platform-extraction.md), [0035](../adr/0035-config-driven-resource-ui.md), the grid ADRs [0037](../adr/0037-grid-viewport-layout.md)–[0044](../adr/0044-record-routes-without-list-state.md) as carried
+
+The grid moves whole, tests with it, router peer declared (`record-navigation.ts`); its strings ship as the package's namespace with `register`. `shared/grid` becomes the door.
+
+**Done when:** the door re-exports; both grid screens' suites green unmoved in the app where they assert behaviour; the gate green.
+
+### 5. `@repo/form` — the machinery and both wrappers
+
+**ADRs:** [0051](../adr/0051-platform-extraction.md), [0035](../adr/0035-config-driven-resource-ui.md), [0047](../adr/0047-ui-package-scope.md), [0048](../adr/0048-app-shell-and-record-surfaces.md) §4
+
+The form machinery moves, including the record surface's two behavioural wrappers (`react-hook-form` and router as peers); `@repo/ui` gains nothing (0047's boundary holds). `shared/form` becomes the door.
+
+**Done when:** the door re-exports; the three-shell parity suite and the password-dialog suites green in the app; the gate green.
+
+### 6. `@repo/app-services` — the tail, and `route-meta`'s home
+
+**ADRs:** [0051](../adr/0051-platform-extraction.md), [0042](../adr/0042-client-side-authorization.md), [0045](../adr/0045-user-settings.md), [0046](../adr/0046-interface-localization.md)
+
+Theme, notifications, the `can()` mechanism and the lib helpers (including router-coupled `route-meta.ts`) find their one home each — placement is this step's call, recorded in the package's door comments. The policy _data_ stays per-app; the mechanism moves.
+
+**Done when:** every `shared/` slice under `apps/admin/src` is a door or app-specific config; the gate green.
+
+### 7. Close-out
+
+**ADRs:** none of its own — the checklist below
+
+The mechanical claim, cashed: workspace test total compared against D8's close, `pnpm test:postman` unchanged, the D8 browser walk repeated and finding nothing different, `pnpm test:unit` twice with the second run FULL TURBO, `pnpm format:check`, clean tree; ADR-0051's amendments labelled; the ledger row, §How D9 closed, and the window documents — one reading pass.
+
+**Done when:** every §Definition-of-done item is checked or recorded as pending operator acceptance; the row reads `shipped`; the window on 0051 is shut.
+
+## Definition of done
+
+1. **No behaviour change, checked as totals**: the workspace test count matches D8's close, `pnpm test:postman` at unchanged numbers, and the D8 browser walk repeated with nothing different — the operator-acceptance item.
+2. **Doors, not implementations**: every slice under `apps/admin/src/shared` re-exports from a package or holds app-specific config; each app's lint pattern forbids package paths outside the door.
+3. **Boundaries hold**: no package imports an app; `@repo/contracts` still depends on zod alone; `apps/web` still builds.
+4. **Green and cached**: `pnpm lint && pnpm check-types && pnpm test` green; `pnpm test:unit` twice, the second FULL TURBO; `pnpm format:check` clean; clean tree.
