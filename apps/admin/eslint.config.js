@@ -229,6 +229,49 @@ export default defineConfig(
               message:
                 "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
             },
+            {
+              /*
+               * The same door rule, generalised to the extracted behavioural
+               * machinery (`D9.1`, ADR-0051). `shared/api` is a set of named
+               * re-export files over `@repo/api-client`; every layer above it
+               * imports `@/shared/api/*` exactly as it did before the move, and
+               * this pattern is what keeps the package path from leaking into
+               * a feature and quietly making the door optional.
+               */
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  /*
+   * The doors themselves — **each exempt from its own group only** (ADR-0047
+   * for `ui`, ADR-0051 for `api`).
+   *
+   * Turning the rule off wholesale for both directories would open a hole in
+   * the other's door: `src/shared/api/` still holds two app-owned files that
+   * are not doors (`bulk-outcome.ts` and `query-meta.ts`, staying until their
+   * own slices extract), and a blanket `off` would let them — and anything
+   * added to either slice later — reach `@repo/ui/components/*` directly. So
+   * each block re-declares the rule carrying only the group it is *not* the
+   * door for.
+   */
+  {
+    files: ["src/shared/ui/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
           ],
         },
       ],
@@ -236,8 +279,26 @@ export default defineConfig(
   },
 
   {
-    // The door itself.
-    files: ["src/shared/ui/**"],
-    rules: { "no-restricted-imports": "off" },
+    files: ["src/shared/api/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
+          ],
+        },
+      ],
+    },
   },
 );

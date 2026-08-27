@@ -191,6 +191,7 @@ const ROUTE_PATHS: readonly string[] = [
         client: createApiClient({
           store: createSessionStore(),
           baseUrl: "http://api.test",
+          segment: "admin",
         }),
       }).routesByPath,
     )

@@ -1,6 +1,6 @@
 # ADR-0051: Platform extraction — six packages, the router as a peer, a door in every app
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-27
 - Supersedes: [ADR-0033](0033-browser-api-client-and-session.md) (delta: where the machinery lives); [ADR-0049](0049-admin-app-architecture.md) (delta: what the `shared/` slices are)
 

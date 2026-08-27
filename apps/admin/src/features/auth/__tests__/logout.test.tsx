@@ -22,7 +22,11 @@ import { renderApp } from "@/test/render";
  */
 const setup = () => {
   const store = createSessionStore();
-  const client = createApiClient({ store, baseUrl: "http://api.test" });
+  const client = createApiClient({
+    store,
+    baseUrl: "http://api.test",
+    segment: "admin",
+  });
 
   server.use(...createAuthHandlers(createAuthMockState()));
   store.setSession({ accessToken: "live-token", csrfToken: "live-csrf" });

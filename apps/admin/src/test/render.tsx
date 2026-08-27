@@ -152,7 +152,11 @@ const providers = ({
     store: sessionStore,
     client:
       client ??
-      createApiClient({ store: sessionStore, baseUrl: "http://api.test" }),
+      createApiClient({
+        store: sessionStore,
+        baseUrl: "http://api.test",
+        segment: "admin",
+      }),
     /*
      * The client is built *from* this render's instance (`D7.2`).
      *

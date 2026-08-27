@@ -30,8 +30,12 @@ shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22,
 D6 2026-08-22, D7 2026-08-22 and D8 2026-08-27, so **ADRs 0001–0050 are
 closed** — including every frontend decision the admin panel was built on,
 every grid decision the data-grid rebuild made, D5's pair of supersessions,
-D6's user-settings record, D7's localization one and D8's four. **No
-amendment window is open**; the next opens with D9.
+D6's user-settings record, D7's localization one and D8's four. **D9 opened
+2026-08-27 and its window covers exactly [0051](adr/0051-platform-extraction.md)**,
+amendable in place while it runs; it delta-supersedes
+[0033](adr/0033-browser-api-client-and-session.md) and
+[0049](adr/0049-admin-app-architecture.md), which keep every decision they made
+and lose only where the code lives.
 **[0031](adr/0031-ui-design-system.md) is superseded by
 [0047](adr/0047-ui-package-scope.md),
 [0032](adr/0032-admin-app-architecture.md) by

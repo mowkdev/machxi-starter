@@ -8,9 +8,9 @@ import {
   createAuthHandlers,
   createAuthMockState,
   type AuthMockState,
-} from "@/test/msw/handlers/auth.handlers";
-import { fail, listOk, ok } from "@/test/msw/handlers/envelope";
-import { server } from "@/test/msw/server";
+} from "./support/auth.handlers";
+import { fail, listOk, ok } from "./support/envelope";
+import { server } from "./support/server";
 
 import { isApiClientError } from "../api-error";
 import { createBootstrap } from "../bootstrap";
@@ -43,6 +43,11 @@ const setup = (state: AuthMockState = createAuthMockState()) => {
   const client = createApiClient({
     store,
     baseUrl: "http://api.test",
+    // The suite's own choice since `D9.1`, not the app's only one: the client
+    // is segment-parameterised now, and `admin` is what `support/auth.handlers`
+    // answers on. Every assertion below is about behaviour the two segments
+    // share, so the value matters only in that it must match the handlers.
+    segment: "admin",
     onSessionEnded: () => {
       sessionEndedCalls += 1;
     },

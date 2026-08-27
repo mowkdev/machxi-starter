@@ -53,6 +53,10 @@ export const sessionStore: SessionStore = createSessionStore();
 export const apiClient: ApiClient = createApiClient({
   store: sessionStore,
   baseUrl: config.VITE_API_URL,
+  // The app's own population, and the only place it is stated (`D9.1`,
+  // ADR-0051): `@repo/api-client` is segment-agnostic, and this is the staff
+  // panel, so every request it makes goes to `/api/v1/admin` as before.
+  segment: "admin",
   onSessionEnded: () => {
     sessionEndedHandler();
   },

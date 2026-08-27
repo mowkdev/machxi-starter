@@ -5,7 +5,7 @@ description: Quick reference of the machxi admin-app conventions (FSD layers, de
 
 # Frontend conventions (condensed from docs/adr — ADRs win on conflict)
 
-ADRs 0030–0036 (D3), 0037–0042 (D4), 0043–0044 (D5), 0045 (D6), 0046 (D7) and 0047–0050 (D8). **ADRs 0030–0050 are frozen** — D7 shipped 2026-08-22 and D8 2026-08-27 — so a divergence from any of them is a superseding ADR, never an edit, and **no window is open**; the next opens with D9. **[0031](../../../docs/adr/0031-ui-design-system.md) is superseded by [0047](../../../docs/adr/0047-ui-package-scope.md), [0032](../../../docs/adr/0032-admin-app-architecture.md) by [0049](../../../docs/adr/0049-admin-app-architecture.md) and [0024](../../../docs/adr/0024-adr-lifecycle.md) by [0050](../../../docs/adr/0050-adr-lifecycle-and-verification.md)** — all four accepted 2026-08-26 at the head of `D8.1`. A superseded record is out of force: read its successor.
+ADRs 0030–0036 (D3), 0037–0042 (D4), 0043–0044 (D5), 0045 (D6), 0046 (D7) and 0047–0050 (D8). **ADRs 0030–0050 are frozen** — D7 shipped 2026-08-22 and D8 2026-08-27 — so a divergence from any of them is a superseding ADR, never an edit. **0051 is amendable in place while D9 is `in progress`** in `docs/plan/README.md`, labelled `**Amended YYYY-MM-DD (D9.n).**`; it delta-supersedes **0033 and 0049**, which keep every decision they made and lose only where the code lives. **[0031](../../../docs/adr/0031-ui-design-system.md) is superseded by [0047](../../../docs/adr/0047-ui-package-scope.md), [0032](../../../docs/adr/0032-admin-app-architecture.md) by [0049](../../../docs/adr/0049-admin-app-architecture.md) and [0024](../../../docs/adr/0024-adr-lifecycle.md) by [0050](../../../docs/adr/0050-adr-lifecycle-and-verification.md)** — all four accepted 2026-08-26 at the head of `D8.1`. A superseded record is out of force: read its successor.
 
 Covers `apps/admin` and `packages/ui`. The API side is `/api-conventions`.
 
@@ -40,7 +40,7 @@ src/shared/     api/ ui/ form/ grid/ resource/ notifications/ lib/ config/ — n
 - `lucide-react` may be a direct app dependency (icons are authoring, not design system); every other primitive dependency stays in `packages/ui`.
 - **`packages/ui` has no `no-literal-string` rule** — it lints with the plain React config — so the `UiStrings`-only rule for composition copy is review-enforced here, not lint-enforced.
 
-## Session and the API client (ADR-0033, ADR-0030)
+## Session and the API client (ADR-0033, ADR-0030; the code lives in `@repo/api-client` since ADR-0051)
 
 - **Credentials live in memory only.** No access token, CSRF token or principal in `localStorage`, `sessionStorage` or a client-set cookie; the client never _reads_ `document.cookie`. Non-credential display state may be persisted, and there are three: the theme, the sidebar's cookie, and ADR-0041's grid preferences. A fourth cites the same carve-out rather than treating persistence as normalised. Since ADR-0045 the theme and the grid preferences are **account** facts held server-side, and `localStorage` is the cache in front of them — the carve-out still describes what may sit on the device, not who owns the value.
 - Boot: `GET /auth/csrf` → `POST /auth/refresh`; the app renders nothing until it resolves. A failed refresh is `anonymous`; a failed bootstrap is "API unreachable" and is shown.

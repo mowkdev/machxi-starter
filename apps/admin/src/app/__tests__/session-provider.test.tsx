@@ -21,7 +21,11 @@ const setup = (
   { strict = false }: { strict?: boolean } = {},
 ) => {
   const store = createSessionStore();
-  const client = createApiClient({ store, baseUrl: "http://api.test" });
+  const client = createApiClient({
+    store,
+    baseUrl: "http://api.test",
+    segment: "admin",
+  });
 
   const tree = (
     <SessionProvider
