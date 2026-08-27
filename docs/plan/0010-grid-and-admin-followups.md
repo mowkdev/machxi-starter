@@ -17,6 +17,23 @@ Four grid items, recorded while D8 was being planned. They wait here rather than
 - **Drag-and-drop reordering in the columns menu.** `columns-menu.tsx` (ordering and reset-to-defaults) gains drag-and-drop: a drag-handle icon on the left of each column row, with the existing up/down icons kept on the right for one-step repositioning. Likely brings the app its first drag-and-drop dependency — named and decided at scoping.
 - **Striped rows (zebra striping).** A grid prop option that alternates the row background colour on each nth row; off by default.
 
+## Named by the operator, 2026-08-27 — the navigation delay, and four review outcomes
+
+The operator reported a felt delay after clicking a left-nav item to switch resources, with cached data and no request in flight. **The diagnosis, from reading the shipped code** (the caching layer is not the cause — `staleTime: 30_000` globally, `placeholderData: keepPreviousData` on lists, `defaultPreload: "intent"` on the router are all already in place):
+
+1. **Dev-only compounding, probably most of the felt delay**: `autoCodeSplitting` makes each page a lazy chunk that Vite transforms on first demand in `pnpm dev`, and `React.StrictMode` (`main.tsx`) then double-mounts the whole page tree — grid initialisation included — on every navigation. Neither exists in a production build.
+2. **No pending feedback anywhere**: the router keeps the old screen while the next chunk resolves — no `defaultPendingComponent`, no `useRouterState` indicator — so however short the wait, the click reads as dead.
+3. **Page remount cost** (the grid re-instantiates per navigation): real, secondary, and to be measured rather than guessed.
+
+**Decided 2026-08-27** (options put to the operator, recommended answers taken):
+
+- **The nav-delay step: measure, then the two fixes.** Profile a production build first (React Profiler + `vite preview`) so the work targets a number; then a **navigation pending indicator** — the app computes `useRouterState().status === "pending"` and hands `AppShell` a boolean, keeping the shell routing-ignorant per ADR-0047 — and **Vite `server.warmup`** over the page files so dev stops paying the first-visit transform. Grid-mount optimisation only if the profile earns it. `React.StrictMode` stays: dev-only, and it catches real bugs.
+- **Playwright E2E enters D10's scope.** Promoted from the deferred list below: a small suite covering exactly the recurring close-out walk (sign-in, both grids scroll/sort/filter with header and pager static, a record opens in each surface, a long form keeps Save visible). Five deliverables of "accepted by the operator rather than machine-verified" is the case ADR-0036 said would make this worth building; the D8 walk items become its first specs.
+- **Row virtualization is deferred with a threshold**: adopt `@tanstack/react-virtual` when a consumer needs more than ~100 rows per page; no shipped screen does, and the work would touch the ADR-0037 height contract — the riskiest part of the grid — for headroom nobody uses.
+- **A bundle-size budget for `apps/admin`**: a build-size check with a committed budget that fails the gate when exceeded, baselined at D10. Cheap, mechanical, and the guard the D11 customer app inherits.
+
+One opportunistic note for scoping: `app-grid.tsx` is the largest hand-written file in the repository, and the drag-and-drop and resize-handle items above will open it anyway — if a split into smaller units happens, it happens there, as part of a step that is already editing the file, never as its own churn.
+
 ## Already recorded as deferred, in the ADR index's _Planned_ list and in shipped plans
 
 - **The `page` edit surface has no resource declaring it.** Recorded twice, at `D4.2` and again at `D5.5`: the shell has coverage, the config path into it does not. [D8](0008-app-shell-and-record-surfaces.md) rebuilds that shell, so this is the natural place to give it a real consumer.
@@ -24,7 +41,7 @@ Four grid items, recorded while D8 was being planned. They wait here rather than
 - **Negated filter operators** — no `ne` / `notLike` / `notIn` in ADR-0014's `FILTER_OPS`, so no filter dialog may offer "not contains". A supersession of frozen ADR-0014 and an API change, not a UI change.
 - **Bulk mutation endpoints.** ADR-0038 fans bulk delete out client-side on purpose, because the ADR-0028 refusals are per-item. A transactional endpoint becomes worth deciding if scale makes N requests the problem.
 - **Saved views** — named, shareable bundles of view state. ADR-0041 §Alternatives calls this "the legitimate version" of the want it rejected (persisting filters and sort as preferences), and D5 made it nearly free: a saved view is a named URL, because the URL is now a readable, valid API query.
-- **End-to-end browser tests (Playwright).** ADR-0036 defers them; every deliverable since has closed with items marked "accepted by the operator rather than machine-verified", and that list is the argument for them.
+- **End-to-end browser tests (Playwright).** ADR-0036 defers them; every deliverable since has closed with items marked "accepted by the operator rather than machine-verified", and that list is the argument for them. **Promoted into scope by the operator 2026-08-27** — see the section above.
 - **Per-request principal freshness** and **a per-principal budget for expensive routes** — both API-side, both in the index's _Planned_ list with their reasoning.
 
 ## What this deliverable is not
