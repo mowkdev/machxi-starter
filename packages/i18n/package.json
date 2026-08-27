@@ -1,0 +1,39 @@
+{
+  "name": "@repo/i18n",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@repo/vitest-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.2.18",
+    "eslint": "^9.39.0",
+    "jsdom": "^30.0.1",
+    "react": "^19.2.0",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@types/react": ">=19",
+    "react": ">=19"
+  },
+  "dependencies": {
+    "@repo/contracts": "workspace:*",
+    "i18next": "^26.4.0",
+    "i18next-pseudo": "^2.2.1",
+    "i18next-resources-to-backend": "^1.2.3",
+    "react-i18next": "^17.0.12"
+  }
+}

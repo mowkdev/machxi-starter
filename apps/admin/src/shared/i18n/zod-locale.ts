@@ -7,8 +7,7 @@ import {
 import { z } from "zod";
 import enZodLocale from "zod/v4/locales/en.js";
 
-import type { TranslateKey } from "./keys";
-import type { TranslationKey } from "./types";
+import type { TranslateKey, TranslationKey } from "@repo/i18n";
 
 /**
  * Validation copy, in the operator's language (ADR-0046 §6, `D7.5`).

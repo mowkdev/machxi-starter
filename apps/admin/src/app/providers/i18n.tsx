@@ -71,6 +71,8 @@ export const I18nProvider = ({
    */
   const [i18n] = useState(() =>
     createI18n({
+      // Stated at the composition root since `D9.2`: `@repo/i18n` defaults it to
+      // the first namespace, and this app says which it means (ADR-0046 §3).
       resources: { en: EN_RESOURCES },
       namespaces: NAMESPACES,
       locale: preferredLocale(adopted ?? null),

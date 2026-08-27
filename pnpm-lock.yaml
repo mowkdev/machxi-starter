@@ -29,6 +29,9 @@ importers:
       '@repo/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@repo/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -44,12 +47,6 @@ importers:
       i18next:
         specifier: ^26.4.0
         version: 26.4.0(typescript@5.9.3)
-      i18next-pseudo:
-        specifier: ^2.2.1
-        version: 2.2.1
-      i18next-resources-to-backend:
-        specifier: ^1.2.3
-        version: 1.2.3
       lucide-react:
         specifier: ^1.33.0
         version: 1.33.0(react@19.2.8)
@@ -488,6 +485,55 @@ importers:
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@22.20.1)(jsdom@30.0.1(@noble/hashes@1.8.0))(msw@2.15.0(@types/node@22.20.1)(typescript@5.9.3))(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12))
+
+  packages/i18n:
+    dependencies:
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      i18next:
+        specifier: ^26.4.0
+        version: 26.4.0(typescript@5.9.3)
+      i18next-pseudo:
+        specifier: ^2.2.1
+        version: 2.2.1
+      i18next-resources-to-backend:
+        specifier: ^1.2.3
+        version: 1.2.3
+      react-i18next:
+        specifier: ^17.0.12
+        version: 17.0.12(i18next@26.4.0(typescript@5.9.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../config-typescript
+      '@repo/vitest-config':
+        specifier: workspace:*
+        version: link:../config-vitest
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.20.1
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
+      eslint:
+        specifier: ^9.39.0
+        version: 9.39.5(jiti@2.7.0)
+      jsdom:
+        specifier: ^30.0.1
+        version: 30.0.1(@noble/hashes@1.8.0)
+      react:
+        specifier: ^19.2.0
+        version: 19.2.8
       typescript:
         specifier: 5.9.3
         version: 5.9.3

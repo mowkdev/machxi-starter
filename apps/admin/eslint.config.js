@@ -242,6 +242,15 @@ export default defineConfig(
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
             },
+            {
+              // The same door rule for the i18n machinery (`D9.2`). The app
+              // owns its dictionary — namespaces, catalogues, the
+              // `CustomTypeOptions` merge — and reaches the factory, the
+              // locale negotiation and the pseudo lens through `@/shared/i18n`.
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
           ],
         },
       ],
@@ -272,6 +281,40 @@ export default defineConfig(
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
             },
+            {
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ["src/shared/i18n/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
           ],
         },
       ],
@@ -285,6 +328,11 @@ export default defineConfig(
         "error",
         {
           patterns: [
+            {
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
             {
               group: [
                 "@repo/ui/components/*",

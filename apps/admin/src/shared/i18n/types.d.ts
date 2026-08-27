@@ -1,5 +1,3 @@
-import type { FlatNamespace, ParseKeys } from "i18next";
-
 import type auth from "./locales/en/auth.json";
 import type common from "./locales/en/common.json";
 import type dashboard from "./locales/en/dashboard.json";
@@ -45,13 +43,10 @@ declare module "i18next" {
   }
 }
 
-/**
- * Any key any catalogue resolves, namespace prefix included — what a
- * `ResourceConfig`, a route's `staticData.title` and a mutation's
- * `meta.success` carry instead of a sentence (ADR-0046 §7).
- *
- * It was `never` while the catalogues were empty, which was the property
- * working rather than a bug: nothing may claim to carry a key before there is
- * one. `D7.4` gives it members.
+/*
+ * `TranslationKey` moved to `@repo/i18n` at `D9.2` and is re-exported through
+ * this slice's door. It is defined there over i18next's merged type options,
+ * so it still resolves against the `CustomTypeOptions` augmentation above —
+ * declaration merging is global to the program, which is what lets the package
+ * name the type without owning any of this app's strings (ADR-0046 §13).
  */
-export type TranslationKey = ParseKeys<FlatNamespace[]>;
