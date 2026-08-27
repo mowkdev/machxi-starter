@@ -27,11 +27,11 @@ rule 2), not to a date. An ADR is amendable only while its deliverable is
 `in progress` in the ledger; once that deliverable ships, code and ADR that
 disagree are reconciled by a superseding ADR, never by editing the record. D1
 shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22,
-D6 2026-08-22 and D7 2026-08-22, so **ADRs 0001–0046 are closed** — including
-every frontend decision the admin panel was built on, every grid decision the
-data-grid rebuild made, D5's pair of supersessions, D6's user-settings record
-and D7's localization one. **D8 opened 2026-08-26 and its window covers exactly
-0047, 0048, 0049 and 0050**, which are amendable in place while it runs;
+D6 2026-08-22, D7 2026-08-22 and D8 2026-08-27, so **ADRs 0001–0050 are
+closed** — including every frontend decision the admin panel was built on,
+every grid decision the data-grid rebuild made, D5's pair of supersessions,
+D6's user-settings record, D7's localization one and D8's four. **No
+amendment window is open**; the next opens with D9.
 **[0031](adr/0031-ui-design-system.md) is superseded by
 [0047](adr/0047-ui-package-scope.md),
 [0032](adr/0032-admin-app-architecture.md) by

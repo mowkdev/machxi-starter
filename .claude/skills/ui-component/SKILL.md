@@ -5,7 +5,7 @@ description: Add or update a shadcn/ui primitive or a hand-written composition i
 
 # UI component — `$ARGUMENTS` (shadcn component name, kebab-case)
 
-Read `/frontend-conventions` §Design system. **ADR-0047 is the decision** (superseding ADR-0031, accepted 2026-08-26 at `D8.1`, and amendable in place while D8 is `in progress`); this is its checklist.
+Read `/frontend-conventions` §Design system. **ADR-0047 is the decision** (superseding ADR-0031, accepted 2026-08-26 at `D8.1`, frozen since D8 shipped 2026-08-27); this is its checklist.
 
 **First ask which of three homes it has.** ADR-0047 §What-code gives the package two regimes and the path is what selects one:
 
@@ -48,4 +48,4 @@ There is no `npm update` for copied code. Re-run the CLI, diff the result agains
 
 ## Finish
 
-`pnpm check && pnpm format:check` (the last one proves the carve-out still holds — `compositions/` is formatted, `components/` and `hooks/` are exempt), then `pnpm test`. If the change alters what the design system _is_ — a new token, a theming decision, a second style, a new kind of code in the package — that is an ADR-0047 matter, not a component addition. ADR-0047 is amendable in place while D8 is `in progress` in `docs/plan/README.md`, labelled; after D8 ships it changes only by supersession.
+`pnpm check && pnpm format:check` (the last one proves the carve-out still holds — `compositions/` is formatted, `components/` and `hooks/` are exempt), then `pnpm test`. If the change alters what the design system _is_ — a new token, a theming decision, a second style, a new kind of code in the package — that is an ADR-0047 matter, not a component addition. ADR-0047 is frozen — D8 shipped 2026-08-27 — so it changes only by supersession.
