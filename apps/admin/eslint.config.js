@@ -258,6 +258,13 @@ export default defineConfig(
               message:
                 "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
             },
+            {
+              // The grid door (`D9.4`). The table, its preferences and the
+              // record-navigation carrier come through `@/shared/grid/*`.
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+            },
           ],
         },
       ],
@@ -291,6 +298,13 @@ export default defineConfig(
                 "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
             },
             {
+              // The grid door (`D9.4`). The table, its preferences and the
+              // record-navigation carrier come through `@/shared/grid/*`.
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+            },
+            {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
@@ -307,12 +321,56 @@ export default defineConfig(
   },
 
   {
+    files: ["src/shared/grid/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
     files: ["src/shared/resource/**"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
+            {
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+            },
             {
               group: ["@repo/i18n", "@repo/i18n/*"],
               message:
@@ -354,6 +412,15 @@ export default defineConfig(
               message:
                 "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
             },
+            /*
+             * **No `@repo/grid` group here, deliberately** (`D9.4`). This slice
+             * holds `create-app-i18n.ts`, which is where this app composes the
+             * namespaces its packages ship (ADR-0046 §13) — so it is the one
+             * place that must reach a package's catalogues directly. Routing
+             * that through `@/shared/grid` would make the grid door export
+             * translation bundles, which is copy travelling through a door
+             * built for a table.
+             */
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
@@ -389,6 +456,13 @@ export default defineConfig(
               group: ["@repo/resource", "@repo/resource/*"],
               message:
                 "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
+            {
+              // The grid door (`D9.4`). The table, its preferences and the
+              // record-navigation carrier come through `@/shared/grid/*`.
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
             },
             {
               group: ["@repo/i18n", "@repo/i18n/*"],

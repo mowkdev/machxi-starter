@@ -37,7 +37,13 @@ import { server } from "./msw/server";
  * costs the ceiling before failing") false. Anything raised here has to keep
  * the gap.
  */
-configure({ asyncUtilTimeout: 10_000 });
+/*
+ * **Twenty at `D9.4`**, moved with `vitest.config.ts`'s ceiling and for the
+ * same reason: the extracted packages are transformed per worker, so the
+ * suite's slowest first renders got slower under the full `pnpm test` run.
+ * The gap below the test timeout is the point — see that file.
+ */
+configure({ asyncUtilTimeout: 20_000 });
 
 /**
  * The harness ADR-0036 specifies: jest-dom matchers and the MSW lifecycle.

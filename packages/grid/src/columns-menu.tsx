@@ -1,16 +1,16 @@
 import { ArrowDownIcon, ArrowUpIcon, Columns3Icon } from "lucide-react";
 
-import { useT } from "@/shared/i18n";
+import { useT } from "@repo/i18n";
+import { Button } from "@repo/ui/components/button";
+import { Checkbox } from "@repo/ui/components/checkbox";
+import { Label } from "@repo/ui/components/label";
 import {
-  Button,
-  Checkbox,
-  Label,
   Popover,
   PopoverContent,
   PopoverTitle,
   PopoverTrigger,
-  Separator,
-} from "@/shared/ui";
+} from "@repo/ui/components/popover";
+import { Separator } from "@repo/ui/components/separator";
 
 /**
  * The Columns surface (ADR-0041, `D4.5`).

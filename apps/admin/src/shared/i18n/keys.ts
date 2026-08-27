@@ -1,29 +1,25 @@
 import {
   createDeferredTranslate as createDeferredTranslateWith,
-  createUseKeyT,
   type DeferredTranslate,
   type TranslationKey,
 } from "@repo/i18n";
 
-import { NAMESPACES } from "./namespaces";
 import { EN_RESOURCES } from "./resources";
 
 /**
  * The half of ADR-0046 §7's translator seam that reads *this app's*
  * catalogues, and therefore could not travel (`D9.2`, ADR-0051).
  *
- * The shapes moved to `@repo/i18n`; the two bindings that need a value only
- * this app has are made here, once, so every call site keeps the name and the
- * signature it had before the extraction:
+ * The shapes moved to `@repo/i18n`; the one binding that needs a value only
+ * this app has is made here, so every call site keeps the name and the
+ * signature it had before the extraction. (`useKeyT` was a second such binding
+ * until `D9.4`, which made it read the namespace list off the mounted instance
+ * instead — a package's grid components need it too, and cannot name an app's
+ * namespaces.)
  *
- * - **`useKeyT`** is the package's factory bound to `NAMESPACES`. The hook has
- *   to name all of an app's namespaces or a `t("staff:title")` resolves only
- *   by accident; only the app knows its own list.
  * - **`createDeferredTranslate`** is the package's, with
  *   {@link englishTranslation} supplied as the pre-instance fallback.
  */
-
-export const useKeyT = createUseKeyT(NAMESPACES);
 
 /**
  * The `en` sentence for a key, with no instance in hand.

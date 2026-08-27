@@ -72,5 +72,10 @@
     "partRefused": "{{count}} refused",
     "partUnattempted": "{{count}} not attempted",
     "headline": "{{parts}}."
+  },
+  "actions": {
+    "clear": "Clear",
+    "clearAll": "Clear all",
+    "apply": "Apply"
   }
 }

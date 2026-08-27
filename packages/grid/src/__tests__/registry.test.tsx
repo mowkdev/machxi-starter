@@ -1,9 +1,8 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { TranslateKey } from "@/shared/i18n";
-import type { ColumnConfigMap } from "@/shared/resource/types";
-import { createTestI18n, renderWithProviders } from "@/test/render";
+import type { ColumnConfigMap } from "@repo/resource";
+import { renderWithI18n, translator } from "./support/render";
 
 import { buildColumns } from "../columns";
 import { EMPTY_CELL, date, dateTime, text } from "../formatters";
@@ -54,7 +53,7 @@ describe("formatters", () => {
  * **catalogue's** words: a header key that no catalogue answers would render as
  * the key here, which is the failure the type system cannot see.
  */
-const t = createTestI18n().t as TranslateKey;
+const t = translator();
 
 /** The slice of TanStack's cell context a resolved `cell` actually reads. */
 const cellContext = (value: unknown) => ({
@@ -65,10 +64,10 @@ const cellContext = (value: unknown) => ({
 
 describe("buildColumns", () => {
   const columns: ColumnConfigMap = {
-    email: { header: "demo:columns.name", sortable: true },
-    status: { header: "demo:columns.status", cellRenderer: "statusBadge" },
+    email: { header: "grid:filter.title", sortable: true },
+    status: { header: "grid:filter.any", cellRenderer: "statusBadge" },
     createdAt: {
-      header: "demo:columns.createdAt",
+      header: "grid:filter.from",
       formatter: "date",
       align: "end",
     },
@@ -85,12 +84,20 @@ describe("buildColumns", () => {
   });
 
   it("resolves each header key to the catalogue's words", () => {
-    // The `D7.4` property: a config carries a key and the machinery renders a
-    // sentence, without `shared/grid` learning which namespace it came from.
+    /*
+     * The `D7.4` property: a config carries a key and the machinery renders a
+     * sentence, without the grid learning which namespace it came from.
+     *
+     * The words are this package's own `grid:` copy since `D9.4` — the fixture
+     * above used `demo:` keys, which belong to the admin's test harness and are
+     * not declared in this program. They are arbitrary: what the case asserts
+     * is that a *key* became a *sentence*, and `Filter by {{column}}` proves it
+     * as well as `Name` did.
+     */
     expect(built.map((column) => column.header)).toEqual([
-      "Name",
-      "Status",
-      "Created",
+      "Filter by {{column}}",
+      "Any",
+      "{{column}} from",
     ]);
   });
 
@@ -124,9 +131,9 @@ describe("buildColumns", () => {
      */
     const withChrome = buildColumns(
       {
-        actions: { header: "demo:columns.name" },
+        actions: { header: "grid:filter.title" },
         operations: {
-          header: "demo:columns.actions",
+          header: "grid:filter.to",
           cellRenderer: "rowActions",
         },
       },
@@ -158,9 +165,16 @@ describe("buildColumns", () => {
      * since `D7.4` — a bare `render` would leave `useKeyT` with no instance and
      * assert the key rather than the word.
      */
-    renderWithProviders(<>{rendered}</>);
+    renderWithI18n(<>{rendered}</>);
 
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    /*
+     * The harness's `common:options.active`, not the English word (`D9.4`).
+     * `optionLabel` falls back to `humanize(value)` when the catalogue has no
+     * entry, so asserting "Active" here would pass with no `common` namespace
+     * mounted at all — which is what this case would have become when the
+     * grid's suite stopped borrowing the admin's dictionary.
+     */
+    expect(screen.getByText("Aktīvs")).toBeInTheDocument();
   });
 
   it("falls back to the text formatter when a column declares neither", () => {
@@ -179,7 +193,7 @@ describe("buildColumns", () => {
     const [column] = buildColumns(
       {
         status: {
-          header: "demo:columns.status",
+          header: "grid:filter.any",
           formatter: "date",
           cellRenderer: "statusBadge",
         },
@@ -192,9 +206,9 @@ describe("buildColumns", () => {
       cellContext("disabled"),
     );
 
-    renderWithProviders(<>{rendered}</>);
+    renderWithI18n(<>{rendered}</>);
 
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.getByText("Atspējots")).toBeInTheDocument();
   });
 });
 
@@ -202,14 +216,14 @@ describe("a typo'd registry key", () => {
   it("is a compile error, not a blank cell", () => {
     const columns = {
       createdAt: {
-        header: "demo:columns.createdAt",
+        header: "grid:filter.from",
         // @ts-expect-error `dateTiem` is not a registry key — this is the
         // property the named registry exists to buy, and `pnpm check-types`
         // is what asserts it.
         formatter: "dateTiem",
       },
       status: {
-        header: "demo:columns.status",
+        header: "grid:filter.any",
         // @ts-expect-error nor is `statusBdage`.
         cellRenderer: "statusBdage",
       },

@@ -43,7 +43,6 @@ const build = (lvForm: object = {}): I18n =>
       en: EN_RESOURCES,
       lv: {
         common: {},
-        grid: {},
         form: lvForm,
         errors: {},
         auth: {},

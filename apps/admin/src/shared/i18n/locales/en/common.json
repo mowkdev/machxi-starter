@@ -1,9 +1,6 @@
 {
   "actions": {
-    "apply": "Apply",
     "cancel": "Cancel",
-    "clear": "Clear",
-    "clearAll": "Clear all",
     "retry": "Try again"
   },
   "boot": {

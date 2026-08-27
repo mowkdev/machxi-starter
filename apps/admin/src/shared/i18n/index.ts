@@ -31,6 +31,7 @@ export {
   resolveInitialLocale,
   setIntlLocale,
   useLocale,
+  useKeyT,
   usePseudoNotice,
   writeStoredLocale,
   type DeferredTranslate,
@@ -58,7 +59,7 @@ export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
  * `@repo/i18n` — a package cannot check a list it does not have.
  */
 export { EN_RESOURCES, type Catalogue, type Catalogues } from "./resources";
-export { createDeferredTranslate, englishTranslation, useKeyT } from "./keys";
+export { createDeferredTranslate, englishTranslation } from "./keys";
 /*
  * The zod installer stayed in this app because its `RULE_KEYS` name keys in
  * the app's own `form` namespace (`D9.2`, ADR-0046 §13).
@@ -76,4 +77,4 @@ export {
  * slice imports one module for its keys and its translator, and so the day the
  * library changes there is one import to rewrite (ADR-0046 §13).
  */
-export { useTranslation as useT } from "react-i18next";
+export { useT } from "@repo/i18n";

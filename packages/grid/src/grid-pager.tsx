@@ -6,16 +6,16 @@ import {
   ChevronsRightIcon,
 } from "lucide-react";
 
-import { useT } from "@/shared/i18n";
+import { useT } from "@repo/i18n";
+import { Button } from "@repo/ui/components/button";
+import { Label } from "@repo/ui/components/label";
 import {
-  Button,
-  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/shared/ui";
+} from "@repo/ui/components/select";
 
 /**
  * A real pager, because the total is real (ADR-0035).

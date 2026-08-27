@@ -1,9 +1,10 @@
 import type { Filter } from "@repo/contracts";
 
-import { useKeyT, useT } from "@/shared/i18n";
-import { resolveOptions } from "@/shared/resource/config";
-import type { HotFilterConfig } from "@/shared/resource/types";
-import { Button, cn } from "@/shared/ui";
+import { useKeyT, useT } from "@repo/i18n";
+import { resolveOptions } from "@repo/resource";
+import type { HotFilterConfig } from "@repo/resource";
+import { Button } from "@repo/ui/components/button";
+import { cn } from "@repo/ui/lib/utils";
 
 import {
   hotFilterSelection,

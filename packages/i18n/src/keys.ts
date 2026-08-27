@@ -21,42 +21,59 @@ import type { TranslationKey } from "./types";
 export type TranslateKey = (key: TranslationKey, options?: TOptions) => string;
 
 /**
- * Builds the hook every renderer of config copy uses, bound to one app's
- * namespaces.
+ * The hook every renderer of config copy uses.
  *
- * **A factory since `D9.2`, and the reason is the namespace list rather than
- * taste.** The hook must bind to *all* of an app's namespaces: `useTranslation()`
- * with no argument loads `common` alone, and a `t("staff:title")` through it
- * would resolve only because something else happened to have loaded `staff` —
- * true today, because `init` is given the whole list, and false the moment a
- * namespace is loaded on demand. Naming them makes the dependency real, and
- * only the app knows its own names, so it hands them in once.
+ * **Bound to all of the instance's namespaces, read off the instance itself**
+ * (`D9.4`). The requirement is unchanged from `D7.4`: `useTranslation()` with
+ * no argument loads `common` alone, and a `t("staff:title")` through it would
+ * resolve only because something else happened to have loaded `staff` — true
+ * today, because `createI18n` is given the whole list, and false the moment a
+ * namespace is loaded on demand. Naming them makes the dependency real.
+ *
+ * What changed is *where the list comes from*. `D9.2` made this a factory the
+ * app bound to its own `NAMESPACES`, which works while every consumer lives in
+ * the app; `D9.4` put grid components in a package, and a package cannot know
+ * an app's namespace names. So the list is taken from `i18n.options.ns` — the
+ * exact array `createI18n` passed to `init` — which is the same guarantee
+ * expressed dynamically rather than lexically, and is correct in every app
+ * without either of them naming the other.
+ *
+ * Two `useTranslation` calls, both unconditional, so the rules of hooks hold:
+ * the first is only how one reaches the mounted instance.
  *
  * `t` re-identifies on `languageChanged`, so a component holding one re-renders
  * with the new language and every config-supplied label follows a locale switch
  * without a reload.
- *
- * **The parameter is typed as whatever `useTranslation` accepts**, rather than
- * as `readonly string[]`. react-i18next types that argument against the
- * namespaces merged into i18next's options, so from inside a consuming app it
- * is that app's own union — which means the app's list satisfies it exactly,
- * a typo in it is still a compile error, and this package names no namespace
- * and needs no cast to hand the list over.
  */
-export const createUseKeyT =
-  (namespaces: Parameters<typeof useTranslation>[0]): (() => TranslateKey) =>
-  () => {
-    const { t } = useTranslation(namespaces);
-
+export const useKeyT = (): TranslateKey => {
+  const { i18n } = useTranslation();
+  /*
+   * The cast the dynamic list costs. i18next types `options.ns` as
+   * `string | readonly string[] | undefined` — it cannot know the array it was
+   * handed was the app's namespace union — while `useTranslation` wants that
+   * union. The values are the same array `createI18n` passed to `init`, so the
+   * assertion is true by construction; what it gives up is a compile error if
+   * an app ever inits with a name it has no catalogue for, which
+   * `CreateAppI18nOptions` already refuses at the composition root.
+   */
+  const { t } = useTranslation(
     /*
-     * The one cast in the seam. `TFunction` over a namespace tuple and
-     * `TranslateKey` accept the same keys — both are `ParseKeys` over the same
-     * declaration merge — but `TFunction`'s overloads are wider on the way out
-     * (`ReturnType` is generic in the options), and narrowing a call signature
-     * is not something the compiler will do for free.
+     * Optional chaining because react-i18next hands back a bare `{}` when no
+     * instance is reachable; without it this throws where the pre-`D9.4`
+     * factory degraded to an unbound translator.
      */
-    return t as TranslateKey;
-  };
+    i18n.options?.ns as Parameters<typeof useTranslation>[0],
+  );
+
+  /*
+   * The one cast in the seam. `TFunction` over a namespace tuple and
+   * `TranslateKey` accept the same keys — both are `ParseKeys` over the same
+   * declaration merge — but `TFunction`'s overloads are wider on the way out
+   * (`ReturnType` is generic in the options), and narrowing a call signature
+   * is not something the compiler will do for free.
+   */
+  return t as TranslateKey;
+};
 
 /**
  * A key composed at runtime, admitted deliberately and in one place.

@@ -34,7 +34,19 @@ export default mergeConfig(
        * of naming the element it could not find. The ceiling has to sit above
        * the query's, or the diagnostic is the first thing lost.
        */
-      testTimeout: 15_000,
+      /*
+       * **Raised from fifteen to thirty at `D9.4`**, for the reason `D4.4`
+       * raised the query ceiling: the load the whole suite is under, not any
+       * one screen's cost. From D9 this app's machinery arrives as workspace
+       * packages whose `exports` point at TypeScript source, so every worker
+       * transforms them, and under `pnpm test` — where the other packages'
+       * suites run alongside — the heaviest routing files crossed fifteen
+       * seconds while passing comfortably when the app's suite runs alone.
+       * The gap over `asyncUtilTimeout` is preserved, or a genuinely failing
+       * `findBy*` races this and reports "Test timed out" instead of naming
+       * the element it could not find.
+       */
+      testTimeout: 30_000,
       env: {
         VITE_API_URL: "http://api.test",
         /*

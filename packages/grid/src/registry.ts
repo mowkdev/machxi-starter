@@ -1,4 +1,4 @@
-import type { CellRendererKey, FormatterKey } from "@/shared/resource/types";
+import type { CellRendererKey, FormatterKey } from "@repo/resource";
 
 import { RolesList, RowActions, StatusBadge } from "./cells";
 import { date, dateTime } from "./formatters";

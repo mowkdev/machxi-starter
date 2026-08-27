@@ -76,5 +76,10 @@
     "partRefused": "atteikti {{count}}",
     "partUnattempted": "nemēģināti {{count}}",
     "headline": "{{parts}}."
+  },
+  "actions": {
+    "clear": "Notīrīt",
+    "clearAll": "Notīrīt visu",
+    "apply": "Lietot"
   }
 }

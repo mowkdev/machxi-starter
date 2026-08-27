@@ -1,15 +1,15 @@
 import { MoreHorizontalIcon } from "lucide-react";
 
-import { useKeyT, useT } from "@/shared/i18n";
-import { optionLabel } from "@/shared/resource/config";
+import { useKeyT, useT } from "@repo/i18n";
+import { optionLabel } from "@repo/resource";
+import { Badge } from "@repo/ui/components/badge";
+import { Button } from "@repo/ui/components/button";
 import {
-  Badge,
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/shared/ui";
+} from "@repo/ui/components/dropdown-menu";
 
 import { EMPTY_CELL } from "./formatters";
 import type { CellRendererProps } from "./types";

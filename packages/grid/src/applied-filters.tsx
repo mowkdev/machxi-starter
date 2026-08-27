@@ -1,9 +1,10 @@
 import type { Filter } from "@repo/contracts";
 import { XIcon } from "lucide-react";
 
-import { useKeyT, useT } from "@/shared/i18n";
-import type { ColumnConfig, HotFilterConfig } from "@/shared/resource/types";
-import { Badge, Button } from "@/shared/ui";
+import { useKeyT, useT } from "@repo/i18n";
+import type { ColumnConfig, HotFilterConfig } from "@repo/resource";
+import { Badge } from "@repo/ui/components/badge";
+import { Button } from "@repo/ui/components/button";
 
 import { chipsForState } from "./filter-chips";
 import { displayedByHotFilters } from "./hot-filters";
@@ -60,7 +61,7 @@ export const AppliedFilters = ({
    * keys from a namespace `shared/grid` must never name (ADR-0032).
    */
   const { t } = useT("grid");
-  const { t: tCommon } = useT("common");
+  const { t: tCommon } = useT("grid");
   const tk = useKeyT();
 
   /*

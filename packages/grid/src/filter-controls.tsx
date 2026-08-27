@@ -1,16 +1,16 @@
-import { useKeyT, useT } from "@/shared/i18n";
-import { resolveOptions } from "@/shared/resource/config";
-import type { FilterControlConfig } from "@/shared/resource/types";
+import { useKeyT, useT } from "@repo/i18n";
+import { resolveOptions } from "@repo/resource";
+import type { FilterControlConfig } from "@repo/resource";
+import { Checkbox } from "@repo/ui/components/checkbox";
+import { Input } from "@repo/ui/components/input";
+import { Label } from "@repo/ui/components/label";
 import {
-  Checkbox,
-  Input,
-  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/shared/ui";
+} from "@repo/ui/components/select";
 
 import type { ColumnFilterValue } from "./column-filters";
 

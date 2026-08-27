@@ -61,7 +61,6 @@ const build = (): I18n =>
       en: EN_RESOURCES,
       lv: {
         common: {},
-        grid: {},
         form: LV_FORM,
         errors: {},
         auth: {},

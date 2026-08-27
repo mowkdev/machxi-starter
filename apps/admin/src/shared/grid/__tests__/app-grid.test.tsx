@@ -1070,6 +1070,10 @@ describe("row selection", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Select 1" }));
 
+    expect(screen.getByRole("checkbox", { name: "Select 1" })).toHaveAttribute(
+      "data-state",
+      "checked",
+    );
     expect(screen.getByText("1 selected")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clear selection" }));

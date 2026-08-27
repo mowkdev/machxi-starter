@@ -2,10 +2,10 @@ import type { TFunction } from "i18next";
 import { FilterIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useT } from "@/shared/i18n";
-import type { FilterControlConfig } from "@/shared/resource/types";
+import { useT } from "@repo/i18n";
+import type { FilterControlConfig } from "@repo/resource";
+import { Button } from "@repo/ui/components/button";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -13,8 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  cn,
-} from "@/shared/ui";
+} from "@repo/ui/components/dialog";
+import { cn } from "@repo/ui/lib/utils";
 
 import type { ColumnFilterValue } from "./column-filters";
 import { FilterControl } from "./filter-controls";
@@ -58,7 +58,7 @@ export const ColumnFilterDialog = ({
   onCommit,
 }: ColumnFilterDialogProps) => {
   const { t } = useT("grid");
-  const { t: tCommon } = useT("common");
+  const { t: tCommon } = useT("grid");
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
 

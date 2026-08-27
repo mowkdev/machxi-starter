@@ -3,7 +3,6 @@ import type common from "./locales/en/common.json";
 import type dashboard from "./locales/en/dashboard.json";
 import type errors from "./locales/en/errors.json";
 import type form from "./locales/en/form.json";
-import type grid from "./locales/en/grid.json";
 import type profile from "./locales/en/profile.json";
 import type settings from "./locales/en/settings.json";
 import type staff from "./locales/en/staff.json";
@@ -30,7 +29,6 @@ declare module "i18next" {
     returnNull: false;
     resources: {
       common: typeof common;
-      grid: typeof grid;
       form: typeof form;
       errors: typeof errors;
       auth: typeof auth;

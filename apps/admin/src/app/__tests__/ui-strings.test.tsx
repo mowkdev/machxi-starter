@@ -54,7 +54,6 @@ const withLatvian = (): I18n =>
        */
       lv: {
         common: { ui: LV_UI },
-        grid: {},
         form: {},
         errors: {},
         auth: {},

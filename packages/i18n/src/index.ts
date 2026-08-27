@@ -35,7 +35,7 @@ export { activeIntlTag, dateTimeFormat, setIntlLocale } from "./intl";
 
 export {
   createDeferredTranslate,
-  createUseKeyT,
+  useKeyT,
   dynamicKey,
   type DeferredTranslate,
   type TranslateKey,
@@ -88,3 +88,11 @@ export type { TranslationKey } from "./types";
  * `localeSideEffectsReady`. When `@repo/form` owns a namespace of its own
  * (D9.5) the installer can move there with the copy it names.
  */
+
+/**
+ * The hook, under the name every consumer uses. Re-exported here so a slice —
+ * in an app or in a package — imports one module for its keys and its
+ * translator, and so the day the library changes there is one import to
+ * rewrite (ADR-0046 §13).
+ */
+export { useTranslation as useT } from "react-i18next";

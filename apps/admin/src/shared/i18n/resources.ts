@@ -5,7 +5,6 @@ import enCommon from "./locales/en/common.json";
 import enDashboard from "./locales/en/dashboard.json";
 import enErrors from "./locales/en/errors.json";
 import enForm from "./locales/en/form.json";
-import enGrid from "./locales/en/grid.json";
 import enProfile from "./locales/en/profile.json";
 import enSettings from "./locales/en/settings.json";
 import enStaff from "./locales/en/staff.json";
@@ -27,7 +26,6 @@ import type { Namespace } from "./namespaces";
  */
 export const EN_RESOURCES = {
   common: enCommon,
-  grid: enGrid,
   form: enForm,
   errors: enErrors,
   auth: enAuth,
@@ -38,7 +36,21 @@ export const EN_RESOURCES = {
   settings: enSettings,
 } as const;
 
-export type Catalogue = Readonly<Record<Namespace, object>>;
+/**
+ * Namespaces the instance loads but this app does not own (`D9.4`, ADR-0046
+ * §13).
+ *
+ * `grid` is `@repo/grid`'s: the package declares it, ships its catalogues and
+ * registers them onto the instance. The name is still in {@link NAMESPACES}
+ * because `init` must load it, so the two lists are no longer the same list —
+ * and this type is what keeps that difference checked rather than implied.
+ */
+export type PackageNamespace = "grid";
+
+/** The namespaces whose words are this app's, and whose catalogues it ships. */
+export type AppNamespace = Exclude<Namespace, PackageNamespace>;
+
+export type Catalogue = Readonly<Record<AppNamespace, object>>;
 
 /**
  * At least `en`, and any other locale a caller wants in memory before the

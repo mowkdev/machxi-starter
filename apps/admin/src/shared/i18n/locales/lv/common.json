@@ -1,9 +1,6 @@
 {
   "actions": {
-    "apply": "Lietot",
     "cancel": "Atcelt",
-    "clear": "Notīrīt",
-    "clearAll": "Notīrīt visu",
     "retry": "Mēģināt vēlreiz"
   },
   "boot": {

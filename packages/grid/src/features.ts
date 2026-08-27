@@ -9,7 +9,7 @@ import {
   tableFeatures,
 } from "@tanstack/react-table";
 
-import type { FilterControlConfig } from "@/shared/resource/types";
+import type { FilterControlConfig } from "@repo/resource";
 
 import type { GridMeta } from "./types";
 

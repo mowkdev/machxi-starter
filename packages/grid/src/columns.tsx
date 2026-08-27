@@ -1,13 +1,13 @@
 import type { ColumnDef, Row, Table } from "@tanstack/react-table";
 
-import { useT, type TranslateKey } from "@/shared/i18n";
-import { mergeColumns } from "@/shared/resource/config";
+import { useT, type TranslateKey } from "@repo/i18n";
+import { mergeColumns } from "@repo/resource";
 import type {
   ColumnConfig,
   ColumnConfigMap,
   ColumnOverrides,
-} from "@/shared/resource/types";
-import { Checkbox } from "@/shared/ui";
+} from "@repo/resource";
+import { Checkbox } from "@repo/ui/components/checkbox";
 
 import { text } from "./formatters";
 import { gridRegistry } from "./registry";

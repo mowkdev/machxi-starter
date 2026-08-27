@@ -37,7 +37,9 @@ Each app keeps its FSD `shared/` slices as **named re-export doors** over the pa
 
 ### Strings travel with the machinery
 
-Extracted machinery's strings follow [ADR-0046](0046-interface-localization.md) §13 — the package ships its own namespace JSON and exports `register(i18n)`, and each app composes its bundle. This is §13's first real use, and the reason extraction runs after localization. `@repo/ui` stays on §12's `UiStrings` (ADR-0047, unchanged).
+Extracted machinery's strings follow [ADR-0046](0046-interface-localization.md) §13 — the package ships its own namespace JSON, and each app composes its bundle. This is §13's first real use, and the reason extraction runs after localization. `@repo/ui` stays on §12's `UiStrings` (ADR-0047, unchanged).
+
+**Amended 2026-08-27 (D9.4).** This bullet said the package exports `register(i18n)` and stopped there, which is §13's wording and is the wrong default. **A package exports its `bundles`, and an app that knows its packages composes them into `createI18n`'s `resources` at `init`**; `register` remains for a consumer that genuinely learns of a namespace later. The reason is timing rather than taste: `addResourceBundle` on a live instance makes i18next emit and react-i18next re-render every bound component, and during an asynchronous gesture that re-render lands between a click and its assertion — the grid's own suite found it as a row selection that silently failed to stick, with nothing failing to type-check and no error anywhere. Composing at `init` means the instance is complete the moment it exists, which is what §13's "each app composes its own bundle" should have meant all along. **Its corollary**: an app must not let its lazy-catalogue loader fetch a namespace a package owns — the app has no file for it, the dynamic import rejects, and the namespace is left half-loaded.
 
 ### The deltas, per parent
 

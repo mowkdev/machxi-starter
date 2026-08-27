@@ -2,12 +2,10 @@ import type { Filter } from "@repo/contracts";
 import { Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { useT } from "@/shared/i18n";
-import type {
-  GridCapabilities,
-  HotFilterConfig,
-} from "@/shared/resource/types";
-import { Button, Separator } from "@/shared/ui";
+import { useT } from "@repo/i18n";
+import type { GridCapabilities, HotFilterConfig } from "@repo/resource";
+import { Button } from "@repo/ui/components/button";
+import { Separator } from "@repo/ui/components/separator";
 
 import { GridSearch } from "./grid-search";
 import { HotFilters } from "./hot-filter-controls";

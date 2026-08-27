@@ -1,7 +1,7 @@
 import type { Filter } from "@repo/contracts";
 
-import { optionValues } from "@/shared/resource/config";
-import type { HotFilterConfig } from "@/shared/resource/types";
+import { optionValues } from "@repo/resource";
+import type { HotFilterConfig } from "@repo/resource";
 
 /**
  * The hot filters' half of the URL, as pure functions (ADR-0039, `D4.4`).

@@ -1,0 +1,206 @@
+import { listQuerySearchSchema } from "@repo/contracts";
+import type { Filter, ListQuerySearch, SortSpec } from "@repo/contracts";
+import type { SortingState } from "@tanstack/react-table";
+
+/**
+ * The translation layer between the URL's list state (ADR-0043) and the
+ * engine's own state shape (ADR-0035).
+ *
+ * These functions are about the *shape* of that state, never its spelling: how
+ * a list query is written into characters is one codec in `@repo/contracts`,
+ * reached through `shared/api/search-params` for the address bar and
+ * `shared/api/list-params` for a request. Nothing here changed when the URL
+ * did, which is the property `D5.2` set out to demonstrate.
+ *
+ * Pure functions over plain data, deliberately: this is the seam where a bug
+ * would be invisible in a component test and obvious in a unit one, so it is
+ * kept out of the component entirely.
+ *
+ * Every mutator returns a **new** `ListQuerySearch` rather than editing one,
+ * because the caller navigates with the result and TanStack Router compares
+ * search objects to decide whether anything changed.
+ */
+
+/**
+ * The schema's own defaults, for the routes' `stripSearchParams` middleware
+ * (ADR-0043 §List state, carrying D3.8's amendment to ADR-0034).
+ *
+ * Derived by parsing an empty object rather than restated, so the URL's idea
+ * of "default" cannot drift from the schema's. A param equal to its default is
+ * stripped from every built link, which is what keeps `/staff` — not
+ * `/staff?offset=0&limit=20&sort=[]&filters=[]` — the canonical first page.
+ * `q` has no default and is simply absent when empty (`withSearch`).
+ */
+export const listSearchDefaults: Readonly<ListQuerySearch> =
+  listQuerySearchSchema.parse({});
+
+/** `[{ field: "email", direction: "desc" }]` → `[{ id: "email", desc: true }]`. */
+export const toSortingState = (sort: readonly SortSpec[]): SortingState =>
+  sort.map(({ field, direction }) => ({
+    id: field,
+    desc: direction === "desc",
+  }));
+
+export const fromSortingState = (sorting: SortingState): SortSpec[] =>
+  sorting.map(({ id, desc }) => ({
+    field: id,
+    direction: desc ? "desc" : "asc",
+  }));
+
+/**
+ * Any change to *what* is listed goes back to the first page.
+ *
+ * Sorting, filtering or searching from page 4 and staying on page 4 is how an
+ * operator ends up looking at an empty grid and concluding there are no
+ * results — the stranded-offset failure, arrived at deliberately instead of by
+ * a deletion. Only an explicit page change keeps its offset.
+ */
+const atFirstPage = (state: ListQuerySearch): ListQuerySearch => ({
+  ...state,
+  offset: 0,
+});
+
+export const withSort = (
+  state: ListQuerySearch,
+  sort: readonly SortSpec[],
+): ListQuerySearch => atFirstPage({ ...state, sort: [...sort] });
+
+/**
+ * Replaces the filters the grid's own controls own, and **only** those.
+ *
+ * Whole-set for the owned fields, because that is the shape the engine reports:
+ * `onColumnFiltersChange` hands back every column's filter state at once, and
+ * translating it back into ADR-0014 filters is one function
+ * (`fromColumnFiltersState`), not a diff. A range control writing two filters
+ * on one field falls out of that for free.
+ *
+ * `owned` is what stops it being lossy, and the failure it prevents is not
+ * hypothetical: a URL may legitimately carry a filter on a field no *column*
+ * declares a control for — a deep link, or a future toolbar control. Replacing
+ * `state.filters` wholesale would erase it the moment the operator touched any
+ * column filter, silently widening what they are looking at. A filter the grid
+ * did not put there is not the grid's to remove.
+ */
+export const withFilters = (
+  state: ListQuerySearch,
+  owned: readonly string[],
+  filters: readonly Filter[],
+): ListQuerySearch =>
+  atFirstPage({
+    ...state,
+    filters: [
+      ...state.filters.filter((filter) => !owned.includes(filter.field)),
+      ...filters,
+    ],
+  });
+
+/**
+ * Identity of a filter, for React keys and for removal (ADR-0039).
+ *
+ * **Field plus operator, never the value.** That pairing is what the URL can
+ * actually hold one of: `fromColumnFiltersState` writes at most one entry per
+ * operator, and a date range is two entries because its two bounds are two
+ * operators on one field. Keying by value instead would make a chip's identity
+ * change as the filter changed, which is the one thing a key must not do.
+ */
+export const filterKey = (filter: Filter): string =>
+  `${filter.field}:${filter.op}`;
+
+/**
+ * Drops one applied filter — the chip's removal (ADR-0039).
+ *
+ * Every entry matching the field and operator goes, not the first: a
+ * hand-written URL can carry two `filter[status][eq]` values, and a removal
+ * that left one of them behind would be a chip that does not disappear when
+ * clicked.
+ *
+ * Back to offset 0 like every other change to *what* is listed — the standing
+ * `atFirstPage` rule, and the reason removing a chip on page 4 does not strand
+ * the operator on an empty page.
+ */
+export const withoutFilter = (
+  state: ListQuerySearch,
+  filter: Filter,
+): ListQuerySearch =>
+  atFirstPage({
+    ...state,
+    filters: state.filters.filter(
+      (entry) => filterKey(entry) !== filterKey(filter),
+    ),
+  });
+
+/**
+ * Clear all: every filter and `q`, back to the first page (ADR-0039).
+ *
+ * **`sort` and `limit` stand.** What is *listed* changed, so the page resets;
+ * how it is ordered and how much of it fits did not, and an operator who set a
+ * sort and a page size did not ask for those to be undone by a button about
+ * filters.
+ */
+export const clearedFilters = (state: ListQuerySearch): ListQuerySearch => {
+  const { q: _q, ...rest } = state;
+
+  return atFirstPage({ ...rest, filters: [] });
+};
+
+/** The free-text term. An empty term is removed, never sent as `q=`. */
+export const withSearch = (
+  state: ListQuerySearch,
+  term: string,
+): ListQuerySearch => {
+  const { q: _q, ...rest } = state;
+
+  return atFirstPage(term === "" ? rest : { ...rest, q: term });
+};
+
+export const withOffset = (
+  state: ListQuerySearch,
+  offset: number,
+): ListQuerySearch => ({ ...state, offset: Math.max(0, offset) });
+
+/** A page-size change keeps the operator near where they were, not at page 1. */
+export const withLimit = (
+  state: ListQuerySearch,
+  limit: number,
+): ListQuerySearch => ({
+  ...state,
+  limit,
+  offset: Math.floor(state.offset / limit) * limit,
+});
+
+/**
+ * The offset of the last page that can hold a row.
+ *
+ * The stranded-offset repair (ADR-0035): deletions shrink the dataset below the
+ * page the operator is on, the API answers an empty `items` with the true
+ * `total`, and the grid navigates here instead of leaving them on a blank page
+ * wondering whether everything is gone.
+ */
+export const lastPageOffset = (total: number, limit: number): number =>
+  total <= 0 ? 0 : Math.floor((total - 1) / limit) * limit;
+
+/** Whether the current page is past the end of a dataset the API has counted. */
+export const isStranded = (
+  page: { readonly items: readonly unknown[]; readonly total: number | null },
+  offset: number,
+): boolean =>
+  page.items.length === 0 &&
+  page.total !== null &&
+  page.total > 0 &&
+  offset >= page.total;
+
+/**
+ * Escapes a term so `ILIKE` matches it literally, then wraps it for containment.
+ *
+ * ADR-0014 deliberately does **not** escape `like` filters, because a client
+ * writing `filter[email][like]=%40acme.com` wrote that pattern on purpose. A UI
+ * writing the pattern *on the operator's behalf* is the opposite case: someone
+ * typing `100%` means the four characters, and passing that through unescaped
+ * turns their filter into "match everything". So the escaping ADR-0014 puts on
+ * `q` server-side is what this does client-side, for the same reason.
+ *
+ * `\` is Postgres' default escape character and is escaped first, which the
+ * single character class does in one pass.
+ */
+export const containsPattern = (term: string): string =>
+  `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;

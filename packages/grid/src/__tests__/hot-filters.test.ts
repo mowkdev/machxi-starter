@@ -1,7 +1,16 @@
 import type { Filter } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
-import type { HotFilterConfig } from "@/shared/resource/types";
+/*
+ * **The fixture's labels are `grid:` keys since `D9.4`**, where `demo:` ones
+ * stood before. Nothing here asserts on copy — they are column headers in a
+ * config this file builds to exercise `hot-filters` — but a `TranslationKey`
+ * inside this package resolves over the namespace the package *declares*
+ * (ADR-0046 §13), and `demo:` is the admin test fixture's. The swap is what
+ * makes the type check mean something here rather than being cast away.
+ */
+
+import type { HotFilterConfig } from "@repo/resource";
 
 import {
   displayedByHotFilters,
@@ -23,7 +32,7 @@ import {
 const STATUS: Extract<HotFilterConfig, { kind: "enum" }> = {
   kind: "enum",
   field: "status",
-  label: "demo:columns.status",
+  label: "grid:filter.title",
   op: "eq",
   options: ["active", "disabled"],
 };
@@ -31,7 +40,7 @@ const STATUS: Extract<HotFilterConfig, { kind: "enum" }> = {
 const TAGS: Extract<HotFilterConfig, { kind: "enum" }> = {
   kind: "enum",
   field: "tags",
-  label: "demo:columns.tags",
+  label: "grid:filter.any",
   op: "in",
   options: ["alpha", "beta"],
 };
@@ -39,7 +48,7 @@ const TAGS: Extract<HotFilterConfig, { kind: "enum" }> = {
 const ARCHIVED: Extract<HotFilterConfig, { kind: "presence" }> = {
   kind: "presence",
   field: "archivedAt",
-  label: "demo:filters.showArchived",
+  label: "grid:filter.trigger",
   op: "null",
   value: false,
 };

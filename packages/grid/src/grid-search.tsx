@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentProps } from "react";
 
-import { useT } from "@/shared/i18n";
-import { Input } from "@/shared/ui";
+import { useT } from "@repo/i18n";
+import { Input } from "@repo/ui/components/input";
 
 /**
  * The toolbar's free-text search — ADR-0014's `q`, where the endpoint declares
