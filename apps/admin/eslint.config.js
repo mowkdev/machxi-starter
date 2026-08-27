@@ -251,6 +251,13 @@ export default defineConfig(
               message:
                 "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
             },
+            {
+              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
+              // come through `@/shared/resource/*`, like every other slice.
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
           ],
         },
       ],
@@ -277,6 +284,13 @@ export default defineConfig(
         {
           patterns: [
             {
+              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
+              // come through `@/shared/resource/*`, like every other slice.
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
+            {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
@@ -293,12 +307,53 @@ export default defineConfig(
   },
 
   {
+    files: ["src/shared/resource/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
     files: ["src/shared/i18n/**"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
+            {
+              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
+              // come through `@/shared/resource/*`, like every other slice.
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
@@ -328,6 +383,13 @@ export default defineConfig(
         "error",
         {
           patterns: [
+            {
+              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
+              // come through `@/shared/resource/*`, like every other slice.
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
             {
               group: ["@repo/i18n", "@repo/i18n/*"],
               message:
