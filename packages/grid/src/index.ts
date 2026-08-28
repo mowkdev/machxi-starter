@@ -96,3 +96,15 @@ export {
   PreferenceStorageProvider,
   useGridPreferences,
 } from "./use-grid-preferences";
+
+/**
+ * The aggregate outcome as one sentence (`D9.6`, ADR-0038, ADR-0043
+ * §Notifications).
+ *
+ * Here rather than in `@repo/app-services` because every key it writes is
+ * `grid:bulk.*` — this package's namespace — and `D9.5` settled that code
+ * travels with the copy it names. The `BulkOutcome` it reads is
+ * `@repo/api-client`'s, which is the split ADR-0038 already drew: running the
+ * fan-out is an API concern, saying what happened is the grid's.
+ */
+export { summariseBulk, type BulkSummary } from "./bulk-summary";

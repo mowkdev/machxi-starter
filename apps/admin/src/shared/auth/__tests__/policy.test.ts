@@ -1,7 +1,7 @@
 import type { StaffPrincipalResource, StaffRole } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
-import { can } from "../can";
+import { can } from "..";
 import { RESOURCE_POLICY, type ResourcePolicy } from "../policy";
 
 /**

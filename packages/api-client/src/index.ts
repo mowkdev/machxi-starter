@@ -65,3 +65,21 @@ export {
   type SessionSnapshot,
   type SessionStore,
 } from "./session-store";
+
+/**
+ * The bounded bulk fan-out (`D9.6`, ADR-0038, ADR-0020).
+ *
+ * `D9.1` left it in `apps/admin` because it named `ErrorMessage` through that
+ * app's notifications slice; `D9.5` put the type here, beside the
+ * `isApiClientError` this already used, and the file follows both. Nothing in
+ * it knows a grid exists — it runs N actions under a concurrency bound and
+ * reports per-item outcomes — which is why it is here rather than in
+ * `@repo/grid` with the sentence that renders it.
+ */
+export {
+  BULK_CONCURRENCY,
+  runBulkAction,
+  type BulkOutcome,
+  type BulkRefusal,
+  type BulkTarget,
+} from "./bulk-outcome";

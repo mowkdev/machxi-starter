@@ -1,5 +1,5 @@
-import type { BulkOutcome } from "@/shared/api/bulk-outcome";
-import type { TranslateKey, TranslationKey } from "@/shared/i18n";
+import type { BulkOutcome } from "@repo/api-client";
+import type { TranslateKey, TranslationKey } from "@repo/i18n";
 
 /**
  * A bulk outcome as the one sentence an operator reads (ADR-0038, ADR-0034).

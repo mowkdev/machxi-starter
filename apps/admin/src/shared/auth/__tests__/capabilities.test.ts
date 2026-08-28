@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GridCapabilities } from "@/shared/resource/types";
 
-import { can } from "../can";
-import { allowedCapabilities } from "../capabilities";
-import type { CanFn } from "../can";
+import { allowedCapabilities, can, type CanFn } from "..";
 
 /**
  * The conjunction of ADR-0038's capabilities and ADR-0042's `can` (ADR-0036).

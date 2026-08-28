@@ -273,6 +273,15 @@ export default defineConfig(
               message:
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
+            {
+              // The tail's doors (`D9.6`). The theme, `can()` and the route
+              // readers come through `@/shared/theme`, `@/shared/auth` and
+              // `@/shared/lib/route-meta` — three doors over one package,
+              // which is why the message names all three.
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+            },
           ],
         },
       ],
@@ -321,6 +330,15 @@ export default defineConfig(
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
+              // The tail's doors (`D9.6`). The theme, `can()` and the route
+              // readers come through `@/shared/theme`, `@/shared/auth` and
+              // `@/shared/lib/route-meta` — three doors over one package,
+              // which is why the message names all three.
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+            },
+            {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
@@ -347,6 +365,11 @@ export default defineConfig(
               group: ["@repo/form", "@repo/form/*"],
               message:
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
@@ -396,6 +419,11 @@ export default defineConfig(
               group: ["@repo/form", "@repo/form/*"],
               message:
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/i18n", "@repo/i18n/*"],
@@ -449,6 +477,11 @@ export default defineConfig(
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+            },
+            {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
@@ -496,6 +529,11 @@ export default defineConfig(
         "error",
         {
           patterns: [
+            {
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+            },
             {
               group: ["@repo/resource", "@repo/resource/*"],
               message:
@@ -553,6 +591,15 @@ export default defineConfig(
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
+              // The tail's doors (`D9.6`). The theme, `can()` and the route
+              // readers come through `@/shared/theme`, `@/shared/auth` and
+              // `@/shared/lib/route-meta` — three doors over one package,
+              // which is why the message names all three.
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+            },
+            {
               group: ["@repo/i18n", "@repo/i18n/*"],
               message:
                 "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
@@ -582,6 +629,11 @@ export default defineConfig(
         {
           patterns: [
             {
+              group: ["@repo/app-services", "@repo/app-services/*"],
+              message:
+                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+            },
+            {
               group: ["@repo/api-client", "@repo/api-client/*"],
               message:
                 "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
@@ -600,6 +652,70 @@ export default defineConfig(
               group: ["@repo/grid", "@repo/grid/*"],
               message:
                 "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+            },
+            {
+              group: [
+                "@repo/ui/components/*",
+                "@repo/ui/compositions/*",
+                "@repo/ui/hooks/*",
+                "@repo/ui/lib/*",
+                "@repo/ui/ui-strings",
+              ],
+              message:
+                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  /*
+   * **Three doors, one package, one block** (`D9.6`).
+   *
+   * `@repo/app-services` is the deliberate exception to one-package-one-slice:
+   * ADR-0051 named it "the small remainder" and left each piece's placement to
+   * this step, and the placements landed in three existing slices rather than
+   * in a new one — `shared/theme`, `shared/auth` and `shared/lib/route-meta`.
+   * Naming all three here keeps the invariant intact while stating why they
+   * share it: what makes each a door is that it is the only path to that
+   * package's symbols, and three doors onto one package is still one exemption.
+   *
+   * `shared/auth` holds `policy.ts` beside its door — the app's own
+   * transcription of this API's `authorize(` calls — which is exactly why this
+   * block declares the other six groups rather than turning the rule off.
+   */
+  {
+    files: ["src/shared/auth/**", "src/shared/theme/**", "src/shared/lib/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@repo/api-client", "@repo/api-client/*"],
+              message:
+                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/i18n", "@repo/i18n/*"],
+              message:
+                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/resource", "@repo/resource/*"],
+              message:
+                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/grid", "@repo/grid/*"],
+              message:
+                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+            },
+            {
+              group: ["@repo/form", "@repo/form/*"],
+              message:
+                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
               group: [

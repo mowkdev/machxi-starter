@@ -1,11 +1,10 @@
 import { useCallback, useMemo } from "react";
 
-import { useSession } from "@/shared/api/context";
-import type { GridCapabilities } from "@/shared/resource/types";
+import { useSession } from "@repo/api-client";
+import type { GridCapabilities } from "@repo/resource";
 
-import { can, type CanFn } from "./can";
+import { can, type CanFn, type ResourcePolicy } from "./can";
 import { allowedCapabilities } from "./capabilities";
-import type { ResourceAction, ResourceName } from "./policy";
 
 /**
  * The bound half of ADR-0042: `can` with the principal already applied.
@@ -26,13 +25,23 @@ import type { ResourceAction, ResourceName } from "./policy";
  * rather than mechanised because the API still refuses and the operator still
  * gets a message (ADR-0042 §Consequences).
  */
-export const useCan = (): CanFn => {
+/*
+ * **The policy arrives as an argument, and each app's door binds it once**
+ * (`D9.6`, ADR-0051). A hook rather than a factory returning one: a factory
+ * would put the `useSession` call inside a closure the rules-of-hooks lint
+ * cannot follow, and a hook that takes its data is the same seam without that
+ * cost. `apps/admin/src/shared/auth` re-exports this with `RESOURCE_POLICY`
+ * already applied, so no call site in that app changed.
+ */
+export const useCan = <TResource extends string, TAction extends string>(
+  policy: ResourcePolicy<TResource, TAction>,
+): CanFn<TAction, TResource> => {
   const { principal } = useSession();
 
   return useCallback(
-    (action: ResourceAction, resource: ResourceName) =>
-      can(principal, action, resource),
-    [principal],
+    (action: TAction, resource: TResource) =>
+      can(policy, principal, action, resource),
+    [policy, principal],
   );
 };
 
@@ -43,11 +52,20 @@ export const useCan = (): CanFn => {
  * result as a prop: a fresh object each render would defeat the memoisation the
  * column builders and the table options depend on.
  */
-export const useAllowedCapabilities = (
+export const useAllowedCapabilities = <TResource extends string>(
+  /*
+   * Typed over `"create" | "delete"` rather than over the caller's whole action
+   * union, for the reason {@link allowedCapabilities} is (`D9.6`): those are
+   * the two questions this asks. A policy declared over a *wider* union is
+   * assignable here — every row is `Partial`, so the wider table simply has
+   * more optional keys — which is what lets an app pass `RESOURCE_POLICY`
+   * unchanged and still have the narrowing say what it needs.
+   */
+  policy: ResourcePolicy<TResource, "create" | "delete">,
   capabilities: GridCapabilities | undefined,
-  resource: ResourceName,
+  resource: TResource,
 ): GridCapabilities | undefined => {
-  const canFn = useCan();
+  const canFn = useCan(policy);
 
   return useMemo(
     () => allowedCapabilities(capabilities, canFn, resource),

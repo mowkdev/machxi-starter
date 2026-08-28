@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-router";
 
 import type { ApiClient } from "@/shared/api/client";
-import type { TranslationKey } from "@/shared/i18n";
 import {
   parseAdminSearch,
   stringifyAdminSearch,
@@ -46,50 +45,19 @@ declare module "@tanstack/react-router" {
     router: ReturnType<typeof createAppRouter>;
   }
 
-  /**
-   * Per-route data the shells read (ADR-0032: route files are wiring).
-   * Declared here so `staticData.title` is typed at every `createFileRoute`,
-   * and a typo is a compile error rather than a blank header.
+  /*
+   * **`StaticDataRouteOption` is no longer declared here** (`D9.6`,
+   * ADR-0051). The channel's shape moved to `@repo/app-services/route-meta`,
+   * beside the four hooks that read it — a package that reads
+   * `match.staticData.title` must own the property or type-check against
+   * nothing, and the contract and its readers drifting apart is the failure
+   * the move prevents. Declaration merging is program-global, so every
+   * `createFileRoute` below still gets the same typed `staticData` and the
+   * same compile error for a typo.
+   *
+   * `Register.router` stays, because it names this app's own
+   * `createAppRouter` and could not mean anything anywhere else.
    */
-  interface StaticDataRouteOption {
-    /**
-     * A {@link TranslationKey} since `D7.4` (ADR-0046 §7), not a sentence: a
-     * route title is copy that travels as data, so it follows the same rule the
-     * resource configs and `meta.success` follow, and a typo is a compile error
-     * at the route rather than a raw `staff:titel` in the header.
-     */
-    title?: TranslationKey;
-    /**
-     * Whether this page is height-budgeted rather than document-flowed
-     * (ADR-0037 §A height-budgeted grid shell). Grid pages opt in; a form
-     * taller than the viewport should scroll as a document, not inside a pane,
-     * so `false` — the default — is the right answer for most screens.
-     *
-     * It rides the same channel as `title` for the same reason: the shell must
-     * not have to know which paths are grids, and a route already declares
-     * what it is.
-     */
-    fullHeight?: boolean;
-    /**
-     * The loaded record's own label, for the routes that have one (`D8.6`,
-     * ADR-0048 §2). Unlike the two above it is **not** a `TranslationKey`: a
-     * record's label is loaded data, not copy, so it bypasses the `t()` wrap
-     * `useRouteTitle` applies.
-     *
-     * **The parameter stays `unknown` and each route narrows inside its own
-     * body.** Under `strictFunctionTypes` a declared `(loaderData: unknown)`
-     * is checked contravariantly, so a callback written as
-     * `(staff: StaffResource) => staff.email` would not satisfy it. What the
-     * shape buys is therefore not the absence of a narrowing but its
-     * *location*: one per route, written by the code that knows the type, and
-     * no cast anywhere in `route-meta.ts` or its hooks.
-     *
-     * A match that carries no loader data yields `undefined`, and the shell
-     * falls back to `staticData.title` — which is correct for the `new`
-     * routes, where a record being created has no label yet.
-     */
-    recordLabel?: (loaderData: unknown) => string | undefined;
-  }
 }
 
 export interface AppRouterOptions {

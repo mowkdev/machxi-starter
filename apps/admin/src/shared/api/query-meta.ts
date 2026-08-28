@@ -1,6 +1,16 @@
 /*
  * The `meta` contract of ADR-0034, typed.
  *
+ * **It stayed in this app at `D9.6`, and it is the one file in `shared/api`
+ * that is not a door.** The shape is app-agnostic and the *content* is not:
+ * `mutationMeta.success` is a `TranslationKey`, which resolves over this app's
+ * merged catalogue, so the augmentation is this app declaring what its own
+ * mutations may say (ADR-0046 §13, the rule `types.d.ts` follows one slice
+ * over). Putting it in a package would also have cost a door with nothing to
+ * export — the augmentation has no symbols — and a second slice-wide exemption
+ * from the door lint to let `shared/api` reach for it. A second app writes
+ * these four lines; that is cheaper than either.
+ *
  * It lives in `shared` rather than beside the query client that reads it,
  * because `entities/*` and `features/*` are the layers that *write* `meta` and
  * ADR-0032 forbids them importing from `app`. Declaration merging is

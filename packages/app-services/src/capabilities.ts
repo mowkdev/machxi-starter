@@ -1,7 +1,6 @@
-import type { GridCapabilities } from "@/shared/resource/types";
+import type { GridCapabilities } from "@repo/resource";
 
 import type { CanFn } from "./can";
-import type { ResourceName } from "./policy";
 
 /**
  * ADR-0038's capabilities ∧ ADR-0042's `can`, in one place (ADR-0042
@@ -45,10 +44,18 @@ import type { ResourceName } from "./policy";
  * gets the safe default, a plain read-only grid, and there is nothing to
  * narrow.
  */
-export const allowedCapabilities = (
+export const allowedCapabilities = <TResource extends string>(
   capabilities: GridCapabilities | undefined,
-  canFn: CanFn,
-  resource: ResourceName,
+  /*
+   * **`CanFn<"create" | "delete", …>`, not the caller's whole action union**
+   * (`D9.6`). Those are the only two questions this narrowing asks, and naming
+   * them here is what lets the function be generic without a type parameter
+   * for the vocabulary: a `CanFn` over a *wider* union is assignable to this
+   * one, because a function that accepts every action accepts these two. The
+   * signature therefore states the requirement rather than inheriting it.
+   */
+  canFn: CanFn<"create" | "delete", TResource>,
+  resource: TResource,
 ): GridCapabilities | undefined => {
   if (capabilities === undefined) return undefined;
 

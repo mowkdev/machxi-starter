@@ -1,4 +1,4 @@
-import type { StaffRole } from "@repo/contracts";
+import type { ResourcePolicy as ResourcePolicyShape } from "@repo/app-services";
 
 /**
  * The client's copy of the API's mount guards (ADR-0042).
@@ -48,17 +48,15 @@ export type ResourceAction =
   "read" | "create" | "update" | "delete" | "setPassword" | "revokeSessions";
 
 /**
- * `Partial` on purpose: **an action absent from a resource's block is allowed
- * to `super_admin` alone**, which is ADR-0019 §Rules' deny-by-default read from
- * the client side. Absence is a decision the type permits and {@link can}
- * answers, not an oversight it papers over.
+ * This table's shape, from `@repo/app-services` since `D9.6`.
+ *
+ * The `Partial` in it is on purpose and is the package's to explain: **an
+ * action absent from a resource's block is allowed to `super_admin` alone**,
+ * which is ADR-0019 §Rules' deny-by-default read from the client side. What
+ * stays here is the *instance* — the rows below, which are a transcription of
+ * this API's `authorize(` calls and belong to no other deployment.
  */
-export type ResourcePolicy = Readonly<
-  Record<
-    ResourceName,
-    Readonly<Partial<Record<ResourceAction, readonly StaffRole[]>>>
-  >
->;
+export type ResourcePolicy = ResourcePolicyShape<ResourceName, ResourceAction>;
 
 export const RESOURCE_POLICY = {
   /*

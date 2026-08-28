@@ -4,7 +4,7 @@ import { createUserApi, userKeys } from "@/entities/user";
 import { runBulkAction, type BulkTarget } from "@/shared/api/bulk-outcome";
 import { useApiClient } from "@/shared/api/context";
 import { useKeyT } from "@/shared/i18n";
-import { summariseBulk } from "@/shared/notifications/bulk-summary";
+import { summariseBulk } from "@/shared/grid/bulk-summary";
 import { useMessageForError } from "@/shared/notifications/messages";
 import { toast } from "@/shared/ui";
 

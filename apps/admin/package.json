@@ -17,6 +17,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@repo/api-client": "workspace:*",
+    "@repo/app-services": "workspace:*",
     "@repo/form": "workspace:*",
     "@repo/grid": "workspace:*",
     "@repo/i18n": "workspace:*",
