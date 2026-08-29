@@ -266,6 +266,21 @@ export interface AppGridProps<TRow> {
    * stays for a usage that needs to differ from its resource.
    */
   readonly pageSizes?: readonly number[] | undefined;
+  /**
+   * Alternate the body rows' background (ADR-0052 §Visible state, `D10.2`).
+   *
+   * **A prop and not a preference, off by default.** Zebra striping is a
+   * presentation choice a page makes about its own density — it says nothing
+   * about what the operator is looking at, so ADR-0041's taxonomy puts it
+   * nowhere: not in the URL (it is not view state a link should carry), not in
+   * preferences (it is not the operator's ergonomics), and not in the table
+   * (which owns nothing durable). It is an argument, like `searchable`.
+   *
+   * Off by default because every shipped screen is unstriped today and a
+   * default that changed them all would be this prop deciding for pages that
+   * never asked.
+   */
+  readonly striped?: boolean | undefined;
 }
 
 const NO_ROWS: readonly never[] = [];
@@ -329,6 +344,7 @@ export const AppGrid = <TRow,>({
   gridId,
   preferenceStorage,
   pageSizes,
+  striped = false,
 }: AppGridProps<TRow>) => {
   const { t } = useT("grid");
   /*
@@ -807,11 +823,13 @@ export const AppGrid = <TRow,>({
        * The applied-filters bar (ADR-0039) — the second static region of
        * ADR-0037's budget, and it renders nothing when nothing is applied.
        *
-       * `hotFilters` reaches it only when this component drew them. A screen
-       * that replaced the toolbar outright replaced the hot filters with it, so
-       * suppressing their chips would leave those filters displayed by
-       * *nothing* — the silently-narrower grid this bar exists to prevent,
-       * arriving through the extension seam.
+       * **It no longer takes `hotFilters`** (`D10.2`, ADR-0052 §Visible
+       * state). It took them to suppress the chips a pressed button was
+       * already displaying, which also meant this call site had to hand it
+       * `NO_HOT_FILTERS` whenever a screen replaced the toolbar — or those
+       * filters would have been displayed by nothing at all. With suppression
+       * retired the whole question is gone: every applied filter has a chip
+       * here, whoever drew the toolbar.
        */}
       <AppliedFilters
         filters={listState.filters}
@@ -826,7 +844,6 @@ export const AppGrid = <TRow,>({
          * implying one.
          */
         columns={merged}
-        hotFilters={renderToolbar === undefined ? hotFilters : NO_HOT_FILTERS}
         onRemoveFilter={(filter) => {
           onListStateChange(withoutFilter(listState, filter));
         }}
@@ -1015,7 +1032,24 @@ export const AppGrid = <TRow,>({
               </TableRow>
             ) : (
               bodyRows.map((row) => (
-                <TableRow key={row.id}>
+                /*
+                 * `even:` rather than an index off `bodyRows`: the stripe is a
+                 * property of a row's *position on screen*, and the DOM is
+                 * where that is known — a computed index would have to be kept
+                 * honest against every future branch that renders a row (the
+                 * loading, empty and error rows above are all `<TableRow>`
+                 * too), while the selector cannot drift from what is rendered.
+                 *
+                 * `bg-muted/30` under `TableRow`'s own `hover:bg-muted/50` and
+                 * `data-[state=selected]:bg-muted`, both of which sort after
+                 * `even` in Tailwind's variant order and therefore still win:
+                 * a striped row must not stop answering the pointer or stop
+                 * showing that it is selected.
+                 */
+                <TableRow
+                  key={row.id}
+                  className={cn(striped && "even:bg-muted/30")}
+                >
                   {/*
                    * `getVisibleCells`, not `getAllCells` — since `D4.5` a
                    * column can be hidden, and a row that rendered every cell
@@ -1183,7 +1217,20 @@ const ResizeHandle = ({
       type="button"
       aria-label={t("columns.resize", { column: label })}
       data-slot="grid-resize-handle"
-      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-transparent hover:bg-border focus-visible:bg-border focus-visible:outline-none"
+      /*
+       * **Visible at rest since `D10.2`** (ADR-0052 §Visible state). The band
+       * itself stays transparent until hover or focus — a 6px stripe on every
+       * column edge would be a second set of borders — and what is always
+       * there is the `::after` grip: a hairline in `bg-border`, so it answers
+       * from the same token the table's own rules do and is therefore correct
+       * in both themes by construction rather than by a second colour someone
+       * has to remember to update.
+       *
+       * `h-4` centred rather than full height, which is what keeps it a
+       * *handle* rather than a column divider: a full-height line would read
+       * as table chrome and invite nobody to grab it.
+       */
+      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-transparent after:absolute after:top-1/2 after:right-0.5 after:h-4 after:w-px after:-translate-y-1/2 after:bg-border after:transition-colors after:content-[''] hover:bg-border hover:after:bg-transparent focus-visible:bg-border focus-visible:after:bg-transparent focus-visible:outline-none"
       onDoubleClick={onReset}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

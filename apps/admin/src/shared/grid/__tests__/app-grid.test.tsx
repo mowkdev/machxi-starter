@@ -802,7 +802,7 @@ describe("hot filters", () => {
     ).toHaveTextContent("Disabled");
   });
 
-  it("suppresses the chip it is displaying, and not one it cannot", () => {
+  it("chips what it is displaying as well as what it cannot", () => {
     const displayed = render(
       <Harness
         page={pageOf(demoRows)}
@@ -814,9 +814,18 @@ describe("hot filters", () => {
       />,
     );
 
-    // The pressed button *is* this filter's visible, removable representation;
-    // a chip beside it would be a second way to remove one thing.
-    expect(screen.queryByText("Status is Disabled")).not.toBeInTheDocument();
+    /*
+     * **Reversed at `D10.2`** (ADR-0052 §Visible state). ADR-0039 suppressed
+     * this chip because the pressed button already was the filter's visible,
+     * removable representation; the operator's call is that the bar is the
+     * inventory and an inventory with an exception is read twice. So both are
+     * on screen, and both remove the same entry.
+     */
+    expect(screen.getByText("Status is Disabled")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disabled" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(
       screen.getByRole("button", { name: "Clear all" }),
     ).toBeInTheDocument();
@@ -866,10 +875,12 @@ describe("hot filters", () => {
     );
 
     /*
-     * `renderToolbar` replaces the region outright — hot filters included — so
-     * suppressing this chip would leave the filter displayed by *nothing*: the
-     * silently-narrower grid the bar exists to prevent, arriving through the
-     * extension seam.
+     * This used to be the suppression rule's dangerous edge: `renderToolbar`
+     * replaces the region outright — hot filters included — so a bar that
+     * suppressed the chip would have left the filter displayed by *nothing*.
+     * Since `D10.2` no chip is ever suppressed, so the case can no longer fail
+     * that way; it is kept because the *extension seam* is still real, and a
+     * grid whose toolbar was replaced must still say what it is filtered by.
      */
     expect(screen.getByText("bespoke")).toBeInTheDocument();
     expect(

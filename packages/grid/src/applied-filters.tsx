@@ -2,12 +2,11 @@ import type { Filter } from "@repo/contracts";
 import { XIcon } from "lucide-react";
 
 import { useKeyT, useT } from "@repo/i18n";
-import type { ColumnConfig, HotFilterConfig } from "@repo/resource";
+import type { ColumnConfig } from "@repo/resource";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 
 import { chipsForState } from "./filter-chips";
-import { displayedByHotFilters } from "./hot-filters";
 
 /**
  * The applied-filters bar (ADR-0039, `D4.4`).
@@ -27,6 +26,15 @@ import { displayedByHotFilters } from "./hot-filters";
  * **What makes it honest is where it reads from**: `chipsForState` walks the
  * URL's validated filters, and the column configs contribute labels only, never
  * membership. See that function for the argument.
+ *
+ * **Every applied filter gets a chip, hot ones included** (ADR-0052 §Visible
+ * state, `D10.2`). ADR-0039 suppressed the chip while a hot-filter button
+ * displayed the same entry, to avoid saying one thing twice; the operator's
+ * call is that this bar is the inventory, and an inventory with an exception is
+ * one you have to read twice to trust. The duplication is accepted: a pressed
+ * button and a chip now say the same thing, and both remove it. What ADR-0039
+ * decided about *this* bar — one chip per `Filter`, removal semantics, the live
+ * region, and reading from the URL rather than the configs — stands unchanged.
  */
 
 export interface AppliedFiltersProps {
@@ -36,8 +44,6 @@ export interface AppliedFiltersProps {
   readonly q: string;
   /** Labels for the filters a column owns. Never membership. */
   readonly columns: readonly (readonly [string, ColumnConfig])[];
-  /** What the toolbar is already displaying, so it is not displayed twice. */
-  readonly hotFilters: readonly HotFilterConfig[];
   readonly onRemoveFilter: (filter: Filter) => void;
   readonly onRemoveSearch: () => void;
   readonly onClearAll: () => void;
@@ -47,7 +53,6 @@ export const AppliedFilters = ({
   filters,
   q,
   columns,
-  hotFilters,
   onRemoveFilter,
   onRemoveSearch,
   onClearAll,
@@ -65,17 +70,13 @@ export const AppliedFilters = ({
   const tk = useKeyT();
 
   /*
-   * Suppressed, not omitted: the chip is skipped exactly while a hot-filter
-   * button *displays* the same entry, because the pressed button already is its
-   * visible, removable representation and two removal affordances for one
-   * filter is noise. The invariant is unchanged — every applied filter is
-   * visible and removable in exactly one place — and a value no group can
-   * represent gets its chip as before.
+   * Unfiltered since `D10.2`: what `chipsForState` returns is what renders.
+   * The hot-filter suppression that used to sit here — and the
+   * `displayedByHotFilters` function behind it, deleted with its last consumer
+   * — is retired by ADR-0052, and with it the one case where reading this bar
+   * did not answer "what am I looking at?" on its own.
    */
-  const displayed = displayedByHotFilters(filters, hotFilters);
-  const chips = chipsForState(filters, columns, tk).filter(
-    (chip) => !displayed.has(chip.filter),
-  );
+  const chips = chipsForState(filters, columns, tk);
 
   const applied = filters.length + (q === "" ? 0 : 1);
 
@@ -100,10 +101,11 @@ export const AppliedFilters = ({
       </span>
 
       {/*
-       * The row renders whenever anything is *applied*, which is not the same
-       * as "there are chips". A pressed hot filter has no chip by the
-       * suppression rule above, and it still has to be clearable from here —
-       * Clear all clears hot filters too, because they are filters and not a
+       * The row renders whenever anything is *applied*, and since `D10.2` that
+       * is the same as "there are chips or a search term" — every filter has a
+       * chip now. The condition stays counted from `filters` rather than from
+       * `chips.length` because `q` is applied without being a `Filter`, and
+       * Clear all still clears hot filters too: they are filters, not a
        * separate mechanism.
        */}
       {applied === 0 ? null : (

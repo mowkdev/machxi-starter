@@ -76,8 +76,10 @@ export const userResourceConfig = {
      * two controls three inches apart; ADR-0039 deferred the choice to the
      * sweep and the sweep dropped the duplicate. The column still exists —
      * it is the mark a soft delete leaves — it simply no longer offers a
-     * second way to press this. The chip suppression rule is what keeps the *bar* from showing a
-     * third representation of the same entry.
+     * second way to press this. Since `D10.2` the applied-filters bar *does*
+     * show a chip for it as well (ADR-0052 retires ADR-0039's suppression):
+     * one control, two indications, which is the trade the operator asked for
+     * — the bar answers "what am I looking at?" with no exceptions in it.
      */
     hotFilters: [
       {

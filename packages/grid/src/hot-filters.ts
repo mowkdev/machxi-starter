@@ -35,13 +35,16 @@ export const hotFilterSelection = (
   );
 
   /*
-   * All-or-nothing, and that is the suppression rule's other half.
+   * All-or-nothing, because a pressed button is a claim about the whole entry.
    *
    * A value the group cannot represent — a `status` outside the declared
    * options, arriving by deep link — must not be *partly* displayed: pressed
-   * buttons would claim the filter is shown here while the unrepresentable part
-   * of it stayed invisible. Showing nothing pressed is what hands the whole
-   * entry to the chips bar, which can render anything.
+   * buttons would say the filter is this group's while the unrepresentable
+   * part of it went unmentioned, and pressing one again would rewrite the
+   * entry to something the operator never asked for. Nothing pressed is the
+   * honest answer, and the chip in the applied-filters bar — which since
+   * `D10.2` renders for every filter, representable or not — is what says
+   * what the list is actually filtered by.
    */
   return values.every((value) => options.includes(value)) ? values : [];
 };
@@ -91,55 +94,10 @@ export const toggledPresence = (
 ): readonly Filter[] =>
   on ? [] : [{ field: config.field, op: "null", value: config.value }];
 
-/**
- * The filter *entries* the declared hot filters are currently displaying — and
- * therefore the chips the applied-filters bar suppresses (ADR-0039).
- *
- * The invariant the bar keeps: **every applied filter is visible and removable
- * in exactly one place.** A pressed button is that filter's visible, removable
- * representation, and two removal affordances for one entry is noise. A value
- * no group can represent is displayed by nothing here, so its chip stands.
- *
- * **A set of the entries themselves, not a predicate over one.** The predicate
- * form asked "could pressing these buttons have produced this?", which is right
- * about a filter and wrong about a *list* of them: `hotFilterSelection` reads
- * the first `field:op` entry it finds, so a URL carrying `status eq active` and
- * `status eq disabled` would press "Active" and have the predicate suppress
- * both — the second entry invisible and unremovable, which is the invariant
- * failing in the code that exists to keep it. Suppressing the entry a group
- * actually read cannot say that, whatever the URL holds.
+/*
+ * `displayedByHotFilters` stood here until `D10.2` and is gone with the rule it
+ * served: ADR-0052 retires ADR-0039's chip suppression, so the applied-filters
+ * bar no longer asks which entries a group is displaying. Deleted rather than
+ * left exported — a function with no consumer is a claim nothing checks, and
+ * its whole subject was a decision that has been reversed.
  */
-export const displayedByHotFilters = (
-  filters: readonly Filter[],
-  hotFilters: readonly HotFilterConfig[],
-): ReadonlySet<Filter> => {
-  const displayed = new Set<Filter>();
-
-  for (const config of hotFilters) {
-    const match =
-      config.kind === "presence"
-        ? filters.find(
-            (filter) =>
-              filter.field === config.field &&
-              filter.op === "null" &&
-              filter.value === config.value,
-          )
-        : filters.find(
-            (filter) =>
-              filter.field === config.field && filter.op === config.op,
-          );
-
-    if (match === undefined) continue;
-    // The same first-match entry the group renders from, and only if the group
-    // can represent the whole of it.
-    if (
-      config.kind === "enum" &&
-      hotFilterSelection([match], config).length === 0
-    )
-      continue;
-
-    displayed.add(match);
-  }
-
-  return displayed;
-};

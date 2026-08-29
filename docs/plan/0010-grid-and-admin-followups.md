@@ -93,13 +93,21 @@ Main-thread long tasks across the twelve warm navigations: **four to five of the
 
 **And the bar was seen in the production build, doing the one thing it is for.** It appeared in **3 of the 16 measured navigations — every one of them a cold visit** — and in none of the warm ones, which is the behaviour worth having: a navigation that resolves inside a frame gets no flicker, one that has something to wait for gets an answer. It was then held open deliberately, by opening a record whose loader had a real request in flight, and read from the live DOM: `role="progressbar"` with no `aria-valuenow`, `aria-label="Navigating"`, `data-slot="navigation-indicator"`. **What is not certified is the pixels** — the bar's 2px geometry, its colour in both themes and its motion were not captured, and are `D10.4`'s spec (ADR-0052 assigns exactly this kind of claim to the browser tier) or the operator's eye before then.
 
-### 2. Visible state: the chip, the handle, the stripes
+### ~~2. Visible state: the chip, the handle, the stripes~~ — **done 2026-08-29**
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0039](../adr/0039-grid-filter-ux.md) as carried
 
 In `@repo/grid`: the applied-filters bar renders a chip for a pressed hot filter (suppression retired; Clear all unchanged); the resize handle gets its at-rest affordance in both themes; the `striped` prop lands, off by default.
 
 **Done when:** the bar's suite asserts a chip for a pressed hot filter and its removal unpressing the filter; a test asserts stripes only when the prop is set; the handle's visibility is a named `test:e2e` spec at `D10.4`; the gate green.
+
+**Amended 2026-08-29 (D10.2) — what the reversal cost, and three decisions inside it.**
+
+- **The suppression's machinery went with the rule.** `displayedByHotFilters` had exactly one consumer, and retiring ADR-0039's rule left it a function with no caller — so it is deleted, with its `describe` block, rather than left exported against a decision that has been reversed. The `hotFilters` prop went off `AppliedFilters` with it, and with that prop went the `NO_HOT_FILTERS` dance at the call site: `AppGrid` used to hand the bar an empty list whenever a screen replaced the toolbar, or those filters would have been displayed by nothing at all. **The reversal deleted a special case rather than adding one**, which is the shape of it worth remembering.
+- **The handle's affordance is a token, not a colour.** The 6px band stays transparent until hover — six pixels of colour on every column edge would read as a second set of borders — and what is now always there is a centred `after:` hairline in `bg-border`. "Visible in both themes" is then true by construction: it answers from the same variable the table's own rules do, so there is no second value for a palette change to miss. `h-4` centred rather than full height is what keeps it a handle instead of a column divider.
+- **The stripe is a CSS selector, not an index.** `striped` puts `even:bg-muted/30` on every body row and lets the browser decide which rows are even. A computed index would have to stay honest against every other branch that renders a `<TableRow>` — loading, empty and error rows are all rows — and it would be the component keeping a count it does not need. `hover` and `data-[state=selected]` sort after `even` in Tailwind's variant order, so a striped row still answers the pointer and still shows that it is selected; that is asserted rather than assumed.
+
+**Pending operator acceptance**: **no shipped screen sets `striped`**, which is what ADR-0052 asked for — off by default, a consumer opts in — and means the prop's only consumer today is its test. Say the word and staff or users takes it. And the two pixel facts stay pixel facts: the grip's visibility at rest and the stripe's legibility in light and dark are `D10.4`'s specs (the handle by name) or your eye before then. What jsdom can see is asserted here — the classes are on the elements, in both the on and off cases.
 
 ### 3. The columns menu learns to drag
 
