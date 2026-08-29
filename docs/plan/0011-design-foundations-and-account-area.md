@@ -87,13 +87,23 @@ The canvas is not a picture — every artboard carries its styling as explicit v
 
 ## Build order
 
-### 1. The records, the fonts and the token sheet
+### ~~1. The records, the fonts and the token sheet~~ — **done 2026-08-30**
 
 **ADRs:** [0054](../adr/0054-design-language-instrument.md) (accepted at the head of this step; 0037 moves to `superseded by 0054`, 0048 and 0052 gain their second-successor deltas), [0047](../adr/0047-ui-package-scope.md), [0026](../adr/0026-task-graph-caching-and-serialisation.md) as carried by 0052
 
 Acceptance mechanics and the instruction-document sweep first (the window docs, the rule file, the skills that describe the gate and the design system). Then: `@fontsource` IBM Plex Sans + Mono into `apps/admin`, imported beside the stylesheet; `globals.css` rewritten to 0054 §2's tables, both themes, with `--font-sans`/`--font-mono` mapped in `@theme`; radius 6. The whole app re-skins from this step alone.
 
 **Done when:** the values in `globals.css` match 0054 §2 as a reviewable diff; `pnpm test:e2e` green unchanged (a token re-skin moves no structure); the `size-budget.json` raise for the fonts is its own reviewed hunk; the gate green.
+
+**Built 2026-08-30.** ADR-0054 accepted at the head, 0037 flipped, 0048 and 0052 given second-successor deltas, and the sweep run over eight documents (the ledger, this file, the ADR index, `CLAUDE.md`, `.claude/rules/frontend.md`, `/frontend-conventions`, `/ui-component`, the `ui-builder` agent). `@fontsource/ibm-plex-sans` 400/500/600 and `@fontsource/ibm-plex-mono` 400/500 imported in `apps/admin/src/app/index.tsx` beside `./styles.css`, whole faces rather than per-subset files — `@fontsource`'s `latin-400.css` carries no `unicode-range`, so importing two subsets makes the last one win for every character. `globals.css` rewritten to §2 with `--font-sans`/`--font-mono` in `@theme`. **Verified in Chrome, both themes**: `--background`, `--primary`, `--primary-tint`, `--border-strong`, `--success` and `--radius: 6px` computed exactly as §2 writes them, and `document.fonts.check('16px "IBM Plex Sans"')` true.
+
+Three things this step found, none smuggled:
+
+- **The focus ring's opacity is not reachable from the three surfaces**, so ADR-0054 §2 is amended to say what ships. Seven generated primitives spell it `ring-ring/50 ring-[3px]` and ADR-0047 keeps them byte-identical; the width matches the reference and the opacity is 50% of `--ring` rather than 20%/28%. The alternatives — an owned edit to seven files every regenerate would re-fight, or alpha inside `--ring`, which contradicts §2's own table row and dims every other consumer — both cost more than a focus ring's opacity is worth.
+- **The radius _assignment_ is not the token sheet's to give**, and the review caught the record saying otherwise. The base and the 4·5·6·8 scale land here and are exact; which number a component takes is spelled in the component, and for the generated primitives that spelling is the CLI's — buttons, inputs and selects `rounded-md` (5, not 6), dialog `rounded-lg` (6, not 8), popover `rounded-md` (5, not 8), badge `rounded-full`, which §2's own "nothing rounder than 8" forbids. §2 is amended to route the assignment through the surfaces that own each shape — `@repo/grid`'s badges and chips at `D11.2`/`D11.4`, `RecordSurface` and the account control at `D11.5` — and to say that where only a primitive spells it, the primitive's value ships. §1 gained a second clause for the same class of honesty: **`apps/web` imports this sheet and loads no faces**, so the marketing site names IBM Plex and renders the fallback until D14 buys it its own bytes.
+- **`test:e2e` failed once on leftover state, then passed twice.** `columns-menu.spec.ts` timed out on its Reset assertion because the dev account's stored column order was already non-default when the run started, so the `before` it captured was somebody else's arrangement and Reset could never equal it. Re-run alone: green in 1.9s. Full suite re-run: **14 passed**. Nothing in the diff touches drag, and the invariant the spec asserts is the ADR-0052 data rule it was written to obey — worth recording because the next reader of a red D11 e2e run should suspect the account before the code.
+
+The budget's `css` link is the only one that moved: **12,598 → 14,042 gzipped bytes** — five `@fontsource` stylesheets carrying 28 `@font-face` rules, ~12.4 kB of very repetitive CSS — budget raised 14,000 → 15,600 to keep the file's own ~11% headroom. `js` moved 47 bytes and `entry` 2, which is what "a token re-skin ships no code" looks like from the outside. The woff2/woff files are emitted assets and are not counted: 28 of each ship and a browser downloads only the two or three subsets its text needs.
 
 ### 2. Grid chrome
 

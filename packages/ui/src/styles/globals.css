@@ -1,11 +1,22 @@
 /*
- * @repo/ui — the design system's single stylesheet (ADR-0031).
+ * @repo/ui — the design system's single stylesheet (ADR-0031, as carried by
+ * ADR-0047; the language written in it is ADR-0054's).
  *
  * Both apps import this file and nothing else: it pulls Tailwind in, declares
  * the package's own sources so the utilities its components use are generated
  * without per-app content configuration, and holds every design token in one
  * place. Dark mode is the class strategy — an app toggles `.dark` on an
  * ancestor, the palette answers from here.
+ *
+ * **The palette is "Instrument" (ADR-0054 §2) since `D11.1`**, and this file is
+ * the first of the three surfaces the design is allowed to speak through — the
+ * other two being `@repo/ui`'s hand-written compositions and `@repo/grid`'s own
+ * styling. The generated primitives under `src/components/` stay byte-identical
+ * to the CLI output (ADR-0047), so everything a re-skin can reach, it reaches
+ * from here: every value ADR-0054 §2 names is written below as a literal, in
+ * the record's own order, so the record and this file compare as a diff. The
+ * tokens the record does *not* name defer with `var()` to the one it does,
+ * which is what keeps a pair a pair.
  */
 
 @import "tailwindcss";
@@ -21,62 +32,96 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.625rem;
+  /*
+   * ADR-0054 §2: base 6px, and the scale is 4 · 5 · 6 · 8 — nothing rounder
+   * than 8. The arithmetic is written against `--radius` rather than as four
+   * literals so that a future base moves the whole set together, which is the
+   * reason shadcn spells it this way in the first place.
+   */
+  --radius: 6px;
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.99 0.002 264);
+  --foreground: oklch(0.18 0.008 264);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: var(--foreground);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.52 0.14 258);
+  --primary-foreground: oklch(0.99 0.002 264);
+  /* Selected rows, the active nav bar's ground, the "Filtered by" chips. */
+  --primary-tint: oklch(0.52 0.14 258 / 8%);
+  --secondary: oklch(0.955 0.003 264);
+  --secondary-foreground: oklch(0.28 0.012 264);
+  --muted: oklch(0.975 0.003 264);
+  --muted-foreground: oklch(0.5 0.012 264);
+  --accent: oklch(0.93 0.005 264);
+  --accent-foreground: oklch(0.2 0.01 264);
+  --destructive: oklch(0.52 0.19 25);
+  --border: oklch(0.905 0.005 264);
+  --input: oklch(0.905 0.005 264);
+  /* The band rules — the chrome's structure, a step darker than a hairline. */
+  --border-strong: oklch(0.86 0.005 264);
+  --ring: oklch(0.52 0.14 258);
 
+  /*
+   * The chart ramp is shadcn's, untouched: ADR-0054 transcribes a reference
+   * that draws no chart, and nothing in either app renders one. The first
+   * screen that does is the decision that re-colours these.
+   */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
 
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.975 0.003 264);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.93 0.005 264);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* Status, not decoration: the grid's 6px dot renderer (ADR-0054 §4). */
+  --success: oklch(0.58 0.13 155);
+  --warning: oklch(0.7 0.14 75);
 }
 
+/*
+ * Dark is a designed theme, not an inversion (ADR-0054 §2). Two properties of
+ * it are decisions rather than values, and are the easiest to lose in a later
+ * edit:
+ *
+ * 1. **Borders are solid, never alpha.** `oklch(1 0 0 / 10%)` reads as a
+ *    different line over every surface it crosses; a flat lightness reads the
+ *    same over all of them, which is what a rule is for.
+ * 2. **The floor is lifted off near-black**, so the surfaces form a readable
+ *    elevation ramp: sidebar 0.165 < background 0.185 < muted 0.205 <
+ *    card 0.215 < popover 0.235. `--popover` splitting from `--card` is a
+ *    deliberate rung, not a rounding error.
+ */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.269 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: oklch(0.185 0.008 264);
+  --foreground: oklch(0.965 0.003 264);
+  --card: oklch(0.215 0.008 264);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.235 0.008 264);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.7 0.13 262);
+  --primary-foreground: oklch(0.16 0.02 264);
+  --primary-tint: oklch(0.7 0.13 262 / 16%);
+  --secondary: oklch(0.27 0.008 264);
+  --secondary-foreground: oklch(0.93 0.004 264);
+  --muted: oklch(0.205 0.008 264);
+  --muted-foreground: oklch(0.7 0.008 264);
+  --accent: oklch(0.28 0.008 264);
+  --accent-foreground: oklch(0.96 0.003 264);
+  --destructive: oklch(0.7 0.16 25);
+  --border: oklch(0.3 0.008 264);
+  --input: oklch(0.31 0.008 264);
+  --border-strong: oklch(0.33 0.008 264);
+  --ring: oklch(0.7 0.13 262);
 
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -84,21 +129,24 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.165 0.008 264);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.25 0.008 264);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --success: oklch(0.72 0.14 155);
+  --warning: oklch(0.82 0.15 78);
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 2px);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -108,6 +156,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-tint: var(--primary-tint);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -116,8 +165,11 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -133,6 +185,25 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/*
+ * The faces (ADR-0054 §1). Declared here rather than in an app because the
+ * design system owns what the design *is*; the `@fontsource` imports that
+ * fetch the bytes are each app's, beside its own stylesheet.
+ *
+ * A plain `@theme`, not `@theme inline`: these are values, and Tailwind's
+ * preflight reads `--font-sans` into `--default-font-family` on `html`, which
+ * is what re-faces a whole app from this file alone. The fallbacks are the
+ * stacks that were rendering before — the system UI stack for sans, the
+ * platform mono stack for mono — so a face that has not loaded yet, or a
+ * browser that refuses it, degrades to exactly what shipped yesterday.
+ */
+@theme {
+  --font-sans:
+    "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /*

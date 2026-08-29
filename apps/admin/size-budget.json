@@ -4,20 +4,21 @@
     "Bytes are GZIPPED, which is what a browser downloads; `pnpm size` measures dist/ and fails the gate when a number here is exceeded.",
     "js = every JavaScript byte the build emits. css = every CSS byte. entry = dist/assets/index-<hash>.js, the chunk paid before anything renders.",
     "Raising a budget is a deliberate diff of this file that someone reviews — that is the whole mechanism. Lowering one after a real saving is just as welcome.",
-    "The headroom over the baseline is about 8% (11% on css, where a percentage of 12 kB is noise): enough for honest growth, tight enough that a new dependency trips it.",
-    "Baseline measured 2026-08-29 at D10.5, on the tree that already carries D10.3's @dnd-kit and D10.4's stylesheet fix — the first build in which @repo/grid's and @repo/form's utilities actually reach the CSS.",
+    "The headroom over the baseline is about 8% (11% on css, where a percentage of 14 kB is noise): enough for honest growth, tight enough that a new dependency trips it.",
+    "Baseline first measured 2026-08-29 at D10.5, on the tree that already carried D10.3's @dnd-kit and D10.4's stylesheet fix — the first build in which @repo/grid's and @repo/form's utilities actually reach the CSS. Re-measured 2026-08-30 at D11.1; the js and entry numbers moved by 47 and 2 bytes, which is what 'a token re-skin ships no code' looks like from here.",
+    "css rose 12598 -> 14042 at D11.1 and its budget with it, deliberately: ADR-0054 §1 self-hosts IBM Plex through @fontsource, and five @fontsource stylesheets (Sans 400/500/600, Mono 400/500, whole faces so unicode-range can do the choosing) carry 28 @font-face rules - ~12.4 kB of very repetitive CSS that gzips to ~1.4 kB. The woff2/woff files themselves are emitted assets and are NOT counted here — a browser downloads only the subsets its text needs, so what this number prices is the declaration, not the faces.",
     "entry is resolved from dist/index.html rather than matched by filename: at D10.5's review an index-*.js pattern was found to match two chunks (the real entry plus an unrelated 0.6 kB one), and it would match zero the day Vite's entryFileNames changes - which would pass green forever."
   ],
   "baseline": {
-    "measuredAt": "2026-08-29",
-    "step": "D10.5",
-    "js": 335836,
-    "css": 12598,
-    "entry": 258479
+    "measuredAt": "2026-08-30",
+    "step": "D11.1",
+    "js": 335883,
+    "css": 14042,
+    "entry": 258481
   },
   "budgets": {
     "js": 362000,
-    "css": 14000,
+    "css": 15600,
     "entry": 280000
   }
 }

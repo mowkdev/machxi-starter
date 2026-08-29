@@ -16,6 +16,25 @@ import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
 import { SettingsProvider } from "./providers/settings";
 import { AppUiStrings } from "./providers/ui-strings";
+
+/*
+ * The design language's faces (ADR-0054 §1), self-hosted beside the stylesheet
+ * rather than fetched from Google's CDN: an EU-facing product does not send a
+ * visitor's IP to a third party to render text, dev and `test:e2e` run
+ * offline, and the bundle budget prices the bytes honestly.
+ *
+ * The weights the language actually uses and no others — Sans 400/500/600,
+ * Mono 400/500. Each file is the *whole* face: `@fontsource`'s per-subset
+ * files (`latin-400.css`) carry no `unicode-range`, so importing two of them
+ * makes the last one win for every character instead of splitting by script.
+ * These do carry the ranges, so the browser downloads only the subsets the
+ * page's text needs, and `--font-sans`/`--font-mono` in `@theme` do the rest.
+ */
+import "@fontsource/ibm-plex-sans/400.css";
+import "@fontsource/ibm-plex-sans/500.css";
+import "@fontsource/ibm-plex-sans/600.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./styles.css";
 
 /**

@@ -1,9 +1,9 @@
 # ADR-0037: Grid viewport layout — a height-budgeted shell and one scroll container
 
-- Status: accepted
+- Status: superseded by [ADR-0054](0054-design-language-instrument.md) (delta: the grid's visual frame)
 - Date: 2026-08-20
 
-> Written at the opening of D4 (data grid v2), alongside ADR-0038–0041. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.1` implements this layout ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), and the sibling ADRs' surfaces — the toolbar, the filter bar, the record panes — are budgeted for here before any of them exists. It stays amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.1` and not before — the per-step acceptance D4 runs on, where D3 accepted all seven of its ADRs on one day.
+> Written at the opening of D4 (data grid v2), alongside ADR-0038–0041. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.1` implements this layout ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), and the sibling ADRs' surfaces — the toolbar, the filter bar, the record panes — are budgeted for here before any of them exists. It stays amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.1` and not before — the per-step acceptance D4 runs on, where D3 accepted all seven of its ADRs on one day. **Superseded in part 2026-08-30 by [ADR-0054](0054-design-language-instrument.md)**, accepted at the head of `D11.1`: a **delta** supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md) §Lifecycle rule 1, and the delta is the grid's *visual frame* alone — the card border box retires for band rules and edge-to-edge rows, and the header, row, stripe, selected and resize-tick values are 0054 §4's. **Everything this record decides about geometry stands and is in force**: the `min-w-0` root fix, one scroll container, the flex height budget, the sticky header, the static pager, the `min-h-64` floor, `.scrollbar-thin`, and full height as a per-page `staticData` opt-in. Read this record for the budget and 0054 for what it looks like.
 
 ## Context
 
