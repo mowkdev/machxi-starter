@@ -1,6 +1,6 @@
 # D10 — Data grid and admin follow-ups
 
-- Status: **planned** — opens when [D9](0009-platform-extraction.md) ships; **scoped 2026-08-28** (`/scope`, ADR-0050) from the two operator-named sections below. The decisions are in [ADR-0052](../adr/0052-grid-and-admin-followups.md), `proposed`, accepted at the head of `D10.1`, where [ADR-0039](../adr/0039-grid-filter-ux.md) and [ADR-0048](../adr/0048-app-shell-and-record-surfaces.md) move to `superseded by` (deltas — everything else in both stands by reference). Opening is the ledger row moving to `in progress` — the operator's decision, not a formality
+- Status: **in progress** — **opened 2026-08-29**, the operator's decision, the day after [D9](0009-platform-extraction.md) shipped; **scoped 2026-08-28** (`/scope`, ADR-0050) from the two operator-named sections below. The decisions are in [ADR-0052](../adr/0052-grid-and-admin-followups.md), `proposed`, **revised 2026-08-29 while proposed** (three corrections at opening — see §The corrections below), accepted at the head of `D10.1`, where [ADR-0039](../adr/0039-grid-filter-ux.md) and [ADR-0048](../adr/0048-app-shell-and-record-surfaces.md) move to `superseded by` (deltas — everything else in both stands by reference)
 - Steps: `D10.1` – `D10.6`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -52,13 +52,23 @@ Not a redesign of anything D8 or D9 touched. If the grid needs a different shape
 
 All in [ADR-0052](../adr/0052-grid-and-admin-followups.md): the hot-filter chip suppression is retired (delta on 0039), `AppShell` gains a `navigating` prop with the app computing router state (delta on 0048), the columns menu takes `@dnd-kit` as `@repo/grid`'s dependency, striping is an opt-in prop, the nav-delay work is measure-first, Playwright lands as `test:e2e` beside the cached gate (the slot 0036 reserved), the bundle budget fails the gate when exceeded, and virtualization stays out at a written ~100-rows threshold. The remaining candidates above (negated operators, bulk endpoints, the bounded filter schema, saved views) are **not** in D10 — each is a supersession or an API change that waits for a deliverable that wants it.
 
+## The corrections, taken 2026-08-29 at opening
+
+A review of the scope against the code found three underdecided points; options were put to the operator and the answers are revised into the still-`proposed` ADR-0052:
+
+- **The profile's instrument was impossible as written.** "React Profiler over `vite preview`" cannot happen — the Profiler refuses to attach to a production bundle, and a dev-mode profile measures StrictMode's world. Decided: a **Chrome DevTools Performance trace** over the plain production preview, reading scripting and rendering time per navigation. The profiling-build alias (react-dom's profiling bundle in a `--mode profile` build) is the named fallback if the trace's number is big enough to need per-component attribution.
+- **"In the gate" contradicted "the gate keeps its shape".** The gate never built `apps/admin`, so the size check had nothing to measure. Decided: a **cached `size` turbo task depending on `build`**, and the gate chain grows — `pnpm lint && pnpm check-types && pnpm test && pnpm size` — near-free when nothing changed. §Definition of done item 3 is reworded accordingly.
+- **The E2E tier had no data rules.** "Against the dev stack" means a database that drifts with use. Decided: **invariant specs, never row counts**; sign-in via env-supplied credentials defaulting to the seeded super admin; dev fixtures assumed present; the suite cleans up what it writes.
+
+Two mechanics noted for their steps rather than decided here: the "indicator during a slow route" spec needs a deliberately delayed chunk (Playwright route interception) to be deterministic (`D10.4`), and `@dnd-kit`'s React 19 peer range is verified at the head of `D10.3` before it enters `packages/grid`.
+
 ## Build order
 
 ### 1. The records, the profile, and the felt click
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md) (accepted at the head of this step; 0039 and 0048 move to `superseded by`), [0047](../adr/0047-ui-package-scope.md), [0037](../adr/0037-grid-viewport-layout.md)
 
-Acceptance mechanics first, then the nav-delay package in its decided order: profile a **production build** (`pnpm build --filter admin`, `vite preview`, React Profiler over the left-nav walk) and record the numbers here; `AppShell` gains the `navigating?: boolean` prop and its indeterminate bar; `apps/admin` computes `useRouterState().status === "pending"` and hands it down; `vite.config.ts` gains `server.warmup` over the page files. Grid-mount work only if the profile's numbers earn it — recorded either way.
+Acceptance mechanics first, then the nav-delay package in its decided order: profile a **production build** (`pnpm build --filter admin`, `vite preview`, a **Chrome DevTools Performance trace** over the left-nav walk — scripting and rendering time per navigation; not the React Profiler, which does not attach to production bundles) and record the numbers here; `AppShell` gains the `navigating?: boolean` prop and its indeterminate bar; `apps/admin` computes `useRouterState().status === "pending"` and hands it down; `vite.config.ts` gains `server.warmup` over the page files. Grid-mount work only if the trace's numbers earn it — recorded either way.
 
 **Done when:** the profile numbers are written into this section as an amendment; a `@repo/ui` test asserts the bar renders under `navigating` and leaves no node otherwise; an admin test asserts the wiring; ADR statuses and index cells flipped; the gate green.
 
@@ -74,7 +84,7 @@ In `@repo/grid`: the applied-filters bar renders a chip for a pressed hot filter
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0041](../adr/0041-grid-preferences.md)
 
-`@dnd-kit` (core + sortable) enters `@repo/grid`; the columns menu rows gain a left drag handle, keep the right-side up/down buttons, and drags land in ADR-0041's preferences exactly as button clicks do. If a split of `app-grid.tsx` happens, it happens here, inside the step already editing it.
+`@dnd-kit` (core + sortable) enters `@repo/grid` — its React 19 peer range verified at the head of the step, before the dependency lands; the columns menu rows gain a left drag handle, keep the right-side up/down buttons, and drags land in ADR-0041's preferences exactly as button clicks do. If a split of `app-grid.tsx` happens, it happens here, inside the step already editing it.
 
 **Done when:** a suite asserts keyboard-operated reorder through the sortable updates the preference and reset-to-defaults still works; `@dnd-kit` appears in `packages/grid` only; the gate green.
 
@@ -82,7 +92,7 @@ In `@repo/grid`: the applied-filters bar renders a chip for a pressed hot filter
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0036](../adr/0036-admin-testing-strategy.md) as carried
 
-Playwright, chromium, `test:e2e` (`cache: false`) against the dev stack: sign-in; both grids with static header and pager, rows the only scroller, no page-level horizontal scrollbar; sort, filter and a pressed hot filter visible in the bar; a record opened in each surface variant; a long form keeping title and Save visible; the resize handle at rest; the navigation indicator during a slow route.
+Playwright, chromium, `test:e2e` (`cache: false`, `SEED_SUPER_ADMIN_*` in its `env` per ADR-0026) against the dev stack: sign-in with env-supplied credentials defaulting to the seeded super admin; both grids with static header and pager, rows the only scroller, no page-level horizontal scrollbar; sort, filter and a pressed hot filter visible in the bar; a record opened in each surface variant; a long form keeping title and Save visible; the resize handle at rest; the navigation indicator during a route whose chunk is deliberately delayed by request interception, so the spec is deterministic. **Specs assert invariants, never row counts** — the dev database drifts with use, and the suite must be green over any database the seeds have touched; anything a spec writes, it cleans up.
 
 **Done when:** `pnpm test:e2e` green against the local stack; the specs cover every recurring close-out walk item this file's history names; `pnpm test`'s shape and caching are untouched.
 
@@ -90,9 +100,9 @@ Playwright, chromium, `test:e2e` (`cache: false`) against the dev stack: sign-in
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0026](../adr/0026-task-graph-caching-and-serialisation.md)
 
-The committed budget file, the check script wired into the gate for `apps/admin`'s build, the baseline recorded in the budget file's first commit.
+The committed budget file, and the `size` turbo task — cached, `dependsOn` `apps/admin`'s `build` — comparing the built output against it. **The gate chain grows its fourth link**: `pnpm lint && pnpm check-types && pnpm test && pnpm size`, and every document that states the gate (`CLAUDE.md`, the rule files, the skills) is swept in this step. The baseline is recorded in the budget file's first commit.
 
-**Done when:** the check passes at baseline and fails on a deliberately breached budget (asserted once, then reverted); the gate green.
+**Done when:** the check passes at baseline and fails on a deliberately breached budget (asserted once, then reverted); `pnpm size` is a cache hit when nothing changed; the gate green.
 
 ### 6. Close-out
 
@@ -104,6 +114,6 @@ The committed budget file, the check script wired into the gate for `apps/admin`
 
 1. **The numbers exist**: the production-build profile is recorded in `D10.1`, before and (where work happened) after.
 2. **Visible state is asserted**: hot-filter chips, stripes and DnD reorder by unit suites; the handle, the indicator and the walk by `test:e2e`.
-3. **The gate keeps its shape**: `pnpm lint && pnpm check-types && pnpm test` green and cached exactly as before; `test:e2e` green beside it against the dev stack.
-4. **The budget stands**: the size check is in the gate, its baseline committed.
+3. **The gate grows one link and nothing else moves**: `pnpm lint && pnpm check-types && pnpm test && pnpm size` green, the first three cached exactly as before and `size` a cache hit when the build is unchanged; `test:e2e` green beside the gate against the dev stack.
+4. **The budget stands**: the `size` task is in the gate chain, its baseline committed.
 5. **Records agree**: 0052 `accepted` with labelled amendments; 0039 and 0048 `superseded by ADR-0052`; index cells and window documents in one reading pass.
