@@ -31,12 +31,14 @@ D6 2026-08-22, D7 2026-08-22, D8 2026-08-27 and D9 2026-08-28, so **ADRs
 0001–0051 are closed** — including every frontend decision the admin panel was
 built on, every grid decision the data-grid rebuild made, D5's pair of
 supersessions, D6's user-settings record, D7's localization one, D8's four and
-D9's platform extraction. **The D10 window is open** (opened 2026-08-29),
-covering [0052](adr/0052-grid-and-admin-followups.md) only — **accepted
-2026-08-29 at the head of `D10.1`**, where [0039](adr/0039-grid-filter-ux.md)
-and [0048](adr/0048-app-shell-and-record-surfaces.md) moved to `superseded by`
-(deltas), so both keep every decision they made and lose only the one each
-names.
+D9's platform extraction. D10 shipped 2026-08-29 and the window on
+[0052](adr/0052-grid-and-admin-followups.md) shut with it, so **ADRs 0001–0052
+are closed and no window is open**. Under that record four parents moved to
+`superseded by`, all deltas — [0039](adr/0039-grid-filter-ux.md) and
+[0048](adr/0048-app-shell-and-record-surfaces.md) at `D10.1`, and
+[0026](adr/0026-task-graph-caching-and-serialisation.md) and
+[0036](adr/0036-admin-testing-strategy.md) at `D10.5`, when the gate grew the
+fourth link each of them had decided it would not grow.
 [0051](adr/0051-platform-extraction.md) delta-supersedes
 [0033](adr/0033-browser-api-client-and-session.md) and
 [0049](adr/0049-admin-app-architecture.md), which keep every decision they made
