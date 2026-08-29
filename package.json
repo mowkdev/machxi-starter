@@ -10,6 +10,7 @@
     "check": "turbo run lint check-types test:unit i18n:check",
     "test": "turbo run test --concurrency=1",
     "test:unit": "turbo run test:unit",
+    "test:e2e": "turbo run test:e2e --concurrency=1",
     "test:int": "turbo run test:int --concurrency=1",
     "test:watch": "turbo run test:watch",
     "test:postman": "node --no-deprecation scripts/postman.mjs",

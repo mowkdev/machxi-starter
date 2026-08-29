@@ -3,3 +3,36 @@
  * (ADR-0031) carries Tailwind, the theme tokens and the `dark` variant.
  */
 @import "@repo/ui/globals.css";
+
+/*
+ * The platform packages this app renders (ADR-0051), registered at `D10.4`.
+ *
+ * **D9 moved rendering code out of `src/` and nothing followed it.** Tailwind
+ * generates a utility only for classes it finds in a scanned source, and
+ * `@repo/ui`'s stylesheet registers its own tree and no other — so from the
+ * extraction onward a class used *only* inside `@repo/grid` or `@repo/form`
+ * was scanned by nothing and its rule silently did not exist. The column
+ * resize handle rendered `width: 0` with a default cursor, an affordance no
+ * pointer could grab, and `D10.2`'s at-rest grip and striped rows landed dead.
+ *
+ * It survived D9's close-out, D10.2's review and a hand walk because the
+ * damage is invisible: every class those packages *share* with this app or the
+ * design system — `sticky`, `overflow-auto`, `flex` — kept working, so the
+ * grid looked right. `overflow-auto` in particular was being generated only
+ * because a test file here happens to mention it. `pnpm test:e2e` found it on
+ * its first real run.
+ *
+ * **Here rather than in `@repo/ui`'s stylesheet**, which `apps/web` imports
+ * too: the marketing site renders no grid and no form, and utilities it never
+ * uses are bytes it should not carry. The cost is that D11's customer app
+ * declares these two lines for itself — which is the same shape as its `shared/`
+ * doors, and visible rather than inherited.
+ *
+ * Only the two packages that render: `api-client`, `app-services`, `resource`
+ * and `i18n` hold no `className` at all. Tests are excluded because a class
+ * mentioned only in a test is exactly how the original defect stayed hidden.
+ */
+@source "../../../../packages/grid/src";
+@source not "../../../../packages/grid/src/__tests__";
+@source "../../../../packages/form/src";
+@source not "../../../../packages/form/src/__tests__";

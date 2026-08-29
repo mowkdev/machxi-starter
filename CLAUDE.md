@@ -26,6 +26,7 @@ pnpm check                     # fast inner loop: lint + check-types + test:unit
 pnpm test:unit                 # unit tests alone, cached, no database
 pnpm lint && pnpm check-types && pnpm test   # the gate: test includes integration, needs Postgres up
 pnpm test:int --filter api     # integration tests only, against DATABASE_URL_TEST
+pnpm test:e2e                  # Playwright over the dev stack (D10.4) — beside the gate, never in it
 pnpm test:postman              # newman over docs/postman
 ```
 

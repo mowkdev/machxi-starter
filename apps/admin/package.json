@@ -11,6 +11,7 @@
     "i18n:extract": "node scripts/i18n.mjs --write",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "test:watch": "vitest"
   },
@@ -18,11 +19,11 @@
     "@hookform/resolvers": "^5.9.1",
     "@repo/api-client": "workspace:*",
     "@repo/app-services": "workspace:*",
+    "@repo/contracts": "workspace:*",
     "@repo/form": "workspace:*",
     "@repo/grid": "workspace:*",
     "@repo/i18n": "workspace:*",
     "@repo/resource": "workspace:*",
-    "@repo/contracts": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.31",
@@ -36,6 +37,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@repo/vitest-config": "workspace:*",

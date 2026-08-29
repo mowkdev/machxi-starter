@@ -22,3 +22,8 @@ apps/web/next-env.d.ts
 
 # Scratch the TanStack Router plugin writes while `dev` is running (D4.2).
 apps/admin/.tanstack
+
+# Playwright (D10.4): a live refresh cookie, its reports and its traces
+apps/admin/e2e/.auth/
+apps/admin/test-results/
+apps/admin/playwright-report/
