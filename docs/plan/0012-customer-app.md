@@ -1,6 +1,8 @@
-# D11 — Customer app
+# D12 — Customer app
 
-- Status: **planned** — opens when [D10](0010-grid-and-admin-followups.md) ships
+> **Renumbered from D11 on 2026-08-29**, when the account area ([D11](0011-account-area.md)) was inserted ahead of it — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
+
+- Status: **planned** — opens when [D11](0011-account-area.md) ships
 - Steps: written when the deliverable opens; this file carries scope, order rationale and the assumptions taken
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -10,9 +12,9 @@ Scope: **`apps/customer`** — a Vite + React SPA over the `/user` segment, the 
 
 ## The sharing decision (settled in scoping, 2026-08-20)
 
-**Separate apps, not one merged app.** The population boundary is the app boundary: [ADR-0017](../adr/0017-identity-model-populations-and-roles.md) split `staff` and `user` into separate tables, flows and segments, and the [ADR-0033](../adr/0033-browser-api-client-and-session.md) session machine — in-memory token, single-flight refresh, CSRF bootstrap — is built around one population per client. A merged app would run two session models in one SPA, ship the admin panel's code in every customer's bundle, and put the customer-facing attack surface in the same origin as staff sessions. Impersonation ([D12](0012-impersonation.md)) also gets _cleaner_ with separation: the staff session and the impersonated customer session never coexist in one client.
+**Separate apps, not one merged app.** The population boundary is the app boundary: [ADR-0017](../adr/0017-identity-model-populations-and-roles.md) split `staff` and `user` into separate tables, flows and segments, and the [ADR-0033](../adr/0033-browser-api-client-and-session.md) session machine — in-memory token, single-flight refresh, CSRF bootstrap — is built around one population per client. A merged app would run two session models in one SPA, ship the admin panel's code in every customer's bundle, and put the customer-facing attack surface in the same origin as staff sessions. Impersonation ([D13](0013-impersonation.md)) also gets _cleaner_ with separation: the staff session and the impersonated customer session never coexist in one client.
 
-**`apps/web` is re-scoped to a marketing site and moves last (D13).** That narrows frozen ADR-0022's "public/user-facing app: Next.js" identity. The superseding roster ADR is D9's to write or this deliverable's — it is strictly needed the day an app actually changes, which is this one.
+**`apps/web` is re-scoped to a marketing site and moves last (D14).** That narrows frozen ADR-0022's "public/user-facing app: Next.js" identity. The superseding roster ADR is D9's to write or this deliverable's — it is strictly needed the day an app actually changes, which is this one.
 
 ## Decisions this deliverable needs
 

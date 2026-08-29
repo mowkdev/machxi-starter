@@ -1,10 +1,12 @@
-# D12 — Customer impersonation
+# D13 — Customer impersonation
 
-- Status: **planned** — opens when [D11](0011-customer-app.md) ships
+> **Renumbered from D12 on 2026-08-29**, when the account area ([D11](0011-account-area.md)) was inserted ahead of the customer app — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
+
+- Status: **planned** — opens when [D12](0012-customer-app.md) ships
 - Steps: written when the deliverable opens; this file carries scope, order rationale and the assumptions taken
 - Ledger: [`docs/plan/README.md`](README.md)
 
-Scope: staff open the customer app **as a chosen customer**. An admin endpoint mints an impersonated `user`-population session; the customer app runs on it exactly as it would on a real one, with a persistent banner naming both identities and an explicit exit; every impersonated request is attributable to the staff member behind it. This is deliberately **last in the customer-app cluster**: it needs the app it signs into ([D11](0011-customer-app.md)), the settings and locale that app runs on (D6/D7), and it is the highest-risk security surface in the ledger — everything it touches must already stand still.
+Scope: staff open the customer app **as a chosen customer**. An admin endpoint mints an impersonated `user`-population session; the customer app runs on it exactly as it would on a real one, with a persistent banner naming both identities and an explicit exit; every impersonated request is attributable to the staff member behind it. This is deliberately **last in the customer-app cluster**: it needs the app it signs into ([D12](0012-customer-app.md)), the settings and locale that app runs on (D6/D7), and it is the highest-risk security surface in the ledger — everything it touches must already stand still.
 
 ## Design sketch (the ADR decides; these are the constraints it starts from)
 
