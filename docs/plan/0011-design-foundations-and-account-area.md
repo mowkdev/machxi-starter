@@ -1,7 +1,7 @@
 # D11 — Design foundations and account area
 
-- Status: **planned** — opens when [D10](0010-grid-and-admin-followups.md) ships **and the design reference below is settled enough to extract decisions from**; **inserted 2026-08-29** ahead of the customer app (the D5 precedent — see `docs/plan/README.md` §How D11 was inserted), **fused with the design-foundations scope the same day** (the D8 precedent: one deliverable, one window, more than one record)
-- Steps: written when the deliverable opens; this file carries scope, the decisions already taken, and the assumptions
+- Status: **in progress** — **opened 2026-08-30**, the operator's decision, both opening conditions met: D10 shipped 2026-08-29 and the design reference is complete and accepted (§The reference settled). **Inserted 2026-08-29** ahead of the customer app (the D5 precedent — see `docs/plan/README.md` §How D11 was inserted), **fused with the design-foundations scope the same day** (the D8 precedent: one deliverable, one window, more than one record). The window covers [ADR-0053](../adr/0053-account-area.md) and [ADR-0054](../adr/0054-design-language-instrument.md), both `proposed` at opening — 0054 accepted at the head of `D11.1`, 0053 at the head of `D11.6`, each where its parents flip
+- Steps: `D11.1` – `D11.11`
 - Ledger: [`docs/plan/README.md`](README.md)
 
 Scope, in two phases under one window: **first the design language lands** — the operator's redesign of the grid and the layouts, drawn in Claude Design against a canvas seeded from the shipped screens, applied through the token sheet, the compositions and `@repo/grid` — **then the account area is built in the new style**, never restyled after. Both phases land in the packages both apps consume, which is the whole reason this row sits where it does: the customer app ([D12](0012-customer-app.md)) inherits the design and the account layout by construction, through `@repo/ui` and `@repo/grid`, not by a second sweep.
@@ -85,6 +85,103 @@ The canvas is not a picture — every artboard carries its styling as explicit v
 - **The e2e walk grows by one account spec**, reusing D10's harness and its data rules (invariants, no counts, cleanup).
 - **`nav.profile` copy and keys**: the `common:nav` key retires with the sidebar item; the account menu link's key moves from `account.profile` to whatever the ADR names the area. Both catalogues (`en`, `lv`) move in the same step, per ADR-0046's drift check.
 
-## Acceptance sketch
+## Build order
 
-The token sheet in `packages/ui` is the only place colors, radii and type scale changed, in both themes; the grid restyle lives in `@repo/grid` and the compositions only, with the generated primitives byte-identical to their CLI output; every structural adoption names its record (superseded or amended) and its updated e2e spec is green; the shipped screens match the canvas reference, operator-accepted. `/account` reachable from the account menu and from a cold URL; each section deep-linkable with its own title and breadcrumb; `/profile` redirects; theme and locale changed from `/account/preferences` persist through the same account-fact round trip D6/D7 proved (second browser finds the first one's choice); the account menu offers exactly the principal block, the account link and logout; the sidebar shows no account entry; every operator-facing string is a key in both catalogues; the layout composition is tested in `packages/ui` and its admin adoption in the app's tier; the account walk is a green `test:e2e` spec; the gate — including D10's `size` link — green, with the bundle budget as the check on what the redesign costs in bytes.
+### 1. The records, the fonts and the token sheet
+
+**ADRs:** [0054](../adr/0054-design-language-instrument.md) (accepted at the head of this step; 0037 moves to `superseded by 0054`, 0048 and 0052 gain their second-successor deltas), [0047](../adr/0047-ui-package-scope.md), [0026](../adr/0026-task-graph-caching-and-serialisation.md) as carried by 0052
+
+Acceptance mechanics and the instruction-document sweep first (the window docs, the rule file, the skills that describe the gate and the design system). Then: `@fontsource` IBM Plex Sans + Mono into `apps/admin`, imported beside the stylesheet; `globals.css` rewritten to 0054 §2's tables, both themes, with `--font-sans`/`--font-mono` mapped in `@theme`; radius 6. The whole app re-skins from this step alone.
+
+**Done when:** the values in `globals.css` match 0054 §2 as a reviewable diff; `pnpm test:e2e` green unchanged (a token re-skin moves no structure); the `size-budget.json` raise for the fonts is its own reviewed hunk; the gate green.
+
+### 2. Grid chrome
+
+**ADRs:** [0054](../adr/0054-design-language-instrument.md) §4, [0037](../adr/0037-grid-viewport-layout.md) as carried
+
+In `@repo/grid`: the card frame retires (edge-to-edge, band rules), header 34px with caps labels, row/rule/stripe/selected/resize-tick values per §4, the status-dot renderer, mono on emails/timestamps/counts/role badges. Comfortable height only — density is `D11.6`'s.
+
+**Done when:** the grid suites' updated structural assertions green; the e2e grid specs updated in this diff and green (header static, rows only scroller, no page-level horizontal scrollbar — same invariants, new values); the gate green.
+
+### 3. Shell bands and the version footer
+
+**ADRs:** [0054](../adr/0054-design-language-instrument.md) §5, [0048](../adr/0048-app-shell-and-record-surfaces.md) as carried, [0049](../adr/0049-admin-app-architecture.md)/[0051](../adr/0051-platform-extraction.md) for the widget seams
+
+`AppShell`: header 56, the page-header band with the new `description` and `pageActions` slots, the full-bleed variant; the admin adapter and pages adopt. `apps/admin`: sidebar 240, inset-bar active state, the 48px footer with the version constant (a tracked source + Vite `define`); breadcrumbs stay D8.6's composition.
+
+**Done when:** the `@repo/ui` shell suite asserts the new slots render only when handed content; an admin test asserts the version constant renders from the tracked source; e2e shell specs updated in this diff and green; the gate green.
+
+### 4. The toolbar, the segments and the Filtered-by band
+
+**ADRs:** [0054](../adr/0054-design-language-instrument.md) §5, [0052](../adr/0052-grid-and-admin-followups.md) as carried (chip semantics untouched)
+
+In `@repo/grid`: the 48px toolbar band (search 32, segmented hot filters 30), the 40px Filtered-by band (caps label, tinted 26px chips, underlined Clear all). Presentation only — one chip per filter, hot filters chipped, removal semantics and the live region exactly as shipped.
+
+**Done when:** the applied-bar and hot-filter suites green with assertions updated to the new structure and none weakened on behaviour; e2e filter specs updated in this diff and green; the gate green.
+
+### 5. The record surfaces and the popover
+
+**ADRs:** [0054](../adr/0054-design-language-instrument.md) §7, [0048](../adr/0048-app-shell-and-record-surfaces.md) as carried (variants, size tokens, heading rules)
+
+`RecordSurface` and the form wrappers take the band anatomy (60/64), dialog 600, drawer static-band scrolling, page card 672 with the record-label `h1`; the account popover restyles through tokens alone — its diff must not touch `packages/ui/src/components/`.
+
+**Done when:** the three-shell parity suite green under the new anatomy; `git diff` for `packages/ui/src/components/` empty in this step; e2e record-surface specs updated in this diff and green; the gate green.
+
+### 6. Density
+
+**ADRs:** [0053](../adr/0053-account-area.md) (accepted at the head of this step; 0045 moves to `superseded by 0053`), [0054](../adr/0054-design-language-instrument.md) §6, [0045](../adr/0045-user-settings.md) as carried
+
+`gridDensity` into the settings core in `@repo/contracts` (both segments' strict bodies), the API accepting it with integration coverage, Postman touched per `/postman-sync`; `@repo/grid` takes the two-value density; the page-header control writes the account fact through the coalescing writer.
+
+**Done when:** contracts and API integration tests green on the new key (both segments, reject-unknown still holding for anything else); a grid test asserts exactly row height, cell padding and badge padding change; an admin test asserts the control writes through settings; `pnpm test:postman` green; the gate green.
+
+### 7. The login
+
+**ADRs:** [0054](../adr/0054-design-language-instrument.md) §7 (the login block), [0046](../adr/0046-interface-localization.md)
+
+`widgets/auth-layout` takes the 400px left-aligned composition on the hairline ground — the one screen whose structural redesign edits app code, as §The reference settled records. No "Forgot?" link, no TTL copy (§8 exclusions).
+
+**Done when:** the login suite green under the new structure; the e2e sign-in spec green; every new string a key in `en` and `lv` with `pnpm i18n:check` clean; the gate green.
+
+### 8. `SettingsLayout`
+
+**ADRs:** [0053](../adr/0053-account-area.md), [0047](../adr/0047-ui-package-scope.md), [0054](../adr/0054-design-language-instrument.md) §7
+
+The two-pane composition in `@repo/ui/src/compositions/` — routing-ignorant, nav as rendered children, responsive collapse — tested in the package.
+
+**Done when:** its `packages/ui` suite green (nav children render, no router import — asserted by the package's dependency graph staying clean); `pnpm format:check` clean; the gate green.
+
+### 9. `/account` — the routes, profile and security
+
+**ADRs:** [0053](../adr/0053-account-area.md), [0049](../adr/0049-admin-app-architecture.md)/[0051](../adr/0051-platform-extraction.md), [0044](../adr/0044-record-routes-without-list-state.md)
+
+The route family under `_dashboard` (layout, index redirect, three section routes), `/profile` redirecting; `pages/account` composes `SettingsLayout`; the profile summary + details form and the password card land in their sections, reusing `entities/profile` and `features/profile-manage` as they are.
+
+**Done when:** routing tests assert each section deep-links with its own title and the redirect lands; the moved suites green in their new homes with no assertion weakened; the gate green.
+
+### 10. Preferences, the slim menu and the nav
+
+**ADRs:** [0053](../adr/0053-account-area.md), [0046](../adr/0046-interface-localization.md), [0042](../adr/0042-client-side-authorization.md) (the nav join it carries)
+
+The Preferences section (theme cards, density cards, self-named language rows); `ThemeMenuItems`/`LocaleMenuItems` retire and the menu slims to principal block + Account + Sign out per the popover reference; the sidebar loses the Profile item and its `common:nav` key, both catalogues.
+
+**Done when:** tests assert the theme, density and locale controls write through exactly the paths the menu items wrote; a menu test asserts exactly the three slim entries; `pnpm i18n:check` clean after the key moves; the gate green.
+
+### 11. The account walk and close-out
+
+**ADRs:** none of its own — the checklist below
+
+The account e2e spec (menu → each section → theme/locale/density round trip, invariant-style per D10's data rules); then the §Definition-of-done run, the records sync, the ledger row.
+
+**Done when:** every §Definition-of-done item is checked or recorded as pending operator acceptance; the row reads `shipped`; the window on 0053 and 0054 is shut.
+
+## Definition of done
+
+1. **The values are the reference's**: `globals.css` against 0054 §2, the chrome values against §4–§7 — reviewable diffs, no unexplained divergence.
+2. **Structure is asserted**: every structural step's e2e specs updated in that step's diff and green; the package suites green; `git diff` for `packages/ui/src/components/` empty across the deliverable.
+3. **The pixels are accepted by the operator**: Playwright screenshots of grid (both themes), record surfaces, login, popover and `/account` set beside the reference screens — value equality plus a human look, never an automated pixel diff.
+4. **The account area behaves**: sections deep-link, `/profile` redirects, the round trip persists to a second browser, the menu holds exactly three entries, the sidebar holds no account entry.
+5. **The contracts moved once**: `gridDensity` on both segments with integration and Postman coverage; nothing else in the API diff.
+6. **Both catalogues complete**: `pnpm i18n:check` clean; the pseudo-locale suite green over the new routes.
+7. **The gate keeps D10's shape**: `pnpm lint && pnpm check-types && pnpm test && pnpm size` green, `pnpm test:unit` twice with the second fully cached, `test:e2e` green beside; the budget raise for fonts reviewed, not silent.
+8. **Records agree**: 0053 and 0054 `accepted` with labelled amendments; 0037 `superseded by 0054`; 0045 `superseded by 0053`; 0048 and 0052 carrying their second-successor deltas; the window documents in one reading pass.

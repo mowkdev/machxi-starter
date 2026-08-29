@@ -33,7 +33,11 @@ built on, every grid decision the data-grid rebuild made, D5's pair of
 supersessions, D6's user-settings record, D7's localization one, D8's four and
 D9's platform extraction. D10 shipped 2026-08-29 and the window on
 [0052](adr/0052-grid-and-admin-followups.md) shut with it, so **ADRs 0001–0052
-are closed and no window is open**. Under that record four parents moved to
+are closed**; **the D11 window is open** (opened 2026-08-30), covering
+[0053](adr/0053-account-area.md) and
+[0054](adr/0054-design-language-instrument.md), both `proposed` — 0054 accepted
+at `D11.1`'s head, 0053 at `D11.6`'s, each where its parents flip; until then
+the parents stand in force. Under ADR-0052 four parents moved to
 `superseded by`, all deltas — [0039](adr/0039-grid-filter-ux.md) and
 [0048](adr/0048-app-shell-and-record-surfaces.md) at `D10.1`, and
 [0026](adr/0026-task-graph-caching-and-serialisation.md) and
