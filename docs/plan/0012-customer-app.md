@@ -1,8 +1,8 @@
 # D12 — Customer app
 
-> **Renumbered from D11 on 2026-08-29**, when the account area ([D11](0011-account-area.md)) was inserted ahead of it — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
+> **Renumbered from D11 on 2026-08-29**, when the design foundations and account area ([D11](0011-design-foundations-and-account-area.md)) were inserted ahead of it — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
 
-- Status: **planned** — opens when [D11](0011-account-area.md) ships
+- Status: **planned** — opens when [D11](0011-design-foundations-and-account-area.md) ships
 - Steps: written when the deliverable opens; this file carries scope, order rationale and the assumptions taken
 - Ledger: [`docs/plan/README.md`](README.md)
 

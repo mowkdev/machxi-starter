@@ -1,6 +1,6 @@
 # D13 — Customer impersonation
 
-> **Renumbered from D12 on 2026-08-29**, when the account area ([D11](0011-account-area.md)) was inserted ahead of the customer app — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
+> **Renumbered from D12 on 2026-08-29**, when the design foundations and account area ([D11](0011-design-foundations-and-account-area.md)) were inserted ahead of the customer app — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
 
 - Status: **planned** — opens when [D12](0012-customer-app.md) ships
 - Steps: written when the deliverable opens; this file carries scope, order rationale and the assumptions taken
