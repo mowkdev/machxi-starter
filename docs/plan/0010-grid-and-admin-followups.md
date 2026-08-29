@@ -109,13 +109,31 @@ In `@repo/grid`: the applied-filters bar renders a chip for a pressed hot filter
 
 **Pending operator acceptance**: **no shipped screen sets `striped`**, which is what ADR-0052 asked for — off by default, a consumer opts in — and means the prop's only consumer today is its test. Say the word and staff or users takes it. And the two pixel facts stay pixel facts: the grip's visibility at rest and the stripe's legibility in light and dark are `D10.4`'s specs (the handle by name) or your eye before then. What jsdom can see is asserted here — the classes are on the elements, in both the on and off cases.
 
-### 3. The columns menu learns to drag
+### ~~3. The columns menu learns to drag~~ — **done 2026-08-29**
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md), [0041](../adr/0041-grid-preferences.md)
 
 `@dnd-kit` (core + sortable) enters `@repo/grid` — its React 19 peer range verified at the head of the step, before the dependency lands; the columns menu rows gain a left drag handle, keep the right-side up/down buttons, and drags land in ADR-0041's preferences exactly as button clicks do. If a split of `app-grid.tsx` happens, it happens here, inside the step already editing it.
 
 **Done when:** a suite asserts keyboard-operated reorder through the sortable updates the preference and reset-to-defaults still works; `@dnd-kit` appears in `packages/grid` only; the gate green.
+
+**Amended 2026-08-29 (D10.3) — the peer check, a fourth package, and the split that did not happen.**
+
+- **The peer range, verified at the head as the step required**: `@dnd-kit/core@6.3.1`, `@dnd-kit/sortable@10.0.0`, `@dnd-kit/utilities@3.2.2` and `@dnd-kit/modifiers@9.0.0` all declare `react: ">=16.8.0"`, so React 19 is inside every one of them. **An open-ended range is a claim, not a test**, though — which is why the suite drives the real `sortableKeyboardCoordinates` gesture under React 19 rather than calling `onDragEnd` by hand: that is the part a version number cannot answer.
+- **Four packages, not the two the step named.** `@dnd-kit/utilities` is `CSS.Transform.toString`, which is how a lifted row is moved at all, and `@dnd-kit/modifiers` is `restrictToVerticalAxis` — the list is a column, and an unrestricted drag carries the row out of the popover's 16rem width, where collision detection starts answering about nothing. Both are `@repo/grid`'s alone, like the two the ADR named.
+- **The gesture is added, not substituted.** The grip is on the left and carries the drag listeners; the up/down arrows stay on the right, and `Reset to defaults` still undoes both. `AppGrid` grew one `reorderTo(from, to)` that the arrows and the drop both call, so ADR-0041's "order is one preference" is true by construction rather than by two writers agreeing. The drop reports **ids**, and the indices are resolved late against the preference — the menu renders an order it does not own.
+- **`app-grid.tsx` was not split**, and the decision is recorded rather than left to be re-litigated: this step's edit to it was one callback becoming two plus a prop, and a structural split with no behaviour change is exactly the churn the step's own text says a split must not be. The file is still the largest hand-written one in the repository; the next step that genuinely restructures it is where it earns the move.
+
+**Amended 2026-08-29 (D10.3) — what the review changed, because two of them were the reason the dependency was chosen.**
+
+- **The screen-reader copy was `@dnd-kit`'s, in English, naming ids.** The library ships its own instructions ("To pick up a draggable item, press the space bar…"), its own `aria-roledescription`, and announcements that interpolate the item's **id** — so a grip labelled "Reorder Created" on screen announced itself as `createdAt`, in `lv` as in `en`. ADR-0052 §Alternatives rejected native HTML5 drag-and-drop precisely so the arrows would not carry accessibility alone, and shipping this would have left them carrying it anyway. Six keys now live in the package's own catalogues, in both locales, and the live region names the column.
+- **Escape closed the menu instead of cancelling the drag.** The instructions advertise escape as the cancel gesture; Radix's dismiss layer is mounted before the sensor's document listener and answered first, so the operator lost the whole popover. `onEscapeKeyDown` now refuses the dismissal exactly while a drag is up.
+- **And fixing the first two exposed a real bug in the third.** Tracking "is a drag up?" made the menu re-render mid-drag, which broke the drag: `useSensor` memoises on its options object, an inline literal is a new object every render, and `DndContext` re-initialises its sensors when that array changes. The lift still happened and still announced itself; only the arrow key did nothing, silently. The options are module constants now, and the comment above them says why. **No test would have caught this without the keyboard case** — a suite that fired `onDragEnd` by hand would have been green through all of it.
+- **The done-when's "updates the preference" was not asserted.** The package's own suite drives the real sortable, but its harness re-implements the splice, so it proves the gesture and not where the result lands. A case in `apps/admin/src/shared/grid/__tests__/app-grid.test.tsx` now does the keyboard drag against the real `AppGrid`, `gridId` and storage, and asserts the persisted `order` — the same entry the arrows write.
+
+**Recorded, not fixed** (a D9 leftover this step surfaced): **`pnpm i18n:check` does not see the packages' catalogues.** Its `LOCALES_DIR` is `apps/admin/src/shared/i18n/locales`, and D9 moved `@repo/grid`'s and `@repo/form`'s locale trees out of it — so every key those packages add, including this step's six, is unguarded in both directions, and `packages/*/eslint.config.js` carries no `no-literal-string` either. ADR-0046 §9 already decided what the check is for; widening the script to the workspace's `*/src/locales` trees is code rather than a new decision, and it belongs with `D10.5`'s document sweep or a step of its own rather than inside this one.
+
+**Pending operator acceptance**: the pointer drag itself. The keyboard path is machine-checked end to end, but a mouse drag needs a layout engine — the suite gives jsdom stacked rects so `closestCenter` has centres to compare, and stacked rects are not a browser. `D10.4`'s spec or your hand on a mouse is what confirms the grip drags, the row lifts and the drop lands where it looks like it will.
 
 ### 4. The browser tier
 

@@ -1492,6 +1492,77 @@ describe("grid preferences", () => {
     ]);
   });
 
+  it("moves a column by keyboard drag, and the same preference follows", async () => {
+    const user = userEvent.setup();
+
+    /*
+     * **The drag's path into ADR-0041's preferences, asserted where the store
+     * is real** (`D10.3`, ADR-0052 §Visible state). `@repo/grid`'s own suite
+     * drives the same gesture against a harness that re-implements the splice,
+     * so it can prove the sortable works and cannot prove where the result
+     * lands. Only here — real `AppGrid`, real `gridId`, real storage — does
+     * "a drop writes the preference an arrow writes" become a fact.
+     *
+     * jsdom lays nothing out and `closestCenter` compares centres, so the rows
+     * are given stacked rects for the length of this test. `vi.spyOn` rather
+     * than an assignment, so `restoreMocks` puts it back before the next case
+     * — and installed *inside* the test for the same reason.
+     */
+    const ROW_HEIGHT = 40;
+
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function rect(this: Element) {
+        const row = this.closest<HTMLElement>('[data-slot="columns-menu-row"]');
+        const siblings = [...(row?.parentElement?.children ?? [])];
+        const index = row === null ? -1 : siblings.indexOf(row);
+        const top = index === -1 ? 0 : index * ROW_HEIGHT;
+
+        return {
+          x: 0,
+          y: top,
+          top,
+          left: 0,
+          bottom: top + ROW_HEIGHT,
+          right: 240,
+          width: 240,
+          height: ROW_HEIGHT,
+          toJSON: () => ({}),
+        } as DOMRect;
+      },
+    );
+
+    render(<Harness page={pageOf(demoRows)} gridId={GRID} storage={storage} />);
+
+    await openColumns(user);
+
+    screen.getByRole("button", { name: "Reorder Status" }).focus();
+    await user.keyboard("{ }");
+    await user.keyboard("{ArrowUp}");
+    await user.keyboard("{ }");
+
+    expect(headers()).toEqual([
+      "Status",
+      "Name",
+      "Tags",
+      "Created",
+      "Archived",
+      "Actions",
+    ]);
+
+    /*
+     * And it is *persisted*, in the same entry the arrows write — one
+     * preference, two gestures, which is the ADR-0041 claim this step could
+     * have broken by writing the order anywhere else.
+     */
+    expect(entry(storage)?.["order"]).toEqual([
+      "status",
+      "name",
+      "tags",
+      "createdAt",
+      "archivedAt",
+    ]);
+  });
+
   it("keeps the grid's own chrome at the ends, whatever the operator does", async () => {
     const user = userEvent.setup();
 

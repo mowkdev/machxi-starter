@@ -29,6 +29,15 @@
     "label": "Kolonnas",
     "moveUp": "Pārvietot {{column}} uz augšu",
     "moveDown": "Pārvietot {{column}} uz leju",
+    "reorder": "Pārkārtot {{column}}",
+    "dnd": {
+      "instructions": "Nospiediet atstarpes taustiņu vai Enter, lai paņemtu kolonnu. Izmantojiet bultiņu taustiņus, lai to pārvietotu, atstarpes taustiņu vai Enter, lai to nomestu, un Escape, lai atceltu.",
+      "role": "pārkārtojama kolonna",
+      "lifted": "{{column}} paņemta. Tā ir {{position}}. pozīcijā no {{total}}.",
+      "moved": "{{column}} pārvietota uz {{position}}. pozīciju no {{total}}.",
+      "dropped": "{{column}} nomesta {{position}}. pozīcijā no {{total}}.",
+      "cancelled": "{{column}} pārkārtošana atcelta. Tā atkal ir {{position}}. pozīcijā no {{total}}."
+    },
     "reset": "Atjaunot noklusējumus",
     "resize": "Mainīt {{column}} platumu"
   },

@@ -27,6 +27,15 @@
     "label": "Columns",
     "moveUp": "Move {{column}} up",
     "moveDown": "Move {{column}} down",
+    "reorder": "Reorder {{column}}",
+    "dnd": {
+      "instructions": "Press space or enter to pick up the column. Use the arrow keys to move it, space or enter to drop it, and escape to cancel.",
+      "role": "sortable column",
+      "lifted": "Picked up {{column}}. It is at position {{position}} of {{total}}.",
+      "moved": "{{column}} moved to position {{position}} of {{total}}.",
+      "dropped": "{{column}} dropped at position {{position}} of {{total}}.",
+      "cancelled": "Reordering {{column}} cancelled. It is back at position {{position}} of {{total}}."
+    },
     "reset": "Reset to defaults",
     "resize": "Resize {{column}}"
   },

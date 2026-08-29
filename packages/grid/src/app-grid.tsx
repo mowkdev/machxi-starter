@@ -674,11 +674,18 @@ export const AppGrid = <TRow,>({
     preferences.hidden.length > 0 ||
     preferences.order.join("\n") !== movable.join("\n");
 
-  const moveColumn = useCallback(
-    (columnId: string, direction: -1 | 1) => {
-      const from = preferences.order.indexOf(columnId);
-      const to = from + direction;
-
+  /**
+   * One column, from one index to another — the single path both reorder
+   * gestures take (`D10.3`).
+   *
+   * The arrows and the drag handle differ only in how they name the
+   * destination: an arrow says "one place that way", a drop says "where this
+   * other column is". Both end here, so ADR-0041's promise that order is a
+   * preference like any other holds for the new gesture without a second
+   * writer existing to disagree with the first.
+   */
+  const reorderTo = useCallback(
+    (from: number, to: number) => {
       if (from === -1 || to < 0 || to >= preferences.order.length) return;
 
       const next = [...preferences.order];
@@ -699,6 +706,35 @@ export const AppGrid = <TRow,>({
       ]);
     },
     [preferences.order, table, selectable, structural],
+  );
+
+  const moveColumn = useCallback(
+    (columnId: string, direction: -1 | 1) => {
+      const from = preferences.order.indexOf(columnId);
+
+      reorderTo(from, from + direction);
+    },
+    [preferences.order, reorderTo],
+  );
+
+  /**
+   * A drag landed on another row (`D10.3`, ADR-0052 §Visible state).
+   *
+   * Ids in, indices resolved *here* against the order the preference holds
+   * right now — the menu renders that order but does not own it, and by the
+   * time this runs the two could differ (a second grid on the same `gridId`,
+   * a settings sync landing mid-gesture). Resolving late is what keeps a drop
+   * meaning "put it where that column is" rather than "put it at the number
+   * the menu last saw".
+   */
+  const reorderColumn = useCallback(
+    (activeId: string, overId: string) => {
+      reorderTo(
+        preferences.order.indexOf(activeId),
+        preferences.order.indexOf(overId),
+      );
+    },
+    [preferences.order, reorderTo],
   );
 
   const headerGroups = table.getHeaderGroups();
@@ -808,6 +844,7 @@ export const AppGrid = <TRow,>({
                   }));
                 }}
                 onMove={moveColumn}
+                onReorder={reorderColumn}
                 onReset={preferenceStore.reset}
               />
             )
