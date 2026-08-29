@@ -18,6 +18,15 @@ Scope, in two phases under one window: **first the design language lands** — t
 
 [ADR-0047](../adr/0047-ui-package-scope.md)'s byte-identical rule stands: the generated shadcn primitives in `packages/ui/src/components/` are not restyled file-by-file. The design speaks through exactly three surfaces — **the CSS token sheet** (`packages/ui/src/styles/globals.css`, Tailwind v4 CSS-first, both themes), **the hand-written compositions** (`AppShell`, `RecordSurface`, `Banner`, phase 2's `SettingsLayout`), and **`@repo/grid`'s own styling**. A design need that cannot be met from those three is either an owned-edit with its comment (ADR-0047 regime 1) or a finding for the ADR — named at the step, not smuggled in.
 
+### How a settled design is applied exactly (the phase-1 method, decided 2026-08-29)
+
+The canvas is not a picture — every artboard carries its styling as explicit values (`oklch(…)`, px, weights), which is what makes exact application a diff rather than an interpretation. The method:
+
+1. **The diff is the spec.** The seeded canvas is the committed baseline and every Save keeps a version, so the settled design reads as _changes against what ships_. Extraction is per-value: each changed color, radius, size, weight and arrangement is named, not eyeballed. A designer (human or Claude Design) keeps this lossless by changing **values** on artboards rather than free-drawing over them.
+2. **The design-language ADR is the record, not the image.** At `D11.1` the extracted values go into the ADR as tables — palette (both themes), radius, type, density, grid chrome — plus every structural adoption with the record it supersedes. From then on the ADR is what the code answers to; the canvas stays as its illustration.
+3. **Application order follows the three surfaces**: the token sheet first (`globals.css`, both themes — everything on semantic tokens follows by construction), then chrome (`@repo/grid`, the compositions), then structural changes, each naming its record and updating its e2e spec in the same step.
+4. **Exactness is checked at three levels, and only the first two are machine gates.** _Values_: the ADR's tables versus `globals.css` and the styled components is a reviewable diff — byte-comparable. _Structure_: the package suites assert the class strings and geometry (the D8 precedent), and `test:e2e` asserts the invariants. _Pixels_: Playwright screenshots of the shipped screens are put beside the artboards' PNG exports and **accepted by the operator** — an artboard and a browser render are never byte-identical (font rasterizing, antialiasing, real data), so automated pixel-diffing against artboards is deliberately not the gate; value equality plus a human look is.
+
 ### Decisions phase 1 needs
 
 - **The design-language ADR**: the token contract as the redesign seam (what the palette, type scale, radius and density values are and where they live), the grid chrome decisions, and — separately stated — every structural adoption with the record it supersedes or amends. Expected to be the widest-reaching record of the deliverable; written when the canvas reference is settled.
