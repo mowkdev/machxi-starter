@@ -78,6 +78,7 @@ const TRANSLATED: UiStrings = {
   breadcrumb: "navigācijas ceļš",
   notifications: "Paziņojumi",
   dismiss: "Aizvērt paziņojumu",
+  navigating: "Notiek pāreja",
 };
 
 const dialogs: ReactElement = (

@@ -29,4 +29,26 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  /*
+   * Dev only, and one of the two halves of ADR-0052 §Felt navigation.
+   *
+   * `autoCodeSplitting` above makes every route its own lazy chunk, and in
+   * `pnpm dev` a chunk is transformed **on first demand** — so the first click
+   * on Staff pays for transforming the page, its slice and everything they
+   * pull in, while the router holds the old screen. Warmup asks Vite to
+   * transform these modules as the server starts instead, into the same
+   * module graph the browser will ask for.
+   *
+   * It changes nothing about production: `vite build` transforms everything
+   * anyway, which is why the profile that sized this work ran against a
+   * preview of the build rather than against this server.
+   *
+   * Both trees, not just `routes`: a route file's whole job is to import its
+   * page, so warming the routes without the pages would warm the cheap half.
+   */
+  server: {
+    warmup: {
+      clientFiles: ["./src/app/routes/**/*.tsx", "./src/pages/**/*.tsx"],
+    },
+  },
 });

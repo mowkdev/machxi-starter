@@ -64,13 +64,34 @@ Two mechanics noted for their steps rather than decided here: the "indicator dur
 
 ## Build order
 
-### 1. The records, the profile, and the felt click
+### ~~1. The records, the profile, and the felt click~~ — **done 2026-08-29**
 
 **ADRs:** [0052](../adr/0052-grid-and-admin-followups.md) (accepted at the head of this step; 0039 and 0048 move to `superseded by`), [0047](../adr/0047-ui-package-scope.md), [0037](../adr/0037-grid-viewport-layout.md)
 
 Acceptance mechanics first, then the nav-delay package in its decided order: profile a **production build** (`pnpm build --filter admin`, `vite preview`, a **Chrome DevTools Performance trace** over the left-nav walk — scripting and rendering time per navigation; not the React Profiler, which does not attach to production bundles) and record the numbers here; `AppShell` gains the `navigating?: boolean` prop and its indeterminate bar; `apps/admin` computes `useRouterState().status === "pending"` and hands it down; `vite.config.ts` gains `server.warmup` over the page files. Grid-mount work only if the trace's numbers earn it — recorded either way.
 
 **Done when:** the profile numbers are written into this section as an amendment; a `@repo/ui` test asserts the bar renders under `navigating` and leaves no node otherwise; an admin test asserts the wiring; ADR statuses and index cells flipped; the gate green.
+
+**Amended 2026-08-29 (D10.1) — the instrument.** The DevTools Performance trace was not the instrument, and this record says so rather than claiming a trace nobody ran: **a Performance-trace UI cannot be started from the browser-automation surface this session drives Chrome through**, which makes the trace an operator gesture rather than a step's work. What ran instead is an **in-page harness** measuring the two quantities the trace was wanted for — per-navigation wall time from the click to the first paint after the destination has settled (`requestAnimationFrame`-bounded), and main-thread **long-task** time inside that window (`PerformanceObserver`, `type: "longtask"`) — driven over the left-nav walk against `vite preview`. [ADR-0052](../adr/0052-grid-and-admin-followups.md) §Felt navigation carries the same amendment. **One gotcha, recorded for `D10.4`:** a Chrome tab that is not the _selected_ tab of its window reports `document.visibilityState === "hidden"`, which suspends `requestAnimationFrame` entirely and throttles timers — every measurement taken there is worthless, and the first attempt at this walk produced nothing but 45-second timeouts because of it.
+
+**Amended 2026-08-29 (D10.1) — the numbers, and what they earn.** Both bundles built from this repository (`pnpm build --filter admin`) and served by `vite preview` on port 3002 against the local API and the dev database; Chrome, one machine (16 logical cores), foreground tab. **Before** is the D10-opening commit `5162d68`, restored by the same build command from the turbo cache — the cache doing its job as a time machine. **After** is this step's tree. Identical protocol both times: a reload, one cold visit per route, then three warm rounds of the four.
+
+| Navigation       | cold, before | cold, after | warm median, before | warm median, after | warm range, after |
+| ---------------- | -----------: | ----------: | ------------------: | -----------------: | ----------------: |
+| → Staff (grid)   |       177 ms |      223 ms |               80 ms |              66 ms |          64–84 ms |
+| → Users (grid)   |       214 ms |      163 ms |              118 ms |             117 ms |        100–150 ms |
+| → Dashboard      |       104 ms |       57 ms |               35 ms |              38 ms |          34–52 ms |
+| → Profile (form) |        94 ms |      139 ms |               34 ms |              31 ms |          31–33 ms |
+
+Main-thread long tasks across the twelve warm navigations: **four to five of them carry exactly one — 52–157 ms before, 57–105 ms after** — and the rest carry none at all. A grid page's warm navigation is therefore _one task_, and that task is the grid mounting.
+
+**Three things follow, and all three are decisions this step is allowed to take.**
+
+1. **Grid-mount optimisation is not earned, and is not done.** ADR-0052 made it conditional on the numbers; a warm resource navigation in a production build is **66–117 ms at the median** — at the ~100 ms instant threshold, and just above it on the slower of the two grids, not under it everywhere. The remount cost is real — it is the single long task above — and it is not what the operator felt.
+2. **The felt delay was the dev build, as diagnosed.** Nothing here can produce a noticeable wait, which is the evidence for §Felt navigation's first cause: on-demand chunk transforms plus `StrictMode`'s double mount, neither of which exists in this build. `server.warmup` is the fix aimed at exactly that, and it is dev-only by construction — **so it does not appear in this table and cannot**.
+3. **The indicator costs nothing measurable.** Every warm median after the change sits inside the run-to-run spread of the same route before it, in both directions (Staff and Profile came out faster, Dashboard slower by 3 ms). The cold column is one sample per cell and shows the same spread, which is why nothing is claimed from it.
+
+**And the bar was seen in the production build, doing the one thing it is for.** It appeared in **3 of the 16 measured navigations — every one of them a cold visit** — and in none of the warm ones, which is the behaviour worth having: a navigation that resolves inside a frame gets no flicker, one that has something to wait for gets an answer. It was then held open deliberately, by opening a record whose loader had a real request in flight, and read from the live DOM: `role="progressbar"` with no `aria-valuenow`, `aria-label="Navigating"`, `data-slot="navigation-indicator"`. **What is not certified is the pixels** — the bar's 2px geometry, its colour in both themes and its motion were not captured, and are `D10.4`'s spec (ADR-0052 assigns exactly this kind of claim to the browser tier) or the operator's eye before then.
 
 ### 2. Visible state: the chip, the handle, the stripes
 

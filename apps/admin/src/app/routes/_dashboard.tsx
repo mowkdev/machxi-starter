@@ -3,6 +3,7 @@ import {
   Outlet,
   createFileRoute,
   redirect,
+  useRouterState,
 } from "@tanstack/react-router";
 import { Fragment, type ReactNode } from "react";
 
@@ -186,8 +187,34 @@ const usePseudoLocaleNotice = (): ReactNode => {
   ) : undefined;
 };
 
+/**
+ * The router's own answer to "is a navigation in flight?" (`D10.1`,
+ * ADR-0052 §Felt navigation).
+ *
+ * **The app computes it and the shell renders it**, which is the same division
+ * `fullHeight` runs on and the reason `AppShell` can stay routing-ignorant
+ * (ADR-0047): a composition that called `useRouterState` would make
+ * `@tanstack/react-router` a dependency of the design system, and `apps/web`
+ * compiles that package too.
+ *
+ * The `select` form rather than `useRouterState().status`: the hook re-renders
+ * this subtree on **every** router-state change without it — a resolved
+ * location, a pending matches array, a preload — and this component sits above
+ * the whole app. Selected down to a boolean, the shell re-renders exactly
+ * twice per navigation, which is the number of states it has.
+ *
+ * `status` is `"pending"` from the moment a navigation starts until its
+ * matches resolve, which is precisely the window ADR-0052 diagnosed as feeling
+ * dead: the router keeps the old screen on purpose (ADR-0052 rejected a
+ * pending component for that reason), so without this the click has no answer
+ * at all.
+ */
+const useNavigating = (): boolean =>
+  useRouterState({ select: (state) => state.status === "pending" });
+
 function DashboardShell() {
   const banner = usePseudoLocaleNotice();
+  const navigating = useNavigating();
   const fullHeight = useRouteFullHeight();
   const routeTitle = useRouteTitle("dashboard:shellFallback");
   const recordLabel = useRouteRecordLabel();
@@ -214,6 +241,7 @@ function DashboardShell() {
        */
       title={fullHeight ? routeTitle : (recordLabel ?? routeTitle)}
       fullHeight={fullHeight}
+      navigating={navigating}
     >
       <Outlet />
     </DashboardLayout>

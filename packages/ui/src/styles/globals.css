@@ -135,6 +135,35 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/*
+ * The navigation indicator's motion (ADR-0052 §Felt navigation, `D10.1`).
+ *
+ * Declared here for the reason the scrollbar below is: it is a token concern,
+ * not a component's. A keyframe reaches Tailwind v4's output only from inside
+ * `@theme`, and the `--animate-*` name is what generates the utility the shell
+ * composition asks for by class.
+ *
+ * The runner is a third of the track wide and travels a track's width plus its
+ * own, so the bar is never at rest and never says how far along a navigation
+ * is — which is the truth about a router that has not resolved yet. The
+ * reduced-motion answer is the consumer's, not this file's: `animate-none`
+ * with a full-width runner keeps the feedback and drops the movement.
+ */
+@theme {
+  --animate-navigation-indeterminate: navigation-indeterminate 1.1s
+    cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+  @keyframes navigation-indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+
+    100% {
+      transform: translateX(300%);
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

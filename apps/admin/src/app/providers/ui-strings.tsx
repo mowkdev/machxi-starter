@@ -70,6 +70,13 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
          * check can see.
          */
         dismiss: t("ui.dismiss"),
+        /*
+         * The second composition key (`D10.1`, ADR-0052 §Felt navigation): the
+         * navigation indicator's accessible name. An indeterminate
+         * `progressbar` announces no value, so this string is the whole of
+         * what a screen reader is told while a route resolves.
+         */
+        navigating: t("ui.navigating"),
       }}
     >
       {children}

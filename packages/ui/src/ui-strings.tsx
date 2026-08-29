@@ -65,6 +65,8 @@ export interface UiStrings {
   readonly notifications: string;
   /** `compositions/banner.tsx` — the dismiss control's `aria-label`. The first key a *composition* asked for rather than a generated primitive (`D8.2`, ADR-0048 §1). */
   readonly dismiss: string;
+  /** `compositions/app-shell.tsx` — the navigation indicator's accessible name; an indeterminate `progressbar` has no value to announce, so the name is all a screen reader gets (`D10.1`, ADR-0052 §Felt navigation). */
+  readonly navigating: string;
 }
 
 /**
@@ -90,6 +92,7 @@ export const DEFAULT_UI_STRINGS: UiStrings = {
   breadcrumb: "breadcrumb",
   notifications: "Notifications",
   dismiss: "Dismiss",
+  navigating: "Navigating",
 };
 
 /**
@@ -140,6 +143,7 @@ export const UiStringsProvider = ({
     breadcrumb,
     notifications,
     dismiss,
+    navigating,
   } = {
     ...DEFAULT_UI_STRINGS,
     ...strings,
@@ -161,6 +165,7 @@ export const UiStringsProvider = ({
       breadcrumb,
       notifications,
       dismiss,
+      navigating,
     }),
     [
       close,
@@ -177,6 +182,7 @@ export const UiStringsProvider = ({
       breadcrumb,
       notifications,
       dismiss,
+      navigating,
     ],
   );
 

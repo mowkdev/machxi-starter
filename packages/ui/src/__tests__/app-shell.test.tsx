@@ -215,4 +215,68 @@ describe("AppShell", () => {
       ).toBeNull();
     });
   });
+
+  /*
+   * The navigation indicator (`D10.1`, ADR-0052 §Felt navigation).
+   *
+   * Both directions again, and for a sharper reason than the banner's: this
+   * slot toggles on **every** navigation, so a bar that took height would
+   * hand two pixels back and forth to every grid on every click. That is why
+   * the geometry assertion here is `absolute` and the inset's child order
+   * rather than a class count — out of flow is the property, and jsdom will
+   * never say so on its own.
+   */
+  describe("the navigation indicator", () => {
+    it("renders an indeterminate progressbar across the top of the inset while navigating", () => {
+      renderShell({ navigating: true });
+
+      const bar = screen.getByRole("progressbar");
+
+      /*
+       * Indeterminate is the absence of a value, not a value of zero: a
+       * `progressbar` carrying `aria-valuenow` claims to know how far along a
+       * router is, which nothing here does.
+       */
+      expect(bar).not.toHaveAttribute("aria-valuenow");
+      expect(bar).toHaveAccessibleName("Navigating");
+      expect(bar).toHaveClass("absolute", "inset-x-0", "top-0");
+      expect(bar).toHaveAttribute("data-slot", "navigation-indicator");
+
+      /*
+       * First child of the inset and out of flow, so the header, the page
+       * header and the page container keep the whole height budget — the
+       * chrome rule this one slot is deliberately exempt from.
+       */
+      expect(insetChildren()).toEqual([
+        "navigation-indicator",
+        "header",
+        "page-header",
+        "page-container",
+      ]);
+    });
+
+    it("leaves no node at all when it is not navigating, in either spelling", () => {
+      const { rerender } = renderShell({ navigating: false });
+
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+      expect(insetChildren()).toEqual([
+        "header",
+        "page-header",
+        "page-container",
+      ]);
+
+      /*
+       * The default, not only the explicit `false`: every consumer that has
+       * not learned about this prop yet passes through this branch, and a
+       * `navigating = true` default would put a permanent bar on all of them.
+       */
+      rerender(
+        <AppShell sidebar={<Sidebar />} title="Staff">
+          <p>Page content</p>
+        </AppShell>,
+      );
+
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+  });
 });

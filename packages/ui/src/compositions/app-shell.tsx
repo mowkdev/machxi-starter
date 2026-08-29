@@ -8,6 +8,7 @@ import {
   SidebarTrigger,
 } from "@repo/ui/components/sidebar";
 import { cn } from "@repo/ui/lib/utils";
+import { useUiStrings } from "@repo/ui/ui-strings";
 
 /**
  * The application shell both apps of this shape are built from (ADR-0048 §2).
@@ -64,6 +65,15 @@ import { cn } from "@repo/ui/lib/utils";
  * sibling of `children` and silently takes height from every grid. Outside and
  * `shrink-0`, each costs the budget exactly what the `h-16` header already
  * costs it: chrome takes what it declares, the scroll body takes the rest.
+ *
+ * **`navigating` is the one exception, and it is out of flow for that reason**
+ * (ADR-0052 §Felt navigation). Every other slot here is either always present
+ * or decided once per screen; this one appears and disappears on every click,
+ * and an in-flow bar would take two pixels from the height budget for the
+ * duration of a navigation and hand them back — a grid that reflows because
+ * the app is telling you it is busy. `absolute inset-x-0 top-0` inside the
+ * inset (which the primitive already positions `relative`) costs the budget
+ * nothing at all, in both states.
  */
 
 export interface AppShellProps {
@@ -90,6 +100,18 @@ export interface AppShellProps {
   readonly title: string;
   /** ADR-0037's per-page opt-in, unchanged in meaning. */
   readonly fullHeight?: boolean;
+  /**
+   * A navigation is in flight (ADR-0052 §Felt navigation, the delta on
+   * ADR-0048 §2). Renders a slim indeterminate bar across the top of the
+   * inset; absent or `false` renders nothing at all.
+   *
+   * **The shell does not compute this and must not.** `useRouterState` would
+   * make the router a dependency of the design system and end the boundary
+   * ADR-0047 draws — so the app answers the question and hands down a boolean,
+   * exactly as it does for `fullHeight`. What the shell owns is the geometry
+   * of the answer.
+   */
+  readonly navigating?: boolean;
   /** The page, inside the page container. */
   readonly children: ReactNode;
 }
@@ -101,37 +123,66 @@ export const AppShell = ({
   banner,
   title,
   fullHeight = false,
+  navigating = false,
   children,
-}: AppShellProps) => (
-  <SidebarProvider>
-    {sidebar}
-    <SidebarInset className={cn(fullHeight && "h-svh")}>
-      {banner ? (
-        <div className="shrink-0 px-4 pt-4" data-slot="banner-region">
-          {banner}
+}: AppShellProps) => {
+  const { navigating: navigatingLabel } = useUiStrings();
+
+  return (
+    <SidebarProvider>
+      {sidebar}
+      <SidebarInset className={cn(fullHeight && "h-svh")}>
+        {navigating ? (
+          /*
+           * `role="progressbar"` with no `aria-valuenow` is the ARIA spelling
+           * of indeterminate — the bar knows a navigation is running and
+           * nothing about how far along it is, which is the truth. The name
+           * comes through `UiStrings` like every other word this package says
+           * out loud (ADR-0046 §12): the design system still names no i18n
+           * dependency.
+           */
+          <div
+            aria-label={navigatingLabel}
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-primary/20"
+            data-slot="navigation-indicator"
+            role="progressbar"
+          >
+            {/*
+             * The runner, and its reduced-motion answer: `animate-none` alone
+             * would leave a third of a bar frozen at the left edge saying
+             * nothing, so the same state renders as a full static bar. The
+             * feedback survives the preference; only the motion goes.
+             */}
+            <div className="h-full w-1/3 animate-navigation-indeterminate bg-primary motion-reduce:w-full motion-reduce:animate-none" />
+          </div>
+        ) : null}
+        {banner ? (
+          <div className="shrink-0 px-4 pt-4" data-slot="banner-region">
+            {banner}
+          </div>
+        ) : null}
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          {breadcrumbs}
+          {headerEnd ? <div className="ml-auto">{headerEnd}</div> : null}
+        </header>
+        <div
+          className="flex shrink-0 items-center gap-2 px-4 pt-4"
+          data-slot="page-header"
+        >
+          <h1 className="text-base font-medium">{title}</h1>
         </div>
-      ) : null}
-      <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-        <SidebarTrigger className="-ml-1" />
-        {breadcrumbs}
-        {headerEnd ? <div className="ml-auto">{headerEnd}</div> : null}
-      </header>
-      <div
-        className="flex shrink-0 items-center gap-2 px-4 pt-4"
-        data-slot="page-header"
-      >
-        <h1 className="text-base font-medium">{title}</h1>
-      </div>
-      <div
-        className={cn(
-          "flex min-w-0 flex-1 flex-col gap-4 p-4",
-          fullHeight && "min-h-0",
-        )}
-        data-full-height={fullHeight ? "" : undefined}
-        data-slot="page-container"
-      >
-        {children}
-      </div>
-    </SidebarInset>
-  </SidebarProvider>
-);
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 flex-col gap-4 p-4",
+            fullHeight && "min-h-0",
+          )}
+          data-full-height={fullHeight ? "" : undefined}
+          data-slot="page-container"
+        >
+          {children}
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+};

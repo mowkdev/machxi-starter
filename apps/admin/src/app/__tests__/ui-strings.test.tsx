@@ -7,6 +7,7 @@ import { AppUiStrings } from "@/app/providers/ui-strings";
 import { EN_RESOURCES, NAMESPACES, createI18n, type I18n } from "@/shared/i18n";
 import enCommon from "@/shared/i18n/locales/en/common.json";
 import {
+  AppShell,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,6 +41,7 @@ import {
 const LV_UI = {
   close: "Aizvērt",
   toggleSidebar: "Pārslēgt sānjoslu",
+  navigating: "Notiek pāreja",
 } as const;
 
 const withLatvian = (): I18n =>
@@ -80,6 +82,18 @@ const sidebar: ReactElement = (
   <SidebarProvider>
     <SidebarTrigger />
   </SidebarProvider>
+);
+
+/*
+ * The shell with its navigation indicator up (`D10.1`, ADR-0052 §Felt
+ * navigation). A *composition* rather than a generated primitive, and the
+ * second of those to ask for a key — so it travels the same seam and is
+ * proved the same way.
+ */
+const shell: ReactElement = (
+  <AppShell navigating sidebar={<aside aria-label="Drawer" />} title="Staff">
+    <p>Page content</p>
+  </AppShell>
 );
 
 const renderUnder = (i18n: I18n, ui: ReactElement) =>
@@ -134,6 +148,32 @@ describe("AppUiStrings", () => {
     });
   });
 
+  it("names the shell's navigation indicator from the catalogue, and renames it with the locale", async () => {
+    const i18n = withLatvian();
+
+    renderUnder(i18n, shell);
+
+    /*
+     * **The assertion has to survive the defaults matching**, which is the
+     * whole reason this case lives here rather than beside the wiring test in
+     * `navigation-indicator.test.tsx`: `DEFAULT_UI_STRINGS.navigating` and
+     * `en/common.json`'s `ui.navigating` are both "Navigating", so an English
+     * assertion alone is green whether or not `AppUiStrings` supplies the key
+     * at all. The locale switch is what separates them — no design-system
+     * default follows a language change, so a bar that renames itself is a bar
+     * being fed by this app's catalogue.
+     */
+    const bar = screen.getByRole("progressbar", {
+      name: enCommon.ui.navigating,
+    });
+
+    await i18n.changeLocale("lv");
+
+    await waitFor(() => {
+      expect(bar).toHaveAccessibleName(LV_UI.navigating);
+    });
+  });
+
   it("reaches a primitive rendered into a portal", async () => {
     const i18n = withLatvian();
 
@@ -159,12 +199,13 @@ describe("AppUiStrings", () => {
     await i18n.changeLocale("lv");
 
     /*
-     * `lv` above carries two of the fourteen. The other twelve come back in
+     * `lv` above carries two of the fifteen. The other thirteen come back in
      * English through i18next's own fallback and never reach the design
      * system's defaults — which is what keeps a half-finished catalogue a
      * readable app rather than a mixed one, and is the state `D7.6` starts
-     * from. The fourteenth is `D8.2`'s `ui.dismiss`, the first key a
-     * composition rather than a generated primitive asked for.
+     * from. The last two are the compositions': `D8.2`'s `ui.dismiss` and
+     * `D10.1`'s `ui.navigating`, the first keys asked for by something other
+     * than a generated primitive.
      */
     expect(i18n.instance.t("common:ui.close")).toBe(LV_UI.close);
     expect(i18n.instance.t("common:ui.morePages")).toBe(enCommon.ui.morePages);

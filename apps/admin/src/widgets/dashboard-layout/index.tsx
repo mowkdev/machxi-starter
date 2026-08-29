@@ -36,6 +36,7 @@ export const DashboardLayout = ({
   banner,
   title,
   fullHeight = false,
+  navigating = false,
 }: {
   children: ReactNode;
   sidebar: ReactNode;
@@ -63,12 +64,20 @@ export const DashboardLayout = ({
   banner?: ReactNode;
   title: string;
   fullHeight?: boolean;
+  /**
+   * A navigation is in flight (`D10.1`, ADR-0052 §Felt navigation). It travels
+   * as a prop for exactly the reason `title` and `fullHeight` do: the answer
+   * comes from `useRouterState`, the frame may not know a router exists, and
+   * the layer that already reads route meta reads this too.
+   */
+  navigating?: boolean;
 }) => (
   <AppShell
     banner={banner}
     breadcrumbs={breadcrumbs}
     fullHeight={fullHeight}
     headerEnd={headerEnd}
+    navigating={navigating}
     sidebar={sidebar}
     title={title}
   >
