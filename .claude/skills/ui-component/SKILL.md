@@ -5,7 +5,7 @@ description: Add or update a shadcn/ui primitive or a hand-written composition i
 
 # UI component — `$ARGUMENTS` (shadcn component name, kebab-case)
 
-Read `/frontend-conventions` §Design system. **ADR-0047 is the decision** (superseding ADR-0031, accepted 2026-08-26 at `D8.1`, frozen since D8 shipped 2026-08-27); this is its checklist.
+Read `/frontend-conventions` §Design system. **ADR-0047 is the decision** (superseding ADR-0031, accepted 2026-08-26 at `D8.1`, frozen since D8 shipped 2026-08-27); this is its checklist. D9 did not touch it: `@repo/ui` gained no dependency and no behaviour in that deliverable, and [ADR-0051](../../../docs/adr/0051-platform-extraction.md) generalised 0047's one-door rule to six more packages rather than changing this one.
 
 **First ask which of three homes it has.** ADR-0047 §What-code gives the package two regimes and the path is what selects one:
 

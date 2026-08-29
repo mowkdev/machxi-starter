@@ -2,11 +2,21 @@
 paths:
   - "apps/admin/**"
   - "packages/ui/**"
+  # The behavioural machinery left `apps/admin/src/shared` at D9 (ADR-0051);
+  # these rules follow the code rather than the address.
+  - "packages/api-client/**"
+  - "packages/app-services/**"
+  - "packages/form/**"
+  - "packages/grid/**"
+  - "packages/i18n/**"
+  - "packages/resource/**"
 ---
 
-# Admin app and design system (ADRs 0030–0050)
+# Admin app, design system and the platform packages (ADRs 0030–0051)
 
-Loaded when you touch `apps/admin` or `packages/ui`. Read `/frontend-conventions` before writing code here; the ADRs are the source of truth. **ADRs 0030–0050 are frozen** — D7 shipped 2026-08-22 and D8 2026-08-27, so a divergence from any of them is a superseding ADR, never an edit; **0051 is amendable in place while D9 is `in progress`** in `docs/plan/README.md`, labelled `**Amended YYYY-MM-DD (D9.n).**`. **0031 is superseded by 0047, 0032 by 0049, 0024 by 0050, and both 0033 and 0049 by 0051** (0051 accepted 2026-08-27 at `D9.1`). 0034 and 0040 are superseded too (by 0043 and 0044). A superseded record is out of force: read its successor.
+Loaded when you touch `apps/admin`, `packages/ui`, or any of the six packages D9 extracted. Read `/frontend-conventions` before writing code here; the ADRs are the source of truth. **ADRs 0001–0051 are frozen** — D8 shipped 2026-08-27 and D9 2026-08-28 — so a divergence from any of them is a superseding ADR, never an edit. **No amendment window is open**; check `docs/plan/README.md` rather than assuming. **0031 is superseded by 0047, 0032 by 0049, 0024 by 0050, and both 0033 and 0049 by 0051** (0051 accepted 2026-08-27 at `D9.1`). 0034 and 0040 are superseded too (by 0043 and 0044). A superseded record is out of force: read its successor.
+
+**Where the machinery lives since D9** (ADR-0051): `@repo/api-client` (client, session, CSRF, URL⇄query), `@repo/i18n` (the `createI18n` factory), `@repo/resource` (`ResourceConfig` and its readers), `@repo/grid`, `@repo/form` (including the zod locale installer), `@repo/app-services` (theme, `can()`, `route-meta`). Each app reaches them **only** through its `shared/` doors — `no-restricted-imports` refuses the package path anywhere else — and a door is the only path to those symbols, not necessarily one slice per package.
 
 - **Design system** (0047, superseding 0031): shadcn/ui in `@repo/ui` on Tailwind v4, reached only through the `shared/ui` door. Generated primitives under `packages/ui/src/components/` and `src/hooks/` stay byte-identical to the CLI output (prettier-exempt); an edit to one must earn itself with a comment naming the rule that forced it. **Hand-written compositions live in `packages/ui/src/compositions/`** under the ordinary code regime — formatted, tested in `src/__tests__/`, edited rather than regenerated — and are presentation-only: no `@repo/contracts` import, no routing, no forms, no session, and the dependency list does not grow for them. `@repo/ui` gains no i18n dependency — its operator-facing strings come through the `UiStrings` context (0046), which makes any composition with micro-copy a `"use client"` component.
 - **Architecture** (0049, superseding 0032; superseded by 0051 for the `shared/` tree — those slices are doors over packages now): FSD layers `app → pages → widgets → features → entities → shared`, downward-only imports lint-enforced, TanStack Router file-based routes; an entity may not import another entity — the feature layer is where two entities meet. `widgets/dashboard-layout` is a thin adapter over `@repo/ui`'s `AppShell` and the account menu lives in the shell's header, not the sidebar footer (§The-shell-adapter).

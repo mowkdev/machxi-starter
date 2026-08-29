@@ -27,12 +27,12 @@ rule 2), not to a date. An ADR is amendable only while its deliverable is
 `in progress` in the ledger; once that deliverable ships, code and ADR that
 disagree are reconciled by a superseding ADR, never by editing the record. D1
 shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22,
-D6 2026-08-22, D7 2026-08-22 and D8 2026-08-27, so **ADRs 0001–0050 are
-closed** — including every frontend decision the admin panel was built on,
-every grid decision the data-grid rebuild made, D5's pair of supersessions,
-D6's user-settings record, D7's localization one and D8's four. **D9 opened
-2026-08-27 and its window covers exactly [0051](adr/0051-platform-extraction.md)**,
-amendable in place while it runs; it delta-supersedes
+D6 2026-08-22, D7 2026-08-22, D8 2026-08-27 and D9 2026-08-28, so **ADRs
+0001–0051 are closed** — including every frontend decision the admin panel was
+built on, every grid decision the data-grid rebuild made, D5's pair of
+supersessions, D6's user-settings record, D7's localization one, D8's four and
+D9's platform extraction. **No window is open.**
+[0051](adr/0051-platform-extraction.md) delta-supersedes
 [0033](adr/0033-browser-api-client-and-session.md) and
 [0049](adr/0049-admin-app-architecture.md), which keep every decision they made
 and lose only where the code lives.

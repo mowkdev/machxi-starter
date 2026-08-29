@@ -1,13 +1,30 @@
 ---
 name: frontend-conventions
-description: Quick reference of the machxi admin-app conventions (FSD layers, design system and its compositions, session, server state, resource UI, the v2 data grid, localization, testing) condensed from ADRs 0030-0050. Load before writing or reviewing any code under apps/admin or packages/ui.
+description: Quick reference of the machxi admin-app conventions (FSD layers, design system and its compositions, the six extracted platform packages and their doors, session, server state, resource UI, the v2 data grid, localization, testing) condensed from ADRs 0030-0051. Load before writing or reviewing any code under apps/admin, packages/ui, or the platform packages.
 ---
 
 # Frontend conventions (condensed from docs/adr — ADRs win on conflict)
 
-ADRs 0030–0036 (D3), 0037–0042 (D4), 0043–0044 (D5), 0045 (D6), 0046 (D7) and 0047–0050 (D8). **ADRs 0030–0050 are frozen** — D7 shipped 2026-08-22 and D8 2026-08-27 — so a divergence from any of them is a superseding ADR, never an edit. **0051 is amendable in place while D9 is `in progress`** in `docs/plan/README.md`, labelled `**Amended YYYY-MM-DD (D9.n).**`; it delta-supersedes **0033 and 0049**, which keep every decision they made and lose only where the code lives. **[0031](../../../docs/adr/0031-ui-design-system.md) is superseded by [0047](../../../docs/adr/0047-ui-package-scope.md), [0032](../../../docs/adr/0032-admin-app-architecture.md) by [0049](../../../docs/adr/0049-admin-app-architecture.md) and [0024](../../../docs/adr/0024-adr-lifecycle.md) by [0050](../../../docs/adr/0050-adr-lifecycle-and-verification.md)** — all four accepted 2026-08-26 at the head of `D8.1`. A superseded record is out of force: read its successor.
+ADRs 0030–0036 (D3), 0037–0042 (D4), 0043–0044 (D5), 0045 (D6), 0046 (D7), 0047–0050 (D8) and 0051 (D9). **ADRs 0001–0051 are frozen** — D8 shipped 2026-08-27 and D9 2026-08-28 — so a divergence from any of them is a superseding ADR, never an edit, and **no amendment window is open**. [0051](../../../docs/adr/0051-platform-extraction.md) delta-supersedes **0033 and 0049**, which keep every decision they made and lose only where the code lives. **[0031](../../../docs/adr/0031-ui-design-system.md) is superseded by [0047](../../../docs/adr/0047-ui-package-scope.md), [0032](../../../docs/adr/0032-admin-app-architecture.md) by [0049](../../../docs/adr/0049-admin-app-architecture.md) and [0024](../../../docs/adr/0024-adr-lifecycle.md) by [0050](../../../docs/adr/0050-adr-lifecycle-and-verification.md)** — all four accepted 2026-08-26 at the head of `D8.1`. A superseded record is out of force: read its successor.
 
-Covers `apps/admin` and `packages/ui`. The API side is `/api-conventions`.
+Covers `apps/admin`, `packages/ui` and the six packages D9 extracted. The API side is `/api-conventions`.
+
+## The platform packages (ADR-0051) — where the machinery lives since D9
+
+| Package              | What it holds                                                                                                                  | The admin's door(s)                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `@repo/api-client`   | axios client (parameterised by segment), envelope + errors, session store, CSRF bootstrap, URL⇄query, the bulk fan-out         | `shared/api/*`                              |
+| `@repo/i18n`         | the `createI18n` factory, locale negotiation, Intl, the pseudo lens, `useT`/`useKeyT`                                          | `shared/i18n`                               |
+| `@repo/resource`     | `ResourceConfig`, its readers and the registries                                                                               | `shared/resource/*`                         |
+| `@repo/grid`         | the v2 grid whole, its `grid` namespace, the bulk summariser                                                                   | `shared/grid/*`                             |
+| `@repo/form`         | the field vocabulary, the frame, ADR-0040's three shells, server-error landing, the zod locale installer, its `form` namespace | `shared/form/*`                             |
+| `@repo/app-services` | theme, `can()` + capability narrowing, `route-meta`                                                                            | `shared/theme`, `shared/auth`, `shared/lib` |
+
+- **A door is the only path to those symbols**, not necessarily one slice per package — `@repo/app-services` has three, because that is where its pieces already lived. `no-restricted-imports` refuses every package path outside its door, and **each door block re-declares the groups it is _not_ the door for**; an exemption wider than its reason is the same defect as a block missing a group.
+- **What stays in the app is the dictionary and the data**: the i18n catalogues and namespace list, the `errors` catalogue's readers, `RESOURCE_POLICY`, `shared/config`, and the `meta`/`CustomTypeOptions` augmentations that are keyed by this app's own `TranslationKey`.
+- **A package that renders copy ships its own namespace** and exports `bundles` (its `en`) plus its own `loadCatalogue`; the app composes them into `createI18n`'s `resources` **at `init`** (ADR-0046 §13 as amended). `register` is for a namespace genuinely learned late — `addResourceBundle` on a live instance re-renders every bound component, which loses state mid-gesture.
+- **A package that reads a property must own the property**; one that only names a type (`TranslationKey`) can leave it to declaration merging. That is why `StaticDataRouteOption` moved with `route-meta` and `query-meta.ts` did not.
+- `@repo/ui` is unchanged by all of this: it stays presentation-only on §12's `UiStrings` (ADR-0047).
 
 ## Layers (ADR-0049, superseding ADR-0032) — FSD, and the direction is lint-enforced
 
