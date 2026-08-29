@@ -25,7 +25,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
  * asked `D7.6` to decide how many. The answer was all of them, plus the one
  * nobody had counted: `sonner`'s toast region announces itself, and that one
  * *is* reachable, on every screen. A residual whose whole justification is
- * "this app does not mount that primitive" is a residual D11's customer app
+ * "this app does not mount that primitive" is a residual D12's customer app
  * inherits as a surprise, and §12's own consequence already said the price —
  * one more key, not a new mechanism. `D8.2` took that price for the first
  * composition's dismiss control, and no comment here states a total, because

@@ -47,7 +47,7 @@ import {
  * Two claims are under test and the first one matters most: **with no provider
  * mounted, every primitive renders exactly what the shadcn CLI emitted.** That
  * is what makes the seam free for a consumer that has not localised — this
- * package's own suite, `apps/web`, and any app D11 has not written yet — and it
+ * package's own suite, `apps/web`, and any app D12 has not written yet — and it
  * is the property a future regenerate-and-diff would otherwise quietly break.
  *
  * The second is that a mounted provider reaches all six files, including the

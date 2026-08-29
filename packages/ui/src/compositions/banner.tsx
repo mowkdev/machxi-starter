@@ -37,7 +37,7 @@ import { useUiStrings } from "@repo/ui/ui-strings";
 
 /**
  * Two variants, one per consumer the repository can name today: `info` for
- * `D8.7`'s dev-only pseudo-locale notice, `warning` for D12's impersonation
+ * `D8.7`'s dev-only pseudo-locale notice, `warning` for D13's impersonation
  * banner. A third arrives with the notice that needs it — the slot-honesty
  * rule is unreviewable against an open-ended set.
  */
@@ -78,7 +78,7 @@ export interface BannerProps {
   /**
    * Off by default, deliberately. The fail-safe direction is the one where
    * forgetting the prop leaves the notice on screen rather than putting a
-   * dismiss control on a banner whose whole job is to stay — D12's
+   * dismiss control on a banner whose whole job is to stay — D13's
    * impersonation warning being exactly that case. Opting in is a visible
    * line in a diff; opting out is a line someone has to remember to write.
    */

@@ -12,7 +12,7 @@
  * is the whole of ADR-0051's delta against it.
  *
  * **One generalisation, and only one**: `createApiClient` takes a `segment`.
- * `apps/admin` passes `"admin"`, the customer app will pass `"user"` (D11).
+ * `apps/admin` passes `"admin"`, the customer app will pass `"user"` (D12).
  * Nothing else in this package knows which population it is serving, and the
  * one place that used to — `useSetPrincipal`'s staff-narrowed parameter — is
  * pinned by each app's own door instead.

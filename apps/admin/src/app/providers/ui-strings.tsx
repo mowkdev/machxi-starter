@@ -52,7 +52,7 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
          * when the shell's trail became the first screen to compose the
          * primitives the door has exported since D3.3. Supplied anyway, for
          * the reason the four before them were: the key then has a `t()` call
-         * site the drift check can see, and D11's customer app may well mount
+         * site the drift check can see, and D12's customer app may well mount
          * the primitive this one declined to.
          */
         sidebarTitle: t("ui.sidebarTitle"),

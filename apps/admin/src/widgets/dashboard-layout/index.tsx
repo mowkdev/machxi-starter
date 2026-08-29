@@ -57,7 +57,7 @@ export const DashboardLayout = ({
   breadcrumbs?: ReactNode;
   /**
    * The banner region's content (`D8.7`). The dev-only pseudo-locale notice
-   * today, D12's impersonation banner next. A prop rather than something this
+   * today, D13's impersonation banner next. A prop rather than something this
    * widget decides, for the reason it decides nothing else: a frame that knew
    * *why* a banner shows is not a frame.
    */

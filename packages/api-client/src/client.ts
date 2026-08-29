@@ -165,7 +165,7 @@ export interface ApiClientDeps {
   readonly baseUrl: string;
   /**
    * The segment this client is pinned to — `apps/admin` passes `"admin"`,
-   * the customer app will pass `"user"` (D11). No default: a client whose
+   * the customer app will pass `"user"` (D12). No default: a client whose
    * segment is implicit is one whose population is a guess, and the app that
    * builds it is the only thing that knows.
    */

@@ -169,7 +169,7 @@ function RouteBreadcrumbs() {
  * The copy is the **app's**, keyed in the admin's own catalogues rather than
  * the design system's: `Banner` takes a `message` and knows nothing about why
  * it is showing, which is the boundary that lets the same component carry
- * D12's impersonation warning.
+ * D13's impersonation warning.
  *
  * **Not dismissible.** The open item `D8.2` left for this step is settled by
  * what the notice is *for*: it says the build in front of the operator is not
