@@ -11,6 +11,7 @@
     "i18n:extract": "node scripts/i18n.mjs --write",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "size": "node scripts/size.mjs",
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "test:watch": "vitest"

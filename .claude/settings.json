@@ -10,6 +10,8 @@
       "Bash(pnpm lint*)",
       "Bash(pnpm check-types*)",
       "Bash(pnpm test*)",
+      "Bash(pnpm size*)",
+      "Bash(pnpm check*)",
       "Bash(pnpm build*)",
       "Bash(pnpm dev*)",
       "Bash(pnpm format*)",

@@ -1,6 +1,6 @@
 # ADR-0026: Turborepo task graph: what may be cached and what must be serialised
 
-- Status: accepted
+- Status: superseded by [ADR-0052](0052-grid-and-admin-followups.md)
 - Date: 2026-08-18
 
 ## Context

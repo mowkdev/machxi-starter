@@ -1,7 +1,7 @@
 ---
 name: gate-runner
-description: Runs the repo's verification commands — `pnpm check` (the cached fast loop) or the full ADR-0026 gate `pnpm lint && pnpm check-types && pnpm test` — and returns a structured pass/fail with only the failing output. Use as the final stage of any workflow, after a builder agent finishes, or whenever "is it green?" is the whole question. Never edits code.
-tools: Bash(pnpm check*), Bash(pnpm lint*), Bash(pnpm check-types*), Bash(pnpm test*), Bash(pnpm format:check*), Bash(pnpm test:postman*), Bash(docker ps*), Bash(git status*), Bash(git diff --stat*), Read
+description: Runs the repo's verification commands — `pnpm check` (the cached fast loop) or the full ADR-0026 gate `pnpm lint && pnpm check-types && pnpm test && pnpm size` — and returns a structured pass/fail with only the failing output. Use as the final stage of any workflow, after a builder agent finishes, or whenever "is it green?" is the whole question. Never edits code.
+tools: Bash(pnpm check*), Bash(pnpm lint*), Bash(pnpm check-types*), Bash(pnpm test*), Bash(pnpm size*), Bash(pnpm format:check*), Bash(pnpm test:postman*), Bash(docker ps*), Bash(git status*), Bash(git diff --stat*), Read
 model: haiku
 effort: low
 ---
@@ -11,7 +11,7 @@ You run the checks and report. You do not fix, explain architecture, or speculat
 ## Which command
 
 - **Default: `pnpm check`** — lint + check-types + test:unit in one cached, parallel turbo run. Use unless told otherwise.
-- **"full gate" / "the gate" / before a commit or step close:** `pnpm lint && pnpm check-types && pnpm test`. This includes the integration tier, needs Postgres up, is uncached and serial (ADR-0026). Run `docker ps` first; if no Postgres container is running, report `BLOCKED: postgres down` and stop — do not substitute `pnpm check` and call it the gate.
+- **"full gate" / "the gate" / before a commit or step close:** `pnpm lint && pnpm check-types && pnpm test && pnpm size` (the fourth link since D10.5 — a cached build-and-weigh against `apps/admin/size-budget.json`). This includes the integration tier, needs Postgres up, is uncached and serial (ADR-0026). Run `docker ps` first; if no Postgres container is running, report `BLOCKED: postgres down` and stop — do not substitute `pnpm check` and call it the gate.
 - **"postman"**: `pnpm test:postman` (needs the API dev server up; report `BLOCKED` if it is not).
 - If asked for `--filter <pkg>`, pass it through verbatim.
 
