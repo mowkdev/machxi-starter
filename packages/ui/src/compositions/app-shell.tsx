@@ -3,6 +3,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import {
+  PageActionsProvider,
+  PageActionsTarget,
+} from "@repo/ui/compositions/page-actions";
+import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -191,92 +195,115 @@ export const AppShell = ({
      * (ADR-0047): the value arrives as the `style` it already merges.
      */
     <SidebarProvider style={{ "--sidebar-width": "240px" } as CSSProperties}>
-      {sidebar}
-      <SidebarInset className={cn(fullHeight && "h-svh")}>
-        {navigating ? (
-          /*
-           * `role="progressbar"` with no `aria-valuenow` is the ARIA spelling
-           * of indeterminate — the bar knows a navigation is running and
-           * nothing about how far along it is, which is the truth. The name
-           * comes through `UiStrings` like every other word this package says
-           * out loud (ADR-0046 §12): the design system still names no i18n
-           * dependency.
-           */
-          <div
-            aria-label={navigatingLabel}
-            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-primary/20"
-            data-slot="navigation-indicator"
-            role="progressbar"
-          >
-            {/*
-             * The runner, and its reduced-motion answer: `animate-none` alone
-             * would leave a third of a bar frozen at the left edge saying
-             * nothing, so the same state renders as a full static bar. The
-             * feedback survives the preference; only the motion goes.
-             */}
-            <div className="h-full w-1/3 animate-navigation-indeterminate bg-primary motion-reduce:w-full motion-reduce:animate-none" />
-          </div>
-        ) : null}
-        {banner ? (
-          <div className="shrink-0 px-4 pt-4" data-slot="banner-region">
-            {banner}
-          </div>
-        ) : null}
-        {/* 56px, and the first of ADR-0054 §5's bands. */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          {breadcrumbs}
-          {headerEnd ? <div className="ml-auto">{headerEnd}</div> : null}
-        </header>
-        {/*
-         * The page-header band: title and description left, actions right
-         * (ADR-0054 §5). Its height stays content-driven rather than declared,
-         * which is ADR-0048's decision and the reason a description can be
-         * added to a screen without re-budgeting the grid below it.
-         */}
-        <div
-          className="flex shrink-0 items-center gap-3 px-4 py-3"
-          data-slot="page-header"
-        >
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <h1 className="truncate text-[20px] leading-[26px] font-semibold">
-              {title}
-            </h1>
-            {/*
-             * No element when there is no description — the banner region's
-             * rule, for the banner region's reason: an empty `<p>` with the
-             * band's own `gap` above it is a line of blank space on every
-             * screen that never wanted one.
-             */}
-            {description === undefined ? null : (
-              <p
-                className="truncate text-[13px] text-muted-foreground"
-                data-slot="page-description"
-              >
-                {description}
-              </p>
-            )}
-          </div>
-          {pageActions ? (
+      {/*
+       * Inside the sidebar provider rather than around it, because a context
+       * provider renders no element: the drawer and the inset stay the same
+       * two flex children of the same wrapper, and the band below can be
+       * reached from anywhere in either of them (`D11.12`).
+       */}
+      <PageActionsProvider>
+        {sidebar}
+        <SidebarInset className={cn(fullHeight && "h-svh")}>
+          {navigating ? (
+            /*
+             * `role="progressbar"` with no `aria-valuenow` is the ARIA spelling
+             * of indeterminate — the bar knows a navigation is running and
+             * nothing about how far along it is, which is the truth. The name
+             * comes through `UiStrings` like every other word this package says
+             * out loud (ADR-0046 §12): the design system still names no i18n
+             * dependency.
+             */
             <div
-              className="flex shrink-0 items-center gap-2"
-              data-slot="page-actions"
+              aria-label={navigatingLabel}
+              className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-primary/20"
+              data-slot="navigation-indicator"
+              role="progressbar"
             >
-              {pageActions}
+              {/*
+               * The runner, and its reduced-motion answer: `animate-none` alone
+               * would leave a third of a bar frozen at the left edge saying
+               * nothing, so the same state renders as a full static bar. The
+               * feedback survives the preference; only the motion goes.
+               */}
+              <div className="h-full w-1/3 animate-navigation-indeterminate bg-primary motion-reduce:w-full motion-reduce:animate-none" />
             </div>
           ) : null}
-        </div>
-        <div
-          className={cn(
-            "flex min-w-0 flex-1 flex-col",
-            fullHeight ? "min-h-0" : "gap-4 p-4",
-          )}
-          data-full-height={fullHeight ? "" : undefined}
-          data-slot="page-container"
-        >
-          {children}
-        </div>
-      </SidebarInset>
+          {banner ? (
+            <div className="shrink-0 px-4 pt-4" data-slot="banner-region">
+              {banner}
+            </div>
+          ) : null}
+          {/* 56px, and the first of ADR-0054 §5's bands. */}
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+            <SidebarTrigger className="-ml-1" />
+            {breadcrumbs}
+            {headerEnd ? <div className="ml-auto">{headerEnd}</div> : null}
+          </header>
+          {/*
+           * The page-header band: title and description left, actions right
+           * (ADR-0054 §5). Its height stays content-driven rather than declared,
+           * which is ADR-0048's decision and the reason a description can be
+           * added to a screen without re-budgeting the grid below it.
+           */}
+          <div
+            className="flex shrink-0 items-center gap-3 px-4 py-3"
+            data-slot="page-header"
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <h1 className="truncate text-[20px] leading-[26px] font-semibold">
+                {title}
+              </h1>
+              {/*
+               * No element when there is no description — the banner region's
+               * rule, for the banner region's reason: an empty `<p>` with the
+               * band's own `gap` above it is a line of blank space on every
+               * screen that never wanted one.
+               */}
+              {description === undefined ? null : (
+                <p
+                  className="truncate text-[13px] text-muted-foreground"
+                  data-slot="page-description"
+                >
+                  {description}
+                </p>
+              )}
+            </div>
+            {/*
+             * The group renders when the app hands it something, and the
+             * portal's landing site rides inside it (`D11.12`, ADR-0054 §5).
+             *
+             * **The shell's half of the contract is all it can state**: the
+             * target listens exactly when this slot is filled, so a consumer
+             * that wants to hoist into it must fill it. Whether that lines up
+             * with "every page holding a grid" is a routing question, and
+             * ADR-0048 §2 keeps routing out of here — `apps/admin` decides it
+             * in `_dashboard.tsx`, where `fullHeight` is read. A consumer that
+             * gets it wrong finds no container and keeps its controls, which
+             * is {@link usePageActionsContainer}'s documented `null` rather
+             * than a failure.
+             */}
+            {pageActions ? (
+              <div
+                className="flex shrink-0 items-center gap-2"
+                data-slot="page-actions"
+              >
+                {pageActions}
+                <PageActionsTarget />
+              </div>
+            ) : null}
+          </div>
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-col",
+              fullHeight ? "min-h-0" : "gap-4 p-4",
+            )}
+            data-full-height={fullHeight ? "" : undefined}
+            data-slot="page-container"
+          >
+            {children}
+          </div>
+        </SidebarInset>
+      </PageActionsProvider>
     </SidebarProvider>
   );
 };

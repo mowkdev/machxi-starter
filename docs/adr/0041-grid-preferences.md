@@ -1,9 +1,9 @@
 # ADR-0041: Persisted grid preferences — column sizing, order and visibility
 
-- Status: accepted
+- Status: superseded by [ADR-0054](0054-design-language-instrument.md) (delta: where Create and the Columns control are drawn)
 - Date: 2026-08-20
 
-> Written at the opening of D4 (data grid v2), alongside ADR-0037–0040. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.5` implements this store ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), on the frame [0037-grid-viewport-layout.md](0037-grid-viewport-layout.md) budgets and the toolbar [0038-grid-selection-and-capabilities.md](0038-grid-selection-and-capabilities.md) owns. It stays amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.5` — the last of the D4 set to be accepted, on the per-step schedule the deliverable runs on.
+> Written at the opening of D4 (data grid v2), alongside ADR-0037–0040. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.5` implements this store ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), on the frame [0037-grid-viewport-layout.md](0037-grid-viewport-layout.md) budgets and the toolbar [0038-grid-selection-and-capabilities.md](0038-grid-selection-and-capabilities.md) owns. It stays amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.5` — the last of the D4 set to be accepted, on the per-step schedule the deliverable runs on. **Superseded in part 2026-08-30 by [ADR-0054](0054-design-language-instrument.md)**, at the head of `D11.12`: a **delta** per [ADR-0050](0050-adr-lifecycle-and-verification.md) §Lifecycle rule 1, and the delta is four words below — the Columns menu no longer lives "in the toolbar region 0038 reserves" but in the page-header band, icon-only. **The surface itself is untouched**: the popover rather than a menu, the checkbox-and-reorder row, drag within the list, Reset to defaults disabled while nothing deviates, the zod-validated store behind its three-function adapter, and the URL/preferences/history/table taxonomy.
 
 ## Context
 

@@ -91,6 +91,42 @@ describe("the grid density control", () => {
     expect(screen.getByTestId("density")).toHaveTextContent("compact");
   });
 
+  it("is drawn as the band's outlined 34, and counts its rules", async () => {
+    renderControl(
+      createSettingsMockState({
+        theme: "system",
+        locale: "en",
+        gridDensity: "comfortable",
+        grids: {},
+      }),
+    );
+
+    /*
+     * The treatment and the glyph, in the tier that gates (`D11.12`,
+     * ADR-0054 §5). `test:e2e` measures the pair at 34x34 and bordered, but
+     * it runs *beside* the gate, so without this a revert to `ghost` or to
+     * `Rows3Icon` would pass `lint && check-types && test && size` in
+     * silence — and the glyph is exactly what the review caught this step
+     * getting wrong the first time.
+     *
+     * **The rule count is the assertion, not the icon's identity.** §5's
+     * claim is that Comfortable draws three rules and Compact four; lucide
+     * has no four-rule glyph (`Menu` and `AlignJustify` are the same three),
+     * which is why the pair is drawn locally. Counting `path` elements is
+     * the only thing that can hold that claim.
+     */
+    await waitFor(() => {
+      expect(toggle()).toHaveClass("size-[34px]");
+    });
+    expect(toggle().querySelectorAll("svg path")).toHaveLength(3);
+
+    await userEvent.setup().click(toggle());
+
+    await waitFor(() => {
+      expect(toggle().querySelectorAll("svg path")).toHaveLength(4);
+    });
+  });
+
   it("writes the mode to the account, and only the mode", async () => {
     const user = userEvent.setup();
     const state = createSettingsMockState();

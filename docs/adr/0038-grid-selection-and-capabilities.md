@@ -1,9 +1,9 @@
 # ADR-0038: Row selection, capabilities and the grid toolbar
 
-- Status: accepted
+- Status: superseded by [ADR-0054](0054-design-language-instrument.md) (delta: where Create and the Columns control are drawn)
 - Date: 2026-08-20
 
-> One of the D4 (data grid v2) decision set, written together with [ADR-0037](0037-grid-viewport-layout.md) and [ADR-0039](0039-grid-filter-ux.md)–[0041](0041-grid-preferences.md) before the deliverable opens (`docs/plan/0004-data-grid-v2.md`, `planned`). `D4.3` is the planned implementing step. It becomes amendable in place while D4 is `in progress` in `docs/plan/README.md` ([ADR-0025](0025-deliverables.md) rule 2). **Accepted 2026-08-20**, at the head of `D4.3` and together with [ADR-0042](0042-client-side-authorization.md) — the per-step acceptance D4 runs on, and the two are halves of one question.
+> One of the D4 (data grid v2) decision set, written together with [ADR-0037](0037-grid-viewport-layout.md) and [ADR-0039](0039-grid-filter-ux.md)–[0041](0041-grid-preferences.md) before the deliverable opens (`docs/plan/0004-data-grid-v2.md`, `planned`). `D4.3` is the planned implementing step. It becomes amendable in place while D4 is `in progress` in `docs/plan/README.md` ([ADR-0025](0025-deliverables.md) rule 2). **Accepted 2026-08-20**, at the head of `D4.3` and together with [ADR-0042](0042-client-side-authorization.md) — the per-step acceptance D4 runs on, and the two are halves of one question. **Superseded in part 2026-08-30 by [ADR-0054](0054-design-language-instrument.md)**, at the head of `D11.12`: a **delta** per [ADR-0050](0050-adr-lifecycle-and-verification.md) §Lifecycle rule 1, and the delta is one line of §The toolbar becomes a real region — **Create and [0041](0041-grid-preferences.md)'s columns menu are drawn in the page-header band, not on this region's right side**. Everything else here is in force: the `grid` capability block and its two readers, row selection keyed by id, the header checkbox's two states, the bounded bulk-delete fan-out and its per-item summary, `toolbarStart`/`toolbarEnd`/`renderToolbar` and the handlers-are-props rule. Bulk delete stays in this region, beside the count it acts on.
 
 ## Context
 

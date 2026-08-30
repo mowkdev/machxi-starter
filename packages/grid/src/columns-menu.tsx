@@ -245,9 +245,22 @@ export const ColumnsMenu = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8">
+        {/*
+         * Icon-only at 34×34 since `D11.12` (ADR-0054 §5): in the page-header
+         * band this control is one of a pair with the density toggle, and a
+         * pair reads as a pair only when both are the same shape. The label
+         * moves to `aria-label`, so the accessible name is unchanged and
+         * every test that finds this button by the name "Columns" still
+         * does — which is the point of moving it there rather than dropping
+         * it. `size="icon"` is the primitive's 36; §3's number is 34.
+         */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-[34px]"
+          aria-label={t("columns.label")}
+        >
           <Columns3Icon aria-hidden />
-          {t("columns.label")}
         </Button>
       </PopoverTrigger>
 

@@ -150,7 +150,14 @@ export const StaffPage = () => {
            * carries at `D4.3`. The capability still decides whether it
            * renders at all.
            */
-          <Button asChild size="sm">
+          /*
+           * 34px since `D11.12`: this button is drawn in the page-header
+           * band now, beside two 34x34 icon controls, and §5 names the
+           * height where it names them ("icon buttons 34x34 and the
+           * primary"). `size="sm"` keeps the primitive's padding, gap and
+           * type, which is §2's rule for a value only the CLI spells.
+           */
+          <Button asChild size="sm" className="h-[34px]">
             <Link to="/staff/new" state={openState}>
               <PlusIcon aria-hidden />
               {t("actions.create")}

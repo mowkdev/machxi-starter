@@ -141,6 +141,27 @@ const Menu = ({
   );
 };
 
+it("draws its trigger as the band's icon-only 34, not a labelled button", () => {
+  renderWithI18n(<Menu />);
+
+  /*
+   * The treatment, in the tier that gates (`D11.12`, ADR-0054 §5).
+   *
+   * `test:e2e` measures this pair at 34x34 and bordered, but that tier runs
+   * *beside* the gate and never in it — so without this case a revert to
+   * `size="sm" h-8` with a visible "Columns" label would pass
+   * `lint && check-types && test && size` in silence. The name is asserted
+   * with it, because moving the label to `aria-label` is what makes
+   * icon-only safe and a revert of *that* is the one an icon assertion
+   * alone would miss.
+   */
+  const trigger = screen.getByRole("button", { name: "Columns" });
+
+  expect(trigger).toHaveClass("size-[34px]");
+  expect(trigger).toHaveAttribute("aria-label", "Columns");
+  expect(trigger).toHaveTextContent("");
+});
+
 const openMenu = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole("button", { name: "Columns" }));
   await screen.findByText("Email");

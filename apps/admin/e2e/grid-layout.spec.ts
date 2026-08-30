@@ -206,6 +206,83 @@ for (const { name, path } of GRIDS) {
     expect(bleed).toEqual({ left: 0, right: 0 });
   });
 
+  test(`${name}: the view controls sit together in the page-header band`, async ({
+    app: page,
+  }) => {
+    await page.goto(path);
+    await waitForRows(page);
+
+    /*
+     * ADR-0054 §5's page-header group, measured (`D11.12`).
+     *
+     * The package tier proves the toolbar hoists and that the portal lands in
+     * the band; only here can it be shown that the pair is *drawn* as a pair
+     * — same box, same border, same 34 — and that the toolbar it came from
+     * has no right-hand group left. jsdom reports neither a computed border
+     * nor a box.
+     */
+    const band = await page.evaluate(() => {
+      const group = document.querySelector('[data-slot="page-actions"]');
+
+      if (group === null) return null;
+
+      const controls = [...group.children].flatMap((child) =>
+        child.getAttribute("data-slot") === "page-actions-target"
+          ? [...child.children]
+          : [child],
+      );
+
+      return controls.map((control) => {
+        const box = control.getBoundingClientRect();
+        const style = getComputedStyle(control);
+
+        return {
+          name: control.getAttribute("aria-label") ?? control.textContent,
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+          border: Number.parseFloat(style.borderTopWidth),
+        };
+      });
+    });
+
+    expect(band).not.toBeNull();
+
+    const controls = band ?? [];
+
+    /*
+     * Three, in §5's order: the app's density control, then the grid's
+     * Columns and its primary, hoisted through the portal. `display: contents`
+     * on the landing site is why the target's children are flattened above —
+     * it is not a box in this row, which is the point of it.
+     */
+    expect(controls).toHaveLength(3);
+    expect(controls[1]?.name).toBe("Columns");
+
+    /*
+     * The pair: identical 34 x 34 boxes, both bordered. §5 draws them as one
+     * shape, and a ghost button beside an outlined one was the defect
+     * `D11.12` was opened for — a zero border here is that defect returning.
+     */
+    for (const control of controls.slice(0, 2)) {
+      expect(control.width).toBe(34);
+      expect(control.height).toBe(34);
+      expect(control.border).toBeGreaterThan(0);
+    }
+
+    /*
+     * And the band they left. One child — the left group — is the assertion
+     * that catches an empty right-hand `div` surviving the move, which no
+     * query for a departed control can see.
+     */
+    const toolbarChildren = await page.evaluate(
+      () =>
+        document.querySelector('[data-slot="grid-toolbar"]')?.children.length ??
+        -1,
+    );
+
+    expect(toolbarChildren).toBe(1);
+  });
+
   test(`${name}: the chrome is a stack of bands with nothing between them`, async ({
     app: page,
   }) => {

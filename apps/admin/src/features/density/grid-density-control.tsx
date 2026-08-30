@@ -1,8 +1,50 @@
-import { Rows3Icon, Rows4Icon } from "lucide-react";
-
 import { useGridDensity } from "@/shared/density";
 import { useT } from "@/shared/i18n";
 import { Button } from "@/shared/ui";
+
+/**
+ * The two density glyphs, drawn here rather than taken from lucide
+ * (`D11.12`, ADR-0054 §5).
+ *
+ * **Bare rules, not boxed rows.** The reference draws density as full-width
+ * rules and Columns as a box with two vertical dividers — deliberately not
+ * mirror images, because §5 stands the two controls next to each other.
+ * `Rows3Icon` beside `Columns3Icon`, which is what `D11.6` shipped, is two
+ * identical boxes differing only in the direction of their stripes; at 16px
+ * that is no difference at all. `D11.6` could not have seen it, because the
+ * pair did not exist until this step made one.
+ *
+ * **And lucide has no four-rule glyph**, which the first attempt here got
+ * wrong: `Menu` is `M4 5h16 / M4 12h16 / M4 19h16` and `AlignJustify` is
+ * `M3 5h18 / M3 12h18 / M3 19h18` — the same three rules at the same three
+ * heights, one unit of x apart, so the two states would have been visually
+ * identical while the record claimed they counted. The review caught it; the
+ * fix is to draw the pair, because §5's claim is about the *count* and only
+ * an explicit path can hold it.
+ *
+ * Three rules at 6/12/18 (the reference's own values) and four at 6/10/14/18:
+ * same top and bottom, more lines between them, so the glyph says exactly
+ * what the mode says. lucide's own geometry otherwise — 24 viewBox, 2px
+ * stroke, round caps — so the pair sits at the same weight as the `Columns3`
+ * beside it, and `currentColor` so the button's variant still owns the colour.
+ */
+const RuleGlyph = ({ at }: { readonly at: readonly number[] }) => (
+  <svg
+    aria-hidden
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+  >
+    {at.map((y) => (
+      <path d={`M3 ${y}h18`} key={y} />
+    ))}
+  </svg>
+);
+
+const ComfortableRows = () => <RuleGlyph at={[6, 12, 18]} />;
+const CompactRows = () => <RuleGlyph at={[6, 10, 14, 18]} />;
 
 /**
  * How tightly the rows are packed, switched from the page-header band
@@ -34,12 +76,18 @@ export const GridDensityControl = () => {
   const { density, setDensity } = useGridDensity();
 
   const compact = density === "compact";
-  const Icon = compact ? Rows4Icon : Rows3Icon;
+
+  const Icon = compact ? CompactRows : ComfortableRows;
 
   return (
     <Button
       type="button"
-      variant="ghost"
+      /*
+       * `outline` since `D11.12`: §5 draws both band controls with a border
+       * on `--card`, and a ghost button beside an outlined one reads as a
+       * disabled twin rather than as its pair.
+       */
+      variant="outline"
       size="icon"
       className="size-[34px]"
       aria-pressed={compact}
