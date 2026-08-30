@@ -24,7 +24,27 @@ const resetColumnOrder = async (page: import("@playwright/test").Page) => {
   }
 
   if (await reset.isEnabled().catch(() => false)) {
+    /*
+     * **The write is awaited, not fired and forgotten** (`D11.11`).
+     *
+     * Reset is disabled when the grid is already on the config's order, so
+     * reaching here means there *is* a stored arrangement and a
+     * `PATCH /settings` follows (ADR-0045). The caller below reads the
+     * headers straight afterwards to establish its baseline, and a read
+     * taken before the reorder had settled would capture the order this
+     * helper was called to undo — which is the one run the fix exists for.
+     */
+    const patched = page
+      .waitForResponse(
+        (response) =>
+          response.url().endsWith("/admin/settings") &&
+          response.request().method() === "PATCH",
+        { timeout: 10_000 },
+      )
+      .catch(() => undefined);
+
     await reset.click().catch(() => undefined);
+    await patched;
   }
 
   await page.keyboard.press("Escape").catch(() => undefined);
@@ -57,6 +77,24 @@ test("a column is dragged to a new position, and Reset puts it back", async ({
       .getByRole("columnheader")
       .allTextContents()
       .then((all) => all.map((text) => text.trim()).filter(Boolean));
+
+  /*
+   * **`before` is the config's order, put there rather than found
+   * there** (`D11.11`).
+   *
+   * The last assertion below is that Reset returns the arrangement to
+   * `before`, and Reset returns it to the **config** (ADR-0041) — so a
+   * dev account carrying a stored order of its own made the two
+   * different things and the case could not pass, whatever the drag
+   * did. It is the same defect `grid-layout.spec.ts` carried in its row
+   * height: an account fact read as if it were a property of the app.
+   *
+   * So the run starts where the assertion ends. `resetColumnOrder` is
+   * the `afterEach`'s own helper and it is a no-op on an account that is
+   * already on the defaults, which is what every run after the first
+   * one is.
+   */
+  await resetColumnOrder(page);
 
   const before = await headers();
 

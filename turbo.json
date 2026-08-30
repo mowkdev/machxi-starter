@@ -30,7 +30,7 @@
     "test:e2e": {
       "cache": false,
       "dependsOn": [],
-      "env": ["SEED_SUPER_ADMIN_*", "E2E_BASE_URL", "CI"]
+      "env": ["SEED_SUPER_ADMIN_*", "E2E_BASE_URL", "E2E_API_URL", "CI"]
     },
     "test:int": {
       "cache": false,

@@ -1,6 +1,6 @@
 import { test as base, type Page } from "@playwright/test";
 
-import { signIn } from "./app";
+import { assertApiWindowClear, signIn } from "./app";
 
 /**
  * One signed-in browser context for the whole run (`D10.4`).
@@ -31,6 +31,14 @@ export const test = base.extend<NoTestFixtures, { app: Page }>({
     async ({ browser }, use) => {
       const context = await browser.newContext();
       const page = await context.newPage();
+
+      /*
+       * Before the login, because a spent rate-limit window makes the login
+       * itself the symptom (`D11.11`). See `assertApiWindowClear`: one
+       * request buys an error that names ADR-0020 instead of thirty-four
+       * timeouts that name nothing.
+       */
+      await assertApiWindowClear(page);
 
       await signIn(page);
       await use(page);

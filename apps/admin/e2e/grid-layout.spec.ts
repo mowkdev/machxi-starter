@@ -125,14 +125,41 @@ for (const { name, path } of GRIDS) {
     });
 
     expect(heights.header).toBe(34);
+
     /*
-     * Comfortable, which `D11.6` kept as the default when it added Compact
-     * beside it (ADR-0054 §6). The mode itself is measured where it can be
-     * driven without leaving a changed account behind for the next spec: the
-     * density round trip belongs to `D11.11`'s account walk, and the classes
-     * the two modes emit are `@repo/grid`'s own suite.
+     * **The row is the height of the mode in force, and the mode is
+     * read rather than assumed** (`D11.11`, ADR-0054 §6).
+     *
+     * This asserted a flat 44 until `D11.11` ran it on a machine whose
+     * dev account sits on Compact — which is the `columns-menu.spec.ts`
+     * defect one file along, and exactly what ADR-0052's data rules
+     * forbid: a row-count assertion in a costume. Density is an
+     * **account** fact since `D11.6` (ADR-0045), so "the default" is a
+     * property of a freshly seeded row rather than of the app, and a
+     * spec that assumed one was asserting about this machine's history.
+     *
+     * The band's toggle instead: whichever mode the account is on, the
+     * row is that mode's height. `aria-pressed` is the same fact the
+     * Preferences card reads, which is why the two surfaces cannot
+     * disagree (`D11.10`). Both numbers are still measured on every
+     * run — `D11.11`'s account walk drives the mode to its other value
+     * and measures a grid there too.
+     *
+     * **By slot rather than by accessible name**, which is the one place
+     * this file departs from the suite's discipline and does so on purpose.
+     * "Compact rows" is `settings:density.toggle` — translated — and
+     * `account.spec.ts` runs before this file and drives the account's
+     * locale, restoring it in a tolerant `finally`. A restore that did not
+     * land would leave the panel in Latvian and this locator would resolve
+     * to nothing, turning one spec's cleanup failure into two grid specs
+     * timing out on a name. The pressed state is the fact; the word for it
+     * is not.
      */
-    expect(heights.row).toBe(44);
+    const compact = await page
+      .locator('[data-slot="page-header"] button[aria-pressed]')
+      .getAttribute("aria-pressed");
+
+    expect(heights.row).toBe(compact === "true" ? 34 : 44);
 
     /*
      * **The pane's own border box is gone, and since `D11.3` so is the page's
