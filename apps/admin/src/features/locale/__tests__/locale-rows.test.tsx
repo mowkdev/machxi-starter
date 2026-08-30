@@ -4,13 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SettingsProvider } from "@/app/providers/settings";
-import { LocaleMenuItems } from "@/features/locale";
+import { LocaleRows } from "@/features/locale";
 import { LOCALE_STORAGE_KEY } from "@/shared/i18n";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/shared/ui";
 import {
   createSettingsHandlers,
   createSettingsMockState,
@@ -20,27 +15,22 @@ import { authenticatedAs } from "@/test/principals";
 import { renderWithProviders } from "@/test/render";
 
 /**
- * Choosing the language the panel speaks (`D7.5`, ADR-0046 §4).
+ * Choosing the language the panel speaks (`D7.5`, moved to the page at
+ * `D11.10`; ADR-0046 §4, ADR-0053 §2).
  *
- * Queried by role and accessible name throughout (ADR-0036), for the reason the
- * appearance menu is: "one of two" is a radio group rather than two buttons,
- * and a control a screen reader cannot announce is one a Latvian operator on a
- * screen reader cannot reach.
+ * **The menu suite with the surface swapped and nothing weakened**, for the
+ * reason its appearance twin gives: these cases were written against roles and
+ * accessible names, so a control that moved from a dropdown to a card is the
+ * same control to every one of them.
  *
  * Two halves are asserted and they are asserted apart, because the slice cannot
  * tell them apart either: the **device** half is `useLocale` alone and works
  * with no session anywhere near it, and the **account** half arrives through
  * the publisher `app/providers` installs — which is what makes "the language
  * follows the operator to the next machine" a property of the wiring rather
- * than of this menu.
+ * than of this control. The signed-out case is the one that changed meaning
+ * rather than shape, and the note on it is where it is made.
  */
-
-const menu = (children: React.ReactNode) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger>Account</DropdownMenuTrigger>
-    <DropdownMenuContent>{children}</DropdownMenuContent>
-  </DropdownMenu>
-);
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -51,37 +41,32 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("the language menu", () => {
-  it("offers exactly the locales the contract declares, each named in itself", async () => {
-    const user = userEvent.setup();
+describe("the language control", () => {
+  it("offers exactly the locales the contract declares, each named in itself", () => {
+    renderWithProviders(<LocaleRows />);
 
-    renderWithProviders(menu(<LocaleMenuItems />));
-    await user.click(screen.getByRole("button", { name: "Account" }));
-
-    const options = await screen.findAllByRole("menuitemradio");
+    const options = screen.getAllByRole("radio");
 
     expect(options).toHaveLength(LOCALES.length);
     /*
-     * Endonyms: an operator opens this menu *because* the current language is
-     * wrong for them, so `Latviešu` has to be legible from inside English.
+     * Endonyms: an operator opens this section *because* the current language
+     * is wrong for them, so `Latviešu` has to be legible from inside English —
+     * and since `D11.10` they reach it through two pieces of chrome they may
+     * not be able to read either, which is what makes the self-naming load
+     * bearing rather than a nicety.
      */
-    expect(options.map((option) => option.textContent)).toEqual([
-      "English",
-      "Latviešu",
-    ]);
     expect(
-      await screen.findByRole("menuitemradio", { name: "English" }),
-    ).toBeChecked();
+      options.map((option) => option.closest("label")?.textContent),
+    ).toEqual(["English", "Latviešu"]);
+    expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
+    expect(screen.getByRole("group", { name: "Language" })).toBeInTheDocument();
   });
 
   it("moves the document's language and remembers the choice on the device", async () => {
     const user = userEvent.setup();
 
-    renderWithProviders(menu(<LocaleMenuItems />));
-    await user.click(screen.getByRole("button", { name: "Account" }));
-    await user.click(
-      await screen.findByRole("menuitemradio", { name: "Latviešu" }),
-    );
+    renderWithProviders(<LocaleRows />);
+    await user.click(screen.getByRole("radio", { name: "Latviešu" }));
 
     await waitFor(() => {
       /*
@@ -94,21 +79,16 @@ describe("the language menu", () => {
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("lv");
   });
 
-  it("marks the current choice, so the menu says what is in force", async () => {
+  it("marks the current choice, so the section says what is in force", async () => {
     const user = userEvent.setup();
 
-    renderWithProviders(menu(<LocaleMenuItems />));
-    await user.click(screen.getByRole("button", { name: "Account" }));
-    await user.click(
-      await screen.findByRole("menuitemradio", { name: "Latviešu" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Account" }));
+    renderWithProviders(<LocaleRows />);
+    await user.click(screen.getByRole("radio", { name: "Latviešu" }));
 
-    await waitFor(async () => {
-      expect(
-        await screen.findByRole("menuitemradio", { name: "Latviešu" }),
-      ).toBeChecked();
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Latviešu" })).toBeChecked();
     });
+    expect(screen.getByRole("radio", { name: "English" })).not.toBeChecked();
   });
 
   /**
@@ -125,14 +105,13 @@ describe("the language menu", () => {
     server.use(...createSettingsHandlers(state));
 
     renderWithProviders(
-      <SettingsProvider>{menu(<LocaleMenuItems />)}</SettingsProvider>,
+      <SettingsProvider>
+        <LocaleRows />
+      </SettingsProvider>,
       { store: authenticatedAs() },
     );
 
-    await user.click(await screen.findByRole("button", { name: "Account" }));
-    await user.click(
-      await screen.findByRole("menuitemradio", { name: "Latviešu" }),
-    );
+    await user.click(await screen.findByRole("radio", { name: "Latviešu" }));
 
     await waitFor(() => {
       expect(state.seen.patches).toEqual([{ locale: "lv" }]);
@@ -142,9 +121,16 @@ describe("the language menu", () => {
 
   /**
    * Signed out there is no account and the control still works — which is what
-   * `LocalePublisher` being `undefined` rather than absent is for. The login
-   * screen is the one place an operator most needs the switch and the one
-   * place there is nothing to write to.
+   * `LocalePublisher` being `undefined` rather than absent is for.
+   *
+   * **What this case proves changed at `D11.10` and it is kept deliberately.**
+   * While the switch hung in the account menu, the signed-out screen it
+   * mattered on was the login, and the case stood for "the one place an
+   * operator most needs the switch has nothing to write to". `/account` is
+   * behind `_dashboard` now, so no *route* renders this control without a
+   * session — and the property is still the component's: it holds no opinion
+   * about whether there is an account, which is precisely why moving it
+   * between surfaces has never needed a change below its own file.
    */
   it("still switches with nobody signed in, and writes only the device", async () => {
     const user = userEvent.setup();
@@ -152,12 +138,9 @@ describe("the language menu", () => {
 
     server.use(...createSettingsHandlers(state));
 
-    renderWithProviders(menu(<LocaleMenuItems />));
+    renderWithProviders(<LocaleRows />);
 
-    await user.click(screen.getByRole("button", { name: "Account" }));
-    await user.click(
-      await screen.findByRole("menuitemradio", { name: "Latviešu" }),
-    );
+    await user.click(screen.getByRole("radio", { name: "Latviešu" }));
 
     await waitFor(() => {
       expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("lv");

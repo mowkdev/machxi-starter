@@ -149,13 +149,13 @@ describe("the account area", () => {
     expect(store.getPrincipal()?.firstName).toBe("Adaline");
   });
 
-  it("is reachable from the account menu, not only from the nav", async () => {
+  it("is reachable from the account menu, which is now the only way in", async () => {
     const user = userEvent.setup();
 
     renderApp({ initialPath: "/", store: signedIn() });
 
     await user.click(await screen.findByRole("button", { name: "Account" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Profile" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Account" }));
 
     // The menu that ends the session is also the one that opens the account it
     // belongs to — the menu is the current-principal block, which ADR-0049
@@ -166,9 +166,11 @@ describe("the account area", () => {
     // title back would pass on the helper's own lookup and prove no
     // navigation at all.
     //
-    // Since `D11.9` the item still points at `/profile` — `D11.10` re-aims it
-    // at the area — so what this also proves is that ADR-0053 §1's redirect
-    // carries a live surface and not just a URL.
+    // Since `D11.10` the item points at `/account` and the sidebar has no
+    // account entry at all (ADR-0053 §3), so this walk is the whole route in:
+    // the trigger, one item, the index route's redirect, and a section on
+    // screen. The title of this case says "only way in" and that is what the
+    // sidebar assertion in `app/__tests__/routing.test.tsx` holds up.
     expect(await (await page()).findByText(PROFILE.email)).toBeInTheDocument();
   });
 

@@ -1,15 +1,23 @@
 {
-  "appearance": "Appearance",
+  "appearance": {
+    "title": "Appearance",
+    "description": "How the panel is painted. System follows the device."
+  },
   "theme": {
     "light": "Light",
     "dark": "Dark",
     "system": "System"
   },
   "density": {
-    "toggle": "Compact rows"
+    "title": "Rows",
+    "description": "How tightly the tables pack their rows.",
+    "toggle": "Compact rows",
+    "comfortable": "Comfortable",
+    "compact": "Compact"
   },
   "language": {
-    "label": "Language",
+    "title": "Language",
+    "description": "The language the panel speaks. Each option names itself.",
     "en": "English",
     "lv": "Latviešu"
   }

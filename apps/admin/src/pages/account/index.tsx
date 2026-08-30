@@ -3,10 +3,13 @@ import { LockIcon, SettingsIcon, UserIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useProfile } from "@/entities/profile";
+import { GridDensityCards } from "@/features/density";
+import { LocaleRows } from "@/features/locale";
 import {
   ChangePasswordDialog,
   ProfileDetailsForm,
 } from "@/features/profile-manage";
+import { ThemeCards } from "@/features/theme";
 import { RolesList, StatusBadge } from "@/shared/grid/cells";
 import { dateTime } from "@/shared/grid/formatters";
 import { useT } from "@/shared/i18n";
@@ -27,11 +30,11 @@ import {
 /**
  * The account area (`D11.9`; ADR-0053 §1, §4, §5).
  *
- * Three files' worth of screen, one slice: the layout that frames every
- * section, and the two sections this step fills. `/account/preferences` is a
- * route with a title and no content until `D11.10` puts the theme, density and
- * locale controls in it — the plan's own division, and the reason nothing here
- * pretends to hold them.
+ * Four files' worth of screen, one slice: the layout that frames every
+ * section, and the three sections behind it. **`D11.10` filled the third**,
+ * and with it the account menu's theme and locale blocks came here — ADR-0053
+ * §2's one inventory, in the one place that lists what the app knows about the
+ * operator's preferences.
  *
  * **`entities/profile` and `features/profile-manage` are reused exactly as
  * they are** (ADR-0053 §5). Nothing below the page layer knew it was on
@@ -293,6 +296,67 @@ export const AccountSecuritySection = () => {
           }}
         />
       ) : null}
+    </>
+  );
+};
+
+/**
+ * `/account/preferences` — how the app behaves for you (`D11.10`, ADR-0053
+ * §1/§2).
+ *
+ * **The section that used to be a menu.** The appearance control arrived in
+ * the account menu at `D6.3` and the language switch beside it at `D7.5`, each
+ * placement right when it was made; ADR-0053 §2 takes them both, because a
+ * menu is a settings surface with no room to grow and the density mode
+ * `D11.6` added was the value that proved it. What ships here is the
+ * inventory: every preference the app holds about the operator, listed once.
+ *
+ * **One card per fact, not one card with three groups.** Each of these is an
+ * independent account setting with its own write path — the theme and the
+ * density ride ADR-0045's coalescing writer, the locale goes through
+ * `useUpdateSettings` and the device key — and a card is what gives each one a
+ * title a screen reader can land on and a sentence saying what it does. The
+ * cards sit on `SettingsLayout`'s 16px stack (ADR-0054 §7), which is why
+ * nothing here spells a gap.
+ *
+ * The controls themselves are the three features', unchanged below their
+ * component layer (ADR-0053 §5): this page composes, and knows nothing about
+ * how a preference is written.
+ */
+export const AccountPreferencesSection = () => {
+  const { t } = useT("settings");
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("appearance.title")}</CardTitle>
+          <CardDescription>{t("appearance.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeCards />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("density.title")}</CardTitle>
+          <CardDescription>{t("density.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GridDensityCards />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("language.title")}</CardTitle>
+          <CardDescription>{t("language.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LocaleRows />
+        </CardContent>
+      </Card>
     </>
   );
 };

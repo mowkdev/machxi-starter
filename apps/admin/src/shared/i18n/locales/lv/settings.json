@@ -1,15 +1,23 @@
 {
-  "appearance": "Izskats",
+  "appearance": {
+    "title": "Izskats",
+    "description": "Kā panelis tiek attēlots. Sistēmas režīms seko ierīcei."
+  },
   "theme": {
     "light": "Gaišs",
     "dark": "Tumšs",
     "system": "Sistēmas"
   },
   "density": {
-    "toggle": "Kompaktas rindas"
+    "title": "Rindas",
+    "description": "Cik blīvi tabulas izkārto rindas.",
+    "toggle": "Kompaktas rindas",
+    "comfortable": "Ērtas",
+    "compact": "Kompaktas"
   },
   "language": {
-    "label": "Valoda",
+    "title": "Valoda",
+    "description": "Valoda, kurā runā panelis. Katrs variants nosaukts pats savā valodā.",
     "en": "English",
     "lv": "Latviešu"
   }

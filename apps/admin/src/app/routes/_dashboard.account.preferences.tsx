@@ -1,18 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { AccountPreferencesSection } from "@/pages/account";
+
 /**
  * `/account/preferences` — how the app behaves for you (ADR-0053 §1).
  *
- * **The address exists before its contents do, and that is the plan's own
- * division**: `D11.9` builds the route family and `D11.10` moves the theme,
- * density and locale controls into this section from the account menu. Until
- * it does, the route is a title and a crumb over an empty content pane — the
- * honest intermediate state, rather than a placeholder card carrying copy that
- * the next step would delete.
- *
- * No `component`: TanStack's default renders an `<Outlet />`, which for a leaf
- * is nothing. `D11.10` adds one.
+ * **`D11.9` shipped this as a title with no component and `D11.10` gave it
+ * one**, which is the plan's own division: the address existed before its
+ * contents did rather than carrying a placeholder card written to be deleted.
+ * It now holds the appearance, density and language cards that ADR-0053 §2
+ * took out of the account menu.
  */
 export const Route = createFileRoute("/_dashboard/account/preferences")({
+  component: AccountPreferencesSection,
   staticData: { title: "account:sections.preferences" },
 });

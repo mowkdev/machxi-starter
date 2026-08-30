@@ -17,13 +17,12 @@
     "group": "Pārvaldība",
     "dashboard": "Vadības panelis",
     "staff": "Darbinieki",
-    "users": "Lietotāji",
-    "profile": "Profils"
+    "users": "Lietotāji"
   },
   "account": {
     "menu": "Konts",
     "unnamed": "Konts",
-    "profile": "Profils"
+    "area": "Konts"
   },
   "loading": {
     "starting": "Notiek startēšana…"

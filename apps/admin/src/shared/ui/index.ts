@@ -182,3 +182,8 @@ export { AppLoader } from "./app-loader";
 export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";
 export { QueryError } from "./query-error";
 export { RecordError } from "./record-error";
+export {
+  SettingsOptions,
+  type SettingsOption,
+  type SettingsOptionsProps,
+} from "./settings-options";

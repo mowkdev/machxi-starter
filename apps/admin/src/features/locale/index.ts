@@ -1,1 +1,1 @@
-export { LocaleMenuItems } from "./locale-menu-items";
+export { LocaleRows } from "./locale-rows";

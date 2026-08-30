@@ -1,1 +1,1 @@
-export { ThemeMenuItems } from "./theme-menu-items";
+export { ThemeCards } from "./theme-cards";

@@ -9,9 +9,12 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
  * so a crumb or a heading from it would describe a screen the operator never
  * sees.
  *
- * The sidebar item and the account menu still point here until `D11.10`
- * retires the one and re-aims the other; both arrive at the same place through
- * this line.
+ * **Nothing in the app points here since `D11.10`** — the sidebar item retired
+ * (ADR-0053 §3) and the account menu now names the area rather than a section
+ * — which is exactly the state a redirect for bookmarks should be in: it
+ * exists for addresses the app no longer produces. That also makes it the one
+ * route whose only reader is outside the codebase, so the routing suite is
+ * where it stays honest.
  */
 export const Route = createFileRoute("/_dashboard/profile")({
   beforeLoad: () => {

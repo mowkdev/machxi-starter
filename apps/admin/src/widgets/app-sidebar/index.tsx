@@ -8,8 +8,6 @@ import {
 } from "lucide-react";
 
 import { LogoutMenuItem } from "@/features/auth";
-import { LocaleMenuItems } from "@/features/locale";
-import { ThemeMenuItems } from "@/features/theme";
 import { useSession } from "@/shared/api/context";
 import { useCan, type ResourceName } from "@/shared/auth";
 import { APP_VERSION } from "@/shared/config";
@@ -53,9 +51,16 @@ import {
  * **The account menu left the footer at `D8.5`** (ADR-0049
  * §The-shell-adapter). ADR-0032 named "navigation, current-principal block,
  * logout" as this widget's job; ADR-0049 supersedes that and moves the whole
- * account menu — the principal block, logout, theme and locale — to the
- * shell's `headerEnd` slot. `AccountMenu` is still declared here, and exported
- * below, because it is made of session facts this slice owns.
+ * account menu to the shell's `headerEnd` slot. `AccountMenu` is still
+ * declared here, and exported below, because it is made of session facts this
+ * slice owns.
+ *
+ * **And the menu slimmed back to ADR-0032's three things at `D11.10`**
+ * (ADR-0053 §2): the theme and locale blocks are `/account/preferences`' now,
+ * so what hangs here is the principal, one way into the account area, and the
+ * way out. The sidebar's own `/profile` item retired in the same change
+ * (ADR-0053 §3) — the drawer is domain navigation, and one page reachable from
+ * both navs was a double entry that only looked like redundancy for free.
  *
  * **The footer itself went with it and came back at `D11.3`** (ADR-0054 §5),
  * and the rule is the same in both directions: `D8.5` removed the region
@@ -70,9 +75,9 @@ import {
  * fetching `GET /admin/profile` here, would put a request in a layout that
  * every protected screen mounts, to render a label that is already in memory.
  * The one thing the store cannot notice on its own is the operator renaming
- * themselves on `/profile`, and that is why `useUpdateProfile` writes the fresh
- * names back to it (`useSetPrincipal`) rather than this widget going and
- * looking.
+ * themselves on `/account/profile`, and that is why `useUpdateProfile` writes
+ * the fresh names back to it (`useSetPrincipal`) rather than this widget going
+ * and looking.
  *
  * `principal` is nullable in the type and rendered as a plain "Account" when it
  * is absent. That state is reachable: `_dashboard` guards on the access token,
@@ -86,11 +91,15 @@ import {
  * (`D4.3`, ADR-0042 §What it may gate).
  *
  * The naive reading — "filter the items by `can("read", item.resource)`" — is a
- * bug, and an instructive one: only two of these four name a resource. `/` is
- * the dashboard and `/profile` is the resource ADR-0042 deliberately keeps *out*
- * of the policy table (it mounts with no `authorize` at all), so filtering on a
- * derived resource name would hide both from everybody but a `super_admin`,
- * courtesy of deny-by-default doing exactly what it was asked.
+ * bug, and an instructive one: `/` is the dashboard and names no resource, so
+ * filtering on a derived resource name would hide it from everybody but a
+ * `super_admin`, courtesy of deny-by-default doing exactly what it was asked.
+ *
+ * **`/profile` used to be the second such item and left at `D11.10`**
+ * (ADR-0053 §3). The rule it illustrated did not leave with it — one ungated
+ * item is enough to make the join wrong to infer, and the next domain screen
+ * that has no policy row would otherwise be added to a list that had quietly
+ * stopped needing the distinction.
  *
  * So the item carries the join explicitly and **absence means "not gated"** —
  * which is the same rule the policy table states from the other end: a screen no
@@ -104,14 +113,14 @@ import {
  * where it is looked up.
  */
 interface NavItem {
-  readonly to: "/" | "/staff" | "/users" | "/profile";
+  readonly to: "/" | "/staff" | "/users";
   /**
    * A key in `common:nav`, not a sentence (`D7.2`).
    *
    * ADR-0046 §3 puts navigation in `common` and names the tension it creates:
-   * two of these four are *resources*, whose own namespaces land in `D7.4`. The
-   * shell's word for a destination is chrome — it is what the sidebar calls the
-   * place, and it is read next to "Dashboard" rather than next to a staff
+   * two of these three are *resources*, whose own namespaces land in `D7.4`.
+   * The shell's word for a destination is chrome — it is what the sidebar calls
+   * the place, and it is read next to "Dashboard" rather than next to a staff
    * record — so it stays here, and the resource screens' own titles are theirs.
    */
   readonly label: NavKey;
@@ -119,7 +128,7 @@ interface NavItem {
   readonly resource?: ResourceName;
 }
 
-type NavKey = "nav.dashboard" | "nav.staff" | "nav.users" | "nav.profile";
+type NavKey = "nav.dashboard" | "nav.staff" | "nav.users";
 
 /*
  * Annotated rather than `as const satisfies`, which is the shape the rest of
@@ -132,7 +141,6 @@ const NAVIGATION: readonly NavItem[] = [
   { to: "/", label: "nav.dashboard", icon: LayoutDashboardIcon },
   { to: "/staff", label: "nav.staff", icon: ShieldIcon, resource: "staff" },
   { to: "/users", label: "nav.users", icon: UsersIcon, resource: "users" },
-  { to: "/profile", label: "nav.profile", icon: UserIcon },
 ];
 
 /**
@@ -232,9 +240,10 @@ export const AccountMenu = () => {
        * (`w-56` is 224) and the radius (`rounded-md` is 5) — §2's assignment
        * arriving at the surface that owns the shape, exactly as it says.
        *
-       * The *contents* are still `D11.10`'s: the theme and locale blocks leave
-       * for `/account/preferences` there, and the menu slims to the principal,
-       * Account and Sign out. This step restyles what is here.
+       * The *contents* are `D11.10`'s and they have landed: the theme and
+       * locale blocks left for `/account/preferences`, and what remains is the
+       * principal, Account and Sign out — identity and exit, which is what
+       * ADR-0053 §2 calls the menu once it is not a settings surface.
        */}
       <DropdownMenuContent
         align="end"
@@ -254,29 +263,23 @@ export const AccountMenu = () => {
             <DropdownMenuSeparator />
           </>
         )}
+        {/*
+         * One entry into the whole area, not one per section (`D11.10`,
+         * ADR-0053 §1/§2). It points at `/account`, whose index route sends
+         * the operator to the first section — so the menu names a place rather
+         * than picking one, and a fourth section later needs nothing here.
+         *
+         * The icon is ADR-0053 §2's mitigation and the reason it is stable:
+         * an operator stranded in a language they cannot read reaches the
+         * language switch through this entry and the Preferences section
+         * label, and a glyph that moved with the copy would be no help at all.
+         */}
         <DropdownMenuItem asChild>
-          <Link to="/profile">
+          <Link to="/account">
             <UserIcon />
-            {t("account.profile")}
+            {t("account.area")}
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {/*
-         * A preference about the operator, in the menu named after them
-         * (`D6.3`, ADR-0045). It is the account's from here on, so it follows
-         * them to the next machine — which is the smallest visible proof that
-         * "display state" and "device state" were never the same category.
-         */}
-        <ThemeMenuItems />
-        <DropdownMenuSeparator />
-        {/*
-         * And the language beside it (`D7.5`, ADR-0046 §4). The same account
-         * row holds both, so they are one menu apart rather than one screen
-         * apart — and an operator who has landed in the wrong language finds
-         * the way out where they were already looking for a preference about
-         * themselves, in the menu named after them.
-         */}
-        <LocaleMenuItems />
         <DropdownMenuSeparator />
         <LogoutMenuItem />
       </DropdownMenuContent>

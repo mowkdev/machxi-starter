@@ -17,13 +17,12 @@
     "group": "Manage",
     "dashboard": "Dashboard",
     "staff": "Staff",
-    "users": "Users",
-    "profile": "Profile"
+    "users": "Users"
   },
   "account": {
     "menu": "Account",
     "unnamed": "Account",
-    "profile": "Profile"
+    "area": "Account"
   },
   "loading": {
     "starting": "Starting…"

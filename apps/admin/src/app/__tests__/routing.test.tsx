@@ -98,22 +98,23 @@ describe("route guards", () => {
     /*
      * The half of ADR-0042 that lives in the shell, and the half most likely to
      * regress, because the naive implementation — filter every item by
-     * `can("read", item.resource)` — is a bug that looks like a fix: `/` and
-     * `/profile` name no resource, `/profile` is deliberately absent from the
-     * policy table (it mounts with no `authorize` at all), and deny-by-default
-     * would therefore hide both from everybody but a `super_admin`.
+     * `can("read", item.resource)` — is a bug that looks like a fix: `/` names
+     * no resource and is deliberately absent from the policy table, and
+     * deny-by-default would therefore hide it from everybody but a
+     * `super_admin`.
      *
      * So the assertion is two-sided on purpose. Staff goes, because
      * `/admin/staff` is `authorize("admin")` throughout and a manager cannot
-     * read it; Dashboard and Profile stay, because **absence of a `resource`
-     * means "not gated"** rather than "ask the table".
+     * read it; Dashboard stays, because **absence of a `resource` means "not
+     * gated"** rather than "ask the table". Profile used to be the second
+     * ungated item and left the drawer at `D11.10` (ADR-0053 §3), which is why
+     * this case now makes the same claim with one example instead of two.
      */
     renderApp({ initialPath: "/", store: session(true, ["manager"]) });
 
     expect(
       await screen.findByRole("link", { name: "Dashboard" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument();
     // A manager may read the customer base, so this one stays.
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
 
@@ -246,9 +247,7 @@ describe("the account area", () => {
   it.each([
     ["/account/profile", "Profile", "Your account"],
     ["/account/security", "Security", "Password"],
-    // `D11.10` fills this one; until then the pane is deliberately empty, so
-    // there is no body to probe for.
-    ["/account/preferences", "Preferences", undefined],
+    ["/account/preferences", "Preferences", "Appearance"],
   ])(
     "deep-links %s with its own title",
     async (path, title, body: string | undefined) => {
@@ -307,5 +306,34 @@ describe("the account area", () => {
     });
 
     expect(within(nav).getAllByRole("link")).toHaveLength(3);
+  });
+
+  it("keeps the area out of the primary nav", async () => {
+    renderApp({ initialPath: "/", store: session(true) });
+
+    await screen.findByRole("heading", { level: 1, name: "Dashboard" });
+
+    /*
+     * ADR-0053 §3, and the reason it is asserted from the drawer rather than
+     * from the item that left: the decision is that the sidebar is *domain*
+     * navigation, so what must stay true is that no entry in it goes to the
+     * account area — not merely that one particular label is gone. A future
+     * `Preferences` item would pass a `queryByRole("link", { name: "Profile"
+     * })` and break the decision.
+     */
+    const drawer = document.querySelector('[data-slot="sidebar"]');
+
+    expect(drawer).toBeInTheDocument();
+
+    const destinations = within(drawer as HTMLElement)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href") ?? "");
+
+    expect(destinations.length).toBeGreaterThan(0);
+    expect(
+      destinations.filter(
+        (href) => href === "/profile" || href.startsWith("/account"),
+      ),
+    ).toEqual([]);
   });
 });
