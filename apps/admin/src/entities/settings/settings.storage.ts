@@ -1,5 +1,6 @@
 import {
   gridPreferencesSchema,
+  type GridDensity,
   type GridPreferencesV1,
   type StaffSettingsResource,
   type Theme,
@@ -94,6 +95,13 @@ export const createSettingsWriter = ({
   /** What the next flush will carry. `null` for a grid key is a delete. */
   const pendingGrids = new Map<string, GridPreferencesV1 | null>();
   let pendingTheme: Theme | null = null;
+  /**
+   * The density half (`D11.6`), and it is not mirrored either — for the same
+   * reason the theme is not: its reader is the density provider, which adopts
+   * from the query's own answer, so a copy here would be a second owner of one
+   * fact with nobody reading it.
+   */
+  let pendingGridDensity: GridDensity | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   /**
@@ -126,7 +134,13 @@ export const createSettingsWriter = ({
       timer = null;
     }
 
-    if (pendingTheme === null && pendingGrids.size === 0) return;
+    if (
+      pendingTheme === null &&
+      pendingGridDensity === null &&
+      pendingGrids.size === 0
+    ) {
+      return;
+    }
 
     /*
      * No subscriber yet — keep the pending payload rather than dropping it.
@@ -136,10 +150,12 @@ export const createSettingsWriter = ({
     if (send === null) return;
 
     const sentTheme = pendingTheme;
+    const sentDensity = pendingGridDensity;
     const sentGrids =
       pendingGrids.size === 0 ? null : Object.fromEntries(pendingGrids);
 
     pendingTheme = null;
+    pendingGridDensity = null;
     pendingGrids.clear();
 
     /*
@@ -151,6 +167,7 @@ export const createSettingsWriter = ({
      */
     send({
       ...(sentTheme === null ? {} : { theme: sentTheme }),
+      ...(sentDensity === null ? {} : { gridDensity: sentDensity }),
       ...(sentGrids === null ? {} : { grids: sentGrids }),
     });
   };
@@ -171,7 +188,13 @@ export const createSettingsWriter = ({
     subscribe: (next: SettingsFlush): (() => void) => {
       send = next;
 
-      if (pendingTheme !== null || pendingGrids.size > 0) flush();
+      if (
+        pendingTheme !== null ||
+        pendingGridDensity !== null ||
+        pendingGrids.size > 0
+      ) {
+        flush();
+      }
 
       return () => {
         if (send === next) send = null;
@@ -269,6 +292,21 @@ export const createSettingsWriter = ({
     /** Queues the theme half. The provider owns what is *displayed*. */
     setTheme: (next: Theme): void => {
       pendingTheme = next;
+      schedule();
+    },
+
+    /**
+     * Queues the density half (`D11.6`, ADR-0053 §2).
+     *
+     * The theme's twin down to the line, and it rides the coalescing writer
+     * rather than going straight through `useUpdateSettings` — which is the
+     * choice the locale made and this one declines. A density toggle is beside
+     * the grid, one click from a column drag and from the theme, so the second
+     * of coalescing that the locale had nothing to gain from is exactly the
+     * second in which those three collapse into one body.
+     */
+    setGridDensity: (next: GridDensity): void => {
+      pendingGridDensity = next;
       schedule();
     },
 

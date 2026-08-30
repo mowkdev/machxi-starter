@@ -94,6 +94,7 @@ const createFakeTable = () => {
         const created: SettingsRecord = {
           theme: "system",
           locale: "en",
+          gridDensity: "comfortable",
           grids: {},
         };
 
@@ -105,6 +106,7 @@ const createFakeTable = () => {
         const stored: SettingsRecord = {
           theme: next.theme,
           locale: next.locale,
+          gridDensity: next.gridDensity,
           grids: next.grids,
         };
 
@@ -179,11 +181,38 @@ describe("mergeGrids", () => {
 describe("applyPatch", () => {
   it("replaces the scalars that are present and keeps the ones that are not", () => {
     const next = applyPatch(
-      { theme: "system", locale: "en", grids: {} },
+      {
+        theme: "system",
+        locale: "en",
+        gridDensity: "comfortable",
+        grids: {},
+      },
       { theme: "dark" },
     );
 
-    expect(next).toEqual({ theme: "dark", locale: "en", grids: {} });
+    expect(next).toEqual({
+      theme: "dark",
+      locale: "en",
+      gridDensity: "comfortable",
+      grids: {},
+    });
+  });
+
+  it("replaces the density on its own, and only it (D11.6)", () => {
+    // The third scalar merges exactly like the first two — which is the whole
+    // of what ADR-0053 §2 asked of this function, and the reason a density
+    // toggle and a theme toggle can share one coalesced body.
+    const next = applyPatch(
+      { theme: "dark", locale: "lv", gridDensity: "comfortable", grids: {} },
+      { gridDensity: "compact" },
+    );
+
+    expect(next).toEqual({
+      theme: "dark",
+      locale: "lv",
+      gridDensity: "compact",
+      grids: {},
+    });
   });
 });
 
@@ -196,6 +225,7 @@ describe("settings.get", () => {
     await expect(service.get(staffContext())).resolves.toEqual({
       theme: "system",
       locale: "en",
+      gridDensity: "comfortable",
       grids: {},
     });
   });
@@ -206,12 +236,14 @@ describe("settings.get", () => {
     staff.rows.set(STAFF_ID, {
       theme: "dark",
       locale: "en",
+      gridDensity: "comfortable",
       grids: { staff: arrangement(240) },
     });
 
     await expect(service.get(staffContext())).resolves.toEqual({
       theme: "dark",
       locale: "en",
+      gridDensity: "comfortable",
       grids: { staff: arrangement(240) },
     });
   });
@@ -229,6 +261,7 @@ describe("settings.update", () => {
     expect(result).toEqual({
       theme: "light",
       locale: "en",
+      gridDensity: "comfortable",
       grids: { staff: arrangement(240) },
     });
     expect(staff.rows.get(STAFF_ID)).toEqual(result);
@@ -266,6 +299,7 @@ describe("settings.update", () => {
     staff.rows.set(STAFF_ID, {
       theme: "system",
       locale: "en",
+      gridDensity: "comfortable",
       grids: existing,
     });
 
@@ -292,6 +326,7 @@ describe("settings.update", () => {
     staff.rows.set(STAFF_ID, {
       theme: "system",
       locale: "en",
+      gridDensity: "comfortable",
       grids: existing,
     });
 

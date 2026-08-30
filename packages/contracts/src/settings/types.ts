@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-import type { Locale, Theme } from "./enums.js";
+import type { GridDensity, Locale, Theme } from "./enums.js";
 import type { gridPreferencesSchema } from "./schemas.js";
 
 /**
@@ -42,6 +42,13 @@ export type GridPreferencesV1 = z.infer<typeof gridPreferencesSchema>;
 interface SettingsCore {
   readonly theme: Theme;
   readonly locale: Locale;
+  /**
+   * How tightly a grid packs its rows (`D11.6`, ADR-0053 §2, ADR-0054 §6).
+   *
+   * Still display state and nothing else, which is why it belongs in this
+   * shape at all: it says how the table is drawn, never what is in it.
+   */
+  readonly gridDensity: GridDensity;
   /** `gridId` → arrangement. `{}` for a principal who has never touched one. */
   readonly grids: Readonly<Record<string, GridPreferencesV1>>;
 }

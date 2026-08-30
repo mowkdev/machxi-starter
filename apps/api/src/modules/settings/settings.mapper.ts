@@ -1,4 +1,5 @@
 import {
+  DEFAULT_GRID_DENSITY,
   DEFAULT_LOCALE,
   DEFAULT_THEME,
   type StaffSettingsResource,
@@ -31,6 +32,7 @@ type SettingsResource = StaffSettingsResource & UserSettingsResource;
 export const settingsDefaults: SettingsResource = {
   theme: DEFAULT_THEME,
   locale: DEFAULT_LOCALE,
+  gridDensity: DEFAULT_GRID_DENSITY,
   grids: {},
 };
 

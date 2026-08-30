@@ -2,12 +2,19 @@ import { relations } from "drizzle-orm";
 import { jsonb, pgTable, uuid } from "drizzle-orm/pg-core";
 
 import {
+  DEFAULT_GRID_DENSITY,
   DEFAULT_LOCALE,
   DEFAULT_THEME,
   type GridPreferencesV1,
 } from "@repo/contracts";
 
-import { localeEnum, primaryId, themeEnum, timestamps } from "./_shared.js";
+import {
+  gridDensityEnum,
+  localeEnum,
+  primaryId,
+  themeEnum,
+  timestamps,
+} from "./_shared.js";
 import { staff } from "./staff.js";
 import { users } from "./users.js";
 
@@ -55,6 +62,14 @@ const settingsColumns = () => ({
   /** `"system"` means the media query, resolved by the client at apply time. */
   theme: themeEnum().notNull().default(DEFAULT_THEME),
   locale: localeEnum().notNull().default(DEFAULT_LOCALE),
+  /**
+   * How tightly a grid packs its rows (`D11.6`, ADR-0053 §2).
+   *
+   * One row-wide mode, not one per grid: an operator who likes tight rows
+   * likes them on every screen, and a per-grid copy would be the same
+   * preference stored `n` times with nothing keeping the copies equal.
+   */
+  gridDensity: gridDensityEnum().notNull().default(DEFAULT_GRID_DENSITY),
   /**
    * `gridId` → arrangement, `{}` for a principal who has never touched one.
    *

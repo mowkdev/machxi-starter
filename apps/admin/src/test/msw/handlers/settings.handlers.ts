@@ -1,4 +1,5 @@
 import {
+  DEFAULT_GRID_DENSITY,
   DEFAULT_LOCALE,
   DEFAULT_THEME,
   MAX_SETTINGS_GRIDS,
@@ -21,7 +22,8 @@ import { fail, ok } from "./envelope";
  * validates with — so a body this app builds wrongly throws here instead of
  * being quietly accepted by a mock that is kinder than the server. And the
  * merge is modelled rather than assumed: this handler mirrors
- * `settingsService.update`, which replaces `theme` and `locale`, applies
+ * `settingsService.update`, which replaces the three scalars — `theme`,
+ * `locale` and, since `D11.6`, `gridDensity` — applies
  * `grids` **entry by entry**, deletes on `null`, and refuses a merged row over
  * {@link MAX_SETTINGS_GRIDS}. A mock that replaced the document instead would
  * let the coalescing writer's whole reason for existing pass untested.
@@ -33,6 +35,7 @@ import { fail, ok } from "./envelope";
 export const DEFAULT_SETTINGS: StaffSettingsResource = {
   theme: DEFAULT_THEME,
   locale: DEFAULT_LOCALE,
+  gridDensity: DEFAULT_GRID_DENSITY,
   grids: {},
 };
 
@@ -110,6 +113,9 @@ export const createSettingsHandlers = (state: SettingsMockState) =>
         ...state.settings,
         ...(body.theme === undefined ? {} : { theme: body.theme }),
         ...(body.locale === undefined ? {} : { locale: body.locale }),
+        ...(body.gridDensity === undefined
+          ? {}
+          : { gridDensity: body.gridDensity }),
         grids,
       };
 

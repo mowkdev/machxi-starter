@@ -5,6 +5,9 @@
     "dark": "Dark",
     "system": "System"
   },
+  "density": {
+    "toggle": "Compact rows"
+  },
   "language": {
     "label": "Language",
     "en": "English",

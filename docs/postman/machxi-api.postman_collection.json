@@ -2378,6 +2378,7 @@
                   "  pm.expect(envelope.success).to.eql(true);",
                   "  pm.expect(envelope.meta.requestId).to.be.a(\"string\");",
                   "  pm.expect(Object.keys(envelope.data).sort()).to.eql([",
+                  "    \"gridDensity\",",
                   "    \"grids\",",
                   "    \"locale\",",
                   "    \"theme\",",
@@ -2404,7 +2405,7 @@
           }
         },
         {
-          "name": "Set a theme and one grid",
+          "name": "Set the scalars and one grid",
           "event": [
             {
               "listen": "test",
@@ -2417,6 +2418,7 @@
                   "  const settings = pm.response.json().data;",
                   "",
                   "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.gridDensity).to.eql(\"compact\");",
                   "  pm.expect(settings.grids[\"postman-a\"].sizing.email).to.eql(240);",
                   "});"
                 ]
@@ -2443,7 +2445,7 @@
             "description": "The first write upserts the row. The response is the whole resource after the merge, which is what lets a client reconcile rather than assume its patch landed whole.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"theme\": \"dark\",\n  \"grids\": {\n    \"postman-a\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 240\n      },\n      \"order\": [\n        \"email\",\n        \"status\"\n      ],\n      \"hidden\": [\n        \"createdAt\"\n      ]\n    }\n  }\n}",
+              "raw": "{\n  \"theme\": \"dark\",\n  \"gridDensity\": \"compact\",\n  \"grids\": {\n    \"postman-a\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 240\n      },\n      \"order\": [\n        \"email\",\n        \"status\"\n      ],\n      \"hidden\": [\n        \"createdAt\"\n      ]\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2468,6 +2470,7 @@
                   "  pm.expect(settings.grids).to.have.property(\"postman-a\");",
                   "  pm.expect(settings.grids[\"postman-b\"].sizing.email).to.eql(320);",
                   "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.gridDensity).to.eql(\"compact\");",
                   "});"
                 ]
               }
@@ -2490,7 +2493,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "settings"]
             },
-            "description": "The property the whole design rests on: a body is a statement about the keys it names and silence about the rest, and silence cannot erase anything. This body mentions neither `theme` nor `postman-a`, and both survive.",
+            "description": "The property the whole design rests on: a body is a statement about the keys it names and silence about the rest, and silence cannot erase anything. This body mentions neither `theme` nor `gridDensity` nor `postman-a`, and all three survive.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"grids\": {\n    \"postman-b\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 320\n      },\n      \"order\": [\n        \"status\",\n        \"email\"\n      ],\n      \"hidden\": []\n    }\n  }\n}",
@@ -2716,6 +2719,7 @@
                   "  const settings = pm.response.json().data;",
                   "",
                   "  pm.expect(settings.theme).to.eql(\"system\");",
+                  "  pm.expect(settings.gridDensity).to.eql(\"comfortable\");",
                   "  pm.expect(settings.grids).to.not.have.property(\"postman-b\");",
                   "});"
                 ]
@@ -2739,10 +2743,10 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "admin", "settings"]
             },
-            "description": "The row stays — nothing deletes one but a hard-deleted principal, and the cascade does that — so the folder returns it to the values it would have had if the run had never happened.",
+            "description": "The row stays — nothing deletes one but a hard-deleted principal, and the cascade does that — so the folder returns it to the values it would have had if the run had never happened. **Every scalar the folder wrote is named here** (`D11.6`): a cleanup that reset two of three leaves the account on a value the browser tier then measures, which is how the density key was found to need this line.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"theme\": \"system\",\n  \"grids\": {\n    \"postman-b\": null\n  }\n}",
+              "raw": "{\n  \"theme\": \"system\",\n  \"gridDensity\": \"comfortable\",\n  \"grids\": {\n    \"postman-b\": null\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3369,6 +3373,7 @@
                   "  pm.expect(envelope.success).to.eql(true);",
                   "  pm.expect(envelope.meta.requestId).to.be.a(\"string\");",
                   "  pm.expect(Object.keys(envelope.data).sort()).to.eql([",
+                  "    \"gridDensity\",",
                   "    \"grids\",",
                   "    \"locale\",",
                   "    \"theme\",",
@@ -3395,7 +3400,7 @@
           }
         },
         {
-          "name": "Set a theme and one grid",
+          "name": "Set the scalars and one grid",
           "event": [
             {
               "listen": "test",
@@ -3408,6 +3413,7 @@
                   "  const settings = pm.response.json().data;",
                   "",
                   "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.gridDensity).to.eql(\"compact\");",
                   "  pm.expect(settings.grids[\"postman-a\"].sizing.email).to.eql(240);",
                   "});"
                 ]
@@ -3434,7 +3440,7 @@
             "description": "The first write upserts the row. The response is the whole resource after the merge, which is what lets a client reconcile rather than assume its patch landed whole.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"theme\": \"dark\",\n  \"grids\": {\n    \"postman-a\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 240\n      },\n      \"order\": [\n        \"email\",\n        \"status\"\n      ],\n      \"hidden\": [\n        \"createdAt\"\n      ]\n    }\n  }\n}",
+              "raw": "{\n  \"theme\": \"dark\",\n  \"gridDensity\": \"compact\",\n  \"grids\": {\n    \"postman-a\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 240\n      },\n      \"order\": [\n        \"email\",\n        \"status\"\n      ],\n      \"hidden\": [\n        \"createdAt\"\n      ]\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3459,6 +3465,7 @@
                   "  pm.expect(settings.grids).to.have.property(\"postman-a\");",
                   "  pm.expect(settings.grids[\"postman-b\"].sizing.email).to.eql(320);",
                   "  pm.expect(settings.theme).to.eql(\"dark\");",
+                  "  pm.expect(settings.gridDensity).to.eql(\"compact\");",
                   "});"
                 ]
               }
@@ -3481,7 +3488,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "user", "settings"]
             },
-            "description": "The property the whole design rests on: a body is a statement about the keys it names and silence about the rest, and silence cannot erase anything. This body mentions neither `theme` nor `postman-a`, and both survive.",
+            "description": "The property the whole design rests on: a body is a statement about the keys it names and silence about the rest, and silence cannot erase anything. This body mentions neither `theme` nor `gridDensity` nor `postman-a`, and all three survive.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"grids\": {\n    \"postman-b\": {\n      \"v\": 1,\n      \"sizing\": {\n        \"email\": 320\n      },\n      \"order\": [\n        \"status\",\n        \"email\"\n      ],\n      \"hidden\": []\n    }\n  }\n}",
@@ -3707,6 +3714,7 @@
                   "  const settings = pm.response.json().data;",
                   "",
                   "  pm.expect(settings.theme).to.eql(\"system\");",
+                  "  pm.expect(settings.gridDensity).to.eql(\"comfortable\");",
                   "  pm.expect(settings.grids).to.not.have.property(\"postman-b\");",
                   "});"
                 ]
@@ -3730,10 +3738,10 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "user", "settings"]
             },
-            "description": "The row stays — nothing deletes one but a hard-deleted principal, and the cascade does that — so the folder returns it to the values it would have had if the run had never happened.",
+            "description": "The row stays — nothing deletes one but a hard-deleted principal, and the cascade does that — so the folder returns it to the values it would have had if the run had never happened. **Every scalar the folder wrote is named here** (`D11.6`): a cleanup that reset two of three leaves the account on a value the browser tier then measures, which is how the density key was found to need this line.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"theme\": \"system\",\n  \"grids\": {\n    \"postman-b\": null\n  }\n}",
+              "raw": "{\n  \"theme\": \"system\",\n  \"gridDensity\": \"comfortable\",\n  \"grids\": {\n    \"postman-b\": null\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -7,6 +7,7 @@
  */
 export {
   citext,
+  gridDensityEnum,
   localeEnum,
   primaryId,
   principalTypeEnum,

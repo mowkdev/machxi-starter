@@ -90,6 +90,22 @@ _A presence stance is one segment, and takes the track's height rather than a tr
 
 Two numbers, not a scale: **Comfortable 44px (default) / Compact 34px**, differing in exactly row height, cell padding (10→8) and badge padding. A 34×34 icon control in the page-header band switches it; **the fact is an account setting** — the key, its schema and its Preferences card belong to [ADR-0053](0053-account-area.md), which owns the settings surface.
 
+**Amended 2026-08-30 (`D11.6`): the three numbers, spelled.** "Badge padding" was the one term above with no value beside it, and a mode is not implementable until every value it moves has one; the other two are stated and are unchanged.
+
+| What                | Comfortable | Compact | Where                                    |
+| ------------------- | ----------- | ------- | ---------------------------------------- |
+| Body row height     | 44          | 34      | the `td`, `h-[44px]` / `h-[34px]`         |
+| Cell padding (x)    | 10          | 8       | `th` **and** `td`, `px-2.5` / `px-2`      |
+| In-row badge        | 26 × 8      | 22 × 6  | `h-[26px] px-2` / `h-[22px] px-1.5`       |
+
+Three things the applying step settled, none of them smuggled.
+
+_The header's padding moves and its height does not._ §4 fixes the header row at 34, and a Compact body row is 34 too — the header is where the two densities meet rather than something density changes. But the padding is a **column** value, not a row one: a `td` at 8 under a `th` at 10 is every label two pixels off its own column, so the horizontal padding is the pair's and the height is the body's alone. That is what "cell padding" has to mean for the mode to be invisible where it should be.
+
+_"Badge" is the in-row badge._ The role badge is the only badge left inside a row — §4 retired the status badge for a dot — so it is what the term names. The chips in the Filtered-by band and the segments in the toolbar are chrome **around** the table at their own fixed heights (§4, §5), and a row-density mode that resized the toolbar would be a mode that moved the height budget it lives inside. 22 keeps the badge's 6px breathing room inside a 34px row, which is what 26 does inside 44.
+
+_The default is the contract's._ `DEFAULT_GRID_DENSITY` is `"comfortable"` in `@repo/contracts` (ADR-0053 §2, ADR-0023) and the grid's own fallback is that same constant, so a table rendered outside a provider — a package test, a future app that has not wired settings — is Comfortable for one declared reason rather than two agreeing ones.
+
 ### 7. The other surfaces
 
 Record container, all three variants as siblings: 60px title bar (16/22 title + 12px meta line), 24px body padding with a 20px field stack, **64px footer band** (`--muted` bg, top rule) holding Cancel + primary; dialog 600px, drawer 512px full-height with the body scrolling between static bands, page card 672px with the record label as the page's one `h1`. Popover: 232px, 4px padding, radius 8, 32px items, hover `--accent` — tokens only. Login (in `apps/admin`'s `auth-layout`): a left-aligned 400px column — brand line, 28/34 heading, an 8px-radius card with 38px controls — on a 48px hairline-grid ground; same values both themes.

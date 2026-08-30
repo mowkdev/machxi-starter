@@ -1,4 +1,5 @@
 import {
+  DEFAULT_GRID_DENSITY,
   DEFAULT_LOCALE,
   DEFAULT_THEME,
   type GridPreferencesV1,
@@ -47,6 +48,7 @@ const resource = (
 ): StaffSettingsResource => ({
   theme: DEFAULT_THEME,
   locale: DEFAULT_LOCALE,
+  gridDensity: DEFAULT_GRID_DENSITY,
   grids,
 });
 
@@ -215,6 +217,11 @@ describe("the server preference adapter", () => {
 
     writer.sync(resource());
     adapter.write(KEY, JSON.stringify(entry(180)));
+    // The density half of the same window (`D11.6`): the branch that decides
+    // whether anything is waiting has to name every pending scalar, and a
+    // check that still read only the theme and the grids would drop a
+    // density-only write made before the effect installed the sender.
+    writer.setGridDensity("compact");
     settle();
 
     writer.subscribe((body) => {
@@ -223,7 +230,27 @@ describe("the server preference adapter", () => {
 
     // Subscribing flushes what was waiting: the effect that installs the
     // sender runs after the render that may already have adopted a grid.
-    expect(sent).toEqual([{ grids: { staff: entry(180) } }]);
+    expect(sent).toEqual([
+      { gridDensity: "compact", grids: { staff: entry(180) } },
+    ]);
+  });
+
+  it("holds a density written before a sender is installed, on its own", () => {
+    // The same branch with nothing else pending — a toggle in the page-header
+    // band is one click and may well be the only thing in its window.
+    const cache = createMemoryStorage();
+    const writer = createSettingsWriter({ cache });
+    const sent: UpdateStaffSettingsBody[] = [];
+
+    writer.sync(resource());
+    writer.setGridDensity("compact");
+    settle();
+
+    writer.subscribe((body) => {
+      sent.push(body);
+    });
+
+    expect(sent).toEqual([{ gridDensity: "compact" }]);
   });
 
   it("drops nothing on the floor when disposed mid-window", () => {

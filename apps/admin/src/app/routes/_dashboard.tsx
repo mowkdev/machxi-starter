@@ -10,6 +10,8 @@ import { Fragment, type ReactNode } from "react";
 import { AccountMenu, AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
 
+import { GridDensityControl } from "@/features/density";
+
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { usePseudoNotice, useT } from "@/shared/i18n";
 import {
@@ -249,6 +251,23 @@ function DashboardShell() {
        * as a page gets its own heading and no inherited sentence under it.
        */
       description={routeDescription}
+      /*
+       * The density toggle, on the pages it means something for (`D11.6`,
+       * ADR-0054 §6).
+       *
+       * **`fullHeight` is the grid-page signal**, and no fourth `staticData`
+       * field is added to say so: ADR-0037's opt-in is exactly "this page is a
+       * height budget with a table in it", which is the set of pages that have
+       * rows to pack — and the `title` comment above already reads `fullHeight` as the
+       * answer to a question it was not literally asked. A record route
+       * rendering as a `page` is `false` and gets no toggle, which is right:
+       * there is no grid under the modal to re-pack.
+       *
+       * The slot renders no wrapper when it is handed nothing (ADR-0048 §2's
+       * slot honesty, as carried by 0054 §5), so every other route's band is
+       * unchanged.
+       */
+      pageActions={fullHeight ? <GridDensityControl /> : undefined}
       fullHeight={fullHeight}
       navigating={navigating}
     >

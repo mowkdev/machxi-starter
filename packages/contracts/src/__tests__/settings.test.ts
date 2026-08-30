@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_GRID_DENSITY,
+  GRID_DENSITIES,
   LOCALES,
   MAX_COLUMN_WIDTH,
   MAX_GRID_COLUMNS,
@@ -21,8 +23,12 @@ const arrangement = {
 };
 
 describe("the settings enums", () => {
-  it("declares the three themes and the two locales, in label order", () => {
+  it("declares the three themes, the two locales and the two densities, in label order", () => {
     expect(THEMES).toEqual(["light", "dark", "system"]);
+    // `D11.6` (ADR-0053 §2, ADR-0054 §6): a mode, not a scale — two values,
+    // and comfortable is the one a principal has said nothing about.
+    expect(GRID_DENSITIES).toEqual(["comfortable", "compact"]);
+    expect(DEFAULT_GRID_DENSITY).toBe("comfortable");
     // `D7.1` appended `"lv"` (ADR-0046). The order is the Postgres label
     // order, so this assertion is about the *sequence* and not the set: a
     // locale inserted rather than appended would reorder every sort by the
@@ -128,6 +134,29 @@ describe("the update body", () => {
     expect(updateStaffSettingsBody.safeParse({ them: "dark" }).success).toBe(
       false,
     );
+  });
+
+  it("takes the density on both segments' body (D11.6)", () => {
+    // The mirror of the locale case below: one tuple feeds `z.enum`, so both
+    // segments accept the mode without either learning anything about grids
+    // (ADR-0053 §2).
+    for (const density of GRID_DENSITIES) {
+      expect(
+        updateStaffSettingsBody.safeParse({ gridDensity: density }).success,
+      ).toBe(true);
+      expect(
+        updateUserSettingsBody.safeParse({ gridDensity: density }).success,
+      ).toBe(true);
+    }
+
+    // And strictness still holds around it: the new key does not widen the
+    // body to anything the tuple does not name.
+    expect(
+      updateStaffSettingsBody.safeParse({ gridDensity: "cosy" }).success,
+    ).toBe(false);
+    expect(
+      updateStaffSettingsBody.safeParse({ gridDensitys: "compact" }).success,
+    ).toBe(false);
   });
 
   it("takes the appended locale on both segments' body (D7.1)", () => {

@@ -274,13 +274,14 @@ export default defineConfig(
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
-              // The tail's doors (`D9.6`). The theme, `can()` and the route
-              // readers come through `@/shared/theme`, `@/shared/auth` and
-              // `@/shared/lib/route-meta` — three doors over one package,
-              // which is why the message names all three.
+              // The tail's doors (`D9.6`, and `density` since `D11.6`). The
+              // theme, the grid density, `can()` and the route readers come
+              // through `@/shared/theme`, `@/shared/density`, `@/shared/auth`
+              // and `@/shared/lib/route-meta` — four doors over one package,
+              // which is why the message names them all.
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
           ],
         },
@@ -330,13 +331,14 @@ export default defineConfig(
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
-              // The tail's doors (`D9.6`). The theme, `can()` and the route
-              // readers come through `@/shared/theme`, `@/shared/auth` and
-              // `@/shared/lib/route-meta` — three doors over one package,
-              // which is why the message names all three.
+              // The tail's doors (`D9.6`, and `density` since `D11.6`). The
+              // theme, the grid density, `can()` and the route readers come
+              // through `@/shared/theme`, `@/shared/density`, `@/shared/auth`
+              // and `@/shared/lib/route-meta` — four doors over one package,
+              // which is why the message names them all.
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
@@ -369,7 +371,7 @@ export default defineConfig(
             {
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
@@ -423,7 +425,7 @@ export default defineConfig(
             {
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/i18n", "@repo/i18n/*"],
@@ -479,7 +481,7 @@ export default defineConfig(
             {
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
@@ -532,7 +534,7 @@ export default defineConfig(
             {
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/resource", "@repo/resource/*"],
@@ -591,13 +593,14 @@ export default defineConfig(
                 "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
             },
             {
-              // The tail's doors (`D9.6`). The theme, `can()` and the route
-              // readers come through `@/shared/theme`, `@/shared/auth` and
-              // `@/shared/lib/route-meta` — three doors over one package,
-              // which is why the message names all three.
+              // The tail's doors (`D9.6`, and `density` since `D11.6`). The
+              // theme, the grid density, `can()` and the route readers come
+              // through `@/shared/theme`, `@/shared/density`, `@/shared/auth`
+              // and `@/shared/lib/route-meta` — four doors over one package,
+              // which is why the message names them all.
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/i18n", "@repo/i18n/*"],
@@ -631,7 +634,7 @@ export default defineConfig(
             {
               group: ["@repo/app-services", "@repo/app-services/*"],
               message:
-                "Import the app services through `@/shared/{auth,theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
             },
             {
               group: ["@repo/api-client", "@repo/api-client/*"],
@@ -676,17 +679,23 @@ export default defineConfig(
    * `@repo/app-services` is the deliberate exception to one-package-one-slice:
    * ADR-0051 named it "the small remainder" and left each piece's placement to
    * this step, and the placements landed in three existing slices rather than
-   * in a new one — `shared/theme`, `shared/auth` and `shared/lib/route-meta`.
-   * Naming all three here keeps the invariant intact while stating why they
-   * share it: what makes each a door is that it is the only path to that
-   * package's symbols, and three doors onto one package is still one exemption.
+   * in a new one — `shared/theme`, `shared/auth` and `shared/lib/route-meta`;
+   * `D11.6` added a fourth, `shared/density`, because the grid density is the
+   * theme's sibling rather than part of it. Naming them all here keeps the
+   * invariant intact while stating why they share it: what makes each a door is that it is the only path to that
+   * package's symbols, and four doors onto one package is still one exemption.
    *
    * `shared/auth` holds `policy.ts` beside its door — the app's own
    * transcription of this API's `authorize(` calls — which is exactly why this
    * block declares the other six groups rather than turning the rule off.
    */
   {
-    files: ["src/shared/auth/**", "src/shared/theme/**", "src/shared/lib/**"],
+    files: [
+      "src/shared/auth/**",
+      "src/shared/theme/**",
+      "src/shared/density/**",
+      "src/shared/lib/**",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",

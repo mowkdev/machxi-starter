@@ -1,4 +1,10 @@
-import type { Filter, ListQuerySearch, Page } from "@repo/contracts";
+import {
+  DEFAULT_GRID_DENSITY,
+  type Filter,
+  type GridDensity,
+  type ListQuerySearch,
+  type Page,
+} from "@repo/contracts";
 import {
   useTable,
   type ColumnFiltersState,
@@ -41,6 +47,11 @@ import {
 import { cn } from "@repo/ui/lib/utils";
 
 import { AppliedFilters } from "./applied-filters";
+import {
+  DENSITY_CELL_X,
+  DENSITY_ROW_HEIGHT,
+  GridDensityProvider,
+} from "./density";
 import {
   filterableColumns,
   fromColumnFiltersState,
@@ -281,6 +292,19 @@ export interface AppGridProps<TRow> {
    * never asked.
    */
   readonly striped?: boolean | undefined;
+  /**
+   * How tightly the rows are packed (`D11.6`, ADR-0053 §2, ADR-0054 §6).
+   *
+   * **A prop, and the account fact behind it is the app's to hold.** The mode
+   * is an account setting — one row in `settings`, written through ADR-0045's
+   * coalescing writer — and this package may not know a settings resource
+   * exists. So the app reads the fact and passes it, the way it passes
+   * `listState`; what the table owns is only what a density *is*.
+   *
+   * `DEFAULT_GRID_DENSITY` when absent, which is `"comfortable"` and is the
+   * contract's constant rather than a literal of this package's.
+   */
+  readonly density?: GridDensity | undefined;
 }
 
 const NO_ROWS: readonly never[] = [];
@@ -343,6 +367,7 @@ const HEADER_LABEL =
   "text-[11px] leading-4 font-semibold tracking-[0.07em] uppercase";
 
 export const AppGrid = <TRow,>({
+  density = DEFAULT_GRID_DENSITY,
   columns,
   overrides,
   page,
@@ -830,410 +855,429 @@ export const AppGrid = <TRow,>({
      * grid's regions out of register with the header and page-header bands
      * above them, which sit flush.
      */
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {/*
-       * The toolbar (ADR-0038) — the third region ADR-0037's budget carries,
-       * after the header rows and the pager, and static chrome like both.
-       *
-       * `renderToolbar` wins outright and the slots are then ignored; a screen
-       * whose toolbar is genuinely bespoke replaces the region rather than
-       * negotiating with it.
-       */}
-      {renderToolbar === undefined ? (
-        <GridToolbar
-          capabilities={capabilities}
-          searchable={searchable}
-          searchValue={listState.q ?? ""}
-          onSearchCommit={(term) => {
-            onListStateChange(withSearch(listState, term));
-          }}
-          hotFilters={hotFilters}
+    /*
+     * The mode the cells render at (`D11.6`, ADR-0054 §6).
+     *
+     * A provider rather than a prop threaded downward, because the cell
+     * renderers arrive through the registry (ADR-0035): a config carries the
+     * key `"rolesList"` and the table instantiates what it names, so there is
+     * no call site here to hand a badge its height. The two `cn` calls below
+     * read `density` directly; only the registry's components need the
+     * context.
+     */
+    <GridDensityProvider value={density}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/*
+         * The toolbar (ADR-0038) — the third region ADR-0037's budget carries,
+         * after the header rows and the pager, and static chrome like both.
+         *
+         * `renderToolbar` wins outright and the slots are then ignored; a screen
+         * whose toolbar is genuinely bespoke replaces the region rather than
+         * negotiating with it.
+         */}
+        {renderToolbar === undefined ? (
+          <GridToolbar
+            capabilities={capabilities}
+            searchable={searchable}
+            searchValue={listState.q ?? ""}
+            onSearchCommit={(term) => {
+              onListStateChange(withSearch(listState, term));
+            }}
+            hotFilters={hotFilters}
+            filters={listState.filters}
+            onHotFilterChange={onHotFilterChange}
+            createAction={createAction}
+            onBulkDelete={onBulkDelete}
+            toolbarStart={toolbarStart}
+            toolbarEnd={toolbarEnd}
+            /*
+             * `null`, not a component that renders nothing: the toolbar decides
+             * whether the whole region exists by asking whether its slots were
+             * *given* anything, and an element that returns `null` still counts
+             * as given. A grid whose every column is structural would otherwise
+             * get the empty band ADR-0038 spent a step removing.
+             */
+            columnsMenu={
+              movable.length === 0 ? null : (
+                <ColumnsMenu
+                  entries={menuEntries}
+                  isDirty={isDirty}
+                  onToggle={(id, visible) => {
+                    table.setColumnVisibility((current) => ({
+                      ...current,
+                      [id]: visible,
+                    }));
+                  }}
+                  onMove={moveColumn}
+                  onReorder={reorderColumn}
+                  onReset={preferenceStore.reset}
+                />
+              )
+            }
+            selectedIds={selectedIds}
+            clearSelection={clearSelection}
+          />
+        ) : (
+          renderToolbar(toolbarContext)
+        )}
+
+        {/*
+         * The applied-filters bar (ADR-0039) — the second static region of
+         * ADR-0037's budget, and it renders nothing when nothing is applied.
+         *
+         * **It no longer takes `hotFilters`** (`D10.2`, ADR-0052 §Visible
+         * state). It took them to suppress the chips a pressed button was
+         * already displaying, which also meant this call site had to hand it
+         * `NO_HOT_FILTERS` whenever a screen replaced the toolbar — or those
+         * filters would have been displayed by nothing at all. With suppression
+         * retired the whole question is gone: every applied filter has a chip
+         * here, whoever drew the toolbar.
+         */}
+        <AppliedFilters
           filters={listState.filters}
-          onHotFilterChange={onHotFilterChange}
-          createAction={createAction}
-          onBulkDelete={onBulkDelete}
-          toolbarStart={toolbarStart}
-          toolbarEnd={toolbarEnd}
+          q={listState.q ?? ""}
           /*
-           * `null`, not a component that renders nothing: the toolbar decides
-           * whether the whole region exists by asking whether its slots were
-           * *given* anything, and an element that returns `null` still counts
-           * as given. A grid whose every column is structural would otherwise
-           * get the empty band ADR-0038 spent a step removing.
+           * `merged`, so a usage that *hid* a column has hidden its label too —
+           * the same set that decides `owned` for the update channel decides the
+           * words for the display one, which keeps it one rule instead of two.
+           * ADR-0039 names exactly this case ("the deleted-only state arriving by
+           * URL on a page whose overrides hid the column") as foreign, and a
+           * friendly label on a filter with no control to open would be the bar
+           * implying one.
            */
-          columnsMenu={
-            movable.length === 0 ? null : (
-              <ColumnsMenu
-                entries={menuEntries}
-                isDirty={isDirty}
-                onToggle={(id, visible) => {
-                  table.setColumnVisibility((current) => ({
-                    ...current,
-                    [id]: visible,
-                  }));
-                }}
-                onMove={moveColumn}
-                onReorder={reorderColumn}
-                onReset={preferenceStore.reset}
-              />
-            )
-          }
-          selectedIds={selectedIds}
-          clearSelection={clearSelection}
+          columns={merged}
+          onRemoveFilter={(filter) => {
+            onListStateChange(withoutFilter(listState, filter));
+          }}
+          onRemoveSearch={() => {
+            onListStateChange(withSearch(listState, ""));
+          }}
+          onClearAll={() => {
+            onListStateChange(clearedFilters(listState));
+          }}
         />
-      ) : (
-        renderToolbar(toolbarContext)
-      )}
 
-      {/*
-       * The applied-filters bar (ADR-0039) — the second static region of
-       * ADR-0037's budget, and it renders nothing when nothing is applied.
-       *
-       * **It no longer takes `hotFilters`** (`D10.2`, ADR-0052 §Visible
-       * state). It took them to suppress the chips a pressed button was
-       * already displaying, which also meant this call site had to hand it
-       * `NO_HOT_FILTERS` whenever a screen replaced the toolbar — or those
-       * filters would have been displayed by nothing at all. With suppression
-       * retired the whole question is gone: every applied filter has a chip
-       * here, whoever drew the toolbar.
-       */}
-      <AppliedFilters
-        filters={listState.filters}
-        q={listState.q ?? ""}
-        /*
-         * `merged`, so a usage that *hid* a column has hidden its label too —
-         * the same set that decides `owned` for the update channel decides the
-         * words for the display one, which keeps it one rule instead of two.
-         * ADR-0039 names exactly this case ("the deleted-only state arriving by
-         * URL on a page whose overrides hid the column") as foreign, and a
-         * friendly label on a filter with no control to open would be the bar
-         * implying one.
-         */
-        columns={merged}
-        onRemoveFilter={(filter) => {
-          onListStateChange(withoutFilter(listState, filter));
-        }}
-        onRemoveSearch={() => {
-          onListStateChange(withSearch(listState, ""));
-        }}
-        onClearAll={() => {
-          onListStateChange(clearedFilters(listState));
-        }}
-      />
+        {/*
+         * The one scroll container (ADR-0037), on both axes, and the floor that
+         * keeps a short viewport honest: when `min-h-64` wins, the column grows
+         * past the viewport and the document scrolls — D3's behaviour, reached by
+         * degrading rather than by crushing the grid to two rows.
+         *
+         * **The card frame retired at `D11.2`** (ADR-0054 §4). The pane carried
+         * `rounded-md border bg-card` — a border box around the table, which is
+         * exactly the frame Instrument replaces with band rules: the table runs
+         * edge to edge inside the inset, the header's own `--border-strong`
+         * bottom rule closes the chrome above it, and the ground is whatever the
+         * pane is mounted in rather than a second surface colour inside it. The
+         * sticky header keeps an opaque ground of its own (`--grid-header`),
+         * which is what rows pass *under*; it no longer has to agree with a
+         * background this element paints.
+         */}
+        <div
+          data-slot="grid-scroll"
+          className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto"
+        >
+          <Table container={false} className={STICKY_HEADER_TABLE}>
+            {/*
+             * Sticky within the scroll body — the point of the budget. It carries
+             * an opaque background so rows pass *under* the header rather than
+             * through it, and a stacking order, because ADR-0039's filter
+             * popovers and ADR-0038's row menus will float in this same
+             * container and have to layer against it knowingly. The opaque
+             * background is on the cells rather than on the `thead`, for the
+             * reason `STICKY_HEADER_TABLE` above records — and since `D11.2` that
+             * background is `--grid-header`, the header band's own ground rather
+             * than the card's (ADR-0054 §4).
+             */}
+            <TableHeader className="sticky top-0 z-10 [&_td]:bg-grid-header [&_th]:bg-grid-header">
+              {headerGroups.map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => {
+                    const sorted = header.column.getIsSorted();
+                    const align =
+                      header.column.columnDef.meta?.align ?? "start";
+                    const filter = header.column.columnDef.meta?.filter;
 
-      {/*
-       * The one scroll container (ADR-0037), on both axes, and the floor that
-       * keeps a short viewport honest: when `min-h-64` wins, the column grows
-       * past the viewport and the document scrolls — D3's behaviour, reached by
-       * degrading rather than by crushing the grid to two rows.
-       *
-       * **The card frame retired at `D11.2`** (ADR-0054 §4). The pane carried
-       * `rounded-md border bg-card` — a border box around the table, which is
-       * exactly the frame Instrument replaces with band rules: the table runs
-       * edge to edge inside the inset, the header's own `--border-strong`
-       * bottom rule closes the chrome above it, and the ground is whatever the
-       * pane is mounted in rather than a second surface colour inside it. The
-       * sticky header keeps an opaque ground of its own (`--grid-header`),
-       * which is what rows pass *under*; it no longer has to agree with a
-       * background this element paints.
-       */}
-      <div
-        data-slot="grid-scroll"
-        className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto"
-      >
-        <Table container={false} className={STICKY_HEADER_TABLE}>
-          {/*
-           * Sticky within the scroll body — the point of the budget. It carries
-           * an opaque background so rows pass *under* the header rather than
-           * through it, and a stacking order, because ADR-0039's filter
-           * popovers and ADR-0038's row menus will float in this same
-           * container and have to layer against it knowingly. The opaque
-           * background is on the cells rather than on the `thead`, for the
-           * reason `STICKY_HEADER_TABLE` above records — and since `D11.2` that
-           * background is `--grid-header`, the header band's own ground rather
-           * than the card's (ADR-0054 §4).
-           */}
-          <TableHeader className="sticky top-0 z-10 [&_td]:bg-grid-header [&_th]:bg-grid-header">
-            {headerGroups.map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  const sorted = header.column.getIsSorted();
-                  const align = header.column.columnDef.meta?.align ?? "start";
-                  const filter = header.column.columnDef.meta?.filter;
+                    const width = widthOf(preferences, header.column.id);
 
-                  const width = widthOf(preferences, header.column.id);
-
-                  return (
-                    <TableHead
-                      key={header.id}
-                      /*
-                       * `relative` so the resize handle can sit on the edge —
-                       * and, since `D11.2`, the header band's own geometry
-                       * (ADR-0054 §4): 34px tall against the primitive's 40,
-                       * with §3's 10px cell padding and the caps label.
-                       */
-                      className={cn(
-                        "relative h-[34px] px-2.5",
-                        HEADER_LABEL,
-                        align === "end" && "text-right",
-                      )}
-                      style={width === undefined ? undefined : { width }}
-                      aria-sort={
-                        sorted === false
-                          ? undefined
-                          : sorted === "asc"
-                            ? "ascending"
-                            : "descending"
-                      }
-                    >
-                      {/*
-                       * Sort control and filter icon, side by side (ADR-0039).
-                       * Sorting is untouched — a header click still toggles it —
-                       * and the filter icon is a sibling rather than something
-                       * inside the sort button, which would be a button in a
-                       * button.
-                       */}
-                      <div
-                        className={cn(
-                          "flex items-center gap-1",
-                          align === "end" && "justify-end",
-                          width !== undefined && "overflow-hidden",
-                        )}
+                    return (
+                      <TableHead
+                        key={header.id}
                         /*
-                         * The width lives on an inner block as well as on the
-                         * cell, and that is what makes sizing bite at all.
-                         * `@repo/ui`'s `TableHead` and `TableCell` are
-                         * `whitespace-nowrap`, and under `table-layout: auto` a
-                         * cell's own `width` is a suggestion its content can
-                         * overrule — so a narrowed column would simply refuse
-                         * to narrow. A fixed-width block inside it cannot.
+                         * `relative` so the resize handle can sit on the edge —
+                         * and, since `D11.2`, the header band's own geometry
+                         * (ADR-0054 §4): 34px tall against the primitive's 40,
+                         * with the caps label and the body's own horizontal
+                         * padding — the height is the header's and the padding
+                         * is the column's, so Compact moves one and not the
+                         * other (ADR-0054 §6, `D11.6`).
                          */
-                        style={
-                          width === undefined
+                        className={cn(
+                          "relative h-[34px]",
+                          DENSITY_CELL_X[density],
+                          HEADER_LABEL,
+                          align === "end" && "text-right",
+                        )}
+                        style={width === undefined ? undefined : { width }}
+                        aria-sort={
+                          sorted === false
                             ? undefined
-                            : { width, maxWidth: width }
+                            : sorted === "asc"
+                              ? "ascending"
+                              : "descending"
                         }
                       >
-                        {header.column.getCanSort() ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            /*
-                             * `text-[11px] font-semibold` restated from
-                             * {@link HEADER_LABEL}: the button variant sets
-                             * both, and the two properties that *do* inherit
-                             * — the caps and the tracking — arrive from the
-                             * `th` on their own. `h-7` so a 34px band holds it.
-                             */
-                            className="-ml-2.5 h-7 text-[11px] font-semibold data-[state=open]:bg-accent"
-                            onClick={header.column.getToggleSortingHandler()}
-                          >
+                        {/*
+                         * Sort control and filter icon, side by side (ADR-0039).
+                         * Sorting is untouched — a header click still toggles it —
+                         * and the filter icon is a sibling rather than something
+                         * inside the sort button, which would be a button in a
+                         * button.
+                         */}
+                        <div
+                          className={cn(
+                            "flex items-center gap-1",
+                            align === "end" && "justify-end",
+                            width !== undefined && "overflow-hidden",
+                          )}
+                          /*
+                           * The width lives on an inner block as well as on the
+                           * cell, and that is what makes sizing bite at all.
+                           * `@repo/ui`'s `TableHead` and `TableCell` are
+                           * `whitespace-nowrap`, and under `table-layout: auto` a
+                           * cell's own `width` is a suggestion its content can
+                           * overrule — so a narrowed column would simply refuse
+                           * to narrow. A fixed-width block inside it cannot.
+                           */
+                          style={
+                            width === undefined
+                              ? undefined
+                              : { width, maxWidth: width }
+                          }
+                        >
+                          {header.column.getCanSort() ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              /*
+                               * `text-[11px] font-semibold` restated from
+                               * {@link HEADER_LABEL}: the button variant sets
+                               * both, and the two properties that *do* inherit
+                               * — the caps and the tracking — arrive from the
+                               * `th` on their own. `h-7` so a 34px band holds it.
+                               */
+                              className="-ml-2.5 h-7 text-[11px] font-semibold data-[state=open]:bg-accent"
+                              onClick={header.column.getToggleSortingHandler()}
+                            >
+                              <table.FlexRender header={header} />
+                              {sorted === "asc" ? (
+                                <ArrowUpIcon aria-hidden />
+                              ) : sorted === "desc" ? (
+                                <ArrowDownIcon aria-hidden />
+                              ) : (
+                                <ChevronsUpDownIcon
+                                  aria-hidden
+                                  className="opacity-50"
+                                />
+                              )}
+                            </Button>
+                          ) : (
                             <table.FlexRender header={header} />
-                            {sorted === "asc" ? (
-                              <ArrowUpIcon aria-hidden />
-                            ) : sorted === "desc" ? (
-                              <ArrowDownIcon aria-hidden />
-                            ) : (
-                              <ChevronsUpDownIcon
-                                aria-hidden
-                                className="opacity-50"
-                              />
-                            )}
-                          </Button>
-                        ) : (
-                          <table.FlexRender header={header} />
-                        )}
+                          )}
 
-                        {filter === undefined ? null : (
-                          <ColumnFilterDialog
-                            field={header.column.id}
+                          {filter === undefined ? null : (
+                            <ColumnFilterDialog
+                              field={header.column.id}
+                              label={String(
+                                header.column.columnDef.header ??
+                                  header.column.id,
+                              )}
+                              config={filter}
+                              /*
+                               * Committed through the engine, not around it: the
+                               * dialog's Apply is `setFilterValue`, which lands in
+                               * `onColumnFiltersChange` above and navigates. One
+                               * path in and out, the same one the deleted row used.
+                               */
+                              value={
+                                header.column.getFilterValue() as
+                                  ColumnFilterValue | undefined
+                              }
+                              onCommit={(next) => {
+                                header.column.setFilterValue(next);
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        {header.column.columnDef.meta?.structural ===
+                        true ? null : (
+                          <ResizeHandle
                             label={String(
                               header.column.columnDef.header ??
                                 header.column.id,
                             )}
-                            config={filter}
-                            /*
-                             * Committed through the engine, not around it: the
-                             * dialog's Apply is `setFilterValue`, which lands in
-                             * `onColumnFiltersChange` above and navigates. One
-                             * path in and out, the same one the deleted row used.
-                             */
-                            value={
-                              header.column.getFilterValue() as
-                                ColumnFilterValue | undefined
-                            }
-                            onCommit={(next) => {
-                              header.column.setFilterValue(next);
+                            width={width}
+                            onResize={(next) => {
+                              setColumnWidth(header.column.id, next);
+                            }}
+                            onReset={() => {
+                              clearColumnWidth(header.column.id);
                             }}
                           />
                         )}
-                      </div>
-
-                      {header.column.columnDef.meta?.structural ===
-                      true ? null : (
-                        <ResizeHandle
-                          label={String(
-                            header.column.columnDef.header ?? header.column.id,
-                          )}
-                          width={width}
-                          onResize={(next) => {
-                            setColumnWidth(header.column.id, next);
-                          }}
-                          onReset={() => {
-                            clearColumnWidth(header.column.id);
-                          }}
-                        />
-                      )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-
-          <TableBody>
-            {page === undefined && error !== undefined && error !== null ? (
-              /*
-               * A failure, in the place the rows would have been. It wins over
-               * the loading branch because a query that failed is not loading —
-               * `keepPreviousData` means a *refetch* failure still has a page
-               * to render, and that case deliberately keeps showing it rather
-               * than replacing an operator's view with an apology.
-               */
-              <TableRow>
-                <TableCell colSpan={columnCount} className="h-24 text-center">
-                  {renderError({ error, onRetry })}
-                </TableCell>
-              </TableRow>
-            ) : page === undefined ? (
-              <LoadingRows columns={columnCount} />
-            ) : bodyRows.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={columnCount}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  {emptyMessage === undefined ? t("empty") : tk(emptyMessage)}
-                </TableCell>
-              </TableRow>
-            ) : (
-              bodyRows.map((row) => (
-                /*
-                 * `even:` rather than an index off `bodyRows`: the stripe is a
-                 * property of a row's *position on screen*, and the DOM is
-                 * where that is known — a computed index would have to be kept
-                 * honest against every future branch that renders a row (the
-                 * loading, empty and error rows above are all `<TableRow>`
-                 * too), while the selector cannot drift from what is rendered.
-                 *
-                 * `bg-grid-stripe` since `D11.2` — a solid token rather than
-                 * `bg-muted/30`, because ADR-0054 §2 made the dark theme's
-                 * surfaces an elevation ramp and an alpha stripe reads as a
-                 * different colour over each rung of it. It sits under
-                 * `TableRow`'s own `hover:bg-muted/50` and the selected state
-                 * below, both of which sort after `even` in Tailwind's variant
-                 * order and therefore still win: a striped row must not stop
-                 * answering the pointer or stop showing that it is selected.
-                 *
-                 * **Selection is `--primary-tint` plus a 2px inset bar**
-                 * (ADR-0054 §4), and the bar is drawn on the row's first cell
-                 * rather than on the `<tr>`: the table is `border-separate`
-                 * (see {@link STICKY_HEADER_TABLE}) and a row-level shadow in
-                 * the separated model is the same promise a row-level *border*
-                 * turned out not to keep at `D4.1`. A cell keeps it.
-                 */
-                <TableRow
-                  key={row.id}
-                  className={cn(
-                    striped && "even:bg-grid-stripe",
-                    "data-[state=selected]:bg-primary-tint",
-                    "data-[state=selected]:[&>td:first-child]:shadow-[inset_2px_0_0_var(--primary)]",
-                  )}
-                >
-                  {/*
-                   * `getVisibleCells`, not `getAllCells` — since `D4.5` a
-                   * column can be hidden, and a row that rendered every cell
-                   * would put its data under the wrong headers.
-                   */}
-                  {row.getVisibleCells().map((cell) => {
-                    const width = widthOf(preferences, cell.column.id);
-
-                    return (
-                      <TableCell
-                        key={cell.id}
-                        /*
-                         * The row band (ADR-0054 §4, `D11.2`): 44px
-                         * Comfortable — the only density this step ships,
-                         * Compact being `D11.6`'s — with §3's 10px horizontal
-                         * padding and its 13/18 cell type. The vertical
-                         * padding goes to zero because the height is now
-                         * declared rather than summed out of `p-2`.
-                         */
-                        className={cn(
-                          "h-[44px] px-2.5 py-0 text-[13px] leading-[18px]",
-                          cell.column.columnDef.meta?.mono === true &&
-                            "font-mono",
-                          cell.column.columnDef.meta?.align === "end" &&
-                            "text-right",
-                        )}
-                        style={width === undefined ? undefined : { width }}
-                      >
-                        {/*
-                         * Unsized columns render exactly as they did — no
-                         * wrapper, no constraint, content-width auto layout.
-                         * Only a column somebody has actually sized gets the
-                         * fixed-width block that makes the number real.
-                         */}
-                        {width === undefined ? (
-                          <table.FlexRender cell={cell} />
-                        ) : (
-                          <div
-                            className="overflow-hidden text-ellipsis"
-                            style={{ width, maxWidth: width }}
-                          >
-                            <table.FlexRender cell={cell} />
-                          </div>
-                        )}
-                      </TableCell>
+                      </TableHead>
                     );
                   })}
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ))}
+            </TableHeader>
 
-      {/*
-       * The pager reports through the engine rather than around it, so
-       * `onPaginationChange` above is the single path a page change takes —
-       * the same loop a header click takes through `onSortingChange`. Its last
-       * page is `getPageCount()`, which is derived from the `rowCount` the
-       * envelope's `meta.pagination.total` supplied; `null` says the endpoint
-       * did not count and there is no last page to offer.
-       */}
-      <GridPager
-        offset={listState.offset}
-        limit={listState.limit}
-        total={page?.total ?? null}
-        rowCount={rows.length}
-        lastOffset={
-          page?.total === undefined || page.total === null
-            ? null
-            : Math.max(0, (table.getPageCount() - 1) * listState.limit)
-        }
-        // The resource declares it (ADR-0038); the prop is the per-usage
-        // override, and the pager's own defaults are the floor under both.
-        pageSizes={capabilities?.pageSizes ?? pageSizes}
-        disabled={page === undefined || isFetching}
-        onOffsetChange={(offset) => {
-          table.setPageIndex(Math.floor(offset / listState.limit));
-        }}
-        onLimitChange={(limit) => {
-          table.setPageSize(limit);
-        }}
-      />
-    </div>
+            <TableBody>
+              {page === undefined && error !== undefined && error !== null ? (
+                /*
+                 * A failure, in the place the rows would have been. It wins over
+                 * the loading branch because a query that failed is not loading —
+                 * `keepPreviousData` means a *refetch* failure still has a page
+                 * to render, and that case deliberately keeps showing it rather
+                 * than replacing an operator's view with an apology.
+                 */
+                <TableRow>
+                  <TableCell colSpan={columnCount} className="h-24 text-center">
+                    {renderError({ error, onRetry })}
+                  </TableCell>
+                </TableRow>
+              ) : page === undefined ? (
+                <LoadingRows columns={columnCount} density={density} />
+              ) : bodyRows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={columnCount}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    {emptyMessage === undefined ? t("empty") : tk(emptyMessage)}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                bodyRows.map((row) => (
+                  /*
+                   * `even:` rather than an index off `bodyRows`: the stripe is a
+                   * property of a row's *position on screen*, and the DOM is
+                   * where that is known — a computed index would have to be kept
+                   * honest against every future branch that renders a row (the
+                   * loading, empty and error rows above are all `<TableRow>`
+                   * too), while the selector cannot drift from what is rendered.
+                   *
+                   * `bg-grid-stripe` since `D11.2` — a solid token rather than
+                   * `bg-muted/30`, because ADR-0054 §2 made the dark theme's
+                   * surfaces an elevation ramp and an alpha stripe reads as a
+                   * different colour over each rung of it. It sits under
+                   * `TableRow`'s own `hover:bg-muted/50` and the selected state
+                   * below, both of which sort after `even` in Tailwind's variant
+                   * order and therefore still win: a striped row must not stop
+                   * answering the pointer or stop showing that it is selected.
+                   *
+                   * **Selection is `--primary-tint` plus a 2px inset bar**
+                   * (ADR-0054 §4), and the bar is drawn on the row's first cell
+                   * rather than on the `<tr>`: the table is `border-separate`
+                   * (see {@link STICKY_HEADER_TABLE}) and a row-level shadow in
+                   * the separated model is the same promise a row-level *border*
+                   * turned out not to keep at `D4.1`. A cell keeps it.
+                   */
+                  <TableRow
+                    key={row.id}
+                    className={cn(
+                      striped && "even:bg-grid-stripe",
+                      "data-[state=selected]:bg-primary-tint",
+                      "data-[state=selected]:[&>td:first-child]:shadow-[inset_2px_0_0_var(--primary)]",
+                    )}
+                  >
+                    {/*
+                     * `getVisibleCells`, not `getAllCells` — since `D4.5` a
+                     * column can be hidden, and a row that rendered every cell
+                     * would put its data under the wrong headers.
+                     */}
+                    {row.getVisibleCells().map((cell) => {
+                      const width = widthOf(preferences, cell.column.id);
+
+                      return (
+                        <TableCell
+                          key={cell.id}
+                          /*
+                           * The row band (ADR-0054 §4, §6): 44px Comfortable
+                           * or 34px Compact, with the matching 10/8 horizontal
+                           * padding and its 13/18 cell type. The vertical
+                           * padding goes to zero because the height is now
+                           * declared rather than summed out of `p-2`.
+                           */
+                          className={cn(
+                            DENSITY_ROW_HEIGHT[density],
+                            DENSITY_CELL_X[density],
+                            "py-0 text-[13px] leading-[18px]",
+                            cell.column.columnDef.meta?.mono === true &&
+                              "font-mono",
+                            cell.column.columnDef.meta?.align === "end" &&
+                              "text-right",
+                          )}
+                          style={width === undefined ? undefined : { width }}
+                        >
+                          {/*
+                           * Unsized columns render exactly as they did — no
+                           * wrapper, no constraint, content-width auto layout.
+                           * Only a column somebody has actually sized gets the
+                           * fixed-width block that makes the number real.
+                           */}
+                          {width === undefined ? (
+                            <table.FlexRender cell={cell} />
+                          ) : (
+                            <div
+                              className="overflow-hidden text-ellipsis"
+                              style={{ width, maxWidth: width }}
+                            >
+                              <table.FlexRender cell={cell} />
+                            </div>
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/*
+         * The pager reports through the engine rather than around it, so
+         * `onPaginationChange` above is the single path a page change takes —
+         * the same loop a header click takes through `onSortingChange`. Its last
+         * page is `getPageCount()`, which is derived from the `rowCount` the
+         * envelope's `meta.pagination.total` supplied; `null` says the endpoint
+         * did not count and there is no last page to offer.
+         */}
+        <GridPager
+          offset={listState.offset}
+          limit={listState.limit}
+          total={page?.total ?? null}
+          rowCount={rows.length}
+          lastOffset={
+            page?.total === undefined || page.total === null
+              ? null
+              : Math.max(0, (table.getPageCount() - 1) * listState.limit)
+          }
+          // The resource declares it (ADR-0038); the prop is the per-usage
+          // override, and the pager's own defaults are the floor under both.
+          pageSizes={capabilities?.pageSizes ?? pageSizes}
+          disabled={page === undefined || isFetching}
+          onOffsetChange={(offset) => {
+            table.setPageIndex(Math.floor(offset / listState.limit));
+          }}
+          onLimitChange={(limit) => {
+            table.setPageSize(limit);
+          }}
+        />
+      </div>
+    </GridDensityProvider>
   );
 };
 
@@ -1403,13 +1447,35 @@ const ResizeHandle = ({
   );
 };
 
-/** Placeholder rows, so the first load does not collapse the table to nothing. */
-const LoadingRows = ({ columns }: { readonly columns: number }) => (
+/**
+ * Placeholder rows, so the first load does not collapse the table to nothing.
+ *
+ * **They take the mode too** (`D11.6`, ADR-0054 §6). Left alone they carried
+ * `TableCell`'s own `p-2` around a 16px skeleton — 32px against a 44px
+ * Comfortable row — so every load shifted each row about twelve pixels when
+ * the data landed. §6's table says the row height is the `td`'s, and a
+ * placeholder that is not the height of the thing it stands in for is a
+ * placeholder doing the opposite of its job.
+ */
+const LoadingRows = ({
+  columns,
+  density,
+}: {
+  readonly columns: number;
+  readonly density: GridDensity;
+}) => (
   <>
     {Array.from({ length: 5 }, (_, row) => (
       <TableRow key={row}>
         {Array.from({ length: columns }, (_, column) => (
-          <TableCell key={column}>
+          <TableCell
+            key={column}
+            className={cn(
+              DENSITY_ROW_HEIGHT[density],
+              DENSITY_CELL_X[density],
+              "py-0",
+            )}
+          >
             <Skeleton className="h-4 w-full" />
           </TableCell>
         ))}

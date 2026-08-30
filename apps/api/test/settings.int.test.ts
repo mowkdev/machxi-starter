@@ -1,4 +1,5 @@
 import {
+  GRID_DENSITIES,
   LOCALES,
   MAX_SETTINGS_GRIDS,
   THEMES,
@@ -47,6 +48,7 @@ import { z } from "zod";
 const settingsResourceSchema = z.strictObject({
   theme: z.enum(THEMES),
   locale: z.enum(LOCALES),
+  gridDensity: z.enum(GRID_DENSITIES),
   grids: z.record(z.string(), z.looseObject({ v: z.literal(1) })),
 });
 
@@ -115,6 +117,7 @@ describe("settings", () => {
       expect(response.body.data).toEqual({
         theme: "system",
         locale: "en",
+        gridDensity: "comfortable",
         grids: {},
       });
     });
@@ -135,6 +138,7 @@ describe("settings", () => {
       expect(response.body.data).toEqual({
         theme: "dark",
         locale: "en",
+        gridDensity: "comfortable",
         grids: {},
       });
       await expect(
@@ -175,6 +179,44 @@ describe("settings", () => {
       // Back to the default, so the parameterised cases below this one keep
       // reading the resource they were written against.
       await patch(population, path, { locale: "en" }).expect(200);
+    });
+
+    it("stores the density D11.6 added, and hands it back (D11.6)", async () => {
+      // The mirror of the locale case above, and the same claim: one tuple in
+      // `@repo/contracts` feeds `z.enum` in the body and `pgEnum` in the
+      // column, so a value has to survive validation, migration
+      // `0005_grid_density.sql` and the read back (ADR-0053 §2 as amended,
+      // ADR-0023).
+      const written = await patch(population, path, {
+        gridDensity: "compact",
+      }).expect(200);
+
+      expect(settingsEnvelope.safeParse(written.body).success).toBe(true);
+      expect(written.body.data.gridDensity).toBe("compact");
+
+      const read = await get(population, path).expect(200);
+
+      expect(read.body.data.gridDensity).toBe("compact");
+
+      // A patch naming the theme alone leaves the density where it was: the
+      // third scalar merges like the other two, which is what lets the
+      // coalescing writer send only what changed (ADR-0045 §Endpoints).
+      const other = await patch(population, path, { theme: "light" }).expect(
+        200,
+      );
+
+      expect(other.body.data.gridDensity).toBe("compact");
+
+      // Back to the default, so the cases below read the resource they were
+      // written against.
+      await patch(population, path, {
+        gridDensity: "comfortable",
+        theme: "system",
+      }).expect(200);
+    });
+
+    it("refuses a density outside the enum", async () => {
+      await patch(population, path, { gridDensity: "cosy" }).expect(400);
     });
 
     it("merges grids per key, and a jsonb round trip changes nothing", async () => {

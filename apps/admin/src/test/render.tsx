@@ -23,6 +23,7 @@ import {
   type TranslateKey,
 } from "@/shared/i18n";
 import { createMessageForError } from "@/shared/notifications/messages";
+import { GridDensityProvider } from "@/shared/density";
 import { ThemeProvider } from "@/shared/theme";
 import { Toaster } from "@/shared/ui";
 
@@ -217,21 +218,36 @@ export const renderWithProviders = (
            * ships. A test about *adoption* builds its own `SettingsProvider`.
            */}
           <ThemeProvider>
-            <I18nextProvider i18n={value.i18n.instance}>
-              {/*
-               * The design system's injectable strings, wired the way the app wires
-               * them (`D7.3`). Mounted here for the reason the `<Toaster>` is:
-               * a component test should not have to remember the app's own
-               * wiring to render a dialog whose close button the app has
-               * localised. Without it the primitives answer with their English
-               * defaults, which is a different code path from the one that
-               * ships.
-               */}
-              <AppUiStrings>
-                {ui}
-                <Toaster />
-              </AppUiStrings>
-            </I18nextProvider>
+            {/*
+             * The density, mounted for the reason the theme is (`D11.6`).
+             *
+             * **Not for the grids** — `shared/grid`'s `AppGrid` reads the
+             * *value* hook, which answers the contract's default with no
+             * provider, so every table renders comfortable either way. It is
+             * for `features/density`'s control, which reads the view hook and
+             * throws without one: a control that changes nothing is not a
+             * thing to ship, and a component test should not have to remember
+             * the app's wiring to render one. Unpublished here, which is the
+             * anonymous app — a test about adoption builds its own
+             * `SettingsProvider`.
+             */}
+            <GridDensityProvider>
+              <I18nextProvider i18n={value.i18n.instance}>
+                {/*
+                 * The design system's injectable strings, wired the way the app wires
+                 * them (`D7.3`). Mounted here for the reason the `<Toaster>` is:
+                 * a component test should not have to remember the app's own
+                 * wiring to render a dialog whose close button the app has
+                 * localised. Without it the primitives answer with their English
+                 * defaults, which is a different code path from the one that
+                 * ships.
+                 */}
+                <AppUiStrings>
+                  {ui}
+                  <Toaster />
+                </AppUiStrings>
+              </I18nextProvider>
+            </GridDensityProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </ApiProvider>,
@@ -296,20 +312,22 @@ export const renderApp = ({
       <QueryClientProvider client={value.queryClient}>
         {/* The root route mounts its own `<Toaster>`; this tree adds none. */}
         <ThemeProvider>
-          <I18nextProvider i18n={value.i18n.instance}>
-            <AppUiStrings>
-              {/*
-               * This tree is hand-built, so a provider the app mounts in
-               * `app/index.tsx` reaches no test unless it is added here too
-               * (`D8.7`, ADR-0048 §3). Off by default: the notice is a
-               * dev-build warning, and every other suite renders the app the
-               * operator gets.
-               */}
-              <PseudoNoticeProvider enabled={pseudoNotice}>
-                <RouterProvider router={router} />
-              </PseudoNoticeProvider>
-            </AppUiStrings>
-          </I18nextProvider>
+          <GridDensityProvider>
+            <I18nextProvider i18n={value.i18n.instance}>
+              <AppUiStrings>
+                {/*
+                 * This tree is hand-built, so a provider the app mounts in
+                 * `app/index.tsx` reaches no test unless it is added here too
+                 * (`D8.7`, ADR-0048 §3). Off by default: the notice is a
+                 * dev-build warning, and every other suite renders the app the
+                 * operator gets.
+                 */}
+                <PseudoNoticeProvider enabled={pseudoNotice}>
+                  <RouterProvider router={router} />
+                </PseudoNoticeProvider>
+              </AppUiStrings>
+            </I18nextProvider>
+          </GridDensityProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ApiProvider>

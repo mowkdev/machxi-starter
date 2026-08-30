@@ -26,6 +26,7 @@ import {
   type DemoRow,
 } from "@/test/fixtures/demo-resource";
 
+import { GridDensityProvider } from "@/shared/density";
 import { createTestI18n } from "@/test/render";
 
 import { AppGrid } from "../app-grid";
@@ -1789,5 +1790,46 @@ describe("grid preferences", () => {
      */
     expect(headers()).not.toContain("Tags");
     expect(storage.write).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The door's other binding (`D11.6`, ADR-0053 §2).
+ *
+ * `@repo/grid` takes the density as a prop and this app reads it once, here,
+ * so that the account's mode reaches every table without a page remembering to
+ * pass it. What the package does *with* the mode — the three values that move
+ * — is asserted in its own suite; what this asserts is the wire between the
+ * account fact and the table, which is the part the extraction could break.
+ */
+describe("the density the door binds", () => {
+  const bodyCells = (): HTMLElement[] =>
+    screen
+      .getAllByRole("cell")
+      .filter((cell) => cell.closest("tbody") !== null);
+
+  it("packs the rows comfortably with no provider above it", () => {
+    // A table is allowed to exist without an account: the door reads the
+    // *value* hook, which answers the contract's default rather than throwing.
+    render(<Harness page={pageOf(demoRows)} />);
+
+    expect(bodyCells().length).toBeGreaterThan(0);
+
+    for (const cell of bodyCells()) {
+      expect(cell).toHaveClass("h-[44px]");
+    }
+  });
+
+  it("hands the table the account's mode when there is one", () => {
+    render(
+      <GridDensityProvider adopted="compact">
+        <Harness page={pageOf(demoRows)} />
+      </GridDensityProvider>,
+    );
+
+    for (const cell of bodyCells()) {
+      expect(cell).toHaveClass("h-[34px]");
+      expect(cell).not.toHaveClass("h-[44px]");
+    }
   });
 });

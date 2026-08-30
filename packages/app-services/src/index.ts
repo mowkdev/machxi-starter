@@ -65,3 +65,11 @@ export {
   type ThemeProviderProps,
   type ThemeView,
 } from "./theme-context";
+
+export {
+  GridDensityProvider,
+  useGridDensity,
+  useGridDensityValue,
+  type GridDensityProviderProps,
+  type GridDensityView,
+} from "./grid-density-context";

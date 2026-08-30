@@ -12,6 +12,7 @@ import {
 } from "@repo/ui/components/dropdown-menu";
 import { cn } from "@repo/ui/lib/utils";
 
+import { DENSITY_BADGE, useRowDensity } from "./density";
 import { EMPTY_CELL } from "./formatters";
 import type { CellRendererProps } from "./types";
 
@@ -121,9 +122,17 @@ export const StatusBadge = ({ value }: ValueOnlyProps) => {
  * primitive's own `rounded-full` is the one value that scale's "nothing rounder
  * than 8" forbids, and this is the sanctioned surface that gets to say so
  * without editing a generated component.
+ *
+ * **It is also the grid's one in-row badge, so it is what §6's "badge padding"
+ * names** (`D11.6`): 26 × 8 Comfortable, 22 × 6 Compact, read off the row's
+ * mode through the context rather than taken as a prop, because a registry
+ * cell renderer has no call site to be handed one (ADR-0035). The status is a
+ * dot since `D11.2` and the Filtered-by chips are chrome outside the table, so
+ * neither moves with the rows.
  */
 export const RolesList = ({ value }: ValueOnlyProps) => {
   const t = useKeyT();
+  const density = useRowDensity();
   const values = Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
@@ -136,7 +145,7 @@ export const RolesList = ({ value }: ValueOnlyProps) => {
         <Badge
           key={entry}
           variant="outline"
-          className="h-[26px] rounded-md font-mono"
+          className={cn("rounded-md font-mono", DENSITY_BADGE[density])}
         >
           {optionLabel(t, entry)}
         </Badge>

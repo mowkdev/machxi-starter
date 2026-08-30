@@ -39,6 +39,25 @@ export const LOCALES = ["en", "lv"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 /**
+ * How tightly a data grid packs its rows (`D11.6`, ADR-0053 §2, ADR-0054 §6).
+ *
+ * **A mode, not a scale.** Two values exactly three apart in every number they
+ * move — row height 44/34, cell padding 10/8, in-row badge 26/22 — because a
+ * third rung would be a slider nobody can name, and the reference settled the
+ * question as a mode (`docs/plan/0011-…` §The reference settled).
+ *
+ * It sits beside the theme and the locale rather than inside `grids` because
+ * it is one fact about the account and not one about a grid: an operator who
+ * likes tight rows likes them on every screen, and per-grid density would be
+ * the same preference stored `n` times, drifting apart the moment one is
+ * written by an older client.
+ *
+ * Declaration order is the sort order, as it is for every tuple here.
+ */
+export const GRID_DENSITIES = ["comfortable", "compact"] as const;
+export type GridDensity = (typeof GRID_DENSITIES)[number];
+
+/**
  * The value a principal has when they have never said otherwise.
  *
  * Declared here rather than only on the Postgres column, under the same
@@ -50,3 +69,10 @@ export type Locale = (typeof LOCALES)[number];
  */
 export const DEFAULT_THEME = "system" satisfies Theme;
 export const DEFAULT_LOCALE = "en" satisfies Locale;
+/**
+ * Comfortable, and the grid falls back to this constant rather than to a
+ * literal of its own — so a table rendered with no provider above it (a
+ * package test, an app that has not wired settings yet) is comfortable for
+ * one declared reason instead of two agreeing ones (ADR-0054 §6).
+ */
+export const DEFAULT_GRID_DENSITY = "comfortable" satisfies GridDensity;

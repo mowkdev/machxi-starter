@@ -8,6 +8,7 @@ import {
   useUpdateSettings,
 } from "@/entities/settings";
 import { useSession } from "@/shared/api/context";
+import { GridDensityProvider } from "@/shared/density";
 import { createLocalStorageAdapter } from "@/shared/grid/preferences";
 import { PreferenceStorageProvider } from "@/shared/grid/use-grid-preferences";
 import { ThemeProvider } from "@/shared/theme";
@@ -178,9 +179,21 @@ export const SettingsProvider = ({
         adopted={account?.locale}
         publish={account === undefined ? undefined : publishLocale}
       >
-        <PreferenceStorageProvider value={storage}>
-          {children}
-        </PreferenceStorageProvider>
+        {/*
+         * The theme's third sibling (`D11.6`, ADR-0053 §2). It adopts the same
+         * way and publishes through the same coalescing writer, so a density
+         * toggle and a column drag in one second are one `PATCH`; signed out
+         * there is nothing to publish to and the grids render comfortable,
+         * which is what an anonymous app has always done.
+         */}
+        <GridDensityProvider
+          adopted={account?.gridDensity}
+          publish={account === undefined ? undefined : writer.setGridDensity}
+        >
+          <PreferenceStorageProvider value={storage}>
+            {children}
+          </PreferenceStorageProvider>
+        </GridDensityProvider>
       </I18nProvider>
     </ThemeProvider>
   );

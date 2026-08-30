@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { LOCALES, THEMES } from "./enums.js";
+import { GRID_DENSITIES, LOCALES, THEMES } from "./enums.js";
 
 /**
  * Request schemas for the settings module (ADR-0045). One module serves both
@@ -8,8 +8,9 @@ import { LOCALES, THEMES } from "./enums.js";
  * handler reads its subject from `ctx.principal`, so there is no `:id` params
  * schema here and nothing for a caller to point at another account.
  *
- * The body is a **merge**, not a replacement: every key is optional, `theme`
- * and `locale` replace when present, and `grids` is applied entry by entry.
+ * The body is a **merge**, not a replacement: every key is optional, the
+ * scalars — `theme`, `locale` and, since `D11.6`, `gridDensity` — replace when
+ * present, and `grids` is applied entry by entry.
  * That is what makes a body a statement about the keys it names and silence
  * about the rest — and silence cannot erase anything, which is the property a
  * `PUT` of the whole document could not offer two open tabs (ADR-0045
@@ -94,6 +95,15 @@ export const gridPreferencesSchema = z.object({
 const settingsPatch = z.strictObject({
   theme: z.enum(THEMES).optional(),
   locale: z.enum(LOCALES).optional(),
+  /**
+   * How tightly a grid packs its rows (`D11.6`, ADR-0053 §2).
+   *
+   * A third scalar beside the other two, replaced when present and untouched
+   * when absent — the same merge rule, because it is the same kind of fact.
+   * It rides the coalescing writer with the theme, so a toggle in the
+   * page-header band and a column drag in the same second are one `PATCH`.
+   */
+  gridDensity: z.enum(GRID_DENSITIES).optional(),
   /**
    * Per key: an object replaces that grid's entry, `null` deletes it, and a
    * key absent from the body is untouched.

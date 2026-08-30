@@ -1,8 +1,11 @@
 export {
+  DEFAULT_GRID_DENSITY,
   DEFAULT_LOCALE,
   DEFAULT_THEME,
+  GRID_DENSITIES,
   LOCALES,
   THEMES,
+  type GridDensity,
   type Locale,
   type Theme,
 } from "./enums.js";

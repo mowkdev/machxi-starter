@@ -2,6 +2,7 @@ import { customType, pgEnum, timestamp, uuid } from "drizzle-orm/pg-core";
 import { uuidv7 } from "uuidv7";
 
 import {
+  GRID_DENSITIES,
   LOCALES,
   POPULATIONS,
   STAFF_ROLES,
@@ -90,3 +91,12 @@ export const principalTypeEnum = pgEnum("principal_type", POPULATIONS);
  */
 export const themeEnum = pgEnum("theme", THEMES);
 export const localeEnum = pgEnum("locale", LOCALES);
+/**
+ * How tightly a grid packs its rows (`D11.6`, ADR-0053 §2, ADR-0054 §6).
+ *
+ * A column and a type rather than a key in the `grids` jsonb, which is what
+ * ADR-0053 first said and amended at `D11.6`: `grids` is a per-grid map and a
+ * row-wide mode has nowhere to sit in it. Complete as it stands — the mode is
+ * two values by decision, and a third rung would be a different control.
+ */
+export const gridDensityEnum = pgEnum("grid_density", GRID_DENSITIES);

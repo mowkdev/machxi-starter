@@ -64,4 +64,34 @@ describe("DashboardLayout", () => {
       document.querySelector('[data-slot="page-container"]'),
     ).toHaveAttribute("data-full-height", "");
   });
+
+  it("passes page actions into the band, and leaves no wrapper without them", () => {
+    // `D11.6` fills the slot `D11.3` opened, and the prop is the join the
+    // route file reads from the other end: the density control on a grid
+    // route, nothing anywhere else. The band's own geometry is `@repo/ui`'s
+    // suite; what this proves is that the adapter carries the slot at all.
+    const { unmount } = renderWithProviders(
+      <DashboardLayout
+        pageActions={<button type="button">Density</button>}
+        sidebar={<aside aria-label="Drawer" />}
+        title="Staff"
+      >
+        <p>Page content</p>
+      </DashboardLayout>,
+    );
+
+    expect(
+      document.querySelector('[data-slot="page-actions"]'),
+    ).toContainElement(screen.getByRole("button", { name: "Density" }));
+
+    unmount();
+
+    renderWithProviders(
+      <DashboardLayout sidebar={<aside aria-label="Drawer" />} title="Staff">
+        <p>Page content</p>
+      </DashboardLayout>,
+    );
+
+    expect(document.querySelector('[data-slot="page-actions"]')).toBeNull();
+  });
 });

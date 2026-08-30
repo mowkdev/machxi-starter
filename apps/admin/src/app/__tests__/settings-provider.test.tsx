@@ -108,6 +108,7 @@ describe("the settings gate", () => {
     const state = createSettingsMockState({
       theme: "system",
       locale: "en",
+      gridDensity: "comfortable",
       grids: { staff: entry(360) },
     });
 
@@ -148,6 +149,7 @@ describe("the settings gate", () => {
     const state = createSettingsMockState({
       theme: "dark",
       locale: "en",
+      gridDensity: "comfortable",
       grids: { staff: entry(360) },
     });
 
@@ -203,7 +205,12 @@ describe("the settings gate", () => {
 describe("the theme as an account fact", () => {
   it("adopts the account's theme when the query resolves", async () => {
     renderProvider(
-      createSettingsMockState({ theme: "dark", locale: "en", grids: {} }),
+      createSettingsMockState({
+        theme: "dark",
+        locale: "en",
+        gridDensity: "comfortable",
+        grids: {},
+      }),
     );
 
     expect(await screen.findByTestId("theme")).toHaveTextContent("dark");
@@ -218,6 +225,7 @@ describe("the theme as an account fact", () => {
     const state = createSettingsMockState({
       theme: "dark",
       locale: "en",
+      gridDensity: "comfortable",
       grids: {},
     });
 
@@ -244,6 +252,7 @@ describe("the theme as an account fact", () => {
     const state = createSettingsMockState({
       theme: "dark",
       locale: "en",
+      gridDensity: "comfortable",
       grids: {},
     });
 
@@ -273,6 +282,7 @@ describe("the theme as an account fact", () => {
     const state = createSettingsMockState({
       theme: "dark",
       locale: "en",
+      gridDensity: "comfortable",
       grids: {},
     });
 

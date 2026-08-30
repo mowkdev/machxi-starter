@@ -89,7 +89,12 @@ describe("I18nProvider", () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, "en");
     server.use(
       ...createSettingsHandlers(
-        createSettingsMockState({ theme: "system", locale: "lv", grids: {} }),
+        createSettingsMockState({
+          theme: "system",
+          locale: "lv",
+          gridDensity: "comfortable",
+          grids: {},
+        }),
       ),
     );
 
@@ -112,6 +117,7 @@ describe("I18nProvider", () => {
     const state = createSettingsMockState({
       theme: "system",
       locale: "lv",
+      gridDensity: "comfortable",
       grids: {},
     });
 

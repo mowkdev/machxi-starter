@@ -81,6 +81,7 @@ export const applyPatch = (
 ): SettingsWrite => ({
   theme: patch.theme ?? current.theme,
   locale: patch.locale ?? current.locale,
+  gridDensity: patch.gridDensity ?? current.gridDensity,
   grids: mergeGrids(current.grids, patch.grids),
 });
 

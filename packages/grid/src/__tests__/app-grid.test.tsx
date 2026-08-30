@@ -29,6 +29,11 @@ interface Row {
   readonly email: string;
 }
 
+/** The density block's fixture: one prose column and one badge column. */
+interface RoleRow extends Row {
+  readonly roles: readonly string[];
+}
+
 const ROWS: readonly Row[] = [
   { id: "1", email: "ada@machxi.local" },
   { id: "2", email: "mo@machxi.local" },
@@ -249,9 +254,9 @@ describe("band chrome", () => {
     expect(cells).toHaveLength(ROWS.length);
 
     for (const cell of cells) {
-      // 44px is Comfortable, and the only density this step ships — `D11.6`
-      // adds Compact as a mode, which is why the number is asserted rather
-      // than assumed away.
+      // 44px is Comfortable, which is the default and stays the default —
+      // `D11.6` added Compact beside it as a mode, and the `density` describe
+      // below is what holds the pair apart.
       expect(cell).toHaveClass("h-[44px]", "px-2.5", "text-[13px]");
       expect(cell).toHaveClass("font-mono");
     }
@@ -378,5 +383,112 @@ describe("the band stack", () => {
     expect(screen.getByRole("combobox", { name: "Rows per page" })).toHaveClass(
       "data-[size=sm]:h-[30px]",
     );
+  });
+});
+
+/**
+ * The density mode (`D11.6`, ADR-0053 §2, ADR-0054 §6).
+ *
+ * **Three values move and nothing else does**, which is the whole of §6 and
+ * the only thing worth asserting here: the body row's height, the horizontal
+ * cell padding on *both* the `th` and the `td`, and the in-row badge. The
+ * complement is asserted in the same cases — the header keeps its 34px height,
+ * the cell type stays 13/18, the mono face is still the config's — because a
+ * mode that quietly moved a fourth value would pass a test that only looked at
+ * the three.
+ *
+ * Classes rather than pixels, for the reason the block above gives: jsdom lays
+ * nothing out. The measured version is `apps/admin/e2e/grid-layout.spec.ts`.
+ */
+describe("density", () => {
+  const COLUMNS_WITH_ROLES: ColumnConfigMap = {
+    email: { header: "grid:filter.title", mono: true },
+    roles: { header: "grid:columns.label", cellRenderer: "rolesList" },
+  };
+
+  const rolePage: Page<RoleRow> = {
+    ...page,
+    items: ROWS.map((row) => ({ ...row, roles: ["admin"] })),
+  };
+
+  const renderAt = (density?: "comfortable" | "compact") =>
+    renderWithI18n(
+      <AppGrid
+        columns={COLUMNS_WITH_ROLES}
+        listState={LIST_STATE}
+        page={rolePage}
+        renderError={() => <p>Failed</p>}
+        onListStateChange={() => {
+          /* not this suite's question */
+        }}
+        {...(density === undefined ? {} : { density })}
+      />,
+    );
+
+  const bodyCells = (): HTMLElement[] =>
+    screen
+      .getAllByRole("cell")
+      .filter((cell) => cell.closest("tbody") !== null);
+
+  const headerCells = (): HTMLElement[] =>
+    screen
+      .getAllByRole("columnheader")
+      .filter((cell) => cell.closest("thead") !== null);
+
+  /** The one badge left inside a row — the status is a dot since `D11.2`. */
+  const roleBadge = (): HTMLElement => screen.getAllByText("Admin")[0]!;
+
+  it("packs the rows at Comfortable when nothing says otherwise", () => {
+    renderAt();
+
+    expect(bodyCells()).toHaveLength(ROWS.length * 2);
+
+    for (const cell of bodyCells()) {
+      expect(cell).toHaveClass("h-[44px]", "px-2.5");
+      expect(cell).not.toHaveClass("h-[34px]");
+    }
+
+    expect(roleBadge()).toHaveClass("h-[26px]", "px-2");
+  });
+
+  it("moves exactly the row height, the cell padding and the badge at Compact", () => {
+    renderAt("compact");
+
+    for (const cell of bodyCells()) {
+      expect(cell).toHaveClass("h-[34px]", "px-2");
+      expect(cell).not.toHaveClass("h-[44px]");
+      expect(cell).not.toHaveClass("px-2.5");
+      // The type does not move with the mode: 13/18 is §3's data rung, and a
+      // density that shrank the letters would be a second decision.
+      expect(cell).toHaveClass("text-[13px]", "leading-[18px]", "py-0");
+    }
+
+    const badge = roleBadge();
+
+    expect(badge).toHaveClass("h-[22px]", "px-1.5", "rounded-md", "font-mono");
+    expect(badge).not.toHaveClass("h-[26px]");
+  });
+
+  it("keeps the header at 34 in both modes and moves its padding with the body's", () => {
+    // The padding is a *column* value and the height is a *row* one: a `td` at
+    // 8 under a `th` at 10 puts every label two pixels off its own column, and
+    // a Compact body row is 34, which is what the header already is.
+    renderAt("compact");
+
+    expect(headerCells()).toHaveLength(2);
+
+    for (const cell of headerCells()) {
+      expect(cell).toHaveClass("h-[34px]", "px-2");
+      expect(cell).not.toHaveClass("px-2.5");
+    }
+  });
+
+  it("leaves the mono face to the config rather than to the mode", () => {
+    renderAt("compact");
+
+    const [emailCell, rolesCell] = bodyCells();
+
+    expect(emailCell).toHaveClass("font-mono");
+    expect(rolesCell).not.toHaveClass("font-mono");
   });
 });

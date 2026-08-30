@@ -1,4 +1,9 @@
-import type { GridPreferencesV1, Locale, Theme } from "@repo/contracts";
+import type {
+  GridDensity,
+  GridPreferencesV1,
+  Locale,
+  Theme,
+} from "@repo/contracts";
 import {
   staffSettings,
   userSettings,
@@ -26,6 +31,7 @@ import { internal } from "../../core/errors/index.js";
 export interface SettingsRecord {
   readonly theme: Theme;
   readonly locale: Locale;
+  readonly gridDensity: GridDensity;
   readonly grids: Record<string, GridPreferencesV1>;
 }
 
@@ -33,6 +39,7 @@ export interface SettingsRecord {
 export interface SettingsWrite {
   readonly theme: Theme;
   readonly locale: Locale;
+  readonly gridDensity: GridDensity;
   readonly grids: Record<string, GridPreferencesV1>;
 }
 
@@ -87,6 +94,7 @@ const createTableRepository = (
   const columns = {
     theme: table.theme,
     locale: table.locale,
+    gridDensity: table.gridDensity,
     grids: table.grids,
   } as const;
 
@@ -146,6 +154,7 @@ const createTableRepository = (
         .set({
           theme: next.theme,
           locale: next.locale,
+          gridDensity: next.gridDensity,
           grids: next.grids,
           updatedAt: new Date(),
         })

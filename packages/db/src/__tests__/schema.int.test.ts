@@ -141,6 +141,10 @@ describe("migration 0001", () => {
     expect(
       Object.fromEntries(rows.map((row) => [row.typname, row.labels])),
     ).toEqual({
+      // `grid_density` came with `0005` (`D11.6`, ADR-0053 §2 as amended):
+      // the density is a column and a type, not a key in the `grids` jsonb.
+      // Two labels, and comfortable is first because it is the default.
+      grid_density: ["comfortable", "compact"],
       // `locale` and `theme` came with `0003` (ADR-0045); `locale` is the one
       // enum here expected to grow, and `D7.1`'s `"lv"` did *append*
       // (`0004_locale_lv`, ADR-0046) — this list is what says so, because a
@@ -440,7 +444,7 @@ describe("migration 0003 — settings", () => {
     return row?.id ?? "";
   };
 
-  it("defaults a row to system, en and no grids at all (ADR-0045)", async () => {
+  it("defaults a row to system, en, comfortable and no grids at all (ADR-0045)", async () => {
     // The defaults are the floor, and they are the database's rather than the
     // service's: a row inserted with nothing but its principal is the same
     // answer `GET /settings` gives a principal who has no row.
@@ -453,6 +457,10 @@ describe("migration 0003 — settings", () => {
 
     expect(row?.theme).toBe("system");
     expect(row?.locale).toBe("en");
+    // `D11.6`: the column default and `DEFAULT_GRID_DENSITY` are one
+    // declaration (ADR-0023), so a row nobody has written and a `GET` before
+    // any write cannot disagree about how the grid is packed.
+    expect(row?.gridDensity).toBe("comfortable");
     expect(row?.grids).toEqual({});
   });
 

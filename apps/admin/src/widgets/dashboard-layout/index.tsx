@@ -36,6 +36,7 @@ export const DashboardLayout = ({
   banner,
   title,
   description,
+  pageActions,
   fullHeight = false,
   navigating = false,
 }: {
@@ -70,12 +71,19 @@ export const DashboardLayout = ({
    * per-route `staticData`, the route file reads it, and this frame places
    * what it is handed.
    *
-   * **`pageActions` is deliberately not here yet.** `AppShell` has the slot,
-   * because the record names it; nothing in this app fills it until `D11.6`
-   * puts the density control in the band, and an adapter prop no caller passes
-   * is the defect ADR-0048 §2 spends a paragraph on.
    */
   description?: string | undefined;
+  /**
+   * The band's controls, which act on the whole page rather than on its rows
+   * (`D11.6`, ADR-0054 §5). The density toggle today, and it travels the
+   * channel every other slot travels: the `_dashboard` route file decides
+   * whether this page has any, and this frame places what it is handed.
+   *
+   * **`AppShell` renders no wrapper when handed nothing**, so a page with no
+   * actions is byte-identical to the band before this prop existed — which is
+   * what lets the slot be filled on grid routes alone.
+   */
+  pageActions?: ReactNode;
   fullHeight?: boolean;
   /**
    * A navigation is in flight (`D10.1`, ADR-0052 §Felt navigation). It travels
@@ -92,6 +100,7 @@ export const DashboardLayout = ({
     fullHeight={fullHeight}
     headerEnd={headerEnd}
     navigating={navigating}
+    pageActions={pageActions}
     sidebar={sidebar}
     title={title}
   >

@@ -19,6 +19,7 @@ State lives in the plan file's checkboxes and in git, not in this conversation �
    > Build the next unchecked step of deliverable `<Dn>` in `<repo path>` by invoking the `step` skill with no argument (`Skill({skill: "step"})`) and following its instructions exactly — orient, implement, gate, one bounded review, commit. Do not pass a specific step id. When done, report concisely: which step you built, the gate's result verbatim (pass/fail, not full logs), review findings and their fates, and anything left pending operator acceptance. If you cannot proceed — a blocker only the operator can resolve, a done-when that cannot be satisfied as written, two failures of the same kind — stop and say exactly why rather than guessing or routing around it.
 
    Never run more than one step per subagent, and never fold this dispatch into a background batch — the loop needs this step's outcome before deciding on the next one.
+
 3. **Read the subagent's report** and decide:
    - **No unchecked step remains** → stop. Say the deliverable is ready for `/ship`; do not run `/ship` yourself — closing it is the operator's call.
    - **The step closed cleanly** (ticked, committed, gate reported green) → go back to step 2 for the next one.

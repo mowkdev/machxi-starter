@@ -125,7 +125,13 @@ for (const { name, path } of GRIDS) {
     });
 
     expect(heights.header).toBe(34);
-    // Comfortable, the only density shipped until `D11.6` adds Compact at 34.
+    /*
+     * Comfortable, which `D11.6` kept as the default when it added Compact
+     * beside it (ADR-0054 §6). The mode itself is measured where it can be
+     * driven without leaving a changed account behind for the next spec: the
+     * density round trip belongs to `D11.11`'s account walk, and the classes
+     * the two modes emit are `@repo/grid`'s own suite.
+     */
     expect(heights.row).toBe(44);
 
     /*
