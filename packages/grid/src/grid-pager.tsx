@@ -137,7 +137,16 @@ export const GridPager = ({
        */
       className="flex shrink-0 flex-wrap items-center justify-between gap-4 px-2 py-3"
     >
-      <p className="text-sm text-muted-foreground" data-slot="grid-range">
+      {/*
+       * The range takes the mono face (ADR-0054 §4, `D11.2`): it is a count,
+       * not a sentence, and the digits stopped shifting under it the moment
+       * the page changed. `text-[13px]` is §3's data size, the same one the
+       * cells above it read at.
+       */}
+      <p
+        className="font-mono text-[13px] text-muted-foreground"
+        data-slot="grid-range"
+      >
         {range}
       </p>
 

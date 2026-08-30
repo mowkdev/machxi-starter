@@ -1372,8 +1372,13 @@ describe("viewport layout", () => {
      * background on the `thead` does not travel with a sticky section while
      * `border-collapse: collapse` is in force. Asserted because it looks like
      * gratuitous class soup at a glance and is not; the ADR says why.
+     *
+     * The ground is `--grid-header` since `D11.2` (ADR-0054 §4) — the header
+     * band's own token. The pane stopped painting `bg-card` when the card frame
+     * retired, so there is no longer a second surface for this one to agree
+     * with; what matters is only that it is opaque and on the cells.
      */
-    expect(header?.className).toContain("[&_th]:bg-card");
+    expect(header?.className).toContain("[&_th]:bg-grid-header");
     expect(screen.getByRole("table").className).toContain("border-separate");
   });
 

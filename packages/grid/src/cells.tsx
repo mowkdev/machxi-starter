@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@repo/ui/components/dropdown-menu";
+import { cn } from "@repo/ui/lib/utils";
 
 import { EMPTY_CELL } from "./formatters";
 import type { CellRendererProps } from "./types";
@@ -25,24 +26,36 @@ import type { CellRendererProps } from "./types";
  */
 
 /**
- * Which statuses read as good, bad or neutral.
+ * Which statuses read as settled, waiting or neither.
  *
- * A vocabulary of *words*, not of resources: `active` is encouraging and
- * `disabled` is not, whichever table the value came from. Both populations'
- * status enums (ADR-0017) are covered by the three lists, and an unlisted value
- * renders neutral rather than throwing — a status added to contracts should
- * appear in grey, not break the grid.
+ * A vocabulary of *words*, not of resources: `active` is settled and `invited`
+ * is waiting, whichever table the value came from. Both populations' status
+ * enums (ADR-0017) are covered — staff `active`/`invited`/`disabled`, users
+ * `active`/`pending_verification`/`disabled` — and an unlisted value renders
+ * neutral rather than throwing, so a status added to contracts appears in grey
+ * instead of breaking the grid.
+ *
+ * **The negative list retired at `D11.2`** (ADR-0054 §4). `disabled` used to
+ * render `destructive`, which spent the palette's one alarm colour on a row's
+ * ordinary resting state; the record says *neutral* for it, and destructive
+ * stays for actions that destroy something.
  */
-const POSITIVE = ["active", "enabled", "verified"];
-const NEGATIVE = ["disabled", "revoked", "deleted", "suspended"];
+const SETTLED = ["active", "enabled", "verified"];
+const WAITING = ["invited", "pending", "pending_verification"];
 
-const badgeVariantFor = (
-  value: string,
-): "default" | "destructive" | "secondary" => {
-  if (POSITIVE.includes(value)) return "default";
-  if (NEGATIVE.includes(value)) return "destructive";
+/**
+ * The dot's colour, as a class rather than a variant.
+ *
+ * `--success` and `--warning` are §2's two status tokens and are reached the
+ * way every other colour here is — through the theme, so both themes answer
+ * without a second value to maintain. Neutral is `--muted-foreground`, the
+ * same grey the cell's own secondary text uses.
+ */
+const dotToneFor = (value: string): string => {
+  if (SETTLED.includes(value)) return "bg-success";
+  if (WAITING.includes(value)) return "bg-warning";
 
-  return "secondary";
+  return "bg-muted-foreground";
 };
 
 /**
@@ -60,7 +73,15 @@ export interface ValueOnlyProps {
 }
 
 /**
- * An enum value as a coloured label.
+ * An enum value as a 6px dot beside its word (ADR-0054 §4, `D11.2`).
+ *
+ * **The same resource-agnostic renderer, re-drawn.** It was a filled `Badge`,
+ * which put a saturated pill in every status cell of every row and made the
+ * quietest column on the screen the loudest. Instrument spends colour on the
+ * *state* and leaves the label as text: a dot in `--success`, `--warning` or
+ * neutral, and the word in the cell's own type. The registry key stays
+ * `statusBadge` — that is config vocabulary a resource spells (ADR-0035), and
+ * renaming it would edit every config to change a picture.
  *
  * The words come from `common:options.<value>` (`D7.4`, ADR-0046 §7), not from
  * `humanize` alone: this renderer is handed a cell value and nothing else, so
@@ -75,11 +96,32 @@ export const StatusBadge = ({ value }: ValueOnlyProps) => {
   if (typeof value !== "string" || value === "") return <>{EMPTY_CELL}</>;
 
   return (
-    <Badge variant={badgeVariantFor(value)}>{optionLabel(t, value)}</Badge>
+    <span className="inline-flex items-center gap-2" data-slot="status-dot">
+      {/*
+       * `aria-hidden`, and the label carries the meaning: the dot is a second
+       * encoding of the word beside it, so a screen reader that announced both
+       * would announce the status twice — and a colour that was the *only*
+       * encoding would be the accessibility defect ADR-0036's role-and-label
+       * discipline exists to catch.
+       */}
+      <span
+        aria-hidden
+        className={cn("size-1.5 shrink-0 rounded-full", dotToneFor(value))}
+      />
+      {optionLabel(t, value)}
+    </span>
   );
 };
 
-/** A string array as badges — roles, tags, anything repeated and short. */
+/**
+ * A string array as badges — roles, tags, anything repeated and short.
+ *
+ * Mono and 5px-radius since `D11.2` (ADR-0054 §3/§4): a role is an identifier
+ * rather than prose, and §2's radius scale puts a badge at `md` — the `Badge`
+ * primitive's own `rounded-full` is the one value that scale's "nothing rounder
+ * than 8" forbids, and this is the sanctioned surface that gets to say so
+ * without editing a generated component.
+ */
 export const RolesList = ({ value }: ValueOnlyProps) => {
   const t = useKeyT();
   const values = Array.isArray(value)
@@ -91,7 +133,11 @@ export const RolesList = ({ value }: ValueOnlyProps) => {
   return (
     <span className="flex flex-wrap gap-1">
       {values.map((entry) => (
-        <Badge key={entry} variant="outline">
+        <Badge
+          key={entry}
+          variant="outline"
+          className="h-[26px] rounded-md font-mono"
+        >
           {optionLabel(t, entry)}
         </Badge>
       ))}

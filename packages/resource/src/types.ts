@@ -224,6 +224,16 @@ export interface ColumnConfig {
   readonly filter?: FilterControlConfig;
   /** Numeric and action columns read better trailing. */
   readonly align?: "start" | "end";
+  /**
+   * The cell holds **data rather than prose**, and takes the mono face
+   * (ADR-0054 §4, `D11.2`): identifiers, emails, timestamps and counts.
+   *
+   * A flag on the column rather than a guess in the grid, because only the
+   * resource knows what its own field *is* — `@repo/grid` may hold no domain
+   * knowledge (ADR-0049), and "email" is domain knowledge. It stays plain
+   * serializable data, so a per-usage override can still turn it off.
+   */
+  readonly mono?: boolean;
   /** For per-usage overrides: drop the column without editing the resource. */
   readonly hidden?: boolean;
 }

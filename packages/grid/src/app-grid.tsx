@@ -316,9 +316,31 @@ const EMPTY_IDS: readonly string[] = Object.freeze([]);
  */
 const STICKY_HEADER_TABLE = [
   "border-separate border-spacing-0",
-  "[&_thead_th]:border-b [&_thead_td]:border-b",
-  "[&_tbody_td]:border-b [&_tbody_tr:last-child>td]:border-b-0",
+  /*
+   * The two rules are **different lines** since `D11.2` (ADR-0054 §4). The
+   * header's bottom edge is `--border-strong` — it is the band rule that closes
+   * the chrome above the rows, now that the card frame has retired and there is
+   * no border box drawing that boundary. The rows' own rule is `--grid-rule`,
+   * quieter than a hairline border on purpose: forty of them stacked is a
+   * texture, not forty statements.
+   */
+  "[&_thead_th]:border-b [&_thead_th]:border-border-strong",
+  "[&_thead_td]:border-b [&_thead_td]:border-border-strong",
+  "[&_tbody_td]:border-b [&_tbody_td]:border-grid-rule",
+  "[&_tbody_tr:last-child>td]:border-b-0",
 ].join(" ");
+
+/**
+ * A column head, in Instrument's caps (ADR-0054 §3/§4, `D11.2`).
+ *
+ * 11/16 at 600 with 0.07em tracking, upper-cased — the type role the record
+ * gives column heads and group labels. It is spelled twice, on the `th` and on
+ * the sort `Button`, because a button carries its own `text-sm` and
+ * `font-medium` from the primitive's variants: `text-transform` and
+ * `letter-spacing` inherit into it, size and weight do not.
+ */
+const HEADER_LABEL =
+  "text-[11px] leading-4 font-semibold tracking-[0.07em] uppercase";
 
 export const AppGrid = <TRow,>({
   columns,
@@ -898,14 +920,19 @@ export const AppGrid = <TRow,>({
        * past the viewport and the document scrolls — D3's behaviour, reached by
        * degrading rather than by crushing the grid to two rows.
        *
-       * `bg-card` is here as well as on the sticky header so the two agree
-       * whatever this grid is mounted in; in dark mode `card` and `background`
-       * are different tokens, and a header that borrowed the wrong one would
-       * show it the moment a row passed under it.
+       * **The card frame retired at `D11.2`** (ADR-0054 §4). The pane carried
+       * `rounded-md border bg-card` — a border box around the table, which is
+       * exactly the frame Instrument replaces with band rules: the table runs
+       * edge to edge inside the inset, the header's own `--border-strong`
+       * bottom rule closes the chrome above it, and the ground is whatever the
+       * pane is mounted in rather than a second surface colour inside it. The
+       * sticky header keeps an opaque ground of its own (`--grid-header`),
+       * which is what rows pass *under*; it no longer has to agree with a
+       * background this element paints.
        */}
       <div
         data-slot="grid-scroll"
-        className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto rounded-md border bg-card"
+        className="scrollbar-thin min-h-64 w-full min-w-0 flex-1 overflow-auto"
       >
         <Table container={false} className={STICKY_HEADER_TABLE}>
           {/*
@@ -915,9 +942,11 @@ export const AppGrid = <TRow,>({
            * popovers and ADR-0038's row menus will float in this same
            * container and have to layer against it knowingly. The opaque
            * background is on the cells rather than on the `thead`, for the
-           * reason `STICKY_HEADER_TABLE` above records.
+           * reason `STICKY_HEADER_TABLE` above records — and since `D11.2` that
+           * background is `--grid-header`, the header band's own ground rather
+           * than the card's (ADR-0054 §4).
            */}
-          <TableHeader className="sticky top-0 z-10 [&_td]:bg-card [&_th]:bg-card">
+          <TableHeader className="sticky top-0 z-10 [&_td]:bg-grid-header [&_th]:bg-grid-header">
             {headerGroups.map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
@@ -930,9 +959,15 @@ export const AppGrid = <TRow,>({
                   return (
                     <TableHead
                       key={header.id}
-                      // `relative` so the resize handle can sit on the edge.
+                      /*
+                       * `relative` so the resize handle can sit on the edge —
+                       * and, since `D11.2`, the header band's own geometry
+                       * (ADR-0054 §4): 34px tall against the primitive's 40,
+                       * with §3's 10px cell padding and the caps label.
+                       */
                       className={cn(
-                        "relative",
+                        "relative h-[34px] px-2.5",
+                        HEADER_LABEL,
                         align === "end" && "text-right",
                       )}
                       style={width === undefined ? undefined : { width }}
@@ -976,7 +1011,14 @@ export const AppGrid = <TRow,>({
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="-ml-2 h-8 data-[state=open]:bg-accent"
+                            /*
+                             * `text-[11px] font-semibold` restated from
+                             * {@link HEADER_LABEL}: the button variant sets
+                             * both, and the two properties that *do* inherit
+                             * — the caps and the tracking — arrive from the
+                             * `th` on their own. `h-7` so a 34px band holds it.
+                             */
+                            className="-ml-2.5 h-7 text-[11px] font-semibold data-[state=open]:bg-accent"
                             onClick={header.column.getToggleSortingHandler()}
                           >
                             <table.FlexRender header={header} />
@@ -1077,15 +1119,29 @@ export const AppGrid = <TRow,>({
                  * loading, empty and error rows above are all `<TableRow>`
                  * too), while the selector cannot drift from what is rendered.
                  *
-                 * `bg-muted/30` under `TableRow`'s own `hover:bg-muted/50` and
-                 * `data-[state=selected]:bg-muted`, both of which sort after
-                 * `even` in Tailwind's variant order and therefore still win:
-                 * a striped row must not stop answering the pointer or stop
-                 * showing that it is selected.
+                 * `bg-grid-stripe` since `D11.2` — a solid token rather than
+                 * `bg-muted/30`, because ADR-0054 §2 made the dark theme's
+                 * surfaces an elevation ramp and an alpha stripe reads as a
+                 * different colour over each rung of it. It sits under
+                 * `TableRow`'s own `hover:bg-muted/50` and the selected state
+                 * below, both of which sort after `even` in Tailwind's variant
+                 * order and therefore still win: a striped row must not stop
+                 * answering the pointer or stop showing that it is selected.
+                 *
+                 * **Selection is `--primary-tint` plus a 2px inset bar**
+                 * (ADR-0054 §4), and the bar is drawn on the row's first cell
+                 * rather than on the `<tr>`: the table is `border-separate`
+                 * (see {@link STICKY_HEADER_TABLE}) and a row-level shadow in
+                 * the separated model is the same promise a row-level *border*
+                 * turned out not to keep at `D4.1`. A cell keeps it.
                  */
                 <TableRow
                   key={row.id}
-                  className={cn(striped && "even:bg-muted/30")}
+                  className={cn(
+                    striped && "even:bg-grid-stripe",
+                    "data-[state=selected]:bg-primary-tint",
+                    "data-[state=selected]:[&>td:first-child]:shadow-[inset_2px_0_0_var(--primary)]",
+                  )}
                 >
                   {/*
                    * `getVisibleCells`, not `getAllCells` — since `D4.5` a
@@ -1098,7 +1154,18 @@ export const AppGrid = <TRow,>({
                     return (
                       <TableCell
                         key={cell.id}
+                        /*
+                         * The row band (ADR-0054 §4, `D11.2`): 44px
+                         * Comfortable — the only density this step ships,
+                         * Compact being `D11.6`'s — with §3's 10px horizontal
+                         * padding and its 13/18 cell type. The vertical
+                         * padding goes to zero because the height is now
+                         * declared rather than summed out of `p-2`.
+                         */
                         className={cn(
+                          "h-[44px] px-2.5 py-0 text-[13px] leading-[18px]",
+                          cell.column.columnDef.meta?.mono === true &&
+                            "font-mono",
                           cell.column.columnDef.meta?.align === "end" &&
                             "text-right",
                         )}
@@ -1258,16 +1325,17 @@ const ResizeHandle = ({
        * **Visible at rest since `D10.2`** (ADR-0052 §Visible state). The band
        * itself stays transparent until hover or focus — a 6px stripe on every
        * column edge would be a second set of borders — and what is always
-       * there is the `::after` grip: a hairline in `bg-border`, so it answers
-       * from the same token the table's own rules do and is therefore correct
-       * in both themes by construction rather than by a second colour someone
-       * has to remember to update.
+       * there is the `::after` grip: a 1×16px tick in `--grid-tick`, which is
+       * the tick's own token since `D11.2` (ADR-0054 §4) rather than `--border`
+       * — a rule and a grip want different weights, and dark especially wants
+       * the grip *lighter* than the line it sits between. A token either way,
+       * so both themes stay correct by construction.
        *
        * `h-4` centred rather than full height, which is what keeps it a
        * *handle* rather than a column divider: a full-height line would read
        * as table chrome and invite nobody to grab it.
        */
-      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-transparent after:absolute after:top-1/2 after:right-0.5 after:h-4 after:w-px after:-translate-y-1/2 after:bg-border after:transition-colors after:content-[''] hover:bg-border hover:after:bg-transparent focus-visible:bg-border focus-visible:after:bg-transparent focus-visible:outline-none"
+      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-transparent after:absolute after:top-1/2 after:right-0.5 after:h-4 after:w-px after:-translate-y-1/2 after:bg-grid-tick after:transition-colors after:content-[''] hover:bg-border hover:after:bg-transparent focus-visible:bg-border focus-visible:after:bg-transparent focus-visible:outline-none"
       onDoubleClick={onReset}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

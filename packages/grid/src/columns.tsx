@@ -230,6 +230,7 @@ export const buildColumns = (
         align: column.align ?? "start",
         filter: column.filter,
         structural: isStructuralColumn(column),
+        mono: column.mono ?? false,
       },
     } satisfies ColumnDef<GridFeatures, GridRow>;
   });

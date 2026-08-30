@@ -8,7 +8,8 @@ import { AppGrid } from "../app-grid";
 import { renderWithI18n } from "./support/render";
 
 /**
- * Striped rows (ADR-0052 §Visible state, `D10.2`).
+ * The grid's chrome, as class strings (ADR-0052 §Visible state `D10.2`;
+ * ADR-0054 §4 `D11.2`).
  *
  * **jsdom lays nothing out, so the assertion is the class** — the same bargain
  * `@repo/ui`'s shell suite strikes, and for the same reason: nothing here can
@@ -83,7 +84,7 @@ describe("the resize handle", () => {
      * (`D10.2`, ADR-0052 §Visible state). What ADR-0052 changed is that the
      * handle is visible *before* the pointer arrives: the band stays
      * transparent until hover, and the `after:` grip is what is always there.
-     * Its colour is `bg-border`, a token, which is how "in both themes" is
+     * Its colour is `bg-grid-tick`, a token, which is how "in both themes" is
      * satisfied by construction rather than by a second value to maintain.
      *
      * Whether the grip is actually visible to a person is `D10.4`'s spec; this
@@ -91,7 +92,11 @@ describe("the resize handle", () => {
      */
     expect(handle).toHaveClass(
       "after:absolute",
-      "after:bg-border",
+      // `--grid-tick` since `D11.2` (ADR-0054 §4): the tick is its own token
+      // now, because a grip and a rule want different weights in dark.
+      "after:bg-grid-tick",
+      "after:h-4",
+      "after:w-px",
       "hover:bg-border",
     );
     expect(handle).toHaveClass("bg-transparent");
@@ -105,7 +110,7 @@ describe("striped rows", () => {
     expect(bodyRows()).toHaveLength(ROWS.length);
 
     for (const row of bodyRows()) {
-      expect(row).not.toHaveClass("even:bg-muted/30");
+      expect(row).not.toHaveClass("even:bg-grid-stripe");
     }
   });
 
@@ -124,7 +129,7 @@ describe("striped rows", () => {
      * loading, empty and error rows — which are `<TableRow>`s too.
      */
     for (const row of bodyRows()) {
-      expect(row).toHaveClass("even:bg-muted/30");
+      expect(row).toHaveClass("even:bg-grid-stripe");
     }
   });
 
@@ -147,10 +152,122 @@ describe("striped rows", () => {
        * a *replacement* for them. The cascade itself is `D10.4`'s.
        */
       expect(row).toHaveClass(
-        "even:bg-muted/30",
+        "even:bg-grid-stripe",
         "hover:bg-muted/50",
-        "data-[state=selected]:bg-muted",
+        "data-[state=selected]:bg-primary-tint",
       );
     }
+  });
+});
+
+/**
+ * Instrument's band chrome (ADR-0054 §4, `D11.2`).
+ *
+ * The same bargain the stripe strikes: jsdom lays nothing out, so what a suite
+ * can hold is that the values the record names are the values the component
+ * emits — 34px header, 44px rows, the caps label, the band rules, and a table
+ * that no longer draws itself a border box. Whether any of it *looks* right is
+ * the browser tier's and the operator's, by construction (plan §The reference
+ * settled: "value equality plus a human look, never an automated pixel diff").
+ */
+describe("band chrome", () => {
+  const headerCells = (): HTMLElement[] =>
+    screen
+      .getAllByRole("columnheader")
+      .filter((cell) => cell.closest("thead") !== null);
+
+  it("retires the card frame from the scroll pane", () => {
+    renderGrid();
+
+    const pane = document.querySelector('[data-slot="grid-scroll"]');
+
+    /*
+     * The pane keeps every one of ADR-0037's geometry classes — the budget is
+     * carried, not superseded — and loses exactly the three that drew a card
+     * around the table.
+     */
+    expect(pane).toHaveClass("scrollbar-thin", "min-h-64", "overflow-auto");
+    expect(pane).not.toHaveClass("rounded-md");
+    expect(pane).not.toHaveClass("border");
+    expect(pane).not.toHaveClass("bg-card");
+  });
+
+  it("closes the header band with the strong rule and the rows with the quiet one", () => {
+    renderGrid();
+
+    const table = screen.getByRole("table");
+
+    // Still separated borders — the sticky header's bill from `D4.1`, which
+    // ADR-0054 carries rather than repeals.
+    expect(table).toHaveClass("border-separate");
+    expect(table).toHaveClass("[&_thead_th]:border-border-strong");
+    expect(table).toHaveClass("[&_tbody_td]:border-grid-rule");
+  });
+
+  it("gives the header its own ground, 34px and caps", () => {
+    renderGrid();
+
+    const header = document.querySelector('[data-slot="table-header"]');
+
+    // The opaque ground rows pass under is the header band's token now, not
+    // the card's — the pane no longer paints one for it to agree with.
+    expect(header).toHaveClass("[&_th]:bg-grid-header", "sticky");
+
+    // A `for` over an empty list asserts nothing, and this fixture has exactly
+    // one column: a selector that stopped matching would otherwise be green.
+    expect(headerCells()).toHaveLength(1);
+
+    for (const cell of headerCells()) {
+      expect(cell).toHaveClass(
+        "h-[34px]",
+        "px-2.5",
+        "text-[11px]",
+        "font-semibold",
+        "tracking-[0.07em]",
+        "uppercase",
+      );
+    }
+  });
+
+  it("gives the rows the Comfortable band and the data cells the mono face", () => {
+    renderWithI18n(
+      <AppGrid
+        columns={{ email: { header: "grid:filter.title", mono: true } }}
+        listState={LIST_STATE}
+        page={page}
+        renderError={() => <p>Failed</p>}
+        onListStateChange={() => {
+          /* not this suite's question */
+        }}
+      />,
+    );
+
+    const cells = screen
+      .getAllByRole("cell")
+      .filter((cell) => cell.closest("tbody") !== null);
+
+    expect(cells).toHaveLength(ROWS.length);
+
+    for (const cell of cells) {
+      // 44px is Comfortable, and the only density this step ships — `D11.6`
+      // adds Compact as a mode, which is why the number is asserted rather
+      // than assumed away.
+      expect(cell).toHaveClass("h-[44px]", "px-2.5", "text-[13px]");
+      expect(cell).toHaveClass("font-mono");
+    }
+  });
+
+  it("leaves a prose column in the sans face", () => {
+    // The complement, so `mono` is proved to be the config's decision rather
+    // than something every cell gets: `COLUMNS` declares no `mono`.
+    renderGrid();
+
+    const cells = screen
+      .getAllByRole("cell")
+      .filter((cell) => cell.closest("tbody") !== null);
+
+    expect(cells).toHaveLength(ROWS.length);
+
+    for (const cell of cells) expect(cell).not.toHaveClass("font-mono");
   });
 });

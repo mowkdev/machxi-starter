@@ -111,6 +111,15 @@ export const gridFeatures = tableFeatures({
      * `columnVisibilityFeature`'s — is derived from it.
      */
     readonly structural?: boolean | undefined;
+    /*
+     * Whether this column's cells take the mono face (ADR-0054 §4, `D11.2`).
+     *
+     * Carried on the column rather than resolved per cell: the decision is the
+     * config's, it is the same for every row, and a body cell asking a
+     * `ColumnConfig` it no longer holds would be the resolution `buildColumns`
+     * exists to do exactly once.
+     */
+    readonly mono?: boolean | undefined;
   },
 });
 

@@ -112,12 +112,25 @@ describe("buildColumns", () => {
     ]);
   });
 
-  it("carries the filter config and alignment as column meta", () => {
+  it("carries the filter config, alignment and face as column meta", () => {
     expect(built[2]?.meta).toEqual({
       align: "end",
       filter: undefined,
       structural: false,
+      // `mono` joined the meta at `D11.2` (ADR-0054 §4) and is resolved here
+      // for the same reason the others are: once per column, never per cell.
+      mono: false,
     });
+  });
+
+  it("resolves a column's mono face from the config", () => {
+    const [column] = buildColumns(
+      { email: { header: "grid:filter.title", mono: true } },
+      undefined,
+      t,
+    );
+
+    expect(column?.meta?.mono).toBe(true);
   });
 
   it("marks the grid's own chrome structural, by registry key not by name", () => {

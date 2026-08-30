@@ -105,7 +105,7 @@ Three things this step found, none smuggled:
 
 The budget's `css` link is the only one that moved: **12,598 → 14,042 gzipped bytes** — five `@fontsource` stylesheets carrying 28 `@font-face` rules, ~12.4 kB of very repetitive CSS — budget raised 14,000 → 15,600 to keep the file's own ~11% headroom. `js` moved 47 bytes and `entry` 2, which is what "a token re-skin ships no code" looks like from the outside. The woff2/woff files are emitted assets and are not counted: 28 of each ship and a browser downloads only the two or three subsets its text needs.
 
-### 2. Grid chrome
+### ~~2. Grid chrome~~ — **done 2026-08-30**
 
 **ADRs:** [0054](../adr/0054-design-language-instrument.md) §4, [0037](../adr/0037-grid-viewport-layout.md) as carried
 
@@ -113,11 +113,23 @@ In `@repo/grid`: the card frame retires (edge-to-edge, band rules), header 34px 
 
 **Done when:** the grid suites' updated structural assertions green; the e2e grid specs updated in this diff and green (header static, rows only scroller, no page-level horizontal scrollbar — same invariants, new values); the gate green.
 
+**Built 2026-08-30.** The scroll pane lost `rounded-md border bg-card` — **the grid's own border box**, which is the frame §4 replaces with band rules — and keeps every ADR-0037 geometry class it had. Said exactly, because the review caught this note claiming more than the diff delivers: the _page's_ `Card` still wraps the pane on both grid screens, so the table is not yet edge-to-edge in the inset, and in dark the header's `--grid-header` (0.215) is the card's own lightness and therefore reads as no band at all. That is not a defect in this step's values — §4's numbers are written for a pane sitting on `--background` — it is the half of §4 that belongs to `D11.3`, where the page container grows its full-bleed variant and the pages adopt it. The band shows in light today and in both themes then. The header band is 34px on `--grid-header` with 11/16·600·0.07em caps labels and a `--border-strong` bottom rule; rows are 44px on `--grid-rule` with §3's 10px padding and 13/18 cells; the stripe, the selected row (`--primary-tint` plus a 2px inset bar) and the at-rest resize tick take §4's values. `StatusBadge` is a 6px dot beside its word — `--success` settled, `--warning` waiting, neutral otherwise — and role badges, emails, timestamps and the pager's range take the mono face. ADR-0037's own decisions are untouched: one scroll container, sticky header, static pager, separated borders, `min-h-64`.
+
+Three things this step found:
+
+- **Four of §4's values had no token to come from**, so they became four — `--grid-header`, `--grid-rule`, `--grid-stripe`, `--grid-tick` — in the sheet rather than `oklch()` literals in a component. §4 amended, labelled. The alternative was the defect the rule file names in the same sentence as the three surfaces.
+- **"Emails take the mono face" is not something the grid may know.** A timestamp is derivable from its formatter; an address is domain knowledge, and `@repo/grid` holds none by ADR-0049. `ColumnConfig` grows one optional `mono` flag, resolved into the column meta once by `buildColumns` beside `align` and `structural`, and the two resource configs set it. §4 amended.
+- **The dot retires the destructive status.** `disabled` had been rendering `destructive` since D3 — the palette's one alarm colour on a row's ordinary resting state — and §4 says neutral. Recorded in the ADR rather than left as a silent colour change.
+
+**The selected row's 2px bar is drawn on the row's first cell, not on the `<tr>`.** The table is `border-separate` (ADR-0037's sticky-header bill from `D4.1`), and that model's promise about row-level borders is one a row-level `box-shadow` should not be trusted to keep either. The cell keeps it, and the ADR's value is unchanged.
+
+Verification beyond the gate: `pnpm test:e2e` **16 passed**, with two new cases — one per grid — measuring the header at 34px, the row at 44px and the pane's computed border width and radius at zero, which is the only tier where a class string becomes a value. The first run of it was red on `columns-menu.spec.ts` in exactly the way `D11.1` recorded and told the next reader to expect: the dev account's stored column order was non-default when the run started, so Reset could never equal the `before` the spec captured. Re-run: green in 1.9s, full suite green. Nothing in this diff touches drag. The budget did not move enough to matter — css **14,042 → 14,352** gzipped bytes against the 15,600 `D11.1` left it at, which is four tokens and a handful of utilities.
+
 ### 3. Shell bands and the version footer
 
 **ADRs:** [0054](../adr/0054-design-language-instrument.md) §5, [0048](../adr/0048-app-shell-and-record-surfaces.md) as carried, [0049](../adr/0049-admin-app-architecture.md)/[0051](../adr/0051-platform-extraction.md) for the widget seams
 
-`AppShell`: header 56, the page-header band with the new `description` and `pageActions` slots, the full-bleed variant; the admin adapter and pages adopt. `apps/admin`: sidebar 240, inset-bar active state, the 48px footer with the version constant (a tracked source + Vite `define`); breadcrumbs stay D8.6's composition.
+`AppShell`: header 56, the page-header band with the new `description` and `pageActions` slots, the full-bleed variant; the admin adapter and pages adopt. **The two grid pages' `Card` retires here** — `D11.2` retired the grid's own border box and left the page's, so until this step lands the table is not edge-to-edge and dark's `--grid-header` (0.215) is the card's own lightness; §4's grid values assume the pane sits on `--background`. `apps/admin`: sidebar 240, inset-bar active state, the 48px footer with the version constant (a tracked source + Vite `define`); breadcrumbs stay D8.6's composition.
 
 **Done when:** the `@repo/ui` shell suite asserts the new slots render only when handed content; an admin test asserts the version constant renders from the tracked source; e2e shell specs updated in this diff and green; the gate green.
 

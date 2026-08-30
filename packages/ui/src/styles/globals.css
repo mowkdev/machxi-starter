@@ -86,6 +86,21 @@
   /* Status, not decoration: the grid's 6px dot renderer (ADR-0054 §4). */
   --success: oklch(0.58 0.13 155);
   --warning: oklch(0.7 0.14 75);
+
+  /*
+   * The grid's band chrome (ADR-0054 §4, amended at `D11.2`).
+   *
+   * Four lightnesses the record names that **no palette token carries** — the
+   * header's ground, the row rule, the stripe and the resize tick's at-rest
+   * grip. They live here rather than as `oklch()` literals in `@repo/grid`
+   * because a colour in a component is the defect the design system exists to
+   * prevent; the chroma follows the neighbour each one sits beside, so the
+   * hue family and the ≤ 0.014 neutral ceiling of §2 still hold.
+   */
+  --grid-header: oklch(0.985 0.002 264);
+  --grid-rule: oklch(0.93 0.005 264);
+  --grid-stripe: oklch(0.978 0.003 264);
+  --grid-tick: oklch(0.9 0.005 264);
 }
 
 /*
@@ -140,6 +155,18 @@
 
   --success: oklch(0.72 0.14 155);
   --warning: oklch(0.82 0.15 78);
+
+  /*
+   * Dark's grid chrome sits *on* the elevation ramp rather than beside it: the
+   * header ground is the card rung (0.215), the stripe a shade below the
+   * muted one (0.203), and the rule and the tick are their own lines — a rule
+   * darker than `--border` so a table of forty rows is not forty hairlines,
+   * and a tick lighter than it so a 1px grip is still findable.
+   */
+  --grid-header: oklch(0.215 0.008 264);
+  --grid-rule: oklch(0.24 0.008 264);
+  --grid-stripe: oklch(0.203 0.008 264);
+  --grid-tick: oklch(0.36 0.008 264);
 }
 
 @theme inline {
@@ -170,6 +197,10 @@
   --color-ring: var(--ring);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-grid-header: var(--grid-header);
+  --color-grid-rule: var(--grid-rule);
+  --color-grid-stripe: var(--grid-stripe);
+  --color-grid-tick: var(--grid-tick);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);

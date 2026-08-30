@@ -86,6 +86,10 @@ export const staffResourceConfig = {
     email: {
       header: "staff:columns.email",
       sortable: true,
+      // An address is data, not prose (ADR-0054 §4): the mono face makes a
+      // column of them scannable, which is the whole reason the record names
+      // emails alongside timestamps and counts.
+      mono: true,
       /*
        * `like` and not `eq`: `filterable.email.value` is `emailSchema`, so an
        * `eq` control would reject every partial term an operator types. ADR-0014
@@ -116,12 +120,14 @@ export const staffResourceConfig = {
       header: "staff:columns.lastLoginAt",
       sortable: true,
       formatter: "dateTime",
+      mono: true,
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     createdAt: {
       header: "staff:columns.createdAt",
       sortable: true,
       formatter: "date",
+      mono: true,
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     actions: {

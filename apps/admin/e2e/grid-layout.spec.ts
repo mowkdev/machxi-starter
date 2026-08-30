@@ -96,6 +96,60 @@ for (const { name, path } of GRIDS) {
     );
   });
 
+  test(`${name}: the chrome measures what Instrument says it measures`, async ({
+    app: page,
+  }) => {
+    await page.goto(path);
+    await waitForRows(page);
+
+    /*
+     * The values, in the only place they are values rather than class strings
+     * (ADR-0054 §4, `D11.2`). The package suites assert that the component
+     * emits `h-[34px]` and `h-[44px]`; nothing there can prove Tailwind
+     * generated the rule, that the primitive's own `h-10` and `p-2` lost the
+     * merge, or that the header band did not grow a pixel from a border.
+     * Here they are measured.
+     *
+     * Rounded, because a browser reports fractional box heights: the border on
+     * the header's cells lands the rule at 34.x, and asserting an integer to
+     * the pixel would be asserting a rounding mode.
+     */
+    const heights = await page.evaluate(() => {
+      const headerRow = document.querySelector("thead tr");
+      const bodyRow = document.querySelector("tbody tr");
+
+      return {
+        header: Math.round(headerRow?.getBoundingClientRect().height ?? 0),
+        row: Math.round(bodyRow?.getBoundingClientRect().height ?? 0),
+      };
+    });
+
+    expect(heights.header).toBe(34);
+    // Comfortable, the only density shipped until `D11.6` adds Compact at 34.
+    expect(heights.row).toBe(44);
+
+    /*
+     * **The pane's own border box is gone** — precisely that, and not yet
+     * "edge to edge inside the inset". `@repo/grid` drew itself a
+     * `rounded-md border bg-card` frame, and that is what §4 replaces with
+     * band rules; the *page's* `Card` around it is `D11.3`'s to retire when
+     * the page container grows its full-bleed variant. Asserted as computed
+     * style rather than as an absent class, because a width of zero is the
+     * fact and a class list is only how it was reached.
+     */
+    const frame = await scrollPane(page).evaluate((element) => {
+      const style = getComputedStyle(element);
+
+      return {
+        borderTopWidth: style.borderTopWidth,
+        borderRadius: style.borderTopLeftRadius,
+      };
+    });
+
+    expect(frame.borderTopWidth).toBe("0px");
+    expect(frame.borderRadius).toBe("0px");
+  });
+
   test(`${name}: the page itself never scrolls sideways`, async ({
     app: page,
   }) => {

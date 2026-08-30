@@ -102,6 +102,8 @@ export const userResourceConfig = {
     email: {
       header: "users:columns.email",
       sortable: true,
+      // Mono, for the reason the staff config records: an address is data.
+      mono: true,
       // `like` and not `eq`, for the reason the staff config records: the
       // field's value schema is `emailSchema`, which no partial term satisfies.
       filter: {
@@ -123,12 +125,14 @@ export const userResourceConfig = {
       header: "users:columns.lastLoginAt",
       sortable: true,
       formatter: "dateTime",
+      mono: true,
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     createdAt: {
       header: "users:columns.createdAt",
       sortable: true,
       formatter: "date",
+      mono: true,
       filter: { kind: "dateRange", from: "gte", to: "lte" },
     },
     deletedAt: {
@@ -145,6 +149,7 @@ export const userResourceConfig = {
        * offering none.
        */
       formatter: "dateTime",
+      mono: true,
       /*
        * **No filter icon here, and that is `D4.6` closing a question ADR-0039
        * left open.** This column carried the app's one `presence` control, and
