@@ -221,7 +221,26 @@ export const AccountMenu = () => {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-56" side="bottom">
+      {/*
+       * The popover's own geometry (`D11.5`, ADR-0054 §7): 232px wide at
+       * radius 8, over 4px of padding and 32px items that highlight on
+       * `--accent`. Only two of those five are written here, and that is the
+       * point of "tokens alone" — `DropdownMenuContent` already ships `p-1`
+       * and `bg-popover`, and `DropdownMenuItem` already measures 32
+       * (`py-1.5` over a 20px line) and already focuses to `bg-accent`, which
+       * Radix applies on hover. What the primitive does not have is the width
+       * (`w-56` is 224) and the radius (`rounded-md` is 5) — §2's assignment
+       * arriving at the surface that owns the shape, exactly as it says.
+       *
+       * The *contents* are still `D11.10`'s: the theme and locale blocks leave
+       * for `/account/preferences` there, and the menu slims to the principal,
+       * Account and Sign out. This step restyles what is here.
+       */}
+      <DropdownMenuContent
+        align="end"
+        className="w-[232px] rounded-xl"
+        side="bottom"
+      >
         {principal === null ? null : (
           <>
             <DropdownMenuLabel className="font-normal">

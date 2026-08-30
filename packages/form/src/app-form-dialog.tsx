@@ -126,11 +126,15 @@ export const AppFormDialog = <
          * not have: `flex-col-reverse` below `sm`, which is real behaviour on
          * a phone and nothing in jsdom would have noticed going.
          *
-         * `mt-12` since `D8.9` — `FieldSet`'s inert `gap-6` plus the shipped
-         * `mt-6`, the full 3rem, now that the footer is its own grid row and
-         * the row template is gapless.
+         * **The `mt-12` retires at `D11.5`** (ADR-0054 §7), for the reason
+         * `app-form-surface.tsx` gives beside its own row: the footer is a
+         * 64px band on `--muted` now, so the fields-to-footer distance is the
+         * band's height and its rule rather than a margin inside it. `w-full`
+         * because the band is `flex items-center` and would otherwise size
+         * this row to its content, dropping the full-width stack this element
+         * keeps below `sm`.
          */
-        <DialogFooter className="mt-12">
+        <DialogFooter className="w-full">
           <AppFormActions
             onCancel={() => {
               onOpenChange(false);
@@ -150,10 +154,15 @@ export const AppFormDialog = <
       {/*
        * The container's **body**, not the frame's children: since `D8.9` the
        * frame's children are the three rows. `AppFormError` stays inside
-       * `FieldGroup`, spaced by that element's own `gap-7`, so the body row is
-       * a single child needing no wrapper and no gap of its own.
+       * `FieldGroup`, spaced by that element's own gap, so the body row is a
+       * single child needing no wrapper and no gap of its own.
+       *
+       * That gap is `gap-5` since `D11.5` — §7's 20px field stack, written
+       * here because `FieldGroup`'s own `gap-7` (28px) is the CLI's and
+       * ADR-0047 keeps the primitive byte-identical. It spaces the error from
+       * the last field too, which is the same category of distance.
        */}
-      <FieldGroup>
+      <FieldGroup className="gap-5">
         {children}
         <AppFormError />
       </FieldGroup>

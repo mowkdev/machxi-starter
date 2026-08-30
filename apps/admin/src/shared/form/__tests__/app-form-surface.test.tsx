@@ -686,24 +686,33 @@ describe("the inverted frame", () => {
     ).not.toHaveClass("overflow-y-auto");
   });
 
-  it("keeps both shipped widths, and the drawer's gutters", async () => {
+  it("keeps the two widths Instrument leaves alone, and bands the drawer", async () => {
     const { unmount } = renderSurface({ surface: "drawer" });
 
     await screen.findByLabelText("Name");
 
-    // What ships today, unchanged by the adoption.
+    /*
+     * 512px, which the reference draws and `sm:max-w-lg` already was — the
+     * dialog's 600 is the one width `D11.5` moves (ADR-0054 §7).
+     */
     expect(document.querySelector('[data-slot="sheet-content"]')).toHaveClass(
       "w-full",
       "sm:max-w-lg",
     );
-    // `SheetContent` supplies no padding; body and footer both carry it, or
-    // Cancel and Save sit flush to the drawer's edge.
+    /*
+     * The bands, through the whole stack rather than in the package alone:
+     * these are the classes an `AppFormSurface` consumer actually renders, so
+     * a container that grew a band the wrapper then overrode would show up
+     * here and nowhere else.
+     */
     expect(document.querySelector('[data-slot="surface-body"]')).toHaveClass(
-      "px-4",
+      "p-6",
     );
     expect(document.querySelector('[data-slot="surface-footer"]')).toHaveClass(
-      "px-4",
-      "pb-4",
+      "min-h-16",
+      "border-t",
+      "bg-muted",
+      "px-6",
     );
 
     unmount();
@@ -714,6 +723,42 @@ describe("the inverted frame", () => {
     // The class `AppFormPage` used to hardcode, now the `md` size token.
     expect(document.querySelector('[data-slot="record-surface"]')).toHaveClass(
       "max-w-2xl",
+    );
+  });
+
+  it("hands the footer band a full-width row instead of the retired margin", async () => {
+    renderSurface({ surface: "drawer" });
+
+    await screen.findByLabelText("Name");
+
+    const row = screen
+      .getByRole("button", { name: "Save" })
+      .closest("div") as HTMLElement;
+
+    /*
+     * `mt-12` was the fields-to-footer distance the inversion made the shells
+     * carry (`D8.9`); the 64px band and its top rule are that distance now, so
+     * a 3rem margin inside the band would push the actions out of it
+     * (`D11.5`, ADR-0054 §7). `w-full` because the band is `flex items-center`
+     * and would otherwise size this row to its content.
+     */
+    expect(row).not.toHaveClass("mt-12");
+    expect(row).toHaveClass("w-full", "justify-end");
+  });
+
+  it("stacks the fields at the 20px rung the reference draws", async () => {
+    renderSurface({ surface: "drawer" });
+
+    await screen.findByLabelText("Name");
+
+    /*
+     * `FieldGroup`'s own `gap-7` is 28 and ADR-0047 keeps the primitive
+     * byte-identical, so §7's 20px stack is spelled where the group is
+     * rendered — which is this package, because the fields are the app's body
+     * content and `RecordSurface` is content-agnostic.
+     */
+    expect(document.querySelector('[data-slot="field-group"]')).toHaveClass(
+      "gap-5",
     );
   });
 });

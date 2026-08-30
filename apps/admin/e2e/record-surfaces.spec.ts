@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./support/fixtures";
 
@@ -132,6 +132,201 @@ test("a form taller than the viewport keeps its title and its Save on screen", a
     Math.abs(((await save.boundingBox())?.y ?? 0) - (saveBefore?.y ?? 0)),
   ).toBeLessThan(drift);
   expect(scrolled).toBeGreaterThan(drift * 4);
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+});
+
+/**
+ * The band anatomy, measured (`D11.5`, ADR-0054 §7).
+ *
+ * The package suites assert that the container emits `min-h-15`, `p-6` and
+ * `min-h-16`; nothing there can prove Tailwind generated the rules, that
+ * `SheetHeader`'s own `p-4` and `DialogContent`'s `p-6` lost the merge, or
+ * that a band holding a real record's title still measures 60. This is the one
+ * tier where a class string becomes a value.
+ *
+ * Both shells, because the reference draws them as siblings and a band stack
+ * that agreed on one screen and not the other is precisely the drift the
+ * shared container exists to prevent — the same reason `grid-layout.spec.ts`
+ * walks both grids.
+ */
+const SURFACES = [
+  { name: "staff", path: "/staff", frame: '[role="dialog"]' },
+  { name: "users", path: "/users", frame: '[data-slot="sheet-content"]' },
+] as const;
+
+/**
+ * Wait out the open animation before measuring, and **never skip this**.
+ *
+ * Both surfaces animate in — the dialog `zoom-in-95`, the drawer
+ * `slide-in-from-right` — and `toBeVisible()` resolves the moment the element
+ * is painted, which is the *first* frame of that. A box read there is the
+ * transformed box: the first run of this file measured the title bar at 59 and
+ * the dialog at 591, both ~98.5% of the truth, which looks exactly like a
+ * one-pixel styling bug and is not one. Every animation on the subtree, not
+ * just the frame's, because the bands' own boxes are what the assertions read.
+ */
+const settled = async (surface: Locator): Promise<void> => {
+  await surface.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations({ subtree: true })
+        // A cancelled animation rejects; an interrupted open is not a failure.
+        .map(async (animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+};
+
+for (const { name, path, frame } of SURFACES) {
+  test(`${name}: the record surface is a stack of bands`, async ({
+    app: page,
+  }) => {
+    await page.goto(path);
+    await waitForRows(page);
+    await openFirstRecord(page);
+
+    const surface = page.locator(frame).first();
+
+    await expect(surface).toBeVisible();
+    await settled(surface);
+
+    const bands = await surface.evaluate((element) => {
+      const box = (selector: string): number =>
+        Math.round(
+          element.querySelector(selector)?.getBoundingClientRect().height ?? 0,
+        );
+
+      const footer = element.querySelector<HTMLElement>(
+        '[data-slot="surface-footer"]',
+      );
+
+      /*
+       * `--muted` read back through a **probe element** rather than off
+       * `:root`: a custom property's raw text and a computed
+       * `background-color` are not the same string, so comparing them
+       * directly would fail on serialisation rather than on colour. Painting
+       * the token onto a throwaway box makes both sides come out of the same
+       * serialiser, which is what turns "the band has some background" into
+       * "the band is on `--muted`" — the assertion that goes red if someone
+       * swaps `bg-muted` for `bg-card`.
+       */
+      const probe = document.createElement("div");
+
+      probe.style.backgroundColor = "var(--muted)";
+      element.append(probe);
+
+      const muted = getComputedStyle(probe).backgroundColor;
+
+      probe.remove();
+
+      return {
+        title: box('[data-slot="dialog-header"], [data-slot="sheet-header"]'),
+        footer: box('[data-slot="surface-footer"]'),
+        /*
+         * The ground, the rule and the band's bottom edge are what make the
+         * footer a *band* rather than a row with a height, and computed style
+         * is the only place they are facts rather than class names.
+         */
+        footerGround:
+          footer === null ? "" : getComputedStyle(footer).backgroundColor,
+        footerRule:
+          footer === null ? "" : getComputedStyle(footer).borderTopWidth,
+        /*
+         * The seam at the bottom of the surface: §7 says the drawer is
+         * "full-height … with the body scrolling between static bands", and a
+         * flex child that shrinks but never grows leaves the band floating
+         * mid-drawer over bare background on any form short enough not to
+         * overflow — which the shipped `users` edit form, at three fields, is.
+         * Measured against the frame's padding box for the reason the bleed
+         * below is: `getBoundingClientRect` includes the border.
+         */
+        bottomSeam:
+          footer === null
+            ? -1
+            : Math.round(
+                element.getBoundingClientRect().bottom -
+                  element.clientTop -
+                  footer.getBoundingClientRect().bottom,
+              ),
+        muted,
+      };
+    });
+
+    /*
+     * **A floor for the title bar and a number for the footer**, which is the
+     * asymmetry `D11.4` wrote for the grid's bands arriving here with a
+     * concrete cause. The footer holds two fixed-height buttons and measures
+     * 64 in both shells. The title bar holds *copy*: the users drawer's edit
+     * description is a sentence about why the email is not editable, and at
+     * 512px it wraps to two lines, so the band grows to hold it — which is
+     * exactly what a floor is for and what an `h-15` would have clipped. The
+     * exact 60 is asserted below, on the shell whose meta line is one line.
+     */
+    expect(bands.title).toBeGreaterThanOrEqual(60);
+    expect(bands.footer).toBe(64);
+    expect(bands.footerRule).toBe("1px");
+    /*
+     * `--muted` itself, resolved through the probe: asserting a literal
+     * `oklch(…)` here would pin the palette in a second place and make
+     * `D11.1`'s token sheet stop being the one that decides it.
+     */
+    expect(bands.footerGround).toBe(bands.muted);
+    // The band sits on the surface's bottom edge, in both shells.
+    expect(bands.bottomSeam).toBe(0);
+
+    await page.keyboard.press("Escape");
+  });
+}
+
+test("staff's dialog is 600 wide, edge to edge", async ({ app: page }) => {
+  await page.goto("/staff");
+  await waitForRows(page);
+  await openFirstRecord(page);
+
+  const dialog = page.getByRole("dialog");
+
+  await expect(dialog).toBeVisible();
+  await settled(dialog);
+
+  /*
+   * The one width `D11.5` moves (ADR-0054 §7) — and the bands really reaching
+   * both edges of it, which is what the frame's `p-0` buys and what no class
+   * assertion can see: a `p-6` left standing would leave 24px of card either
+   * side of the title's rule and the footer's ground.
+   */
+  const frame = await dialog.boundingBox();
+  const measured = await dialog.evaluate((element) => {
+    const footer = element.querySelector('[data-slot="surface-footer"]');
+    const header = element.querySelector('[data-slot="dialog-header"]');
+
+    if (footer === null || header === null) return null;
+
+    const a = element.getBoundingClientRect();
+    const b = footer.getBoundingClientRect();
+
+    return {
+      /*
+       * Against the frame's **padding** box, not its border box:
+       * `getBoundingClientRect` includes the 1px border the dialog is drawn
+       * with, so a band that really is edge to edge sits one pixel inside it.
+       * `clientLeft` is that border, and subtracting it is what makes the
+       * assertion about the padding the frame gave up rather than about the
+       * line it keeps.
+       */
+      left: Math.round(b.left - (a.left + element.clientLeft)),
+      right: Math.round(a.right - element.clientLeft - b.right),
+      title: Math.round(header.getBoundingClientRect().height),
+    };
+  });
+
+  expect(Math.round(frame?.width ?? 0)).toBe(600);
+  expect(measured?.left).toBe(0);
+  expect(measured?.right).toBe(0);
+  /*
+   * The exact 60, on the shell whose meta line fits one line at this width —
+   * the number §7 draws, as opposed to the floor the band ships as.
+   */
+  expect(measured?.title).toBe(60);
 
   await page.getByRole("button", { name: "Cancel" }).click();
 });

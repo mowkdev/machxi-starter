@@ -142,9 +142,11 @@ export const AppFormFrame = <
        * display moves to an inner wrapper and the `FieldSet` keeps its box.
        *
        * Its `flex flex-col gap-6` goes inert with the box, and that spacing
-       * was the fields-to-footer distance — absorbed by the `mt-12` each shell
-       * now puts on the footer it hands `RecordSurface`: `FOOTER` in
-       * `app-form-surface.tsx`, `DialogFooter` in `app-form-dialog.tsx`.
+       * was the fields-to-footer distance. Each shell absorbed it as an
+       * `mt-12` on the footer it handed `RecordSurface` until **`D11.5`**,
+       * when that footer became a **band** — 64px on `--muted` under a top
+       * rule, owned by the container — so the band's own height and its rule
+       * are that distance now and both margins retired (ADR-0054 §7).
        */}
       <FieldSet aria-busy={isPending} className="contents" disabled={isPending}>
         {children}

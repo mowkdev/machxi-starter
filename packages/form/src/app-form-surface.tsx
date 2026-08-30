@@ -29,20 +29,29 @@ import { AppFormError } from "./form-error";
  * viewport, so all three now read the same.
  */
 /*
- * **`mt-12`, not `mt-6`, since `D8.9`** — and this is the one number the
- * inversion moves. `FieldSet` is `flex flex-col gap-6`, `display: contents`
- * removes its box, and that `gap-6` goes inert. Its direct children were
- * exactly two — `FieldGroup` and the footer — so the inert gap *is* the
- * fields-to-footer distance and nothing else. What shipped was `gap-6` +
- * `mt-6` = 3rem; with the footer now its own grid row and the row template
- * deliberately gapless (a row gap would open one between header and body where
- * none ships), this margin absorbs both halves.
+ * **The `mt-12` retires at `D11.5`** (ADR-0054 §7), and the reason it existed
+ * is the reason it goes. It was the fields-to-footer distance: `FieldSet` is
+ * `flex flex-col gap-6`, `display: contents` removed its box, that `gap-6`
+ * went inert, and this margin absorbed it plus the shipped `mt-6`. The footer
+ * is now a **band** — 64px on `--muted` under a top rule, owned by
+ * `RecordSurface` — so the distance is the band's height and its rule, and a
+ * 3rem margin inside it would push the actions out of the band it lives in.
  *
- * `AppFormError` is inside `FieldGroup`, spaced by that element's own `gap-7`,
- * so the two moved up as a unit and that distance is untouched. jsdom cannot
- * see any of this; the browser walk at `D8.12` is what confirms it.
+ * `w-full` so the row still spans: the band is `flex items-center` and would
+ * otherwise size this element to its content, which on a phone would stop the
+ * dialog's `flex-col-reverse` stack from filling the width it fills today.
  */
-const FOOTER = "mt-12 flex justify-end gap-2";
+const FOOTER = "flex w-full justify-end gap-2";
+
+/**
+ * §7's 20px field stack, over `FieldGroup`'s own `gap-7` (28px).
+ *
+ * Written where the group is rendered rather than in the primitive, which
+ * ADR-0047 keeps byte-identical — and rendered here rather than in
+ * `RecordSurface` because the fields are the *app's* body content and the
+ * container is content-agnostic.
+ */
+const FIELD_STACK = "gap-5";
 
 /**
  * A record being composed or edited, in whichever shell its resource declared
@@ -165,7 +174,7 @@ export const AppFormSurface = <
   );
 
   const body = (
-    <FieldGroup>
+    <FieldGroup className={FIELD_STACK}>
       {children}
       <AppFormError />
     </FieldGroup>

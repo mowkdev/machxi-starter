@@ -82,23 +82,31 @@ describe("RecordSurface", () => {
       expect(screen.getByText("Body content")).toBeInTheDocument();
     });
 
-    it("keeps the Card shape the shipped page shell has", () => {
+    it("keeps the Card shape the shipped page shell has, as a frame", () => {
       renderSurface({ variant: "page" });
 
       /*
        * Not a bare box: the variant renders neither a Dialog nor a Sheet, so
        * it supplies its own element, and ADR-0048 §4 names the `Card` shape.
-       * A `div` would strip the border, background, shadow and vertical
-       * rhythm from the shipped page surface when `D8.9` adopts this — a
-       * visual regression neither suite could see.
+       * A `div` would strip the border, background, shadow and radius from the
+       * page surface — a visual regression neither suite could see.
        */
       const surface = document.querySelector('[data-slot="record-surface"]');
 
       expect(surface).toHaveAttribute("data-slot", "record-surface");
-      expect(surface).toHaveClass("rounded-xl", "border", "bg-card", "py-6");
-      // `CardContent`'s gutter, on the column, because the column is the
-      // Card's only direct child under the inversion.
-      expect(column()).toHaveClass("px-6");
+      expect(surface).toHaveClass("rounded-xl", "border", "bg-card");
+      /*
+       * **And nothing but a frame since `D11.5`** (ADR-0054 §7): the card's
+       * own `py-6` and its inert `gap-6` are gone, because the bands run edge
+       * to edge and carry their own gutters. `p-0` is asserted rather than
+       * `not.toHaveClass("py-6")` for the reason the merge works: `p-0` is
+       * what *displaces* the primitive's padding through `cn`, so the class
+       * that has to be present is the one under test.
+       */
+      expect(surface).toHaveClass("p-0", "gap-0", "overflow-hidden");
+      expect(surface).not.toHaveClass("py-6");
+      // The column supplies no gutter of its own: the bands took theirs.
+      expect(column()).not.toHaveClass("px-6");
     });
 
     it("renders the page variant's description as a lede, not a heading", () => {
@@ -156,6 +164,29 @@ describe("RecordSurface", () => {
       }
     });
 
+    it("makes the drawer's column the drawer's height, and only the drawer's", () => {
+      const { unmount } = renderSurface({ variant: "drawer" });
+
+      /*
+       * `SheetContent` is `flex flex-col` on a definite height and a flex
+       * child is `flex: 0 1 auto` — it shrinks under overflow but never grows,
+       * so without this the column ends where the last field does and the
+       * footer band floats mid-drawer over bare background (`D11.5`,
+       * ADR-0054 §7: "full-height … between static bands").
+       */
+      expect(column()).toHaveClass("flex-1");
+
+      unmount();
+      renderSurface({ variant: "dialog" });
+
+      /*
+       * And not the dialog's: its parent is a grid whose
+       * `grid-rows-[minmax(0,1fr)]` track already stretches the column, and a
+       * `flex-1` on a grid item is a class that means nothing where it sits.
+       */
+      expect(column()).not.toHaveClass("flex-1");
+    });
+
     it("gives the page column no scroll row and no min-h-0", () => {
       renderSurface({ variant: "page" });
 
@@ -168,19 +199,6 @@ describe("RecordSurface", () => {
       expect(surfaceBody()).not.toHaveClass("overflow-y-auto");
     });
 
-    it("pads the drawer's body and footer rows, which SheetContent does not", () => {
-      renderSurface({
-        footer: <button type="button">Save</button>,
-        variant: "drawer",
-      });
-
-      // Both: gutters on the body alone leave the actions flush to the edge.
-      expect(surfaceBody()).toHaveClass("px-4");
-      expect(
-        document.querySelector('[data-slot="surface-footer"]'),
-      ).toHaveClass("px-4", "pb-4");
-    });
-
     it("renders no footer row when handed no footer", () => {
       renderSurface();
 
@@ -188,17 +206,106 @@ describe("RecordSurface", () => {
         document.querySelector('[data-slot="surface-footer"]'),
       ).not.toBeInTheDocument();
     });
+  });
 
-    it("gives the footerless drawer's body the bottom gutter the footer would have carried", () => {
-      renderSurface({ variant: "drawer" });
+  /**
+   * The three bands (`D11.5`, ADR-0054 §7).
+   *
+   * The heights are floors here and numbers in `test:e2e` — the split of
+   * labour `D11.4` wrote for the grid's bands, and for the same reason: jsdom
+   * lays nothing out, so what this tier can prove is that the component emits
+   * the class and that the primitive's own value lost the merge. Whether
+   * Tailwind generated the rule, and whether the band really measures 60,
+   * belongs to a browser.
+   */
+  describe("the band anatomy", () => {
+    /*
+     * The primitive behind each variant, because the `data-slot` names are the
+     * primitives' and not the variants': the drawer's header is Radix's sheet.
+     */
+    const SLOT = { dialog: "dialog", drawer: "sheet" } as const;
+
+    it.each(["dialog", "drawer"] as const)(
+      "gives the %s a 60px title bar closed by a rule",
+      (variant) => {
+        renderSurface({ description: "The record's meta line", variant });
+
+        const slot = SLOT[variant];
+        const band = document.querySelector(`[data-slot="${slot}-header"]`);
+
+        /*
+         * A floor rather than a height, which is the rule the grid's bands
+         * ship under: a title is data — `recordLabel` is an email on both
+         * shipped record routes — and a fixed height on a band holding a
+         * string of unknown length is a band that clips it.
+         */
+        expect(band).toHaveClass("min-h-15", "border-b", "px-6");
+        /*
+         * `p-0` is the class that displaces `SheetHeader`'s own `p-4` through
+         * `cn` — without it the two variants land at different gutters from
+         * one constant, which is exactly the drift the shared band exists to
+         * prevent, and `px-6` alone would not remove it (different merge
+         * group).
+         */
+        expect(band).toHaveClass("p-0");
+        expect(band).not.toHaveClass("p-4");
+
+        // §3's rungs: a 16/22 title over a 12px meta line.
+        expect(
+          document.querySelector(`[data-slot="${slot}-title"]`),
+        ).toHaveClass("text-base", "leading-[22px]", "font-semibold");
+        expect(
+          document.querySelector(`[data-slot="${slot}-description"]`),
+        ).toHaveClass("text-xs", "leading-4");
+      },
+    );
+
+    it.each(["dialog", "drawer", "page"] as const)(
+      "gives the %s's body 24px on every side",
+      (variant) => {
+        renderSurface({ variant });
+
+        /*
+         * One number for all three, because the surfaces are siblings in the
+         * reference: it replaces the drawer's `px-4`, the dialog's inherited
+         * `p-6` from the primitive it just lost, and the page's `px-6` on the
+         * column.
+         */
+        expect(surfaceBody()).toHaveClass("p-6");
+      },
+    );
+
+    it("retires the dialog's cancelled-out paint room", () => {
+      renderSurface({ variant: "dialog" });
 
       /*
-       * A detail view or a long confirmation hands this container no footer,
-       * and the body is then the drawer's last row. `SheetContent` supplies no
-       * gutters, so without this the content sits flush to the bottom edge.
+       * `p-1 -m-1` existed because a scrolling body clips ink overflow at its
+       * padding box and a `w-full` field sat exactly on that edge, shaving
+       * `Input`'s `focus-visible:ring-[3px]` (`D8.11`). With 24px of padding
+       * the ring has eight times the room it needs, so the hack is dead
+       * weight — and `-m-1` left standing beside `p-6` would pull the row's
+       * border box back over the content the padding just protected.
        */
-      expect(surfaceBody()).toHaveClass("px-4", "pb-4");
+      expect(surfaceBody()).not.toHaveClass("-m-1");
+      expect(surfaceBody()).toHaveClass("overflow-y-auto", "p-6");
     });
+
+    it.each(["dialog", "drawer", "page"] as const)(
+      "gives the %s a 64px footer band on --muted under a rule",
+      (variant) => {
+        renderSurface({ footer: <button type="button">Save</button>, variant });
+
+        expect(
+          document.querySelector('[data-slot="surface-footer"]'),
+        ).toHaveClass(
+          "min-h-16",
+          "items-center",
+          "border-t",
+          "bg-muted",
+          "px-6",
+        );
+      },
+    );
   });
 
   describe("the size tokens", () => {
@@ -212,9 +319,14 @@ describe("RecordSurface", () => {
       RecordSurfaceVariant,
       Record<RecordSurfaceSize, string>
     > = {
+      /*
+       * `md` is 600px since `D11.5` (ADR-0054 §7) — the one width the redesign
+       * moves, and a bracket value because Tailwind's ladder has nothing
+       * between `lg` (512) and `2xl` (672).
+       */
       dialog: {
         sm: "sm:max-w-sm",
-        md: "sm:max-w-lg",
+        md: "sm:max-w-[600px]",
         lg: "sm:max-w-2xl",
         xl: "sm:max-w-4xl",
         full: "sm:max-w-[calc(100%-2rem)]",
@@ -293,48 +405,31 @@ describe("RecordSurface", () => {
       expect(column()).not.toHaveClass("max-h-[calc(100svh-2rem)]");
     });
 
-    it("restores on the dialog's header the gap the wrap makes inert", () => {
+    it("strips the dialog frame's own padding, gap and radius rung", () => {
       renderSurface({ variant: "dialog" });
 
+      const content = document.querySelector('[data-slot="dialog-content"]');
+
       /*
-       * `DialogContent` is `grid … gap-4 p-6` and its children were the header
-       * and the app's form; under the inversion the column is its only child,
-       * so that `gap-4` goes inert exactly the way `FieldSet`'s `gap-6` does —
-       * and it was the header-to-fields distance. `DialogHeader` has no
-       * padding of its own, so without this the title sits flush against the
-       * first field (`D8.11`, ADR-0048 §4).
-       *
-       * Pinned here rather than left to the browser walk because it is a class
-       * on a specific element and therefore the one half of this geometry
-       * jsdom *can* see. The other two variants need no equivalent: the
-       * shipped drawer set `gap-0` and leans on `SheetHeader`'s own `p-4`, and
-       * the `page` lede carries `mb-6`.
+       * The bands run edge to edge (ADR-0054 §7, `D11.5`), so the primitive's
+       * `p-6` would inset the title's rule and the footer's ground by 24px and
+       * its `gap-4` would open a seam between three surfaces meant to meet.
+       * `rounded-xl` is §2's radius assignment arriving at the surface that
+       * owns the shape — the CLI's own `rounded-lg` is 6, and the dialog's
+       * rung is 8.
        */
-      expect(document.querySelector('[data-slot="dialog-header"]')).toHaveClass(
-        "mb-4",
+      expect(content).toHaveClass(
+        "p-0",
+        "gap-0",
+        "rounded-xl",
+        "overflow-hidden",
       );
-    });
-
-    it("gives the dialog's scrolling body paint room the fields do not move into", () => {
-      renderSurface({ variant: "dialog" });
-
       /*
-       * A scroll container clips **ink** overflow at its padding box, and
-       * `overflow-y-auto` makes one on both axes — CSS Overflow 3 computes a
-       * `visible` `overflow-x` to `auto` beside it. `Input`'s
-       * `focus-visible:ring-[3px]` is a box-shadow painted outside the border
-       * box and neither `FieldGroup` nor `Field` supplies a gutter, so without
-       * this a `w-full` field's focus and `aria-invalid` rings are shaved off
-       * on every side (`D8.11`, ADR-0048 §4).
-       *
-       * **Both classes, because either alone is a bug**: `p-1` without `-m-1`
-       * moves every field 4px inwards from where the shipped dialog puts it,
-       * and `-m-1` without `p-1` pulls the row's border box in over the
-       * content it was meant to protect.
+       * `overflow-hidden` is not tidiness: the footer band paints `--muted` to
+       * the frame's edge, and without the clip it squares off the two bottom
+       * corners the radius just rounded.
        */
-      expect(surfaceBody()).toHaveClass("p-1", "-m-1");
-      // The drawer needs none: its `px-4` gutters are already paint room.
-      expect(surfaceBody()).toHaveClass("overflow-y-auto");
+      expect(content).not.toHaveClass("p-6");
     });
   });
 
