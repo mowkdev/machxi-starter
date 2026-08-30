@@ -15,6 +15,26 @@ import {
 } from "@/shared/ui";
 
 /**
+ * §7's 38px login rung and §3's 13/18 control type, spelled on the call site.
+ *
+ * Two constants rather than one because the two primitives re-raise the size
+ * differently: `Button`'s base is a plain `text-sm`, which `text-[13px]`
+ * displaces outright, while `Input` ships `text-base md:text-sm` and takes its
+ * own size back from 768px up — so the field, and only the field, needs the
+ * `md:` twin. `@repo/grid`'s search box spells it the same way, for the same
+ * reason.
+ *
+ * **What this step does not do is close §3's gap.** The record surfaces' fields
+ * are still on `Input`'s own type (`D11.5` spelled their heights and paddings
+ * and left the size), so after this step the login is the only form in the app
+ * on §3's control rung. Applying it everywhere is an app-wide sweep and not
+ * this screen's to make; ADR-0054 §7 records it rather than leaving the next
+ * reader to find the two disagreeing by eye.
+ */
+const LOGIN_CONTROL = "h-[38px] text-[13px]";
+const LOGIN_INPUT = `${LOGIN_CONTROL} md:text-[13px]`;
+
+/**
  * The login form (ADR-0033 §Boot is the other half of this).
  *
  * A feature, because ADR-0032 gives features the interactions that *change*
@@ -29,6 +49,12 @@ import {
  * the request is in flight**, on a `fieldset` so nothing unregistered escapes.
  * `D3.5` turns `pending` into a real mutation's `isPending`; the behaviour is
  * the same either way, which is why it is written as behaviour now.
+ *
+ * **Its controls are 38px since `D11.7`** (ADR-0054 §7): the one rung above
+ * the 36px every other form input in the app takes, spelled here because the
+ * login is the one screen the reference sizes up. It is reached through `cn`
+ * on the generated primitives rather than by editing them, which is ADR-0047's
+ * rule and the same route §7's dialog width took at `D11.5`.
  */
 export const LoginForm = () => {
   const { t } = useT("auth");
@@ -93,11 +119,17 @@ export const LoginForm = () => {
   return (
     <form noValidate onSubmit={(event) => void onSubmit(event)}>
       <fieldset aria-busy={pending} disabled={pending}>
-        <FieldGroup>
+        {/*
+         * §3's 16px card stack, over `FieldGroup`'s own `gap-7` (28px) — the
+         * login card's rung, not the 20px field stack `@repo/form`'s record
+         * shells take (ADR-0054 §7).
+         */}
+        <FieldGroup className="gap-4">
           <Field data-invalid={Boolean(fieldErrors.email)}>
             <FieldLabel htmlFor="email">{t("fields.email")}</FieldLabel>
             <Input
               autoComplete="username"
+              className={LOGIN_INPUT}
               id="email"
               name="email"
               onChange={(event) => {
@@ -115,6 +147,7 @@ export const LoginForm = () => {
             <FieldLabel htmlFor="password">{t("fields.password")}</FieldLabel>
             <Input
               autoComplete="current-password"
+              className={LOGIN_INPUT}
               id="password"
               name="password"
               onChange={(event) => {
@@ -132,7 +165,7 @@ export const LoginForm = () => {
             <FieldError role="alert">{formError}</FieldError>
           )}
 
-          <Button type="submit">
+          <Button className={LOGIN_CONTROL} type="submit">
             {pending ? t("submitting") : t("submit")}
           </Button>
         </FieldGroup>
