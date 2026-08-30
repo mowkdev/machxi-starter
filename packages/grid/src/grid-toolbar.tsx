@@ -124,12 +124,23 @@ export const GridToolbar = ({
      * full-bleed with the page card, so a band that did not carry its own
      * gutter would start at the inset's edge while the header above it starts
      * sixteen pixels in. The rows *should* run edge to edge — that is §4 —
-     * and the chrome around them should not. The band's own height and ground
-     * are `D11.4`'s; this is only the gutter.
+     * and the chrome around them should not.
+     *
+     * **`min-h-12` since `D11.4`**: §5's 48px toolbar band, declared as a
+     * floor rather than as a height because `flex-wrap` above is load-bearing
+     * — a narrow viewport stacks the two sides instead of overflowing the
+     * frame the `D4.1` walk measured, and a fixed `h-12` would let the second
+     * row spill out of the band rather than growing it. Unwrapped, which is
+     * every viewport the design is drawn at, the band is 48.
+     *
+     * The `py-2` is what makes that floor honest in the wrapped case: a floor
+     * alone pads nothing, so two rows of controls would sit flush against the
+     * band's edges. 8 + 32 + 8 is the tallest unwrapped row this band holds,
+     * so the padding reaches the floor exactly rather than lifting it.
      */
     <div
       data-slot="grid-toolbar"
-      className="flex shrink-0 flex-wrap items-center gap-2 px-4"
+      className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-4 py-2"
     >
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         {searchable ? (
@@ -161,7 +172,12 @@ export const GridToolbar = ({
              */}
             <span
               aria-live="polite"
-              className="text-sm text-muted-foreground tabular-nums"
+              /*
+               * `text-xs` since `D11.4`: §3's 12/16 meta rung. Not the 13 the
+               * cells and the pager's range read at — that rung is controls and
+               * data, and "3 selected" is neither.
+               */
+              className="text-xs text-muted-foreground tabular-nums"
             >
               {t("selection.count", { count: selectedCount })}
             </span>

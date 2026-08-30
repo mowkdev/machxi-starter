@@ -822,8 +822,15 @@ export const AppGrid = <TRow,>({
      * page container). In a page that did not opt in, `flex-1` and `min-h-0`
      * are inert — the grid grows with its rows and the document scrolls — so
      * one component serves both strategies without a mode of its own.
+     *
+     * **The `gap-3` retired at `D11.4`** (ADR-0054 §5). The chrome is a stack
+     * of bands now — toolbar 48, "Filtered by" 40, the rows, pager 48 — and a
+     * band declares its own height; twelve pixels of nothing between each pair
+     * is the card-era spacing that the bands replace, and it would put the
+     * grid's regions out of register with the header and page-header bands
+     * above them, which sit flush.
      */
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/*
        * The toolbar (ADR-0038) — the third region ADR-0037's budget carries,
        * after the header rows and the pager, and static chrome like both.

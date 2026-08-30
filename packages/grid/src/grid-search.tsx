@@ -98,7 +98,15 @@ export const GridSearch = ({
       type="search"
       aria-label={t("search.label")}
       placeholder={t("search.placeholder")}
-      className="h-8 max-w-xs"
+      /*
+       * 32px and §3's 13/18 control type (ADR-0054, `D11.4`). The size is
+       * written twice because the `Input` primitive spells its own as
+       * `text-base md:text-sm`: an unprefixed override loses to the `md:`
+       * variant from 768px up, which is every viewport this band is drawn at,
+       * and the primitive is byte-identical under ADR-0047 so the fix belongs
+       * at the call site.
+       */
+      className="h-8 max-w-xs text-[13px] md:text-[13px]"
       value={value}
       onCommit={onCommit}
     />

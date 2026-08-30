@@ -37,6 +37,16 @@ import {
 const DEFAULT_PAGE_SIZES: readonly number[] = [10, 20, 50, 100];
 
 /**
+ * §3's 30px pager control (ADR-0054, `D11.4`).
+ *
+ * `size-[30px]` rather than a `size="icon"` variant, because the primitive's
+ * scale steps 24 · 32 · 36 · 40 and 30 is not on it — one class at the call
+ * site is the whole cost of the design's number, and ADR-0047 keeps the
+ * primitive itself byte-identical.
+ */
+const PAGER_BUTTON = "size-[30px]";
+
+/**
  * What the select actually offers: the caller's sizes (or the defaults),
  * bounded by the contract's hard ceiling, deduplicated, ascending — plus the
  * current `limit` itself. Deriving the bound from `MAX_LIMIT` rather than
@@ -138,8 +148,15 @@ export const GridPager = ({
        * `px-2` became `px-4` at `D11.3` for the reason the toolbar gained
        * one: the page card is gone and the container is full-bleed, so each
        * band carries the inset's gutter itself (ADR-0054 §5).
+       *
+       * **`min-h-12` since `D11.4`**: §5's third grid band, at the
+       * toolbar's 48px, declared as a floor for the toolbar's reason — the
+       * `flex-wrap` here is what keeps a narrow viewport's range and controls
+       * inside the frame, and the `py-2` is what pads the wrapped case a floor
+       * on its own would leave flush against the band's edges. 8 + 30 + 8 is
+       * under the floor, so unwrapped this band is still exactly 48.
        */
-      className="flex shrink-0 flex-wrap items-center justify-between gap-4 px-4 py-3"
+      className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-4 px-4 py-2"
     >
       {/*
        * The range takes the mono face (ADR-0054 §4, `D11.2`): it is a count,
@@ -156,7 +173,7 @@ export const GridPager = ({
 
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <Label htmlFor="grid-page-size" className="text-sm font-normal">
+          <Label htmlFor="grid-page-size" className="text-[13px] font-normal">
             {t("pager.rowsPerPage")}
           </Label>
           <Select
@@ -166,7 +183,19 @@ export const GridPager = ({
               onLimitChange(Number(next));
             }}
           >
-            <SelectTrigger id="grid-page-size" size="sm" className="w-[4.5rem]">
+            {/*
+             * §3's 30px pager control. Written as the `data-[size=sm]:`
+             * variant because that is how the generated primitive spells its
+             * own height: a bare `h-[30px]` and `[data-size=sm]:h-8` are two
+             * single-class selectors, the attribute one is more specific, and
+             * `cn` cannot merge across different modifiers — so the plain
+             * override would lose silently.
+             */}
+            <SelectTrigger
+              id="grid-page-size"
+              size="sm"
+              className="w-[4.5rem] text-[13px] data-[size=sm]:h-[30px]"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -183,6 +212,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
+            className={PAGER_BUTTON}
             aria-label={t("pager.first")}
             disabled={disabled || !canGoBack}
             onClick={() => {
@@ -194,6 +224,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
+            className={PAGER_BUTTON}
             aria-label={t("pager.previous")}
             disabled={disabled || !canGoBack}
             onClick={() => {
@@ -205,6 +236,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
+            className={PAGER_BUTTON}
             aria-label={t("pager.next")}
             disabled={disabled || !canGoForward}
             onClick={() => {
@@ -216,6 +248,7 @@ export const GridPager = ({
           <Button
             variant="outline"
             size="icon-sm"
+            className={PAGER_BUTTON}
             aria-label={t("pager.last")}
             // Open-ended means there is no last page to reach, so the control
             // says so instead of guessing one.

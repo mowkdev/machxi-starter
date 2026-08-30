@@ -66,6 +66,15 @@ test("a pressed hot filter shows its chip, and the chip clears it", async ({
     page.getByRole("button", { name: "Active", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
 
+  /*
+   * The band's own anatomy (ADR-0054 §5, `D11.4`): 40px, and a caps label
+   * naming what the row is. Measured here rather than in a fourth spec because
+   * this is the one walk that has a filter applied — a band that renders
+   * nothing when nothing is applied cannot be measured on an unfiltered grid.
+   */
+  await expect(bar.getByText("Filtered by")).toBeVisible();
+  expect(Math.round((await bar.boundingBox())?.height ?? 0)).toBe(40);
+
   const chip = bar.getByRole("button", { name: /^Remove filter/ });
 
   await expect(chip).toBeVisible();

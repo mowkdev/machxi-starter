@@ -60,6 +60,7 @@
     }
   },
   "applied": {
+    "label": "Filtrēts pēc",
     "announce_zero": "Lietoti {{count}} filtru",
     "announce_one": "Lietots {{count}} filtrs",
     "announce_other": "Lietoti {{count}} filtri",

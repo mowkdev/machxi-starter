@@ -58,6 +58,7 @@
     }
   },
   "applied": {
+    "label": "Filtered by",
     "announce_one": "{{count}} filter applied",
     "announce_other": "{{count}} filters applied",
     "search": "Search “{{term}}”",

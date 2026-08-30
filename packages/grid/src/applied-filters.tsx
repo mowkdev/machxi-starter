@@ -112,12 +112,30 @@ export const AppliedFilters = ({
         <div
           data-slot="grid-applied-filters"
           /*
-           * `px-4` since `D11.3`: the band's own gutter, now that the page
-           * card is gone and the page container is full-bleed (ADR-0054 §5).
-           * The 40px "Filtered by" band this becomes is `D11.4`'s.
+           * The **"Filtered by" band** since `D11.4` (ADR-0054 §5): 40px, the
+           * inset's `px-4` gutter it took at `D11.3`, and a caps label naming
+           * what the row is. `min-h-10` rather than `h-10` for the toolbar
+           * band's reason — `flex-wrap` is what keeps a screenful of chips
+           * inside the frame, and a fixed height would let the second row
+           * spill out of the band instead of growing it. `py-1.5` pads the
+           * wrapped case; 6 + 26 + 6 is under the floor, so one row of chips
+           * still measures exactly 40.
            */
-          className="flex shrink-0 flex-wrap items-center gap-2 px-4"
+          className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 px-4 py-1.5"
         >
+          {/*
+           * §3's 11/16·600·0.07em caps, the same voice the column heads speak
+           * in (`D11.2`) — it is the band's own label rather than a chip, so
+           * it is a `span` and not a control, and it carries no `:` because
+           * the chips beside it are the sentence's object.
+           */}
+          <span
+            data-slot="grid-applied-filters-label"
+            className="text-[11px] leading-4 font-semibold tracking-[0.07em] text-muted-foreground uppercase"
+          >
+            {t("applied.label")}
+          </span>
+
           {q === "" ? null : (
             <Chip
               label={t("applied.search", { term: q })}
@@ -135,10 +153,24 @@ export const AppliedFilters = ({
             />
           ))}
 
+          {/*
+           * Underlined text, not a button-shaped button (ADR-0054 §5,
+           * `D11.4`): the band's one destructive-ish affordance reads as a
+           * link so it does not compete with the chips for the eye, and the
+           * underline is permanent rather than on hover — a bare word in
+           * `--primary` beside tinted chips is not obviously pressable.
+           *
+           * `h-6` and not `h-auto`: a 13px line box is a ~19px pointer target,
+           * and this is a standalone control in a band rather than a word
+           * inside a sentence, so WCAG 2.2's 24×24 minimum applies with no
+           * inline exception to claim. No ADR here decides target size — that
+           * is the operator's to make a standing rule if they want one — but
+           * 24 costs nothing inside a 40px band.
+           */}
           <Button
-            variant="ghost"
+            variant="link"
             size="sm"
-            className="h-7"
+            className="h-6 px-0 text-[13px] underline underline-offset-4"
             onClick={onClearAll}
           >
             {tCommon("actions.clearAll")}
@@ -166,7 +198,19 @@ const Chip = ({
   const { t } = useT("grid");
 
   return (
-    <Badge variant="secondary" className="gap-1 py-1 pr-1 pl-2 font-normal">
+    /*
+     * 26px on `--primary-tint` at §2's `md` rung (ADR-0054 §5, `D11.4`) — the
+     * same shape `D11.2` gave the grid's role badges, in the tint the pressed
+     * segment and the selected row use, so "this filter is on" says one thing
+     * wherever it is said. The `variant` stays `secondary` and the ground and
+     * ink are overridden at the call site: `Badge` is a generated primitive
+     * and ADR-0047 keeps it byte-identical, so a "tint" variant is not this
+     * step's to add.
+     */
+    <Badge
+      variant="secondary"
+      className="h-[26px] gap-1 rounded-md bg-primary-tint py-0 pr-1 pl-2.5 font-normal text-foreground"
+    >
       {label}
       <button
         type="button"

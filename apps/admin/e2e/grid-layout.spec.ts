@@ -173,6 +173,40 @@ for (const { name, path } of GRIDS) {
     expect(bleed).toEqual({ left: 0, right: 0 });
   });
 
+  test(`${name}: the chrome is a stack of bands with nothing between them`, async ({
+    app: page,
+  }) => {
+    await page.goto(path);
+    await waitForRows(page);
+
+    /*
+     * §5's band stack (`D11.4`), in the only tier where a band has a height
+     * rather than a class. The package suite asserts `min-h-12`; nothing there
+     * can prove Tailwind emitted the rule, that the toolbar's contents fit
+     * inside 48 at this width rather than wrapping the band taller, or that
+     * the twelve pixels of `gap-3` between the regions are really gone.
+     */
+    const toolbar = await page
+      .locator('[data-slot="grid-toolbar"]')
+      .boundingBox();
+    const pane = await scrollPane(page).boundingBox();
+    const pagerBox = await pager(page).boundingBox();
+
+    expect(Math.round(toolbar?.height ?? 0)).toBe(48);
+    expect(Math.round(pagerBox?.height ?? 0)).toBe(48);
+
+    /*
+     * Flush, which is what "a stack of bands" means and what the retired
+     * `gap-3` was. Measured as the pane's bottom edge against the pager's top
+     * rather than as a class, because a gap is a property of the *column* and
+     * shows up on neither sibling. A pixel of tolerance for the fractional box
+     * heights `border-separate` leaves behind.
+     */
+    const seam = (pagerBox?.y ?? 0) - ((pane?.y ?? 0) + (pane?.height ?? 0));
+
+    expect(Math.abs(seam)).toBeLessThan(1);
+  });
+
   test(`${name}: the page itself never scrolls sideways`, async ({
     app: page,
   }) => {
