@@ -262,13 +262,23 @@ Verification beyond the gate: `pnpm test:e2e` **25 passed in 34.9 seconds**, no 
 
 **Pending operator acceptance**: the pixels. Every value §7 names is now asserted at one tier or both, but "value equality plus a human look" is §Definition-of-done item 3, and the login in both themes belongs on that list at `D11.11` beside the grid, the record surfaces, the popover and `/account`.
 
-### 8. `SettingsLayout`
+### ~~8. `SettingsLayout`~~ — **done 2026-08-30**
 
 **ADRs:** [0053](../adr/0053-account-area.md), [0047](../adr/0047-ui-package-scope.md), [0054](../adr/0054-design-language-instrument.md) §7
 
 The two-pane composition in `@repo/ui/src/compositions/` — routing-ignorant, nav as rendered children, responsive collapse — tested in the package.
 
 **Done when:** its `packages/ui` suite green (nav children render, no router import — asserted by the package's dependency graph staying clean); `pnpm format:check` clean; the gate green.
+
+**Built 2026-08-30, and the interesting part is that §7 had no numbers for it.** ADR-0053 §4 names `SettingsLayout` and describes its division; ADR-0054 §7 lists every other surface's geometry and stops at the login. So the values came from the reference's own `/account` artboard — 220px nav column, 32px gap, a content column capped at 720px over §3's 16px card stack, section links 2px apart — and went into §7 as a labelled amendment rather than living only in the component. The composition carries **no gutter at all**: `/account` is a document page, so `D11.3`'s page container is already spending the 16px on it, and a composition with padding of its own would inset the area twice — invisible in every jsdom query, which is why the suite asserts the _absence_ of a padding class.
+
+`navLabel` is a **required prop rather than a `UiStrings` key**, and ADR-0053 §4 is amended with the reason: §12's seam carries the words the design system invents on its own behalf, each with an English default right in every consumer, and a settings nav's accessible name is not one of those — it names the app's own set of sections, the way `AppShell`'s `title` names the app's own screen. Required rather than defaulted, so no consumer can render an anonymous second landmark on a page that already carries the breadcrumb trail. The composition is exported from the package but **not yet through `apps/admin`'s `shared/ui` door** — its consumer is `D11.9`, and a door opened ahead of one is the unexercised-surface defect this deliverable keeps recording.
+
+**The review found five, four fixed here and one it fixed by finding.** The one that mattered: the no-gutter guard's regex matched only unprefixed `p-`/`px-`/`py-`, so `pt-6` and — the likely regression when someone re-tunes the collapse — `md:p-4` would both have passed green, which is the assertion failing at exactly the job §7 cites it for. Also fixed: the unconditional 720 cap was justified with arithmetic that is false (`md` is 768 and the cap engages in the band below it, so the class is not inert while stacked — the decision stands, the reason did not); `flex-1` was justified by a "ground running the height of the screen" that this composition paints nothing to produce; and §7's amendment restated ADR-0053 §4's landmark decision in full, giving one decision two homes that can drift, so it is a pointer now. The fifth is this paragraph's own subject — §3's `10 nav gap` against the 2 that ships — and it is **named in the amendment rather than resolved**: 2 is the reference's value for these links, and which nav §3's rung belongs to is not this step's question to answer.
+
+Verification beyond the gate, the two `D11.5` handed forward: `pnpm format:check` clean, and the package suite 8 files / 92 tests, seven of them new. `pnpm size` unchanged and green — js **329.6 / 353.5**, css **14.4 / 15.2**, entry **252.7 / 273.4** kB gzipped — which is what a package-only step should do to a bundle nothing imports from yet. `pnpm test:e2e` was not run: this step moves no structure any spec asserts.
+
+One process note, the same one `D11.7` recorded: a `pnpm test` run of mine overlapped the delegated gate runner's, and two integration tiers against one `DATABASE_URL_TEST` truncate each other's tables — three suites failed with `relation "staff_roles" does not exist`. Run alone the tier is green (14/14 tasks, 3m04s). It is the serialisation ADR-0026 already decided, holding inside a process and not between two of them; worth knowing before reading a red integration tier as a defect.
 
 ### 9. `/account` — the routes, profile and security
 
