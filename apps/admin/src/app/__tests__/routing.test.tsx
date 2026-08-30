@@ -1,5 +1,5 @@
 import type { StaffRole } from "@repo/contracts";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -143,7 +143,7 @@ describe("route guards", () => {
   });
 
   it("titles the shell from the route's own staticData", async () => {
-    renderApp({ initialPath: "/profile", store: session(true) });
+    renderApp({ initialPath: "/account/profile", store: session(true) });
 
     // Declared on the route rather than looked up in the layout, so a page and
     // its heading cannot drift apart.
@@ -189,7 +189,7 @@ describe("page vertical strategy", () => {
   });
 
   it("leaves a form page in normal document flow", async () => {
-    renderApp({ initialPath: "/profile", store: session(true) });
+    renderApp({ initialPath: "/account/profile", store: session(true) });
     await screen.findByRole("heading", { name: "Profile" });
 
     // A form taller than the viewport should scroll as a document, not inside
@@ -202,5 +202,110 @@ describe("page vertical strategy", () => {
     await screen.findByRole("heading", { name: "Dashboard" });
 
     expect(pageContainer()).not.toHaveAttribute("data-full-height");
+  });
+});
+
+/**
+ * The account area's route family (`D11.9`, ADR-0053 §1).
+ *
+ * Four addresses and two redirects, asserted through the generated tree for
+ * the reason the guards above are: a redirect declared in a `beforeLoad` is
+ * only a redirect if the router runs it, and a section is only deep-linkable
+ * if landing on its URL renders *it* rather than the area's first section.
+ *
+ * The titles are the observable half of "its own `staticData`": the shell's
+ * `<h1>` is the deepest match that declares one (`route-meta`), so a section
+ * that forgot to declare a title would silently inherit `Account` and the
+ * breadcrumb would read `Account → Account`.
+ */
+describe("the account area", () => {
+  beforeEach(() => {
+    server.use(...createProfileHandlers(createProfileMockState()));
+  });
+
+  const heading = (name: string) =>
+    screen.findByRole("heading", { level: 1, name });
+
+  /**
+   * Where the router *landed*, as opposed to what a route declared.
+   *
+   * The `D11.9` review's second finding, and it is the whole point of the two
+   * redirect cases below: a heading and a crumb are both read off
+   * `staticData`, so an index route that rendered the profile section directly
+   * — leaving the address bar on `/account` — would satisfy them exactly as a
+   * redirect does. The section nav's active item is computed by TanStack from
+   * the resolved pathname, so this is the one thing on screen that can only be
+   * true if the navigation happened.
+   */
+  const activeSection = async (): Promise<string | null> =>
+    within(await screen.findByRole("navigation", { name: "Account sections" }))
+      .getAllByRole("link")
+      .find((link) => link.getAttribute("data-active") === "true")
+      ?.textContent ?? null;
+
+  it.each([
+    ["/account/profile", "Profile", "Your account"],
+    ["/account/security", "Security", "Password"],
+    // `D11.10` fills this one; until then the pane is deliberately empty, so
+    // there is no body to probe for.
+    ["/account/preferences", "Preferences", undefined],
+  ])(
+    "deep-links %s with its own title",
+    async (path, title, body: string | undefined) => {
+      renderApp({ initialPath: path, store: session(true) });
+
+      expect(await heading(title)).toBeInTheDocument();
+      // The area's own crumb is above it, which is what makes the section a
+      // section rather than a fourth top-level page (ADR-0048 §2).
+      expect(
+        within(
+          await screen.findByRole("navigation", { name: "breadcrumb" }),
+        ).getByRole("link", { name: "Account" }),
+      ).toHaveAttribute("href", "/account");
+      /*
+       * And the section's own body, not only its `staticData` (the `D11.9`
+       * review's fourth finding): a route file that forgot its `component`,
+       * or two that swapped theirs, would leave the title and the crumb
+       * exactly as they are.
+       */
+      if (body !== undefined)
+        expect(await screen.findByText(body)).toBeInTheDocument();
+    },
+  );
+
+  it("sends /account to the first section", async () => {
+    renderApp({ initialPath: "/account", store: session(true) });
+
+    // The index route holds no screen of its own, so the operator never sees
+    // the frame with an empty pane — and the address moved with the screen.
+    expect(await heading("Profile")).toBeInTheDocument();
+    expect(await activeSection()).toBe("Profile");
+  });
+
+  it("keeps the bookmarked /profile working", async () => {
+    renderApp({ initialPath: "/profile", store: session(true) });
+
+    // ADR-0053 §1: the screen moved and the address stayed behind, so nothing
+    // bookmarked breaks — the operator lands *on* `/account/profile` rather
+    // than seeing it rendered under the old address.
+    expect(await heading("Profile")).toBeInTheDocument();
+    expect(await activeSection()).toBe("Profile");
+    expect(
+      screen.getByRole("region", { name: "Your account" }),
+    ).toBeInTheDocument();
+  });
+
+  it("names the section nav so it is not a second unnamed landmark", async () => {
+    renderApp({ initialPath: "/account/profile", store: session(true) });
+
+    // ADR-0053 §4 as amended at `D11.8`: the page already carries the shell's
+    // breadcrumb `<nav>`, so an anonymous second one would give a screen
+    // reader two identical entries. The three links are the app's, the name is
+    // the app's, and the composition only places them.
+    const nav = await screen.findByRole("navigation", {
+      name: "Account sections",
+    });
+
+    expect(within(nav).getAllByRole("link")).toHaveLength(3);
   });
 });

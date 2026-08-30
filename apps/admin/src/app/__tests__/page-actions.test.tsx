@@ -30,10 +30,10 @@ describe("the page-header band's actions", () => {
   });
 
   it("leaves the band bare on a route that is not a height budget", async () => {
-    // `/profile` is a document, not a grid: `fullHeight` is false, there is no
-    // table under it, and a density control there would be a control with
-    // nothing to act on.
-    renderApp({ initialPath: "/profile", store: authenticatedAs() });
+    // `/account/profile` is a document, not a grid: `fullHeight` is false,
+    // there is no table under it, and a density control there would be a
+    // control with nothing to act on.
+    renderApp({ initialPath: "/account/profile", store: authenticatedAs() });
 
     await screen.findByRole("heading", { name: "Profile", level: 1 });
 

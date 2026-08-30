@@ -169,6 +169,13 @@ export {
   type RecordSurfaceSize,
   type RecordSurfaceVariant,
 } from "@repo/ui/compositions/record-surface";
+// `D11.9`'s door, opened by the step that consumes it (`pages/account`) rather
+// than by `D11.8`, which built the composition: a door opened ahead of its
+// first consumer is a surface nothing exercises.
+export {
+  SettingsLayout,
+  type SettingsLayoutProps,
+} from "@repo/ui/compositions/settings-layout";
 
 // Not re-exports: app components with behaviour of their own (see their files).
 export { AppLoader } from "./app-loader";

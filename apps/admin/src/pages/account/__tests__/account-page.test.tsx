@@ -20,16 +20,27 @@ import { server } from "@/test/msw/server";
 import { renderApp } from "@/test/render";
 
 /**
- * The profile screen end to end (`D3.9`; ADR-0027, ADR-0033, ADR-0035).
+ * The account area's two built sections end to end (`D3.9`, moved at `D11.9`;
+ * ADR-0027, ADR-0033, ADR-0035, ADR-0053).
  *
- * Mounted through the **real route tree**, because half of what this step
- * builds is outside the page: the `_dashboard` guard, the shell around it and
- * the header's account menu that names whoever is signed in. A hand-built tree
+ * Mounted through the **real route tree**, because half of what this proves is
+ * outside the page: the `_dashboard` guard, the shell around it and the
+ * header's account menu that names whoever is signed in. A hand-built tree
  * would quietly replace exactly those.
  *
- * The join this file exists to hold is the last assertion: the store is where
- * session identity lives (ADR-0033), the page is where it is edited, and
+ * The join this file exists to hold is the rename assertion: the store is
+ * where session identity lives (ADR-0033), the page is where it is edited, and
  * nothing else notices unless the update writes back to the store.
+ *
+ * **`D11.9` moved the file and split the addresses.** Every case that used to
+ * open `/profile` opens the section that now holds the card it is about — the
+ * summary and the details form at `/account/profile`, the password card and
+ * its dialog at `/account/security` — which is ADR-0053 §1's section rule
+ * asserted by where each test has to go to find its own subject. One
+ * assertion changed rather than moved, and the review caught what that cost;
+ * the note on it is at the bottom of this file. The routes themselves (the deep links, the two redirects and the
+ * per-section titles) are `app/__tests__/routing.test.tsx`'s, where the rest of
+ * the route tree is asserted.
  */
 
 let state: ProfileMockState;
@@ -47,7 +58,10 @@ const signedIn = (): SessionStore => {
 };
 
 const openProfile = (store: SessionStore = signedIn()) =>
-  renderApp({ initialPath: "/profile", store });
+  renderApp({ initialPath: "/account/profile", store });
+
+const openSecurity = (store: SessionStore = signedIn()) =>
+  renderApp({ initialPath: "/account/security", store });
 
 /**
  * Queries scoped to the account summary rather than the document.
@@ -58,7 +72,7 @@ const openProfile = (store: SessionStore = signedIn()) =>
  * `D8.5`**: `main` is the `SidebarInset` and the menu moved into the header
  * *inside* it, so a query scoped to `main` matches both and `findByText`
  * throws. The anchor is the account card's own named region instead
- * (`role="region"` + `aria-labelledby`, `pages/profile/index.tsx`), which asks
+ * (`role="region"` + `aria-labelledby`, `pages/account/index.tsx`), which asks
  * about the summary while the unscoped queries ask about the shell.
  */
 const page = async () =>
@@ -69,7 +83,7 @@ beforeEach(() => {
   server.use(...createProfileHandlers(state));
 });
 
-describe("the profile page", () => {
+describe("the account area", () => {
   it("renders the account the API returns, not the principal in memory", async () => {
     openProfile();
 
@@ -151,13 +165,17 @@ describe("the profile page", () => {
     // `page()` anchor is computed *from* the card's title, so asserting that
     // title back would pass on the helper's own lookup and prove no
     // navigation at all.
+    //
+    // Since `D11.9` the item still points at `/profile` — `D11.10` re-aims it
+    // at the area — so what this also proves is that ADR-0053 §1's redirect
+    // carries a live surface and not just a URL.
     expect(await (await page()).findByText(PROFILE.email)).toBeInTheDocument();
   });
 
   it("reaches the change-password dialog from the password card", async () => {
     const user = userEvent.setup();
 
-    openProfile();
+    openSecurity();
 
     await user.click(
       await screen.findByRole("button", { name: "Change password" }),
@@ -177,7 +195,7 @@ describe("the profile page", () => {
     const user = userEvent.setup();
     const store = signedIn();
 
-    openProfile(store);
+    openSecurity(store);
 
     await user.click(
       await screen.findByRole("button", { name: "Change password" }),
@@ -201,9 +219,30 @@ describe("the profile page", () => {
       expect(state.password).toBe("AnotherPassword!456");
     });
 
-    // ADR-0027 spares the caller's session because the caller proved ownership,
-    // and the client must not undo that: still signed in, still on this screen.
+    /*
+     * ADR-0027 spares the caller's session because the caller proved
+     * ownership, and the client must not undo that: still signed in, still on
+     * this screen. The screen is the security section now, so the
+     * surviving-session claim is made on the shell heading this route drives
+     * rather than on the summary two addresses away — `CardTitle` is a `div`
+     * and not a heading at all.
+     *
+     * **The settle above this is the server's, and these two need the
+     * client's** (`D11.9` review). `state.password` changes when the request
+     * reaches the handler, which can be before the client has processed the
+     * response at all — so a bare query taken there is asking about a screen
+     * that has not finished reacting. The dialog closing is the observable end
+     * of `onSuccess`, after it has wiped the plaintext from the form, and it
+     * is what makes "still signed in, still here" a claim about the settled
+     * state rather than about an instant in the middle of one.
+     */
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     expect(store.isAuthenticated()).toBe(true);
-    expect(await (await page()).findByText(PROFILE.email)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Security" }),
+    ).toBeInTheDocument();
   });
 });

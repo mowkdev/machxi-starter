@@ -49,10 +49,11 @@ const withLatvian = (): I18n =>
     resources: {
       en: EN_RESOURCES,
       /*
-       * Every namespace, empty but for the two strings under test: `Catalogue`
-       * is `Record<Namespace, object>`, and `D7.4` took the namespace count
-       * from four to ten. The empty ones are what a partly-translated locale
-       * looks like, which is the state this test is about.
+       * Every namespace, empty but for the two strings under test:
+       * `Catalogue` is `Record<AppNamespace, object>`, so the compiler names
+       * the one a new slice added rather than leaving it to be noticed. The
+       * empty ones are what a partly-translated locale looks like, which is
+       * the state this test is about.
        */
       lv: {
         common: { ui: LV_UI },
@@ -63,6 +64,7 @@ const withLatvian = (): I18n =>
         staff: {},
         users: {},
         settings: {},
+        account: {},
       },
     },
     namespaces: NAMESPACES,

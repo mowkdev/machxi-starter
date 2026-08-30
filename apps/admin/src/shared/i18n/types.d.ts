@@ -1,3 +1,4 @@
+import type account from "./locales/en/account.json";
 import type auth from "./locales/en/auth.json";
 import type common from "./locales/en/common.json";
 import type dashboard from "./locales/en/dashboard.json";
@@ -17,7 +18,7 @@ import type users from "./locales/en/users.json";
  * entry is a correct runtime fallback and an incorrect state of the catalogue.
  *
  * The first four namespaces are the cross-cutting ones `D7.1` created and
- * `D7.2` filled. The six after them are `D7.4`'s, one per slice that owns
+ * `D7.2` filled. The ones after them are `D7.4`'s rule, one per slice that owns
  * operator copy — and adding them here is what makes `TranslationKey` a real
  * union instead of `never`, which is what a `ResourceConfig` leans on the
  * moment it starts carrying keys instead of sentences.
@@ -35,6 +36,7 @@ declare module "i18next" {
       staff: typeof staff;
       users: typeof users;
       settings: typeof settings;
+      account: typeof account;
     };
   }
 }

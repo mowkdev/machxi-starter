@@ -9,9 +9,10 @@
  *
  * The first four are the cross-cutting ones `D7.1` created and `D7.2` filled:
  * they belong to `shared/*` and are the four that move with it when D8 lifts
- * the machinery into packages. The six after them are `D7.4`'s, one per slice
- * that owns operator copy — `settings` covers the appearance control today and
- * the locale switch `D7.5` puts beside it.
+ * the machinery into packages. The ones after them are `D7.4`'s rule — one per
+ * slice that owns operator copy — and they grow with the slices: `settings`
+ * covers the appearance control and the locale switch `D7.5` put beside it,
+ * and `account` is `D11.9`'s, the area's own name and its section labels.
  *
  * **Its own module since `D7.4`**, for the reason `tags.ts` got one at `D7.2`:
  * `keys.ts` needs the list and `index.ts` needs `keys.ts`, so leaving the list
@@ -36,6 +37,14 @@ export const NAMESPACES = [
   "staff",
   "users",
   "settings",
+  /*
+   * `pages/account`'s own (`D11.9`, ADR-0053 §1): the area's title, the
+   * section nav's accessible name and the three section labels. The sections'
+   * *contents* keep the namespaces they already had — the profile and
+   * password cards are still `profile:`, and `D11.10`'s preferences will be
+   * `settings:` — because a section is an address, not an owner of copy.
+   */
+  "account",
 ] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];

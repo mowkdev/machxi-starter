@@ -77,7 +77,7 @@ export const createTestI18n = (locale: Locale = "en"): I18n =>
  *
  * This is `register(i18n)` from ADR-0046 §13 in miniature, and it is here for
  * the reason the ADR gives: a package — and a fixture — **declares** strings
- * and never owns the app's dictionary. `createI18n` takes the app's ten
+ * and never owns the app's dictionary. `createI18n` takes the app's own
  * namespaces and knows nothing about `demo:`; the harness adds the bundle,
  * exactly as D8's extracted packages will add theirs.
  *

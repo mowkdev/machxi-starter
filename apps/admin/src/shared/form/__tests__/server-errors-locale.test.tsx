@@ -73,6 +73,7 @@ const build = (): I18n =>
         staff: {},
         users: {},
         settings: {},
+        account: {},
       },
     },
     namespaces: NAMESPACES,

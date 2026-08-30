@@ -1,0 +1,11 @@
+{
+  "title": "Konts",
+  "nav": {
+    "label": "Konta sadaļas"
+  },
+  "sections": {
+    "profile": "Profils",
+    "security": "Drošība",
+    "preferences": "Iestatījumi"
+  }
+}

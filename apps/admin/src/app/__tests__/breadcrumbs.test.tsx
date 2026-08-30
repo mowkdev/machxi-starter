@@ -119,13 +119,13 @@ describe("the shell's breadcrumb trail", () => {
   });
 
   it("falls back to the route title where no record label is declared", async () => {
-    open("/profile");
+    open("/account/profile");
 
     /*
-     * `/profile` declares no `recordLabel` and no `fullHeight`, so it takes
-     * the same `fullHeight === false` branch a `page`-variant record route
-     * would — which is exactly why it is worth asserting. The branch must be a
-     * no-op wherever nothing declares a label.
+     * `/account/profile` declares no `recordLabel` and no `fullHeight`, so it
+     * takes the same `fullHeight === false` branch a `page`-variant record
+     * route would — which is exactly why it is worth asserting. The branch
+     * must be a no-op wherever nothing declares a label.
      */
     expect(
       await screen.findByRole("heading", { name: "Profile" }),
@@ -133,14 +133,16 @@ describe("the shell's breadcrumb trail", () => {
   });
 
   it("renders no trail where there is no ancestor to go back to", async () => {
-    open("/profile");
+    open("/");
 
-    await screen.findByRole("heading", { name: "Profile" });
+    await screen.findByRole("heading", { name: "Dashboard" });
 
     /*
      * One crumb is not a trail: it repeats the `<h1>` and adds a second
      * `role="link"` named for the page, because `BreadcrumbPage` carries that
-     * role. `/`, `/profile`, `/staff` and `/users` are all single-crumb.
+     * role. `/`, `/staff` and `/users` are single-crumb; the account area is
+     * not, and stopped being the example here at `D11.9` — `/account/profile`
+     * hangs off an `Account` ancestor, which is ADR-0053 §1's point.
      */
     expect(
       screen.queryByRole("navigation", { hidden: true, name: "breadcrumb" }),

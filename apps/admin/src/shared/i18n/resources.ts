@@ -1,5 +1,6 @@
 import type { Locale } from "@repo/contracts";
 
+import enAccount from "./locales/en/account.json";
 import enAuth from "./locales/en/auth.json";
 import enCommon from "./locales/en/common.json";
 import enDashboard from "./locales/en/dashboard.json";
@@ -32,6 +33,7 @@ export const EN_RESOURCES = {
   staff: enStaff,
   users: enUsers,
   settings: enSettings,
+  account: enAccount,
 } as const;
 
 /**
