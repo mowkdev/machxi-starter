@@ -17,13 +17,7 @@ import {
   useCarriedListState,
   useRecordNavigation,
 } from "@/shared/grid/record-navigation";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-} from "@/shared/ui";
+import { Button } from "@/shared/ui";
 
 /**
  * The staff screen (`D3.7`) — and the whole point of it is how little is here.
@@ -95,103 +89,91 @@ export const StaffPage = () => {
   const meta = useMemo(() => ({ rowActions }), [rowActions]);
 
   return (
-    <Card className="min-h-0 flex-1">
-      <CardHeader>
-        {/*
-         * No `CardTitle` here: the shell renders the route title as the
-         * screen's single `<h1>` (ADR-0048 §2, `D8.4`). Repeating it was
-         * invisible to every test, because `CardTitle` is a `div` rather than
-         * a heading — which is exactly why it had to be removed by hand.
-         */}
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
-
-      {/*
-       * The Card is part of the height budget, not decoration around it
-       * (ADR-0037): every wrapper between the page container and AppGrid
-       * carries `flex flex-col flex-1 min-h-0`, or the budget reverts to
-       * document scroll and the sticky header comes unstuck.
-       *
-       * And it deliberately does *not* clip: `min-h-0` lets the Card shrink to
-       * whatever the viewport left it, so on a viewport too short for the
-       * grid's own floor the scroll body overflows this box on purpose and the
-       * document scrolls. An `overflow-hidden` here looks tidier and silently
-       * eats the pager instead — measured in the browser at `D4.1`, which is
-       * the only tier that can see it.
-       */}
-      <CardContent className="flex min-h-0 flex-1 flex-col">
-        <AppGrid
-          columns={staffResourceConfig.columns}
-          page={staff.data}
-          // The error panel ADR-0034 premises silent queries on. Without it a
-          // refused or failed list is five skeleton rows that never resolve.
-          error={staff.error}
-          onRetry={() => {
-            void staff.refetch();
-          }}
-          listState={listState}
-          onListStateChange={onListStateChange}
-          meta={meta}
-          // `q` searches email and name on this endpoint (`listStaffQuery`),
-          // which is a property of the API rather than of any column — so it is
-          // the toolbar's and not any header's (ADR-0035, amended D3.6). That
-          // is also why it is the one control ADR-0039 left live-committing.
-          searchable
+    /*
+     * **The page card retired at `D11.3`** (ADR-0054 §5). It was two things at
+     * once: the grid's frame, which Instrument replaces with band rules, and
+     * two links of ADR-0037's height chain — `Card` and `CardContent`, each
+     * carrying `flex flex-col flex-1 min-h-0`. Removing it removes the frame
+     * *and* shortens the chain, because the page container is now the grid's
+     * direct parent and already carries `flex-1 min-h-0` in full-height mode.
+     * The budget is unchanged; it just has two fewer boxes to divide through.
+     *
+     * The description went with it, to the shell's page-header band by way of
+     * the route's `staticData` — beside the title, which is where a sentence
+     * about the screen belongs.
+     */
+    <>
+      <AppGrid
+        columns={staffResourceConfig.columns}
+        page={staff.data}
+        // The error panel ADR-0034 premises silent queries on. Without it a
+        // refused or failed list is five skeleton rows that never resolve.
+        error={staff.error}
+        onRetry={() => {
+          void staff.refetch();
+        }}
+        listState={listState}
+        onListStateChange={onListStateChange}
+        meta={meta}
+        // `q` searches email and name on this endpoint (`listStaffQuery`),
+        // which is a property of the API rather than of any column — so it is
+        // the toolbar's and not any header's (ADR-0035, amended D3.6). That
+        // is also why it is the one control ADR-0039 left live-committing.
+        searchable
+        /*
+         * The stances this resource declares (ADR-0039). Not part of the
+         * capability block on purpose: ADR-0042 narrows capabilities by
+         * role, and nobody's role decides whether a list may be filtered.
+         */
+        hotFilters={staffResourceConfig.grid.hotFilters}
+        /*
+         * Which arrangement this operator's is (ADR-0041). The resource's
+         * own name, so the two grids keep separate entries and neither
+         * restores the other's columns; a second grid over the same
+         * resource is what the prop exists to let say otherwise.
+         */
+        gridId={staffResourceConfig.name}
+        isFetching={staff.isFetching}
+        emptyMessage="staff:empty"
+        capabilities={capabilities}
+        createAction={
           /*
-           * The stances this resource declares (ADR-0039). Not part of the
-           * capability block on purpose: ADR-0042 narrows capabilities by
-           * role, and nobody's role decides whether a list may be filtered.
+           * A link, not a handler (`D4.2`, ADR-0040): composing a record is
+           * addressable state, so the entry point is a navigation and the
+           * surface it opens survives a reload. Since `D5.3` the view the
+           * operator was reading travels as history state rather than on the
+           * URL, so the create surface's address is `/staff/new` and nothing
+           * more (ADR-0044).
+           *
+           * It is passed as a node rather than as `onCreate` because a
+           * `() => void` cannot produce an `<a>` — the amendment ADR-0038
+           * carries at `D4.3`. The capability still decides whether it
+           * renders at all.
            */
-          hotFilters={staffResourceConfig.grid.hotFilters}
+          <Button asChild size="sm">
+            <Link to="/staff/new" state={openState}>
+              <PlusIcon aria-hidden />
+              {t("actions.create")}
+            </Link>
+          </Button>
+        }
+        onBulkDelete={(ids, { clearSelection }) => {
           /*
-           * Which arrangement this operator's is (ADR-0041). The resource's
-           * own name, so the two grids keep separate entries and neither
-           * restores the other's columns; a second grid over the same
-           * resource is what the prop exists to let say otherwise.
+           * The rows the grid holds travel with the action so refusals can be
+           * reported by address; `clearSelection` travels with it because the
+           * selection has to end when the fan-out does and the state that
+           * holds it lives inside `AppGrid`.
            */
-          gridId={staffResourceConfig.name}
-          isFetching={staff.isFetching}
-          emptyMessage="staff:empty"
-          capabilities={capabilities}
-          createAction={
-            /*
-             * A link, not a handler (`D4.2`, ADR-0040): composing a record is
-             * addressable state, so the entry point is a navigation and the
-             * surface it opens survives a reload. Since `D5.3` the view the
-             * operator was reading travels as history state rather than on the
-             * URL, so the create surface's address is `/staff/new` and nothing
-             * more (ADR-0044).
-             *
-             * It is passed as a node rather than as `onCreate` because a
-             * `() => void` cannot produce an `<a>` — the amendment ADR-0038
-             * carries at `D4.3`. The capability still decides whether it
-             * renders at all.
-             */
-            <Button asChild size="sm">
-              <Link to="/staff/new" state={openState}>
-                <PlusIcon aria-hidden />
-                {t("actions.create")}
-              </Link>
-            </Button>
-          }
-          onBulkDelete={(ids, { clearSelection }) => {
-            /*
-             * The rows the grid holds travel with the action so refusals can be
-             * reported by address; `clearSelection` travels with it because the
-             * selection has to end when the fan-out does and the state that
-             * holds it lives inside `AppGrid`.
-             */
-            setAction({
-              kind: "bulk-delete",
-              ids,
-              rows: staff.data?.items ?? [],
-              onSettled: clearSelection,
-            });
-          }}
-        />
-      </CardContent>
+          setAction({
+            kind: "bulk-delete",
+            ids,
+            rows: staff.data?.items ?? [],
+            onSettled: clearSelection,
+          });
+        }}
+      />
 
       <StaffDialogs action={action} onClose={closeAction} />
-    </Card>
+    </>
   );
 };

@@ -43,3 +43,24 @@ export type AppConfig = Readonly<z.infer<typeof envSchema>>;
 export const config: AppConfig = Object.freeze(
   envSchema.parse(import.meta.env),
 );
+
+/**
+ * The build's version, substituted at compile time (ADR-0054 §5, `D11.3`).
+ *
+ * **Not part of `config` above, and not in the schema, because it is not
+ * environment.** `import.meta.env` is configuration a deployment sets; this is
+ * a literal Vite splices into the source from `apps/admin/package.json`,
+ * installed as a `define` by both `vite.config.ts` and `vitest.config.ts` (see
+ * `app-version.ts` for why it is a tracked file rather than a variable or a
+ * git SHA). Putting it in the zod object would claim a deployment could change
+ * it, and would make an absent `.env` fail a build that has everything it
+ * needs.
+ *
+ * The `declare` is the constant's only type: `define` substitutes text, so
+ * nothing exists at runtime for a module to import. It is declared here — the
+ * app's one configuration door — so that no component reaches for a bare
+ * global.
+ */
+declare const __APP_VERSION__: string;
+
+export const APP_VERSION: string = __APP_VERSION__;

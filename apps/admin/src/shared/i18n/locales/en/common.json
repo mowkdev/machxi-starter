@@ -10,7 +10,8 @@
     "mark": "m",
     "name": "machxi",
     "product": "Admin",
-    "authTagline": "machxi admin"
+    "authTagline": "machxi admin",
+    "version": "v{{version}}"
   },
   "nav": {
     "group": "Manage",

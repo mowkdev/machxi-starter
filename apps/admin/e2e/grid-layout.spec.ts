@@ -129,13 +129,11 @@ for (const { name, path } of GRIDS) {
     expect(heights.row).toBe(44);
 
     /*
-     * **The pane's own border box is gone** — precisely that, and not yet
-     * "edge to edge inside the inset". `@repo/grid` drew itself a
-     * `rounded-md border bg-card` frame, and that is what §4 replaces with
-     * band rules; the *page's* `Card` around it is `D11.3`'s to retire when
-     * the page container grows its full-bleed variant. Asserted as computed
-     * style rather than as an absent class, because a width of zero is the
-     * fact and a class list is only how it was reached.
+     * **The pane's own border box is gone, and since `D11.3` so is the page's
+     * card** — which together is what §4 means by "edge to edge inside the
+     * inset". Asserted as computed style rather than as an absent class,
+     * because a width of zero is the fact and a class list is only how it was
+     * reached.
      */
     const frame = await scrollPane(page).evaluate((element) => {
       const style = getComputedStyle(element);
@@ -148,6 +146,31 @@ for (const { name, path } of GRIDS) {
 
     expect(frame.borderTopWidth).toBe("0px");
     expect(frame.borderRadius).toBe("0px");
+
+    /*
+     * And the table really does reach both edges of the inset (`D11.3`,
+     * ADR-0054 §5): the page container went full-bleed with the card, so the
+     * pane's box is the inset's box horizontally. This is the assertion that
+     * would have caught a `p-4` left standing on the container — sixteen
+     * pixels of gutter that no class-string test can see and that makes §4's
+     * band rules stop short of the chrome they are supposed to close.
+     */
+    const bleed = await page.evaluate(() => {
+      const inset = document.querySelector('[data-slot="sidebar-inset"]');
+      const pane = document.querySelector('[data-slot="grid-scroll"]');
+
+      if (inset === null || pane === null) return null;
+
+      const a = inset.getBoundingClientRect();
+      const b = pane.getBoundingClientRect();
+
+      return {
+        left: Math.round(b.left - a.left),
+        right: Math.round(a.right - b.right),
+      };
+    });
+
+    expect(bleed).toEqual({ left: 0, right: 0 });
   });
 
   test(`${name}: the page itself never scrolls sideways`, async ({

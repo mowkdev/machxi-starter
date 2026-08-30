@@ -119,10 +119,17 @@ export const GridToolbar = ({
      * a region that could shrink would take its space out of the scroll body
      * rather than declaring it. `flex-wrap` so a narrow viewport stacks the two
      * sides instead of overflowing the frame the D4.1 walk measured.
+     *
+     * **`px-4` since `D11.3`** (ADR-0054 §5): the page container went
+     * full-bleed with the page card, so a band that did not carry its own
+     * gutter would start at the inset's edge while the header above it starts
+     * sixteen pixels in. The rows *should* run edge to edge — that is §4 —
+     * and the chrome around them should not. The band's own height and ground
+     * are `D11.4`'s; this is only the gutter.
      */
     <div
       data-slot="grid-toolbar"
-      className="flex shrink-0 flex-wrap items-center gap-2"
+      className="flex shrink-0 flex-wrap items-center gap-2 px-4"
     >
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         {searchable ? (

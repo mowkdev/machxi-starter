@@ -17,13 +17,7 @@ import {
   useCarriedListState,
   useRecordNavigation,
 } from "@/shared/grid/record-navigation";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-} from "@/shared/ui";
+import { Button } from "@/shared/ui";
 
 /**
  * The users screen (`D3.8`) — and the measure of the D3.6 machinery.
@@ -82,79 +76,61 @@ export const UsersPage = () => {
   const meta = useMemo(() => ({ rowActions }), [rowActions]);
 
   return (
-    <Card className="min-h-0 flex-1">
-      <CardHeader>
-        {/*
-         * No `CardTitle` here: the shell renders the route title as the
-         * screen's single `<h1>` (ADR-0048 §2, `D8.4`). Repeating it was
-         * invisible to every test, because `CardTitle` is a `div` rather than
-         * a heading — which is exactly why it had to be removed by hand.
-         */}
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
-
-      {/*
-       * The Card is part of the height budget, not decoration around it
-       * (ADR-0037): every wrapper between the page container and AppGrid
-       * carries `flex flex-col flex-1 min-h-0`, or the budget reverts to
-       * document scroll and the sticky header comes unstuck.
-       *
-       * And it deliberately does *not* clip: `min-h-0` lets the Card shrink to
-       * whatever the viewport left it, so on a viewport too short for the
-       * grid's own floor the scroll body overflows this box on purpose and the
-       * document scrolls. An `overflow-hidden` here looks tidier and silently
-       * eats the pager instead — measured in the browser at `D4.1`, which is
-       * the only tier that can see it.
-       */}
-      <CardContent className="flex min-h-0 flex-1 flex-col">
-        <AppGrid
-          columns={userResourceConfig.columns}
-          page={users.data}
-          error={users.error}
-          onRetry={() => {
-            void users.refetch();
-          }}
-          listState={listState}
-          onListStateChange={onListStateChange}
-          meta={meta}
-          // `q` searches email and name on this endpoint (`listUsersQuery`).
-          searchable
-          /*
-           * The stances this resource declares (ADR-0039). Not part of the
-           * capability block on purpose: ADR-0042 narrows capabilities by
-           * role, and nobody's role decides whether a list may be filtered.
-           */
-          hotFilters={userResourceConfig.grid.hotFilters}
-          /*
-           * Which arrangement this operator's is (ADR-0041). The resource's
-           * own name, so the two grids keep separate entries and neither
-           * restores the other's columns; a second grid over the same
-           * resource is what the prop exists to let say otherwise.
-           */
-          gridId={userResourceConfig.name}
-          isFetching={users.isFetching}
-          emptyMessage="users:empty"
-          capabilities={capabilities}
-          createAction={
-            <Button asChild size="sm">
-              <Link to="/users/new" state={openState}>
-                <PlusIcon aria-hidden />
-                {t("actions.create")}
-              </Link>
-            </Button>
-          }
-          onBulkDelete={(ids, { clearSelection }) => {
-            setAction({
-              kind: "bulk-delete",
-              ids,
-              rows: users.data?.items ?? [],
-              onSettled: clearSelection,
-            });
-          }}
-        />
-      </CardContent>
+    /*
+     * The page card retired at `D11.3` (ADR-0054 §5) — the staff page carries
+     * the reasoning, and it is the same reasoning here: the frame Instrument
+     * replaces with band rules was also two links of ADR-0037's height chain,
+     * and the page container is now the grid's direct parent. The description
+     * moved to the page-header band through the route's `staticData`.
+     */
+    <>
+      <AppGrid
+        columns={userResourceConfig.columns}
+        page={users.data}
+        error={users.error}
+        onRetry={() => {
+          void users.refetch();
+        }}
+        listState={listState}
+        onListStateChange={onListStateChange}
+        meta={meta}
+        // `q` searches email and name on this endpoint (`listUsersQuery`).
+        searchable
+        /*
+         * The stances this resource declares (ADR-0039). Not part of the
+         * capability block on purpose: ADR-0042 narrows capabilities by
+         * role, and nobody's role decides whether a list may be filtered.
+         */
+        hotFilters={userResourceConfig.grid.hotFilters}
+        /*
+         * Which arrangement this operator's is (ADR-0041). The resource's
+         * own name, so the two grids keep separate entries and neither
+         * restores the other's columns; a second grid over the same
+         * resource is what the prop exists to let say otherwise.
+         */
+        gridId={userResourceConfig.name}
+        isFetching={users.isFetching}
+        emptyMessage="users:empty"
+        capabilities={capabilities}
+        createAction={
+          <Button asChild size="sm">
+            <Link to="/users/new" state={openState}>
+              <PlusIcon aria-hidden />
+              {t("actions.create")}
+            </Link>
+          </Button>
+        }
+        onBulkDelete={(ids, { clearSelection }) => {
+          setAction({
+            kind: "bulk-delete",
+            ids,
+            rows: users.data?.items ?? [],
+            onSettled: clearSelection,
+          });
+        }}
+      />
 
       <UserDialogs action={action} onClose={closeAction} />
-    </Card>
+    </>
   );
 };

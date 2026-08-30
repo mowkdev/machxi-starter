@@ -49,8 +49,13 @@ import { editSurfaceOf } from "@/shared/resource/config";
  */
 export const Route = createFileRoute("/_dashboard/users")({
   component: UsersRoute,
-  // A grid page is a height budget, not a document (ADR-0037, `D4.1`).
-  staticData: { title: "users:title", fullHeight: true },
+  staticData: {
+    title: "users:title",
+    // The page-header band's second line (ADR-0054 §5, `D11.3`).
+    description: "users:description",
+    // A height budget, and with it the full-bleed container (`D11.3`).
+    fullHeight: true,
+  },
   validateSearch: listQuerySearchSchema,
   search: {
     middlewares: [stripSearchParams(listSearchDefaults)],

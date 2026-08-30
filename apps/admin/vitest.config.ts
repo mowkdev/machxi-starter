@@ -3,6 +3,8 @@ import { fileURLToPath, URL } from "node:url";
 import { reactConfig } from "@repo/vitest-config/react";
 import { defineConfig, mergeConfig } from "vitest/config";
 
+import { versionDefine } from "./app-version";
+
 /**
  * The admin suite (ADR-0036): one tier, Vitest + Testing Library + jsdom, with
  * MSW intercepting at the HTTP boundary. No live-API tier in D3.
@@ -20,6 +22,13 @@ import { defineConfig, mergeConfig } from "vitest/config";
 export default mergeConfig(
   reactConfig,
   defineConfig({
+    /*
+     * The same `define` `vite.config.ts` installs, from the same module
+     * (`D11.3`). Vitest reads this file and not that one, so a constant
+     * declared only there is `undefined` under the runner — and the footer's
+     * test would be asserting a global the suite never had.
+     */
+    define: versionDefine,
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),

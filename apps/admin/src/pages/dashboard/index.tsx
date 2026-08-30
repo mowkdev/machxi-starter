@@ -1,5 +1,5 @@
 import { useT } from "@/shared/i18n";
-import { Card, CardContent, CardDescription, CardHeader } from "@/shared/ui";
+import { Card, CardContent } from "@/shared/ui";
 
 /**
  * The landing screen behind the guard.
@@ -12,16 +12,14 @@ export const DashboardPage = () => {
   const { t } = useT("dashboard");
 
   return (
+    /*
+     * A document page, so the card stays: ADR-0054 §5 retires the *page card*
+     * on band layouts, not every card in the app. What left at `D11.3` is the
+     * header — the route title was already the shell's `<h1>` (`D8.4`), and
+     * the description followed it into the page-header band through the
+     * route's `staticData`, which left a `CardHeader` holding nothing.
+     */
     <Card>
-      <CardHeader>
-        {/*
-         * No `CardTitle` here: the shell renders the route title as the
-         * screen's single `<h1>` (ADR-0048 §2, `D8.4`). This is the page the
-         * removal is easiest to miss on — it is not a grid, and no test could
-         * see the leftover, because `CardTitle` is a `div`.
-         */}
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       </CardContent>

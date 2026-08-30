@@ -35,6 +35,7 @@ export const DashboardLayout = ({
   breadcrumbs,
   banner,
   title,
+  description,
   fullHeight = false,
   navigating = false,
 }: {
@@ -63,6 +64,18 @@ export const DashboardLayout = ({
    */
   banner?: ReactNode;
   title: string;
+  /**
+   * The page-header band's second line (`D11.3`, ADR-0054 §5). It travels the
+   * channel `title` travels for the identical reason: the description is
+   * per-route `staticData`, the route file reads it, and this frame places
+   * what it is handed.
+   *
+   * **`pageActions` is deliberately not here yet.** `AppShell` has the slot,
+   * because the record names it; nothing in this app fills it until `D11.6`
+   * puts the density control in the band, and an adapter prop no caller passes
+   * is the defect ADR-0048 §2 spends a paragraph on.
+   */
+  description?: string | undefined;
   fullHeight?: boolean;
   /**
    * A navigation is in flight (`D10.1`, ADR-0052 §Felt navigation). It travels
@@ -75,6 +88,7 @@ export const DashboardLayout = ({
   <AppShell
     banner={banner}
     breadcrumbs={breadcrumbs}
+    description={description}
     fullHeight={fullHeight}
     headerEnd={headerEnd}
     navigating={navigating}

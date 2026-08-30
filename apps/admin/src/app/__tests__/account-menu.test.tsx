@@ -19,7 +19,9 @@ import { authenticatedAs } from "@/test/principals";
  * name, which is the point: the menu's *contents* did not move, only where it
  * hangs. What only this file claims is the move itself, in the two directions
  * that can each be wrong on their own: the trigger is in the header, and the
- * region it used to hang in is gone rather than left behind empty.
+ * region it used to hang in holds no trace of it (`D11.3` narrowed that from
+ * "the region is gone", which stopped being true when the version footer
+ * gave the region a job).
  *
  * Mounted through `renderApp` rather than by rendering the widget, because the
  * hand-off is the thing under test: `app-sidebar` exports the menu, the
@@ -65,20 +67,29 @@ describe("the account menu's mount", () => {
     await user.keyboard("{Escape}");
   });
 
-  it("leaves no sidebar footer behind", async () => {
+  it("leaves nothing of itself in the sidebar footer", async () => {
     renderApp({ initialPath: "/", store: authenticatedAs() });
 
-    await screen.findByRole("button", { name: "Account" });
+    const trigger = await screen.findByRole("button", { name: "Account" });
 
     /*
-     * The footer held one `SidebarMenu > SidebarMenuItem > AccountMenu` chain
-     * and nothing else, so it goes with the menu. An empty region kept "for
-     * symmetry" is the unexercised-surface defect this deliverable is
-     * otherwise policing (ADR-0049 §The-shell-adapter), and nothing else in
-     * the suite would notice one.
+     * **Amended at `D11.3`.** This case asserted that the region itself was
+     * gone, which was the right claim while it held nothing: the footer's one
+     * child was a `SidebarMenu > SidebarMenuItem > AccountMenu` chain, and an
+     * empty region kept "for symmetry" is the unexercised-surface defect
+     * ADR-0049 §The-shell-adapter names. ADR-0054 §5 gave the region a job of
+     * its own — the version string — so the region is back and the claim
+     * narrows to what `D8.5` actually moved: the *menu* is not in it.
+     *
+     * Narrowed rather than deleted, because the failure it guards is still
+     * live: a future edit that put the account block back into the drawer
+     * would leave the header trigger passing every other assertion in this
+     * file while the app grew a second one.
      */
-    expect(
-      document.querySelector('[data-slot="sidebar-footer"]'),
-    ).not.toBeInTheDocument();
+    const footer = document.querySelector('[data-slot="sidebar-footer"]');
+
+    expect(footer).toBeInTheDocument();
+    expect(footer?.contains(trigger)).toBe(false);
+    expect(footer?.querySelector('[data-slot="sidebar-menu"]')).toBeNull();
   });
 });

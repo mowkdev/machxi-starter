@@ -43,6 +43,20 @@ declare module "@tanstack/react-router" {
      */
     title?: TranslationKey;
     /**
+     * The line under the title in the page-header band (ADR-0054 §5,
+     * `D11.3`).
+     *
+     * A `TranslationKey` for the same reason `title` is one, and on the same
+     * channel for the same reason: it is a sentence *about the screen*, so a
+     * page and the band above it cannot drift apart, and the shell does not
+     * have to hold a table of which path says what. It arrived when the page
+     * card retired — the description used to be a `CardDescription` inside
+     * each page, and the band is where the design puts it now.
+     *
+     * Optional everywhere: a screen with nothing to add renders no line.
+     */
+    description?: TranslationKey;
+    /**
      * Whether this page is height-budgeted rather than document-flowed
      * (ADR-0037 §A height-budgeted grid shell). Grid pages opt in; a form
      * taller than the viewport should scroll as a document, not inside a pane,
@@ -118,6 +132,50 @@ export const useRouteFullHeight = (): boolean => {
       .find((match) => match.staticData.fullHeight !== undefined)?.staticData
       .fullHeight ?? false
   );
+};
+
+/**
+ * The description the current route declares, or nothing (ADR-0054 §5,
+ * `D11.3`).
+ *
+ * **The screen the band describes is not always the deepest match, and
+ * `fullHeight` is what says which.** The discriminator is ADR-0048 §2's, not a
+ * new one: on a record route `fullHeight === false` *is* the `page` surface.
+ *
+ * - **Page surface** (`fullHeight` false): the record replaced the list, so
+ *   the description is read from the match whose *title* won. That route
+ *   declares none, and the band correctly shows a heading with no line under
+ *   it — rather than the list's sentence under the record's own name.
+ * - **Overlay, or an ordinary list** (`fullHeight` true): the list is still
+ *   the screen. The grid is mounted behind the modal and keeps ADR-0037's
+ *   budget, so the deepest *description* wins and the band does not change.
+ *
+ * The second rule is the `D11.3` review's finding and the reason the two are
+ * not one scan. Coupled to the title alone, opening a row on either shipped
+ * resource — both overlays — took the description away, because the record
+ * route declares a title and no description: nineteen pixels of band, handed
+ * to the grid behind the dialog on open and taken back on close, twice per
+ * edit. The `<h1>` above it does change to the record route's title while an
+ * overlay is open; that is ADR-0048 §2's decision and this reader does not
+ * revisit it.
+ *
+ * Unlike the title there is **no fallback**: a screen with nothing to say
+ * renders no line, and a default sentence about "the current page" is the
+ * kind of copy an operator learns to stop reading.
+ */
+export const useRouteDescription = (): string | undefined => {
+  const matches = useMatches();
+  const t = useKeyT();
+  const fullHeight = useRouteFullHeight();
+
+  const deepestFirst = [...matches].reverse();
+  const key = fullHeight
+    ? deepestFirst.find((match) => match.staticData.description)?.staticData
+        .description
+    : deepestFirst.find((match) => match.staticData.title)?.staticData
+        .description;
+
+  return key === undefined ? undefined : t(key);
 };
 
 /**

@@ -5,6 +5,8 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+import { versionDefine } from "./app-version";
+
 export default defineConfig({
   plugins: [
     /*
@@ -24,6 +26,12 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  /*
+   * The sidebar footer's version (ADR-0054 §5, `D11.3`). See `app-version.ts`
+   * for why it is a tracked file rather than an env var or a git SHA, and why
+   * `vitest.config.ts` installs the same object.
+   */
+  define: versionDefine,
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

@@ -10,7 +10,8 @@
     "mark": "m",
     "name": "machxi",
     "product": "Administrēšana",
-    "authTagline": "machxi administrēšana"
+    "authTagline": "machxi administrēšana",
+    "version": "v{{version}}"
   },
   "nav": {
     "group": "Pārvaldība",

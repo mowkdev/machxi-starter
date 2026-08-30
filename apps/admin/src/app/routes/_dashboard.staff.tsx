@@ -59,8 +59,17 @@ import { editSurfaceOf } from "@/shared/resource/config";
  */
 export const Route = createFileRoute("/_dashboard/staff")({
   component: StaffRoute,
-  // A grid page is a height budget, not a document (ADR-0037, `D4.1`).
-  staticData: { title: "staff:title", fullHeight: true },
+  staticData: {
+    title: "staff:title",
+    // The page-header band's second line (ADR-0054 §5, `D11.3`), declared
+    // beside the title so the two cannot drift; it was the page card's
+    // `CardDescription` until the card retired.
+    description: "staff:description",
+    // A grid page is a height budget, not a document (ADR-0037, `D4.1`) —
+    // and, since `D11.3`, that is also what selects the full-bleed page
+    // container the band layout needs (ADR-0054 §5).
+    fullHeight: true,
+  },
   validateSearch: listQuerySearchSchema,
   search: {
     middlewares: [stripSearchParams(listSearchDefaults)],

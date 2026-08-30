@@ -111,7 +111,12 @@ export const AppliedFilters = ({
       {applied === 0 ? null : (
         <div
           data-slot="grid-applied-filters"
-          className="flex shrink-0 flex-wrap items-center gap-2"
+          /*
+           * `px-4` since `D11.3`: the band's own gutter, now that the page
+           * card is gone and the page container is full-bleed (ADR-0054 §5).
+           * The 40px "Filtered by" band this becomes is `D11.4`'s.
+           */
+          className="flex shrink-0 flex-wrap items-center gap-2 px-4"
         >
           {q === "" ? null : (
             <Chip

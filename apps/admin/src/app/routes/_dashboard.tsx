@@ -14,6 +14,7 @@ import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { usePseudoNotice, useT } from "@/shared/i18n";
 import {
   useRouteCrumbs,
+  useRouteDescription,
   useRouteFullHeight,
   useRouteRecordLabel,
   useRouteTitle,
@@ -217,6 +218,7 @@ function DashboardShell() {
   const navigating = useNavigating();
   const fullHeight = useRouteFullHeight();
   const routeTitle = useRouteTitle("dashboard:shellFallback");
+  const routeDescription = useRouteDescription();
   const recordLabel = useRouteRecordLabel();
 
   return (
@@ -240,6 +242,13 @@ function DashboardShell() {
        * route title, so no shipped screen changes its heading today.
        */
       title={fullHeight ? routeTitle : (recordLabel ?? routeTitle)}
+      /*
+       * The band's second line, where the route declares one (`D11.3`,
+       * ADR-0054 §5). No branch of its own: the reader already scopes the
+       * description to the match whose title won, so a record route rendering
+       * as a page gets its own heading and no inherited sentence under it.
+       */
+      description={routeDescription}
       fullHeight={fullHeight}
       navigating={navigating}
     >

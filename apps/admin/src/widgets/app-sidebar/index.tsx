@@ -12,12 +12,14 @@ import { LocaleMenuItems } from "@/features/locale";
 import { ThemeMenuItems } from "@/features/theme";
 import { useSession } from "@/shared/api/context";
 import { useCan, type ResourceName } from "@/shared/auth";
+import { APP_VERSION } from "@/shared/config";
 import { useT } from "@/shared/i18n";
 
 import {
   Button,
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -48,14 +50,18 @@ import {
  * (ADR-0032 §Routing). `activeProps` is the router's own active state — no
  * `useLocation` comparison to keep in sync.
  *
- * **The footer is gone, and with it the account menu** (`D8.5`, ADR-0049
+ * **The account menu left the footer at `D8.5`** (ADR-0049
  * §The-shell-adapter). ADR-0032 named "navigation, current-principal block,
  * logout" as this widget's job; ADR-0049 supersedes that and moves the whole
  * account menu — the principal block, logout, theme and locale — to the
  * shell's `headerEnd` slot. `AccountMenu` is still declared here, and exported
- * below, because it is made of session facts this slice owns; `SidebarFooter`
- * held it and nothing else, so an empty region kept "for symmetry" would be
- * the unexercised-surface defect this deliverable is otherwise policing.
+ * below, because it is made of session facts this slice owns.
+ *
+ * **The footer itself went with it and came back at `D11.3`** (ADR-0054 §5),
+ * and the rule is the same in both directions: `D8.5` removed the region
+ * because it then held nothing, and an empty region kept "for symmetry" is the
+ * unexercised-surface defect this repository keeps recording; it returns now
+ * that the redesign gave it a job — the version string, alone.
  *
  * **The principal comes from the session store, not from a query** (`D3.9`).
  * ADR-0033 puts it there because it is session identity — who is signed in —
@@ -276,7 +282,33 @@ const NavigationMenu = () => {
         (item) => item.resource === undefined || can("read", item.resource),
       ).map(({ to, label, icon: Icon }) => (
         <SidebarMenuItem key={to}>
-          <SidebarMenuButton asChild tooltip={t(label)}>
+          <SidebarMenuButton
+            asChild
+            /*
+             * The active item is an inset bar over a tint, not a grey pill
+             * (ADR-0054 §5, `D11.3`).
+             *
+             * Every class here is `data-[active=true]:`-prefixed and every one
+             * displaces a class the primitive spells with the same modifier
+             * *and* the same property group, which is what `tailwind-merge`
+             * keys on: `bg-sidebar-accent` and `text-sidebar-accent-foreground`
+             * lose to these, and the primitive stays byte-identical
+             * (ADR-0047) — the design reaches it through the composition's
+             * own class string, which is the sanctioned route.
+             *
+             * The bar is a `box-shadow`, not a border or a pseudo-element: a
+             * border would move the label two pixels the moment a route became
+             * active, and the shadow is drawn inside the button's own box.
+             *
+             * `text-sidebar-foreground`, not `text-foreground` — the `D11.3`
+             * review's catch. Inside a `<Sidebar>` the scoped token is the
+             * sidebar's, and the two happen to be the same value in both
+             * themes today; naming the global one would have left this single
+             * item behind the day the sheet re-points the drawer's foreground.
+             */
+            className="data-[active=true]:bg-primary-tint data-[active=true]:text-sidebar-foreground data-[active=true]:shadow-[inset_2px_0_0_var(--primary)]"
+            tooltip={t(label)}
+          >
             <Link
               activeOptions={{ exact: to === "/" }}
               activeProps={{ "data-active": true }}
@@ -333,6 +365,32 @@ export const AppSidebar = () => {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      {/*
+       * The version, and nothing else (ADR-0054 §5, `D11.3`).
+       *
+       * **`SidebarFooter` comes back, with a consumer this time.** `D8.5`
+       * removed it because the account menu left for the shell's header and an
+       * empty region kept "for symmetry" is the unexercised-surface defect
+       * this repository keeps recording. It returns because the redesign gave
+       * it exactly one job — and only that one: the reference drew a health
+       * dot beside the string and the operator excluded it, because "all
+       * systems normal" implies a poll nothing here performs.
+       *
+       * 48px, mono, right-aligned, `--muted-foreground`: it is a fact to look
+       * up when reporting a problem, not something to read on the way past.
+       * `APP_VERSION` is substituted at build time from
+       * `apps/admin/package.json` — see `shared/config`.
+       *
+       * Hidden when the rail is collapsed rather than truncated into it: a
+       * 3rem column cannot hold a version string, and the two characters that
+       * would survive are worse than nothing.
+       */}
+      <SidebarFooter className="h-12 justify-center border-t border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:hidden">
+        <span className="truncate text-right font-mono text-xs text-muted-foreground">
+          {t("brand.version", { version: APP_VERSION })}
+        </span>
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

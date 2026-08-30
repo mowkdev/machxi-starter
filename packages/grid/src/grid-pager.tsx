@@ -134,8 +134,12 @@ export const GridPager = ({
        * `shrink-0` because this is the budget's static footer (ADR-0037): it
        * declares its height and the scroll body takes the rest, so a page of
        * twenty rows no longer hides the pager below the fold.
+       *
+       * `px-2` became `px-4` at `D11.3` for the reason the toolbar gained
+       * one: the page card is gone and the container is full-bleed, so each
+       * band carries the inset's gutter itself (ADR-0054 §5).
        */
-      className="flex shrink-0 flex-wrap items-center justify-between gap-4 px-2 py-3"
+      className="flex shrink-0 flex-wrap items-center justify-between gap-4 px-4 py-3"
     >
       {/*
        * The range takes the mono face (ADR-0054 §4, `D11.2`): it is a count,

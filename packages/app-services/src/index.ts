@@ -43,6 +43,7 @@ export { useAllowedCapabilities, useCan } from "./auth-context";
 
 export {
   useRouteCrumbs,
+  useRouteDescription,
   useRouteFullHeight,
   useRouteRecordLabel,
   useRouteTitle,

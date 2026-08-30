@@ -87,6 +87,29 @@ describe("a record is reachable by its URL", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the page-header band's description while a record overlays the list", async () => {
+    open(`/staff/${MO.id}`);
+
+    await screen.findByLabelText("First name");
+
+    /*
+     * The `D11.3` review's finding, asserted from the app side (ADR-0054 §5).
+     *
+     * A `dialog` or `drawer` record leaves the grid mounted behind it, so the
+     * screen the band describes is still the list — and a description read
+     * from the deepest *title* would vanish here, because the record route
+     * declares a title and no description. Nineteen pixels of `shrink-0`
+     * chrome handed to the grid on open and taken back on close, twice per
+     * edit, inside ADR-0037's budget.
+     *
+     * Written on the record route rather than on the list, because the list
+     * case passes under either rule and this one is the whole difference.
+     */
+    expect(
+      document.querySelector('[data-slot="page-description"]'),
+    ).toHaveTextContent("The operators who can reach this panel.");
+  });
+
   it("loads a user record from a deep link, into that resource's drawer", async () => {
     open(`/users/${CARA.id}`);
 
