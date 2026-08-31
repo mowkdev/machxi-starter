@@ -42,7 +42,7 @@ All in [ADR-0055](../adr/0055-customer-app.md), written at opening and deliberat
 
 **Done when:** the login suite asserts submit-lock, refusal copy through the code map, and the redirect; a guard suite asserts the protected tree turns an unauthenticated boot to `/login` and back; the gate green.
 
-### 3. API — the profile, read and written
+### ~~3. API — the profile, read and written~~ — **done 2026-08-31**
 
 **ADRs:** [0055](../adr/0055-customer-app.md) §4, [0027](../adr/0027-credential-self-service-and-reset.md), [0009](../adr/0009-api-modular-layering.md), [0021](../adr/0021-testing-strategy.md)
 
@@ -51,6 +51,29 @@ All in [ADR-0055](../adr/0055-customer-app.md), written at opening and deliberat
 The work that remains is real but different: **read the shipped three against 0027's rules and close whatever the reading finds** — the current password required despite a valid session, every _other_ session revoked, the calling one kept — and add the cases the existing tier does not already assert. If the reading finds nothing, the step is a paragraph in this file saying so and the deliverable is one step shorter, which is the honest outcome and not a failure.
 
 **Done when:** the three endpoints are read against ADR-0027 and each rule is either shown to be covered by a named existing test or covered by a new one; `pnpm test:int --filter api` green; `pnpm test:postman` green; the gate green.
+
+**The reading, 2026-08-31.** ADR-0027 §Staff-self-service states three rules for `change-password` and says in as many words that they are the ones `/user/profile/change-password` already made. Each, against the shipped code and tier:
+
+| Rule (ADR-0027)                                          | Where it is implemented                                                                          | Where it is asserted                                                                                                                                                                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The current password is required despite a valid session | `users.service.ts` `changePassword` → `currentPasswordInvalid()`                                 | **Covered** — `user-profile.int.test.ts` "refuses a wrong current password with 403, not 401"                                                                                                            |
+| Every _other_ session is revoked; the caller's is not    | `revokeSessionsFor(… exceptSessionId: principal.sessionId)` in the same transaction as the write | **Covered** — "rotates the password, keeps this session and ends the others"                                                                                                                             |
+| An account with **no** password may not use it           | `record.passwordHash !== null && verify(…)`                                                      | **Gap → closed** — proved only in `users.service.test.ts` against a fake repository, never against the running endpoint. Now `user-profile.int.test.ts` "refuses an account that has no password at all" |
+
+Two more from §Contracts, which the first draft of this table missed — the review caught them, and both were already covered:
+
+| Rule (ADR-0027 §Contracts)                                                                     | Where it is asserted                                                                                                     |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `AUTH_CURRENT_PASSWORD_INVALID` (renamed from `USER_CURRENT_PASSWORD_INVALID`) keeps its `403` | **Covered** — "refuses a wrong current password with 403, not 401", and the new null-password case asserts the same pair |
+| `currentPassword` is bounded by `presentedPasswordSchema`, not held to the password policy     | **Covered** — "holds the new password to the policy and the old one only to a bound"                                     |
+
+And one rule that is ADR-0055 §4's rather than 0027's — **names editable, email not**:
+
+| Rule                                   | Where it is implemented                                            | Where it is asserted                                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PATCH` carries names and nothing else | `updateProfileBody` is a `.strictObject` of `firstName`/`lastName` | **Gap → closed** — `status` and `roles` each had a case; `email` did not. Now "has no field for email, so a user cannot change their login identifier", plus a Postman request on the live chain |
+
+**Two gaps, both in the tier rather than in the code** — every rule was correctly implemented and had been since D2.3/D2.4. The null-password case is the one worth having: it is a security rule whose failure mode is a truthy-check regression that hands the account to anyone holding a session, and a fake hasher cannot have that bug. **Probed rather than assumed**: with `passwordHash !== null &&` flipped to `passwordHash === null ||` — the "any password matches" reading ADR-0017 forbids — the new case fails and the other eighteen stay green.
 
 ### 4. API — self-deletion
 

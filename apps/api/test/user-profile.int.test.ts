@@ -175,6 +175,38 @@ describe("user profile", () => {
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
     });
 
+    it("has no field for email, so a user cannot change their login identifier", async () => {
+      /*
+       * The rule ADR-0055 §4 states as "names editable, email not", asserted
+       * here for the first time at `D12.2`'s reading (`D12.3`): the two cases
+       * above prove `status` and `roles` are absent, and email was left to the
+       * `.strictObject` without a case of its own.
+       *
+       * It matters more than the other two, because email is not merely a
+       * field — it is the login identifier and the unique key the partial
+       * index is built on (ADR-0017), so changing it is a verification flow
+       * (ADR-0027 draws the same boundary for staff) rather than a patch. An
+       * unknown key is what refuses it, which is why the answer is 400 and not
+       * 403: there is no rule to break because there is no field.
+       */
+      /*
+       * **Paired with a valid key, which the sibling `roles` case does and the
+       * first draft of this one did not** (`D12.3` review). `email` alone is
+       * refused by two independent rules: the unknown key, and — once the
+       * unknown key is stripped — `updateProfileBody`'s "not empty" refine. So
+       * a `.strictObject` relaxed to `z.object` would leave this green while
+       * the property the case is named for was gone. With `firstName` present
+       * the patch is non-empty, and the only thing left that can refuse it is
+       * the unknown key.
+       */
+      const response = await patch(customerTokens.accessToken, {
+        firstName: "Cleo",
+        email: "someone.else@machxi.local",
+      }).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
     it("refuses a caller with no credentials", async () => {
       const response = await request()
         .patch(PROFILE)
@@ -295,6 +327,49 @@ describe("user profile", () => {
 
       expect(paths).toContain("newPassword");
       expect(paths).not.toContain("currentPassword");
+    });
+
+    it("refuses an account that has no password at all", async () => {
+      /*
+       * ADR-0027's third `change-password` rule, and the one the integration
+       * tier had never asserted — it was proved in `users.service.test.ts`
+       * against a fake repository and nowhere against the running endpoint
+       * (`D12.3`'s reading).
+       *
+       * `users.password_hash` is nullable and `null` means **no password
+       * login** (ADR-0017), never "any password matches". The failure mode
+       * this closes is a truthy-check regression — `record.passwordHash &&
+       * verify(...)` reversed, or a hasher that returns `true` for a null
+       * digest — which would hand the account to anyone holding a session for
+       * it. Worth a real request precisely because it is the kind of bug a
+       * fake hasher cannot have.
+       *
+       * The account is given a session first and its password removed after,
+       * because that is the only order that produces the state: a passwordless
+       * account cannot sign in, so the session has to predate the null.
+       */
+      const { id, tokens } = await freshUser("passwordless@machxi.local");
+
+      await harness.db.db
+        .update(users)
+        .set({ passwordHash: null })
+        .where(eq(users.id, id));
+
+      const response = await changePassword(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+        newPassword: "SomethingElse!2026",
+      }).expect(403);
+
+      // The same answer a wrong password gets, deliberately: the endpoint does
+      // not tell a caller whether the account has a password at all.
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+
+      const row = await harness.db.db
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, id));
+
+      expect(row[0]?.passwordHash).toBeNull();
     });
 
     it("rejects an unknown field rather than ignoring it", async () => {

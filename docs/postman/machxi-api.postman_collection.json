@@ -3182,6 +3182,51 @@
           }
         },
         {
+          "name": "Update my profile with an email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR: email is not a field\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Cleo\",\n  \"email\": \"someone.else@machxi.local\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "`updateProfileBody` is a strict object of two names, so email is refused as an unknown key rather than by a rule somebody has to remember to write.\n\nEmail is the login identifier and the unique key the partial index is built on (ADR-0017), so changing it is a verification flow rather than a patch — the same boundary ADR-0027 draws for staff, and the one ADR-0055 §4 states as \"names editable, email not\". Added at D12.3, when reading the shipped endpoints against ADR-0027 found status and roles asserted here and email not.\n\nPaired with a valid key, as the integration twin is. `email` alone is refused twice over — by the unknown key, and, once that key is stripped, by `updateProfileBody`'s \"not empty\" refine — so a schema relaxed to `z.object` would leave this request green with the property it is named for gone. With `firstName` present the patch is non-empty and only the unknown key can refuse it.\n\nOne assertion, deliberately. A first draft added a second `pm.test` wrapping `pm.sendRequest` to re-read the profile; `pm.test`'s callback returns the moment the request is dispatched, so newman scores it as a pass unconditionally and the real expectations run outside any test. The address is read by \"Get my profile\" earlier in this folder, and the integration tier owns the round trip."
+          }
+        },
+        {
           "name": "Change my password",
           "event": [
             {

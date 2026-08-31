@@ -41,7 +41,7 @@ All three land in the existing profile/auth module structure per [0009](0009-api
 
 **Amended 2026-08-31 (`D12.2`) — two of the three already exist, and this section was written without checking.** `D12.2`'s orientation read `apps/api/src/routes/user.router.ts` and found `createUserProfileRouter` already mounted, shipped at **D2.3/D2.4**:
 
-- **`GET /api/v1/user/profile`** and **`PATCH /api/v1/user/profile`** — built, with `updateProfileSchema` in `@repo/contracts`, `apps/api/test/user-profile.int.test.ts` in the integration tier, and a Postman folder that signs in as a created account rather than a fixture precisely so it can change a password.
+- **`GET /api/v1/user/profile`** and **`PATCH /api/v1/user/profile`** — built, with `updateProfileBody` in `@repo/contracts`, `apps/api/test/user-profile.int.test.ts` in the integration tier, and a Postman folder that signs in as a created account rather than a fixture precisely so it can change a password.
 - **`POST /api/v1/user/profile/change-password`** — built, on [0027](0027-credential-self-service-and-reset.md)'s rules. Note the **path**: `/change-password`, not the `/password` this record spelled. The shipped spelling is the staff mirror's and stands; the spelling above was invented here and is the error.
 - **`DELETE /api/v1/user/profile`** — genuinely absent, exactly as written. §4's third bullet is unaffected.
 
