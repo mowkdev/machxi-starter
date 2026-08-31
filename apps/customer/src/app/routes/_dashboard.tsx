@@ -4,11 +4,14 @@ import {
   redirect,
   useRouterState,
 } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 
 import { AccountMenu, AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
 
+import { usePseudoNotice, useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
+import { Banner } from "@/shared/ui";
 
 /**
  * The guard, and the reason it lives here (ADR-0049 §Layout topology).
@@ -48,6 +51,44 @@ export const Route = createFileRoute("/_dashboard")({
 });
 
 /**
+ * The dev-only pseudo-locale notice, and this app's consumer for the shell's
+ * `banner` slot (`D12.9`, ADR-0048 §3, ADR-0046 §10).
+ *
+ * **A hook returning a node or `undefined`, not a component returning
+ * `null`** — and the difference is the whole contract. `AppShell` renders its
+ * banner region only when the slot is filled, and it decides that by the
+ * truthiness of what it was handed: `<PseudoLocaleNotice />` is a truthy
+ * element whatever the component then returns, so a component form would have
+ * given the shell an empty `div` on every screen with the notice off. The
+ * emptiness has to be visible to the *caller*, which means the decision happens
+ * before the JSX exists.
+ *
+ * The copy is the **app's**, keyed in this app's own catalogues rather than the
+ * design system's: `Banner` takes a `message` and knows nothing about why it is
+ * showing, which is the boundary that lets the same component carry D13's
+ * impersonation warning. The sentence is not the admin's either — the two apps
+ * share the machinery and share none of the words (ADR-0046 §13).
+ *
+ * **Not dismissible.** The notice says the build in front of the reader is a
+ * translation build and not a production one, and a warning about the whole
+ * session that can be waved away stops being true after the first click.
+ *
+ * The flag arrives through `usePseudoNotice` rather than by reading
+ * `config.VITE_I18N_PSEUDO` here, and that is what makes this testable at all:
+ * `vitest.config.ts` pins the variable to `"false"` for the whole suite on
+ * purpose, so a notice gated on it directly would render in no test in this
+ * repository. The context has a seam the harness can drive.
+ */
+const usePseudoLocaleNotice = (): ReactNode => {
+  const enabled = usePseudoNotice();
+  const { t } = useT("common");
+
+  return enabled ? (
+    <Banner message={t("dev.pseudoNotice")} variant="info" />
+  ) : undefined;
+};
+
+/**
  * The router's own answer to "is a navigation in flight?" (ADR-0052 §Felt
  * navigation, the delta this app inherits with `AppShell`).
  *
@@ -66,6 +107,7 @@ const useNavigating = (): boolean =>
   useRouterState({ select: (state) => state.status === "pending" });
 
 function DashboardShell() {
+  const banner = usePseudoLocaleNotice();
   const navigating = useNavigating();
   /*
    * The fallback is a key, not a sentence (ADR-0046 §7): it is copy a customer
@@ -79,6 +121,7 @@ function DashboardShell() {
 
   return (
     <DashboardLayout
+      banner={banner}
       headerEnd={<AccountMenu />}
       navigating={navigating}
       sidebar={<AppSidebar />}

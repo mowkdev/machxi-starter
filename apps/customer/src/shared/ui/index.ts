@@ -102,6 +102,19 @@ export { UiStringsProvider, type UiStrings } from "@repo/ui/ui-strings";
  */
 export { AppShell, type AppShellProps } from "@repo/ui/compositions/app-shell";
 /*
+ * What fills that shell's `banner` region (`D12.9`, ADR-0048 §3). Its one
+ * consumer is the dev-only pseudo-locale notice in `app/routes/_dashboard.tsx`
+ * — the slot's promised second-app consumer arriving, and the last of
+ * ADR-0046's closing work.
+ *
+ * **Two symbols, not the admin's three.** `BannerVariant` is the composition's
+ * variant union and nothing in this app names it — `variant="info"` is checked
+ * through `BannerProps` — so exporting it would put a symbol with no consumer
+ * in a file whose header says it grows a line at a time as a screen needs one.
+ * It is one line the day a screen picks a variant from a value.
+ */
+export { Banner, type BannerProps } from "@repo/ui/compositions/banner";
+/*
  * The account area's frame (`D12.6`, ADR-0053 §4). ADR-0048 §2's slot-honesty
  * rule named this composition's second consumer before it existed — "the
  * customer app's sections differ already" — and this door line is that consumer

@@ -31,5 +31,8 @@
     "sidebarDescription": "Rāda mobilo sānjoslu.",
     "sidebarTitle": "Sānjosla",
     "toggleSidebar": "Pārslēgt sānjoslu"
+  },
+  "dev": {
+    "pseudoNotice": "Ieslēgta pseidolokāle: katra tulkotā virkne tiek pagarināta un akcentēta, lai netulkotais teksts izceltos. Šis būvējums paredzēts tulkojuma pārskatīšanai, nevis klientiem."
   }
 }

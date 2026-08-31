@@ -17,6 +17,7 @@ import {
 import {
   EN_RESOURCES,
   NAMESPACES,
+  PseudoNoticeProvider,
   createI18n,
   type I18n,
   type TranslateKey,
@@ -229,6 +230,25 @@ export const renderWithProviders = (
 export interface RenderAppOptions extends ProviderOptions {
   /** Where the app starts. Defaults to the signed-in home. */
   readonly initialPath?: string;
+  /**
+   * Shows the dev-only pseudo-locale **notice** (`D12.9`, ADR-0048 §3).
+   *
+   * **A different option from `pseudo` above, on purpose.** That one selects
+   * the pseudo-locale *lens* and reaches only `createI18n`; reusing it here
+   * would mount the notice on every route of ADR-0046 §14's walk, whose copy
+   * would then have to survive `unaccented()`. In the app the two do travel
+   * together — `config.VITE_I18N_PSEUDO` feeds both — but the suite needs to
+   * drive them apart, and the notice is the one with a consumer to prove.
+   *
+   * It exists at all because `vitest.config.ts` pins `VITE_I18N_PSEUDO` to
+   * `"false"` for the whole suite, so a notice gated on the variable directly
+   * would render in no test in this repository.
+   *
+   * On `renderApp` only, and not on `ProviderOptions`: the notice is drawn by
+   * the `_dashboard` route file into a slot only `AppShell` has, so a component
+   * rendered in isolation has nowhere to put one.
+   */
+  readonly pseudoNotice?: boolean;
 }
 
 /**
@@ -250,6 +270,7 @@ export interface RenderAppResult extends RenderResult {
 
 export const renderApp = ({
   initialPath = "/",
+  pseudoNotice = false,
   ...options
 }: RenderAppOptions = {}): RenderAppResult => {
   const value = providers(options);
@@ -287,9 +308,18 @@ export const renderApp = ({
             <QueryClientProvider client={value.queryClient}>
               <I18nextProvider i18n={value.i18n.instance}>
                 <AppUiStrings>
-                  {/* The root route mounts its own `<Toaster>`; this tree adds
-                      none. */}
-                  <RouterProvider router={router} />
+                  {/*
+                   * This tree is hand-built, so a provider the app mounts in
+                   * `app/index.tsx` reaches no test unless it is added here too
+                   * (`D12.9`, ADR-0048 §3). Off by default: the notice is a
+                   * dev-build warning, and every other suite renders the app a
+                   * customer gets.
+                   */}
+                  <PseudoNoticeProvider enabled={pseudoNotice}>
+                    {/* The root route mounts its own `<Toaster>`; this tree
+                        adds none. */}
+                    <RouterProvider router={router} />
+                  </PseudoNoticeProvider>
                 </AppUiStrings>
               </I18nextProvider>
             </QueryClientProvider>

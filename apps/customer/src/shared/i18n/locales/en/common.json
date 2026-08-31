@@ -31,5 +31,8 @@
     "sidebarDescription": "Displays the mobile sidebar.",
     "sidebarTitle": "Sidebar",
     "toggleSidebar": "Toggle Sidebar"
+  },
+  "dev": {
+    "pseudoNotice": "Pseudo-locale is on: every translated string is lengthened and accented so untranslated copy stands out. This build is for translation review, not for customers."
   }
 }

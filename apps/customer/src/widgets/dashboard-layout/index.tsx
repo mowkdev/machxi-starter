@@ -25,22 +25,21 @@ import { AppShell } from "@/shared/ui";
  *
  * **This is the admin's adapter minus the props nothing in this app hands it,
  * and the subtraction is the decision.** `AppShell` offers `breadcrumbs`,
- * `banner`, `description`, `pageActions` and `fullHeight` as well; a prop
- * declared here would be `undefined` on every screen this app ships, which is
- * the slot-with-no-consumer defect ADR-0048 §2 spends a paragraph on, one layer
+ * `description`, `pageActions` and `fullHeight` as well; a prop declared here
+ * would be `undefined` on every screen this app ships, which is the
+ * slot-with-no-consumer defect ADR-0048 §2 spends a paragraph on, one layer
  * down. Each has a step that will name its consumer, and each is one line then:
- * `banner` with the pseudo-locale notice, and `breadcrumbs`, `pageActions` and
- * `fullHeight` with the first domain entity — which is what ADR-0055 §3 says
- * brings the grid.
+ * `breadcrumbs`, `pageActions` and `fullHeight` with the first domain entity —
+ * which is what ADR-0055 §3 says brings the grid.
  *
- * **`banner` was written against `D12.7` and `D12.7` did not spend it either.**
- * That step is the preferences section and the settings gate; the notice is a
- * *localization* surface — `PseudoNoticeProvider` at the composition root and
- * one reader in the `_dashboard` route file — and it belongs with the rest of
- * ADR-0046's closing work at `D12.9`, beside the drift check, the `lv` sweep
- * and the route walk it warns about. Named here rather than left to be noticed,
- * because a prop with a date on it and no consumer is how a slot quietly
- * becomes permanent chrome.
+ * **`banner` came off that list at `D12.9`, two steps after the date it was
+ * first written against.** `D12.5` named `D12.7` as the step that would spend
+ * it; `D12.7` turned out to be the settings gate and the preferences section,
+ * and the notice is not a preference — it is a *localization* surface, so the
+ * plan moved it to `D12.9` beside the drift check, the `lv` sweep and the route
+ * walk it exists to warn about. It has a consumer now, so the prop is declared
+ * with one rather than ahead of one, which is the rule the paragraph above
+ * states and the reason this one no longer carries a future date.
  *
  * **`description` was on that list against `D12.6`, and `D12.6` did not spend
  * it.** The account area's sections *do* describe themselves, but each sentence
@@ -59,6 +58,7 @@ export const DashboardLayout = ({
   children,
   sidebar,
   headerEnd,
+  banner,
   title,
   navigating = false,
 }: {
@@ -73,6 +73,19 @@ export const DashboardLayout = ({
    * control is a frame that knows a principal exists.
    */
   headerEnd?: ReactNode;
+  /**
+   * The banner region's content (`D12.9`). The dev-only pseudo-locale notice
+   * today, D13's impersonation banner next. A prop rather than something this
+   * widget decides, for the reason it decides nothing else: a frame that knew
+   * *why* a banner shows is not a frame.
+   *
+   * **Optional, and the shell renders no region when it is `undefined`** — not
+   * an empty wrapper (ADR-0048 §3). That is why the `_dashboard` route file
+   * hands this a node or nothing rather than a component that returns `null`:
+   * an element is truthy whatever it renders, so the emptiness has to be
+   * visible to the caller.
+   */
+  banner?: ReactNode;
   title: string;
   /**
    * A navigation is in flight (ADR-0052 §Felt navigation, the delta on
@@ -84,6 +97,7 @@ export const DashboardLayout = ({
   navigating?: boolean;
 }) => (
   <AppShell
+    banner={banner}
     headerEnd={headerEnd}
     navigating={navigating}
     sidebar={sidebar}

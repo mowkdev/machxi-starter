@@ -1,7 +1,13 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { createDeferredTranslate, useKeyT, useT } from "@/shared/i18n";
+import { config } from "@/shared/config";
+import {
+  PseudoNoticeProvider,
+  createDeferredTranslate,
+  useKeyT,
+  useT,
+} from "@/shared/i18n";
 import { createDeferredErrorMessage } from "@/shared/notifications/messages";
 import { AppLoader } from "@/shared/ui";
 
@@ -36,7 +42,7 @@ import "./styles.css";
  * The composition root of the SPA (ADR-0049): the `app` layer is wiring, and
  * this is the whole of it.
  *
- * Four providers, outermost first:
+ * Five providers, outermost first:
  *
  * - `SessionProvider` holds a loading gate until the ADR-0033 boot sequence
  *   resolves, and nothing below it renders before the store is either hydrated
@@ -52,12 +58,17 @@ import "./styles.css";
  *   account's locale is the one i18next starts in rather than one it switches
  *   to. It is a second gate inside the first, and it mounts the three providers
  *   that carry an account preference — the theme, the locale and the density.
- * - `AppUiStrings` innermost (`D12.5`), because it is a *reader* of the locale
- *   rather than a source of one: it resolves the design system's own `sr-only`
- *   labels through `t` and hands them down the `UiStrings` context (ADR-0046
- *   §12), so it has to sit inside the instance that resolves them. The two
- *   pre-i18next screens render above it and keep the package's English
- *   defaults, which is what those defaults are for.
+ * - `AppUiStrings` (`D12.5`), because it is a *reader* of the locale rather
+ *   than a source of one: it resolves the design system's own `sr-only` labels
+ *   through `t` and hands them down the `UiStrings` context (ADR-0046 §12), so
+ *   it has to sit inside the instance that resolves them. The two pre-i18next
+ *   screens render above it and keep the package's English defaults, which is
+ *   what those defaults are for.
+ * - `PseudoNoticeProvider` innermost (`D12.9`), and the only one of the five
+ *   whose value is a build flag rather than a session, a cache or an account:
+ *   it publishes `config.VITE_I18N_PSEUDO` to the one component that draws the
+ *   notice. What its position *does* fix is that it is above the router, whose
+ *   `_dashboard` layout is its only reader.
  *
  * **`ThemeProvider` left this file at `D12.7`, and the reason it was here was
  * wrong.** `D12.1` mounted it outermost so the boot gate's two screens "are
@@ -131,7 +142,23 @@ const App = () => (
       <SettingsProvider fallback={<AppLoader />}>
         <BindTranslations />
         <AppUiStrings>
-          <AppRouter />
+          {/*
+           * Whether the dev-only pseudo-locale notice shows (`D12.9`,
+           * ADR-0048 §3). The context lives in `@repo/i18n` and comes through
+           * `shared/i18n`; this is the `app` layer joining it to the build
+           * flag, which is the same relationship `settings.tsx` has with the
+           * theme's provider. `_dashboard.tsx` is its only reader.
+           *
+           * **Above the router** because its reader is the `_dashboard` layout
+           * and a context has to outlive the tree that reads it. Its position
+           * relative to `AppUiStrings` is *not* a constraint — this provider
+           * publishes a boolean and resolves no copy — so it is innermost
+           * simply because that is the smallest place it fits, and any claim
+           * that it had to sit here would be a comment inventing a rule.
+           */}
+          <PseudoNoticeProvider enabled={config.VITE_I18N_PSEUDO}>
+            <AppRouter />
+          </PseudoNoticeProvider>
         </AppUiStrings>
       </SettingsProvider>
     </QueryClientProvider>
