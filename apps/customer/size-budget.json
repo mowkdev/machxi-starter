@@ -1,0 +1,24 @@
+{
+  "notes": [
+    "The customer app's bundle budget (ADR-0052 §The bundle budget, inherited at D12.1 — ADR-0055 §3 says the mechanism lands with the app rather than being acquired later).",
+    "Bytes are GZIPPED, which is what a browser downloads; `pnpm size` measures dist/ and fails the gate when a number here is exceeded.",
+    "js = every JavaScript byte the build emits. css = every CSS byte. entry = the module script dist/index.html loads, the chunk paid before anything renders.",
+    "Raising a budget is a deliberate diff of this file that someone reviews — that is the whole mechanism. Lowering one after a real saving is just as welcome.",
+    "The headroom over the baseline is the admin's: about 8% on js and entry, about 11% on css where a percentage of 13 kB is noise. Enough for honest growth, tight enough that a new dependency trips it.",
+    "Baseline measured 2026-08-31 at D12.1, on the app's first build: the router, the token sheet, the five @fontsource stylesheets and two namespaces in two locales. It is a floor rather than a finished number — the app has no session machine, no query client and no forms yet, so D12.2 and D12.6 will each raise it deliberately, and the reason they are raises rather than surprises is that this file exists from the first build.",
+    "entry is nearly the whole js figure today because there is one route and the router, React and i18next are all in it; the split widens as the later steps add lazily-loaded screens.",
+    "The woff2/woff files @fontsource emits are assets and are NOT counted here — a browser downloads only the subsets its text needs, so what the css number prices is the @font-face declarations, not the faces."
+  ],
+  "baseline": {
+    "measuredAt": "2026-08-31",
+    "step": "D12.1",
+    "js": 140051,
+    "css": 13545,
+    "entry": 128337
+  },
+  "budgets": {
+    "js": 151000,
+    "css": 15000,
+    "entry": 139000
+  }
+}

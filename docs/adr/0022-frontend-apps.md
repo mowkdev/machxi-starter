@@ -1,7 +1,9 @@
 # ADR-0022: Frontend apps — `web` (Next.js) and `admin` (Vite + React)
 
-- Status: accepted
+- Status: superseded by [ADR-0055](0055-customer-app.md) (delta: the app roster; every stack decision below stands)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-08-31, at the head of `D12.1`.** [ADR-0055](0055-customer-app.md) changes exactly one paragraph of the decision below — the roster: `apps/customer` joins as the user-facing Vite + React SPA on port 3002, and `apps/web` narrows to marketing only, its architecture D14's to decide. **Everything else here stands as written**: the stacks, the one-React-version alignment, `@repo/contracts`/`@repo/ui` as the shared floor, HTTP-only access to the API, and the port discipline itself. A delta supersession under [ADR-0050](0050-adr-lifecycle.md) rule 1 — read this record for what 0055 does not touch.
 
 ## Context
 

@@ -23,7 +23,8 @@ says which deliverable is in progress and links the build order of each.
 corepack enable
 pnpm install
 cp .env.example .env         # every variable is documented there (ADR-0004)
-cp apps/admin/.env.example apps/admin/.env   # the browser app reads its own (ADR-0033)
+cp apps/admin/.env.example apps/admin/.env   # each browser app reads its own (ADR-0033)
+cp apps/customer/.env.example apps/customer/.env
 pnpm docker:up               # local Postgres, waits until healthy (ADR-0007)
 pnpm db:setup                # migrations + super admin seed (ADR-0008)
 pnpm db:seed -- --dev        # local fixture accounts (optional, but the smoke test needs them)
@@ -41,7 +42,7 @@ pnpm test:postman            # 84 requests, 260 assertions — did it actually w
 `localhost`, signing in as the super admin from your `.env`. It is the executable
 half of the ADR-0021 acceptance checklist: if it is green, the clone works.
 
-`pnpm dev` with no filter starts the API, `admin` (port 3001) and `web` (port 3002) together.
+`pnpm dev` with no filter starts the API, `admin` (port 3001), `customer` (port 3002) and `web` (port 3003) together.
 
 ### Signing in
 
@@ -129,7 +130,15 @@ pnpm db:sessions:prune       # delete expired sessions (nothing schedules this y
   import direction (ADR-0049): `src/{app,pages,widgets,features,entities,shared}`.
   A resource is an entity slice that declares it, a feature slice that writes it
   and a thin page that arranges them (ADR-0035).
-- `apps/web` — Next.js app, port 3002 (ADR-0022)
+- `apps/customer` — Vite + React SPA, port 3002 (ADR-0055), the customer-facing
+  app over the user segment. The same records as `apps/admin`, applied through
+  its **own** `shared/` doors, its own dictionary and its own bundle budget: it
+  is the second consumer the platform packages were extracted for, and anything
+  it cannot build from them without changing them is recorded as a finding in
+  `docs/plan/0012-customer-app.md`.
+- `apps/web` — Next.js app, marketing only (ADR-0055 narrowed ADR-0022's roster).
+  It runs on 3003 so it does not sit on the customer app's port; where the
+  marketing site actually lives is a later deliverable's decision.
 
 `apps/web` is configured but not built out — that is a later deliverable, not
 this one.

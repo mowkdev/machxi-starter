@@ -1,10 +1,10 @@
 # ADR-0055: The customer app — `apps/customer`, the roster, and user-segment self-service
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-31
 - Supersedes: [ADR-0022](0022-frontend-apps.md) (delta: the app roster — `apps/web` narrows to marketing and `apps/customer` joins; every stack decision stands)
 
-> Written 2026-08-31 for D12 ([`docs/plan/0012-customer-app.md`](../plan/0012-customer-app.md)). Accepted at the head of `D12.1`, where ADR-0022 moves to `superseded by`; amendable in place while D12 is `in progress` (ADR-0025 rule 2). This record is **deliberately mostly by reference**: the customer app is the second consumer of the platform D8–D11 built, and its architecture *is* those records — what it decides is the roster, the deltas the `/user` segment forces, and the self-service endpoints that segment still lacks. The 2026-08-22 re-scoping deferred 0022's supersession "until an app actually changes"; this is that day.
+> Written 2026-08-31 for D12 ([`docs/plan/0012-customer-app.md`](../plan/0012-customer-app.md)). **Accepted 2026-08-31 at the head of `D12.1`**, where ADR-0022 moved to `superseded by` in the same commit; amendable in place while D12 is `in progress` (ADR-0025 rule 2). This record is **deliberately mostly by reference**: the customer app is the second consumer of the platform D8–D11 built, and its architecture *is* those records — what it decides is the roster, the deltas the `/user` segment forces, and the self-service endpoints that segment still lacks. The 2026-08-22 re-scoping deferred 0022's supersession "until an app actually changes"; this is that day.
 
 ## Context
 
@@ -15,6 +15,8 @@
 ### 1. The roster
 
 `apps/customer` — **Vite + React SPA over the `/user` segment, dev port 3002** (reassigned from `web`, which takes its new port from its own deliverable, D14). `apps/web` is **marketing only**; its architecture stays the open decision the index's Planned list records, owned by D14. `apps/admin` is unchanged. Everything else ADR-0022 decided — the stacks, the React/Vite alignment, the port discipline — stands as written.
+
+**Amended 2026-08-31 (`D12.1`).** "Reassigned" had a consequence this record did not follow through: `apps/web/package.json` still said `next dev -p 3002`, so `pnpm dev` with no filter started two apps on one port and whichever bound second silently moved to another — a race deciding which app answers 3002. Two apps cannot share a port, and deferring web's port to D14 cannot mean leaving it on the customer app's. So **`apps/web`'s dev server moves to 3003 now**. That is a placeholder and not the assignment D14 owns: the marketing site's real address is a deployment decision, and this number exists only so `pnpm dev` is deterministic in the meantime. The CORS allow-list stays exactly the two SPAs (3001 and 3002) — a marketing page makes no credentialed request.
 
 ### 2. The architecture, by reference
 

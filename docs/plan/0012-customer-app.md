@@ -2,7 +2,7 @@
 
 > **Renumbered from D11 on 2026-08-29**, when the design foundations and account area ([D11](0011-design-foundations-and-account-area.md)) were inserted ahead of it — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
 
-- Status: **in progress** — **opened 2026-08-31**, the operator's decision, the day D11 shipped. The window covers [ADR-0055](../adr/0055-customer-app.md), `proposed` at opening, **accepted at the head of `D12.1`**, where [ADR-0022](../adr/0022-frontend-apps.md) moves to `superseded by` (a delta: the roster; every stack decision stands)
+- Status: **in progress** — **opened 2026-08-31**, the operator's decision, the day D11 shipped. The window covers [ADR-0055](../adr/0055-customer-app.md), `proposed` at opening and **accepted 2026-08-31 at the head of `D12.1`**, where [ADR-0022](../adr/0022-frontend-apps.md) moved to `superseded by` (a delta: the roster; every stack decision stands)
 - Steps: `D12.1` – `D12.11`
 - Ledger: [`docs/plan/README.md`](README.md)
 
@@ -26,7 +26,7 @@ All in [ADR-0055](../adr/0055-customer-app.md), written at opening and deliberat
 
 ## Build order
 
-### 1. The record, the scaffold and the boot
+### ~~1. The record, the scaffold and the boot~~ — **done 2026-08-31**
 
 **ADRs:** [0055](../adr/0055-customer-app.md) (accepted at the head of this step; 0022 moves to `superseded by`; the index and window documents swept in the same commit), [0002](../adr/0002-monorepo-layout-and-tooling.md), [0054](../adr/0054-design-language-instrument.md) §1–§2, [0046](../adr/0046-interface-localization.md)
 
@@ -111,6 +111,17 @@ The Playwright tier gains a customer project: sign-in, the account sections from
 **ADRs:** none of its own — the checklist below
 
 **Done when:** every §Definition-of-done item is checked or recorded as pending operator acceptance; the row reads `shipped`; the window on 0055 is shut.
+
+## Findings against D8–D11
+
+The deliverable's standing rule, run as a running list: **anything `apps/customer` cannot build from the packages without changing them is a finding against D8–D11**, recorded here with its reason. §Definition-of-done item 3 makes the empty list the claim — a `packages/*` diff that is neither named here nor absent is a defect of the step that made it.
+
+**Two so far, both at `D12.1`, and neither has been acted on — which is the point of writing them down.** (A third thing `D12.1` found was not a finding but a defect of the record, so it was amended rather than logged: ADR-0055 §1 reassigned port 3002 to this app and left `apps/web` asking for it, which made `pnpm dev` a race. §1 carries the labelled amendment and `apps/web` moved to 3003.)
+
+1. **`@repo/app-services`' theme key reads `machxi.admin.theme` in an app that is not the admin.** `D9.6` declined to parameterise it deliberately and said so: the key is per-origin, the two SPAs are two origins, and inventing a parameter for a collision that cannot happen would be a generalisation D9 forbade itself — naming D12 as the deliverable that finds out whether the _name_ reads wrong in a second app. It does, in exactly the harmless way that comment predicted: nothing collides, nothing breaks, and the string in a customer's devtools says `admin`. `@repo/i18n`'s `LOCALE_STORAGE_KEY` has the same shape. **One parameter each**, and the step that spends it should be the one with a reason beyond tidiness — a support call about a stored value, or the third app.
+2. **ADR-0054 §7's login shell has its second consumer, and it is still app code in both apps.** §7 names `apps/admin/src/widgets/auth-layout` as app code on the argument that a composition with one consumer is a package's worth of indirection around a screen. `apps/customer/src/widgets/auth-layout` is now the same geometry — the hairline ground, the 400px column, the caps/28px/14px heading block — with different copy and a different card. That is **the argument's stated precondition changing**, not the record being wrong, so the finding is that the _next_ pressure on this geometry (a third consumer, or a §7 change that must land twice) is what moves it into `@repo/ui/compositions`. Moving it now would cost a package API for a guess about which parts the third app varies.
+
+Neither is a package diff, so item 3's list of _diffs_ is still empty. Both are recorded because the alternative is that the second consumer arrives, notices, and says nothing — which is the failure this deliverable was split out to prevent.
 
 ## Definition of done
 
