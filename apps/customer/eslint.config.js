@@ -15,9 +15,9 @@ import { adminConfig } from "@repo/eslint-config/admin";
  *
  * What stays here is what names directories only this app has: the FSD element
  * map below, and the door list. **The doors are per-app** (ADR-0051), so this
- * file names the four this app has today — `shared/ui`, `shared/i18n`,
- * `shared/theme` and `shared/lib` — and grows with the packages the later
- * steps adopt (`api` at `D12.2`, `form` at `D12.6`).
+ * file names the five this app has today — `shared/ui`, `shared/i18n`,
+ * `shared/api`, `shared/theme` and `shared/lib` — and grows with the packages
+ * the later steps adopt (`form` at `D12.6`).
  *
  * **The door blocks are generated from one table rather than hand-written per
  * slice.** `apps/admin`'s config states each door by writing out every *other*
@@ -78,6 +78,12 @@ const DOORS = [
     group: ["@repo/i18n", "@repo/i18n/*"],
     message:
       "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+  },
+  {
+    slices: ["api"],
+    group: ["@repo/api-client", "@repo/api-client/*"],
+    message:
+      "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
   },
   {
     slices: ["theme", "lib"],

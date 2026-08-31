@@ -1,0 +1,30 @@
+{
+  "fallback": "Something went wrong. Try again.",
+
+  "VALIDATION_ERROR": "Some of the details are not valid. Check the form and try again.",
+  "MALFORMED_JSON": "That request could not be read. Try again.",
+  "PAYLOAD_TOO_LARGE": "That is too large to send.",
+  "UNAUTHENTICATED": "Your session has ended. Sign in again.",
+  "FORBIDDEN": "You cannot do that.",
+  "NOT_FOUND": "That no longer exists.",
+  "ROUTE_NOT_FOUND": "That address does not exist.",
+  "CONFLICT": "That conflicts with something that already exists.",
+  "RATE_LIMITED": "Too many attempts. Wait a moment and try again.",
+  "INTERNAL_ERROR": "Something went wrong on our side. Try again.",
+  "SERVICE_UNAVAILABLE": "We could not reach the service. Check your connection and try again.",
+
+  "AUTH_INVALID_CREDENTIALS": "That email and password do not match an account.",
+  "AUTH_TOKEN_INVALID": "Your session is no longer valid. Sign in again.",
+  "AUTH_TOKEN_EXPIRED": "Your session expired. Sign in again.",
+  "AUTH_SESSION_REVOKED": "This session was signed out. Sign in again.",
+  "AUTH_INVALID_REFRESH_TOKEN": "Your session could not be renewed. Sign in again.",
+  "AUTH_REFRESH_REUSED": "Your session was ended for security reasons. Sign in again.",
+  "AUTH_ACCOUNT_DISABLED": "This account is disabled. Contact support.",
+  "AUTH_CURRENT_PASSWORD_INVALID": "That is not your current password.",
+  "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",
+
+  "USER_EMAIL_TAKEN": "That email address is already in use.",
+  "USER_DELETED": "This account has been deleted.",
+  "STAFF_EMAIL_TAKEN": "That email address is already in use.",
+  "STAFF_LAST_SUPER_ADMIN": "That change is not allowed."
+}

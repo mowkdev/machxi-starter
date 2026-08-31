@@ -1,7 +1,9 @@
 import { ThemeProvider } from "@/shared/theme";
+import { AppLoader } from "@/shared/ui";
 
 import { I18nProvider } from "./providers/i18n";
 import { AppRouter } from "./providers/router";
+import { SessionProvider } from "./providers/session";
 
 /*
  * The design language's faces (ADR-0054 §1), self-hosted beside the stylesheet
@@ -28,26 +30,36 @@ import "./styles.css";
  * The composition root of the SPA (ADR-0049): the `app` layer is wiring, and
  * this is the whole of it.
  *
- * Two providers at `D12.1`, in the order the later steps grow around:
+ * Three providers, in the order the later steps grow around:
  *
  * - `ThemeProvider` outermost, because a theme is a device fact before it is an
  *   account fact and nothing below it should render in the wrong one. It is
  *   local-only here; `D12.7` gives it the account's value through the settings
- *   gate, which is where the admin's `SettingsProvider` sits.
- * - `I18nProvider` inside it and above the router, because a locale reaches
- *   every screen and a route is not the thing that owns it.
+ *   gate.
+ * - `SessionProvider` next: it holds a loading gate until the ADR-0033 boot
+ *   sequence resolves, and nothing below it renders before the store is either
+ *   hydrated or known to be empty — otherwise the `_dashboard` guard would read
+ *   an empty store and bounce a signed-in customer to `/login` on every reload.
+ *   It is **inside** the theme so its own two pre-i18next screens (the loader
+ *   and the unreachable notice) are painted in the right one.
+ * - `I18nProvider` inside the gate and above the router, because a locale
+ *   reaches every screen and a route is not the thing that owns it.
  *
  * What is deliberately **not** here yet, each with the step that brings it:
- * `SessionProvider` and its boot gate, and `QueryClientProvider`, at `D12.2`;
- * `SettingsProvider` and the pseudo-locale notice, at `D12.7`. The admin's root
- * is the shape this converges on — the ordering above is chosen so each arrival
- * is an insertion rather than a rearrangement.
+ * `QueryClientProvider` at `D12.6`, when there is something to fetch;
+ * `SettingsProvider` and the pseudo-locale notice at `D12.7`. The admin's root
+ * is the shape this converges on, and the ordering above is chosen so each
+ * arrival is an insertion rather than a rearrangement — `SettingsProvider` goes
+ * between the query client and `I18nProvider`, which is where the admin puts it
+ * and why `I18nProvider` is already the innermost of the three.
  */
 const App = () => (
   <ThemeProvider>
-    <I18nProvider>
-      <AppRouter />
-    </I18nProvider>
+    <SessionProvider fallback={<AppLoader />}>
+      <I18nProvider>
+        <AppRouter />
+      </I18nProvider>
+    </SessionProvider>
   </ThemeProvider>
 );
 

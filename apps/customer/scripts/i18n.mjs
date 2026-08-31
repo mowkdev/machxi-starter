@@ -63,16 +63,22 @@ const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
  * with a call site beside each entry rather than a rule.
  */
 const DYNAMIC = [
+  {
+    /*
+     * `messageForError` in `shared/notifications/messages.ts`: `t(error.code)`.
+     * No scan can see these keys, because the key *is* an `ErrorCode` chosen at
+     * runtime — and an enum declared once in `@repo/contracts` (ADR-0023) must
+     * not be copied into a catalogue key list that could then disagree with it.
+     * The completeness of this namespace is checked by the compiler instead —
+     * `src/shared/i18n/__checks__/errors.ts` (ADR-0046 §2).
+     */
+    pattern: /^errors:/,
+    reason: "resolved from an ErrorCode by messageForError (ADR-0046 §2)",
+  },
   /*
-   * Empty at `D12.1`, and stated as a list rather than omitted so the reason
-   * is readable when the first entry arrives.
-   *
-   * The admin's two both exist because an enum declared once in
-   * `@repo/contracts` (ADR-0023) must not be copied into a catalogue key list
-   * that could then disagree with it. This app has neither yet: `errors:`
-   * arrives with the API client at `D12.2` and takes the same `messageForError`
-   * exemption, and `common:options.` follows a `ResourceConfig`, which
-   * ADR-0055 §3 says waits for a domain entity.
+   * The admin's second entry — `common:options.`, composed by `dynamicKey` from
+   * a contracts enum — has no counterpart here: it follows a `ResourceConfig`,
+   * which ADR-0055 §3 says waits for a domain entity.
    */
 ];
 

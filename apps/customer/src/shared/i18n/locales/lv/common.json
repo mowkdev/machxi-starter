@@ -1,5 +1,11 @@
 {
   "brand": {
     "authTagline": "machxi konts"
+  },
+  "boot": {
+    "unreachable": "Neizdodas sasniegt pakalpojumu. Pārbaudiet savienojumu vai mēģiniet pēc brīža."
+  },
+  "loading": {
+    "starting": "Notiek startēšana…"
   }
 }

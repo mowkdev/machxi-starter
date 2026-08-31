@@ -5,20 +5,21 @@
     "js = every JavaScript byte the build emits. css = every CSS byte. entry = the module script dist/index.html loads, the chunk paid before anything renders.",
     "Raising a budget is a deliberate diff of this file that someone reviews — that is the whole mechanism. Lowering one after a real saving is just as welcome.",
     "The headroom over the baseline is the admin's: about 8% on js and entry, about 11% on css where a percentage of 13 kB is noise. Enough for honest growth, tight enough that a new dependency trips it.",
-    "Baseline measured 2026-08-31 at D12.1, on the app's first build: the router, the token sheet, the five @fontsource stylesheets and two namespaces in two locales. It is a floor rather than a finished number — the app has no session machine, no query client and no forms yet, so D12.2 and D12.6 will each raise it deliberately, and the reason they are raises rather than surprises is that this file exists from the first build.",
-    "entry is nearly the whole js figure today because there is one route and the router, React and i18next are all in it; the split widens as the later steps add lazily-loaded screens.",
+    "First baselined 2026-08-31 at D12.1 (js 140051 / css 13545 / entry 128337) on the app's first build: the router, the token sheet, the five @fontsource stylesheets and two namespaces in two locales.",
+    "RAISED 2026-08-31 at D12.2, and the raise is the mechanism working rather than a concession: `pnpm size` went red on the step that added the session machine, and this diff is where somebody had to look at the number. js 140051 -> 168782 and entry 128337 -> 159851, about +29 kB of the same +31 kB — @repo/api-client brings axios, and the sign-in screen brings the login contract's zod schemas and four @repo/ui primitives. css moved 47 bytes, which is what 'a form built from primitives that already had their utilities' looks like from here.",
+    "entry is nearly the whole js figure because there is one lazy route; the split widens as the later steps add screens. D12.6 (forms, @repo/form, the query client) is the next raise this file expects.",
     "The woff2/woff files @fontsource emits are assets and are NOT counted here — a browser downloads only the subsets its text needs, so what the css number prices is the @font-face declarations, not the faces."
   ],
   "baseline": {
     "measuredAt": "2026-08-31",
-    "step": "D12.1",
-    "js": 140051,
-    "css": 13545,
-    "entry": 128337
+    "step": "D12.2",
+    "js": 168782,
+    "css": 13592,
+    "entry": 159851
   },
   "budgets": {
-    "js": 151000,
-    "css": 15000,
-    "entry": 139000
+    "js": 182000,
+    "css": 15100,
+    "entry": 173000
   }
 }

@@ -1,24 +1,37 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
+
+import type { SessionStore } from "@/shared/api/session-store";
 
 /**
- * The root route (ADR-0049 §Layout topology).
+ * The root route, and the declaration of what every guard and loader may read
+ * (ADR-0049 §Layout topology).
  *
- * **It declares no router context yet**, and the shape is the step boundary:
- * the admin's root uses `createRootRouteWithContext<RouterContext>()` to type
- * `context.session`, `context.queryClient` and `context.client` inside a
- * `beforeLoad`, and this app has none of the three until `D12.2` builds the
- * session machine over `createApiClient({ segment: "user" })`. Declaring an
- * empty context now would type-check and mean nothing; the one line changes
- * when there is something true to put in it.
+ * `createRootRouteWithContext` is what makes `context.session` typed inside a
+ * `beforeLoad` rather than an `any` the next author has to guess at. The
+ * context is *declared* here and *supplied* in `app/providers/router.tsx`.
  *
- * The `<Toaster>` the admin mounts here belongs with the same step, for the
- * same reason — ADR-0034's global handlers are what render into it, and they
- * arrive with the query client.
+ * **One field, and the omission is deliberate.** The admin's context is
+ * `{ session, queryClient, client }`, because its route loaders call
+ * `ensureQueryData` and a loader is not a component and has no hooks. This app
+ * has no loader until `D12.6`, and a context field nothing reads is a claim
+ * the compiler cannot check — so the two join when the first loader does, in
+ * the step that can prove they are used.
  */
-export const Route = createRootRoute({
+
+export interface RouterContext {
+  readonly session: SessionStore;
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 });
 
 function RootLayout() {
+  /*
+   * No `<Toaster>` yet: ADR-0034's global handlers are what render into one,
+   * and they are built with the query client this app does not have until
+   * `D12.6`. A surface with nothing to put on it is chrome that only looks
+   * like a decision.
+   */
   return <Outlet />;
 }

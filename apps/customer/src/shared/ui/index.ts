@@ -10,14 +10,28 @@
  *
  * Re-exports only, and deliberately so: a component with app-specific
  * behaviour is not a re-export, it is a `shared/ui` component of its own, and
- * it goes in a file beside this one.
+ * it goes in a file beside this one — `app-loader.tsx` is the first.
  *
  * Named rather than `export *` because the door is also the inventory: what
  * this app uses from the design system is readable in one screen, and adding to
- * it is a visible line in a diff. It is **one line long at `D12.1`** — the card
- * the login screen draws — which is the door doing its job rather than a stub:
- * this app's inventory is its own, not the admin's list minus what it has not
- * reached yet.
+ * it is a visible line in a diff. It is deliberately **not** the admin's list
+ * with the unused half deleted — it is this app's, and it grows a line at a
+ * time as a screen needs one.
  */
 
+export { Button, buttonVariants } from "@repo/ui/components/button";
 export { Card } from "@repo/ui/components/card";
+export {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@repo/ui/components/field";
+export { Input } from "@repo/ui/components/input";
+export { Spinner } from "@repo/ui/components/spinner";
+
+/** The components in this slice with behaviour of their own. */
+export { AppLoader } from "./app-loader";
+export { AppError, AppNotFound } from "./app-error";

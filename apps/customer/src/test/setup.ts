@@ -1,14 +1,18 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, configure } from "@testing-library/react";
-import { afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll } from "vitest";
+
+import { server } from "./msw/server";
 
 /**
  * The harness ADR-0036 specifies, on its second app (ADR-0055 §2).
  *
- * MSW's lifecycle is **not** here yet: this app makes no request until `D12.2`
- * builds the client, and `server.listen({ onUnhandledRequest: "error" })` with
- * no handlers would be a boundary guarding nothing. It lands with the first
- * request, which is also the first thing it can catch.
+ * `onUnhandledRequest: "error"` is the half worth stating. A request nobody
+ * mocked would otherwise fall through to a real socket and fail slowly, or
+ * worse, succeed against whatever is listening; failing loudly at the boundary
+ * is what keeps "the suite needs no server" true rather than merely intended —
+ * and in this app it is also what catches a handler written on the wrong
+ * segment, since `/api/v1/admin` is exactly a URL nothing here answers.
  *
  * `asyncUtilTimeout` is a *ceiling*, not a delay: every query still resolves as
  * soon as the DOM says so, and a genuinely broken assertion costs the ceiling
@@ -59,10 +63,17 @@ beforeAll(() => {
     unobserve() {}
     disconnect() {}
   };
+
+  server.listen({ onUnhandledRequest: "error" });
 });
 
 afterEach(() => {
   // Testing Library's automatic cleanup only registers itself when the test
   // globals are injected, and `@repo/vitest-config` leaves them off.
   cleanup();
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
 });

@@ -1,5 +1,7 @@
 import type auth from "./locales/en/auth.json";
 import type common from "./locales/en/common.json";
+import type errors from "./locales/en/errors.json";
+import type home from "./locales/en/home.json";
 
 /**
  * Typed keys (ADR-0046 §2): a missing key or a missing namespace is a type
@@ -25,7 +27,9 @@ declare module "i18next" {
     returnNull: false;
     resources: {
       common: typeof common;
+      errors: typeof errors;
       auth: typeof auth;
+      home: typeof home;
     };
   }
 }

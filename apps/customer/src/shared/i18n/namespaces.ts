@@ -7,11 +7,15 @@
  * finding rather than a failed build — ADR-0049's import lint cannot see a
  * string prefix, and ADR-0046 says so rather than pretending it can.
  *
- * Two at `D12.1`, and the list is meant to be read as the app's own rather than
- * as a subset of the admin's: `common` is chrome and generic actions, `auth` is
- * the sign-in screen. `errors` arrives with the API client at `D12.2`, `form`
- * with the first form at `D12.6`, and `account`/`profile`/`settings` with the
- * account area. There is deliberately **no `grid`** — ADR-0055 §3 keeps
+ * Four since `D12.2`, and the list is meant to be read as the app's own rather
+ * than as a subset of the admin's: `common` is chrome, `auth` is the sign-in
+ * screen, `errors` is keyed by `ErrorCode` (ADR-0046 §2, and completeness is
+ * checked by the compiler in `__checks__/errors.ts`), and `home` is the signed-in
+ * landing screen — **not** `dashboard`, which is what the admin calls its own and
+ * is the wrong word for a customer looking at their own account.
+ *
+ * `form` arrives with the first form at `D12.6`, and `account`/`profile`/`settings`
+ * with the account area. There is deliberately **no `grid`** — ADR-0055 §3 keeps
  * `@repo/grid` out of this app until a domain entity arrives, and a namespace
  * declared for a package the app does not depend on is one `init` would fail to
  * load.
@@ -20,7 +24,7 @@
  * `resources.ts` needs the list and `index.ts` needs both, so leaving the list
  * in the barrel would make them a cycle.
  */
-export const NAMESPACES = ["common", "auth"] as const;
+export const NAMESPACES = ["common", "errors", "auth", "home"] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];
 

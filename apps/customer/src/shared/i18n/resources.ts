@@ -2,6 +2,8 @@ import type { Locale } from "@repo/contracts";
 
 import enAuth from "./locales/en/auth.json";
 import enCommon from "./locales/en/common.json";
+import enErrors from "./locales/en/errors.json";
+import enHome from "./locales/en/home.json";
 import type { Namespace } from "./namespaces";
 
 /**
@@ -13,7 +15,9 @@ import type { Namespace } from "./namespaces";
  */
 export const EN_RESOURCES = {
   common: enCommon,
+  errors: enErrors,
   auth: enAuth,
+  home: enHome,
 } as const;
 
 /**

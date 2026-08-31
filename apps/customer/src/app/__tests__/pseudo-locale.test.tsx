@@ -2,6 +2,8 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { createAppRouter } from "@/app/providers/router";
+import { createSessionStore } from "@/shared/api/session-store";
+import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
 
 /**
@@ -21,7 +23,8 @@ import { renderApp } from "@/test/render";
  * rather than when somebody remembers to add it here — which is the failure
  * mode a hand-kept list has, and the whole reason this suite exists at
  * `D12.1`, when there is one route, instead of at the end when there are
- * fifteen.
+ * fifteen. `D12.2` is that paying off for the first time: `/` arrived with the
+ * guards and joined the walk without a line being added below.
  */
 
 /**
@@ -87,22 +90,35 @@ const ROUTE_PATHS: readonly string[] = [
   .filter((path) => !path.includes("$"))
   .sort();
 
+/**
+ * The session each address has to be visited **in** to see the page it names.
+ *
+ * `/login` is the one route a signed-in customer cannot reach: `_auth`'s mirror
+ * guard redirects them home, so visiting it with a session would have walked
+ * the home screen twice under the name of the sign-in screen — a page silently
+ * uncovered while the suite reported two green. Every other address is behind
+ * the `_dashboard` guard and needs the opposite.
+ */
+const storeFor = (path: string) =>
+  path === "/login" ? createSessionStore() : authenticated();
+
 describe("the route tree under the pseudo-locale", () => {
   it("covers every leaf the router can land on", () => {
     /*
      * The list is not maintained here; it is asserted to be non-trivial, so a
-     * change that silently emptied it fails rather than passes vacuously. One,
-     * at `D12.1` — and the number is deliberately the floor rather than an
-     * equality, so a route added by a later step joins the walk without editing
-     * this line.
+     * change that silently emptied it fails rather than passes vacuously. The
+     * number is deliberately a floor rather than an equality, so a route added
+     * by a later step joins the walk without editing this line.
      */
-    expect(ROUTE_PATHS.length).toBeGreaterThanOrEqual(1);
+    expect(ROUTE_PATHS.length).toBeGreaterThanOrEqual(2);
     expect(ROUTE_PATHS).toContain("/login");
+    expect(ROUTE_PATHS).toContain("/");
   });
 
   it.each(ROUTE_PATHS)("leaves nothing unaccented at %s", async (path) => {
     const { container, unmount } = renderApp({
       initialPath: path,
+      store: storeFor(path),
       pseudo: true,
     });
 

@@ -1,5 +1,11 @@
 {
   "brand": {
     "authTagline": "machxi account"
+  },
+  "boot": {
+    "unreachable": "We cannot reach the service. Check your connection, or try again in a moment."
+  },
+  "loading": {
+    "starting": "Starting…"
   }
 }
