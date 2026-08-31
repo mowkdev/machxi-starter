@@ -5,6 +5,9 @@
     "signOut": "Atteikties",
     "unnamed": "Konts"
   },
+  "actions": {
+    "retry": "Mēģināt vēlreiz"
+  },
   "brand": {
     "authTagline": "machxi konts",
     "mark": "m",
@@ -24,6 +27,7 @@
   "ui": {
     "close": "Aizvērt",
     "navigating": "Notiek pāreja",
+    "notifications": "Paziņojumi",
     "sidebarDescription": "Rāda mobilo sānjoslu.",
     "sidebarTitle": "Sānjosla",
     "toggleSidebar": "Pārslēgt sānjoslu"

@@ -1,8 +1,19 @@
 import { waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { createQueryClient } from "@/app/providers/query-client";
 import { createAppRouter } from "@/app/providers/router";
 import { createSessionStore } from "@/shared/api/session-store";
+import {
+  createAuthHandlers,
+  createAuthMockState,
+} from "@/test/msw/handlers/auth.handlers";
+import {
+  PROFILE,
+  createProfileHandlers,
+  createProfileMockState,
+} from "@/test/msw/handlers/profile.handlers";
+import { server } from "@/test/msw/server";
 import { authenticated, userPrincipal } from "@/test/principals";
 import { renderApp } from "@/test/render";
 
@@ -43,12 +54,14 @@ const isPseudo = (text: string): boolean =>
  * **Filled in at `D12.5`, one step earlier than this file guessed.** It was
  * declared empty at `D12.1` with a note that `D12.6`'s profile form would give
  * it something; the account control got there first, because it greets the
- * signed-in customer by name and draws their initials.
+ * signed-in customer by name and draws their initials. `D12.6` added the second
+ * source it predicted: the account area shows the profile fixture's email and
+ * two formatted timestamps.
  *
- * Derived from the fixture rather than written out, so a renamed fixture cannot
+ * Derived from the fixtures rather than written out, so a renamed fixture cannot
  * quietly turn this suite into one that passes by allowing everything — and so
  * a *new* piece of copy can never land in the allow-list by accident, because
- * nothing but the fixture can get into it.
+ * nothing but a fixture can get into it.
  */
 const PRINCIPAL = userPrincipal();
 
@@ -61,6 +74,23 @@ const DATA: readonly string[] = [
   // The account control's monogram, which is data twice over: derived from
   // data, and rendered by a component that never sees a catalogue.
   `${(PRINCIPAL.firstName ?? "").slice(0, 1)}${(PRINCIPAL.lastName ?? "").slice(0, 1)}`.toUpperCase(),
+  /*
+   * What `/account/profile` reads off `GET /user/profile` (`D12.6`). The
+   * fixture's names and email are the principal's already; what is new is the
+   * two instants, and they are put in as **formatted** strings rather than as
+   * ISO ones, because what reaches the DOM is `Intl`'s output — a month name
+   * that a locale spells in letters is exactly the kind of thing this walk
+   * would otherwise report as untranslated English.
+   */
+  ...[PROFILE.createdAt, PROFILE.lastLoginAt]
+    .filter((value): value is string => value !== null)
+    .map((value) =>
+      new Intl.DateTimeFormat("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(value)),
+    ),
+  PROFILE.email,
 ].filter((value) => value.trim() !== "");
 
 /** Data, once every fixture string and every digit and mark is taken out of it. */
@@ -124,6 +154,22 @@ const ROUTE_PATHS: readonly string[] = [
 const storeFor = (path: string) =>
   path === "/login" ? createSessionStore() : authenticated();
 
+/**
+ * The endpoints these screens read (`D12.6`).
+ *
+ * The account area is the first surface in this app that fetches anything, and
+ * the harness answers every request through MSW with
+ * `onUnhandledRequest: "error"` — so a screen added later that reads something
+ * new fails loudly here rather than walking a permanently empty page and
+ * reporting green.
+ */
+beforeEach(() => {
+  server.use(
+    ...createAuthHandlers(createAuthMockState()),
+    ...createProfileHandlers(createProfileMockState()),
+  );
+});
+
 describe("the route tree under the pseudo-locale", () => {
   it("covers every leaf the router can land on", () => {
     /*
@@ -138,9 +184,19 @@ describe("the route tree under the pseudo-locale", () => {
   });
 
   it.each(ROUTE_PATHS)("leaves nothing unaccented at %s", async (path) => {
+    /*
+     * The test's own cache, so the wait below can ask it a question (`D12.6`).
+     * "Has the screen finished arriving" has no reliable answer in the DOM — a
+     * skeleton is a component's choice — and `isFetching()` is the hooks' own
+     * count of what is still in flight (ADR-0034). Without it the account
+     * sections would be judged mid-skeleton, which is a page with no copy on it
+     * and therefore vacuously accented.
+     */
+    const queryClient = createQueryClient();
     const { container, unmount } = renderApp({
       initialPath: path,
       store: storeFor(path),
+      queryClient,
       pseudo: true,
     });
 
@@ -151,6 +207,10 @@ describe("the route tree under the pseudo-locale", () => {
      */
     await waitFor(() => {
       expect(container.textContent ?? "").toContain("[");
+    });
+
+    await waitFor(() => {
+      expect(queryClient.isFetching()).toBe(0);
     });
 
     expect(unaccented(document.body as HTMLElement)).toEqual([]);

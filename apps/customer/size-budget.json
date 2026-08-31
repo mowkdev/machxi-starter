@@ -10,18 +10,22 @@
     "RAISED 2026-08-31 at D12.5, the second time the mechanism has stopped a step and asked for a number. js 168782 -> 207136 and entry 159851 -> 162274: the shell arrives, and with it lucide-react, the sidebar and dropdown-menu primitives, Radix's menu and its dismissable-layer/focus-scope stack, and @repo/ui's AppShell. Almost all of the +38 kB lands in the _dashboard chunk rather than in the entry — entry moved 2.4 kB, which is what 'the shell is behind the guard' looks like from here, and is the code split doing its job.",
     "css 13592 -> 13733 on the same step: the sidebar's and the popover's utilities over a token sheet that already carried them. The budget was not raised with it; 15100 still leaves ~10%.",
     "entry is no longer nearly the whole js figure — D12.2's note said it was, and the shell is what separated them. D12.6 (forms, @repo/form, the query client) is the next raise this file expects.",
+    "RAISED 2026-08-31 at D12.6, which is the raise the line above predicted by name — the third time the mechanism has stopped a step. js 207136 -> 264744 and entry 162274 -> 195570.",
+    "The +33 kB on the entry is the honest cost of two app-root decisions rather than of the account screens: ADR-0034 gives one query client to the whole app and mounts one <Toaster> on the root route, so @tanstack/react-query and sonner are both paid before anything renders — and ADR-0046 §13 has `create-app-i18n` compose @repo/form's catalogues and bind the zod locale installer at init, which pulls the installer into the entry with them. None of the three can move behind the guard without moving a decision with it.",
+    "The other +24 kB is behind the guard, where it should be: the change-password dialog's Radix dialog and @repo/ui's RecordSurface land in a shared chunk with the sheet, and react-hook-form, @hookform/resolvers and @repo/form's frame land with the account routes. An anonymous visitor downloads none of it — what the entry costs is the paragraph above, and the guard is what holds the rest back.",
+    "css 13733 -> 13803, seventy bytes: the card, separator and skeleton utilities over a token sheet that already carried nearly all of them. The budget was not raised with it; 15100 still leaves ~9%.",
     "The woff2/woff files @fontsource emits are assets and are NOT counted here — a browser downloads only the subsets its text needs, so what the css number prices is the @font-face declarations, not the faces."
   ],
   "baseline": {
     "measuredAt": "2026-08-31",
-    "step": "D12.5",
-    "js": 207136,
-    "css": 13733,
-    "entry": 162274
+    "step": "D12.6",
+    "js": 264744,
+    "css": 13803,
+    "entry": 195570
   },
   "budgets": {
-    "js": 224000,
+    "js": 286000,
     "css": 15100,
-    "entry": 175000
+    "entry": 211000
   }
 }

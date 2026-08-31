@@ -15,9 +15,11 @@ import { adminConfig } from "@repo/eslint-config/admin";
  *
  * What stays here is what names directories only this app has: the FSD element
  * map below, and the door list. **The doors are per-app** (ADR-0051), so this
- * file names the five this app has today — `shared/ui`, `shared/i18n`,
- * `shared/api`, `shared/theme` and `shared/lib` — and grows with the packages
- * the later steps adopt (`form` at `D12.6`).
+ * file names the seven this app has today — `shared/ui`, `shared/i18n`,
+ * `shared/api`, `shared/theme`, `shared/lib` and, since `D12.6`, `shared/form`
+ * and `shared/resource` — and grows with the packages the later steps adopt.
+ * `@repo/grid` has no row at all, because ADR-0055 §3 keeps it out of this app
+ * until a domain entity arrives.
  *
  * **The door blocks are generated from one table rather than hand-written per
  * slice.** `apps/admin`'s config states each door by writing out every *other*
@@ -91,6 +93,22 @@ const DOORS = [
     message:
       "Import the app services through `@/shared/{theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
   },
+  /*
+   * `D12.6`'s two, arriving with the account area's forms — the growth this
+   * file's header said the table exists to make a single row each.
+   */
+  {
+    slices: ["form"],
+    group: ["@repo/form", "@repo/form/*"],
+    message:
+      "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+  },
+  {
+    slices: ["resource"],
+    group: ["@repo/resource", "@repo/resource/*"],
+    message:
+      "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+  },
 ];
 
 const restrict = (doors) => [
@@ -118,6 +136,38 @@ const doorRules = () =>
       },
     })),
   );
+
+/**
+ * The one file that is exempt, and it is a file rather than a slice (`D12.6`,
+ * the admin's call at `D9.4`/`D9.5` arriving here with its first package
+ * namespace).
+ *
+ * `create-app-i18n.ts` is where this app composes the namespaces its packages
+ * ship (ADR-0046 §13), so it is the one place that must reach a package's
+ * catalogues directly — routing them through `@/shared/form/*` would make that
+ * door export translation bundles, which is copy travelling through a door
+ * built for a form. It is also where the zod installer's two seams come from,
+ * for the same reason: the sentences they resolve are `@repo/form`'s.
+ *
+ * A **file**, not the slice: `index.ts`, `keys.ts`, `namespaces.ts`,
+ * `resources.ts` and this slice's checks need no such reach, and an exemption
+ * that covered them would be a hole rather than a permission.
+ *
+ * It drops exactly two groups — its own slice's and `form`'s — and keeps every
+ * other door standing, which is the same shape the per-slice blocks have.
+ */
+const EXEMPT = ["i18n", "form"];
+
+const packageCatalogueRule = () => ({
+  files: ["src/shared/i18n/create-app-i18n.ts"],
+  rules: {
+    "no-restricted-imports": restrict(
+      DOORS.filter(({ slices }) =>
+        slices.every((slice) => !EXEMPT.includes(slice)),
+      ),
+    ),
+  },
+});
 
 /** @type {import("eslint").Linter.Config} */
 export default defineConfig(
@@ -265,4 +315,6 @@ export default defineConfig(
   },
 
   ...doorRules(),
+  // After the slice blocks, so it is the one that wins for the file it names.
+  packageCatalogueRule(),
 );

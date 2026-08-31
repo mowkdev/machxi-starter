@@ -5,6 +5,9 @@
     "signOut": "Sign out",
     "unnamed": "Account"
   },
+  "actions": {
+    "retry": "Try again"
+  },
   "brand": {
     "authTagline": "machxi account",
     "mark": "m",
@@ -24,6 +27,7 @@
   "ui": {
     "close": "Close",
     "navigating": "Navigating",
+    "notifications": "Notifications",
     "sidebarDescription": "Displays the mobile sidebar.",
     "sidebarTitle": "Sidebar",
     "toggleSidebar": "Toggle Sidebar"

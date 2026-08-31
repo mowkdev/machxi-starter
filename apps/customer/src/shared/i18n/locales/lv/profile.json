@@ -1,0 +1,41 @@
+{
+  "account": {
+    "title": "Jūsu dati",
+    "description": "Vārdu varat mainīt pats. E-pasta adrese ir tā, ar kuru piesakāties, tāpēc to šeit pagaidām mainīt nevar."
+  },
+  "summary": {
+    "email": "E-pasts",
+    "memberSince": "Konts izveidots",
+    "lastLogin": "Pēdējā pieteikšanās"
+  },
+  "fields": {
+    "firstName": { "label": "Vārds" },
+    "lastName": { "label": "Uzvārds" }
+  },
+  "save": "Saglabāt izmaiņas",
+  "password": {
+    "title": "Parole",
+    "description": "Tās maiņa atsaka visas pārējās ierīces un atstāj šo pieteiktu.",
+    "action": "Mainīt paroli",
+    "note": "Jums prasīs pašreizējo paroli, pat ja esat pieteicies. Pārējās ierīces paliek atteiktas, līdz tajās izmantosiet jauno paroli.",
+    "dialog": {
+      "title": "Mainiet savu paroli",
+      "description": "Pārējo ierīču atteikšana ir paroles maiņas jēga, tāpēc tā nav izvēles iespēja. Pēc tam nekas neliks paroli mainīt atkārtoti.",
+      "submit": "Mainīt paroli"
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Pašreizējā parole",
+        "description": "Nepieciešama arī tad, ja esat pieteicies — tas, kurš atradis šo cilni atvērtu, nedrīkst spēt uzstādīt jaunu paroli."
+      },
+      "newPassword": {
+        "label": "Jaunā parole",
+        "description": "Visas pārējās ierīces tiek atteiktas. Šī paliek pieteikta."
+      }
+    }
+  },
+  "outcomes": {
+    "updated": "Jūsu dati tika saglabāti.",
+    "passwordChanged": "Jūsu parole tika nomainīta. Visas pārējās ierīces tika atteiktas; šī paliek."
+  }
+}

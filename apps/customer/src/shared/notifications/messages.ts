@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { isApiClientError, type ErrorMessage } from "@/shared/api/api-error";
 import { useT } from "@/shared/i18n";
+import enErrors from "@/shared/i18n/locales/en/errors.json";
 
 /**
  * The sentence a customer reads for a failure (ADR-0034 §Notifications,
@@ -25,12 +26,11 @@ import { useT } from "@/shared/i18n";
  * English default (ADR-0013); showing it bypasses the i18n seam this module is,
  * and puts wording nobody wrote for a customer on a customer's screen.
  *
- * **What is not here yet**: `englishMessageForError` and
- * `createDeferredErrorMessage`, the admin's pair for ADR-0034's global cache
- * handlers. Those are constructed with the query client at the composition
- * root, before any i18next instance exists — and this app has no query client
- * until `D12.6` has something to fetch. Building the deferred half now would be
- * a wire with nothing on either end.
+ * **`englishMessageForError` and `createDeferredErrorMessage` arrived at
+ * `D12.6`**, with the query client whose global cache handlers are their only
+ * consumer. They were named as absent at `D12.2` on the grounds that a wire
+ * with nothing on either end is not worth building; the account area put
+ * something on both ends.
  */
 
 export type { ErrorMessage };
@@ -61,4 +61,51 @@ export const useMessageForError = (): ErrorMessage => {
   const { t } = useT("errors");
 
   return useMemo(() => createMessageForError(t), [t]);
+};
+
+/**
+ * What the app uses before an i18next instance is mounted, and what a consumer
+ * built above the provider falls back to.
+ *
+ * It is not a second catalogue: it reads the same eagerly bundled `en` JSON the
+ * instance is initialised from, so there is exactly one place a sentence is
+ * written. `en` is also the fallback locale (ADR-0046 §3), so degrading to it
+ * degrades to the language a customer would have seen for a missing key anyway.
+ */
+const EN_ERRORS: Readonly<Record<string, string>> = enErrors;
+
+export const englishMessageForError: ErrorMessage = (error) =>
+  (isApiClientError(error) ? EN_ERRORS[error.code] : undefined) ??
+  enErrors.fallback;
+
+/**
+ * The one consumer that is constructed before any instance exists: ADR-0034's
+ * global cache handlers (`app/providers/query-client.ts`).
+ *
+ * They are built with the query client at the composition root, and the
+ * instance is built *inside* the session gate, in `I18nProvider`. That ordering
+ * is deliberate — a query fired before the session is hydrated would go out
+ * without a token — and this is the wire between the two ends of it: the
+ * handlers hold a stable function, and `bind` swaps what it resolves through
+ * once the provider mounts.
+ *
+ * It is a **factory**, not a module-level box, for the reason `createI18n` is:
+ * the app creates one and the suite creates one per render, so a test that
+ * switched language cannot leave the next file's toasts in Latvian.
+ */
+export interface DeferredErrorMessage {
+  /** Stable across binds — safe to close over at construction time. */
+  readonly messageForError: ErrorMessage;
+  readonly bind: (t: ErrorTranslate) => void;
+}
+
+export const createDeferredErrorMessage = (): DeferredErrorMessage => {
+  let resolve: ErrorMessage = englishMessageForError;
+
+  return {
+    messageForError: (error) => resolve(error),
+    bind: (t) => {
+      resolve = createMessageForError(t);
+    },
+  };
 };

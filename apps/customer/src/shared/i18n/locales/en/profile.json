@@ -1,0 +1,41 @@
+{
+  "account": {
+    "title": "Your details",
+    "description": "Your name is yours to change. Your email address is what you sign in with, so changing it is not something we can do from here yet."
+  },
+  "summary": {
+    "email": "Email",
+    "memberSince": "Member since",
+    "lastLogin": "Last sign-in"
+  },
+  "fields": {
+    "firstName": { "label": "First name" },
+    "lastName": { "label": "Last name" }
+  },
+  "save": "Save changes",
+  "password": {
+    "title": "Password",
+    "description": "Changing it signs you out everywhere else and leaves this device signed in.",
+    "action": "Change password",
+    "note": "You will be asked for your current password, even though you are signed in. Your other devices stay signed out until you use the new password on them.",
+    "dialog": {
+      "title": "Change your password",
+      "description": "Signing out your other devices is the point of a password change, so it is not optional. Nothing will ask you to change it again afterwards.",
+      "submit": "Change password"
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Current password",
+        "description": "Required even though you are signed in — someone who found this tab open must not be able to set a new password."
+      },
+      "newPassword": {
+        "label": "New password",
+        "description": "Every other device is signed out. This one stays signed in."
+      }
+    }
+  },
+  "outcomes": {
+    "updated": "Your details were saved.",
+    "passwordChanged": "Your password was changed. Every other device was signed out; this one stays."
+  }
+}

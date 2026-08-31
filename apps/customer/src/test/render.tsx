@@ -1,9 +1,11 @@
 import type { Locale } from "@repo/contracts";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 
+import { createQueryClient } from "@/app/providers/query-client";
 import { createAppRouter } from "@/app/providers/router";
 import { AppUiStrings } from "@/app/providers/ui-strings";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
@@ -12,8 +14,16 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { EN_RESOURCES, NAMESPACES, createI18n, type I18n } from "@/shared/i18n";
+import {
+  EN_RESOURCES,
+  NAMESPACES,
+  createI18n,
+  type I18n,
+  type TranslateKey,
+} from "@/shared/i18n";
+import { createMessageForError } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
+import { Toaster } from "@/shared/ui";
 
 /**
  * The two ways this app is rendered under test (ADR-0036, ADR-0055 §2).
@@ -27,14 +37,24 @@ import { ThemeProvider } from "@/shared/theme";
  *
  * Every dependency is *passed*, never module-mocked: that is the property the
  * factories in `shared/api` and `app/providers` exist to give, and it is why a
- * test needs no `vi.mock`. The query client joins the list at `D12.6`, which is
- * when there is one to pass.
+ * test needs no `vi.mock`. **The query client joined the list at `D12.6`**, one
+ * per render so nothing leaks between cases, and built from the same factory
+ * the app calls — so ADR-0034's global handlers turn mutation `meta` into
+ * toasts here exactly as they do in production.
  */
 
 export interface ProviderOptions {
   /** The session the guards read. An empty store is the anonymous app. */
   readonly store?: SessionStore;
   readonly client?: ApiClient;
+  /**
+   * A cache of the test's own, so nothing leaks between cases.
+   *
+   * Passed rather than built when a test needs to *ask* it something — the
+   * pseudo-locale walk waits on `isFetching()`, which is the only truthful
+   * answer to "has this screen finished arriving".
+   */
+  readonly queryClient?: QueryClient;
   /**
    * The language the tree renders in (ADR-0046 §14).
    *
@@ -68,6 +88,7 @@ export interface ProviderOptions {
 const providers = ({
   store,
   client,
+  queryClient,
   locale = "en",
   pseudo = false,
 }: ProviderOptions) => {
@@ -82,6 +103,15 @@ const providers = ({
    * could reach it and deleting it left the suite green.
    */
   const sessionEnded = { handler: () => undefined as void };
+  // One instance per render, from the same factory the app calls: a test that
+  // switched the locale must not leave the next one in Latvian, which a
+  // module-level singleton could not promise (ADR-0046 §13).
+  const i18n = createI18n({
+    resources: { en: EN_RESOURCES },
+    namespaces: NAMESPACES,
+    locale,
+    pseudo,
+  });
 
   return {
     store: sessionStore,
@@ -99,21 +129,40 @@ const providers = ({
           sessionEnded.handler();
         },
       }),
-    // One instance per render, from the same factory the app calls: a test that
-    // switched the locale must not leave the next one in Latvian, which a
-    // module-level singleton could not promise (ADR-0046 §13).
-    i18n: createI18n({
-      resources: { en: EN_RESOURCES },
-      namespaces: NAMESPACES,
-      locale,
-      pseudo,
-    }),
+    /*
+     * The client is built *from* this render's instance (`D12.6`).
+     *
+     * ADR-0034's global handlers turn a failed mutation into a toast and a
+     * successful one into its `meta.success` key, and both sentences come out
+     * of catalogues — so a suite whose client had no translator would assert
+     * English toasts under a Latvian tree, or a raw `profile:outcomes.updated`
+     * under an English one. The app joins the same two ends with a deferred
+     * binding, because there the client is older than the instance; here they
+     * are born together.
+     */
+    queryClient:
+      queryClient ??
+      createQueryClient({
+        messageForError: createMessageForError(
+          i18n.instance.getFixedT(null, "errors"),
+        ),
+        translate: i18n.instance.t as TranslateKey,
+      }),
+    i18n,
   };
 };
 
 export interface ProviderResult extends RenderResult {
   readonly store: SessionStore;
   readonly client: ApiClient;
+  /*
+   * Returned so a test can assert about it: the query client is where
+   * `gcTime: 0` is observable — a settled credential mutation must not still be
+   * in `getMutationCache()` — and where an invalidation shows up. A test that
+   * had to build its own to see either would be asserting about a client the
+   * component never used.
+   */
+  readonly queryClient: QueryClient;
   readonly i18n: I18n;
   /** The slot `renderApp` fills with the router's invalidation. */
   readonly sessionEnded: { handler: () => void };
@@ -135,18 +184,31 @@ export const renderWithProviders = (
        */
       <ThemeProvider>
         <ApiProvider value={{ client: value.client, store: value.store }}>
-          <I18nextProvider i18n={value.i18n.instance}>
-            {/*
-             * The design system's injectable strings, wired the way the app
-             * wires them (`D12.5`, ADR-0046 §12). Mounted here because a
-             * component test should not have to remember the app's own wiring
-             * to render a drawer whose trigger the app has localised — without
-             * it the primitives answer with their English defaults, which is a
-             * different code path from the one that ships, and one the
-             * pseudo-locale walk would then report as untranslated copy.
-             */}
-            <AppUiStrings>{ui}</AppUiStrings>
-          </I18nextProvider>
+          <QueryClientProvider client={value.queryClient}>
+            <I18nextProvider i18n={value.i18n.instance}>
+              {/*
+               * The design system's injectable strings, wired the way the app
+               * wires them (`D12.5`, ADR-0046 §12). Mounted here because a
+               * component test should not have to remember the app's own
+               * wiring to render a drawer whose trigger the app has localised
+               * — without it the primitives answer with their English
+               * defaults, which is a different code path from the one that
+               * ships, and one the pseudo-locale walk would then report as
+               * untranslated copy.
+               */}
+              <AppUiStrings>
+                {ui}
+                {/*
+                 * And the surface ADR-0034's outcomes are delivered to
+                 * (`D12.6`), for the same reason: the app mounts one on the
+                 * root route, which a component test does not render, so a
+                 * mutation whose toast had nowhere to go would be a different
+                 * code path from the one that ships.
+                 */}
+                <Toaster />
+              </AppUiStrings>
+            </I18nextProvider>
+          </QueryClientProvider>
         </ApiProvider>
       </ThemeProvider>,
     ),
@@ -171,6 +233,7 @@ export interface RenderAppResult extends RenderResult {
   readonly router: ReturnType<typeof createAppRouter>;
   readonly store: SessionStore;
   readonly client: ApiClient;
+  readonly queryClient: QueryClient;
   readonly i18n: I18n;
   readonly sessionEnded: { handler: () => void };
 }
@@ -207,11 +270,15 @@ export const renderApp = ({
        */
       <ThemeProvider>
         <ApiProvider value={{ client: value.client, store: value.store }}>
-          <I18nextProvider i18n={value.i18n.instance}>
-            <AppUiStrings>
-              <RouterProvider router={router} />
-            </AppUiStrings>
-          </I18nextProvider>
+          <QueryClientProvider client={value.queryClient}>
+            <I18nextProvider i18n={value.i18n.instance}>
+              <AppUiStrings>
+                {/* The root route mounts its own `<Toaster>`; this tree adds
+                    none. */}
+                <RouterProvider router={router} />
+              </AppUiStrings>
+            </I18nextProvider>
+          </QueryClientProvider>
         </ApiProvider>
       </ThemeProvider>,
     ),

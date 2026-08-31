@@ -20,7 +20,19 @@
  */
 
 export { Button, buttonVariants } from "@repo/ui/components/button";
-export { Card } from "@repo/ui/components/card";
+/*
+ * The card's parts (`D12.6`). `Card` alone was enough while a card held one
+ * sentence; the account area's sections are titled cards with descriptions and,
+ * on the security card, a header-right action.
+ */
+export {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@repo/ui/components/card";
 /*
  * The account control's popover (`D12.5`, ADR-0053 §2). Six names and no
  * `DropdownMenuRadioGroup`/`RadioItem`: this menu is identity and exit, and
@@ -43,8 +55,15 @@ export {
   FieldError,
   FieldGroup,
   FieldLabel,
+  /*
+   * `FieldSet` is half of ADR-0035's submit lock (`D12.6`), and the half a
+   * hand-assembled form has to spell for itself: `AppFormDialog` renders it
+   * inside the package, the inline details form does not.
+   */
+  FieldSet,
 } from "@repo/ui/components/field";
 export { Input } from "@repo/ui/components/input";
+export { Separator } from "@repo/ui/components/separator";
 /*
  * The drawer (`D12.5`). `SidebarProvider`, `SidebarInset` and `SidebarTrigger`
  * are deliberately absent: `AppShell` mounts all three itself, and this app's
@@ -63,7 +82,14 @@ export {
   SidebarMenuItem,
   SidebarRail,
 } from "@repo/ui/components/sidebar";
+export { Skeleton } from "@repo/ui/components/skeleton";
 export { Spinner } from "@repo/ui/components/spinner";
+/*
+ * ADR-0034's one delivery surface for mutation outcomes (`D12.6`). `toast` is
+ * called from exactly one place — `app/providers/query-client.ts`'s global
+ * caches — and `<Toaster>` is mounted once, on the root route.
+ */
+export { Toaster, toast } from "@repo/ui/components/sonner";
 // Not a component: the design system's operator-read strings, injectable
 // (ADR-0046 §12). It comes through the door for the door's own reason —
 // `app/providers` mounts the provider, and `app` may not reach past `shared`.
@@ -75,7 +101,18 @@ export { UiStringsProvider, type UiStrings } from "@repo/ui/ui-strings";
  * door as the rest. Its consumer is `widgets/dashboard-layout` (`D12.5`).
  */
 export { AppShell, type AppShellProps } from "@repo/ui/compositions/app-shell";
+/*
+ * The account area's frame (`D12.6`, ADR-0053 §4). ADR-0048 §2's slot-honesty
+ * rule named this composition's second consumer before it existed — "the
+ * customer app's sections differ already" — and this door line is that consumer
+ * arriving with no `packages/*` diff behind it.
+ */
+export {
+  SettingsLayout,
+  type SettingsLayoutProps,
+} from "@repo/ui/compositions/settings-layout";
 
 /** The components in this slice with behaviour of their own. */
 export { AppLoader } from "./app-loader";
 export { AppError, AppNotFound } from "./app-error";
+export { QueryError } from "./query-error";

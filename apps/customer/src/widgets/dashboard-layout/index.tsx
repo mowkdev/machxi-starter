@@ -29,10 +29,17 @@ import { AppShell } from "@/shared/ui";
  * declared here would be `undefined` on every screen this app ships, which is
  * the slot-with-no-consumer defect ADR-0048 §2 spends a paragraph on, one layer
  * down. Each has a step that will name its consumer, and each is one line then:
- * `banner` at `D12.7` with the pseudo-locale notice, `description` at `D12.6`
- * when the account sections declare one, and `breadcrumbs`, `pageActions` and
- * `fullHeight` with the first domain entity — which is what ADR-0055 §3 says
- * brings the grid.
+ * `banner` at `D12.7` with the pseudo-locale notice, and `breadcrumbs`,
+ * `pageActions` and `fullHeight` with the first domain entity — which is what
+ * ADR-0055 §3 says brings the grid.
+ *
+ * **`description` was on that list against `D12.6`, and `D12.6` did not spend
+ * it.** The account area's sections *do* describe themselves, but each sentence
+ * belongs to a card and sits under that card's own title (`pages/account`), not
+ * under the screen's — so a route-level `description` would have put the same
+ * sentence in the band and left the card either repeating it or bare. The prop
+ * is still offered by `AppShell` and still has no consumer here; the step that
+ * names one is the step that has a screen whose subtitle is about the *screen*.
  *
  * `title` and `navigating` are props instead of router lookups because the
  * router-driven version wants route `staticData` and `useRouterState`, which

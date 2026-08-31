@@ -1,9 +1,11 @@
 import type { Locale } from "@repo/contracts";
 
+import enAccount from "./locales/en/account.json";
 import enAuth from "./locales/en/auth.json";
 import enCommon from "./locales/en/common.json";
 import enErrors from "./locales/en/errors.json";
 import enHome from "./locales/en/home.json";
+import enProfile from "./locales/en/profile.json";
 import type { Namespace } from "./namespaces";
 
 /**
@@ -18,19 +20,23 @@ export const EN_RESOURCES = {
   errors: enErrors,
   auth: enAuth,
   home: enHome,
+  account: enAccount,
+  profile: enProfile,
 } as const;
 
 /**
  * Namespaces the instance loads but this app does not own (ADR-0046 §13).
  *
- * **Empty at `D12.1` and typed as `never`, deliberately.** The admin's is
- * `"grid" | "form"`; this app depends on neither package yet — ADR-0055 §3
- * keeps `@repo/grid` out until a domain entity arrives — so {@link Namespace}
- * and {@link AppNamespace} are the same union today. The type is declared
- * anyway because `D12.6` adds `form` to it, and a `never` here is what makes
- * that a one-line change rather than a new concept.
+ * **`"form"` since `D12.6`**, which is the one-line change the `never` at
+ * `D12.1` was declared to make. `@repo/form` declares its own namespace, ships
+ * its catalogues and hands them over; the name stays in {@link NAMESPACES}
+ * because `init` must load it, so the two lists are no longer the same list —
+ * and this type is what keeps that difference checked rather than implied.
+ *
+ * Still no `"grid"`, and it is the admin's other member: ADR-0055 §3 keeps
+ * `@repo/grid` out of this app until a domain entity arrives.
  */
-export type PackageNamespace = never;
+export type PackageNamespace = "form";
 
 /** The namespaces whose words are this app's, and whose catalogues it ships. */
 export type AppNamespace = Exclude<Namespace, PackageNamespace>;

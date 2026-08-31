@@ -55,6 +55,12 @@ export {
  * module can write.
  */
 export { createI18n, type CreateAppI18nOptions } from "./create-app-i18n";
+/*
+ * The pre-instance translator and its binder (`D12.6`). Both read this app's
+ * own `en` catalogue, which is why they stayed in the app while the rest of
+ * ADR-0046 §7's seam moved to the package (ADR-0046 §13).
+ */
+export { createDeferredTranslate, englishTranslation } from "./keys";
 export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
 /*
  * The app's own `Catalogue`/`Catalogues`, which are narrower than the

@@ -1,7 +1,16 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  createAuthHandlers,
+  createAuthMockState,
+} from "@/test/msw/handlers/auth.handlers";
+import {
+  createProfileHandlers,
+  createProfileMockState,
+} from "@/test/msw/handlers/profile.handlers";
+import { server } from "@/test/msw/server";
 import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
 
@@ -22,6 +31,19 @@ import { renderApp } from "@/test/render";
  * change away from landing here instead. `getAllByRole` is what makes a fourth
  * entry a failure rather than a thing the suite does not look at.
  */
+beforeEach(() => {
+  /*
+   * `D12.6` gave this menu a destination that fetches, and one case now clicks
+   * through to it — so the handlers the account area reads are mounted here
+   * rather than in that case alone, because `onUnhandledRequest: "error"` makes
+   * a missing one a failure at the boundary rather than an empty screen.
+   */
+  server.use(
+    ...createAuthHandlers(createAuthMockState()),
+    ...createProfileHandlers(createProfileMockState()),
+  );
+});
+
 describe("the account control", () => {
   it("hangs from the shell's header, not from the drawer", async () => {
     const user = userEvent.setup();
@@ -93,18 +115,41 @@ describe("the account control", () => {
     await user.click(await screen.findByRole("button", { name: "Account" }));
 
     /*
-     * `href` rather than a click, and deliberately: `/account` is `D12.6`'s
-     * route, so this entry is a plain anchor until the typed `Link` compiles
-     * (see the widget's own comment). Asserting the address is what makes that
-     * swap a one-line change under a test that already stands over it — and
-     * pointing at the area rather than at a section is ADR-0053 §1's shape,
-     * which is what makes a fourth section cost nothing here.
+     * `href` rather than a click, and deliberately: what this asserts is the
+     * *address*, which is the one thing that had to survive `D12.6` turning a
+     * plain anchor into a typed `<Link>` — and it did, unchanged, which is
+     * what the widget's comment promised when it wrote the entry a step ahead
+     * of its route.
+     *
+     * Pointing at the area rather than at a section is ADR-0053 §1's shape:
+     * the index route chooses the first section, so a fourth one costs nothing
+     * here.
      */
     expect(
       await screen.findByRole("menuitem", { name: "Account" }),
     ).toHaveAttribute("href", "/account");
 
     await user.keyboard("{Escape}");
+  });
+
+  it("navigates to the account area rather than reloading the document", async () => {
+    const user = userEvent.setup();
+
+    const { router } = renderApp({ initialPath: "/", store: authenticated() });
+
+    await user.click(await screen.findByRole("button", { name: "Account" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Account" }));
+
+    /*
+     * The half the `href` assertion cannot make, and the half `D12.6` is
+     * about: a bare anchor would have reloaded the page — which in jsdom means
+     * the router never moves — and cost a full ADR-0033 boot on a real
+     * browser. A client-side navigation moves the memory history, and the
+     * index route forwards it to the first section.
+     */
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/account/profile");
+    });
   });
 
   it("falls back to the email when a customer has no name", async () => {

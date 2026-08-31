@@ -1,6 +1,7 @@
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 
 import type { SessionStore } from "@/shared/api/session-store";
+import { Toaster } from "@/shared/ui";
 
 /**
  * The root route, and the declaration of what every guard and loader may read
@@ -12,10 +13,15 @@ import type { SessionStore } from "@/shared/api/session-store";
  *
  * **One field, and the omission is deliberate.** The admin's context is
  * `{ session, queryClient, client }`, because its route loaders call
- * `ensureQueryData` and a loader is not a component and has no hooks. This app
- * has no loader until `D12.6`, and a context field nothing reads is a claim
- * the compiler cannot check — so the two join when the first loader does, in
- * the step that can prove they are used.
+ * `ensureQueryData` and a loader is not a component and has no hooks.
+ *
+ * **`D12.6` brought the query client and did *not* bring a loader**, which is
+ * the honest outcome of the rule rather than an exception to it. The account
+ * area's sections read the profile through `useProfile` — a hook, in a
+ * component, under `QueryClientProvider` — so nothing in this app calls
+ * `ensureQueryData` yet, and a context field nothing reads would be a claim the
+ * compiler cannot check. The two join when the first loader does, which
+ * ADR-0055 §5 says arrives with the first domain entity.
  */
 
 export interface RouterContext {
@@ -27,11 +33,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
-  /*
-   * No `<Toaster>` yet: ADR-0034's global handlers are what render into one,
-   * and they are built with the query client this app does not have until
-   * `D12.6`. A surface with nothing to put on it is chrome that only looks
-   * like a decision.
-   */
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      {/*
+       * Mounted once, at the root — ADR-0034 owns what it renders (`D12.6`).
+       * `D12.2` left it out on the grounds that a surface with nothing to put
+       * on it is chrome that only looks like a decision; the query client's
+       * global mutation cache is what now puts something on it.
+       *
+       * At the root rather than under `_dashboard`, because a failure that
+       * matters can happen on the sign-in screen too.
+       */}
+      <Toaster />
+    </>
+  );
 }

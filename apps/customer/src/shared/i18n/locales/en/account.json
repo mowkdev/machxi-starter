@@ -1,0 +1,10 @@
+{
+  "title": "Account",
+  "nav": {
+    "label": "Account sections"
+  },
+  "sections": {
+    "profile": "Profile",
+    "security": "Security"
+  }
+}

@@ -23,13 +23,14 @@ import { UiStringsProvider } from "@/shared/ui";
  *
  * **Partial on purpose, which is the seam's own design.** The provider takes
  * `Partial<UiStrings>` and every key it is not given keeps its English default,
- * so this app supplies the five its screens can actually render today and no
+ * so this app supplies the six its screens can actually render today and no
  * more. A key handed over without a rendering site would be a catalogue entry
  * the drift check cannot see used — this app's `i18n:check` reports orphans —
  * and a claim that a primitive is mounted when it is not. The rest arrive with
- * the primitives that say them: `dismiss` with `D12.7`'s pseudo-locale banner,
- * `notifications` with `D12.6`'s toaster, and the pagination and breadcrumb
- * keys with the grid this app does not have (ADR-0055 §3).
+ * the primitives that say them: `notifications` arrived at `D12.6` with the
+ * toaster ADR-0034's outcomes are delivered through, `dismiss` comes with
+ * `D12.7`'s pseudo-locale banner, and the pagination and breadcrumb keys with
+ * the grid this app does not have (ADR-0055 §3).
  *
  * **It re-renders on `languageChanged` because `useTranslation` does.** There is
  * no subscription here and there should not be: react-i18next already
@@ -60,6 +61,13 @@ export const AppUiStrings = ({ children }: AppUiStringsProps) => {
         /* `sidebar.tsx` — the mobile sheet's `sr-only` title and description. */
         sidebarTitle: t("ui.sidebarTitle"),
         sidebarDescription: t("ui.sidebarDescription"),
+        /*
+         * `sonner.tsx`'s `containerAriaLabel` (`D12.6`). The toast region is a
+         * landmark, and since the root route mounts one it is on screen on
+         * every page — so unlike the pagination and breadcrumb keys, this one
+         * has a rendering site the moment ADR-0034's outcomes have a surface.
+         */
+        notifications: t("ui.notifications"),
         /*
          * `compositions/app-shell.tsx` — the navigation indicator's accessible
          * name (ADR-0052 §Felt navigation). An indeterminate `progressbar`

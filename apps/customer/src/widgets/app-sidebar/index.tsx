@@ -99,11 +99,11 @@ const NAVIGATION: readonly NavItem[] = [
  * nullable in the schema too (ADR-0017), so the email fallback below is a live
  * branch here in a way it is not in the admin.
  *
- * **The `/account` link is written before its route exists** and points at the
- * area rather than at a section, which is ADR-0053 §1's shape: the index route
- * chooses the first section, so a fourth section later costs nothing here. It
- * lands at `D12.6`; until then the typed `to` would not compile, so the item is
- * an `href` on an anchor the router does not own — see its own comment.
+ * **The `/account` link points at the area rather than at a section**, which is
+ * ADR-0053 §1's shape: the index route chooses the first section, so a fourth
+ * section later costs nothing here. `D12.6` built that route and turned the
+ * entry into a typed `Link` — see its own comment for the step it spent as an
+ * anchor and what that cost.
  */
 export const AccountMenu = () => {
   const { principal } = useSession();
@@ -202,28 +202,23 @@ export const AccountMenu = () => {
         )}
         <DropdownMenuItem asChild>
           {/*
-           * A plain `<a href>`, and the one place in this app that is not a
-           * typed `<Link>` (ADR-0049 §Routing).
+           * A typed `<Link>` since `D12.6` (ADR-0049 §Routing), which is the
+           * one-line swap `D12.5` wrote this entry to be.
            *
-           * `/account` is `D12.6`'s, and `Link`'s `to` is checked against the
-           * generated route tree — so the typed form does not compile until
-           * that step, and the alternatives are worse: a `to={"/account" as
-           * never}` cast would silence the very check the typed router exists
-           * for, and leaving the entry out would ship a menu ADR-0053 §2 says
-           * has three things with two in it. The href is asserted by the
-           * suite, so the swap at `D12.6` is a one-line change with a test
-           * already standing over it.
+           * It shipped as a plain `<a href>` for one step because `Link`'s `to`
+           * is checked against the generated route tree and `/account` did not
+           * exist yet — so the typed form did not compile, and the two
+           * alternatives were a `to={"/account" as never}` cast silencing the
+           * very check the typed router exists for, or a menu ADR-0053 §2 says
+           * has three things shipping with two. The cost in between was a hard
+           * navigation onto a not-found screen; it is now a client-side one
+           * onto the area's index route, which sends the customer to Profile.
            *
-           * **The cost, stated rather than glossed: this is a hard
-           * navigation.** A bare anchor reloads the document, so between now
-           * and `D12.6` clicking it costs a full boot — the in-memory access
-           * token goes and comes back through the ADR-0033 CSRF-and-refresh
-           * sequence — and lands on the not-found screen, because the route it
-           * names does not exist yet. That is the honest shape of a menu entry
-           * written one step ahead of its destination; it is temporary by
-           * construction, and `D12.6` is where it stops being an anchor.
+           * The suite's `href` assertion is unchanged and still passes:
+           * `Link` renders one, so what the test always asserted was the
+           * address rather than the element.
            */}
-          <a href="/account">
+          <Link to="/account">
             {/*
              * The icon is ADR-0053 §2's mitigation and the reason it is
              * stable: a customer stranded in a language they cannot read
@@ -233,7 +228,7 @@ export const AccountMenu = () => {
              */}
             <UserIcon />
             {t("account.area")}
-          </a>
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/*

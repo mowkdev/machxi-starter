@@ -1,7 +1,9 @@
+import type account from "./locales/en/account.json";
 import type auth from "./locales/en/auth.json";
 import type common from "./locales/en/common.json";
 import type errors from "./locales/en/errors.json";
 import type home from "./locales/en/home.json";
+import type profile from "./locales/en/profile.json";
 
 /**
  * Typed keys (ADR-0046 §2): a missing key or a missing namespace is a type
@@ -30,6 +32,16 @@ declare module "i18next" {
       errors: typeof errors;
       auth: typeof auth;
       home: typeof home;
+      account: typeof account;
+      profile: typeof profile;
     };
   }
 }
+
+/*
+ * **`form` is absent on purpose** (`D12.6`). It is `@repo/form`'s namespace,
+ * declared by that package through `ResourceNamespaceMap` rather than here —
+ * which is what stops two packages colliding on this one field (TS2717,
+ * ADR-0046 §13). It feeds `TypeOptions['resources']` all the same, so
+ * `TranslationKey` sees a `form:` key exactly as it sees a `profile:` one.
+ */

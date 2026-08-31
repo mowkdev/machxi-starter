@@ -1,7 +1,13 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
+
+import { createDeferredTranslate, useKeyT, useT } from "@/shared/i18n";
+import { createDeferredErrorMessage } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
 import { AppLoader } from "@/shared/ui";
 
 import { I18nProvider } from "./providers/i18n";
+import { createQueryClient } from "./providers/query-client";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
 import { AppUiStrings } from "./providers/ui-strings";
@@ -52,22 +58,77 @@ import "./styles.css";
  *   The boot gate's two pre-i18next screens render above it and keep the
  *   package's English defaults, which is what those defaults are for.
  *
- * What is deliberately **not** here yet, each with the step that brings it:
- * `QueryClientProvider` at `D12.6`, when there is something to fetch;
- * `SettingsProvider` and the pseudo-locale notice at `D12.7`. The admin's root
- * is the shape this converges on, and the ordering above is chosen so each
- * arrival is an insertion rather than a rearrangement — `SettingsProvider` goes
- * between the query client and `I18nProvider`, which is where the admin puts it
- * and why `I18nProvider` is already the innermost of the three.
+ * - `QueryClientProvider` between the session gate and `I18nProvider`
+ *   (`D12.6`), which is exactly the insertion `D12.1` said this ordering was
+ *   chosen to make: **inside** the gate, because a query fired before the
+ *   session is hydrated would go out without a token, and **outside** the
+ *   router, because ADR-0034 gives one client to the whole app. The client is
+ *   built once at module scope for the reason the router is — constructing it
+ *   in the component body would discard the cache on every re-render.
+ *
+ * What is deliberately **not** here yet: `SettingsProvider` and the
+ * pseudo-locale notice, both `D12.7`'s. `SettingsProvider` goes between the
+ * query client and `I18nProvider` — it needs the client, and it must hold the
+ * instance so the account's locale is the one i18next starts in rather than one
+ * it switches to.
  */
+
+/**
+ * The wire between the global toast handler and the i18next instance
+ * (ADR-0046 §2).
+ *
+ * The two are built at opposite ends of the tree on purpose: ADR-0034 gives one
+ * query client to the whole app and it is constructed here, above the session
+ * gate the instance is created inside. Neither end moves; a deferred lookup is
+ * what joins them, and it is a factory rather than a module-level box so the
+ * suite gets its own per render.
+ */
+const errorMessages = createDeferredErrorMessage();
+/*
+ * The same wire, for the same handler, one field along: a mutation's
+ * `meta.success` is a key, and the cache that turns it into a toast is built
+ * here — beside the deferred error lookup and for the identical reason.
+ */
+const outcomes = createDeferredTranslate();
+const queryClient = createQueryClient({
+  messageForError: errorMessages.messageForError,
+  translate: outcomes.translate,
+});
+
+/**
+ * Binds those lookups, from inside the instance.
+ *
+ * A component rather than a prop threaded down through `I18nProvider`, because
+ * the binding is not something that provider has an opinion about: anything
+ * mounted as its child is already under the instance. Rendering nothing is the
+ * whole of its output.
+ */
+const BindTranslations = () => {
+  const { t } = useT("errors");
+  const tk = useKeyT();
+
+  useEffect(() => {
+    errorMessages.bind(t);
+  }, [t]);
+
+  useEffect(() => {
+    outcomes.bind(tk);
+  }, [tk]);
+
+  return null;
+};
+
 const App = () => (
   <ThemeProvider>
     <SessionProvider fallback={<AppLoader />}>
-      <I18nProvider>
-        <AppUiStrings>
-          <AppRouter />
-        </AppUiStrings>
-      </I18nProvider>
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider>
+          <BindTranslations />
+          <AppUiStrings>
+            <AppRouter />
+          </AppUiStrings>
+        </I18nProvider>
+      </QueryClientProvider>
     </SessionProvider>
   </ThemeProvider>
 );
