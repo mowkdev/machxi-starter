@@ -3,13 +3,12 @@ import { useEffect } from "react";
 
 import { createDeferredTranslate, useKeyT, useT } from "@/shared/i18n";
 import { createDeferredErrorMessage } from "@/shared/notifications/messages";
-import { ThemeProvider } from "@/shared/theme";
 import { AppLoader } from "@/shared/ui";
 
-import { I18nProvider } from "./providers/i18n";
 import { createQueryClient } from "./providers/query-client";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
+import { SettingsProvider } from "./providers/settings";
 import { AppUiStrings } from "./providers/ui-strings";
 
 /*
@@ -37,40 +36,37 @@ import "./styles.css";
  * The composition root of the SPA (ADR-0049): the `app` layer is wiring, and
  * this is the whole of it.
  *
- * Three providers, in the order the later steps grow around:
+ * Four providers, outermost first:
  *
- * - `ThemeProvider` outermost, because a theme is a device fact before it is an
- *   account fact and nothing below it should render in the wrong one. It is
- *   local-only here; `D12.7` gives it the account's value through the settings
- *   gate.
- * - `SessionProvider` next: it holds a loading gate until the ADR-0033 boot
- *   sequence resolves, and nothing below it renders before the store is either
- *   hydrated or known to be empty — otherwise the `_dashboard` guard would read
- *   an empty store and bounce a signed-in customer to `/login` on every reload.
- *   It is **inside** the theme so its own two pre-i18next screens (the loader
- *   and the unreachable notice) are painted in the right one.
- * - `I18nProvider` inside the gate and above the router, because a locale
- *   reaches every screen and a route is not the thing that owns it.
- * - `AppUiStrings` innermost of the four (`D12.5`), because it is a *reader* of
- *   the locale rather than a source of one: it resolves the design system's own
- *   `sr-only` labels through `t` and hands them down the `UiStrings` context
- *   (ADR-0046 §12), so it has to sit inside the instance that resolves them.
- *   The boot gate's two pre-i18next screens render above it and keep the
- *   package's English defaults, which is what those defaults are for.
+ * - `SessionProvider` holds a loading gate until the ADR-0033 boot sequence
+ *   resolves, and nothing below it renders before the store is either hydrated
+ *   or known to be empty — otherwise the `_dashboard` guard would read an empty
+ *   store and bounce a signed-in customer to `/login` on every reload.
+ * - `QueryClientProvider` inside the gate, because a query fired before the
+ *   session is hydrated would go out without a token, and outside the router,
+ *   because ADR-0034 gives one client to the whole app. The client is built
+ *   once at module scope for the reason the router is — constructing it in the
+ *   component body would discard the cache on every re-render.
+ * - `SettingsProvider` (`D12.7`) exactly where `D12.6` predicted it: it needs
+ *   the query client above it, and it must *hold* the i18next instance so the
+ *   account's locale is the one i18next starts in rather than one it switches
+ *   to. It is a second gate inside the first, and it mounts the three providers
+ *   that carry an account preference — the theme, the locale and the density.
+ * - `AppUiStrings` innermost (`D12.5`), because it is a *reader* of the locale
+ *   rather than a source of one: it resolves the design system's own `sr-only`
+ *   labels through `t` and hands them down the `UiStrings` context (ADR-0046
+ *   §12), so it has to sit inside the instance that resolves them. The two
+ *   pre-i18next screens render above it and keep the package's English
+ *   defaults, which is what those defaults are for.
  *
- * - `QueryClientProvider` between the session gate and `I18nProvider`
- *   (`D12.6`), which is exactly the insertion `D12.1` said this ordering was
- *   chosen to make: **inside** the gate, because a query fired before the
- *   session is hydrated would go out without a token, and **outside** the
- *   router, because ADR-0034 gives one client to the whole app. The client is
- *   built once at module scope for the reason the router is — constructing it
- *   in the component body would discard the cache on every re-render.
- *
- * What is deliberately **not** here yet: `SettingsProvider` and the
- * pseudo-locale notice, both `D12.7`'s. `SettingsProvider` goes between the
- * query client and `I18nProvider` — it needs the client, and it must hold the
- * instance so the account's locale is the one i18next starts in rather than one
- * it switches to.
+ * **`ThemeProvider` left this file at `D12.7`, and the reason it was here was
+ * wrong.** `D12.1` mounted it outermost so the boot gate's two screens "are
+ * painted in the right one" — but nothing about painting goes through that
+ * provider: `main.tsx` applies the stored theme to `<html>` before React exists
+ * (ADR-0045 §Theme), and the provider is context for `useTheme`, which neither
+ * `AppLoader` nor the unreachable notice calls. So the theme is now where the
+ * account can reach it, inside `SettingsProvider`, and the boot screens are
+ * painted by the same pre-paint apply that always painted them.
  */
 
 /**
@@ -119,18 +115,27 @@ const BindTranslations = () => {
 };
 
 const App = () => (
-  <ThemeProvider>
-    <SessionProvider fallback={<AppLoader />}>
-      <QueryClientProvider client={queryClient}>
-        <I18nProvider>
-          <BindTranslations />
-          <AppUiStrings>
-            <AppRouter />
-          </AppUiStrings>
-        </I18nProvider>
-      </QueryClientProvider>
-    </SessionProvider>
-  </ThemeProvider>
+  <SessionProvider fallback={<AppLoader />}>
+    <QueryClientProvider client={queryClient}>
+      {/*
+       * The same fallback as the boot gate's, so the two waits are one screen
+       * rather than a spinner, a frame and a spinner (`D12.7`).
+       *
+       * It is a second `AppLoader`, so its own 250ms delay restarts on the
+       * remount: a settings read faster than that draws the ground and no
+       * spinner at all, which is that delay doing what it was written to do.
+       * The ground is painted from the first frame either way, so what a
+       * customer sees between the two is the app's background rather than
+       * white.
+       */}
+      <SettingsProvider fallback={<AppLoader />}>
+        <BindTranslations />
+        <AppUiStrings>
+          <AppRouter />
+        </AppUiStrings>
+      </SettingsProvider>
+    </QueryClientProvider>
+  </SessionProvider>
 );
 
 export default App;

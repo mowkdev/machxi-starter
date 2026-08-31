@@ -5,6 +5,7 @@
   },
   "sections": {
     "profile": "Profile",
-    "security": "Security"
+    "security": "Security",
+    "preferences": "Preferences"
   }
 }

@@ -6,6 +6,7 @@ import enCommon from "./locales/en/common.json";
 import enErrors from "./locales/en/errors.json";
 import enHome from "./locales/en/home.json";
 import enProfile from "./locales/en/profile.json";
+import enSettings from "./locales/en/settings.json";
 import type { Namespace } from "./namespaces";
 
 /**
@@ -22,6 +23,7 @@ export const EN_RESOURCES = {
   home: enHome,
   account: enAccount,
   profile: enProfile,
+  settings: enSettings,
 } as const;
 
 /**

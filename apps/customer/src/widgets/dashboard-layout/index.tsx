@@ -29,9 +29,18 @@ import { AppShell } from "@/shared/ui";
  * declared here would be `undefined` on every screen this app ships, which is
  * the slot-with-no-consumer defect ADR-0048 §2 spends a paragraph on, one layer
  * down. Each has a step that will name its consumer, and each is one line then:
- * `banner` at `D12.7` with the pseudo-locale notice, and `breadcrumbs`,
- * `pageActions` and `fullHeight` with the first domain entity — which is what
- * ADR-0055 §3 says brings the grid.
+ * `banner` with the pseudo-locale notice, and `breadcrumbs`, `pageActions` and
+ * `fullHeight` with the first domain entity — which is what ADR-0055 §3 says
+ * brings the grid.
+ *
+ * **`banner` was written against `D12.7` and `D12.7` did not spend it either.**
+ * That step is the preferences section and the settings gate; the notice is a
+ * *localization* surface — `PseudoNoticeProvider` at the composition root and
+ * one reader in the `_dashboard` route file — and it belongs with the rest of
+ * ADR-0046's closing work at `D12.9`, beside the drift check, the `lv` sweep
+ * and the route walk it warns about. Named here rather than left to be noticed,
+ * because a prop with a date on it and no consumer is how a slot quietly
+ * becomes permanent chrome.
  *
  * **`description` was on that list against `D12.6`, and `D12.6` did not spend
  * it.** The account area's sections *do* describe themselves, but each sentence

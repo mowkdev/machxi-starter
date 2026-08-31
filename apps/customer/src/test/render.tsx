@@ -21,6 +21,7 @@ import {
   type I18n,
   type TranslateKey,
 } from "@/shared/i18n";
+import { GridDensityProvider } from "@/shared/density";
 import { createMessageForError } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
 import { Toaster } from "@/shared/ui";
@@ -183,33 +184,42 @@ export const renderWithProviders = (
        * the app's wiring to render a control the app ships.
        */
       <ThemeProvider>
-        <ApiProvider value={{ client: value.client, store: value.store }}>
-          <QueryClientProvider client={value.queryClient}>
-            <I18nextProvider i18n={value.i18n.instance}>
-              {/*
-               * The design system's injectable strings, wired the way the app
-               * wires them (`D12.5`, ADR-0046 §12). Mounted here because a
-               * component test should not have to remember the app's own
-               * wiring to render a drawer whose trigger the app has localised
-               * — without it the primitives answer with their English
-               * defaults, which is a different code path from the one that
-               * ships, and one the pseudo-locale walk would then report as
-               * untranslated copy.
-               */}
-              <AppUiStrings>
-                {ui}
+        {/*
+         * The theme's sibling, mounted for the same reason (`D12.7`): the app
+         * mounts it inside `SettingsProvider`, and `useGridDensity` throws
+         * outside a provider on purpose — a control that changes nothing is a
+         * worse thing to ship than a loud failure. Local-only here, which is
+         * the anonymous app.
+         */}
+        <GridDensityProvider>
+          <ApiProvider value={{ client: value.client, store: value.store }}>
+            <QueryClientProvider client={value.queryClient}>
+              <I18nextProvider i18n={value.i18n.instance}>
                 {/*
-                 * And the surface ADR-0034's outcomes are delivered to
-                 * (`D12.6`), for the same reason: the app mounts one on the
-                 * root route, which a component test does not render, so a
-                 * mutation whose toast had nowhere to go would be a different
-                 * code path from the one that ships.
+                 * The design system's injectable strings, wired the way the app
+                 * wires them (`D12.5`, ADR-0046 §12). Mounted here because a
+                 * component test should not have to remember the app's own
+                 * wiring to render a drawer whose trigger the app has localised
+                 * — without it the primitives answer with their English
+                 * defaults, which is a different code path from the one that
+                 * ships, and one the pseudo-locale walk would then report as
+                 * untranslated copy.
                  */}
-                <Toaster />
-              </AppUiStrings>
-            </I18nextProvider>
-          </QueryClientProvider>
-        </ApiProvider>
+                <AppUiStrings>
+                  {ui}
+                  {/*
+                   * And the surface ADR-0034's outcomes are delivered to
+                   * (`D12.6`), for the same reason: the app mounts one on the
+                   * root route, which a component test does not render, so a
+                   * mutation whose toast had nowhere to go would be a different
+                   * code path from the one that ships.
+                   */}
+                  <Toaster />
+                </AppUiStrings>
+              </I18nextProvider>
+            </QueryClientProvider>
+          </ApiProvider>
+        </GridDensityProvider>
       </ThemeProvider>,
     ),
     ...value,
@@ -269,17 +279,22 @@ export const renderApp = ({
        * `app/__tests__/session-provider.test.tsx`, which mounts it.
        */
       <ThemeProvider>
-        <ApiProvider value={{ client: value.client, store: value.store }}>
-          <QueryClientProvider client={value.queryClient}>
-            <I18nextProvider i18n={value.i18n.instance}>
-              <AppUiStrings>
-                {/* The root route mounts its own `<Toaster>`; this tree adds
-                    none. */}
-                <RouterProvider router={router} />
-              </AppUiStrings>
-            </I18nextProvider>
-          </QueryClientProvider>
-        </ApiProvider>
+        {/* `SettingsProvider`'s third child, mounted here for the reason the
+            theme is: this tree is hand-built, so a provider the app mounts in
+            `app/index.tsx` reaches no test unless it is added here too. */}
+        <GridDensityProvider>
+          <ApiProvider value={{ client: value.client, store: value.store }}>
+            <QueryClientProvider client={value.queryClient}>
+              <I18nextProvider i18n={value.i18n.instance}>
+                <AppUiStrings>
+                  {/* The root route mounts its own `<Toaster>`; this tree adds
+                      none. */}
+                  <RouterProvider router={router} />
+                </AppUiStrings>
+              </I18nextProvider>
+            </QueryClientProvider>
+          </ApiProvider>
+        </GridDensityProvider>
       </ThemeProvider>,
     ),
     router,

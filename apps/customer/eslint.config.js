@@ -88,10 +88,14 @@ const DOORS = [
       "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
   },
   {
-    slices: ["theme", "lib"],
+    // `density` since `D12.7`, which is the third slice one package answers
+    // for: the theme, the route-meta readers and the grid density belong in
+    // three doors because they belong in three slices, not because the package
+    // is three packages.
+    slices: ["theme", "lib", "density"],
     group: ["@repo/app-services", "@repo/app-services/*"],
     message:
-      "Import the app services through `@/shared/{theme,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+      "Import the app services through `@/shared/{theme,lib,density}/*`, not from @repo/app-services directly (ADR-0051).",
   },
   /*
    * `D12.6`'s two, arriving with the account area's forms — the growth this

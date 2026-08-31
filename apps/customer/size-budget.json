@@ -14,14 +14,16 @@
     "The +33 kB on the entry is the honest cost of two app-root decisions rather than of the account screens: ADR-0034 gives one query client to the whole app and mounts one <Toaster> on the root route, so @tanstack/react-query and sonner are both paid before anything renders — and ADR-0046 §13 has `create-app-i18n` compose @repo/form's catalogues and bind the zod locale installer at init, which pulls the installer into the entry with them. None of the three can move behind the guard without moving a decision with it.",
     "The other +24 kB is behind the guard, where it should be: the change-password dialog's Radix dialog and @repo/ui's RecordSurface land in a shared chunk with the sheet, and react-hook-form, @hookform/resolvers and @repo/form's frame land with the account routes. An anonymous visitor downloads none of it — what the entry costs is the paragraph above, and the guard is what holds the rest back.",
     "css 13733 -> 13803, seventy bytes: the card, separator and skeleton utilities over a token sheet that already carried nearly all of them. The budget was not raised with it; 15100 still leaves ~9%.",
-    "The woff2/woff files @fontsource emits are assets and are NOT counted here — a browser downloads only the subsets its text needs, so what the css number prices is the @font-face declarations, not the faces."
+    "The woff2/woff files @fontsource emits are assets and are NOT counted here — a browser downloads only the subsets its text needs, so what the css number prices is the @font-face declarations, not the faces.",
+    "NOT RAISED at D12.7, and that is worth recording as loudly as a raise: the Preferences section, the settings entity and its coalescing writer, the three controls and SettingsProvider all landed inside the numbers D12.6 set. js 264744 -> 267409 (+2.7 kB) and css 13803 -> 13901; the section itself is three lucide icons and a native radio group, and both of the primitives it draws on were already paid for.",
+    "entry 195570 -> 199958 (+4.4 kB) is the composition root growing rather than the screens: app/index.tsx now mounts SettingsProvider, which pulls entities/settings and the theme, locale and density contexts in above the router. That is ADR-0045 The-client deciding where the gate sits, not a screen leaking into the entry — and it leaves entry at about 5% of headroom, which is the number D12.8 should expect to be measured against."
   ],
   "baseline": {
     "measuredAt": "2026-08-31",
-    "step": "D12.6",
-    "js": 264744,
-    "css": 13803,
-    "entry": 195570
+    "step": "D12.7",
+    "js": 267409,
+    "css": 13901,
+    "entry": 199958
   },
   "budgets": {
     "js": 286000,

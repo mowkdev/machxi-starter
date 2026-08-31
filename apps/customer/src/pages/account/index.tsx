@@ -1,12 +1,15 @@
 import { Link } from "@tanstack/react-router";
-import { LockIcon, UserIcon } from "lucide-react";
+import { LockIcon, SettingsIcon, UserIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useProfile } from "@/entities/profile";
+import { GridDensityCards } from "@/features/density";
+import { LocaleRows } from "@/features/locale";
 import {
   ChangePasswordDialog,
   ProfileDetailsForm,
 } from "@/features/profile-manage";
+import { ThemeCards } from "@/features/theme";
 import { dateTimeFormat, useT } from "@/shared/i18n";
 import {
   Button,
@@ -23,13 +26,13 @@ import {
 } from "@/shared/ui";
 
 /**
- * The account area (`D12.6`; ADR-0053 §1, §4, §5 with ADR-0055 §3's sections).
+ * The account area (`D12.6`, `D12.7`; ADR-0053 §1, §4, §5 with ADR-0055 §3's
+ * sections).
  *
- * Four files' worth of screen, one slice: the layout that frames every section,
- * and the sections behind it. **Two of them here and a third at `D12.7`** —
- * `/account/preferences` is that step's, and `D12.8` adds deletion to the
- * security section, which is the placement ADR-0053 §1 anticipated and ADR-0055
- * §3 made this app's.
+ * One slice: the layout that frames every section, and the three sections
+ * behind it. **`D12.7` filled the third**, and `D12.8` adds deletion to the
+ * security section — the placement ADR-0053 §1 anticipated and ADR-0055 §3 made
+ * this app's.
  *
  * **The layout is `@repo/ui`'s and this app changed nothing about it**, which
  * is the second-consumer claim ADR-0053 §4 made by name: the customer app is
@@ -49,13 +52,18 @@ import {
  * sidebar's `NAVIGATION` has. **The icons are ADR-0053 §2's mitigation and not
  * decoration**: a customer stranded in a language they cannot read travels
  * through the account control and a section label, and a stable glyph is what
- * makes that trip possible at all. That is why the list is written to hold a
- * third entry rather than as two inline links — `D12.7`'s Preferences is the
- * section that mitigation is really about, and it is one row.
+ * makes that trip possible at all. `D12.7`'s Preferences row is the one that
+ * mitigation is really about — it is the way out — and it arrived as one line
+ * because `D12.6` wrote this as a list rather than as two inline links.
  */
 const SECTIONS = [
   { to: "/account/profile", label: "sections.profile", icon: UserIcon },
   { to: "/account/security", label: "sections.security", icon: LockIcon },
+  {
+    to: "/account/preferences",
+    label: "sections.preferences",
+    icon: SettingsIcon,
+  },
 ] as const;
 
 /**
@@ -302,6 +310,82 @@ export const AccountSecuritySection = () => {
           }}
         />
       ) : null}
+    </>
+  );
+};
+
+/**
+ * `/account/preferences` — how the app behaves for you (`D12.7`; ADR-0053
+ * §1/§2, ADR-0055 §3).
+ *
+ * **The inventory, and in this app it was never anything else.** In the admin
+ * these three controls spent a deliverable each in the account menu before
+ * ADR-0053 §2 collected them; this app was built after that decision, so its
+ * account control shipped at `D12.5` as identity-and-exit and the preferences
+ * have had exactly one home since their first render. The section is the
+ * mitigation §2 promised as much as it is the surface: it is the way out of a
+ * language a customer cannot read, which is why the nav row that reaches it
+ * carries a stable icon.
+ *
+ * **One card per fact, not one card with three groups.** Each of these is an
+ * independent account setting with its own write path — the theme and the
+ * density ride ADR-0045's coalescing writer, the locale goes through
+ * `useUpdateSettings` and the device key — and a card is what gives each one a
+ * title a screen reader can land on and a sentence saying what it does. The
+ * cards sit on `SettingsLayout`'s 16px stack (ADR-0054 §7), which is why
+ * nothing here spells a gap.
+ *
+ * **Three cards where the admin has three, and one of them means less.** Rows
+ * is here because ADR-0055 §3 says the density is an account fact whether or
+ * not a grid is mounted, and this app mounts none — so it is the one preference
+ * whose effect a customer cannot see today. Its description says so rather than
+ * implying a table that does not exist; the alternative was to omit it and lose
+ * the choice a customer makes before the first domain entity arrives.
+ *
+ * The controls themselves are the three features', unchanged below their
+ * component layer (ADR-0053 §5): this page composes, and knows nothing about
+ * how a preference is written.
+ */
+export const AccountPreferencesSection = () => {
+  const { t } = useT("settings");
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("appearance.title")}</CardTitle>
+          <CardDescription>{t("appearance.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeCards />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("language.title")}</CardTitle>
+          <CardDescription>{t("language.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LocaleRows />
+        </CardContent>
+      </Card>
+
+      {/*
+       * Last, where the admin puts it second, and the order is the one thing
+       * about this section that is a judgement rather than a record: the two
+       * above change what a customer sees the moment they are clicked, and this
+       * one changes something they have no screen for yet.
+       */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("density.title")}</CardTitle>
+          <CardDescription>{t("density.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GridDensityCards />
+        </CardContent>
+      </Card>
     </>
   );
 };

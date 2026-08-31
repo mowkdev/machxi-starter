@@ -4,6 +4,7 @@ import type common from "./locales/en/common.json";
 import type errors from "./locales/en/errors.json";
 import type home from "./locales/en/home.json";
 import type profile from "./locales/en/profile.json";
+import type settings from "./locales/en/settings.json";
 
 /**
  * Typed keys (ADR-0046 §2): a missing key or a missing namespace is a type
@@ -34,6 +35,7 @@ declare module "i18next" {
       home: typeof home;
       account: typeof account;
       profile: typeof profile;
+      settings: typeof settings;
     };
   }
 }

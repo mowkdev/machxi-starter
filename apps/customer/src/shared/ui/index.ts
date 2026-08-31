@@ -116,3 +116,14 @@ export {
 export { AppLoader } from "./app-loader";
 export { AppError, AppNotFound } from "./app-error";
 export { QueryError } from "./query-error";
+/*
+ * The Preferences section's one control shape (`D12.7`, ADR-0054 §3/§7). Not a
+ * re-export — `@repo/ui` ships no radio primitive and this is a hand-written
+ * group over native inputs — so it sits beside the door rather than in it, and
+ * its three consumers are `features/{theme,density,locale}`.
+ */
+export {
+  SettingsOptions,
+  type SettingsOption,
+  type SettingsOptionsProps,
+} from "./settings-options";

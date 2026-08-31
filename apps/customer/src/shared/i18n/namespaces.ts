@@ -7,7 +7,7 @@
  * finding rather than a failed build — ADR-0049's import lint cannot see a
  * string prefix, and ADR-0046 says so rather than pretending it can.
  *
- * Seven since `D12.6`, and the list is meant to be read as the app's own rather
+ * Eight since `D12.7`, and the list is meant to be read as the app's own rather
  * than as a subset of the admin's: `common` is chrome, `auth` is the sign-in
  * screen, `errors` is keyed by `ErrorCode` (ADR-0046 §2, and completeness is
  * checked by the compiler in `__checks__/errors.ts`), and `home` is the signed-in
@@ -19,8 +19,16 @@
  * built here; both are catalogues in `locales/`. `form` is `@repo/form`'s
  * (ADR-0046 §13) — the field-rule sentences and the frame's two actions — so the
  * name is in this list because `init` must load it, while the words live in the
- * package and are composed in by `create-app-i18n`. `settings` arrives with
- * `D12.7`'s preferences section.
+ * package and are composed in by `create-app-i18n`.
+ *
+ * **`D12.7` added `settings`, and it is the one name here that is not a
+ * slice's.** The appearance control, the density mode and the language switch
+ * are three features (`features/{theme,density,locale}`) and three views of a
+ * single account settings row, so their copy is catalogued together rather than
+ * split into three namespaces of one card each (ADR-0046 §3) — which is also
+ * why they share a section rather than a page each. The rule the exception
+ * proves is still the rule: a `settings:` key rendered from anywhere but those
+ * three and the Preferences section is a review finding.
  *
  * There is deliberately **no `grid`** — ADR-0055 §3 keeps `@repo/grid` out of
  * this app until a domain entity arrives, and a namespace declared for a package
@@ -37,6 +45,7 @@ export const NAMESPACES = [
   "home",
   "account",
   "profile",
+  "settings",
   "form",
 ] as const;
 

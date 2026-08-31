@@ -15,6 +15,7 @@ import { Route as AuthLoginRouteImport } from './routes/_auth.login'
 import { Route as DashboardIndexRouteImport } from './routes/_dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/_dashboard.account'
 import { Route as DashboardAccountIndexRouteImport } from './routes/_dashboard.account.index'
+import { Route as DashboardAccountPreferencesRouteImport } from './routes/_dashboard.account.preferences'
 import { Route as DashboardAccountProfileRouteImport } from './routes/_dashboard.account.profile'
 import { Route as DashboardAccountSecurityRouteImport } from './routes/_dashboard.account.security'
 
@@ -46,6 +47,12 @@ const DashboardAccountIndexRoute = DashboardAccountIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardAccountRoute,
 } as any)
+const DashboardAccountPreferencesRoute =
+  DashboardAccountPreferencesRouteImport.update({
+    id: '/preferences',
+    path: '/preferences',
+    getParentRoute: () => DashboardAccountRoute,
+  } as any)
 const DashboardAccountProfileRoute = DashboardAccountProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -62,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof DashboardIndexRoute
   '/login': typeof AuthLoginRoute
   '/account': typeof DashboardAccountRouteWithChildren
+  '/account/preferences': typeof DashboardAccountPreferencesRoute
   '/account/profile': typeof DashboardAccountProfileRoute
   '/account/security': typeof DashboardAccountSecurityRoute
   '/account/': typeof DashboardAccountIndexRoute
@@ -69,6 +77,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof DashboardIndexRoute
   '/login': typeof AuthLoginRoute
+  '/account/preferences': typeof DashboardAccountPreferencesRoute
   '/account/profile': typeof DashboardAccountProfileRoute
   '/account/security': typeof DashboardAccountSecurityRoute
   '/account': typeof DashboardAccountIndexRoute
@@ -80,6 +89,7 @@ export interface FileRoutesById {
   '/_auth/login': typeof AuthLoginRoute
   '/_dashboard/account': typeof DashboardAccountRouteWithChildren
   '/_dashboard/': typeof DashboardIndexRoute
+  '/_dashboard/account/preferences': typeof DashboardAccountPreferencesRoute
   '/_dashboard/account/profile': typeof DashboardAccountProfileRoute
   '/_dashboard/account/security': typeof DashboardAccountSecurityRoute
   '/_dashboard/account/': typeof DashboardAccountIndexRoute
@@ -90,11 +100,18 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/account'
+    | '/account/preferences'
     | '/account/profile'
     | '/account/security'
     | '/account/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/account/profile' | '/account/security' | '/account'
+  to:
+    | '/'
+    | '/login'
+    | '/account/preferences'
+    | '/account/profile'
+    | '/account/security'
+    | '/account'
   id:
     | '__root__'
     | '/_auth'
@@ -102,6 +119,7 @@ export interface FileRouteTypes {
     | '/_auth/login'
     | '/_dashboard/account'
     | '/_dashboard/'
+    | '/_dashboard/account/preferences'
     | '/_dashboard/account/profile'
     | '/_dashboard/account/security'
     | '/_dashboard/account/'
@@ -156,6 +174,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAccountIndexRouteImport
       parentRoute: typeof DashboardAccountRoute
     }
+    '/_dashboard/account/preferences': {
+      id: '/_dashboard/account/preferences'
+      path: '/preferences'
+      fullPath: '/account/preferences'
+      preLoaderRoute: typeof DashboardAccountPreferencesRouteImport
+      parentRoute: typeof DashboardAccountRoute
+    }
     '/_dashboard/account/profile': {
       id: '/_dashboard/account/profile'
       path: '/profile'
@@ -184,12 +209,14 @@ const AuthRouteChildren: AuthRouteChildren = {
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 interface DashboardAccountRouteChildren {
+  DashboardAccountPreferencesRoute: typeof DashboardAccountPreferencesRoute
   DashboardAccountProfileRoute: typeof DashboardAccountProfileRoute
   DashboardAccountSecurityRoute: typeof DashboardAccountSecurityRoute
   DashboardAccountIndexRoute: typeof DashboardAccountIndexRoute
 }
 
 const DashboardAccountRouteChildren: DashboardAccountRouteChildren = {
+  DashboardAccountPreferencesRoute: DashboardAccountPreferencesRoute,
   DashboardAccountProfileRoute: DashboardAccountProfileRoute,
   DashboardAccountSecurityRoute: DashboardAccountSecurityRoute,
   DashboardAccountIndexRoute: DashboardAccountIndexRoute,

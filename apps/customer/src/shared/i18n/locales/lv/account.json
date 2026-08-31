@@ -5,6 +5,7 @@
   },
   "sections": {
     "profile": "Profils",
-    "security": "Drošība"
+    "security": "Drošība",
+    "preferences": "Iestatījumi"
   }
 }

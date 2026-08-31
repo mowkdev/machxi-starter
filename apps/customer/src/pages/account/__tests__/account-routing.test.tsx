@@ -62,6 +62,8 @@ describe("the account area's routes", () => {
     const sections = [
       { path: "/account/profile", title: "Profile" },
       { path: "/account/security", title: "Security" },
+      // `D12.7`'s, and the one that closes the family ADR-0053 §1 names.
+      { path: "/account/preferences", title: "Preferences" },
     ] as const;
 
     for (const { path, title } of sections) {
