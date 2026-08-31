@@ -460,7 +460,6 @@ describe("the change-password dialog", () => {
   });
 });
 
-
 /**
  * `DELETE /user/profile` — a customer closing their own account (`D12.8`;
  * ADR-0028's user semantics, ADR-0055 §4).
