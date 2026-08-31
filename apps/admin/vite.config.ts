@@ -53,10 +53,38 @@ export default defineConfig({
    *
    * Both trees, not just `routes`: a route file's whole job is to import its
    * page, so warming the routes without the pages would warm the cheap half.
+   *
+   * **The exclusion is not tidiness — without it the dev server serves nothing
+   * at all.** `./src/pages/**\/*.tsx` also matches
+   * `src/pages/*\/__tests__/*.test.tsx`, so warmup transformed the page tests
+   * too; those reach `@/test/msw/server`, which imports `msw/node`, which
+   * imports `@mswjs/interceptors/ClientRequest` — an export whose `browser`
+   * condition is `null` **on purpose**. Vite discovers the bare import while
+   * warming, re-runs `optimizeDeps` to include it, and esbuild refuses it: "No
+   * known conditions for ./ClientRequest". The optimize run then fails as a
+   * whole, so *every* optimized dependency answers `504 Outdated Optimize Dep`
+   * and the app renders a blank page — a total failure caused by a module the
+   * browser was never meant to load.
+   *
+   * It is invisible to the gate: `pnpm build` has no warmup, and `pnpm test`
+   * resolves `msw/node` under Node conditions where it is perfectly valid.
+   * Only `pnpm dev` breaks. Met first in `apps/customer`, which had inherited
+   * these globs and failed identically; fixed there at `D12.10`.
    */
   server: {
     warmup: {
-      clientFiles: ["./src/app/routes/**/*.tsx", "./src/pages/**/*.tsx"],
+      clientFiles: [
+        "./src/app/routes/**/*.tsx",
+        "./src/pages/**/*.tsx",
+        /*
+         * Negation, rather than narrowing the glob to `*\/index.tsx`: warmup is
+         * an optimisation over whatever the pages layer contains, and a pattern
+         * that only matched today's file names would quietly stop warming a
+         * page that grew a second module. `tinyglobby` — which Vite hands these
+         * to — honours `!` in the pattern list.
+         */
+        "!./src/**/__tests__/**",
+      ],
     },
   },
 });
