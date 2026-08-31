@@ -26,6 +26,9 @@ apps/admin/.tanstack
 apps/customer/.tanstack
 
 # Playwright (D10.4): a live refresh cookie, its reports and its traces
+# (`apps/customer` joined at D12.10, with its own config and its own run)
 apps/admin/e2e/.auth/
 apps/admin/test-results/
 apps/admin/playwright-report/
+apps/customer/test-results/
+apps/customer/playwright-report/

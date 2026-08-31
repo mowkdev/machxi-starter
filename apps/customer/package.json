@@ -12,6 +12,7 @@
     "lint": "eslint . --max-warnings 0",
     "size": "node scripts/size.mjs",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "test:watch": "vitest"
   },
@@ -37,6 +38,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@repo/vitest-config": "workspace:*",
