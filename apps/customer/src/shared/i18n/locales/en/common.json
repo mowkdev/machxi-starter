@@ -1,11 +1,31 @@
 {
+  "account": {
+    "area": "Account",
+    "menu": "Account",
+    "signOut": "Sign out",
+    "unnamed": "Account"
+  },
   "brand": {
-    "authTagline": "machxi account"
+    "authTagline": "machxi account",
+    "mark": "m",
+    "name": "machxi",
+    "product": "Account",
+    "version": "v{{version}}"
   },
   "boot": {
     "unreachable": "We cannot reach the service. Check your connection, or try again in a moment."
   },
   "loading": {
     "starting": "Starting…"
+  },
+  "nav": {
+    "home": "Home"
+  },
+  "ui": {
+    "close": "Close",
+    "navigating": "Navigating",
+    "sidebarDescription": "Displays the mobile sidebar.",
+    "sidebarTitle": "Sidebar",
+    "toggleSidebar": "Toggle Sidebar"
   }
 }

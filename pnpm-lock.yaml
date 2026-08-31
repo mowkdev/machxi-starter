@@ -277,6 +277,9 @@ importers:
       i18next:
         specifier: ^26.4.0
         version: 26.4.0(typescript@5.9.3)
+      lucide-react:
+        specifier: ^1.33.0
+        version: 1.33.0(react@19.2.8)
       react:
         specifier: ^19.2.0
         version: 19.2.8

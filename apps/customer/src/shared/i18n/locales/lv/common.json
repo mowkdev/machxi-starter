@@ -1,11 +1,31 @@
 {
+  "account": {
+    "area": "Konts",
+    "menu": "Konts",
+    "signOut": "Atteikties",
+    "unnamed": "Konts"
+  },
   "brand": {
-    "authTagline": "machxi konts"
+    "authTagline": "machxi konts",
+    "mark": "m",
+    "name": "machxi",
+    "product": "Konts",
+    "version": "v{{version}}"
   },
   "boot": {
     "unreachable": "Neizdodas sasniegt pakalpojumu. Pārbaudiet savienojumu vai mēģiniet pēc brīža."
   },
   "loading": {
     "starting": "Notiek startēšana…"
+  },
+  "nav": {
+    "home": "Sākums"
+  },
+  "ui": {
+    "close": "Aizvērt",
+    "navigating": "Notiek pāreja",
+    "sidebarDescription": "Rāda mobilo sānjoslu.",
+    "sidebarTitle": "Sānjosla",
+    "toggleSidebar": "Pārslēgt sānjoslu"
   }
 }

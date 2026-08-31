@@ -4,6 +4,7 @@ import { AppLoader } from "@/shared/ui";
 import { I18nProvider } from "./providers/i18n";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
+import { AppUiStrings } from "./providers/ui-strings";
 
 /*
  * The design language's faces (ADR-0054 §1), self-hosted beside the stylesheet
@@ -44,6 +45,12 @@ import "./styles.css";
  *   and the unreachable notice) are painted in the right one.
  * - `I18nProvider` inside the gate and above the router, because a locale
  *   reaches every screen and a route is not the thing that owns it.
+ * - `AppUiStrings` innermost of the four (`D12.5`), because it is a *reader* of
+ *   the locale rather than a source of one: it resolves the design system's own
+ *   `sr-only` labels through `t` and hands them down the `UiStrings` context
+ *   (ADR-0046 §12), so it has to sit inside the instance that resolves them.
+ *   The boot gate's two pre-i18next screens render above it and keep the
+ *   package's English defaults, which is what those defaults are for.
  *
  * What is deliberately **not** here yet, each with the step that brings it:
  * `QueryClientProvider` at `D12.6`, when there is something to fetch;
@@ -57,7 +64,9 @@ const App = () => (
   <ThemeProvider>
     <SessionProvider fallback={<AppLoader />}>
       <I18nProvider>
-        <AppRouter />
+        <AppUiStrings>
+          <AppRouter />
+        </AppUiStrings>
       </I18nProvider>
     </SessionProvider>
   </ThemeProvider>

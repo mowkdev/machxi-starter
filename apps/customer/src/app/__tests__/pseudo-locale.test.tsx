@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { createAppRouter } from "@/app/providers/router";
 import { createSessionStore } from "@/shared/api/session-store";
-import { authenticated } from "@/test/principals";
+import { authenticated, userPrincipal } from "@/test/principals";
 import { renderApp } from "@/test/render";
 
 /**
@@ -37,15 +37,37 @@ const isPseudo = (text: string): boolean =>
   text.includes("[") && text.includes("]");
 
 /**
- * Data, once every digit and mark is taken out of it.
+ * What is on the page because it is *data*, and therefore has no business being
+ * accented: what the principal carries, and what a component derived from it.
  *
- * The admin's equivalent subtracts its fixtures first, because its screens
- * render seeded people. Nothing on this app's routes renders data yet, so the
- * subtraction has nothing to subtract — the shape stays because `D12.6`'s
- * profile form gives it something, and a helper that appears then would be a
- * new idea rather than a filled-in one.
+ * **Filled in at `D12.5`, one step earlier than this file guessed.** It was
+ * declared empty at `D12.1` with a note that `D12.6`'s profile form would give
+ * it something; the account control got there first, because it greets the
+ * signed-in customer by name and draws their initials.
+ *
+ * Derived from the fixture rather than written out, so a renamed fixture cannot
+ * quietly turn this suite into one that passes by allowing everything — and so
+ * a *new* piece of copy can never land in the allow-list by accident, because
+ * nothing but the fixture can get into it.
  */
-const isData = (text: string): boolean => !/\p{L}{2,}/u.test(text);
+const PRINCIPAL = userPrincipal();
+
+const DATA: readonly string[] = [
+  PRINCIPAL.id,
+  PRINCIPAL.email,
+  PRINCIPAL.firstName ?? "",
+  PRINCIPAL.lastName ?? "",
+  `${PRINCIPAL.firstName ?? ""} ${PRINCIPAL.lastName ?? ""}`,
+  // The account control's monogram, which is data twice over: derived from
+  // data, and rendered by a component that never sees a catalogue.
+  `${(PRINCIPAL.firstName ?? "").slice(0, 1)}${(PRINCIPAL.lastName ?? "").slice(0, 1)}`.toUpperCase(),
+].filter((value) => value.trim() !== "");
+
+/** Data, once every fixture string and every digit and mark is taken out of it. */
+const isData = (text: string): boolean =>
+  !/\p{L}{2,}/u.test(
+    DATA.reduce<string>((rest, value) => rest.split(value).join(""), text),
+  );
 
 /** What an operator reads without seeing it — §8's list, which is §14's too. */
 const READ_ATTRIBUTES = ["aria-label", "alt", "placeholder", "title"];

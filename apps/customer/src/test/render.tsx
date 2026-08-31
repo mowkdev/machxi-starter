@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 
 import { createAppRouter } from "@/app/providers/router";
+import { AppUiStrings } from "@/app/providers/ui-strings";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
 import { ApiProvider } from "@/shared/api/context";
 import {
@@ -134,7 +135,18 @@ export const renderWithProviders = (
        */
       <ThemeProvider>
         <ApiProvider value={{ client: value.client, store: value.store }}>
-          <I18nextProvider i18n={value.i18n.instance}>{ui}</I18nextProvider>
+          <I18nextProvider i18n={value.i18n.instance}>
+            {/*
+             * The design system's injectable strings, wired the way the app
+             * wires them (`D12.5`, ADR-0046 §12). Mounted here because a
+             * component test should not have to remember the app's own wiring
+             * to render a drawer whose trigger the app has localised — without
+             * it the primitives answer with their English defaults, which is a
+             * different code path from the one that ships, and one the
+             * pseudo-locale walk would then report as untranslated copy.
+             */}
+            <AppUiStrings>{ui}</AppUiStrings>
+          </I18nextProvider>
         </ApiProvider>
       </ThemeProvider>,
     ),
@@ -196,7 +208,9 @@ export const renderApp = ({
       <ThemeProvider>
         <ApiProvider value={{ client: value.client, store: value.store }}>
           <I18nextProvider i18n={value.i18n.instance}>
-            <RouterProvider router={router} />
+            <AppUiStrings>
+              <RouterProvider router={router} />
+            </AppUiStrings>
           </I18nextProvider>
         </ApiProvider>
       </ThemeProvider>,

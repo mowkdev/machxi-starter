@@ -7,19 +7,21 @@
     "The headroom over the baseline is the admin's: about 8% on js and entry, about 11% on css where a percentage of 13 kB is noise. Enough for honest growth, tight enough that a new dependency trips it.",
     "First baselined 2026-08-31 at D12.1 (js 140051 / css 13545 / entry 128337) on the app's first build: the router, the token sheet, the five @fontsource stylesheets and two namespaces in two locales.",
     "RAISED 2026-08-31 at D12.2, and the raise is the mechanism working rather than a concession: `pnpm size` went red on the step that added the session machine, and this diff is where somebody had to look at the number. js 140051 -> 168782 and entry 128337 -> 159851, about +29 kB of the same +31 kB — @repo/api-client brings axios, and the sign-in screen brings the login contract's zod schemas and four @repo/ui primitives. css moved 47 bytes, which is what 'a form built from primitives that already had their utilities' looks like from here.",
-    "entry is nearly the whole js figure because there is one lazy route; the split widens as the later steps add screens. D12.6 (forms, @repo/form, the query client) is the next raise this file expects.",
+    "RAISED 2026-08-31 at D12.5, the second time the mechanism has stopped a step and asked for a number. js 168782 -> 207136 and entry 159851 -> 162274: the shell arrives, and with it lucide-react, the sidebar and dropdown-menu primitives, Radix's menu and its dismissable-layer/focus-scope stack, and @repo/ui's AppShell. Almost all of the +38 kB lands in the _dashboard chunk rather than in the entry — entry moved 2.4 kB, which is what 'the shell is behind the guard' looks like from here, and is the code split doing its job.",
+    "css 13592 -> 13733 on the same step: the sidebar's and the popover's utilities over a token sheet that already carried them. The budget was not raised with it; 15100 still leaves ~10%.",
+    "entry is no longer nearly the whole js figure — D12.2's note said it was, and the shell is what separated them. D12.6 (forms, @repo/form, the query client) is the next raise this file expects.",
     "The woff2/woff files @fontsource emits are assets and are NOT counted here — a browser downloads only the subsets its text needs, so what the css number prices is the @font-face declarations, not the faces."
   ],
   "baseline": {
     "measuredAt": "2026-08-31",
-    "step": "D12.2",
-    "js": 168782,
-    "css": 13592,
-    "entry": 159851
+    "step": "D12.5",
+    "js": 207136,
+    "css": 13733,
+    "entry": 162274
   },
   "budgets": {
-    "js": 182000,
+    "js": 224000,
     "css": 15100,
-    "entry": 173000
+    "entry": 175000
   }
 }

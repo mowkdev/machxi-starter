@@ -21,6 +21,21 @@
 
 export { Button, buttonVariants } from "@repo/ui/components/button";
 export { Card } from "@repo/ui/components/card";
+/*
+ * The account control's popover (`D12.5`, ADR-0053 §2). Six names and no
+ * `DropdownMenuRadioGroup`/`RadioItem`: this menu is identity and exit, and
+ * the radio pair is exactly what a settings menu leaves behind when it is
+ * emptied by hand — so the door does not offer them, and the suite's
+ * `menuitemradio` assertion has a second, structural half.
+ */
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@repo/ui/components/dropdown-menu";
 export {
   Field,
   FieldContent,
@@ -30,7 +45,36 @@ export {
   FieldLabel,
 } from "@repo/ui/components/field";
 export { Input } from "@repo/ui/components/input";
+/*
+ * The drawer (`D12.5`). `SidebarProvider`, `SidebarInset` and `SidebarTrigger`
+ * are deliberately absent: `AppShell` mounts all three itself, and this app's
+ * sidebar node is what the composition is handed — a consumer reaching for the
+ * provider would be building a second shell beside the one it was given.
+ */
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@repo/ui/components/sidebar";
 export { Spinner } from "@repo/ui/components/spinner";
+// Not a component: the design system's operator-read strings, injectable
+// (ADR-0046 §12). It comes through the door for the door's own reason —
+// `app/providers` mounts the provider, and `app` may not reach past `shared`.
+export { UiStringsProvider, type UiStrings } from "@repo/ui/ui-strings";
+
+/*
+ * A composition, not a generated primitive: hand-written on `@repo/ui`'s
+ * `compositions/` path (ADR-0047 §What-code, ADR-0048 §1), through the same
+ * door as the rest. Its consumer is `widgets/dashboard-layout` (`D12.5`).
+ */
+export { AppShell, type AppShellProps } from "@repo/ui/compositions/app-shell";
 
 /** The components in this slice with behaviour of their own. */
 export { AppLoader } from "./app-loader";

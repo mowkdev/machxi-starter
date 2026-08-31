@@ -97,13 +97,34 @@ Three decisions worth naming, none of which the records had already made:
 
 Eleven integration cases and eight unit ones. `pnpm test:int --filter api` green (486, up from 475); `pnpm test:postman` green (105 requests, 323 assertions) — the collection's last account now closes itself through the customer's own door instead of being closed by staff, which is the run's only behavioural change and leaves it, as before, with nothing behind.
 
-### 5. The shell and home
+### ~~5. The shell and home~~ — **done 2026-08-31**
 
 **ADRs:** [0048](../adr/0048-app-shell-and-record-surfaces.md) as carried, [0054](../adr/0054-design-language-instrument.md) §5, [0053](../adr/0053-account-area.md) §2
 
 `AppShell` adopted: the app's sidebar node (brand, a minimal nav, the version footer with the app's own build-time constant), `headerEnd` holding the Instrument account control opening the slim popover — identity, **Account**, **Sign out** — and a `_dashboard.index` home that states what v1 is instead of pretending to a dashboard.
 
 **Done when:** the adapter suite asserts the shell mounts with the app's nodes; a popover suite asserts exactly the three entries and no `menuitemradio`; the gate green.
+
+**What was built.** `widgets/app-sidebar` (the drawer and `AccountMenu`), `widgets/dashboard-layout` (the adapter over `AppShell`), the `_dashboard` route file composing the two, `app/providers/ui-strings.tsx`, and a home page that is one sentence in a card. `shared/ui` grew eighteen symbols — six `DropdownMenu*`, ten `Sidebar*`, `UiStringsProvider` and `AppShell` — and `package.json` grew `lucide-react`.
+
+**The deliverable's bet is paid on this step, and it is worth stating plainly: the shell went in with no `packages/*` diff at all.** `AppShell` took the app's sidebar node, its account control and its title and asked for nothing it did not already offer; ADR-0048 §2's slot honesty held in the direction that had never been tested — four slots handed nothing render nothing, so a second app pays for none of the first app's chrome. That is what D8–D11 was for.
+
+Four decisions worth naming, none of which the records had already made:
+
+- **The adapter is the admin's minus five props, and the subtraction is the decision.** `breadcrumbs`, `banner`, `description`, `pageActions` and `fullHeight` are all offered by `AppShell` and none has a consumer in this app today — no route declares a description, nothing is a height budget (ADR-0055 §3 keeps the grid out), and the pseudo-locale notice is `D12.7`'s. A prop declared here would be `undefined` on every screen, which is the slot-with-no-consumer defect ADR-0048 §2 spends a paragraph on, one layer down. The suite asserts the absence rather than describing it: `banner-region`, `page-actions` and `data-full-height` are each expected to be missing.
+- **"Sign out" is `common:account.signOut`, not `auth:signOut`.** The admin's label lives in `auth` because the admin's control _is_ a `features/auth` component; here `D12.2` deliberately left the behaviour a hook with no host, so the surface is a widget — and this app's namespace rule is that the namespace name is the slice name. A key under `auth:` rendered from `widgets/` would be exactly the review finding that rule exists to make, so the popover's three labels sit together under `common:account`.
+- **The `/account` entry is a plain anchor, and the cost is written down rather than glossed.** `Link`'s `to` is checked against the generated route tree and `/account` is `D12.6`'s, so the typed form does not compile yet; the alternatives were an `as never` cast that silences the check the typed router exists for, or a menu ADR-0053 §2 says has three things shipping with two. Until `D12.6` clicking it is a hard navigation — a full boot through ADR-0033's CSRF-and-refresh sequence, landing on the not-found screen. The suite asserts the `href`, so the swap is one line under a test already standing over it.
+- **The sidebar has no `SidebarGroupLabel`, and the nav has one item.** The admin's "Manage" names a group of three; a caption over a single row is a word that adds nothing to the word beneath it. `/account` is not in the drawer at all — ADR-0053 §3 says the drawer is domain navigation and the account control is the way in — so the second destination, and with it the label, arrives with the first domain entity ADR-0055 §5 leaves to the operator.
+
+**Two things the step had to build that the plan did not name, both forced by the shell.** `AppUiStrings` is the first: this app had never mounted a primitive that says anything out loud, and the shell mounts three that do (`SidebarTrigger`, `SidebarRail`, the mobile `Sheet`), so without ADR-0046 §12's seam a screen reader would have been read `Toggle Sidebar` in English under a Latvian interface. It supplies five keys and not the admin's fifteen, because a key handed over without a rendering site is a catalogue entry `i18n:check` reports as an orphan. And `pseudo-locale.test.tsx`'s data subtraction, declared empty at `D12.1` with a note that `D12.6`'s profile form would fill it: the account control got there first, because it greets the customer by name and draws their initials. It is derived from the `userPrincipal` fixture rather than written out, so a new piece of copy cannot reach the allow-list by accident.
+
+**The budget went red, which is the mechanism working.** `pnpm size` stopped the step at js 202.3 kB against a 177.7 kB budget — lucide-react, the sidebar and dropdown-menu primitives, Radix's dismissable-layer and focus-scope stack, and `AppShell`. Raised deliberately in `size-budget.json`: js 168782 → 207136, entry 159851 → 162274. **Almost all of the +38 kB landed in the `_dashboard` chunk and only 2.4 kB in the entry**, which is the code split doing its job — the shell is behind the guard, so an anonymous visitor still pays for the sign-in screen alone. css moved 141 bytes and its budget was left where it was.
+
+**The review found one, and it was answered rather than fixed.** The `/account` anchor's hard navigation was named but not priced in its own comment — "the alternatives are worse" said nothing about what a click actually costs between now and `D12.6`. The comment now states it: a full document reload, the in-memory token round-tripping through the boot sequence, and a not-found screen at the end of it. Nothing else in the diff needed changing.
+
+Eight new cases across two files. `pnpm lint` and `pnpm check-types` clean; `pnpm test` green at `15 successful, 0 cached` with the customer suite at 38 (up from 30); `pnpm size` green on the raised numbers; `pnpm check` green at `50 successful`, `i18n:check` among them.
+
+**Pending operator acceptance**, named rather than folded into "done": everything jsdom cannot lay out. The popover's `side="bottom" align="end"` geometry and its 232px/radius-8 shape; the sidebar's 240px column and its collapse to the rail, where the version footer is meant to disappear rather than truncate; the page-header band's 20/26 title under a 56px header; and the navigation indicator, which appears only while a route resolves.
 
 ### 6. `/account` — profile and security
 
@@ -155,7 +176,7 @@ The Playwright tier gains a customer project: sign-in, the account sections from
 
 The deliverable's standing rule, run as a running list: **anything `apps/customer` cannot build from the packages without changing them is a finding against D8–D11**, recorded here with its reason. §Definition-of-done item 3 makes the empty list the claim — a `packages/*` diff that is neither named here nor absent is a defect of the step that made it.
 
-**Six so far, and none has been acted on — which is the point of writing them down.**
+**Seven so far, and none has been acted on — which is the point of writing them down.**
 
 **One `packages/*` diff exists and is not one of them** (`D12.4`): `packages/contracts` gained `deleteProfileBody`. §Definition-of-done item 3 says every diff under `packages/*` is named here, so it is named — but it is not a finding, because `@repo/contracts` is not one of the packages this deliverable is a second consumer _of_. ADR-0011 and ADR-0023 put every request schema there by construction, so an API step that adds an endpoint adds a contract; the bet D8–D11 made is about the six platform packages and `packages/ui`, and those are still untouched.
 
@@ -178,7 +199,11 @@ Two things the steps found were **not** findings but errors in the records thems
 
    The first finding here that is neither a duplication nor a bug in one app: it is a property of the _deployment_ that only a second SPA could expose, which is precisely what this deliverable was split out to find. It is also **not amendable** — [ADR-0029](../adr/0029-browser-token-transport.md) is frozen and decided this cookie's shape — so it needs a superseding record rather than a patch, and that record has to weigh a per-population cookie name against `__Host-`'s `Path=/` requirement. Unreachable in dev today only because nobody runs both apps signed in at once; the browser tier (`D12.10`) is where it would first bite.
 
-Findings 1, 2 and 4 are duplications the deliverable expected; finding 5 is a larger one it did not; findings 3 and 6 are defects, and 6 needs an ADR rather than a fix. **None is a `packages/*` diff**, so §Definition-of-done item 3's list of _diffs_ is still empty. All are recorded because the alternative is that the second consumer arrives, notices, and says nothing — which is the failure this deliverable was split out to prevent.
+7. **The account control and the sidebar footer are Instrument geometry with a second consumer and no composition** (`D12.5`). `AppShell` is a package and took this app's nodes unchanged — that is the step's headline and it holds. What is _inside_ those nodes did not travel: the account trigger's `h-auto px-2 py-1.5 has-[>svg]:px-2` and the three-line `tailwind-merge` argument beside it, the 232px/`rounded-xl` popover ADR-0054 §7 measures, the monogram block, the active nav item's `inset 2px` shadow over `--primary-tint`, and the 48px mono version footer are all now written twice, near-identically, in two `widgets/app-sidebar` files. It is finding 2's shape a second time and for the same reason: ADR-0048 §2 gave the shell a `headerEnd` _slot_ and deliberately did not say what goes in it, because what goes in it is app content — a principal, a route to the account area, a session to end.
+
+   The finding is therefore not "extract it now" but the precondition: the parts that are pure geometry (the trigger's size overrides, the popover's width and radius, the footer band) are §7 and §5 assignments that a third consumer, or a §7 change that must land twice, would have to apply in two places and could apply in one. The parts that are content (which items hang there, what they say, where they go) must stay app code. Splitting those two apart is a `@repo/ui` API decision, and this deliverable's rule is that such a diff is named before it is made.
+
+Findings 1, 2, 4 and 7 are duplications the deliverable expected; finding 5 is a larger one it did not; findings 3 and 6 are defects, and 6 needs an ADR rather than a fix. **None is a `packages/*` diff**, so §Definition-of-done item 3's list of _diffs_ is still empty. All are recorded because the alternative is that the second consumer arrives, notices, and says nothing — which is the failure this deliverable was split out to prevent.
 
 ## Definition of done
 
