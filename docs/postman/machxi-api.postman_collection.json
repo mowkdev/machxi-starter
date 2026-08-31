@@ -4011,7 +4011,7 @@
     },
     {
       "name": "Teardown",
-      "description": "Leaves the database as the run found it.\n\nUntil D2.4 this folder *disabled* the three accounts each run creates, because v1 had no delete endpoint — a live account with a password committed in this repository is a way in, and a disabled one is a row (ADR-0021, D1.10 amendment). It can now delete them, which is neither, and ADR-0028 §Consequences is where that change is recorded: the collection changes, the frozen ADR does not.\n\nThe deletes double as the documentation of both endpoints, including the asymmetry between them — a deleted staff row is gone, a deleted user row is still readable and no longer writable.",
+      "description": "Leaves the database as the run found it.\n\nUntil D2.4 this folder *disabled* the three accounts each run creates, because v1 had no delete endpoint — a live account with a password committed in this repository is a way in, and a disabled one is a row (ADR-0021, D1.10 amendment). It can now delete them, which is neither, and ADR-0028 §Consequences is where that change is recorded: the collection changes, the frozen ADR does not.\n\nThe deletes double as the documentation of all three endpoints, including the asymmetry between them — a deleted staff row is gone, a deleted user row is still readable and no longer writable, and since D12.4 a customer can close their own account without an operator, which ends every session including the one that asked.",
       "item": [
         {
           "name": "Log the created user out everywhere",
@@ -4427,7 +4427,11 @@
                   "",
                   "  pm.expect(principal.id).to.not.eql(pm.environment.get(\"lastRegisteredId\"));",
                   "  pm.environment.set(\"lastRegisteredId\", principal.id);",
-                  "});"
+                  "});",
+                  "",
+                  "// Handed to the self-service deletion below: the account that closes",
+                  "// itself has to be signed in as itself (D12.4).",
+                  "pm.environment.set(\"registeredAccessToken\", pm.response.json().data.accessToken);"
                 ]
               }
             }
@@ -4458,14 +4462,59 @@
           }
         },
         {
-          "name": "Delete it again, so the run leaves nothing behind",
+          "name": "Close my own account with the wrong password",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"204\", function () {",
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registeredAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "A session is not an identity proof for an irreversible act, so this endpoint re-authenticates the actor exactly as `change-password` does — with more force, because it is the one operation more destructive than a password change (ADR-0055 §4, on ADR-0027's principle).\n\n`403` and not `401`: the caller *is* authenticated and their session is fine and stays fine, so a `401` would send every client interceptor that reads it as 'the session died' to the login screen over a typo.\n\nThe refusal comes before any write. The account is still here for the request below to close."
+          }
+        },
+        {
+          "name": "Close my own account, so the run leaves nothing behind",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 with no body\", function () {",
                   "  pm.response.to.have.status(204);",
                   "});"
                 ]
@@ -4477,15 +4526,62 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{staffAccessToken}}"
+                "value": "Bearer {{registeredAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "`DELETE /api/v1/user/profile` (D12.4) — self-service deletion on ADR-0028's user semantics: the row survives soft-deleted because future order history references it, `status` is written to `disabled` beside the timestamp so it stays truthful on its own, and the partial unique index releases the address.\n\nA `DELETE` with a body, which is unusual and deliberate: the current password is the re-authentication above. There is no `:id` anywhere in it, so the only account this can ever close is the caller's own (ADR-0019 §3).\n\nUntil D12.4 this request was a staff `DELETE /admin/users/:id` on the same account. The account is closed either way and the run still leaves nothing behind; what changed is that the last thing the collection does is now the customer's own door rather than the operator's, and the admin door is still walked twice above."
+          }
+        },
+        {
+          "name": "The closed account is signed out everywhere",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"registeredAccessToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registeredAccessToken}}"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastRegisteredId}}",
+              "raw": "{{baseUrl}}/api/v1/user/profile",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "admin", "users", "{{lastRegisteredId}}"]
+              "path": ["api", "v1", "user", "profile"]
             },
-            "description": "The re-registered account holds a password committed in this repository, like every account the run creates, so it goes the same way as the others."
+            "description": "Where `change-password` spares the calling session, deletion spares none: there is no account left to be signed in to (ADR-0055 §4). The access token still verifies — it is signed and unexpired — but its session row is revoked, and `authenticate` checks the session on every request.\n\nThe same call is also how a repeat deletion is refused: the `404` the service would answer is unreachable from a real client, because the session that could ask is already gone."
           }
         },
         {

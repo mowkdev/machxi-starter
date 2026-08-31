@@ -1,6 +1,7 @@
 import type {
   ChangePasswordBody,
   CreateUserBody,
+  DeleteProfileBody,
   ListUsersQuery,
   Page,
   SetPasswordBody,
@@ -501,6 +502,92 @@ export const createUsersService = ({
       });
 
       ctx.logger.info({ userId: principal.id, revoked }, "password changed");
+    },
+
+    /**
+     * `DELETE /api/v1/user/profile` — the account closing itself (ADR-0055
+     * §4).
+     *
+     * ADR-0028's user semantics carried exactly: one transaction writing
+     * `deleted_at` and `status = 'disabled'`, the row surviving because future
+     * order history references it, and the address released by the partial
+     * unique index so the same person can come back. The admin `remove` above
+     * is the same three writes with a different actor.
+     *
+     * Two rules the self-service actor adds, both from ADR-0055 §4:
+     *
+     * - **The current password is required.** A session is not an identity
+     *   proof for an irreversible act. `change-password` requires it because a
+     *   stolen access token that can set a password is worth the account; this
+     *   endpoint is the one operation more destructive than that, so the same
+     *   principle applies with more force. It is verified *before* anything is
+     *   written, and refused with the same `403` a wrong password gets
+     *   anywhere else — including for an account whose `password_hash` is
+     *   `null`, which means "no password login" (ADR-0017) and never "any
+     *   password matches".
+     * - **Every session is revoked, the caller's included**, which is where
+     *   this parts company with `changePassword`: there the caller keeps the
+     *   session they just proved they own, because the point is to end the
+     *   ones they do not control. Here there is no account left to be signed
+     *   in to, so no session is spared and `exceptSessionId` is deliberately
+     *   absent.
+     *
+     * A second delete answers `404`, not `409 USER_DELETED`: the admin segment
+     * says "the account exists and you may see it, but its state conflicts",
+     * and on this segment the self view has already stopped being able to see
+     * it — `readSelf` filters `deleted_at`, so every other profile endpoint
+     * answers `404` for a deleted account and this one agrees with them.
+     */
+    deleteProfile: async (
+      ctx: RequestContext,
+      body: DeleteProfileBody,
+    ): Promise<void> => {
+      const principal = self(ctx);
+      const at = now();
+      const record = await readSelf(principal.id);
+
+      const verified =
+        record.passwordHash !== null &&
+        (await hasher.verify(record.passwordHash, body.currentPassword));
+
+      if (!verified) {
+        ctx.logger.warn(
+          { userId: principal.id },
+          "account deletion refused, current password did not verify",
+        );
+
+        throw currentPasswordInvalid();
+      }
+
+      const revoked = await transaction(async (tx) => {
+        // The boolean is what sees a concurrent delete: `readSelf` ran outside
+        // this transaction, so the same account deleting itself from two
+        // devices can pass it twice, and the loser would otherwise update
+        // nothing and answer `204` for a request that changed nothing.
+        if (!(await repository.softDelete(record.id, at, tx))) {
+          throw userNotFound();
+        }
+
+        return sessions.revokeSessionsFor(ctx, {
+          principalId: record.id,
+          reason: REVOKE_REASONS.accountDeleted,
+          tx,
+        });
+      });
+
+      // The same post-commit sweep the admin delete does, for the same reason:
+      // `login` verifies argon2 outside any transaction, and `sessions` has no
+      // foreign key to hold a straggler back (ADR-0028 §Consequences, amended).
+      // A no-op on every ordinary deletion.
+      const straggler = await sessions.revokeSessionsFor(ctx, {
+        principalId: record.id,
+        reason: REVOKE_REASONS.accountDeleted,
+      });
+
+      ctx.logger.info(
+        { userId: record.id, revoked: revoked + straggler },
+        "user account deleted by its owner",
+      );
     },
   } as const;
 };

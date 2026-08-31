@@ -8,12 +8,14 @@ export {
 } from "../auth/schemas.js";
 export {
   createUserBody,
+  deleteProfileBody,
   listUsersQuery,
   updateProfileBody,
   updateUserBody,
   userIdParams,
   userRolesSchema,
   type CreateUserBody,
+  type DeleteProfileBody,
   type ListUsersQuery,
   type UpdateProfileBody,
   type UpdateUserBody,

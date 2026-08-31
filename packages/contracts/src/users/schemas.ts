@@ -8,6 +8,7 @@ import {
   idSchema,
   nameSchema,
   passwordSchema,
+  presentedPasswordSchema,
 } from "../primitives.js";
 
 /**
@@ -81,6 +82,28 @@ export const updateProfileBody = z
   })
   .refine((body) => Object.keys(body).length > 0, customRule("updateNotEmpty"));
 export type UpdateProfileBody = z.infer<typeof updateProfileBody>;
+
+/**
+ * `DELETE /api/v1/user/profile` — an account deleting itself (ADR-0055 §4).
+ *
+ * It has a body, which a `DELETE` is not obliged to have, because the actor
+ * must re-authenticate: a session is not an identity proof for an irreversible
+ * act, and this is the one operation more destructive than a password change
+ * (ADR-0027's principle, applied by ADR-0055).
+ *
+ * Declared here rather than beside `changePasswordBody` in `auth/`, which is
+ * where shapes *both* populations send live: only `users` self-delete.
+ * ADR-0028 rule 4 refuses staff self-deletion outright, so there is no second
+ * consumer for this shape to be shared with, and no staff mirror will appear.
+ *
+ * `presentedPasswordSchema`, not `passwordSchema`: the value is a credential
+ * being verified, and an account whose password predates a policy change must
+ * still be able to close itself.
+ */
+export const deleteProfileBody = z.strictObject({
+  currentPassword: presentedPasswordSchema,
+});
+export type DeleteProfileBody = z.infer<typeof deleteProfileBody>;
 
 /**
  * `GET /api/v1/admin/users` (ADR-0014). `q` searches email and name.

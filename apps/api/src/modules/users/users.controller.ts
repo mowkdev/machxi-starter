@@ -2,9 +2,11 @@ import type { Request, Response } from "express";
 
 import { respond } from "../../core/http/index.js";
 import type { ValidatedRequest } from "../../core/middleware/index.js";
+import { clearAuthCookies } from "../auth/index.js";
 import type {
   changePasswordSchema,
   createUserSchema,
+  deleteProfileSchema,
   deleteUserSchema,
   getUserSchema,
   listUsersSchema,
@@ -124,6 +126,38 @@ export const createUserProfileController = (service: UsersService) =>
       res: Response,
     ): Promise<void> => {
       await service.changePassword(req.ctx, req.valid.body);
+      respond.noContent(res);
+    },
+
+    /**
+     * `204`: the account is closed and every session of it, this one included,
+     * is gone (ADR-0055 §4).
+     *
+     * The cookies go with it. `clearAuthCookies` is what `logout` and
+     * `logout-all` call, for a reason that applies here with nothing left to
+     * argue: the refresh cookie is scoped to `/api/v1/user/auth`, so it is not
+     * even sent to this request, and a browser that keeps it would spend a
+     * `RATE_LIMIT_REFRESH_MAX` failure on it at every boot until it expires on
+     * its own. Revoking the session server-side and leaving the credential in
+     * the browser would make "signed out everywhere" true of the database and
+     * false of the device the person is holding.
+     *
+     * `"user"` is written rather than injected because this factory has one
+     * mount by construction — it is the segment's controller, and ADR-0028
+     * rule 4 means no staff mirror of this handler will ever exist.
+     *
+     * It also clears the host-wide CSRF cookie, which since this deliverable
+     * may be shared with an admin panel signed in in another tab — the plan's
+     * finding 6. That is the pre-existing shape of every `logout`, not
+     * something this endpoint introduces, and the client recovers by
+     * re-bootstrapping (ADR-0030).
+     */
+    remove: async (
+      req: ValidatedRequest<typeof deleteProfileSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.deleteProfile(req.ctx, req.valid.body);
+      clearAuthCookies(res, "user");
       respond.noContent(res);
     },
   }) as const;

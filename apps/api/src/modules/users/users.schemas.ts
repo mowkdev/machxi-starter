@@ -1,6 +1,7 @@
 import {
   changePasswordBody,
   createUserBody,
+  deleteProfileBody,
   listUsersQuery,
   setPasswordBody,
   updateProfileBody,
@@ -47,3 +48,14 @@ export const setUserPasswordSchema = {
 
 export const updateProfileSchema = { body: updateProfileBody } as const;
 export const changePasswordSchema = { body: changePasswordBody } as const;
+
+/**
+ * `DELETE /api/v1/user/profile` — self-service deletion (ADR-0055 §4).
+ *
+ * The one `DELETE` in this API with a body, and the reason is the same one
+ * ADR-0027 gives for `change-password`: the actor re-authenticates, because a
+ * session is not an identity proof for an irreversible act. The admin
+ * `deleteUserSchema` above takes no body for the opposite reason — there the
+ * actor is staff acting on somebody else, already fenced by the role guard.
+ */
+export const deleteProfileSchema = { body: deleteProfileBody } as const;

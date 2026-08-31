@@ -732,6 +732,137 @@ describe("createUsersService — the user segment", () => {
     });
   });
 
+  /* -- D12.4: self-service deletion (ADR-0055 §4) -------------------------- */
+
+  describe("deleteProfile", () => {
+    const body = { currentPassword: "CurrentPassword!1" } as const;
+
+    it("soft-deletes the caller's own row and disables it", async () => {
+      // ADR-0028's user semantics, unchanged by the actor: the row survives
+      // because future order history references it, and `status` is written
+      // beside the timestamp so it stays truthful on its own.
+      const { service, repo } = build([userRow()]);
+
+      await service.deleteProfile(selfCtx(), body);
+
+      expect(repo.rows.get(USER_ID)?.deleted).toBe(true);
+      expect(repo.rows.get(USER_ID)?.status).toBe("disabled");
+    });
+
+    it("revokes every session, sparing none — unlike a password change", async () => {
+      // The one behavioural difference between this and `changePassword`:
+      // there the caller keeps the session they just proved they own, because
+      // the point is to end the ones they do not control. Here there is no
+      // account left to be signed in to, so `exceptSessionId` is absent from
+      // both sweeps.
+      const { service, sessions } = build([userRow()]);
+
+      await service.deleteProfile(selfCtx(), body);
+
+      expect(sessions.revocations).toEqual([
+        {
+          principalId: USER_ID,
+          reason: REVOKE_REASONS.accountDeleted,
+          exceptSessionId: undefined,
+        },
+        {
+          principalId: USER_ID,
+          reason: REVOKE_REASONS.accountDeleted,
+          exceptSessionId: undefined,
+        },
+      ]);
+    });
+
+    it("answers AUTH_CURRENT_PASSWORD_INVALID when the password is wrong", async () => {
+      const { service } = build([userRow()]);
+
+      await expectAppError(
+        () =>
+          service.deleteProfile(selfCtx(), {
+            currentPassword: "NotThePassword!9",
+          }),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+    });
+
+    it("deletes nothing and revokes nothing when verification fails", async () => {
+      // The rule this covers is that re-authentication runs *before* the
+      // write, not beside it: a hijacked tab must not be able to destroy the
+      // account, and half a deletion is worse than none.
+      const { service, repo, sessions } = build([userRow()]);
+
+      await expect(
+        service.deleteProfile(selfCtx(), {
+          currentPassword: "NotThePassword!9",
+        }),
+      ).rejects.toThrow();
+
+      expect(repo.rows.get(USER_ID)?.deleted).toBe(false);
+      expect(sessions.revocations).toEqual([]);
+    });
+
+    it("refuses an account that has no password at all", async () => {
+      // `null` means "no password login" (ADR-0017), never "any password
+      // matches" — the same rule `changePassword` follows, and it matters more
+      // here because the operation is irreversible.
+      const { service, hasher, repo } = build([
+        userRow({ passwordHash: null }),
+      ]);
+
+      await expectAppError(
+        () => service.deleteProfile(selfCtx(), body),
+        "AUTH_CURRENT_PASSWORD_INVALID",
+        403,
+      );
+      expect(hasher.calls.verify).toBe(0);
+      expect(repo.rows.get(USER_ID)?.deleted).toBe(false);
+    });
+
+    it("answers NOT_FOUND for an account that is already deleted", async () => {
+      // `404` and not the admin segment's `409 USER_DELETED`: the self view
+      // filters `deleted_at`, so every other profile endpoint already answers
+      // `404` for this row and this one agrees with them. No hash is bought
+      // for it either — the read comes first.
+      const { service, sessions, hasher } = build([userRow({ deleted: true })]);
+
+      await expectAppError(
+        () => service.deleteProfile(selfCtx(), body),
+        "NOT_FOUND",
+        404,
+      );
+      expect(sessions.revocations).toEqual([]);
+      expect(hasher.calls.verify).toBe(0);
+    });
+
+    it("can only ever reach the caller's own row", async () => {
+      // Structural rather than checked: the function takes no id, so there is
+      // nothing for a caller to tamper with (ADR-0019 §3). The second account
+      // is here to make that visible rather than to be argued about.
+      const { service, repo } = build([
+        userRow(),
+        userRow({ id: OTHER_ID, email: "someone.else@machxi.local" }),
+      ]);
+
+      await service.deleteProfile(selfCtx(), body);
+
+      expect(repo.rows.get(OTHER_ID)?.deleted).toBe(false);
+      expect(repo.rows.get(OTHER_ID)?.status).toBe("active");
+    });
+
+    it("refuses a staff principal", async () => {
+      // ADR-0028 rule 4 refuses staff self-deletion outright, and this segment
+      // is not where it would be built even if it existed.
+      const { service } = build([userRow()]);
+
+      await expectAppError(
+        () => service.deleteProfile(adminCtx(), body),
+        "UNAUTHENTICATED",
+        401,
+      );
+    });
+  });
+
   /* -- D2.4: soft deletion (ADR-0028) -------------------------------------- */
 
   describe("remove", () => {

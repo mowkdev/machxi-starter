@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createUserBody,
+  deleteProfileBody,
   listUsersQuery,
   MIN_PASSWORD_LENGTH,
   updateProfileBody,
@@ -85,6 +86,38 @@ describe("updateProfileBody", () => {
 
   it("rejects an empty patch", () => {
     expect(updateProfileBody.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("deleteProfileBody", () => {
+  it("requires the current password", () => {
+    expect(deleteProfileBody.safeParse({}).success).toBe(false);
+    expect(
+      deleteProfileBody.safeParse({ currentPassword: "whatever-it-was" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("only bounds the presented password, it does not police it", () => {
+    // An account whose password predates a policy change must still be able to
+    // close itself, so `presentedPasswordSchema` and not `passwordSchema`.
+    expect(deleteProfileBody.safeParse({ currentPassword: "x" }).success).toBe(
+      true,
+    );
+    expect(deleteProfileBody.safeParse({ currentPassword: "" }).success).toBe(
+      false,
+    );
+  });
+
+  it("carries nothing else, so no id can ride along", () => {
+    // The account is `ctx.principal`; a field naming a subject would be the
+    // one thing that could turn self-deletion into deleting somebody else.
+    expect(
+      deleteProfileBody.safeParse({
+        currentPassword: "whatever-it-was",
+        userId: "44444444-4444-7444-8444-444444444444",
+      }).success,
+    ).toBe(false);
   });
 });
 

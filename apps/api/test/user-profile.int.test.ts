@@ -14,6 +14,13 @@ import {
 import { createTestApp, type TestApp } from "./support/app.js";
 import { expectNoSecrets, userResourceSchema } from "./support/resources.js";
 import {
+  cookieValue,
+  CSRF_COOKIE,
+  REFRESH_COOKIE,
+  setCookie,
+  TRANSPORT_HEADER,
+} from "./support/transport.js";
+import {
   FIXTURE_PASSWORD,
   FIXTURE_USERS,
   resetAndSeed,
@@ -392,6 +399,256 @@ describe("user profile", () => {
         .expect(401);
 
       expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    });
+  });
+
+  /**
+   * `DELETE /api/v1/user/profile` — the account closing itself (`D12.4`).
+   *
+   * ADR-0028's user semantics with a different actor: the row survives
+   * soft-deleted, `status` goes to `disabled` beside the timestamp, the
+   * address is released by the partial unique index, and every session ends.
+   * What the self-service actor adds is ADR-0055 §4's two rules — the current
+   * password is required, and *no* session is spared, which is the one place
+   * this parts company with `change-password` two blocks above.
+   */
+  describe("DELETE /api/v1/user/profile", () => {
+    const remove = (token: string, body: object) =>
+      request().delete(PROFILE).set("Authorization", bearer(token)).send(body);
+
+    it("soft-deletes: 204, the row survives, and it is disabled", async () => {
+      const email = "closes.itself@machxi.local";
+      const { id, tokens } = await freshUser(email);
+
+      const response = await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      expect(response.body).toEqual({});
+      expect(response.text).toBe("");
+
+      // Read through the admin segment, which is the only view left: the self
+      // view filters `deleted_at`, and the caller's session is gone anyway.
+      const after = await request()
+        .get(`/api/v1/admin/users/${id}`)
+        .set("Authorization", bearer(staffTokens.accessToken))
+        .expect(200);
+
+      expect(after.body.data.deletedAt).toEqual(expect.any(String));
+      // Written beside the timestamp so `status` stays truthful on its own:
+      // `filter[status][eq]=active` is an allow-listed filter, and an
+      // active-and-deleted account would satisfy it (ADR-0028).
+      expect(after.body.data.status).toBe("disabled");
+    });
+
+    it("ends every session, the caller's included", async () => {
+      // The rule that separates this from `change-password`: there the caller
+      // keeps the session they just proved they own, because the point is to
+      // end the ones they do not control. Here there is no account left to be
+      // signed in to (ADR-0055 §4).
+      const email = "signs.out.everywhere@machxi.local";
+      const { tokens: first } = await freshUser(email);
+      const second = await login(harness.app, "user", {
+        email,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      await remove(first.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      const caller = await request()
+        .get(PROFILE)
+        .set("Authorization", bearer(first.accessToken))
+        .expect(401);
+
+      expect(caller.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      const other = await request()
+        .get(PROFILE)
+        .set("Authorization", bearer(second.accessToken))
+        .expect(401);
+
+      expect(other.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      // And the credential cannot open a new one: `findByEmail` filters
+      // `deleted_at is null`, so this is indistinguishable from an unknown
+      // address (ADR-0020 §Enumeration).
+      const relogin = await request()
+        .post("/api/v1/user/auth/login")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(401);
+
+      expect(relogin.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("clears the auth cookies of a cookie-transport client", async () => {
+      // Revoking the session server-side and leaving the credential in the
+      // browser would make "signed out everywhere" true of the database and
+      // false of the device in the person's hand — and the browser would spend
+      // a refresh-limiter failure on the dead cookie at every boot (ADR-0029).
+      const email = "cookie.closes.itself@machxi.local";
+
+      await freshUser(email);
+
+      // Signed in *as the cookie client*, and deleted with that session's own
+      // access token: clearing is unconditional, so a body-transport caller
+      // would pass this too, and then the case would not be about what it is
+      // named for.
+      const signedIn = await request()
+        .post("/api/v1/user/auth/login")
+        .set(TRANSPORT_HEADER, "cookie")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(200);
+
+      expect(cookieValue(signedIn, REFRESH_COOKIE)).toEqual(expect.any(String));
+
+      const response = await remove(signedIn.body.data.accessToken as string, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      // Both are *sent* and both are empty — a `Set-Cookie` with an expiry in
+      // the past is the only way to remove one.
+      expect(setCookie(response, REFRESH_COOKIE)).toEqual(expect.any(String));
+      expect(cookieValue(response, REFRESH_COOKIE)).toBeUndefined();
+      expect(setCookie(response, CSRF_COOKIE)).toEqual(expect.any(String));
+      expect(cookieValue(response, CSRF_COOKIE)).toBeUndefined();
+    });
+
+    it("releases the address, so the same person can come back", async () => {
+      // The partial unique index, reached through the self-service door this
+      // time: `unique (email) where deleted_at is null` is what makes the
+      // support answer "I closed my account and want to return" possible, and
+      // an account that closed itself must release its address exactly as one
+      // an admin closed does (ADR-0028).
+      const email = "comes.back@machxi.local";
+      const { id: first, tokens } = await freshUser(email);
+
+      await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      const second = await createUserAccount(
+        harness.app,
+        staffTokens.accessToken,
+        { email },
+      );
+
+      expect(second.id).not.toBe(first);
+      expect(second.deletedAt).toBeNull();
+    });
+
+    it("refuses a wrong current password with 403, and deletes nothing", async () => {
+      // A session is not an identity proof for an irreversible act: a hijacked
+      // tab must not be able to destroy the account (ADR-0055 §4). `403` and
+      // not `401` for the reason `change-password` gives — the session is
+      // valid and stays valid.
+      const email = "wrong.password.close@machxi.local";
+      const { tokens } = await freshUser(email);
+
+      const response = await remove(tokens.accessToken, {
+        currentPassword: "definitely-not-the-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+
+      // Refused, not partially applied: the session and the account are intact.
+      await request()
+        .get(PROFILE)
+        .set("Authorization", bearer(tokens.accessToken))
+        .expect(200);
+    });
+
+    it("refuses an account that has no password at all", async () => {
+      // `users.password_hash` is nullable and `null` means **no password
+      // login** (ADR-0017), never "any password matches". The failure mode is
+      // the same truthy-check regression `change-password` guards against, and
+      // here it would hand an irreversible act to anyone holding a session.
+      const email = "passwordless.close@machxi.local";
+      const { id, tokens } = await freshUser(email);
+
+      await harness.db.db
+        .update(users)
+        .set({ passwordHash: null })
+        .where(eq(users.id, id));
+
+      const response = await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+
+      const row = await harness.db.db
+        .select({ deletedAt: users.deletedAt })
+        .from(users)
+        .where(eq(users.id, id));
+
+      expect(row[0]?.deletedAt).toBeNull();
+    });
+
+    it("requires the password to be there at all", async () => {
+      const response = await remove(customerTokens.accessToken, {}).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("carries no id, so no field can name somebody else's account", async () => {
+      // The strict body is the whole ownership story on this segment: there is
+      // no `:id` in the path and no subject in the body, so the only account
+      // this endpoint can ever close is `ctx.principal`'s (ADR-0019 §3).
+      const response = await remove(customerTokens.accessToken, {
+        currentPassword: FIXTURE_PASSWORD,
+        userId: "00000000-0000-4000-8000-000000000000",
+      }).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+
+      // And the account that was named as the actor is untouched.
+      await request()
+        .get(PROFILE)
+        .set("Authorization", bearer(customerTokens.accessToken))
+        .expect(200);
+    });
+
+    it("refuses a caller with no credentials", async () => {
+      const response = await request()
+        .delete(PROFILE)
+        .send({ currentPassword: FIXTURE_PASSWORD })
+        .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("cannot be repeated, because the session that could is gone", async () => {
+      // Where the admin segment answers `409 USER_DELETED` for a second
+      // delete, this one never gets that far: the first call revoked the
+      // caller's own session, so the repeat is refused by `authenticate`.
+      // `404` — what the service would answer — is unreachable from a real
+      // client, and that is the endpoint being self-consistent rather than a
+      // gap.
+      const email = "closes.twice@machxi.local";
+      const { tokens } = await freshUser(email);
+
+      await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      const again = await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(401);
+
+      expect(again.body.error.code).toBe("AUTH_SESSION_REVOKED");
+    });
+
+    it("forbids caching the request that carries a password", async () => {
+      const email = "no.store.close@machxi.local";
+      const { tokens } = await freshUser(email);
+
+      await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      })
+        .expect("Cache-Control", "no-store")
+        .expect(204);
     });
   });
 

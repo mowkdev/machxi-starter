@@ -8,6 +8,7 @@ import type {
 import {
   changePasswordSchema,
   createUserSchema,
+  deleteProfileSchema,
   deleteUserSchema,
   getUserSchema,
   listUsersSchema,
@@ -106,6 +107,14 @@ export const createUsersRouter = (controller: UsersController): Router => {
  * one. A determined set of authenticated clients can therefore make the hash
  * limiter shed, and what it sheds is *login*, for everybody.
  *
+ * **Two endpoints now, not one** (`D12.4`): the `DELETE` below verifies a
+ * password too, so it draws on the same pool for the same reason. It buys one
+ * hash rather than two — there is no new credential to store — and it can be
+ * called at most once per account, since it ends the session that called it.
+ * The accepted risk is unchanged in kind and smaller in degree; the missing
+ * category is still a per-principal budget for expensive routes, recorded in
+ * ADR-0020 §Residual risks rather than half-built here.
+ *
  * Accepted for now: reaching it at all requires a valid session per client, the
  * global limiter caps each one, and the shedding is a `503` with `Retry-After`
  * rather than a failure (ADR-0020 §Residual risks). A per-principal budget for
@@ -126,6 +135,16 @@ export const createUserProfileRouter = (
     validate(changePasswordSchema),
     controller.changePassword,
   );
+
+  // Self-service deletion (ADR-0055 §4), on ADR-0028's user semantics: the row
+  // survives soft-deleted, the address is released, and every session goes —
+  // this one included, which is what separates it from `change-password`.
+  //
+  // A `DELETE` with a body, which is unusual and deliberate: the actor
+  // re-authenticates with their current password, because a session is not an
+  // identity proof for an irreversible act. There is no `:id` here either, so
+  // the only account this can ever close is the caller's own (ADR-0019 §3).
+  router.delete("/", validate(deleteProfileSchema), controller.remove);
 
   return router;
 };
