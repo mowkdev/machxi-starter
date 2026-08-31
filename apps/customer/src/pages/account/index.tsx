@@ -7,6 +7,7 @@ import { GridDensityCards } from "@/features/density";
 import { LocaleRows } from "@/features/locale";
 import {
   ChangePasswordDialog,
+  DeleteAccountDialog,
   ProfileDetailsForm,
 } from "@/features/profile-manage";
 import { ThemeCards } from "@/features/theme";
@@ -258,17 +259,26 @@ export const AccountProfileSection = () => {
 /**
  * `/account/security` — how you prove it is you (ADR-0053 §1).
  *
- * The password card and its dialog. ADR-0053 §1 names sessions, 2FA and step-up
- * as this section's future neighbours and ADR-0055 §3 names one more that is
- * nearer: **account deletion lands here at `D12.8`**, which is the whole reason
- * this app's security section was known to differ from the admin's before
- * either existed — and the argument for giving a single card its own address,
- * since a password is an action with side effects on every device the person
- * owns and the things that will sit beside it are all of that kind.
+ * The password card and its dialog, and since `D12.8` the deletion card and
+ * its own. ADR-0053 §1 names sessions, 2FA and step-up as this section's future
+ * neighbours and ADR-0055 §3 named the nearer one: **account deletion lands
+ * here**, which is the whole reason this app's security section was known to
+ * differ from the admin's before either existed — and the argument for giving a
+ * single card its own address, since a password is an action with side effects
+ * on every device the person owns and the things that sit beside it are all of
+ * that kind.
+ *
+ * **Two cards, in the order of how far they go.** Both are credential
+ * ceremonies over the same re-authentication rule, and the second is the first
+ * one's consequences taken all the way — every session including this one, and
+ * nothing in this app that can undo it. Deletion last is not decoration: a
+ * customer arriving here because they cannot get into their account should meet
+ * the password card first.
  */
 export const AccountSecuritySection = () => {
   const { t } = useT("profile");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   return (
     <>
@@ -303,10 +313,55 @@ export const AccountSecuritySection = () => {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("delete.title")}</CardTitle>
+          <CardDescription>{t("delete.description")}</CardDescription>
+          <CardAction>
+            {/*
+             * The one destructive control on this screen, and the only place
+             * the style is available to say so: `AppFormActions` gives the
+             * dialog's submit a single appearance (the plan's finding 11), so
+             * the warning is carried by the button that opens the ceremony and
+             * by the dialog's own copy.
+             */}
+            <Button
+              onClick={() => {
+                setDeletingAccount(true);
+              }}
+              variant="destructive"
+            >
+              {t("delete.action")}
+            </Button>
+          </CardAction>
+        </CardHeader>
+
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {/*
+             * ADR-0028's user semantics, stated where the decision is made
+             * rather than only inside the dialog: the row survives, the address
+             * is released, and no endpoint in v1 restores an account — so
+             * "delete" here does not mean what it usually implies, and a
+             * customer should be able to read that before they click.
+             */}
+            {t("delete.note")}
+          </p>
+        </CardContent>
+      </Card>
+
       {changingPassword ? (
         <ChangePasswordDialog
           onClose={() => {
             setChangingPassword(false);
+          }}
+        />
+      ) : null}
+
+      {deletingAccount ? (
+        <DeleteAccountDialog
+          onClose={() => {
+            setDeletingAccount(false);
           }}
         />
       ) : null}

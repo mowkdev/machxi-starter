@@ -1,5 +1,6 @@
 import type {
   ChangePasswordBody,
+  DeleteProfileBody,
   SuccessEnvelope,
   UpdateProfileBody,
   UserResource,
@@ -69,6 +70,31 @@ export const createProfileApi = (client: ApiClient) =>
      */
     changePassword: async (body: ChangePasswordBody): Promise<void> => {
       await client.instance.post("/profile/change-password", body);
+    },
+
+    /**
+     * `DELETE /user/profile` — the account closing itself (`D12.8`; ADR-0055
+     * §4, ADR-0028's user semantics). `204`.
+     *
+     * **A `DELETE` with a body**, which is unusual and is the endpoint's own
+     * decision rather than this client's: the actor re-authenticates, and a
+     * presented credential cannot go in a query string that every proxy
+     * between the browser and the process logs. `data` is how axios carries a
+     * body on a method whose shorthand has no body parameter.
+     *
+     * There is no `:id`, so the only account this can ever close is the
+     * caller's (ADR-0019 §3) — the same structural fact the rest of this
+     * slice rests on, at its most load-bearing.
+     *
+     * The response ends **every** session including this one and clears the
+     * auth cookies (ADR-0055 §4 as amended at `D12.4`), which is the line
+     * between this and `changePassword` above: there the caller's session is
+     * deliberately spared, here there is no account left to be signed in to.
+     * Ending the *client's* half of that is the caller's job, because it is a
+     * session decision rather than a request one.
+     */
+    remove: async (body: DeleteProfileBody): Promise<void> => {
+      await client.instance.delete("/profile", { data: body });
     },
   }) as const;
 

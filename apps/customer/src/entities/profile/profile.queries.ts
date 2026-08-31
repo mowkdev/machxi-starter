@@ -1,5 +1,6 @@
 import type {
   ChangePasswordBody,
+  DeleteProfileBody,
   UpdateProfileBody,
   UserPrincipalResource,
   UserResource,
@@ -120,6 +121,46 @@ export const useChangePassword = () => {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: profileKeys.all });
+    },
+  });
+};
+
+/**
+ * `DELETE /user/profile` (`D12.8`; ADR-0055 §4, ADR-0028's user semantics).
+ *
+ * `CREDENTIAL_MUTATION` for the reason `useChangePassword` carries it: the
+ * customer's current password is this mutation's `variables`, and without
+ * `gcTime: 0` it outlives the dialog that collected it by five minutes.
+ *
+ * **It removes the profile rather than invalidating it**, which is the one
+ * place this slice's standing rule — invalidate what this write could have
+ * changed the response of — does not apply. Invalidation means *refetch*, and
+ * the account this key holds no longer exists: the request would be answered
+ * `401` by an endpoint whose session the same call revoked, which is a failed
+ * query and a toast about it on the way out. Removal is the truthful move,
+ * and it also means a second customer signing in on this tab cannot be shown
+ * the first one's email out of a cache while their own read is in flight.
+ *
+ * It does **not** end the session or navigate. Both are the caller's, for
+ * ADR-0049's reason rather than a stylistic one: an entity knows about a
+ * resource, and "where a signed-out customer lands" is routing — the same
+ * boundary `useSignOut` sits on the other side of.
+ *
+ * The success sentence is declared here and delivered by ADR-0034's one global
+ * handler, which is what lets it be read on the login screen the caller
+ * navigates to: the `<Toaster>` is mounted on the root route, above both
+ * layouts, so the toast survives the navigation that follows.
+ */
+export const useDeleteProfile = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: (body: DeleteProfileBody) => api.remove(body),
+    meta: { ...FORM_MUTATION_META, success: "profile:outcomes.deleted" },
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: profileKeys.all });
     },
   });
 };

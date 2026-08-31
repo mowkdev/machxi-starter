@@ -1,11 +1,16 @@
-import { changePasswordBody } from "@repo/contracts";
-import { screen, waitFor } from "@testing-library/react";
+import { changePasswordBody, deleteProfileBody } from "@repo/contracts";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { profileKeys } from "@/entities/profile";
 import { createSessionStore } from "@/shared/api/session-store";
-import { API } from "@/test/msw/handlers/auth.handlers";
+import {
+  API,
+  createAuthHandlers,
+  createAuthMockState,
+} from "@/test/msw/handlers/auth.handlers";
 import {
   CURRENT_PASSWORD,
   PROFILE,
@@ -14,22 +19,30 @@ import {
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
 import { server } from "@/test/msw/server";
-import { renderWithProviders } from "@/test/render";
+import { authenticated } from "@/test/principals";
+import { renderApp, renderWithProviders } from "@/test/render";
 
 import {
   ChangePasswordDialog,
   changePasswordFields,
 } from "../change-password-dialog";
+import { deleteAccountFields } from "../delete-account-dialog";
 import { ProfileDetailsForm } from "../profile-details-form";
 
 /**
- * The two profile write flows on the `/user` segment (`D12.6`; ADR-0027,
- * ADR-0035, ADR-0036, ADR-0055 §4).
+ * The three profile write flows on the `/user` segment (`D12.6`, `D12.8`;
+ * ADR-0027, ADR-0028, ADR-0035, ADR-0036, ADR-0055 §4).
  *
- * Both go through the real ADR-0033 client to handlers that parse with the
+ * All three go through the real ADR-0033 client to handlers that parse with the
  * API's own schemas, so "the form submits the right thing" means the thing the
  * endpoint would have accepted. The queries are by role and accessible name,
  * and every name here comes from a config rather than from this file.
+ *
+ * **The deletion suite is the one that leaves this file's usual shape**, and
+ * for the reason the flow does: its end state is not a response but a *signed
+ * out app*, which only the real route tree can show. So it is driven with
+ * `renderApp` from `/account/security` — through the card, the dialog and the
+ * redirect — where the other two stay component renders.
  */
 
 const NEW_PASSWORD = "AnotherPassword!456";
@@ -444,5 +457,290 @@ describe("the change-password dialog", () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+
+/**
+ * `DELETE /user/profile` — a customer closing their own account (`D12.8`;
+ * ADR-0028's user semantics, ADR-0055 §4).
+ *
+ * **Driven through the real generated tree rather than as a component**, which
+ * is the one place this file departs from its own pattern. The flow's end state
+ * is a *signed-out app*: the store is cleared, the router is invalidated and
+ * the customer is put on `/login`. A component render has no router, so
+ * `useNavigate` would have nothing to navigate — the success path would be
+ * either untested or tested against a stub of the very thing that has to work.
+ * So the suite starts at `/account/security` and clicks the card the section
+ * ships, which also means the card and the dialog are proved to be connected.
+ */
+describe("deleting the account", () => {
+  beforeEach(() => {
+    // The tree renders the shell and, after the redirect, the login screen.
+    // Neither fetches today; a handler set missing the segment's auth routes
+    // would fail loudly rather than quietly if that ever changes.
+    server.use(...createAuthHandlers(createAuthMockState()));
+  });
+
+  const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    const rendered = renderApp({
+      initialPath: "/account/security",
+      store: authenticated(),
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Delete account" }),
+    );
+    await screen.findByRole("dialog");
+
+    return rendered;
+  };
+
+  /** The submit inside the dialog — the card's button shares its wording. */
+  const confirm = (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete account",
+      }),
+    );
+
+  it("declares a field map the endpoint's own body accepts", () => {
+    /*
+     * The contract test a field map owes when it is not a resource's
+     * (ADR-0035). `deleteProfileBody` is a `strictObject`, so one parse proves
+     * both directions at once — and the second direction is what matters most
+     * here: a field naming a subject would be refused, which is the one thing
+     * that could ever turn self-deletion into deleting somebody else.
+     */
+    const parsed = deleteProfileBody.safeParse(
+      Object.fromEntries(
+        Object.keys(deleteAccountFields).map((name) => [
+          name,
+          CURRENT_PASSWORD,
+        ]),
+      ),
+    );
+
+    expect(Object.keys(deleteAccountFields)).toEqual(["currentPassword"]);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
+  it("states ADR-0028's consequences rather than implying an erasure", async () => {
+    const user = userEvent.setup();
+
+    await openDialog(user);
+
+    const dialog = within(screen.getByRole("dialog"));
+
+    /*
+     * The four sentences, asserted because deletion on this segment is *not*
+     * what the word usually implies: the row survives, the address is released
+     * by the partial unique index, every session ends including this one, and
+     * v1 has no restore endpoint. A customer agreeing to the wrong thing is
+     * the failure this dialog exists to prevent, so the copy is part of the
+     * contract rather than decoration around it.
+     */
+    expect(
+      dialog.getByText("Every device is signed out, including this one."),
+    ).toBeInTheDocument();
+    expect(
+      dialog.getByText(
+        "The account is closed and can no longer be used to sign in.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      dialog.getByText(
+        "Your email address becomes free to sign up with again.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      dialog.getByText(
+        "We keep the record of the account itself; it is not erased, and nothing here can reopen it.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("sends nothing until the current password is given", async () => {
+    const user = userEvent.setup();
+
+    await openDialog(user);
+    await confirm(user);
+
+    /*
+     * ADR-0055 §4's re-authentication, refused by the client with the schema
+     * the server validates with (ADR-0011) — so an empty box never becomes a
+     * request at all. The dialog is still open afterwards, which is the other
+     * half: a refusal that closed it would look exactly like a deletion.
+     */
+    await waitFor(() => {
+      expect(screen.getByLabelText("Current password")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+    });
+    expect(state.seen.deleted).toHaveLength(0);
+    expect(state.profile.deletedAt).toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("lands a wrong current password in the dialog, on the box that has to change", async () => {
+    const user = userEvent.setup();
+    const { store } = await openDialog(user);
+
+    await user.type(
+      screen.getByLabelText("Current password"),
+      "NotMyPassword!1",
+    );
+    await confirm(user);
+
+    /*
+     * `AUTH_CURRENT_PASSWORD_INVALID` is a `403` with no `details` (ADR-0027
+     * §Contracts), so it reaches the box through `codeFields` and reads as the
+     * catalogue's sentence rather than as the API's developer-facing English.
+     * **In the dialog**, which is the done-when's word: a refusal delivered as
+     * a toast over a closed dialog would leave a customer unsure whether the
+     * account is gone.
+     */
+    expect(
+      await screen.findByText("That is not your current password."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    /*
+     * Refused, and nothing else happened: the credential check runs before any
+     * state change, because half a deletion is worse than none — and the
+     * session it refused is still the customer's own.
+     */
+    expect(state.seen.refusedDeletes).toHaveLength(1);
+    expect(state.seen.deleted).toHaveLength(0);
+    expect(state.profile.deletedAt).toBeNull();
+    expect(state.profile.status).toBe("active");
+    expect(state.allSessionsRevoked).toBe(false);
+    expect(store.isAuthenticated()).toBe(true);
+  });
+
+  it("locks the dialog while the request is in flight", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.delete(`${API}/profile`, async () => {
+        await delay("infinite");
+      }),
+    );
+
+    await openDialog(user);
+
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await confirm(user);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Current password")).toBeDisabled();
+    });
+
+    /*
+     * ADR-0048 §4's `dismissible={!isPending}`, and it earns more here than
+     * anywhere else in the app: the request in flight is the one that ends the
+     * account, so a dialog that could be escaped mid-flight would leave
+     * somebody on a screen whose session is already gone.
+     */
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("keeps no trace of the password once the mutation has settled", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = await openDialog(user);
+
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await confirm(user);
+
+    await waitFor(() => {
+      expect(state.seen.deleted).toHaveLength(1);
+    });
+
+    /*
+     * `CREDENTIAL_MUTATION`'s `gcTime: 0`, made observable: a settled mutation
+     * keeps its `variables` for five minutes by default, so without it the
+     * plaintext would still be reachable from the cache of a tab whose account
+     * no longer exists.
+     */
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+    });
+  });
+
+  it("closes the account, ends this session and lands on /login", async () => {
+    const user = userEvent.setup();
+    const { router, store, queryClient } = await openDialog(user);
+
+    /*
+     * Seeded rather than fetched: the security section mounts no profile
+     * query, and what the last assertion is about is the cache entry the
+     * *profile* section would have left behind on the way here.
+     */
+    queryClient.setQueryData(profileKeys.detail(), PROFILE);
+
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await confirm(user);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+
+    /*
+     * Plainly `/login`, and not the guard's `?redirect=/account/security`:
+     * clearing the store invalidates the router and `_dashboard` would bounce
+     * the customer anyway, but landing there is stated by the feature rather
+     * than left to be an emergent property of two other decisions — otherwise
+     * the next person to sign in on this browser is sent to the closed
+     * account's security section.
+     */
+    expect(router.state.location.search).toEqual({});
+
+    /*
+     * ADR-0028's user semantics on the server's side of the wire: the row
+     * survives with both columns written, and **every** session went — the
+     * caller's included, which is the whole difference from the password
+     * change asserted above.
+     */
+    expect(state.seen.deleted).toHaveLength(1);
+    expect(state.profile.deletedAt).not.toBeNull();
+    expect(state.profile.status).toBe("disabled");
+    expect(state.allSessionsRevoked).toBe(true);
+
+    // And the client's half of it (ADR-0055 §4 as amended at `D12.4`): the
+    // server cleared the cookies, this clears the token and the principal the
+    // guards read.
+    expect(store.isAuthenticated()).toBe(false);
+    expect(store.getSnapshot().principal).toBeNull();
+
+    /*
+     * The outcome sentence, read on the screen the customer was sent to —
+     * which is only possible because ADR-0034's `<Toaster>` is mounted on the
+     * root route, above both layouts.
+     */
+    expect(
+      await screen.findByText(
+        "Your account is closed. You have been signed out on every device.",
+      ),
+    ).toBeInTheDocument();
+
+    /*
+     * The cached read of an account that no longer exists is dropped rather
+     * than invalidated: a refetch would be answered `401` by the endpoint whose
+     * session this same call revoked, and the entry would otherwise still be
+     * sitting there for whoever signs in on this browser next.
+     */
+    expect(queryClient.getQueryData(profileKeys.detail())).toBeUndefined();
   });
 });

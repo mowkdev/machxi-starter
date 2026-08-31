@@ -34,8 +34,32 @@
       }
     }
   },
+  "delete": {
+    "title": "Delete account",
+    "description": "Closing your account signs you out everywhere, this device included.",
+    "action": "Delete account",
+    "note": "We keep the record of the account, but it can no longer be used to sign in, and your email address becomes free to sign up with again. Nothing in this app can reopen a closed account.",
+    "dialog": {
+      "title": "Delete your account",
+      "description": "You will be asked for your current password. Read what happens first — this app has no way to undo it.",
+      "submit": "Delete account"
+    },
+    "consequences": {
+      "signedOut": "Every device is signed out, including this one.",
+      "noSignIn": "The account is closed and can no longer be used to sign in.",
+      "email": "Your email address becomes free to sign up with again.",
+      "kept": "We keep the record of the account itself; it is not erased, and nothing here can reopen it."
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Current password",
+        "description": "Required even though you are signed in — someone who found this tab open must not be able to close your account."
+      }
+    }
+  },
   "outcomes": {
     "updated": "Your details were saved.",
-    "passwordChanged": "Your password was changed. Every other device was signed out; this one stays."
+    "passwordChanged": "Your password was changed. Every other device was signed out; this one stays.",
+    "deleted": "Your account is closed. You have been signed out on every device."
   }
 }

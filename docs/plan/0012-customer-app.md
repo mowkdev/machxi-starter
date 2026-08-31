@@ -186,13 +186,32 @@ Seventeen new cases across two files, and the app's own suite is 86 (up from 69,
 
 **Pending operator acceptance**, named rather than folded into "done": everything jsdom cannot lay out. The 44px settings-option rung and its inset selected bar; the `cards` layout wrapping across the 720px pane with its `min-w-32` floor against the `rows` layout's full-width stack; the three-card rhythm under the page-header band; and the Preferences row in the section nav, which is the one piece of chrome ADR-0053 §2's escape hatch depends on being legible.
 
-### 8. Security — delete account
+### ~~8. Security — delete account~~ — **done 2026-09-01**
 
 **ADRs:** [0055](../adr/0055-customer-app.md) §4, [0028](../adr/0028-account-deletion.md), [0034](../adr/0034-server-state-and-notifications.md) as carried by [0043](../adr/0043-readable-list-search-params.md)
 
 The deletion flow in the security section: a confirm that states 0028's consequences truthfully, the current-password field, refusals rendered in place, and the signed-out end state (the API revoked everything; the client lands on `/login` with the session store cleared).
 
 **Done when:** the feature suite asserts the password is required, a refusal lands in the dialog, and success ends signed out; the MSW handler is no more permissive than the endpoint; the gate green.
+
+**What was built.** `features/profile-manage/delete-account-dialog.tsx` (the field map, the consequences list, the refusal mapping and the sign-out-and-navigate tail), `entities/profile`'s `remove` and `useDeleteProfile`, the second card in `pages/account`'s `AccountSecuritySection`, the `profile:delete.*` namespace in both locales with `outcomes.deleted` beside them, and the `DELETE /profile` MSW handler. Seven new cases, and the app's suite is 93 (up from 86).
+
+**No `packages/*` diff for the fourth step running**, and `apps/admin` and `apps/api` are untouched across it — the endpoint this screen calls shipped at `D12.4`, so nothing server-side moved either.
+
+Four things worth naming:
+
+- **It is a form dialog, not the admin's `ConfirmDialog`, and the password is the whole reason.** ADR-0055 §4 requires the actor to re-authenticate, so this ceremony has a field, a schema and a refusal that has to land beside that field — which is ADR-0035's shape and the one a confirm has no room for. It stays a *ceremony* all the same (ADR-0040): no state worth returning to, and an address that opens the delete form is a link somebody can be sent.
+- **The submit draws in the primary style, because the shells have no destructive one** — the most destructive action in the app, in the button colour every other form uses. Recorded as finding 11 rather than fixed, since fixing it is a `@repo/form` diff. What carries the warning meanwhile is the card's `variant="destructive"` button, the dialog's title, and the four-sentence consequences list.
+- **The consequences are listed rather than summarised, because ADR-0028's "delete" is not the word's usual meaning.** The row survives (future order history references it), the address is released by the partial unique index, every session ends including this one, and v1 has no restore endpoint — so nothing in this app can undo it. Each is a catalogue sentence and each is asserted, because a customer agreeing to the wrong thing is the failure this dialog exists to prevent.
+- **The cache entry is removed, not invalidated, and the session is ended by the feature rather than the entity.** Invalidation means refetch, and the account this key holds no longer exists — the request would be answered `401` by the endpoint whose session the same call revoked. And "where a signed-out customer lands" is routing, so `client.endSession()` and the explicit `navigate({ to: "/login", search: {} })` sit in the dialog beside `useSignOut`'s copy of the same decision, not in `entities/profile`. The suite pins the plain `/login` against the guard's `?redirect=/account/security`, which is the difference between a stated destination and an emergent one.
+
+**The budget was not raised.** `pnpm size` green on `D12.7`'s numbers: js 267409 → 268655 (+1.2 kB), css 13901 → 14038, entry 199958 → 200558 (+600 bytes). Everything the flow draws on — Radix's dialog, `RecordSurface`, react-hook-form, `@repo/form`'s frame — was paid for by `D12.6`, and the deletion screens land in the same guarded chunks. The +600 bytes on the entry are the one part worth naming: nothing about deletion renders before the guard, so they are the eagerly bundled `en` catalogue (ADR-0046 §3) growing by four deliberately wordy consequence sentences. Copy is the one thing this app can add to the entry from behind the guard.
+
+**The review found one, on the handler set rather than on the screen, and it was fixed.** The `DELETE` handler modelled the repeat as `404`, but the *other three* profile handlers went on answering `200` for an account the same state object said was closed — so a client that kept reading `/user/profile` after deleting would have passed a mock the real API answers `404` to on every one of those routes. That is precisely ADR-0036's "more permissive than the service" failure, one route away from the one the step was looking at. A `gone(state)` guard now runs first in all four.
+
+**`pnpm lint` and `pnpm check-types` clean; `pnpm test` green at `15 successful, 0 cached`; `pnpm size` green with no budget raised; `pnpm check` green at `50 successful`, `i18n:check` among them.**
+
+**Pending operator acceptance**, named rather than folded into "done": everything jsdom cannot lay out. The destructive card action in the header-right slot beside the password card's outline button, and whether two cards of the same weight read as an escalation; the consequences list's rhythm inside the dialog's 20px field stack; and the dialog's own viewport bound with a list above a password field on a short screen, which is the geometry ADR-0048 §4 supplies and this is the first form in this app long enough to test it.
 
 ### 9. Localization closed
 
@@ -222,7 +241,7 @@ The Playwright tier gains a customer project: sign-in, the account sections from
 
 The deliverable's standing rule, run as a running list: **anything `apps/customer` cannot build from the packages without changing them is a finding against D8–D11**, recorded here with its reason. §Definition-of-done item 3 makes the empty list the claim — a `packages/*` diff that is neither named here nor absent is a defect of the step that made it.
 
-**Ten so far, and none has been acted on — which is the point of writing them down.**
+**Eleven so far, and none has been acted on — which is the point of writing them down.**
 
 **One `packages/*` diff exists and is not one of them** (`D12.4`): `packages/contracts` gained `deleteProfileBody`. §Definition-of-done item 3 says every diff under `packages/*` is named here, so it is named — but it is not a finding, because `@repo/contracts` is not one of the packages this deliverable is a second consumer _of_. ADR-0011 and ADR-0023 put every request schema there by construction, so an API step that adds an endpoint adds a contract; the bet D8–D11 made is about the six platform packages and `packages/ui`, and those are still untouched.
 
@@ -261,7 +280,11 @@ Two things the steps found were **not** findings but errors in the records thems
 
     That asymmetry is the finding rather than the line count. Finding 8 said ADR-0034's policy "belongs to neither app and there is nowhere to put it"; this one is narrower and more tractable, because the thing that belongs to neither app is exactly the part that survived the subtraction — a debounced writer over a per-key-merge endpoint — and the part that did not survive is precisely the part that would have made a shared version hard. A package boundary drawn here would be small and would have two honest consumers. It is still not drawn in this deliverable, because the seam runs through `@repo/api-client` (which owns the transport and not the cache) and through whatever owns `entities/*` conventions, which is nothing today.
 
-Findings 1, 2, 4, 7, 8, 9 and 10 are duplications the deliverable expected; finding 5 is a larger one it did not; findings 3 and 6 are defects, and 6 needs an ADR rather than a fix. **None is a `packages/*` diff**, so §Definition-of-done item 3's list of _diffs_ is still empty. All are recorded because the alternative is that the second consumer arrives, notices, and says nothing — which is the failure this deliverable was split out to prevent.
+11. **`@repo/form`'s shells have one submit appearance, so the most destructive form in the app draws in the primary style** (`D12.8`). `AppFormActions` renders `<Button type="submit">` with no variant and no way for a caller to ask for one, which was invisible while every config-driven form was a create, an edit or a password change. Account deletion is the first form whose *submit* is the destructive act, and ADR-0054 §4 has a `destructive` token precisely so an irreversible action can say so where the click happens. The confirm path has this already — `apps/admin`'s `ConfirmDialog` takes a `destructive` prop — and the form path does not, which means the design language is available to the ceremony *without* a field and unavailable to the one *with* one.
+
+    Copied nothing and changed nothing: the dialog ships with the default submit, and the warning is carried by the card's `variant="destructive"` trigger, the dialog's title and the four-sentence consequences list. The fix is a `@repo/form` diff — a `submitVariant` (or `destructive`) prop threaded from the three shells into `AppFormActions` — and it is small, which is exactly why it is written down rather than taken: this deliverable's rule is that a package diff is named before it is made, and the API question (one boolean, or the button's whole variant vocabulary) is a decision rather than a tidy-up. The next destructive form is what makes it urgent.
+
+Findings 1, 2, 4, 7, 8, 9 and 10 are duplications the deliverable expected; finding 5 is a larger one it did not; findings 3 and 6 are defects, and 6 needs an ADR rather than a fix; finding 11 is the first **gap** — not a duplication and not a defect, but a package that serves this app almost completely and stops one prop short of the screen it was asked for. **None is a `packages/*` diff**, so §Definition-of-done item 3's list of _diffs_ is still empty. All are recorded because the alternative is that the second consumer arrives, notices, and says nothing — which is the failure this deliverable was split out to prevent.
 
 ## Definition of done
 

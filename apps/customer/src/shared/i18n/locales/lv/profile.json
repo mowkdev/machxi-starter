@@ -34,8 +34,32 @@
       }
     }
   },
+  "delete": {
+    "title": "Dzēst kontu",
+    "description": "Konta slēgšana atsaka visas ierīces, arī šo.",
+    "action": "Dzēst kontu",
+    "note": "Konta ierakstu mēs saglabājam, taču ar to vairs nevar pieteikties, un jūsu e-pasta adrese atkal kļūst pieejama jaunai reģistrācijai. Slēgtu kontu šajā lietotnē atjaunot nav iespējams.",
+    "dialog": {
+      "title": "Dzēsiet savu kontu",
+      "description": "Jums prasīs pašreizējo paroli. Vispirms izlasiet, kas notiks — šajā lietotnē to atsaukt nav iespējams.",
+      "submit": "Dzēst kontu"
+    },
+    "consequences": {
+      "signedOut": "Visas ierīces tiek atteiktas, arī šī.",
+      "noSignIn": "Konts tiek slēgts, un ar to vairs nevar pieteikties.",
+      "email": "Jūsu e-pasta adrese atkal kļūst pieejama jaunai reģistrācijai.",
+      "kept": "Paša konta ierakstu mēs saglabājam; tas netiek izdzēsts, un šeit to atjaunot nav iespējams."
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Pašreizējā parole",
+        "description": "Nepieciešama arī tad, ja esat pieteicies — tas, kurš atradis šo cilni atvērtu, nedrīkst spēt slēgt jūsu kontu."
+      }
+    }
+  },
   "outcomes": {
     "updated": "Jūsu dati tika saglabāti.",
-    "passwordChanged": "Jūsu parole tika nomainīta. Visas pārējās ierīces tika atteiktas; šī paliek."
+    "passwordChanged": "Jūsu parole tika nomainīta. Visas pārējās ierīces tika atteiktas; šī paliek.",
+    "deleted": "Jūsu konts ir slēgts. Jūs esat atteikts visās ierīcēs."
   }
 }
