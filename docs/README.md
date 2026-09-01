@@ -33,7 +33,15 @@ built on, every grid decision the data-grid rebuild made, D5's pair of
 supersessions, D6's user-settings record, D7's localization one, D8's four and
 D9's platform extraction. D10 shipped 2026-08-29 and the window on
 [0052](adr/0052-grid-and-admin-followups.md) shut with it.
-**ADRs 0001–0056 are closed and no window is open** — **the D12 window shut
+**ADRs 0001–0056 are closed and the D13 window is open** — D13 (customer
+impersonation) went `in progress` 2026-09-01, the day D12 shipped, covering
+[0057](adr/0057-impersonation-sessions.md) and
+[0058](adr/0058-append-only-audit-log.md), both written `proposed` by `/scope`
+that day: 0057 is accepted at `D13.1`'s head, where
+[0018](adr/0018-authentication-sessions-and-tokens.md) and
+[0052](adr/0052-grid-and-admin-followups.md) take deltas (impersonated
+sessions; the gate's fifth link, `pnpm format:check`), and 0058 at `D13.2`'s
+head, additive. **The D12 window shut
 when D12 shipped 2026-09-01**; it covered [0055](adr/0055-customer-app.md) — `accepted` at `D12.1`'s head,
 where [0022](adr/0022-frontend-apps.md) took the roster delta — and, since
 2026-09-01, [0056](adr/0056-per-population-csrf-cookie.md) — `proposed`,

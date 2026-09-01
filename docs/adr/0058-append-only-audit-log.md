@@ -1,0 +1,60 @@
+# ADR-0058: An append-only audit log
+
+- Status: proposed
+- Date: 2026-09-01
+
+> Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)), the sibling of [ADR-0057](0057-impersonation-sessions.md). `proposed` at writing; **accepted at the head of `D13.2`**, the step that builds it; amendable in place while D13 is `in progress` (ADR-0025 rule 2). Additive: it supersedes nothing.
+
+## Context
+
+Nothing in the repository is an audit mechanism. What exists is a scatter of near-audit: pino request logs (rotated away by whatever ships them), `sessions.revoked_reason` as free text, and `staff_roles.granted_by` as the schema's one "who did it" column. `staff.service.ts` has said in a comment since D2 that the real fix for attribution questions "is an append-only audit log, not a column". D13's impersonation is the feature that finally cannot proceed without one — "every impersonated request is attributable" is its scope line — and the operator decided at scoping (2026-09-01) that the mechanism is a **table**, not structured logs alone: logs answer "what is happening", an audit table answers "what happened", and only the second survives log retention and is queryable in an incident.
+
+## Decision
+
+### The table — `audit_events` in `packages/db`
+
+```
+audit_events
+------------
+id uuid pk (uuidv7 — time-ordered, the reason jti chose it)
+occurred_at timestamptz not null
+actor_type enum('staff','user') not null, actor_id uuid not null
+acting_as_type enum('staff','user') null, acting_as_id uuid null
+event text not null                 -- dot-namespaced: impersonation.minted, …
+request_id text null, ip inet null, user_agent text null
+data jsonb null                     -- event-specific facts, small by convention
+index (actor_type, actor_id, occurred_at), index (event, occurred_at)
+```
+
+- **No foreign keys, deliberately** — the `sessions` reasoning doubled: an audit row must survive the hard deletion of its actor (staff, ADR-0028) and of its subject, or the log un-writes itself exactly when it is needed.
+- **Append-only is a rule of the code, not just a word in the name**: the repository exposes insert and read, nothing else; no service holds an update or delete path. `db:*` tooling does not prune it — audit outlives sessions, and retention is a deployment decision recorded in §Consequences, not a job this record ships.
+- **Event names live with their writers in `apps/api`**, not in `@repo/contracts`: no client reads them in v1, and a contracts enum for server-only vocabulary is the altitude mistake ADR-0050 names. The day an admin screen lists these events is the day the names cross the wire and earn a contracts home.
+
+### The writer
+
+A small `audit` service in the API's core, container-wired (ADR-0009), taking `ctx` first so every row inherits `requestId`, ip, ua and both identities from the principal. Two write disciplines, chosen per call site:
+
+- **Lifecycle events are transactional with the operation** — an impersonation mint that cannot be audited does not happen. The writer accepts the caller's transaction.
+- **Trail events** (the per-mutation rows ADR-0057 §6 asks for) are written after the response, best-effort: a failed trail write logs at `error` and does not fail a request that already succeeded. The completion log line still carries both identities, so the trail degrades to the logs rather than to nothing.
+
+### v1 write points
+
+D13's, and only D13's: `impersonation.minted`, `impersonation.exchanged`, `impersonation.ended`, `impersonation.refused` (an excluded operation attempted), and the mutation trail under an impersonated session. The named future write points — role grants, administrative password resets, deletions, the `staff.service.ts` comment's cases — join when a deliverable takes them; this record decides the mechanism, not the coverage.
+
+### No read surface in v1
+
+No endpoint, no grid, no export. The table is read by SQL, by an operator with database access, which is who reads an audit log during an incident. An `/admin/audit` resource screen is a real future deliverable (a grid, a retention story, its own guards) and is deliberately not smuggled in here.
+
+## Consequences
+
+- Impersonation gets a durable, queryable trail that survives log rotation and actor deletion; every later "who did what" feature has a mechanism instead of a column.
+- One insert per audited operation — impersonation-rare, negligible; the trail discipline keeps the hot path unharmed.
+- **Retention is unbounded until a deployment decides otherwise**; the table grows forever by design and pruning it is an operational choice this record leaves explicitly open.
+- The integration tier gains the table's tests; migration `0006` (or next) creates it from nothing on every run.
+
+## Alternatives considered
+
+- **Structured logs alone** — the recommendation at scoping, overruled by the operator for durability and queryability; the logs remain, the table is beside them, and nothing is logged less because of it.
+- **Event names in `@repo/contracts`.** Premature: no client reads them, and the enum would be the machine-checkable minutiae ADR-0050 keeps out of records and contracts alike.
+- **An outbox/queue for trail writes.** Correct at a scale this blueprint does not have; a best-effort post-response insert loses strictly less than the logs already lose. Reserved, not adopted.
+- **Reusing `sessions` columns as the audit.** The row is pruned (`db:sessions:prune`), mutable, and shaped for transport, not history — the objection the `staff.service.ts` comment already recorded.
