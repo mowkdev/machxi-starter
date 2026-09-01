@@ -2,7 +2,7 @@
 
 > **Renumbered from D11 on 2026-08-29**, when the design foundations and account area ([D11](0011-design-foundations-and-account-area.md)) were inserted ahead of it — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
 
-- Status: **in progress** — **opened 2026-08-31**, the operator's decision, the day D11 shipped. The window covers [ADR-0055](../adr/0055-customer-app.md), `proposed` at opening and **accepted 2026-08-31 at the head of `D12.1`**, where [ADR-0022](../adr/0022-frontend-apps.md) moved to `superseded by` (a delta: the roster; every stack decision stands)
+- Status: **shipped 2026-09-01** — opened 2026-08-31, the operator's decision, the day D11 shipped. The window covers [ADR-0055](../adr/0055-customer-app.md), `proposed` at opening and **accepted 2026-08-31 at the head of `D12.1`**, where [ADR-0022](../adr/0022-frontend-apps.md) moved to `superseded by` (a delta: the roster; every stack decision stands)
 - Steps: `D12.1` – `D12.12` (`D12.12` added 2026-09-01 at the operator's post-close review, out of finding 6 — the D11.12 precedent)
 - Ledger: [`docs/plan/README.md`](README.md)
 
