@@ -7,7 +7,7 @@
  * finding rather than a failed build — ADR-0049's import lint cannot see a
  * string prefix, and ADR-0046 says so rather than pretending it can.
  *
- * Eight since `D12.7`, and the list is meant to be read as the app's own rather
+ * Nine since `D13.7`, and the list is meant to be read as the app's own rather
  * than as a subset of the admin's: `common` is chrome, `auth` is the sign-in
  * screen, `errors` is keyed by `ErrorCode` (ADR-0046 §2, and completeness is
  * checked by the compiler in `__checks__/errors.ts`), and `home` is the signed-in
@@ -30,6 +30,18 @@
  * proves is still the rule: a `settings:` key rendered from anywhere but those
  * three and the Preferences section is a review finding.
  *
+ * **`D13.7` added `impersonation`, the second name here that is not a single
+ * slice's** — and it is the `settings` exception's shape rather than a new
+ * one. The words belong to two surfaces that are the same fact seen twice:
+ * the `/impersonate` exchange screen (`pages/impersonate` over
+ * `features/impersonation`) and the banner that stands for the session it
+ * produced (`widgets/impersonation-banner`). Splitting them would give one
+ * namespace a sentence and the other a sentence and a button label, and a
+ * reviewer checking that both name the same two identities would have to read
+ * two files. The rule the exception proves is still the rule: an
+ * `impersonation:` key rendered from anywhere but those three is a review
+ * finding.
+ *
  * There is deliberately **no `grid`** — ADR-0055 §3 keeps `@repo/grid` out of
  * this app until a domain entity arrives, and a namespace declared for a package
  * the app does not depend on is one `init` would fail to load.
@@ -46,6 +58,7 @@ export const NAMESPACES = [
   "account",
   "profile",
   "settings",
+  "impersonation",
   "form",
 ] as const;
 

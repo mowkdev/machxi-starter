@@ -6,6 +6,7 @@ import {
   type CsrfResource,
   type ErrorCode,
   type ErrorDetail,
+  type ImpersonateBody,
   type LoginBody,
 } from "@repo/contracts";
 import axios, {
@@ -55,8 +56,45 @@ const CSRF_GUARDED_PATHS = [
   "/auth/logout-all",
 ];
 
-/** The endpoints that opt into cookie transport (ADR-0029 §Opt-in). */
-const COOKIE_TRANSPORT_PATHS = ["/auth/login", "/auth/refresh"];
+/**
+ * The endpoints that opt into cookie transport (ADR-0029 §Opt-in).
+ *
+ * **`/auth/impersonate` joined at `D13.7`, and without it the feature does not
+ * work at all.** The exchange sets the user population's cookies "exactly as
+ * login does — on ADR-0029's transport opt-in, never unconditionally"
+ * (ADR-0057 §3), so a client that omits the header is handed an access token
+ * and no refresh cookie: the impersonated session looks alive until the first
+ * reload, at which point the boot sequence has nothing to refresh from and the
+ * operator lands on the sign-in screen. It is a header, not a fix — the
+ * omission is invisible in every response.
+ */
+const COOKIE_TRANSPORT_PATHS = [
+  "/auth/login",
+  "/auth/refresh",
+  "/auth/impersonate",
+];
+
+/**
+ * The endpoints whose credential is in the body, so the bearer has no business
+ * on them (`D13.7`, out of `security-reviewer`'s first finding).
+ *
+ * Both routes register **before** their segment's `authenticate` and neither
+ * reads `ctx.principal`: login's credential is the password and the exchange's
+ * is the handoff token (ADR-0057 §3). Until now the request interceptor
+ * attached `Authorization` to every request the store had a token for, which
+ * meant an operator arriving at `/impersonate` with a real customer session
+ * already in this browser — the case ADR-0057 §3 decides explicitly, and the
+ * one this app has a test for — posted that session's access token on a
+ * request that has no use for it.
+ *
+ * Not exploitable against this API, which is why it is a MEDIUM and not more:
+ * the route mounts no guard, so the header is read by nothing. What it is is a
+ * live credential sent where it is not needed, on the one endpoint in the
+ * system whose whole design is about not touching the session already in the
+ * browser — and `redeemHandoff`'s own comment claims "nothing in the store is
+ * read on the way out", which was false by one line.
+ */
+const UNAUTHENTICATED_PATHS = ["/auth/login", "/auth/impersonate"];
 
 /**
  * The codes that end a session and are never retried (ADR-0033 §Boot, amended
@@ -271,7 +309,10 @@ export const createApiClient = ({
     const accessToken = store.getAccessToken();
     const csrfToken = store.getCsrfToken();
 
-    if (accessToken !== null) {
+    if (
+      accessToken !== null &&
+      !matches(UNAUTHENTICATED_PATHS, requestConfig)
+    ) {
       requestConfig.headers.set(
         "Authorization",
         `${TOKEN_TYPE} ${accessToken}`,
@@ -370,6 +411,61 @@ export const createApiClient = ({
   };
 
   /**
+   * Redeems an impersonation handoff token for a session (`D13.7`,
+   * ADR-0057 §3, §7).
+   *
+   * **It lives here, beside `login`, for `login`'s own reason**: this
+   * response's whole purpose is to start a session, and the module that owns
+   * the session's memory is the one that writes it. A feature that hydrated
+   * the store itself would be a second writer of the state this package keeps
+   * to one — the rule the D3.9 review wrote down and `useSetPrincipal` is the
+   * single narrow exception to. The `/impersonate` screen therefore hands over
+   * a token and gets an `AuthResource` back, exactly as the sign-in form does.
+   *
+   * The token is the credential and the request is unauthenticated, so nothing
+   * in the store is read on the way out — which is true because
+   * {@link UNAUTHENTICATED_PATHS} makes it true, and was false by one line
+   * until `D13.7`'s review. The request interceptor has already asked for
+   * cookie transport, so `refreshToken` is absent from the response and
+   * `csrfToken` is present (ADR-0029 §Opt-in) — the same shape login gets.
+   *
+   * **On an `admin`-segment client this function is a `404` by construction**,
+   * and that is the server's property rather than a check here: `auth.routes.ts`
+   * registers the route only when the factory's population is `user`, because
+   * an admin-segment twin would be a way to turn a URL fragment into a staff
+   * session (ADR-0057 §3). A guard on `segment` in this file would be a second
+   * implementation of a rule the authority already enforces, and the weaker of
+   * the two; it is named here so a reader does not conclude the symbol's
+   * presence on both clients means the endpoint exists on both.
+   *
+   * Every failure the endpoint has answers one indistinguishable `401`
+   * (ADR-0057 §3), which is a code an already-shipped bundle renders without
+   * any change; there is nothing for this function to branch on, and it does
+   * not try to.
+   *
+   * The store is written only on success. A refused exchange leaves whatever
+   * session the browser already had exactly as it was — the pre-existing real
+   * customer session ADR-0057 §3 declines to disturb — rather than half-writing
+   * an identity over it.
+   */
+  const redeemHandoff = async (token: string): Promise<AuthResource> => {
+    const body: ImpersonateBody = { token };
+    const { data } = await instance.post<{ data: AuthResource }>(
+      "/auth/impersonate",
+      body,
+    );
+    const resource = data.data;
+
+    store.setSession({
+      accessToken: resource.accessToken,
+      principal: resource.principal,
+      ...(resource.csrfToken ? { csrfToken: resource.csrfToken } : {}),
+    });
+
+    return resource;
+  };
+
+  /**
    * Ends the session on the server, then locally.
    *
    * The local clear is unconditional, including when the request fails: a
@@ -427,6 +523,22 @@ export const createApiClient = ({
        * or edge auth in front of it can answer either.
        */
       const isCsrf = pathOf(requestConfig).startsWith("/auth/csrf");
+      /*
+       * The fourth, and it joins the list for `login`'s reason rather than the
+       * bootstrap's (`D13.7`, ADR-0057 §3).
+       *
+       * The exchange is **unauthenticated** — the handoff token is the whole
+       * credential — and every way it can fail answers one indistinguishable
+       * `401`. Left off this list, a refused exchange would be read as an
+       * expired access token: the client would fire a refresh nobody asked
+       * for, and on the ordinary path — an operator with no customer session
+       * in this browser — that refresh answers `401` too, so the caller is
+       * rejected with the *refresh's* failure instead of the exchange's and
+       * `endSession` fires over a session that never existed. A dead handoff
+       * is not staleness, and there is nothing to retry it with.
+       */
+      const isImpersonate =
+        pathOf(requestConfig).startsWith("/auth/impersonate");
 
       /*
        * A terminal code ends the session wherever it appears. These are the
@@ -475,12 +587,21 @@ export const createApiClient = ({
        * `401` means the access token died — fifteen minutes is the design — and
        * the client's job is to make that invisible.
        *
-       * Refresh and login never enter here: a `401` from refresh *is* the
-       * terminal answer and a `401` from login is a wrong password, so
-       * recursing on either is a loop with no exit. Each request retries at
-       * most once; a second `401` after a fresh token is not staleness.
+       * Refresh, login and the exchange never enter here: a `401` from refresh
+       * *is* the terminal answer, a `401` from login is a wrong password, and
+       * a `401` from the exchange is a spent or expired handoff — none of the
+       * three is an expired access token, so recursing on any of them is a
+       * loop with no exit or a refresh with nothing behind it. Each request
+       * retries at most once; a second `401` after a fresh token is not
+       * staleness.
        */
-      if (failure.status === 401 && !isRefresh && !isLogin && !isCsrf) {
+      if (
+        failure.status === 401 &&
+        !isRefresh &&
+        !isLogin &&
+        !isCsrf &&
+        !isImpersonate
+      ) {
         if (requestConfig.retriedAfterRefresh) {
           // A `401` carrying a token the refresh just minted is not staleness.
           // Retrying again is how an outage becomes a request storm, and
@@ -512,6 +633,7 @@ export const createApiClient = ({
   return {
     instance,
     login,
+    redeemHandoff,
     logout,
     refreshSession,
     fetchCsrfToken,

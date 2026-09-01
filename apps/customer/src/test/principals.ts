@@ -1,4 +1,7 @@
-import type { UserPrincipalResource } from "@repo/contracts";
+import type {
+  ImpersonatorResource,
+  UserPrincipalResource,
+} from "@repo/contracts";
 
 import {
   createSessionStore,
@@ -33,6 +36,21 @@ export const userPrincipal = (
 });
 
 /**
+ * The staff member behind an impersonated session (`D13.7`, ADR-0057 §4).
+ *
+ * An id and an email, because that is the whole of `ImpersonatorResource`: the
+ * banner names a person, the trail carries an id, and roles are deliberately
+ * off the wire so nothing on this segment can authorise against them.
+ */
+export const impersonator = (
+  overrides: Partial<ImpersonatorResource> = {},
+): ImpersonatorResource => ({
+  id: "0198c1f0-0000-7000-8000-0000000000a1",
+  email: "operator@machxi.local",
+  ...overrides,
+});
+
+/**
  * A store holding a live session.
  *
  * A principal as well as a token: a store with one and not the other is the
@@ -51,3 +69,15 @@ export const authenticated = (
 
   return store;
 };
+
+/**
+ * The same customer, reached through an impersonated session.
+ *
+ * The subject is unchanged and an actor is added — impersonation adds an
+ * actor, it does not swap the subject (ADR-0057 §4) — which is exactly what
+ * makes the banner's two names two names and not one.
+ */
+export const impersonated = (
+  overrides: Partial<UserPrincipalResource> = {},
+): SessionStore =>
+  authenticated({ impersonatedBy: impersonator(), ...overrides });

@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { AccountMenu, AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
+import { useImpersonationBanner } from "@/widgets/impersonation-banner";
 
 import { usePseudoNotice, useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
@@ -106,8 +107,57 @@ const usePseudoLocaleNotice = (): ReactNode => {
 const useNavigating = (): boolean =>
   useRouterState({ select: (state) => state.status === "pending" });
 
+/**
+ * The shell's `banner` region has two possible fillings since `D13.7`, and one
+ * slot to put them in.
+ *
+ * They are stacked rather than ranked because neither is the other's
+ * condition: the pseudo-locale notice says the *build* is a translation build
+ * and the impersonation banner says the *session* is somebody else's, and a
+ * developer impersonating under the lens needs both sentences — suppressing
+ * either would hide a warning to tidy a region.
+ *
+ * The emptiness still has to be visible to the caller (ADR-0048 §3, amended
+ * `D8.7`), so this returns `undefined` when nothing is filled and the node
+ * itself when exactly one is — a wrapper around a single banner would put a
+ * `div` in the region on every impersonated screen for no reason. Only the
+ * genuinely rare case pays for the stack.
+ */
+const bannerSlot = (
+  impersonation: ReactNode,
+  pseudoNotice: ReactNode,
+): ReactNode => {
+  /*
+   * `== null` rather than `=== undefined`: a notice hook that ever returned
+   * `null` would count as filled, and the shell would draw an empty region on
+   * every screen — the exact regression ADR-0048 §3's amended contract exists
+   * to prevent, reintroduced one level up from where it was fixed.
+   */
+  if (impersonation == null) return pseudoNotice ?? undefined;
+  if (pseudoNotice == null) return impersonation;
+
+  /*
+   * Written out rather than mapped over an array: two nodes rendered from a
+   * list would need keys, and inventing keys for a fixed pair is ceremony
+   * around a defect the shape avoids. It also keeps the order readable, which
+   * is the one thing about the stack that is a decision.
+   */
+  return (
+    <div className="flex flex-col gap-2">
+      {impersonation}
+      {pseudoNotice}
+    </div>
+  );
+};
+
 function DashboardShell() {
-  const banner = usePseudoLocaleNotice();
+  const impersonation = useImpersonationBanner();
+  const pseudoNotice = usePseudoLocaleNotice();
+  /*
+   * The impersonation warning first, because it is the one a person has to act
+   * on and the region reads top to bottom.
+   */
+  const banner = bannerSlot(impersonation, pseudoNotice);
   const navigating = useNavigating();
   /*
    * The fallback is a key, not a sentence (ADR-0046 §7): it is copy a customer

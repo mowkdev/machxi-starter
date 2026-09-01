@@ -1,0 +1,13 @@
+{
+  "banner": {
+    "message": "You are signed in as {{operator}} and using {{customer}}'s account. Everything you do here is recorded.",
+    "exit": "Leave this account"
+  },
+  "exchange": {
+    "title": "Opening the account",
+    "pending": "Opening the account…",
+    "refused": "This link cannot be used. It may already have been used, or it may have expired. Ask the operator to start again.",
+    "missing": "This address needs a link from the admin panel. Ask the operator to start again.",
+    "signIn": "Go to sign in"
+  }
+}

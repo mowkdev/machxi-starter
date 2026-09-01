@@ -3,6 +3,7 @@ import type auth from "./locales/en/auth.json";
 import type common from "./locales/en/common.json";
 import type errors from "./locales/en/errors.json";
 import type home from "./locales/en/home.json";
+import type impersonation from "./locales/en/impersonation.json";
 import type profile from "./locales/en/profile.json";
 import type settings from "./locales/en/settings.json";
 
@@ -36,6 +37,7 @@ declare module "i18next" {
       account: typeof account;
       profile: typeof profile;
       settings: typeof settings;
+      impersonation: typeof impersonation;
     };
   }
 }

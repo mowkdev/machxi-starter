@@ -1,12 +1,16 @@
 import {
+  impersonateBody,
   loginBody,
   type AuthResource,
   type ErrorCode,
+  type ImpersonatorResource,
   type UserPrincipalResource,
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
 
-import { CSRF_HEADER } from "@/shared/api/client";
+import { CSRF_HEADER, TRANSPORT_HEADER } from "@/shared/api/client";
+
+import { impersonator } from "@/test/principals";
 
 import { fail, ok } from "./envelope";
 
@@ -72,6 +76,28 @@ export const PRINCIPAL: UserPrincipalResource = {
   roles: ["customer"],
 };
 
+/**
+ * The staff member behind an impersonated session (`D13.7`, ADR-0057 §4).
+ *
+ * **The fixture from `test/principals`, not a second copy of it** — the one
+ * correction `D13.7`'s review made to this file. `PRINCIPAL` here and
+ * `userPrincipal()` there already differ by id, and two literal operator
+ * addresses would have made "the banner names the operator the API sent" true
+ * by coincidence across two suites rather than by construction: the banner
+ * suite reads the store fixture and the exchange suite reads this one, so they
+ * have to be the same value or they prove nothing together.
+ */
+export const IMPERSONATOR: ImpersonatorResource = impersonator();
+
+/** The same customer, seen through an impersonated session. */
+export const IMPERSONATED_PRINCIPAL: UserPrincipalResource = {
+  ...PRINCIPAL,
+  impersonatedBy: IMPERSONATOR,
+};
+
+/** The handoff the admin panel would have put in the URL fragment. */
+export const HANDOFF_TOKEN = "handoff-token-from-the-fragment";
+
 export const CREDENTIALS = {
   email: "customer@machxi.local",
   password: "DevPassword!123",
@@ -91,6 +117,25 @@ export const authResource = (accessToken: string): AuthResource => ({
 export interface AuthMockState {
   /** How many times `POST /auth/refresh` has been called. */
   refreshCalls: number;
+  /**
+   * The tokens `POST /auth/impersonate` has been offered, in order (`D13.7`).
+   *
+   * A list rather than a count, because what a test has to be able to see is
+   * *which* value left the address bar — the fragment is the credential, and a
+   * screen that posted the wrong half of it would still produce one call.
+   */
+  impersonateCalls: string[];
+  /**
+   * Whether the exchange asked for cookie transport (ADR-0029 §Opt-in).
+   *
+   * Recorded rather than enforced, for the reason the API does not enforce it
+   * either: an exchange without the header is a valid request that answers
+   * with a body-borne refresh token and sets no cookie. That is precisely the
+   * failure `COOKIE_TRANSPORT_PATHS` exists to prevent and precisely the one
+   * that is invisible in a response, so the mock records the fact and a test
+   * asserts it.
+   */
+  impersonateAskedForCookies: boolean;
   /** How many times `GET /auth/csrf` has been called. */
   csrfCalls: number;
   /** How many times `POST /auth/logout` has been called. */
@@ -115,6 +160,8 @@ export const createAuthMockState = (): AuthMockState => ({
   refreshCalls: 0,
   csrfCalls: 0,
   logoutCalls: 0,
+  impersonateCalls: [],
+  impersonateAskedForCookies: false,
   hasRefreshCookie: true,
 });
 
@@ -162,6 +209,39 @@ export const createAuthHandlers = (state: AuthMockState) =>
 
       return ok(authResource("access-login"));
     }),
+
+    /*
+     * The exchange (`D13.7`, ADR-0057 §3).
+     *
+     * Unauthenticated and CSRF-free, exactly as `auth.routes.ts` registers it:
+     * the handoff token is the credential, and the request leans on no cookie
+     * for anything to prove intent about. Modelled with the API's own schema,
+     * so a body this app builds wrongly throws here.
+     *
+     * **One indistinguishable `401` for every refusal**, which is the whole of
+     * §3's amendment: an unknown token, a consumed one, an expired one, a
+     * disabled target and a deleted operator all answer the same thing. A mock
+     * that distinguished them would let a client grow a branch the API can
+     * never take.
+     */
+    http.post(
+      `${API}/auth/impersonate`,
+      async ({ request }): Promise<Response> => {
+        state.impersonateAskedForCookies =
+          request.headers.get(TRANSPORT_HEADER) === "cookie";
+
+        const body = impersonateBody.parse(await request.json());
+
+        state.impersonateCalls.push(body.token);
+
+        if (body.token !== HANDOFF_TOKEN) return fail(401, "UNAUTHENTICATED");
+
+        return ok({
+          ...authResource("access-impersonated"),
+          principal: IMPERSONATED_PRINCIPAL,
+        });
+      },
+    ),
 
     http.post(`${API}/auth/logout`, ({ request }): Response => {
       const refused = csrfChecked(request) ?? authenticated(request);

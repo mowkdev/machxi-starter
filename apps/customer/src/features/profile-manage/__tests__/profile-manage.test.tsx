@@ -18,6 +18,7 @@ import {
   createProfileMockState,
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
+import { fail } from "@/test/msw/handlers/envelope";
 import { server } from "@/test/msw/server";
 import { authenticated } from "@/test/principals";
 import { renderApp, renderWithProviders } from "@/test/render";
@@ -345,6 +346,52 @@ describe("the change-password dialog", () => {
     // Refused, and recorded as refused — `seen.changed` means accepted.
     expect(state.seen.changed).toHaveLength(0);
     expect(state.seen.refused).toHaveLength(1);
+  });
+
+  it("renders the impersonation refusal as catalogue copy", async () => {
+    const user = userEvent.setup();
+
+    /*
+     * ADR-0057 §5's exclusion list, as this app meets it (`D13.7`). The API
+     * refuses the takeover-enabling operations with **one code for the class**
+     * — a code per operation would be enum growth with no reader — and the
+     * client renders it exactly like any other refusal, over the catalogue
+     * entries `D13.3` shipped with the enum.
+     *
+     * **Nothing in this dialog knows impersonation exists**, and that is the
+     * assertion: no `principal.impersonatedBy` read, no hidden control, no
+     * pre-flight check. ADR-0042's posture is that the API is the authority
+     * and the client renders what it says; a button greyed out here would be a
+     * second implementation of the rule that could drift from the first.
+     */
+    server.use(
+      http.post(`${API}/profile/change-password`, () =>
+        fail(403, "AUTH_IMPERSONATION_REFUSED"),
+      ),
+    );
+
+    open();
+
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await user.type(screen.getByLabelText("New password"), NEW_PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    /*
+     * The `errors` catalogue's sentence and not the API's `error.message`,
+     * which is a developer-facing English default (ADR-0013, ADR-0046 §2). It
+     * lands at form level rather than on a box, because the refusal is about
+     * the session rather than about anything that was typed — there is no
+     * `codeFields` row for it and there should not be one.
+     */
+    expect(
+      await screen.findByText(
+        "That cannot be done while impersonating this account. The account holder has to do it themselves.",
+      ),
+    ).toBeInTheDocument();
+    expect(state.password).toBe(CURRENT_PASSWORD);
   });
 
   it("changes the password, keeps this session, and says both", async () => {

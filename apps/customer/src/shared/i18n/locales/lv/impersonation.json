@@ -1,0 +1,13 @@
+{
+  "banner": {
+    "message": "Jūs esat pieteicies kā {{operator}} un lietojat {{customer}} kontu. Viss, ko šeit darāt, tiek reģistrēts.",
+    "exit": "Pamest šo kontu"
+  },
+  "exchange": {
+    "title": "Atveram kontu",
+    "pending": "Atveram kontu…",
+    "refused": "Šo saiti nevar izmantot. Iespējams, tā jau ir izmantota vai tai beidzies termiņš. Lūdziet operatoram sākt no jauna.",
+    "missing": "Šai adresei nepieciešama saite no administrēšanas paneļa. Lūdziet operatoram sākt no jauna.",
+    "signIn": "Doties uz pieteikšanos"
+  }
+}

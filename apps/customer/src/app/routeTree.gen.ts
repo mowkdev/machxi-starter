@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DashboardRouteImport } from './routes/_dashboard'
+import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as AuthLoginRouteImport } from './routes/_auth.login'
 import { Route as DashboardIndexRouteImport } from './routes/_dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/_dashboard.account'
@@ -25,6 +26,11 @@ const AuthRoute = AuthRouteImport.update({
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/_dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpersonateRoute = ImpersonateRouteImport.update({
+  id: '/impersonate',
+  path: '/impersonate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
@@ -67,6 +73,7 @@ const DashboardAccountSecurityRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof DashboardIndexRoute
+  '/impersonate': typeof ImpersonateRoute
   '/login': typeof AuthLoginRoute
   '/account': typeof DashboardAccountRouteWithChildren
   '/account/preferences': typeof DashboardAccountPreferencesRoute
@@ -76,6 +83,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof DashboardIndexRoute
+  '/impersonate': typeof ImpersonateRoute
   '/login': typeof AuthLoginRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
   '/account/profile': typeof DashboardAccountProfileRoute
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/_dashboard': typeof DashboardRouteWithChildren
+  '/impersonate': typeof ImpersonateRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_dashboard/account': typeof DashboardAccountRouteWithChildren
   '/_dashboard/': typeof DashboardIndexRoute
@@ -98,6 +107,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/impersonate'
     | '/login'
     | '/account'
     | '/account/preferences'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/impersonate'
     | '/login'
     | '/account/preferences'
     | '/account/profile'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_auth'
     | '/_dashboard'
+    | '/impersonate'
     | '/_auth/login'
     | '/_dashboard/account'
     | '/_dashboard/'
@@ -128,6 +140,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   DashboardRoute: typeof DashboardRouteWithChildren
+  ImpersonateRoute: typeof ImpersonateRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -144,6 +157,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impersonate': {
+      id: '/impersonate'
+      path: '/impersonate'
+      fullPath: '/impersonate'
+      preLoaderRoute: typeof ImpersonateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_auth/login': {
@@ -242,6 +262,7 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   DashboardRoute: DashboardRouteWithChildren,
+  ImpersonateRoute: ImpersonateRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

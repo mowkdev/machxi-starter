@@ -89,6 +89,53 @@ describe("Banner", () => {
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
 
+  it("renders no action region when the caller names none", () => {
+    const { container } = render(<Banner message="A notice." />);
+
+    expect(container.querySelector('[data-slot="banner-action"]')).toBeNull();
+  });
+
+  it("renders the caller's action beside the message (`D13.7`)", () => {
+    render(
+      <Banner
+        action={<button type="button">Exit impersonation</button>}
+        message="You are impersonating."
+        variant="warning"
+      />,
+    );
+
+    const banner = screen.getByRole("status");
+
+    /*
+     * Inside the banner rather than beside it, which is what makes this a slot
+     * on the composition rather than a second element the app draws next to
+     * one (ADR-0048 §3, `D13.7`).
+     */
+    expect(banner).toContainElement(
+      screen.getByRole("button", { name: "Exit impersonation" }),
+    );
+  });
+
+  it("keeps an action and a dismiss control apart, in that order", () => {
+    render(
+      <Banner
+        action={<button type="button">Exit</button>}
+        dismissible
+        message="A notice."
+      />,
+    );
+
+    const [first, second] = screen.getAllByRole("button");
+
+    /*
+     * The way out first and the way to stop reading about it second — the
+     * order the component's own comment states, asserted so a later edit
+     * cannot quietly transpose them.
+     */
+    expect(first).toHaveAccessibleName("Exit");
+    expect(second).toHaveAccessibleName("Dismiss");
+  });
+
   it("hands the dismissal back and holds no dismissed state of its own", () => {
     const onDismiss = vi.fn();
 

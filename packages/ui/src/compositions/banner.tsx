@@ -2,6 +2,7 @@
 
 import { cva, type VariantProps } from "class-variance-authority";
 import { XIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "@repo/ui/components/button";
 import { cn } from "@repo/ui/lib/utils";
@@ -30,9 +31,16 @@ import { useUiStrings } from "@repo/ui/ui-strings";
  * construction — `apps/web` compiles this package through `transpilePackages`
  * and a Next server component must be able to import any export.
  *
- * **There is no `action` slot.** Neither consumer this repository can name has
- * one, so it takes the disposal `headerStart` and `pageActions` got: one prop
- * wide when a screen names it.
+ * **`action` arrived at `D13.7`, exactly as ADR-0048 §3 said it would.** That
+ * record left the slot out of the v1 API and gave it the disposal
+ * `headerStart` and `pageActions` got — "one prop wide when a screen names
+ * it" — and D13's impersonation banner is the screen that names it: ADR-0057
+ * §6 puts the exit control *in* the banner, because a warning that says a
+ * session is not what it looks like has to carry the way out of it. This is
+ * the prop, and it is the whole of the change: a `ReactNode` the caller
+ * builds, rendered before the dismiss control. The composition stays dumb —
+ * it does not know the node is a button, what pressing it ends, or that a
+ * session exists.
  */
 
 /**
@@ -84,6 +92,17 @@ export interface BannerProps {
    */
   readonly dismissible?: boolean;
   readonly onDismiss?: () => void;
+  /**
+   * The one control a banner may carry beside its dismiss (`D13.7`).
+   *
+   * A slot rather than a label-and-callback pair, for the reason the shell's
+   * regions are slots: the caller owns the control's words, its variant and
+   * its pending state, and a composition that took `actionLabel` would be
+   * deciding two of the three. It renders between the message and the dismiss
+   * control, which is the order the two have when both are present — the way
+   * out first, and the way to stop reading about it second.
+   */
+  readonly action?: ReactNode;
   readonly className?: string;
 }
 
@@ -92,6 +111,7 @@ export const Banner = ({
   variant = "info",
   dismissible = false,
   onDismiss,
+  action,
   className,
 }: BannerProps) => {
   const { dismiss } = useUiStrings();
@@ -114,6 +134,11 @@ export const Banner = ({
       role="status"
     >
       <span className="min-w-0 flex-1">{message}</span>
+      {action === undefined ? null : (
+        <span className="shrink-0" data-slot="banner-action">
+          {action}
+        </span>
+      )}
       {dismissible ? (
         <Button
           aria-label={dismiss}
