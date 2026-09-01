@@ -66,6 +66,16 @@ const claimsSchema = z.object({
   // Not `z.enum(...)`: see `narrowRoles`.
   roles: z.array(z.string()),
   exp: z.number(),
+  /**
+   * RFC 8693's actor claim, present only on an impersonated session
+   * (ADR-0057 §4): `act.sub` is the staff member acting **as** `sub`.
+   *
+   * Optional, and its absence is the ordinary case — every session minted by
+   * a password has no actor. It exists so `authenticate` can put both
+   * identities on the request without a second lookup (`D13.5`); the session
+   * row stays the source of truth, and refresh re-reads it there.
+   */
+  act: z.object({ sub: z.string().min(1) }).optional(),
 });
 
 export interface AccessTokenClaims<P extends Population = Population> {
@@ -77,6 +87,12 @@ export interface AccessTokenClaims<P extends Population = Population> {
   readonly roles: readonly RolesOfPopulation[P][];
   /** Expiry, in seconds since the epoch. */
   readonly exp: number;
+  /**
+   * The staff member acting as {@link AccessTokenClaims.sub}, when this
+   * session was minted by impersonation (ADR-0057 §4). Absent otherwise, which
+   * is every ordinary session.
+   */
+  readonly act?: { readonly sub: string };
 }
 
 /**
@@ -119,6 +135,23 @@ export interface IssueTokenInput {
   readonly population: Population;
   readonly sessionId: string;
   readonly roles: readonly Role[];
+  /**
+   * An upper bound on `exp`, taken from the session's own fixed end
+   * (ADR-0057 §4).
+   *
+   * An impersonated session dies at an instant rotation does not move, and
+   * without this cap the last access token issued before that instant would
+   * outlive it by up to `JWT_ACCESS_TTL` — a bearer credential for an account
+   * nobody is impersonating any more, and one `authenticate`'s session probe
+   * would still have to reject rather than never having minted. Omitted, the
+   * TTL alone decides, which is every ordinary session.
+   */
+  readonly notAfter?: Date | undefined;
+  /**
+   * The staff member acting as `principalId`, written into the RFC 8693 `act`
+   * claim (ADR-0057 §4). Omitted on every ordinary session.
+   */
+  readonly actorId?: string | undefined;
 }
 
 export interface IssuedAccessToken {
@@ -148,14 +181,25 @@ export const createTokenService = ({
       population,
       sessionId,
       roles,
+      notAfter,
+      actorId,
     }: IssueTokenInput): Promise<IssuedAccessToken> => {
       const issuedAtSec = Math.floor(now().getTime() / 1000);
-      const expiresAtSec = issuedAtSec + accessTtlSec;
+      // Floored rather than rounded: a token must never claim a second of life
+      // past the session's end, so the cap errs towards the shorter token.
+      const expiresAtSec =
+        notAfter === undefined
+          ? issuedAtSec + accessTtlSec
+          : Math.min(
+              issuedAtSec + accessTtlSec,
+              Math.floor(notAfter.getTime() / 1000),
+            );
 
       const token = await new SignJWT({
         pop: population,
         sid: sessionId,
         roles: [...roles],
+        ...(actorId === undefined ? {} : { act: { sub: actorId } }),
       })
         .setProtectedHeader({ alg: ALGORITHM, typ: "JWT" })
         .setSubject(principalId)
@@ -210,6 +254,7 @@ export const createTokenService = ({
       if (parsed.data.pop !== population) throw tokenInvalid();
 
       return {
+        ...(parsed.data.act === undefined ? {} : { act: parsed.data.act }),
         sub: parsed.data.sub,
         // The requested population, not the parsed claim: the line above
         // proved they are equal, and this is the one that carries `P`.

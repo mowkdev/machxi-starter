@@ -114,7 +114,7 @@ pnpm db:seed [-- --dev]      # idempotent seeders
 pnpm db:setup                # migrate + seed
 pnpm db:reset                # drop, migrate, seed — refuses NODE_ENV=production
 pnpm db:studio
-pnpm db:sessions:prune       # delete expired sessions (nothing schedules this yet)
+pnpm db:sessions:prune       # delete expired sessions and spent handoffs (nothing schedules this yet)
 ```
 
 ## What's inside

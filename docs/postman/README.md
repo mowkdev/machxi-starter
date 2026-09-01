@@ -4,10 +4,11 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 102 requests in 13 folders: `Health`,
+- `machxi-api.postman_collection.json` — 112 requests in 14 folders: `Health`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
-  `User › Settings`, `Public`, `Errors & routing`, `Teardown`.
+  `User › Settings`, `Public`, `Errors & routing`, `Impersonation`,
+  `Teardown`.
 - `local.postman_environment.json` — `baseUrl` and the dev fixture addresses.
   `superAdminEmail` / `superAdminPassword` are **empty on purpose**: they come
   from `SEED_SUPER_ADMIN_*` in your `.env` and are not committed.

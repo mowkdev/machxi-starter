@@ -34,6 +34,8 @@ import type { PrincipalAdapter, PrincipalRecord } from "../auth.types.js";
 const STAFF_ID = "11111111-1111-7111-8111-111111111111";
 const REFRESH_TTL_SEC = 3600;
 const GRACE_SEC = 30;
+/** `IMPERSONATION_SESSION_TTL`, and deliberately unlike the two above (ADR-0057 §4). */
+const IMPERSONATION_TTL_SEC = 1800;
 
 /* ── clock ────────────────────────────────────────────────────────────────── */
 
@@ -68,6 +70,7 @@ const createFakeSessions = () => {
         refreshTokenExpiresAt: input.refreshTokenExpiresAt,
         rotatedAt: null,
         revokedAt: null,
+        impersonatedByStaffId: input.impersonatedByStaffId ?? null,
       };
 
       rows.set(row.id, row);
@@ -300,6 +303,15 @@ const build = (
     readonly population?: "staff" | "user";
     readonly principals?: FakePrincipal[];
     readonly canCreate?: boolean;
+    /**
+     * The staff adapter the **user** service is wired with (ADR-0057 §4).
+     *
+     * Absent, the service has no way to look a staff member up at all, which
+     * is exactly how the container builds the staff-population instance — so
+     * `build()` with no `impersonators` is the wiring that must refuse to
+     * issue an impersonated session.
+     */
+    readonly impersonators?: FakePrincipal[];
   } = {},
 ) => {
   const population = options.population ?? "staff";
@@ -318,11 +330,21 @@ const build = (
     { canCreate: options.canCreate ?? false },
   );
 
+  const impersonators =
+    options.impersonators === undefined
+      ? undefined
+      : createFakePrincipals("staff", options.impersonators, {
+          canCreate: false,
+        });
+
   let tokenSequence = 0;
 
   const service = createAuthService({
     population,
     principals: principals.adapter,
+    ...(impersonators === undefined
+      ? {}
+      : { impersonators: impersonators.adapter }),
     sessions: sessions.repository,
     hasher: hasher.hasher,
     tokens: createTokenService({
@@ -334,6 +356,7 @@ const build = (
     hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
     refreshTtlSec: REFRESH_TTL_SEC,
     rotationGraceSec: GRACE_SEC,
+    impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
     // No real transaction: the fakes have no atomicity to lose, and what the
     // integration suite proves is that the real one commits together.
     transaction: (fn) => fn(undefined as never),
@@ -345,7 +368,7 @@ const build = (
     },
   });
 
-  return { service, sessions, hasher, principals } as const;
+  return { service, sessions, hasher, principals, impersonators } as const;
 };
 
 const login = (harness: ReturnType<typeof build>, password: string) =>
@@ -616,6 +639,7 @@ describe("refresh", () => {
       hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
+      impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
       transaction: (fn) => fn(undefined as never),
       now,
     });
@@ -691,6 +715,7 @@ describe("refresh", () => {
       hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
+      impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
       transaction: (fn) => fn(undefined as never),
       now,
     });
@@ -874,5 +899,193 @@ describe("register", () => {
     await expect(
       harness.service.register(context(), body),
     ).rejects.toMatchObject({ status: 500, code: "INTERNAL_ERROR" });
+  });
+});
+
+/* ── impersonation (ADR-0057 §4) ──────────────────────────────────────────── */
+
+const CUSTOMER_ID = "33333333-3333-7333-8333-333333333333";
+const ACTOR_ID = "44444444-4444-7444-8444-444444444444";
+
+/**
+ * A `user` service wired the way the container wires it: the customer
+ * population's principals, and the staff adapter as `impersonators`.
+ */
+const buildImpersonation = (
+  overrides: {
+    readonly targetActive?: boolean;
+    readonly actorActive?: boolean;
+    readonly actors?: FakePrincipal[];
+  } = {},
+) =>
+  build({
+    population: "user",
+    principals: [
+      {
+        id: CUSTOMER_ID,
+        email: "customer@machxi.local",
+        passwordHash: "hashed:correct-horse-battery",
+        active: overrides.targetActive ?? true,
+      },
+    ],
+    impersonators: overrides.actors ?? [
+      {
+        id: ACTOR_ID,
+        email: "operator@machxi.local",
+        passwordHash: "hashed:correct-horse-battery",
+        active: overrides.actorActive ?? true,
+      },
+    ],
+  });
+
+const openImpersonated = (harness: ReturnType<typeof build>) =>
+  harness.service.issueImpersonatedSession(context(), {
+    principalId: CUSTOMER_ID,
+    staffId: ACTOR_ID,
+  });
+
+describe("issueImpersonatedSession", () => {
+  it("anchors a fixed end at the exchange, not the sliding refresh TTL", async () => {
+    // The delta ADR-0057 §4 makes to ADR-0018, at the instant it is made.
+    // `IMPERSONATION_TTL_SEC` is deliberately unlike `REFRESH_TTL_SEC`, so an
+    // implementation that reached for the wrong constant fails here.
+    const auth = await openImpersonated(buildImpersonation());
+
+    expect(auth.refreshTokenExpiresAt).toBe("2026-08-18T12:30:00.000Z");
+  });
+
+  it("marks the session with its actor and names both identities on the wire", async () => {
+    const harness = buildImpersonation();
+    const auth = await openImpersonated(harness);
+    const [session] = [...harness.sessions.rows.values()];
+
+    expect(session?.impersonatedByStaffId).toBe(ACTOR_ID);
+    expect(auth.principal).toMatchObject({
+      kind: "user",
+      id: CUSTOMER_ID,
+      impersonatedBy: { id: ACTOR_ID, email: "operator@machxi.local" },
+    });
+  });
+
+  it("caps the access token at the session's end", async () => {
+    // No JWT outlives the session it names (ADR-0057 §4). The cap only bites
+    // late in the window — the access TTL is 15 minutes and the session 30 —
+    // so the moment worth testing is a rotation 20 minutes in, where an
+    // uncapped token would run 5 minutes past a session nobody is
+    // impersonating through any more.
+    const harness = buildImpersonation();
+    const opened = await openImpersonated(harness);
+
+    expect(opened.accessTokenExpiresAt).toBe("2026-08-18T12:15:00.000Z");
+
+    advance(20 * 60);
+
+    const rotated = await harness.service.refresh(context(), {
+      refreshToken: opened.refreshToken,
+    });
+
+    expect(rotated.accessTokenExpiresAt).toBe(rotated.refreshTokenExpiresAt);
+    expect(rotated.accessTokenExpiresAt).toBe("2026-08-18T12:30:00.000Z");
+  });
+
+  it("refuses when the minting staff member is gone", async () => {
+    // The exchange's judgement, and deliberately not refresh's: a session
+    // whose actor cannot be resolved is one the banner could never name, and
+    // ADR-0057 §7 makes that banner unremovable.
+    const harness = buildImpersonation({ actors: [] });
+
+    await expect(openImpersonated(harness)).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+    expect(harness.sessions.rows.size).toBe(0);
+  });
+
+  it("refuses when the minting staff member is inactive", async () => {
+    const harness = buildImpersonation({ actorActive: false });
+
+    await expect(openImpersonated(harness)).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+    expect(harness.sessions.rows.size).toBe(0);
+  });
+
+  it("refuses when the target went inactive after the mint", async () => {
+    // A minute passes between the mint and the exchange at most, and "the
+    // account was disabled in that minute" must not open anyway.
+    const harness = buildImpersonation({ targetActive: false });
+
+    await expect(openImpersonated(harness)).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+    expect(harness.sessions.rows.size).toBe(0);
+  });
+
+  it("refuses on a service with no staff adapter at all", async () => {
+    // The staff population's instance, which the container builds without
+    // `impersonators` on purpose: a staff session is never impersonated, and
+    // this is what makes that a property of the wiring (ADR-0057 §4).
+    const harness = build({
+      population: "user",
+      principals: [
+        {
+          id: CUSTOMER_ID,
+          email: "customer@machxi.local",
+          passwordHash: "hashed:correct-horse-battery",
+          active: true,
+        },
+      ],
+    });
+
+    await expect(openImpersonated(harness)).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+  });
+});
+
+describe("refreshing an impersonated session", () => {
+  it("rotates the pair without moving the end", async () => {
+    const harness = buildImpersonation();
+    const opened = await openImpersonated(harness);
+
+    advance(60);
+
+    const rotated = await harness.service.refresh(context(), {
+      refreshToken: opened.refreshToken,
+    });
+
+    expect(rotated.refreshTokenExpiresAt).toBe(opened.refreshTokenExpiresAt);
+    expect(rotated.refreshToken).not.toBe(opened.refreshToken);
+    expect(rotated.principal).toMatchObject({
+      impersonatedBy: { id: ACTOR_ID },
+    });
+  });
+
+  it("still dies at that end, however many times it rotated", async () => {
+    const harness = buildImpersonation();
+    const opened = await openImpersonated(harness);
+
+    advance(IMPERSONATION_TTL_SEC + 1);
+
+    await expect(
+      harness.service.refresh(context(), {
+        refreshToken: opened.refreshToken,
+      }),
+    ).rejects.toMatchObject({ code: "AUTH_INVALID_REFRESH_TOKEN" });
+  });
+
+  it("leaves an ordinary session's expiry sliding", async () => {
+    // The supersession's terms: every ADR-0018 behaviour outside the two named
+    // deltas must show no diff, and this is the one the delta sits next to.
+    const harness = build();
+    const opened = await login(harness, "correct-horse-battery");
+
+    advance(60);
+
+    const rotated = await harness.service.refresh(context(), {
+      refreshToken: opened.refreshToken,
+    });
+
+    expect(rotated.refreshTokenExpiresAt).toBe("2026-08-18T13:01:00.000Z");
+    expect(opened.refreshTokenExpiresAt).toBe("2026-08-18T13:00:00.000Z");
   });
 });

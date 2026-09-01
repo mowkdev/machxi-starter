@@ -117,3 +117,39 @@ export const setPasswordBody = z.strictObject({
   currentPassword: presentedPasswordSchema,
 });
 export type SetPasswordBody = z.infer<typeof setPasswordBody>;
+
+/**
+ * Upper bound on a submitted impersonation handoff token.
+ *
+ * The same bound {@link MAX_REFRESH_TOKEN_LENGTH} puts on the other opaque
+ * credential, and it matters more here: this value arrives from a **URL
+ * fragment** the customer app reads off `location.hash` and posts on, so its
+ * length is whatever a pasted link happened to contain.
+ */
+export const MAX_HANDOFF_TOKEN_LENGTH = 512;
+
+/**
+ * The opaque one-time handoff token, as the customer app sends it back
+ * (ADR-0057 §2).
+ *
+ * Bounded and not format-checked, for the reason {@link refreshTokenSchema}
+ * gives: the encoding is the mint's business, and an unknown token is refused
+ * by the hash lookup either way.
+ */
+export const handoffTokenSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_HANDOFF_TOKEN_LENGTH);
+
+/**
+ * `POST /api/v1/user/auth/impersonate` — the exchange (ADR-0057 §3).
+ *
+ * Unauthenticated: the token *is* the credential. The route registers on the
+ * `user` segment only, because an admin-segment twin would be a way to mint a
+ * staff session from a URL.
+ */
+export const impersonateBody = z.strictObject({
+  token: handoffTokenSchema,
+});
+export type ImpersonateBody = z.infer<typeof impersonateBody>;

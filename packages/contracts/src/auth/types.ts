@@ -177,3 +177,29 @@ export interface CsrfResource {
 export interface AuthResource extends TokenPair {
   readonly principal: PrincipalResource;
 }
+
+/**
+ * The body of `POST /api/v1/admin/users/:id/impersonate` — the mint
+ * (ADR-0057 §1).
+ *
+ * A handoff, **not** a session. This response sets no cookie of any kind, and
+ * that is precisely what leaves the minting staff member's own session
+ * untouched: the admin segment's cookies are never written by this flow
+ * (ADR-0056's "each segment touches only its own", inherited rather than
+ * re-decided). The admin app puts `token` in the customer app's URL
+ * **fragment** — `/impersonate#token=…` — which no server log and no `Referer`
+ * header ever sees.
+ *
+ * The token is returned exactly once; only its SHA-256 digest is stored, so no
+ * later read of the database can produce a usable credential. It is strictly
+ * single-use: the exchange consumes it atomically, and a replay inside any
+ * window mints nothing.
+ *
+ * `expiresAt` is on the wire so the admin app can say how long the operator
+ * has without hard-coding a window the API owns
+ * (`IMPERSONATION_HANDOFF_TTL`, 60 seconds by default).
+ */
+export interface ImpersonationHandoffResource {
+  readonly token: string;
+  readonly expiresAt: IsoDateTime;
+}

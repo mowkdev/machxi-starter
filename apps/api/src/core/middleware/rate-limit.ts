@@ -7,9 +7,11 @@ import { rateLimited } from "../errors/index.js";
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
  *
- * Three limiters, all sharing one window and one failure shape: the global one
- * on `/api`, a strict one on login and registration, and one on *failed*
- * refreshes. `/health` is deliberately outside all of them — a probe that gets
+ * Four limiters, all sharing one window and one failure shape: the global one
+ * on `/api`, a strict one on login and registration, one on *failed*
+ * refreshes, and — since `D13.4` — one on the impersonation mint, the only one
+ * in this file keyed on a principal rather than on an address (ADR-0057 §1).
+ * `/health` is deliberately outside all of them — a probe that gets
  * rate-limited takes a healthy instance out of rotation (ADR-0016).
  *
  * The store is `express-rate-limit`'s in-memory default, which is per process.
@@ -132,6 +134,45 @@ export const createRefreshRateLimiter = (config: AppConfig): RequestHandler =>
     limit: config.rateLimit.refreshMax,
     skipSuccessfulRequests: true,
     requestWasSuccessful: (_req, res) => res.statusCode !== 401,
+  });
+
+/**
+ * `RATE_LIMIT_IMPERSONATION_MAX / 15 min / **staff principal**` on the mint
+ * (ADR-0057 §1).
+ *
+ * The only limiter here that is not keyed on an address, because the request
+ * it bounds has no address-shaped identity worth bounding: a mint is
+ * authenticated, high-value, and performed from an office whose whole support
+ * desk may share one egress IP. A per-IP budget there is either so loose that
+ * it bounds nothing or so tight that one operator's afternoon locks out the
+ * team. The actor is the thing to budget, and ten per window is a support
+ * desk's day — an account spending it is worth a look.
+ *
+ * Keying on the principal is also what forces this limiter to mount **after**
+ * `authenticate`: `ctx.principal` does not exist before it. ADR-0057 §1 states
+ * that as a named refinement of ADR-0011's rate-limit-first order rather than
+ * leaving it as an exception somebody invented at a route.
+ *
+ * The unauthenticated fallback is the address, and it is unreachable by
+ * construction — the mint sits inside the admin segment, behind
+ * `authenticate("staff")` and `authorize("admin")`. It is written anyway so
+ * that a future mount which got the order wrong degrades to a per-IP limit
+ * rather than to one shared bucket for every anonymous caller, which would be
+ * a limiter that stops the whole world at ten.
+ */
+export const createImpersonationRateLimiter = (
+  config: AppConfig,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(RATE_LIMIT_WINDOW_MS),
+    limit: config.rateLimit.impersonationMax,
+    keyGenerator: (req) => {
+      const { principal } = req.ctx;
+
+      return principal === null
+        ? `anon:${ipKey(req)}`
+        : `${principal.kind}:${principal.id}`;
+    },
   });
 
 /**

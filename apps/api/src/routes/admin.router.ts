@@ -33,7 +33,8 @@ import { createUsersRouter } from "../modules/users/index.js";
  *   acting on itself.
  * - `/staff` is `admin` throughout. Managing operators is not a manager's job.
  * - `/users` is `admin` **or** `manager` to read, and the router narrows its
- *   five writing routes back to `admin`.
+ *   writing routes back to `admin` — six of them since `D13.4`, the sixth
+ *   being the impersonation mint (ADR-0057 §1).
  *
  * `super_admin` bypasses both, on the single line in `authorize` that says so.
  */
@@ -48,6 +49,10 @@ export const createAdminRouter = (container: Container): Router => {
       population: "staff",
       loginRateLimiter: container.rateLimiters.login,
       refreshRateLimiter: container.rateLimiters.refresh,
+      // Passed and never registered on this segment: the exchange exists only
+      // where the population is `user` (ADR-0057 §3), and the condition that
+      // says so lives in the router beside the route.
+      impersonation: container.controllers.impersonation,
     }),
   );
 
@@ -75,7 +80,16 @@ export const createAdminRouter = (container: Container): Router => {
   router.use(
     "/users",
     authorize("admin", "manager"),
-    createUsersRouter(container.controllers.users),
+    createUsersRouter({
+      controller: container.controllers.users,
+      // `POST /users/:id/impersonate` (ADR-0057 §1) — narrowed to `admin` by
+      // the route, and limited per staff principal by a limiter that must
+      // therefore mount after this segment's `authenticate`.
+      impersonation: {
+        controller: container.controllers.impersonation,
+        rateLimiter: container.rateLimiters.impersonation,
+      },
+    }),
   );
 
   return router;

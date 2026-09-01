@@ -83,6 +83,28 @@ export const currentPasswordInvalid = (): AppError =>
   );
 
 /**
+ * Every way the impersonation exchange can fail, answered as one
+ * indistinguishable `401` (ADR-0057 §3, amended `D13.4`).
+ *
+ * Unknown token, already consumed, past `IMPERSONATION_HANDOFF_TTL`, target
+ * deleted or disabled, minting staff member gone — one answer, because the
+ * caller of this endpoint is an anonymous holder of a URL fragment and every
+ * distinction between those cases is something for them to learn. It is the
+ * same posture `invalidCredentials` takes, applied to the other opaque
+ * credential in the system.
+ *
+ * The **generic** `UNAUTHENTICATED` code rather than one of its own, and that
+ * is the decision `D13.4` recorded in ADR-0057 §3: `AUTH_IMPERSONATION_REFUSED`
+ * belongs to the exclusion list (§5, a `403` on a live session) and would be
+ * wrong here, and a fourth handoff-shaped code would be enum growth whose only
+ * reader — the customer app's `/impersonate` screen — has one thing to say
+ * either way. Nothing branches on it, and every already-shipped bundle already
+ * renders it.
+ */
+export const impersonationHandoffInvalid = (): AppError =>
+  unauthenticated("This impersonation link is no longer valid");
+
+/**
  * A registration whose email is already taken.
  *
  * Plain `CONFLICT`, never `USER_EMAIL_TAKEN`: this endpoint is anonymous, and

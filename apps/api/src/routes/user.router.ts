@@ -8,9 +8,10 @@ import { createUserProfileRouter } from "../modules/users/index.js";
 /**
  * `/api/v1/user/*` (ADR-0015) — requires a user principal.
  *
- * `/auth` is mounted first and guards itself: `login` and `refresh` are how a
- * client obtains a token, so they cannot sit behind one, while `logout`,
- * `logout-all` and `me` are guarded inside the auth router.
+ * `/auth` is mounted first and guards itself: `login`, `refresh` and — since
+ * `D13.4` — `impersonate` are how a client obtains a token, so they cannot sit
+ * behind one, while `logout`, `logout-all` and `me` are guarded inside the
+ * auth router.
  *
  * Everything registered *after* `authenticate("user")` requires one. The guard
  * goes on the router, not on each route, so a new endpoint is protected by
@@ -36,6 +37,10 @@ export const createUserRouter = (container: Container): Router => {
       population: "user",
       loginRateLimiter: container.rateLimiters.login,
       refreshRateLimiter: container.rateLimiters.refresh,
+      // `POST /user/auth/impersonate` (ADR-0057 §3) — registered here and
+      // nowhere else, because the auth router is one factory per segment and
+      // an admin-segment twin would turn a URL fragment into a staff session.
+      impersonation: container.controllers.impersonation,
     }),
   );
 

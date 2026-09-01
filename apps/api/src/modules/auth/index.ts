@@ -1,6 +1,7 @@
 export {
   accountDisabled,
   currentPasswordInvalid,
+  impersonationHandoffInvalid,
   invalidCredentials,
   invalidRefreshToken,
   refreshReused,
@@ -9,6 +10,33 @@ export {
   tokenExpired,
   tokenInvalid,
 } from "./auth.errors.js";
+export {
+  createImpersonationController,
+  type ImpersonationController,
+  type ImpersonationControllerDeps,
+} from "./auth.impersonation.controller.js";
+export {
+  createHandoffsRepository,
+  type ConsumedHandoff,
+  type ConsumeHandoffInput,
+  type HandoffsRepository,
+  type NewHandoffInput,
+} from "./auth.impersonation.repository.js";
+export {
+  exchangeImpersonationSchema,
+  mintImpersonationSchema,
+} from "./auth.impersonation.schemas.js";
+export {
+  MAX_HANDOFF_USER_AGENT_LENGTH,
+  createImpersonationService,
+  type ImpersonationService,
+  type ImpersonationServiceDeps,
+  type ImpersonationTargets,
+} from "./auth.impersonation.service.js";
+export {
+  applyAuthTransport,
+  type AuthTransportOptions,
+} from "./auth.transport.js";
 export {
   DEFAULT_QUEUE_FACTOR,
   createHashLimiter,
@@ -59,6 +87,7 @@ export {
   createAuthService,
   type AuthService,
   type AuthServiceDeps,
+  type IssueImpersonatedSessionInput,
   type RefreshInput,
 } from "./auth.service.js";
 export {

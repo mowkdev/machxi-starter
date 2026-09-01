@@ -7,6 +7,8 @@ import {
   validate,
 } from "../../core/middleware/index.js";
 import type { AuthController } from "./auth.controller.js";
+import type { ImpersonationController } from "./auth.impersonation.controller.js";
+import { exchangeImpersonationSchema } from "./auth.impersonation.schemas.js";
 import { loginSchema, refreshSchema, registerSchema } from "./auth.schemas.js";
 
 /**
@@ -30,6 +32,15 @@ export interface AuthRouterDeps {
   readonly population: Population;
   readonly loginRateLimiter: RequestHandler;
   readonly refreshRateLimiter: RequestHandler;
+  /**
+   * The exchange half of the impersonation flow (ADR-0057 §3).
+   *
+   * Passed to both mounts and registered by only one — see the route below.
+   * It is a dependency of the factory rather than of the segment router so
+   * that the `population === "user"` condition lives beside the route it
+   * guards, where a reader can see it.
+   */
+  readonly impersonation: Pick<ImpersonationController, "exchange">;
 }
 
 export const createAuthRouter = ({
@@ -38,6 +49,7 @@ export const createAuthRouter = ({
   population,
   loginRateLimiter,
   refreshRateLimiter,
+  impersonation,
 }: AuthRouterDeps): Router => {
   const router = Router();
 
@@ -77,6 +89,29 @@ export const createAuthRouter = ({
     validate(refreshSchema),
     controller.refresh,
   );
+
+  // The exchange (ADR-0057 §3), unauthenticated like `login` and for the same
+  // reason: the handoff token is the credential, and a client that had a
+  // session would not need one.
+  //
+  // **Only on the `user` segment.** This factory is mounted once per segment,
+  // so an unconditional registration would create an admin-segment twin — a
+  // way to turn a URL fragment into a staff session, which is exactly what the
+  // whole handoff design refuses to allow. The condition is the guard.
+  //
+  // No CSRF guard, for the reason `login` carries none: the request leans on
+  // no cookie at all — nothing in the browser's jar authorises it — so there
+  // is no cross-site submission to prove intent for. It carries no limiter of
+  // its own either: the mint is where a budget belongs (ADR-0057 §1), the
+  // token here is 32 random bytes with a 60-second life, and the global
+  // limiter covers the endpoint.
+  if (population === "user") {
+    router.post(
+      "/impersonate",
+      validate(exchangeImpersonationSchema),
+      impersonation.exchange,
+    );
+  }
 
   // Everything registered below this line requires a principal of this
   // population. Mounting the guard once, here, is what makes a future endpoint

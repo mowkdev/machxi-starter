@@ -66,12 +66,12 @@ export const impersonationHandoffs = pgTable(
   (table) => [
     // For the sweep, which scans by expiry exactly as `db:sessions:prune`
     // already does over `sessions` (ADR-0018 §Cleanup). ADR-0057 §2 decides
-    // that sweep grows to delete consumed and expired handoffs; **it has not
-    // grown yet** — `prune-sessions.ts` still touches `sessions` alone, and
-    // the clause is on `D13.4`'s done-when, beside the code that writes these
-    // rows. The index lands with the table so the migration is not reopened
-    // for it. The token lookup itself is an equality on the hash, which
-    // `unique()` above already indexes.
+    // that sweep grows to delete consumed and expired handoffs, and since
+    // `D13.4` it has: `pruneImpersonationHandoffs` in `prune-sessions.ts` runs
+    // beside `pruneSessions` on the same cutoff. The index landed with the
+    // table so the migration would not have to be reopened for it. The token
+    // lookup itself is an equality on the hash, which `unique()` above already
+    // indexes.
     index("impersonation_handoffs_expires_at_idx").on(table.expiresAt),
   ],
 );

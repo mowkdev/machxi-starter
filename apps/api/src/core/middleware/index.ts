@@ -16,6 +16,7 @@ export { notFoundHandler } from "./not-found.js";
 export {
   RATE_LIMIT_WINDOW_MS,
   createGlobalRateLimiter,
+  createImpersonationRateLimiter,
   createLoginRateLimiter,
   createRefreshRateLimiter,
 } from "./rate-limit.js";

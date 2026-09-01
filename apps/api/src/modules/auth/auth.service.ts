@@ -1,8 +1,10 @@
 import type {
+  ImpersonatorResource,
   LoginBody,
   Population,
   PrincipalResource,
   RegisterBody,
+  UserPrincipalResource,
 } from "@repo/contracts";
 import type { PasswordHasher } from "@repo/crypto";
 import { randomToken, sha256Base64url } from "@repo/crypto";
@@ -13,6 +15,7 @@ import type { RequestContext } from "../../core/context/index.js";
 import { internal } from "../../core/errors/index.js";
 import {
   accountDisabled,
+  impersonationHandoffInvalid,
   invalidCredentials,
   invalidRefreshToken,
   refreshReused,
@@ -20,7 +23,11 @@ import {
   sessionRevoked,
 } from "./auth.errors.js";
 import type { HashLimiter } from "./auth.hash-limiter.js";
-import { toAuthResource, type IssuedAuthResource } from "./auth.mapper.js";
+import {
+  toAuthResource,
+  withImpersonator,
+  type IssuedAuthResource,
+} from "./auth.mapper.js";
 import type { SessionsRepository } from "./auth.repository.js";
 import type { TokenService } from "./auth.tokens.js";
 import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
@@ -78,6 +85,16 @@ export const REVOKE_REASONS = {
    * rather than waiting out `JWT_ACCESS_TTL`.
    */
   rolesChanged: "roles_changed",
+  /**
+   * The exit control on the impersonation banner (ADR-0057 §6, built at
+   * `D13.5`).
+   *
+   * Its own reason rather than `logout`, because the audit trail has to tell
+   * "the customer signed out" apart from "a support operator finished acting
+   * as them" — the same distinction {@link REVOKE_REASONS.passwordReset} draws
+   * against `passwordChanged`.
+   */
+  impersonationEnded: "impersonation_ended",
 } as const;
 
 export type RevokeReason = (typeof REVOKE_REASONS)[keyof typeof REVOKE_REASONS];
@@ -117,6 +134,19 @@ export interface RevokeSessionsForInput {
  */
 export const MAX_USER_AGENT_LENGTH = 512;
 
+/** What {@link AuthService.issueImpersonatedSession} acts on (ADR-0057 §3). */
+export interface IssueImpersonatedSessionInput {
+  /** The customer whose account the session opens — from the consumed handoff. */
+  readonly principalId: string;
+  /** The staff member who minted that handoff, and this session's actor. */
+  readonly staffId: string;
+  /**
+   * Joins the exchange's transaction, so the consume, the session row and the
+   * `impersonation.exchanged` audit row commit together or not at all.
+   */
+  readonly tx?: DbExecutor | undefined;
+}
+
 export interface AuthServiceDeps {
   readonly population: Population;
   readonly principals: PrincipalAdapter;
@@ -127,6 +157,24 @@ export interface AuthServiceDeps {
   readonly refreshTtlSec: number;
   /** `REFRESH_ROTATION_GRACE_SEC` (ADR-0004). */
   readonly rotationGraceSec: number;
+  /**
+   * `IMPERSONATION_SESSION_TTL` (ADR-0004, ADR-0057 §4) — the **fixed** life of
+   * a session minted by impersonation, anchored at the exchange and never
+   * extended by a rotation.
+   */
+  readonly impersonationSessionTtlSec: number;
+  /**
+   * The staff adapter narrowed to one lookup, wired on the **user** service
+   * only (ADR-0057 §4).
+   *
+   * It is what turns `sessions.impersonated_by_staff_id` into the
+   * `impersonatedBy: { id, email }` the banner renders from — resolved at the
+   * auth endpoints (exchange, refresh, `me`), never per request. Absent on the
+   * staff service, because a staff session is never impersonated: the mint is
+   * `/admin/users/:id` only, and a service that could not look a staff member
+   * up is a service that cannot accidentally attribute one.
+   */
+  readonly impersonators?: Pick<PrincipalAdapter, "findById"> | undefined;
   /**
    * Runs `fn` inside one database transaction. Registration inserts an
    * account, a role grant and a session; either all three land or none does.
@@ -145,6 +193,8 @@ export const createAuthService = ({
   hashLimiter,
   refreshTtlSec,
   rotationGraceSec,
+  impersonationSessionTtlSec,
+  impersonators,
   transaction,
   now = () => new Date(),
   newRefreshToken = () => randomToken(32),
@@ -153,20 +203,83 @@ export const createAuthService = ({
     new Date(at.getTime() + refreshTtlSec * 1000);
 
   /**
+   * `sessions.impersonated_by_staff_id` → the wire field the banner renders
+   * from (ADR-0057 §4).
+   *
+   * Resolved from the `staff` table at the auth endpoints only — the exchange,
+   * refresh and `me`, all of which already hold the session row — and never
+   * per authenticated request: an ordinary request reads the id off the access
+   * token's `act` claim instead (`D13.5`).
+   *
+   * A staff member hard-deleted (ADR-0028) mid-impersonation resolves to
+   * `undefined`, and the session keeps working without a banner. That is the
+   * lesser of two wrongs on this path: the alternative is ending a support
+   * operator's session because somebody else's account was closed, and the
+   * attribution survives on the session row either way. The **exchange**
+   * answers it differently — see {@link issueImpersonatedSession}, where a
+   * session that could never show a banner is refused rather than created.
+   */
+  const resolveImpersonator = async (
+    staffId: string,
+  ): Promise<ImpersonatorResource | undefined> => {
+    const record = await impersonators?.findById(staffId);
+
+    return record === undefined
+      ? undefined
+      : { id: record.id, email: record.email };
+  };
+
+  /**
+   * Attaches the actor to a principal that is about to go on the wire.
+   *
+   * `PrincipalRecord.resource` is the union and `withImpersonator` takes the
+   * customer shape alone, so the narrowing has to happen somewhere. Stated as
+   * a refusal rather than a cast: the branch is unreachable today — only the
+   * user-population service is wired with `impersonators` — and a future
+   * second mint path must fail loudly here rather than quietly putting an
+   * actor on a staff principal (ADR-0057 §4).
+   */
+  const asImpersonated = (
+    resource: PrincipalResource,
+    staff: ImpersonatorResource,
+  ): UserPrincipalResource => {
+    if (resource.kind !== "user") {
+      throw internal(
+        new Error(
+          "only a user principal can be impersonated (ADR-0057 §4): the mint is /admin/users/:id only",
+        ),
+      );
+    }
+
+    return withImpersonator(resource, staff);
+  };
+
+  /**
    * Creates the session row and the access token that names it.
    *
    * The refresh token is generated here and returned to the caller exactly
    * once — only its SHA-256 digest is stored, so no later read of the database
    * can produce a usable credential (ADR-0018).
+   *
+   * `impersonation` is the one thing that makes a session different, and it
+   * makes it different in three places at once (ADR-0057 §4): the row carries
+   * the actor column, the expiry is a **fixed** end rather than the sliding
+   * `REFRESH_TOKEN_TTL`, and the access token is both capped at that end and
+   * stamped with the RFC 8693 `act` claim. Absent — every login, every
+   * registration — nothing below changes at all.
    */
   const issueSession = async (
     ctx: RequestContext,
     principal: PrincipalRecord,
     at: Date,
     tx?: DbExecutor,
+    impersonation?: ImpersonatorResource,
   ): Promise<IssuedAuthResource> => {
     const refreshToken = newRefreshToken();
-    const refreshTokenExpiresAt = refreshExpiryFrom(at);
+    const refreshTokenExpiresAt =
+      impersonation === undefined
+        ? refreshExpiryFrom(at)
+        : new Date(at.getTime() + impersonationSessionTtlSec * 1000);
 
     const session = await sessions.create(
       {
@@ -176,6 +289,9 @@ export const createAuthService = ({
         refreshTokenExpiresAt,
         ip: ctx.ip,
         userAgent: ctx.userAgent?.slice(0, MAX_USER_AGENT_LENGTH),
+        ...(impersonation === undefined
+          ? {}
+          : { impersonatedByStaffId: impersonation.id }),
       },
       tx,
     );
@@ -185,10 +301,20 @@ export const createAuthService = ({
       population,
       sessionId: session.id,
       roles: principal.roles,
+      ...(impersonation === undefined
+        ? {}
+        : {
+            // No JWT outlives the session it names (ADR-0057 §4).
+            notAfter: refreshTokenExpiresAt,
+            actorId: impersonation.id,
+          }),
     });
 
     return toAuthResource({
-      principal: principal.resource,
+      principal:
+        impersonation === undefined
+          ? principal.resource
+          : asImpersonated(principal.resource, impersonation),
       accessToken: access.token,
       accessTokenExpiresAt: access.expiresAt,
       refreshToken,
@@ -383,7 +509,17 @@ export const createAuthService = ({
       }
 
       const nextToken = newRefreshToken();
-      const refreshTokenExpiresAt = refreshExpiryFrom(at);
+      // **Rotation without extension** — the one change ADR-0057 §4 makes to
+      // this flow, and it applies only while the actor column is set. An
+      // impersonated session keeps the end anchored at its exchange, so
+      // reloading the customer app survives (the session does) while the
+      // window does not move. An impersonation that needs more time is
+      // re-minted, on the trail, never extended.
+      const actorId = session.impersonatedByStaffId;
+      const refreshTokenExpiresAt =
+        actorId === null
+          ? refreshExpiryFrom(at)
+          : session.refreshTokenExpiresAt;
 
       const rotated = await sessions.rotate({
         id: session.id,
@@ -398,25 +534,127 @@ export const createAuthService = ({
       // this caller holds is no longer the current one.
       if (rotated === undefined) throw invalidRefreshToken();
 
+      // Resolved from the row rather than carried from the exchange, which is
+      // what makes the banner survive a reload: the session is the source of
+      // truth, and this is one of the three endpoints ADR-0057 §4 lets it be
+      // read at.
+      const impersonatedBy =
+        actorId === null ? undefined : await resolveImpersonator(actorId);
+
       const access = await tokens.issue({
         principalId: principal.id,
         population,
         sessionId: session.id,
         roles: principal.roles,
+        ...(actorId === null
+          ? {}
+          : { notAfter: refreshTokenExpiresAt, actorId }),
       });
 
       ctx.logger.info(
-        { population, principalId: principal.id, sessionId: session.id },
+        {
+          population,
+          principalId: principal.id,
+          sessionId: session.id,
+          ...(actorId === null ? {} : { impersonatedBy: actorId }),
+        },
         "session refreshed",
       );
 
       return toAuthResource({
-        principal: principal.resource,
+        principal:
+          impersonatedBy === undefined
+            ? principal.resource
+            : asImpersonated(principal.resource, impersonatedBy),
         accessToken: access.token,
         accessTokenExpiresAt: access.expiresAt,
         refreshToken: nextToken,
         refreshTokenExpiresAt,
       });
+    },
+
+    /**
+     * The exchange's half of `POST /user/auth/impersonate` (ADR-0057 §3, §4).
+     *
+     * The handoff has already been consumed atomically by the impersonation
+     * service; what is left is the part only this module may do, because
+     * `sessions` is its aggregate. Everything a login session gets, an
+     * impersonated one gets too — rotation, reuse detection, the grace window
+     * — and the three deltas are all inside {@link issueSession}.
+     *
+     * Both accounts are re-read here rather than trusted from the handoff row,
+     * and each refusal is the same one:
+     *
+     * - **The target** must still be a live, active customer. A minute passes
+     *   between the mint and the exchange at most, but "the account was
+     *   disabled in that minute" must not open anyway, and the mint's check
+     *   cannot speak for the exchange's instant.
+     * - **The minting staff member** must still exist and be active. A session
+     *   whose actor cannot be resolved is a session the customer app can never
+     *   draw a banner on (ADR-0057 §7 makes that banner unremovable), and an
+     *   impersonation nobody can see is the thing this whole record exists to
+     *   prevent. Refusing here is not the same judgement {@link
+     *   resolveImpersonator} makes on refresh: there a session already exists
+     *   and ending it would punish the operator for somebody else's deletion.
+     *
+     * It never throws a *distinguishable* error: refusals go out as the
+     * impersonation service's one indistinguishable `401`, so the exchange
+     * cannot be used to ask whether an account exists, is disabled, or was
+     * already redeemed (ADR-0020 §Enumeration).
+     *
+     * @throws AppError `UNAUTHENTICATED` for every refusal.
+     */
+    issueImpersonatedSession: async (
+      ctx: RequestContext,
+      { principalId, staffId, tx }: IssueImpersonatedSessionInput,
+    ): Promise<IssuedAuthResource> => {
+      const at = now();
+
+      // Sequential rather than `Promise.all`: both reads run on the exchange's
+      // transaction, which is one reserved connection, so concurrency here buys
+      // nothing and only raises the question of what two in-flight statements
+      // on one transaction do.
+      const target = await principals.findById(principalId, tx);
+      // `undefined` when this service has no staff adapter at all — the staff
+      // population's instance, which therefore refuses below. A staff session
+      // is never impersonated (ADR-0057 §4), and this is what makes that a
+      // property of the wiring rather than of a caller's discipline.
+      const actor = await impersonators?.findById(staffId, tx);
+
+      if (target === undefined || !target.active) {
+        ctx.logger.warn(
+          { population, principalId, staffId },
+          "impersonation exchange refused: the target is not an active account",
+        );
+
+        throw impersonationHandoffInvalid();
+      }
+
+      if (actor === undefined || !actor.active) {
+        ctx.logger.warn(
+          { population, principalId, staffId },
+          "impersonation exchange refused: the minting staff member is gone or inactive",
+        );
+
+        throw impersonationHandoffInvalid();
+      }
+
+      const auth = await issueSession(ctx, target, at, tx, {
+        id: actor.id,
+        email: actor.email,
+      });
+
+      ctx.logger.info(
+        {
+          population,
+          principalId: target.id,
+          impersonatedBy: actor.id,
+          endsAt: auth.refreshTokenExpiresAt,
+        },
+        "impersonated session issued",
+      );
+
+      return auth;
     },
 
     /** `POST /auth/logout` — revokes the session the access token names. */
@@ -465,6 +703,12 @@ export const createAuthService = ({
      * client can resynchronise after a role or profile change, and claims are
      * up to one access-token lifetime stale (ADR-0018 §Authenticated request).
      */
+    // `impersonatedBy` is deliberately absent from this response, and ADR-0057
+    // §4 was amended at `D13.4` to say so rather than leaving the decision in
+    // this comment: `me` is the resynchronisation endpoint, both SPAs boot off
+    // `refresh` (which carries the field), and resolving it here would cost a
+    // second primary-key probe on every `me` of both populations — including
+    // every ordinary one — for a client that has already been told.
     me: async (ctx: RequestContext): Promise<PrincipalResource> => {
       const authenticated = requirePopulation(ctx, population);
       const principal = await principals.findById(authenticated.id);

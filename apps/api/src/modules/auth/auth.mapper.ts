@@ -1,6 +1,7 @@
 import {
   TOKEN_TYPE,
   type AuthResource,
+  type ImpersonatorResource,
   type IsoDateTime,
   type PrincipalResource,
   type StaffPrincipalResource,
@@ -44,6 +45,21 @@ export const toUserPrincipalResource = (
   lastName: record.lastName,
   roles: record.roles,
 });
+
+/**
+ * The impersonation fact, added to a customer principal on its way out
+ * (ADR-0057 §4).
+ *
+ * Typed on {@link UserPrincipalResource} rather than on the union, and that is
+ * the decision rather than a convenience: `StaffPrincipalResource` has no such
+ * field because the mint is `/admin/users/:id` only, and a mapper that
+ * accepted either shape would be the one place a staff principal could acquire
+ * an actor.
+ */
+export const withImpersonator = (
+  principal: UserPrincipalResource,
+  impersonatedBy: ImpersonatorResource,
+): UserPrincipalResource => ({ ...principal, impersonatedBy });
 
 export interface AuthResourceInput {
   readonly principal: PrincipalResource;

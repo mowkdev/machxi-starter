@@ -13,7 +13,11 @@ export {
   type UserRecord,
   type UsersRepository,
 } from "./users.repository.js";
-export { createUserProfileRouter, createUsersRouter } from "./users.routes.js";
+export {
+  createUserProfileRouter,
+  createUsersRouter,
+  type UsersRouterDeps,
+} from "./users.routes.js";
 export {
   changePasswordSchema,
   createUserSchema,

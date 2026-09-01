@@ -24,6 +24,15 @@ export interface SessionRecord {
   readonly refreshTokenExpiresAt: Date;
   readonly rotatedAt: Date | null;
   readonly revokedAt: Date | null;
+  /**
+   * The staff member acting as this session's principal, or `null` on every
+   * ordinary session (ADR-0057 §4).
+   *
+   * Read on the two paths that must behave differently for an impersonated
+   * session: refresh, which declines to slide the expiry while it is set, and
+   * `authenticate`, which puts both identities on the request (`D13.5`).
+   */
+  readonly impersonatedByStaffId: string | null;
 }
 
 export interface NewSessionInput {
@@ -33,6 +42,12 @@ export interface NewSessionInput {
   readonly refreshTokenExpiresAt: Date;
   readonly ip?: string | undefined;
   readonly userAgent?: string | undefined;
+  /**
+   * Set only by the impersonation exchange (ADR-0057 §4). Every other caller
+   * omits it and the column stays null, which is what makes an ordinary
+   * session recognisable as one.
+   */
+  readonly impersonatedByStaffId?: string | undefined;
 }
 
 export interface RotateSessionInput {
@@ -46,6 +61,15 @@ export interface RotateSessionInput {
    */
   readonly expectedRefreshTokenHash: string;
   readonly refreshTokenHash: string;
+  /**
+   * Where the session's expiry lands after this rotation.
+   *
+   * A parameter rather than something this layer computes, because the two
+   * session classes answer it differently and only the service knows which it
+   * holds: an ordinary session slides to now + `REFRESH_TOKEN_TTL`, and an
+   * impersonated one is handed **its own current value** — rotation does not
+   * extend a fixed end (ADR-0057 §4).
+   */
   readonly refreshTokenExpiresAt: Date;
   readonly at: Date;
 }
@@ -79,6 +103,7 @@ const recordColumns = {
   refreshTokenExpiresAt: sessions.refreshTokenExpiresAt,
   rotatedAt: sessions.rotatedAt,
   revokedAt: sessions.revokedAt,
+  impersonatedByStaffId: sessions.impersonatedByStaffId,
 } as const;
 
 export const createSessionsRepository = (db: DbExecutor) =>
@@ -96,6 +121,7 @@ export const createSessionsRepository = (db: DbExecutor) =>
           refreshTokenExpiresAt: input.refreshTokenExpiresAt,
           ip: input.ip ?? null,
           userAgent: input.userAgent ?? null,
+          impersonatedByStaffId: input.impersonatedByStaffId ?? null,
         })
         .returning(recordColumns);
 

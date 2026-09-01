@@ -8,7 +8,10 @@ import {
   createAuthController,
   createAuthenticate,
   createAuthService,
+  createHandoffsRepository,
   createHashLimiter,
+  createImpersonationController,
+  createImpersonationService,
   createSessionsRepository,
   createStaffPrincipalAdapter,
   createTokenService,
@@ -16,6 +19,7 @@ import {
 } from "../modules/auth/index.js";
 import {
   createGlobalRateLimiter,
+  createImpersonationRateLimiter,
   createLoginRateLimiter,
   createRefreshRateLimiter,
 } from "./middleware/index.js";
@@ -92,6 +96,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
   const staffRepository = createStaffRepository(db.db);
   const usersRepository = createUsersRepository(db.db);
   const sessions = createSessionsRepository(db.db);
+  const handoffs = createHandoffsRepository(db.db);
   const settingsRepository = createSettingsRepository(db.db);
 
   // The one place that knows how to open a transaction. Repositories take a
@@ -107,22 +112,33 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     hashLimiter,
     refreshTtlSec: config.auth.refreshTtlSec,
     rotationGraceSec: config.auth.refreshRotationGraceSec,
+    impersonationSessionTtlSec: config.auth.impersonationSessionTtlSec,
     transaction,
   } as const;
 
   // The same service, twice. Everything population-specific is behind the
   // adapter (ADR-0017 §Principal abstraction in code), so login, rotation,
   // reuse detection and revocation exist once.
+  const staffPrincipals = createStaffPrincipalAdapter(staffRepository);
+
   const staffAuth = createAuthService({
     ...authDeps,
     population: "staff",
-    principals: createStaffPrincipalAdapter(staffRepository),
+    principals: staffPrincipals,
+    // No `impersonators`, and the absence is the decision: a staff session is
+    // never impersonated, because the mint is `/admin/users/:id` only
+    // (ADR-0057 §4). A service that cannot look a staff member up is a service
+    // that cannot accidentally attribute one.
   });
 
   const userAuth = createAuthService({
     ...authDeps,
     population: "user",
     principals: createUserPrincipalAdapter(usersRepository),
+    // The staff adapter, narrowed by the service's own type to `findById`: it
+    // is what turns `sessions.impersonated_by_staff_id` into the
+    // `impersonatedBy: { id, email }` the banner renders from (ADR-0057 §4).
+    impersonators: staffPrincipals,
   });
 
   const authenticate = createAuthenticate({ tokens, sessions });
@@ -174,6 +190,21 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     transaction,
   });
 
+  // The mint and the exchange (ADR-0057). It takes the **user** auth service,
+  // because the session it opens is a customer's, and the users service
+  // narrowed to one read, because the target is a customer account: both are
+  // service-to-service edges of the kind ADR-0009 permits, and neither reaches
+  // a table it does not own. The audit writer is passed whole — both lifecycle
+  // rows are written on `record`'s transactional discipline (ADR-0058).
+  const impersonationService = createImpersonationService({
+    handoffs,
+    targets: usersService,
+    sessions: userAuth,
+    audit,
+    handoffTtlSec: config.auth.impersonationHandoffTtlSec,
+    transaction,
+  });
+
   // Built **here**, not in the route factories, because a limiter holds the
   // counter: constructing one per mount would give the same IP+email a fresh
   // budget on every segment, so ADR-0020's "10 per 15 minutes on login" would
@@ -184,6 +215,14 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     /** Shared by both segments' `login` and by `register` (ADR-0018). */
     login: createLoginRateLimiter(config),
     refresh: createRefreshRateLimiter(config),
+    /**
+     * The mint's own budget, and the only limiter here keyed on a principal
+     * rather than an address (ADR-0057 §1). Built here for the reason all the
+     * others are — one instance holds one counter — and mounted inside the
+     * admin segment, after `authenticate`, because its key does not exist
+     * before that.
+     */
+    impersonation: createImpersonationRateLimiter(config),
   } as const;
 
   return {
@@ -198,6 +237,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       staff: staffRepository,
       users: usersRepository,
       sessions,
+      handoffs,
       settings: settingsRepository,
     } as const,
     services: {
@@ -207,6 +247,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       staff: staffService,
       users: usersService,
       settings: settingsService,
+      impersonation: impersonationService,
     } as const,
     controllers: {
       health: createHealthController(health),
@@ -240,6 +281,15 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
       // neither of its handlers takes an id, so there is nothing a second
       // factory would withhold from the other mount (ADR-0045).
       settings: createSettingsController(settingsService),
+      // **One** controller for both segments as well, and for a stronger
+      // reason than the settings pair: neither handler can reach the wrong
+      // segment. `mint` requires a staff principal, and `exchange` is
+      // registered by the auth router only where the population is `user`
+      // (ADR-0057 §3).
+      impersonation: createImpersonationController({
+        service: impersonationService,
+        refreshTtlSec: config.auth.refreshTtlSec,
+      }),
     } as const,
 
     /**

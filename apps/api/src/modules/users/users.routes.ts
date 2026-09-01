@@ -1,6 +1,10 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 
 import { authorize, noStore, validate } from "../../core/middleware/index.js";
+import {
+  mintImpersonationSchema,
+  type ImpersonationController,
+} from "../auth/index.js";
 import type {
   UserProfileController,
   UsersController,
@@ -34,7 +38,31 @@ import {
  * these responses are the customer list, and a page of it sitting in a shared
  * proxy is a data breach with a cache key (ADR-0020).
  */
-export const createUsersRouter = (controller: UsersController): Router => {
+export interface UsersRouterDeps {
+  readonly controller: UsersController;
+  /**
+   * The impersonation mint (ADR-0057 §1), which lives at a `users` URL and in
+   * the auth module.
+   *
+   * The route is here because `/admin/users/:id/impersonate` is a user
+   * sub-resource and this is where a reader looks for one — the same shape
+   * `POST /:id/sessions/revoke` has, whose work also belongs to the auth
+   * module. Mounting a second router at `/users` was the alternative and was
+   * rejected: `router.use("/users", authorize("admin"), …)` runs its guard for
+   * every path under the prefix, so a second mount either refuses a manager's
+   * `GET /users` or has no guard at its mount point at all.
+   */
+  readonly impersonation: {
+    readonly controller: Pick<ImpersonationController, "mint">;
+    /** Keyed on the staff principal's id, so it mounts after `authenticate` (ADR-0057 §1). */
+    readonly rateLimiter: RequestHandler;
+  };
+}
+
+export const createUsersRouter = ({
+  controller,
+  impersonation,
+}: UsersRouterDeps): Router => {
   const router = Router();
 
   router.use(noStore);
@@ -71,6 +99,25 @@ export const createUsersRouter = (controller: UsersController): Router => {
     authorize("admin"),
     validate(setUserPasswordSchema),
     controller.setPassword,
+  );
+
+  // `admin` only, never `manager` (ADR-0057 §1): reading the customer base is
+  // a manager's job, and becoming a customer is not. `super_admin` passes on
+  // the one line in `authorize` that says so.
+  //
+  // The limiter runs after `authorize` rather than before it, which is the
+  // named refinement of ADR-0011's rate-limit-first order that ADR-0057 §1
+  // makes: its key is `ctx.principal`, which does not exist before
+  // `authenticate`, and an authenticated high-value operation wants a
+  // per-actor budget rather than a per-IP one. A refused `manager` therefore
+  // spends nothing, which is the right way round — the budget exists to bound
+  // the operators who *can* mint.
+  router.post(
+    "/:id/impersonate",
+    authorize("admin"),
+    impersonation.rateLimiter,
+    validate(mintImpersonationSchema),
+    impersonation.controller.mint,
   );
 
   // A soft delete (ADR-0028): the row survives with `deleted_at` set, because

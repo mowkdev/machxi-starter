@@ -7,12 +7,11 @@ import type { ValidatedRequest } from "../../core/middleware/index.js";
 import {
   clearAuthCookies,
   readRefreshCookie,
-  readTransport,
   ensureCsrfCookie,
-  setAuthCookies,
 } from "./auth.cookies.js";
 import type { IssuedAuthResource } from "./auth.mapper.js";
 import type { AuthService } from "./auth.service.js";
+import { applyAuthTransport } from "./auth.transport.js";
 import type {
   loginSchema,
   refreshSchema,
@@ -52,56 +51,26 @@ export const createAuthController = ({
   refreshTtlSec,
 }: AuthControllerDeps) => {
   /**
-   * Puts the refresh token where the caller asked for it.
+   * Puts the refresh token where the caller asked for it, on this segment's
+   * cookies and this population's TTL.
    *
-   * On `body` transport — the default — this is the identity function and no
-   * cookie is set. On `cookie` transport the token goes into
-   * `__Secure-machxi.refresh`, a fresh CSRF token goes beside it, and the
-   * field is **removed from the body**: leaving it in both places would defeat
-   * the point, since the value an XSS is being denied would still be sitting
-   * in the response it can read.
-   *
-   * `refreshTokenExpiresAt` stays either way — knowing when the session ends
-   * is useful to a client that cannot see the credential.
+   * The rule itself lives in `auth.transport.ts` since `D13.4`: the
+   * impersonation exchange places the same cookies from its own controller
+   * (ADR-0057 §3 — "exactly as login does"), and one copy is what keeps the
+   * two from drifting apart on an attribute nobody would notice until a
+   * browser stopped being able to refresh.
    */
   const applyTransport = (
     req: Request,
     res: Response,
     resource: IssuedAuthResource,
-    /**
-     * Forces cookie transport because the request *arrived* on it.
-     *
-     * Only `refresh` passes this, and it closes a trap the header-only rule
-     * leaves open: a browser that refreshes from its cookie but forgets the
-     * header would be answered with the rotated token in the body and **no new
-     * cookie**, leaving the browser holding the value that was just rotated
-     * away. The next refresh replays it — inside the grace window that is
-     * tolerated, outside it that is reuse detection, and the session is
-     * revoked (ADR-0018 §Refresh). A missing header would cost the user their
-     * session, which is too sharp an edge for an opt-in to have.
-     *
-     * It is not the `Origin`-sniffing ADR-0029 rejected: nothing is inferred
-     * about the client, and the only signal used is the credential it actually
-     * presented.
-     */
     cookieDriven = false,
-  ): AuthResource => {
-    if (!cookieDriven && readTransport(req) === "body") return resource;
-
-    const { refreshToken, ...rest } = resource;
-
-    const csrfToken = setAuthCookies(req, res, {
+  ): AuthResource =>
+    applyAuthTransport(req, res, resource, {
       population,
-      token: refreshToken,
       maxAgeSec: refreshTtlSec,
+      cookieDriven,
     });
-
-    // In the body as well as in the cookie, and the two are for different
-    // moments: the cookie is what a page reads after a reload, and this is
-    // what an app on a different host than the API uses, since it can never
-    // read the API's cookies at all (ADR-0029 §CSRF, amended D2.5).
-    return { ...rest, csrfToken };
-  };
 
   return {
     /**

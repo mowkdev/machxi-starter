@@ -38,6 +38,7 @@ const session = (overrides: Partial<SessionRecord> = {}): SessionRecord => ({
   refreshTokenExpiresAt: new Date("2026-09-18T12:00:00.000Z"),
   rotatedAt: null,
   revokedAt: null,
+  impersonatedByStaffId: null,
   ...overrides,
 });
 

@@ -4030,6 +4030,331 @@
       ]
     },
     {
+      "name": "Impersonation",
+      "description": "The mint, the handoff and the exchange (ADR-0057). It runs after 'Admin › Users' and 'Admin › Role guards' because it acts on {{lastUserId}} and needs {{managerAccessToken}}, and before 'Teardown', which ends every session this run opened.",
+      "item": [
+        {
+          "name": "A manager may not mint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});",
+                  "",
+                  "// `admin` only (ADR-0057 §1). A manager reads the customer base and does",
+                  "// not become one of them; the route narrows the mount's guard."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{lastUserId}}",
+                "impersonate"
+              ]
+            },
+            "description": "The role guard, from the other side of authorize(\"admin\"). A manager is neither offered the action in the admin app (ADR-0042) nor allowed it here."
+          }
+        },
+        {
+          "name": "Mint a handoff for the created user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a handoff and no Set-Cookie\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const handoff = pm.response.json().data;",
+                  "",
+                  "  pm.expect(handoff.token, \"the one-time credential\").to.be.a(\"string\");",
+                  "  pm.expect(Date.parse(handoff.expiresAt)).to.be.above(Date.now());",
+                  "",
+                  "  // The absence is the security property (ADR-0057 §1): the admin",
+                  "  // segment's cookies are never written by this flow, which is what",
+                  "  // leaves the minting staff member's own session untouched.",
+                  "  pm.expect(pm.response.headers.get(\"Set-Cookie\"), \"the mint sets no cookie\").to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.environment.set(\"impersonationHandoff\", pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{lastUserId}}",
+                "impersonate"
+              ]
+            },
+            "description": "Answers a handoff token, not a session. The admin app delivers it to the customer app in the URL fragment (/impersonate#token=…), which no server log and no Referer header sees; only its SHA-256 digest is stored."
+          }
+        },
+        {
+          "name": "Exchange the handoff for a customer session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a login-shaped body naming both identities\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const auth = pm.response.json().data;",
+                  "",
+                  "  pm.expect(auth.principal.kind).to.eql(\"user\");",
+                  "  pm.expect(auth.principal.id).to.eql(pm.environment.get(\"lastUserId\"));",
+                  "  pm.expect(auth.principal.impersonatedBy.email, \"the banner renders from this and nothing else\").to.eql(pm.environment.get(\"superAdminEmail\"));",
+                  "  pm.expect(auth.tokenType).to.eql(\"Bearer\");",
+                  "",
+                  "  // A fixed end anchored here, at the exchange (ADR-0057 §4), and far",
+                  "  // short of REFRESH_TOKEN_TTL.",
+                  "  const endsInMs = Date.parse(auth.refreshTokenExpiresAt) - Date.now();",
+                  "",
+                  "  pm.expect(endsInMs).to.be.above(0);",
+                  "  pm.expect(endsInMs, \"a fixed end, not the 30-day refresh TTL\").to.be.below(13 * 3600 * 1000);",
+                  "  pm.expect(Date.parse(auth.accessTokenExpiresAt), \"no JWT outlives its session\").to.be.at.most(Date.parse(auth.refreshTokenExpiresAt));",
+                  "});",
+                  "",
+                  "pm.environment.set(\"impersonatedAccessToken\", pm.response.json().data.accessToken);",
+                  "pm.environment.set(\"impersonatedRefreshToken\", pm.response.json().data.refreshToken);",
+                  "pm.environment.set(\"impersonatedEndsAt\", pm.response.json().data.refreshTokenExpiresAt);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{impersonationHandoff}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "impersonate"]
+            },
+            "description": "Unauthenticated — the token is the credential. It consumes the handoff atomically and answers the same body login does, on the user population's transport."
+          }
+        },
+        {
+          "name": "The impersonated session reads the customer's profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and it is the customer's own account\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.environment.get(\"lastUserId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "Full access minus the takeover-enabling operations (ADR-0057 §5): what support opens the app for is seeing what the customer sees."
+          }
+        },
+        {
+          "name": "Rotating the impersonated session does not extend it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the end has not moved\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const auth = pm.response.json().data;",
+                  "",
+                  "  pm.expect(auth.refreshTokenExpiresAt, \"rotation without extension (ADR-0057 §4)\").to.eql(pm.environment.get(\"impersonatedEndsAt\"));",
+                  "  pm.expect(auth.refreshToken, \"the pair still rotates\").to.not.eql(pm.environment.get(\"impersonatedRefreshToken\"));",
+                  "  pm.expect(auth.principal.impersonatedBy.email, \"and the fact survives the rotation\").to.eql(pm.environment.get(\"superAdminEmail\"));",
+                  "});",
+                  "",
+                  "pm.environment.set(\"impersonatedRefreshToken\", pm.response.json().data.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{impersonatedRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "refresh"]
+            },
+            "description": "Refresh works normally — rotation, reuse detection, the grace window — and does exactly one thing differently: it leaves refresh_token_expires_at where the exchange put it. An impersonation that needs more time is re-minted, on the trail."
+          }
+        },
+        {
+          "name": "Replaying the handoff is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 and nothing minted\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "  pm.expect(pm.response.headers.get(\"Set-Cookie\"), \"a refusal sets no cookie\").to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{impersonationHandoff}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "impersonate"]
+            },
+            "description": "Strictly single-use, with no grace window at all — the property the session's refresh token could not have offered (ADR-0018 tolerates a replayed refresh for REFRESH_ROTATION_GRACE_SEC, and a credential that travels through a URL must not)."
+          }
+        },
+        {
+          "name": "The exchange does not exist on the admin segment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401, because no such route is registered there\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "// The auth router is one factory mounted per segment, and the exchange",
+                  "// registers only where the population is `user` (ADR-0057 §3): an",
+                  "// admin-segment twin would turn a URL fragment into a staff session.",
+                  "// The admin segment answers 401 to an unauthenticated caller for every",
+                  "// path, matched or not, so the API does not disclose which exist."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{impersonationHandoff}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "impersonate"]
+            },
+            "description": "The twin that must not exist. Registration is conditional on the factory's population, so the guard is that the route is never created."
+          }
+        }
+      ]
+    },
+    {
       "name": "Teardown",
       "description": "Leaves the database as the run found it.\n\nUntil D2.4 this folder *disabled* the three accounts each run creates, because v1 had no delete endpoint — a live account with a password committed in this repository is a way in, and a disabled one is a row (ADR-0021, D1.10 amendment). It can now delete them, which is neither, and ADR-0028 §Consequences is where that change is recorded: the collection changes, the frozen ADR does not.\n\nThe deletes double as the documentation of all three endpoints, including the asymmetry between them — a deleted staff row is gone, a deleted user row is still readable and no longer writable, and since D12.4 a customer can close their own account without an operator, which ends every session including the one that asked.",
       "item": [
