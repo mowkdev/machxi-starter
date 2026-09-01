@@ -154,20 +154,15 @@ describe("sign in", () => {
          * code this build does not know" — exactly the state the type system
          * cannot express, because the union *is* this build's.
          *
-         * **What it degrades to is a finding, and the assertion pins it rather
-         * than wishing.** ADR-0013 tells clients to degrade on an unrecognised
-         * code, and `createMessageForError`'s `defaultValue` is this app's
-         * half of that. It is unreachable from the wire: `@repo/api-client`
-         * parses the body with `errorEnvelopeSchema`, whose `code` is
-         * `z.enum(ERROR_CODES)` — so an unknown code fails the parse, the
-         * whole response stops being an envelope, and the client normalises it
-         * to `TRANSPORT_ERROR_CODE`. The customer is then told to check their
-         * connection about a refusal the server delivered perfectly well.
-         *
-         * Recorded in `docs/plan/0012-customer-app.md` §Findings against
-         * D8–D11 rather than fixed here: the fix is a `@repo/api-client` diff,
-         * and this deliverable's rule is that a package diff is named before it
-         * is made. This assertion is what makes that fix a visible change.
+         * **The sentence changed at `D13.1`, and that is the point.** D12
+         * recorded the finding here (`docs/plan/0012-customer-app.md`
+         * §Findings against D8–D11) and pinned what the app actually did:
+         * `errorEnvelopeSchema`'s `code` was a closed enum, so an unknown code
+         * failed the parse, the response stopped being an envelope, and the
+         * client normalised it to `TRANSPORT_ERROR_CODE` — the customer was
+         * told to check a connection that was fine. Since the widening the
+         * client degrades by status instead (ADR-0057 §Consequences), so a
+         * `409` this build cannot name reads as the conflict family it is.
          */
         fail(409, "SOMETHING_NEW_FROM_THE_FUTURE" as "CONFLICT"),
       ),
@@ -177,10 +172,10 @@ describe("sign in", () => {
 
     const alert = await screen.findByRole("alert");
 
-    // A written sentence, whichever one — never the raw code on screen, which
-    // is the outcome the catalogue exists to prevent.
+    // A written sentence — never the raw code on screen, which is the outcome
+    // the catalogue exists to prevent — and now the right family of sentence.
     expect(alert).toHaveTextContent(
-      "We could not reach the service. Check your connection and try again.",
+      "That conflicts with something that already exists.",
     );
     expect(alert.textContent).not.toContain("SOMETHING_NEW");
   });

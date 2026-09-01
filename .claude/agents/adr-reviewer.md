@@ -10,7 +10,7 @@ You are the architecture gatekeeper for machxi-starter. The ADRs in `docs/adr/` 
 Procedure:
 
 1. Determine the scope: if given a diff/PR, run `git diff` (or the range you were given); otherwise read the files/paths named. Do not modify anything.
-2. Read `docs/adr/README.md`, then only the ADRs relevant to the touched areas (layering 0009, context 0010, middleware 0011, envelope 0012, errors 0013, lists 0014, routes 0015, health 0016, identity 0017, auth 0018, authz 0019, security 0020, testing 0021, contracts 0023, config 0004, logging 0005, db 0006/0008, tooling 0002).
+2. Read `docs/adr/README.md`, then only the ADRs relevant to the touched areas (layering 0009, context 0010, middleware 0011, envelope 0012, errors 0013, lists 0014, routes 0015, health 0016, identity 0017, auth 0018 as carried by 0057, authz 0019, security 0020, testing 0021, contracts 0023, config 0004, logging 0005, db 0006/0008, tooling 0002).
 3. Check every hunk against the ADR rules. Highest-value checks:
    - classes / `this` / `new` on app code (ADR-0009); layer boundaries (Express in services, SQL outside repositories, module importing another module's repository)
    - `res.json`/`res.send` outside `core/http`; envelope shape; status codes (ADR-0012)
@@ -19,7 +19,7 @@ Procedure:
    - `console.*`; logging secrets; message-first pino usage (ADR-0005)
    - unvalidated input, `req.body` read directly, missing `.strict()` (ADR-0011)
    - router-level `authenticate`, `authorize` at mount, population mismatch (ADR-0015/0019)
-   - refresh rotation, hashing, session revocation semantics (ADR-0018)
+   - refresh rotation, hashing, session revocation semantics (ADR-0018, as carried by ADR-0057 — which owns impersonated sessions alone)
    - schema conventions (uuid v7, timestamps, snake_case, enums from contracts), edited migrations, `drizzle-kit push` (ADR-0006/0008)
    - `@repo/contracts` importing anything internal or non-zod (ADR-0023)
    - missing tests for new endpoints/services (ADR-0021)

@@ -1,4 +1,4 @@
-import { errorEnvelopeSchema } from "@repo/contracts";
+import { declaredErrorEnvelopeSchema } from "@repo/contracts";
 import type { AppConfig } from "../src/core/config/index.js";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -51,7 +51,9 @@ describe("login rate limit", () => {
 
     const response = await attempt("target@machxi.local").expect(429);
 
-    expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+    expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+      true,
+    );
     expect(response.body.error.code).toBe("RATE_LIMITED");
     // The envelope carries the wait as well as the header, so a client that
     // only parses the body can still back off (ADR-0013).

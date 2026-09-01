@@ -1,4 +1,7 @@
-import { errorEnvelopeSchema, successEnvelopeSchema } from "@repo/contracts";
+import {
+  declaredErrorEnvelopeSchema,
+  successEnvelopeSchema,
+} from "@repo/contracts";
 import { staff } from "@repo/db";
 import { eq } from "drizzle-orm";
 import supertest from "supertest";
@@ -246,7 +249,9 @@ describe.each(RUNS)("$name authentication", ({ population, transport }) => {
         password: "definitely-not-the-password",
       }).expect(401);
 
-      expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+      expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+        true,
+      );
       expect(response.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
     });
 
@@ -291,7 +296,9 @@ describe.each(RUNS)("$name authentication", ({ population, transport }) => {
         .send({ email: "not-an-email" })
         .expect(400);
 
-      expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+      expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+        true,
+      );
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
       expect(
         response.body.error.details.map((d: { path: string }) => d.path),

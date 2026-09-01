@@ -110,8 +110,23 @@ export const errorDetailSchema = z.object({
   code: z.string().optional(),
 });
 
+/**
+ * `code` is a **string, not `z.enum(ERROR_CODES)`** — the widening of `D13.1`.
+ *
+ * Adding a code is additive and does not bump the API version (ADR-0015), so a
+ * bundle shipped before a code existed will meet it, and this schema is what a
+ * client parses the wire with. Closed, it made that response stop being an
+ * envelope at all: the client normalised it to a transport failure and told the
+ * operator to check their connection about a refusal the server had delivered
+ * perfectly well. The parse is a shape check, and the shape is right; deciding
+ * what an unfamiliar code *means* is the reader's job, with `isErrorCode` to
+ * ask and the HTTP status to fall back on (ADR-0057 §Consequences).
+ *
+ * `ApiError` above still types `code` as `ErrorCode` and is still the contract:
+ * it says what the API emits, which is narrower than what a client must survive.
+ */
 export const apiErrorSchema = z.object({
-  code: z.enum(ERROR_CODES),
+  code: z.string().min(1),
   message: z.string().min(1),
   details: z.array(errorDetailSchema).optional(),
   debug: z
@@ -127,6 +142,27 @@ export const errorEnvelopeSchema = z.object({
   success: z.literal(false),
   error: apiErrorSchema,
   meta: metaSchema,
+});
+
+/**
+ * The **producer's** obligation, which is narrower than the consumer's.
+ *
+ * The pair above and this one are two different claims and the split is the
+ * point: a client must survive a code it has never heard of (ADR-0015 makes
+ * adding one additive), while the API must never *emit* one — ADR-0013's set
+ * is closed on the server side, and a code outside it is a bug that reached
+ * the wire. Widening `apiErrorSchema` at `D13.1` gave clients the first half
+ * and would have quietly retired the second, since `errorEnvelopeSchema` is
+ * what `apps/api`'s conformance tests assert with. This sibling keeps it, and
+ * keeps it executable rather than only typed: `AppError.code` is `ErrorCode`,
+ * but a type is not an assertion about the bytes that left the process.
+ */
+export const declaredApiErrorSchema = apiErrorSchema.extend({
+  code: z.enum(ERROR_CODES),
+});
+
+export const declaredErrorEnvelopeSchema = errorEnvelopeSchema.extend({
+  error: declaredApiErrorSchema,
 });
 
 /** Builds the schema of a single-resource response around a resource schema. */

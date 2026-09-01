@@ -1,10 +1,10 @@
 # ADR-0057: Impersonation sessions — the mint, the handoff, the exclusions
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-01
 - Supersedes: [ADR-0018](0018-authentication-sessions-and-tokens.md) (delta: impersonated sessions — a second mint path beside login, an actor column on `sessions`, and rotation without the sliding extension; every decision about ordinary sessions stands); [ADR-0052](0052-grid-and-admin-followups.md) (delta: the documented gate grows a fifth link, `pnpm format:check` — D12's close-out loose end 2, taken at scoping as that record prescribed)
 
-> Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)) — writing is not opening, opening is not accepting. `proposed` at writing; **accepted at the head of `D13.1`**, where ADR-0018 moves to `superseded by` and ADR-0052 — already carrying 0054's partial supersession — gains its second successor delta, the 0048 shape; amendable in place while D13 is `in progress` (ADR-0025 rule 2). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): everything either parent decided that is not named above stands. The scope file's design sketch (2026-08-20) is this record's input; where this record decides differently it says so. Its sibling is [ADR-0058](0058-append-only-audit-log.md) (the audit mechanism this record writes into), accepted at `D13.2`'s head.
+> Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)) — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-01 at the head of `D13.1`**, where ADR-0018 moved to `superseded by` and ADR-0052 — already carrying 0054's partial supersession — gained its second successor delta, the 0048 shape; amendable in place while D13 is `in progress` (ADR-0025 rule 2). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): everything either parent decided that is not named above stands. The scope file's design sketch (2026-08-20) is this record's input; where this record decides differently it says so. Its sibling is [ADR-0058](0058-append-only-audit-log.md) (the audit mechanism this record writes into), accepted at `D13.2`'s head.
 
 ## Context
 

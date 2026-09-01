@@ -1,5 +1,5 @@
 import type { Page } from "@repo/contracts";
-import { http } from "msw";
+import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -351,5 +351,76 @@ describe("logout", () => {
     // server-side session dies at its TTL.
     expect(store.isAuthenticated()).toBe(false);
     expect(endedCalls()).toBe(1);
+  });
+});
+
+describe("an unrecognised code degrades to its status family", () => {
+  /*
+   * ADR-0015 makes a new error code additive, so an already-shipped bundle
+   * *will* meet a code its `ErrorCode` union does not contain — D13's
+   * `AUTH_IMPERSONATION_REFUSED` is the next one, which is why this landed at
+   * `D13.1`, before the code exists (ADR-0057 §Consequences).
+   *
+   * The property is the one `@repo/contracts`' `errors.ts` already states in
+   * as many words: an unrecognised code is "a generic failure of whatever HTTP
+   * status carried it". Until `D13.1` the client said the opposite — the
+   * envelope's `code` was a closed enum, so an unknown one failed the parse,
+   * the whole response stopped being an envelope, and a refusal the server
+   * delivered perfectly well was reported as an unreachable service.
+   *
+   * The cast is the test saying "a code this build does not know": the state
+   * the type system cannot express, because the union *is* this build's.
+   */
+  it("reports an unknown code on a 403 as the forbidden-family generic", async () => {
+    const { client } = setup();
+
+    server.use(
+      http.get(`${API}/staff`, () =>
+        fail(
+          403,
+          "AUTH_IMPERSONATION_REFUSED" as "FORBIDDEN",
+          "That is not allowed while impersonating",
+        ),
+      ),
+    );
+
+    await expect(client.instance.get("/staff")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+  });
+
+  it("keeps the status family for a conflict it has never heard of", async () => {
+    const { client } = setup();
+
+    server.use(
+      http.get(`${API}/staff`, () =>
+        fail(409, "SOMETHING_NEW_FROM_THE_FUTURE" as "CONFLICT"),
+      ),
+    );
+
+    await expect(client.instance.get("/staff")).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+    });
+  });
+
+  it("still reports a body that is not an envelope as a transport failure", async () => {
+    const { client } = setup();
+
+    // The boundary the widening must not erode: a proxy's HTML is not an
+    // envelope with an unfamiliar code, and calling its status family a
+    // refusal would put words in a server's mouth.
+    server.use(
+      http.get(
+        `${API}/staff`,
+        () => new HttpResponse("<html>gateway</html>", { status: 502 }),
+      ),
+    );
+
+    await expect(client.instance.get("/staff")).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      status: 502,
+    });
   });
 });

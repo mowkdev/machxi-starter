@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ERROR_CODES, type ErrorCode } from "../index.js";
+import { ERROR_CODES, isErrorCode, type ErrorCode } from "../index.js";
 
 /**
  * Error codes are the client-facing contract and the future i18n key
@@ -80,5 +80,19 @@ describe("ERROR_CODES", () => {
     const code: ErrorCode = "AUTH_REFRESH_REUSED";
 
     expect(ERROR_CODES).toContain(code);
+  });
+});
+
+describe("isErrorCode", () => {
+  it("recognises every declared code", () => {
+    for (const code of ERROR_CODES) expect(isErrorCode(code)).toBe(true);
+  });
+
+  it("refuses a code this build does not declare", () => {
+    // What a bundle deployed before a code existed sees on the wire (`D13.1`).
+    // The answer is what sends `@repo/api-client` to the status family instead
+    // of throwing the whole envelope away.
+    expect(isErrorCode("AUTH_IMPERSONATION_REFUSED")).toBe(false);
+    expect(isErrorCode("")).toBe(false);
   });
 });

@@ -57,6 +57,6 @@ The contract comes first: everything below is derived from `@repo/contracts`. If
 
 ## 5. Finish
 
-- `pnpm check` while iterating (lint + check-types + test:unit, one cached parallel run — deliberately unfiltered, so a contracts change breaking another package surfaces here), then the full gate `pnpm lint && pnpm check-types && pnpm test && pnpm size` once at the end — its lint, check-types and `size` are cache hits at that point, so its cost is the integration tier (ADR-0026).
+- `pnpm check` while iterating (lint + check-types + test:unit, one cached parallel run — deliberately unfiltered, so a contracts change breaking another package surfaces here), then the full gate `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` once at the end — its lint, check-types and `size` are cache hits at that point, so its cost is the integration tier (ADR-0026) plus a prettier pass.
 - Update the current plan's step notes in `docs/plan/`; if anything here forced a change under `src/shared/`, say so and say why — that is the machinery being wrong rather than this resource being special, and it is what an ADR amendment is for. That claim is load-bearing and has been measured twice: `D3.8` added the second resource and `D4.6` put both on the full v2 surface, and neither needed the machinery to change.
 - **Walk it in a browser.** jsdom has no layout, so nothing above can see a column that will not narrow, a pager eaten by an `overflow-hidden`, or a toolbar that wraps badly at 900px. Every layout defect D4 found was found that way.

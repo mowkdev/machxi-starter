@@ -1,4 +1,4 @@
-import { errorEnvelopeSchema } from "@repo/contracts";
+import { declaredErrorEnvelopeSchema } from "@repo/contracts";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -11,6 +11,12 @@ import { createTestApp, type TestApp } from "./support/app.js";
  * back as the one error envelope with a request id — which is only true if
  * `pino-http`, the context middleware, the body parser, the not-found handler
  * and the error handler are mounted in the order `app.ts` fixes.
+ *
+ * **`declaredErrorEnvelopeSchema`, not `errorEnvelopeSchema`** (`D13.1`): the
+ * latter widened its `code` to a string so a *client* survives a code added
+ * after it shipped (ADR-0015), and this side of the wire is the producer,
+ * whose obligation is the closed set ADR-0013 fixes. Every `apps/api`
+ * conformance assertion uses the declared pair for that reason.
  */
 describe("error envelope", () => {
   let harness: TestApp;
@@ -28,7 +34,9 @@ describe("error envelope", () => {
   it("answers an unknown route with ROUTE_NOT_FOUND", async () => {
     const response = await request().get("/nope").expect(404);
 
-    expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+    expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+      true,
+    );
     expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
     expect(response.body.success).toBe(false);
   });
@@ -88,7 +96,9 @@ describe("error envelope", () => {
       .send({ email: "not-an-email", password: "" })
       .expect(400);
 
-    expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+    expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+      true,
+    );
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
 
     const paths = response.body.error.details.map(

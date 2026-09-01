@@ -1,4 +1,7 @@
-import { errorEnvelopeSchema, successEnvelopeSchema } from "@repo/contracts";
+import {
+  declaredErrorEnvelopeSchema,
+  successEnvelopeSchema,
+} from "@repo/contracts";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -132,7 +135,9 @@ describe("readiness with an unreachable database", () => {
       .get("/health/ready")
       .expect(503);
 
-    expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+    expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+      true,
+    );
     expect(response.body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 

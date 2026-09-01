@@ -30,6 +30,7 @@ export {
 
 export {
   ERROR_CODES,
+  isErrorCode,
   type ApiError,
   type ErrorCode,
   type ErrorDetail,
@@ -37,6 +38,8 @@ export {
 
 export {
   apiErrorSchema,
+  declaredApiErrorSchema,
+  declaredErrorEnvelopeSchema,
   errorDetailSchema,
   errorEnvelopeSchema,
   isErrorEnvelope,

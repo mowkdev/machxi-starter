@@ -1,6 +1,7 @@
 import {
   TOKEN_TYPE,
   errorEnvelopeSchema,
+  isErrorCode,
   type AuthResource,
   type CsrfResource,
   type ErrorCode,
@@ -16,6 +17,7 @@ import axios, {
 import {
   TRANSPORT_ERROR_CODE,
   apiClientError,
+  genericCodeForStatus,
   isApiClientError,
   type ApiClientError,
 } from "./api-error";
@@ -94,6 +96,12 @@ const matches = (
  * response at all, HTML from a proxy, a body that is not an envelope — becomes
  * `TRANSPORT_ERROR_CODE`, because callers must never have to ask whether a
  * failure arrived with an envelope.
+ *
+ * An envelope carrying a code *this build* does not know is the third case,
+ * and since `D13.1` it is on the envelope side of that line: it degrades to
+ * the generic code of the status that carried it (ADR-0057 §Consequences),
+ * never to the transport code. Codes are additive (ADR-0015), so an older
+ * bundle meeting a newer API is the ordinary case, not the exotic one.
  */
 const toApiClientError = (error: unknown): ApiClientError => {
   if (!axios.isAxiosError(error)) {
@@ -130,11 +138,31 @@ const toApiClientError = (error: unknown): ApiClientError => {
       }),
     );
 
+    /*
+     * **A degraded code carries no `details`** — the second half of the
+     * `D13.1` fix, and the one a review found. `@repo/form`'s
+     * `applyServerErrors` decides whether a wire `details[]` may be written
+     * onto form fields with one test, `code === "VALIDATION_ERROR"`, and that
+     * gate exists (its own comment, `D3.9`'s review) to keep a sentence
+     * written for a developer off an operator's screen. Synthesising
+     * `VALIDATION_ERROR` for a `400` this build cannot name would hand that
+     * gate a key it was never given: the code is *ours*, not the server's, so
+     * the details behind it are not the field rules the gate assumes.
+     *
+     * Dropping them costs nothing a caller can use — a code we cannot name is
+     * a code whose `details` we cannot interpret either.
+     */
+    // Bound to a local so the guard narrows it: `isErrorCode` is a type
+    // predicate, and TypeScript carries an aliased condition through a `const`
+    // reference but not through a property read it cannot prove stable.
+    const wireCode = apiError.code;
+    const known = isErrorCode(wireCode);
+
     return apiClientError({
       status: response.status,
-      code: apiError.code,
+      code: known ? wireCode : genericCodeForStatus(response.status),
       message: apiError.message,
-      ...(details ? { details } : {}),
+      ...(known && details ? { details } : {}),
     });
   }
 

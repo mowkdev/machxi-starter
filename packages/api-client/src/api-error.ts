@@ -59,6 +59,59 @@ export const isApiClientError = (error: unknown): error is ApiClientError =>
 export const TRANSPORT_ERROR_CODE = "SERVICE_UNAVAILABLE" satisfies ErrorCode;
 
 /**
+ * The generic code for a status family — ADR-0013's table read backwards.
+ *
+ * Seven of the nine are transcriptions: ADR-0013 assigns exactly one
+ * `GENERIC_ERROR_CODES` member to that status, and `core/errors`' own factory
+ * test pins the same pairs on the server side. **Two are choices**, because
+ * ADR-0013 gives those statuses two codes each, and the entry says which
+ * reading a client should assume when it cannot tell:
+ *
+ * - `400` → `VALIDATION_ERROR` rather than `MALFORMED_JSON`: a body this
+ *   client sent and the server parsed is the overwhelmingly likelier `400`,
+ *   and it is the code an operator's catalogue answers usefully. It is also
+ *   the consequential pick, which is why `client.ts` refuses to carry a
+ *   degraded failure's `details` — see the note there.
+ * - `404` → `NOT_FOUND` rather than `ROUTE_NOT_FOUND`: the client asked for a
+ *   resource, not for a route, and `ROUTE_NOT_FOUND` would tell an operator
+ *   their address is wrong when what is missing is the record.
+ */
+const GENERIC_CODE_BY_STATUS: Readonly<Record<number, ErrorCode>> = {
+  400: "VALIDATION_ERROR",
+  401: "UNAUTHENTICATED",
+  403: "FORBIDDEN",
+  404: "NOT_FOUND",
+  409: "CONFLICT",
+  413: "PAYLOAD_TOO_LARGE",
+  429: "RATE_LIMITED",
+  500: "INTERNAL_ERROR",
+  503: "SERVICE_UNAVAILABLE",
+};
+
+/**
+ * What a code this build has never heard of becomes (`D13.1`, ADR-0057
+ * §Consequences).
+ *
+ * `@repo/contracts` states the rule where it defines the union: adding a code
+ * is additive (ADR-0015), so "clients must treat an unrecognised code as a
+ * generic failure of whatever HTTP status carried it". This is that sentence
+ * as a function, and it is deliberately **not** {@link TRANSPORT_ERROR_CODE}:
+ * the response arrived, parsed, and refused the request for a reason the
+ * server was clear about — reporting it as an unreachable service tells the
+ * operator to check a connection that is fine, and hides a refusal they could
+ * have acted on.
+ *
+ * The fallback is `INTERNAL_ERROR` rather than a wrong specific: a status
+ * ADR-0013's table does not list has reached us inside a well-formed envelope,
+ * and "something went wrong on our side" is the only thing that is true about
+ * it. `500` is in the map rather than left to the fallback on purpose — it is
+ * a status the API very much does use, and leaving it right by accident is a
+ * worse comment than stating it.
+ */
+export const genericCodeForStatus = (status: number): ErrorCode =>
+  GENERIC_CODE_BY_STATUS[status] ?? "INTERNAL_ERROR";
+
+/**
  * A failure, turned into the sentence an operator reads (`D9.5`, ADR-0043
  * §Notifications, carrying ADR-0034's).
  *

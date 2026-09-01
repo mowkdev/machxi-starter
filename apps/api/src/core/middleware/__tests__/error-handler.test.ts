@@ -1,4 +1,4 @@
-import { errorEnvelopeSchema } from "@repo/contracts";
+import { declaredErrorEnvelopeSchema } from "@repo/contracts";
 import { createLogger } from "@repo/logger";
 import type { NextFunction, Request, Response } from "express";
 import { describe, expect, it, vi } from "vitest";
@@ -187,7 +187,7 @@ describe("errorHandler", () => {
     const { res, body } = handle(notFound("User not found"));
 
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(errorEnvelopeSchema.safeParse(body).success).toBe(true);
+    expect(declaredErrorEnvelopeSchema.safeParse(body).success).toBe(true);
     expect(body).toMatchObject({
       success: false,
       error: { code: "NOT_FOUND", message: "User not found" },

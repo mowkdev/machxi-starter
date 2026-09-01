@@ -15,4 +15,4 @@ description: Workflow for changing the Postgres schema with Drizzle — edit sch
 8. **Docs** — if the change is architectural (new aggregate, new population concept), `/new-adr` or amend ADR-0017; note in the current deliverable plan in `docs/plan/` if scope changes.
 9. Commit schema + migration + code together (`feat(db): …`).
 
-Ask before: dropping columns/tables, `db:reset`, anything touching `sessions` semantics (ADR-0018).
+Ask before: dropping columns/tables, `db:reset`, anything touching `sessions` semantics (ADR-0018, as carried by ADR-0057 — the actor column is 0057's).

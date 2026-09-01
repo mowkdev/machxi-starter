@@ -1,5 +1,5 @@
 import {
-  errorEnvelopeSchema,
+  declaredErrorEnvelopeSchema,
   listEnvelopeSchema,
   successEnvelopeSchema,
 } from "@repo/contracts";
@@ -158,7 +158,9 @@ describe("admin staff administration", () => {
         .expect(403);
 
       expect(response.body.error.code).toBe("FORBIDDEN");
-      expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+      expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+        true,
+      );
     });
 
     it.each(ROUTES)("$method $path refuses a manager", async (route) => {

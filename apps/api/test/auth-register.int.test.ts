@@ -1,4 +1,4 @@
-import { errorEnvelopeSchema } from "@repo/contracts";
+import { declaredErrorEnvelopeSchema } from "@repo/contracts";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -97,7 +97,9 @@ describe("user self-registration", () => {
       })
       .expect(409);
 
-    expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+    expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+      true,
+    );
     expect(response.body.error.code).toBe("CONFLICT");
     expect(JSON.stringify(response.body)).not.toContain(FIXTURE_USERS.active);
   });

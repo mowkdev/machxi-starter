@@ -1,5 +1,5 @@
 import {
-  errorEnvelopeSchema,
+  declaredErrorEnvelopeSchema,
   listEnvelopeSchema,
   successEnvelopeSchema,
 } from "@repo/contracts";
@@ -161,7 +161,9 @@ describe("admin user administration", () => {
         .expect(403);
 
       expect(response.body.error.code).toBe("FORBIDDEN");
-      expect(errorEnvelopeSchema.safeParse(response.body).success).toBe(true);
+      expect(declaredErrorEnvelopeSchema.safeParse(response.body).success).toBe(
+        true,
+      );
     });
 
     it.each(WRITE_ROUTES)(

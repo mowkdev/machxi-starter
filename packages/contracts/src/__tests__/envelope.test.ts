@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   ERROR_CODES,
+  declaredErrorEnvelopeSchema,
   errorEnvelopeSchema,
   isErrorEnvelope,
   isSuccessEnvelope,
@@ -146,7 +147,7 @@ describe("errorEnvelopeSchema", () => {
     expect(errorEnvelopeSchema.safeParse(anError).success).toBe(true);
   });
 
-  it("accepts every declared error code and nothing else", () => {
+  it("accepts every declared error code", () => {
     for (const code of ERROR_CODES) {
       expect(
         errorEnvelopeSchema.safeParse({
@@ -155,13 +156,54 @@ describe("errorEnvelopeSchema", () => {
         }).success,
       ).toBe(true);
     }
+  });
 
+  it("accepts a code this build has never heard of", () => {
+    /*
+     * The widening of `D13.1`. It read `and nothing else` until then, and a
+     * closed enum here is a client that stops recognising the envelope the
+     * moment the API adds a code — which ADR-0015 says is additive and
+     * `errors.ts` tells clients to survive by degrading on the HTTP status.
+     * Rejecting the parse instead threw the status away with the rest of it.
+     */
     expect(
       errorEnvelopeSchema.safeParse({
         ...anError,
         error: { code: "TEAPOT", message: "x" },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("keeps a producer-side schema that refuses an undeclared code", () => {
+    /*
+     * The half the widening must not cost. `apps/api`'s conformance tests
+     * assert with the declared pair, so "the API emits only ADR-0013's codes"
+     * stays a runtime claim about the bytes and not only a claim about
+     * `AppError`'s type.
+     */
+    const unknown = { ...anError, error: { code: "TEAPOT", message: "x" } };
+
+    expect(declaredErrorEnvelopeSchema.safeParse(unknown).success).toBe(false);
+    expect(declaredErrorEnvelopeSchema.safeParse(anError).success).toBe(true);
+
+    for (const code of ERROR_CODES) {
+      expect(
+        declaredErrorEnvelopeSchema.safeParse({
+          ...anError,
+          error: { code, message: "x" },
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("still requires a code", () => {
+    // Wide is not absent: `code` is what a client branches on, and an error
+    // object without one is not this envelope.
+    for (const error of [{ message: "x" }, { code: "", message: "x" }]) {
+      expect(errorEnvelopeSchema.safeParse({ ...anError, error }).success).toBe(
+        false,
+      );
+    }
   });
 
   it("requires success: false", () => {

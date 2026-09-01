@@ -153,6 +153,19 @@ export const ERROR_CODES = [
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /**
+ * Whether a `code` off the wire is one *this build* knows.
+ *
+ * The guard exists because the sentence above is a rule for clients and a rule
+ * needs a way to be obeyed: a bundle deployed before a code was added meets it
+ * as a plain string, and the only honest thing it can do is ask. A caller that
+ * gets `false` degrades by HTTP status (`@repo/api-client`'s
+ * `genericCodeForStatus`) rather than treating the response as unparseable —
+ * which is what the envelope schema's deliberately wide `code` makes possible.
+ */
+export const isErrorCode = (code: string): code is ErrorCode =>
+  (ERROR_CODES as readonly string[]).includes(code);
+
+/**
  * One structured hint attached to an error.
  *
  * For `VALIDATION_ERROR` there is one entry per rejected field: `path` is the
