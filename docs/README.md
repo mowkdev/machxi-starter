@@ -32,9 +32,12 @@ D6 2026-08-22, D7 2026-08-22, D8 2026-08-27 and D9 2026-08-28, so **ADRs
 built on, every grid decision the data-grid rebuild made, D5's pair of
 supersessions, D6's user-settings record, D7's localization one, D8's four and
 D9's platform extraction. D10 shipped 2026-08-29 and the window on
-[0052](adr/0052-grid-and-admin-followups.md) shut with it, so **ADRs 0001–0054 are closed**; **the D12 window is open** (opened 2026-08-31), covering
-[0055](adr/0055-customer-app.md) only — `proposed` until `D12.1` accepts it
-and flips [0022](adr/0022-frontend-apps.md) (a delta: the roster). D11 shipped
+[0052](adr/0052-grid-and-admin-followups.md) shut with it, so **ADRs 0001–0054 are closed**; **the D12 window is open** (opened 2026-08-31), covering [0055](adr/0055-customer-app.md) — `accepted` at `D12.1`'s head,
+where [0022](adr/0022-frontend-apps.md) took the roster delta — and, since
+2026-09-01, [0056](adr/0056-per-population-csrf-cookie.md) — `proposed`,
+accepted at `D12.12`'s head, where
+[0029](adr/0029-browser-token-transport.md) takes a one-name delta: the CSRF
+cookie becomes per-population. D11 shipped
 2026-08-31 and its window on [0053](adr/0053-account-area.md) and
 [0054](adr/0054-design-language-instrument.md) shut with it, both `accepted`
 in the window (0054 at `D11.1`'s head, 0053 at `D11.6`'s), each flipping its

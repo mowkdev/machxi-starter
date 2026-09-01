@@ -3,7 +3,7 @@
 > **Renumbered from D11 on 2026-08-29**, when the design foundations and account area ([D11](0011-design-foundations-and-account-area.md)) were inserted ahead of it — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
 
 - Status: **in progress** — **opened 2026-08-31**, the operator's decision, the day D11 shipped. The window covers [ADR-0055](../adr/0055-customer-app.md), `proposed` at opening and **accepted 2026-08-31 at the head of `D12.1`**, where [ADR-0022](../adr/0022-frontend-apps.md) moved to `superseded by` (a delta: the roster; every stack decision stands)
-- Steps: `D12.1` – `D12.11`
+- Steps: `D12.1` – `D12.12` (`D12.12` added 2026-09-01 at the operator's post-close review, out of finding 6 — the D11.12 precedent)
 - Ledger: [`docs/plan/README.md`](README.md)
 
 Scope: **`apps/customer`** — a Vite + React SPA over the `/user` segment, dev port 3002, the same shape as `apps/admin` — built as the **second consumer** of the shell, surfaces, machinery and design language that D8–D11 designed, extracted and settled. It ships self-service v1: sign-in on the ADR-0033 session model, profile, credential self-service ([ADR-0027](../adr/0027-credential-self-service-and-reset.md)'s rules with the account as actor), settings (D6, density included), and account deletion ([ADR-0028](../adr/0028-account-deletion.md)'s user semantics, self-served), localized in `en` and `lv` from the first screen and drawn in Instrument ([ADR-0054](../adr/0054-design-language-instrument.md)) from the first pixel.
@@ -328,6 +328,14 @@ Re-measured at close-out on the gate's own build, in bytes, against that baselin
 Two standing items travel with the walk and are **not** this deliverable's debt: the `lv` catalogues are `pending native review` (ADR-0046 §11), and D11's own §Definition-of-done item 3 — the sixteen admin reference shots read as _arrangements_ — is still pending from that deliverable's close.
 
 **No application code changed in this step.** The diff is this plan file, `apps/customer/size-budget.json`'s notes, `docs/adr/README.md`'s 0055 row, `CLAUDE.md`'s D12 sentence, and one blank line of Prettier. The gate is green on it, and the deliverable is handed over for the operator's call.
+
+### 12. The CSRF cookie split
+
+**ADRs:** [0056](../adr/0056-per-population-csrf-cookie.md) (accepted at the head of this step; [0029](../adr/0029-browser-token-transport.md) moves to `superseded by` on a one-name delta, and the index and window documents are swept in the same commit), [0029](../adr/0029-browser-token-transport.md) as carried, [0030](../adr/0030-csrf-bootstrap-endpoint.md), [0020](../adr/0020-security-baseline.md)
+
+**Added 2026-09-01 at the operator's post-close review**, out of §Findings item 6 — the `D11.12` precedent: the close-out's own reading produced a build step, and the row and the window wait on it. The CSRF cookie becomes per-population — `__Host-machxi.csrf.admin` / `__Host-machxi.csrf.user`, both keeping `Path=/` and the prefix — with each segment's login, refresh, bootstrap, logout, logout-all and self-deletion touching **only its own**, the double-submit check validating against the population's cookie, and the legacy `__Host-machxi.csrf` cleared alongside the first write of a population cookie. **No client diff in either app**: neither reads `document.cookie` (ADR-0033), each holds the token its own bootstrap echoed — the cookie's name is a server-side fact, which is what makes this step API-only.
+
+**Done when:** integration tests assert the cross-population cases — an admin refresh leaves the user cookie byte-identical and vice versa; logout, logout-all and self-deletion clear only their own; each segment's double-submit accepts its own token and refuses the other population's; the browser tier gains the dual-session spec it could not honestly write before — both apps signed into **one** context, a refresh in one, a mutation in the other succeeding with **no** re-bootstrap — with the probe's request budget moved for it; `pnpm test:postman` green, its count unchanged or the change named; `git diff` for `apps/admin/src` and `apps/customer/src` empty in this step; the `security-reviewer` pass on the diff (auth surface); the gate green.
 
 ## Findings against D8–D11
 

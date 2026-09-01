@@ -16,6 +16,14 @@ Scope: staff open the customer app **as a chosen customer**. An admin endpoint m
 - **Audit**: `ctx` already carries the principal on every request (ADR-0010); an impersonated session makes every log line carry both identities (ADR-0005 fields), and mint/exit are audit events in their own right.
 - **The two clients**: the customer app shows an unremovable banner — who you are, who you are acting as, one exit control that revokes the session server-side. The admin app grows the entry point on the user row, capability-gated per ADR-0038/0042.
 
+## Inherited from D12's close (2026-09-01)
+
+Three matters D12 named and deliberately did not take, assigned here because this deliverable is where each first bites:
+
+- **Nothing evicts the settings query when the principal changes within one tab** — confirmed at `D11.11`, jointly owned by every deliverable that added a settings key (D6, D7, `D11.6`, `D11.10`, and now D12's second app). Signing out and back in adopts the previous account's theme, locale, grids and density. Impersonation is principal-switching _as a feature_, so this lands here — in both apps, at whatever seam the fix chooses — before or beside the banner work, not after it.
+- **`format:check` is not one of the gate's four links** (D12's close, loose end 2): every deliverable has relied on a once-per-close manual sweep for a check a machine could run each step. Adding the fifth link is an ADR-0026-as-carried delta — one sentence on whatever record this deliverable opens with, decided at scoping rather than mid-build.
+- **An unrecognised error code degrades to "check your connection" instead of the catalogue's fallback** (D12 finding 3): `@repo/api-client` parses `code` as a closed enum, so an older bundle meeting a newer API mislabels a well-formed refusal as a transport failure. A candidate for this window if impersonation adds any error code an already-shipped bundle could meet; otherwise it stays a named `@repo/api-client` finding with its pinning test.
+
 ## Decisions this deliverable needs
 
 - **One new ADR**: impersonation sessions — the mint, the handoff, the TTL/no-refresh rule, the exclusion list, the audit events, and which staff roles hold the capability. Written as an **additive** decision beside frozen ADR-0017/0018/0019; if any of the three needs to say something different, that is a superseding ADR, discovered at writing time rather than during implementation.
