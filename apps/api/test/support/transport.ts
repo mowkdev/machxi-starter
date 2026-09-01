@@ -1,3 +1,4 @@
+import type { Population } from "@repo/contracts";
 import type { Response, Test } from "supertest";
 import { expect } from "vitest";
 
@@ -20,7 +21,24 @@ import { expect } from "vitest";
  */
 
 export const REFRESH_COOKIE = "__Secure-machxi.refresh";
-export const CSRF_COOKIE = "__Host-machxi.csrf";
+
+/**
+ * The CSRF cookie of one population (ADR-0056, superseding ADR-0029 on this
+ * name alone).
+ *
+ * Written out rather than imported from `core/http/cookies.ts`, which is the
+ * standing discipline of this file: a test that imported the constant would
+ * pass if the name changed, and the name is a wire fact two shipped SPAs and
+ * the Postman collection depend on.
+ */
+export const csrfCookie = (population: Population): string =>
+  population === "staff"
+    ? "__Host-machxi.csrf.admin"
+    : "__Host-machxi.csrf.user";
+
+/** The one host-wide cookie ADR-0029 shipped, retired by ADR-0056. */
+export const LEGACY_CSRF_COOKIE = "__Host-machxi.csrf";
+
 export const TRANSPORT_HEADER = "X-Auth-Transport";
 export const CSRF_HEADER = "X-CSRF-Token";
 
@@ -74,8 +92,14 @@ export interface TransportCase {
   readonly name: "body" | "cookie";
   /** Headers that ask for this transport on `login`, `refresh`, `register`. */
   readonly ask: (request: Test) => Test;
-  /** Reads the credential out of a login/refresh/register response. */
-  readonly carry: (response: Response) => Carrier;
+  /**
+   * Reads the credential out of a login/refresh/register response.
+   *
+   * `population` is a parameter since ADR-0056: the CSRF cookie's name is
+   * per-population, so a carrier cannot know which `Set-Cookie` is its own
+   * without being told which segment answered.
+   */
+  readonly carry: (response: Response, population: Population) => Carrier;
 }
 
 const bodyCarrier = (token: string | undefined): Carrier => ({
@@ -83,13 +107,20 @@ const bodyCarrier = (token: string | undefined): Carrier => ({
   present: (request) => request.send({ refreshToken: token }),
 });
 
-const cookieCarrier = (refresh: string, csrf: string): Carrier => ({
+const cookieCarrier = (
+  population: Population,
+  refresh: string,
+  csrf: string,
+): Carrier => ({
   // Deliberately `undefined`: the token exists, and this transport's whole
   // purpose is that the client cannot read it.
   token: undefined,
   present: (request) =>
     request
-      .set("Cookie", [`${REFRESH_COOKIE}=${refresh}`, `${CSRF_COOKIE}=${csrf}`])
+      .set("Cookie", [
+        `${REFRESH_COOKIE}=${refresh}`,
+        `${csrfCookie(population)}=${csrf}`,
+      ])
       .set(CSRF_HEADER, csrf),
 });
 
@@ -105,9 +136,9 @@ export const TRANSPORTS: readonly TransportCase[] = [
   {
     name: "cookie",
     ask: (request) => request.set(TRANSPORT_HEADER, "cookie"),
-    carry: (response) => {
+    carry: (response, population) => {
       const refresh = cookieValue(response, REFRESH_COOKIE);
-      const csrf = cookieValue(response, CSRF_COOKIE);
+      const csrf = cookieValue(response, csrfCookie(population));
 
       // Failing here rather than passing `undefined` down: a missing cookie is
       // the bug this transport would otherwise hide, and every later assertion
@@ -119,7 +150,7 @@ export const TRANSPORTS: readonly TransportCase[] = [
         expect.any(String),
       );
 
-      return cookieCarrier(refresh ?? "", csrf ?? "");
+      return cookieCarrier(population, refresh ?? "", csrf ?? "");
     },
   },
 ];

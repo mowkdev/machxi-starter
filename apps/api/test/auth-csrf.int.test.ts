@@ -12,11 +12,11 @@ import {
   superAdmin,
 } from "./support/seed.js";
 import {
-  CSRF_COOKIE,
   CSRF_HEADER,
   REFRESH_COOKIE,
   TRANSPORT_HEADER,
   cookieValue,
+  csrfCookie,
   setCookie,
   setCookies,
 } from "./support/transport.js";
@@ -72,6 +72,9 @@ const CASES = [
 ] as const;
 
 describe.each(CASES)("$name GET /auth/csrf", (population) => {
+  /** This segment bootstraps its own population's cookie (ADR-0056). */
+  const CSRF_COOKIE = csrfCookie(population.name);
+
   let harness: TestApp;
 
   beforeAll(async () => {
@@ -240,7 +243,18 @@ describe.each(CASES)("$name GET /auth/csrf", (population) => {
   });
 });
 
-describe("GET /auth/csrf is host-wide", () => {
+/**
+ * The bootstrap after ADR-0056, which reversed the claim this describe used to
+ * make.
+ *
+ * It read "GET /auth/csrf is host-wide": one `__Host-machxi.csrf` at `Path=/`,
+ * so a browser held exactly one whatever it was signed into, and the two routes
+ * existed for symmetry rather than because the tokens differed. That was true
+ * of the cookie ADR-0029 shipped and is the property D12's finding 6 turned out
+ * to be a defect — the sharing *was* the collision. Each route now bootstraps
+ * its own population, so the two routes exist for a reason.
+ */
+describe("GET /auth/csrf is per population", () => {
   let harness: TestApp;
 
   beforeAll(async () => {
@@ -252,30 +266,74 @@ describe("GET /auth/csrf is host-wide", () => {
     await harness.close();
   });
 
-  it("bootstraps one segment with a token issued by the other", async () => {
-    // `__Host-machxi.csrf` is at `Path=/`, so a browser holds exactly one of
-    // them however many populations it is signed into. The two routes exist
-    // for symmetry, not because the tokens differ (ADR-0030 §The endpoint).
+  it("writes only its own segment's cookie", async () => {
+    const fromAdmin = await supertest(harness.app)
+      .get("/api/v1/admin/auth/csrf")
+      .expect(200);
+
+    expect(setCookie(fromAdmin, csrfCookie("staff"))).toBeDefined();
+    expect(setCookie(fromAdmin, csrfCookie("user"))).toBeUndefined();
+
+    const fromUser = await supertest(harness.app)
+      .get("/api/v1/user/auth/csrf")
+      .expect(200);
+
+    expect(setCookie(fromUser, csrfCookie("user"))).toBeDefined();
+    expect(setCookie(fromUser, csrfCookie("staff"))).toBeUndefined();
+  });
+
+  it("echoes its own cookie and ignores the other population's", async () => {
+    // Both are at `Path=/`, so a browser signed into both apps presents both
+    // here. Bootstrapping the admin segment must not read — and therefore must
+    // not re-issue — the customer app's token.
+    const held = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    const response = await supertest(harness.app)
+      .get("/api/v1/admin/auth/csrf")
+      .set("Cookie", [`${csrfCookie("user")}=${held}`])
+      .expect(200);
+
+    expect(response.body.data.csrfToken).not.toBe(held);
+    expect(setCookie(response, csrfCookie("user"))).toBeUndefined();
+
+    /*
+     * The positive half, and the one that makes this case discriminating
+     * (`D12.12` security review): both assertions above are satisfied by the
+     * *pre-split* code too — one shared cookie would also mint something other
+     * than `held` and also write no `…csrf.user`. What only the split makes
+     * true is that the value went into the **admin's own name**, which is
+     * `undefined` against a string on a revert.
+     */
+    expect(cookieValue(response, csrfCookie("staff"))).toBe(
+      response.body.data.csrfToken,
+    );
+  });
+
+  it("bootstraps a segment whose sibling is already signed in, without disturbing it", async () => {
+    // The end-to-end shape of the fix: the customer app is signed in, the
+    // admin panel boots and bootstraps, and the customer's token survives
+    // it — no re-bootstrap, and no `403` window to be caught by.
     const login = await supertest(harness.app)
       .post("/api/v1/user/auth/login")
       .set(TRANSPORT_HEADER, "cookie")
       .send({ email: FIXTURE_USERS.active, password: FIXTURE_PASSWORD })
       .expect(200);
 
-    const fromAdmin = await supertest(harness.app)
-      .get("/api/v1/admin/auth/csrf")
-      .expect(200);
+    const userCsrf = cookieValue(login, csrfCookie("user")) ?? "";
 
-    const token = fromAdmin.body.data.csrfToken as string;
+    await supertest(harness.app)
+      .get("/api/v1/admin/auth/csrf")
+      .set("Cookie", [`${csrfCookie("user")}=${userCsrf}`])
+      .expect(200);
 
     await supertest(harness.app)
       .post("/api/v1/user/auth/refresh")
       .set(TRANSPORT_HEADER, "cookie")
       .set("Cookie", [
         `${REFRESH_COOKIE}=${cookieValue(login, REFRESH_COOKIE) ?? ""}`,
-        `${CSRF_COOKIE}=${token}`,
+        `${csrfCookie("user")}=${userCsrf}`,
       ])
-      .set(CSRF_HEADER, token)
+      .set(CSRF_HEADER, userCsrf)
       .expect(200);
   });
 });

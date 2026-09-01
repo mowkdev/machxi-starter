@@ -27,7 +27,8 @@ import type { Request } from "express";
 export const REFRESH_COOKIE = "__Secure-machxi.refresh";
 
 /**
- * The double-submit CSRF token (ADR-0029 §CSRF).
+ * The double-submit CSRF token of one population (ADR-0056, superseding
+ * ADR-0029 on this name and nothing else).
  *
  * Deliberately **not** `httpOnly`: the client has to read it to echo it back
  * in `X-CSRF-Token`, which is the entire mechanism. It carries no authority on
@@ -45,13 +46,42 @@ export const REFRESH_COOKIE = "__Secure-machxi.refresh";
  *
  * Sending a non-secret token on every request to this host is the cost, and it
  * is the normal shape of a CSRF cookie.
+ *
+ * **One per population, and the prefix survives it.** `__Host-` constrains
+ * `Path` and `Domain`, not the name, so both cookies keep `Path=/` and the
+ * full guarantee. Until D12 exactly one SPA could hold a session against an
+ * API host, so a single host-wide cookie was every client's own; with the
+ * admin panel and the customer app open at once, one app's rotation stranded
+ * the other's in-memory token and a second `403` inside that window was a
+ * forced sign-out caused by another tab (D12's finding 6). Splitting the name
+ * is the whole fix: the two apps stop sharing mutable state.
+ *
+ * The suffix is the **segment** word rather than the population word —
+ * `admin`, not `staff` — for the same reason {@link authCookiePath} is
+ * spelled in segments: what a person debugging this reads beside it is a URL.
  */
-export const CSRF_COOKIE = "__Host-machxi.csrf";
+export const csrfCookieName = (population: "staff" | "user"): string =>
+  population === "staff"
+    ? "__Host-machxi.csrf.admin"
+    : "__Host-machxi.csrf.user";
+
+/**
+ * The one host-wide cookie ADR-0029 shipped, retired by ADR-0056.
+ *
+ * Kept as a constant rather than deleted because a browser that was signed in
+ * before the split still holds it, and nothing else would ever remove it: it
+ * is `__Host-` at `Path=/` with the refresh token's `Max-Age`, so it would sit
+ * there for a month being sent on every request. Every response that writes or
+ * clears a population's cookie clears this one too — but only when the
+ * request actually presented it, so the migration costs one `Set-Cookie` once
+ * rather than one on every login forever.
+ */
+export const LEGACY_CSRF_COOKIE = "__Host-machxi.csrf";
 
 /** `__Host-` requires it, and readability by the app's own pages needs it. */
 export const CSRF_COOKIE_PATH = "/";
 
-/** Where the client echoes {@link CSRF_COOKIE} back. */
+/** Where the client echoes the population's CSRF cookie back. */
 export const CSRF_HEADER = "x-csrf-token";
 
 /** How a client asks for cookie transport (ADR-0029 §Opt-in, not inference). */

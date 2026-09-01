@@ -15,7 +15,7 @@ import { createTestApp, type TestApp } from "./support/app.js";
 import { expectNoSecrets, userResourceSchema } from "./support/resources.js";
 import {
   cookieValue,
-  CSRF_COOKIE,
+  csrfCookie,
   REFRESH_COOKIE,
   setCookie,
   TRANSPORT_HEADER,
@@ -511,8 +511,63 @@ describe("user profile", () => {
       // the past is the only way to remove one.
       expect(setCookie(response, REFRESH_COOKIE)).toEqual(expect.any(String));
       expect(cookieValue(response, REFRESH_COOKIE)).toBeUndefined();
-      expect(setCookie(response, CSRF_COOKIE)).toEqual(expect.any(String));
-      expect(cookieValue(response, CSRF_COOKIE)).toBeUndefined();
+      expect(setCookie(response, csrfCookie("user"))).toEqual(
+        expect.any(String),
+      );
+      expect(cookieValue(response, csrfCookie("user"))).toBeUndefined();
+    });
+
+    it("leaves an admin panel signed in in another tab alone", async () => {
+      // D12's finding 6, extended by `D12.4` and closed by ADR-0056: closing a
+      // customer account used to clear the one host-wide `__Host-machxi.csrf`,
+      // so it took the admin panel's CSRF token with it. The refusal window
+      // that opened was the same one an ordinary refresh opened, and this
+      // endpoint is the one where the person cannot simply try again.
+      const email = "closes.beside.an.admin@machxi.local";
+
+      await freshUser(email);
+
+      const staffSession = await request()
+        .post("/api/v1/admin/auth/login")
+        .set(TRANSPORT_HEADER, "cookie")
+        .send(superAdmin())
+        .expect(200);
+
+      const staffCsrf = cookieValue(staffSession, csrfCookie("staff")) ?? "";
+
+      expect(staffCsrf).not.toBe("");
+
+      const signedIn = await request()
+        .post("/api/v1/user/auth/login")
+        .set(TRANSPORT_HEADER, "cookie")
+        .send({ email, password: NEW_ACCOUNT_PASSWORD })
+        .expect(200);
+
+      const response = await remove(signedIn.body.data.accessToken as string, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      })
+        // Both CSRF cookies travel here — they are at `Path=/` — which is what
+        // makes the assertion below about the server's choice rather than
+        // about what the browser happened to send.
+        .set("Cookie", [
+          `${csrfCookie("staff")}=${staffCsrf}`,
+          `${csrfCookie("user")}=${cookieValue(signedIn, csrfCookie("user")) ?? ""}`,
+        ])
+        .expect(204);
+
+      expect(setCookie(response, csrfCookie("staff"))).toBeUndefined();
+
+      // And the staff session's own double-submit still passes afterwards,
+      // which is the property the cookie assertion is a proxy for.
+      await request()
+        .post("/api/v1/admin/auth/refresh")
+        .set(TRANSPORT_HEADER, "cookie")
+        .set("Cookie", [
+          `${REFRESH_COOKIE}=${cookieValue(staffSession, REFRESH_COOKIE) ?? ""}`,
+          `${csrfCookie("staff")}=${staffCsrf}`,
+        ])
+        .set("X-CSRF-Token", staffCsrf)
+        .expect(200);
     });
 
     it("releases the address, so the same person can come back", async () => {

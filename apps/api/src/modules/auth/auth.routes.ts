@@ -73,7 +73,7 @@ export const createAuthRouter = ({
     // The one endpoint where a token in the body is a legitimate way to
     // present the credential, and therefore the only one where it exempts the
     // request from the check (ADR-0029 §CSRF).
-    createCsrfGuard({ allowBodyToken: true }),
+    createCsrfGuard({ population, allowBodyToken: true }),
     validate(refreshSchema),
     controller.refresh,
   );
@@ -88,8 +88,16 @@ export const createAuthRouter = ({
   // cookie transport sends the refresh cookie here too — the path matches —
   // and ending somebody's session from another site is a smaller prize than
   // stealing it but still not one to hand over.
-  router.post("/logout", createCsrfGuard(), controller.logout);
-  router.post("/logout-all", createCsrfGuard(), controller.logoutAll);
+  //
+  // `population` reaches the guard the same way it reaches `authenticate`
+  // above: this factory is mounted once per segment, so the segment is what
+  // decides which CSRF cookie is checked (ADR-0056).
+  router.post("/logout", createCsrfGuard({ population }), controller.logout);
+  router.post(
+    "/logout-all",
+    createCsrfGuard({ population }),
+    controller.logoutAll,
+  );
   router.get("/me", controller.me);
 
   return router;

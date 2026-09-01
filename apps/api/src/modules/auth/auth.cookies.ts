@@ -3,11 +3,12 @@ import { randomToken } from "@repo/crypto";
 import type { Request, Response } from "express";
 
 import {
-  CSRF_COOKIE,
   CSRF_COOKIE_PATH,
+  LEGACY_CSRF_COOKIE,
   REFRESH_COOKIE,
   TRANSPORT_HEADER,
   authCookiePath,
+  csrfCookieName,
   readCookie,
 } from "../../core/http/index.js";
 
@@ -81,15 +82,40 @@ const csrfAttributes = {
   httpOnly: false,
 } as const;
 
+/**
+ * Removes the one host-wide cookie ADR-0029 shipped, on the first response
+ * that writes or clears a population's own (ADR-0056 §Decision).
+ *
+ * It is at `Path=/` with the refresh token's `Max-Age`, so a browser signed in
+ * before the split would otherwise carry it — and send it on every request —
+ * for a month, and nothing else would ever remove it. The guard is that the
+ * request actually presented it: the migration then costs one `Set-Cookie`
+ * once per browser rather than one on every login forever.
+ *
+ * A *shadowed* legacy cookie reads as absent ({@link readCookie} fails closed,
+ * ADR-0029) and is therefore not cleared. That is the right way round: it is
+ * already absent as far as this API is concerned, its own `Max-Age` retires
+ * it, and clearing on an ambiguous name is not a decision to make from a
+ * header somebody else can write to.
+ */
+const retireLegacyCsrfCookie = (req: Request, res: Response): void => {
+  if (readCookie(req, LEGACY_CSRF_COOKIE) === undefined) return;
+
+  res.clearCookie(LEGACY_CSRF_COOKIE, csrfAttributes);
+};
+
 const writeCsrfCookie = (
+  req: Request,
   res: Response,
+  population: Population,
   csrfToken: string,
   maxAgeSec: number,
 ): string => {
-  res.cookie(CSRF_COOKIE, csrfToken, {
+  res.cookie(csrfCookieName(population), csrfToken, {
     ...csrfAttributes,
     maxAge: maxAgeSec * 1000,
   });
+  retireLegacyCsrfCookie(req, res);
 
   return csrfToken;
 };
@@ -106,9 +132,16 @@ const writeCsrfCookie = (
  * it would make a caller issue a session cookie where another issues a durable
  * one, and ADR-0029 §CSRF never stated this attribute — ADR-0030 does, amended
  * D3.2.
+ *
+ * `population` selects **which** cookie, and `req` is here only so the legacy
+ * one can be retired beside it (ADR-0056).
  */
-export const setCsrfCookie = (res: Response, maxAgeSec: number): string =>
-  writeCsrfCookie(res, randomToken(32), maxAgeSec);
+export const setCsrfCookie = (
+  req: Request,
+  res: Response,
+  population: Population,
+  maxAgeSec: number,
+): string => writeCsrfCookie(req, res, population, randomToken(32), maxAgeSec);
 
 /**
  * Returns the caller's current CSRF token, minting one only if it has none.
@@ -130,15 +163,23 @@ export const setCsrfCookie = (res: Response, maxAgeSec: number): string =>
  * A duplicate or shadowed cookie reads as absent (`readCookie` fails closed,
  * ADR-0029) and therefore mints, which is the right way round: the client ends
  * up with one unambiguous value it can actually echo.
+ *
+ * **It echoes this population's cookie and no other** (ADR-0056). A browser
+ * signed into both apps sends both names here — they are both at `Path=/` —
+ * and bootstrapping the admin's segment must not read, and therefore must not
+ * re-issue, the customer app's token.
  */
 export const ensureCsrfCookie = (
   req: Request,
   res: Response,
+  population: Population,
   maxAgeSec: number,
 ): string =>
   writeCsrfCookie(
+    req,
     res,
-    readCookie(req, CSRF_COOKIE) ?? randomToken(32),
+    population,
+    readCookie(req, csrfCookieName(population)) ?? randomToken(32),
     maxAgeSec,
   );
 
@@ -153,13 +194,19 @@ export interface RefreshCookieInput {
  * Sets the refresh cookie and a fresh CSRF token beside it.
  *
  * The two always move together: every response that sets or rotates the
- * refresh cookie issues a new `machxi.csrf`, so a stolen CSRF token is worth
- * one rotation, and a client that has the cookie always has a matching header
- * value to send.
+ * refresh cookie issues a new `machxi.csrf.<segment>`, so a stolen CSRF token
+ * is worth one rotation, and a client that has the cookie always has a
+ * matching header value to send.
+ *
+ * **Only this population's**, since ADR-0056: before the split, a rotation
+ * here overwrote the one cookie both apps were reading, so an admin refresh
+ * stranded the customer app's in-memory token and a second `403` inside that
+ * window signed somebody out over another tab's traffic.
  *
  * @returns the CSRF token, for the caller that wants to log or assert on it.
  */
 export const setAuthCookies = (
+  req: Request,
   res: Response,
   { population, token, maxAgeSec }: RefreshCookieInput,
 ): string => {
@@ -169,7 +216,7 @@ export const setAuthCookies = (
     maxAge: maxAgeSec * 1000,
   });
 
-  return setCsrfCookie(res, maxAgeSec);
+  return setCsrfCookie(req, res, population, maxAgeSec);
 };
 
 /**
@@ -180,8 +227,14 @@ export const setAuthCookies = (
  * free, and the alternative is a browser that keeps sending a value the server
  * has already revoked, spending a `RATE_LIMIT_REFRESH_MAX` failure on every
  * attempt until the cookie expires on its own.
+ *
+ * **Both of this population's, and nothing of the other's** (ADR-0056). The
+ * refresh cookie was always per-segment; the CSRF cookie was not, so until
+ * this record a `logout` here — or `DELETE /user/profile`, which calls the
+ * same function — removed the other app's CSRF cookie host-wide.
  */
 export const clearAuthCookies = (
+  req: Request,
   res: Response,
   population: Population,
 ): void => {
@@ -189,7 +242,8 @@ export const clearAuthCookies = (
     ...baseAttributes(population),
     httpOnly: true,
   });
-  res.clearCookie(CSRF_COOKIE, csrfAttributes);
+  res.clearCookie(csrfCookieName(population), csrfAttributes);
+  retireLegacyCsrfCookie(req, res);
 };
 
 /** The refresh token the browser attached, if it is on cookie transport. */

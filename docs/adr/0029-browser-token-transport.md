@@ -1,11 +1,13 @@
 # ADR-0029: Browser token transport: httpOnly refresh cookie and CSRF
 
-- Status: accepted
+- Status: superseded by [ADR-0056](0056-per-population-csrf-cookie.md) (delta: the CSRF cookie's name is per-population; every other transport decision below stands)
 - Date: 2026-08-18
 
 > Written as `proposed` and **accepted the same day**. It changes a published contract (`AuthResource`) and moves a security boundary, so it was put up for a decision rather than assumed; [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts, and this is now agreed and not yet built — `D2.5` implements it. It stays amendable in place while D2 is in progress (ADR-0025 rule 2); once D2 ships it changes only by supersession.
 >
 > **Amended 2026-08-19 (D2.6).** D2.5 built it and D2 shipped the same day, so the sentence above about it being "not yet built" is history: this ADR is closed, and the amendments dated _2026-08-19 (D2.5)_ below were the last made in the window.
+>
+> **Superseded in part 2026-09-01, at the head of `D12.12`.** [ADR-0056](0056-per-population-csrf-cookie.md) changes exactly one name below: the double-submit cookie becomes **one per population** — `__Host-machxi.csrf.admin` and `__Host-machxi.csrf.user` — each segment setting, rotating, echoing and clearing only its own, because D12 put a second SPA against one API host and each app's rotation was stranding the other's in-memory token. **Everything else here stands as written**: the `__Secure-` httpOnly refresh cookie and its per-segment `Path`, the `__Host-` prefix discipline and its `Path=/` requirement, the double-submit check itself, the opt-in transport header, `readCookie`'s fail-closed duplicate handling, and every rotation and clearing point. A delta supersession under [ADR-0050](0050-adr-lifecycle-and-verification.md) rule 1 — read this record for what 0056 does not touch.
 
 ## Context
 

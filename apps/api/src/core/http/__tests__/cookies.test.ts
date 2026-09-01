@@ -2,10 +2,11 @@ import type { Request } from "express";
 import { describe, expect, it } from "vitest";
 
 import {
-  CSRF_COOKIE,
   CSRF_COOKIE_PATH,
+  LEGACY_CSRF_COOKIE,
   REFRESH_COOKIE,
   authCookiePath,
+  csrfCookieName,
   readCookie,
 } from "../cookies.js";
 
@@ -16,6 +17,16 @@ import {
  * rather than assumed: a value containing `=`, a name that is a suffix of
  * another name, and the whitespace RFC 6265 puts between pairs.
  */
+
+/**
+ * One concrete CSRF cookie name for the reader's edge cases.
+ *
+ * The reader knows nothing about populations — it is given a string — so these
+ * tests want *a* name rather than every name, and picking one keeps them about
+ * `readCookie` (ADR-0056 made the constant a function; the describe below is
+ * where the names themselves are asserted).
+ */
+const CSRF_COOKIE = csrfCookieName("staff");
 
 const withCookies = (header?: string): Request =>
   ({ headers: header === undefined ? {} : { cookie: header } }) as Request;
@@ -119,5 +130,41 @@ describe("the cookie names", () => {
     // what stops a sibling subdomain shadowing it.
     expect(CSRF_COOKIE.startsWith("__Host-")).toBe(true);
     expect(CSRF_COOKIE_PATH).toBe("/");
+  });
+});
+
+describe("csrfCookieName", () => {
+  it("gives each population its own name (ADR-0056)", () => {
+    // The whole of the fix: two SPAs against one API host stop sharing one
+    // mutable cookie, so neither app's rotation strands the other's token.
+    expect(csrfCookieName("staff")).toBe("__Host-machxi.csrf.admin");
+    expect(csrfCookieName("user")).toBe("__Host-machxi.csrf.user");
+    expect(csrfCookieName("staff")).not.toBe(csrfCookieName("user"));
+  });
+
+  it("keeps the `__Host-` prefix on both", () => {
+    // `__Host-` constrains `Path` and `Domain`, not the name, so the split
+    // costs none of the prefix's guarantees — the alternative considered and
+    // rejected in ADR-0056 was scoping by path, which would have.
+    for (const population of ["staff", "user"] as const) {
+      expect(csrfCookieName(population).startsWith("__Host-")).toBe(true);
+    }
+  });
+
+  it("extends the legacy name rather than replacing it, which is why readCookie matches exactly", () => {
+    // Both new names *begin with* the retired one, so a reader that ever went
+    // back to `startsWith` would hand `__Host-machxi.csrf` to the
+    // double-submit check as though it were a population's. `readCookie`
+    // matches the whole name, which is what makes the retired cookie satisfy
+    // nothing. Neither new name is a suffix of the other either.
+    const names = [csrfCookieName("staff"), csrfCookieName("user")];
+
+    for (const name of names) {
+      expect(name.startsWith(LEGACY_CSRF_COOKIE)).toBe(true);
+      expect(name).not.toBe(LEGACY_CSRF_COOKIE);
+    }
+
+    expect(names[0]?.endsWith(names[1] ?? "")).toBe(false);
+    expect(names[1]?.endsWith(names[0] ?? "")).toBe(false);
   });
 });

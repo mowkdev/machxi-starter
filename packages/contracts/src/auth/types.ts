@@ -44,8 +44,12 @@ export interface TokenPair {
    * client must echo in `X-CSRF-Token` on `refresh`, `logout` and
    * `logout-all`.
    *
-   * It is also set as the `__Host-machxi.csrf` cookie, and that copy is the
-   * one a page uses after a reload. This one exists because the two are not
+   * It is also set as this population's CSRF cookie —
+   * `__Host-machxi.csrf.admin` on the `/admin` segment,
+   * `__Host-machxi.csrf.user` on `/user` (ADR-0056, superseding ADR-0029 on
+   * that name alone) — and that copy is the one a page uses after a reload.
+   * One name per population so that two SPAs against one API host cannot
+   * strand each other's tokens. This one exists because the two are not
    * interchangeable: an app served from a different host than the API — the
    * deployment `CORS_ORIGINS` and `credentials: true` exist for — can never
    * read the API's cookies from `document.cookie`, so without this it could
@@ -101,9 +105,10 @@ export type PrincipalResource = StaffPrincipalResource | UserPrincipalResource;
  * The body of `GET /api/v1/{user,admin}/auth/csrf` (ADR-0030).
  *
  * The bootstrap a browser client runs before it can refresh: the endpoint sets
- * or rotates `__Host-machxi.csrf` and returns the same value here, because the
- * two copies serve different deployments. A same-host app could read the
- * cookie back after a reload; an app on `admin.example.com` against
+ * or rotates **its own segment's** CSRF cookie — `__Host-machxi.csrf.admin` or
+ * `__Host-machxi.csrf.user` (ADR-0056) — and returns the same value here,
+ * because the two copies serve different deployments. A same-host app could
+ * read the cookie back after a reload; an app on `admin.example.com` against
  * `api.example.com` never can, and this is the only copy it will ever see
  * (ADR-0029 §CSRF, amended D2.5).
  *

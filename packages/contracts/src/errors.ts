@@ -66,7 +66,7 @@ const GENERIC_ERROR_CODES = [
  * | `AUTH_REFRESH_REUSED` | 401 | a rotated refresh token was replayed outside the grace window; the session is revoked | re-login and warn the user |
  * | `AUTH_ACCOUNT_DISABLED` | 403 | credentials are correct but `status != active` | show a support message |
  * | `AUTH_CURRENT_PASSWORD_INVALID` | 403 | the caller re-presented their own password on a credential-setting endpoint and it did not verify | ask for the password again |
- * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching the `machxi.csrf` cookie (ADR-0029) | re-read the cookie and retry; if it persists, re-login |
+ * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching that population's `machxi.csrf.{admin,user}` cookie (ADR-0029; ADR-0056 for the per-population name) | re-read the cookie and retry; if it persists, re-login |
  *
  * `AUTH_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
  * *is* authenticated — their session is fine and stays fine — so a `401` would

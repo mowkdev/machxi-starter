@@ -9,11 +9,12 @@ import {
   superAdmin,
 } from "./support/seed.js";
 import {
-  CSRF_COOKIE,
   CSRF_HEADER,
+  LEGACY_CSRF_COOKIE,
   REFRESH_COOKIE,
   TRANSPORT_HEADER,
   cookieValue,
+  csrfCookie,
   setCookie,
   setCookies,
 } from "./support/transport.js";
@@ -47,6 +48,9 @@ const CASES = [
 ] as const;
 
 describe.each(CASES)("$name cookie transport", (population) => {
+  /** This population's CSRF cookie and no other (ADR-0056). */
+  const CSRF_COOKIE = csrfCookie(population.name);
+
   let harness: TestApp;
 
   beforeAll(async () => {
@@ -372,16 +376,248 @@ describe("cookie transport across the two segments", () => {
       .expect(200);
 
     const refresh = cookieValue(staff, REFRESH_COOKIE) ?? "";
-    const csrf = cookieValue(staff, CSRF_COOKIE) ?? "";
+    const csrf = cookieValue(staff, csrfCookie("staff")) ?? "";
 
     const response = await supertest(harness.app)
       .post("/api/v1/user/auth/refresh")
-      .set("Cookie", [`${REFRESH_COOKIE}=${refresh}`, `${CSRF_COOKIE}=${csrf}`])
+      // The CSRF value is presented under the *user* population's name, so
+      // the double-submit passes and the assertion below is about the refresh
+      // token rather than about ADR-0056's split. Sending it under the staff
+      // name would answer `403` for a different and less interesting reason.
+      .set("Cookie", [
+        `${REFRESH_COOKIE}=${refresh}`,
+        `${csrfCookie("user")}=${csrf}`,
+      ])
       .set(CSRF_HEADER, csrf)
       .expect(401);
 
     // Indistinguishable from a token that never existed, which is the point:
     // the difference must not be learnable (ADR-0019 §1).
     expect(response.body.error.code).toBe("AUTH_INVALID_REFRESH_TOKEN");
+  });
+});
+
+/**
+ * The CSRF cookie split (ADR-0056, `D12.12`), from D12's finding 6.
+ *
+ * Until this deliverable exactly one SPA could hold a session against an API
+ * host, so one host-wide `__Host-machxi.csrf` was always the rotating client's
+ * own. With the admin panel and the customer app open at once it was not: an
+ * admin refresh overwrote the value the customer app was holding in memory,
+ * costing it a re-bootstrap — and a second `403` inside that window is a
+ * forced sign-out caused by another tab's traffic.
+ *
+ * These are the cases that only exist because two populations are signed in at
+ * the same time, which is why they sit outside the per-population `describe`
+ * above: each one needs **both** sessions.
+ */
+describe("two populations signed in at once", () => {
+  let harness: TestApp;
+
+  beforeAll(async () => {
+    harness = createTestApp();
+    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  const request = () => supertest(harness.app);
+
+  /** One population's cookie session, as a browser would hold it. */
+  const signIn = async (population: "staff" | "user") => {
+    const base =
+      population === "staff" ? "/api/v1/admin/auth" : "/api/v1/user/auth";
+
+    const response = await request()
+      .post(`${base}/login`)
+      .set(TRANSPORT_HEADER, "cookie")
+      .send(
+        population === "staff"
+          ? superAdmin()
+          : { email: FIXTURE_USERS.active, password: FIXTURE_PASSWORD },
+      )
+      .expect(200);
+
+    const refresh = cookieValue(response, REFRESH_COOKIE) ?? "";
+    const csrf = cookieValue(response, csrfCookie(population)) ?? "";
+
+    /*
+     * Asserted here rather than left to fall out of a later case, because it
+     * is what makes every case below discriminating: an implementation that
+     * still wrote the one shared `__Host-machxi.csrf` would leave this empty,
+     * and a `not.toBe(...)` further down would then pass on two `undefined`s
+     * without noticing the split had been reverted.
+     */
+    expect(csrf, `${population} login must set its own CSRF cookie`).not.toBe(
+      "",
+    );
+    expect(refresh, `${population} login must set the refresh cookie`).not.toBe(
+      "",
+    );
+
+    return { base, accessToken: response.body.data.accessToken, refresh, csrf };
+  };
+
+  /**
+   * What the browser sends: **both** CSRF cookies, because both are at
+   * `Path=/`, and only the acting population's refresh cookie, because that
+   * one is path-scoped (ADR-0029's `authCookiePath`).
+   */
+  const bothCookies = (
+    acting: { refresh: string },
+    staffCsrf: string,
+    userCsrf: string,
+  ) => [
+    `${REFRESH_COOKIE}=${acting.refresh}`,
+    `${csrfCookie("staff")}=${staffCsrf}`,
+    `${csrfCookie("user")}=${userCsrf}`,
+  ];
+
+  it("leaves the other population's CSRF cookie untouched on refresh", async () => {
+    // The finding itself. Before ADR-0056 this response rewrote the one
+    // shared cookie, and the other app's in-memory token was stale from here
+    // on.
+    const staffSession = await signIn("staff");
+    const userSession = await signIn("user");
+
+    const refreshed = await request()
+      .post("/api/v1/admin/auth/refresh")
+      .set(
+        "Cookie",
+        bothCookies(staffSession, staffSession.csrf, userSession.csrf),
+      )
+      .set(CSRF_HEADER, staffSession.csrf)
+      .expect(200);
+
+    expect(cookieValue(refreshed, csrfCookie("staff"))).not.toBe(
+      staffSession.csrf,
+    );
+    expect(setCookie(refreshed, csrfCookie("user"))).toBeUndefined();
+
+    // And the same the other way round, because a fix that only ran in one
+    // direction would be a fix for one app.
+    const userRefreshed = await request()
+      .post("/api/v1/user/auth/refresh")
+      .set(
+        "Cookie",
+        bothCookies(userSession, staffSession.csrf, userSession.csrf),
+      )
+      .set(CSRF_HEADER, userSession.csrf)
+      .expect(200);
+
+    expect(cookieValue(userRefreshed, csrfCookie("user"))).not.toBe(
+      userSession.csrf,
+    );
+    expect(setCookie(userRefreshed, csrfCookie("staff"))).toBeUndefined();
+  });
+
+  it("clears only its own population's cookies on logout and logout-all", async () => {
+    for (const path of ["logout", "logout-all"]) {
+      const staffSession = await signIn("staff");
+      const userSession = await signIn("user");
+
+      const response = await request()
+        .post(`/api/v1/admin/auth/${path}`)
+        .set("Authorization", `Bearer ${staffSession.accessToken}`)
+        .set(
+          "Cookie",
+          bothCookies(staffSession, staffSession.csrf, userSession.csrf),
+        )
+        .set(CSRF_HEADER, staffSession.csrf)
+        .expect(204);
+
+      // Two `Set-Cookie`s and no third: the refresh cookie and the admin's own
+      // CSRF cookie. The customer app, signed in in another tab, sees nothing.
+      expect(setCookies(response)).toHaveLength(2);
+      expect(cookieValue(response, csrfCookie("staff"))).toBeUndefined();
+      expect(setCookie(response, csrfCookie("staff"))).toBeDefined();
+      expect(setCookie(response, csrfCookie("user"))).toBeUndefined();
+    }
+  });
+
+  it("accepts each population's own token and refuses the other's", async () => {
+    const staffSession = await signIn("staff");
+    const userSession = await signIn("user");
+
+    // The other population's token, presented to a segment that is holding
+    // both cookies. It is a real token, freshly issued, and it is still not
+    // this segment's — which is the double-submit reading its own cookie.
+    const refused = await request()
+      .post("/api/v1/admin/auth/refresh")
+      .set(
+        "Cookie",
+        bothCookies(staffSession, staffSession.csrf, userSession.csrf),
+      )
+      .set(CSRF_HEADER, userSession.csrf)
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("CSRF_TOKEN_INVALID");
+
+    // Its own is accepted from exactly the same cookie header, so the refusal
+    // above is about the token and not about the second cookie being present.
+    await request()
+      .post("/api/v1/admin/auth/refresh")
+      .set(
+        "Cookie",
+        bothCookies(staffSession, staffSession.csrf, userSession.csrf),
+      )
+      .set(CSRF_HEADER, staffSession.csrf)
+      .expect(200);
+  });
+
+  it("retires the legacy host-wide cookie on the first response that writes its own", async () => {
+    // A browser signed in before the split holds `__Host-machxi.csrf` at
+    // `Path=/` with the refresh token's `Max-Age`, and nothing else would ever
+    // remove it (ADR-0056 §Decision).
+    const session = await signIn("staff");
+
+    const response = await request()
+      .post("/api/v1/admin/auth/refresh")
+      .set("Cookie", [
+        `${REFRESH_COOKIE}=${session.refresh}`,
+        `${csrfCookie("staff")}=${session.csrf}`,
+        `${LEGACY_CSRF_COOKIE}=${session.csrf}`,
+      ])
+      .set(CSRF_HEADER, session.csrf)
+      .expect(200);
+
+    expect(setCookie(response, LEGACY_CSRF_COOKIE)).toBeDefined();
+    expect(cookieValue(response, LEGACY_CSRF_COOKIE)).toBeUndefined();
+
+    /*
+     * With the attributes it was set with, the same point the logout case
+     * above makes — and sharper here (`D12.12` security review): a
+     * `__Host-`-prefixed `Set-Cookie` **without** `Secure` is rejected
+     * outright by the browser, so a clear that lost the attribute would be a
+     * silent no-op and the emptiness assertion above would stay green.
+     */
+    const cleared = setCookie(response, LEGACY_CSRF_COOKIE);
+
+    expect(cleared).toContain("Path=/");
+    expect(cleared).toContain("Secure");
+    expect(cleared).toMatch(/Expires=/i);
+
+    // Three: the rotated refresh cookie, the admin's own CSRF cookie, and this.
+    expect(setCookies(response)).toHaveLength(3);
+  });
+
+  it("costs nothing for a browser that never held the legacy cookie", async () => {
+    // The guard is that the request presented it, so the migration is one
+    // `Set-Cookie` once per browser rather than one on every login forever.
+    const session = await signIn("staff");
+
+    const response = await request()
+      .post("/api/v1/admin/auth/refresh")
+      .set("Cookie", [
+        `${REFRESH_COOKIE}=${session.refresh}`,
+        `${csrfCookie("staff")}=${session.csrf}`,
+      ])
+      .set(CSRF_HEADER, session.csrf)
+      .expect(200);
+
+    expect(setCookie(response, LEGACY_CSRF_COOKIE)).toBeUndefined();
+    expect(setCookies(response)).toHaveLength(2);
   });
 });

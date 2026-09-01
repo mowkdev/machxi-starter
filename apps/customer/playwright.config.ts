@@ -1,4 +1,25 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig, devices } from "@playwright/test";
+
+/*
+ * The root `.env`, for `SEED_SUPER_ADMIN_*` (`D12.12`).
+ *
+ * See the note below: this config deliberately had no `.env` load, because
+ * every spec signed in as a `--dev` fixture whose password is a committed
+ * constant. `dual-session.spec.ts` signs into the **admin panel** as well, in
+ * the same browser context, which is the only way to walk ADR-0056's claim —
+ * so the precondition that made the absence right has changed. Turbo declares
+ * `SEED_SUPER_ADMIN_*` on `test:e2e`, which makes them passable and not
+ * present; nothing but this line reads the file.
+ *
+ * Non-overriding, so a variable already in the environment wins.
+ */
+try {
+  process.loadEnvFile(fileURLToPath(new URL("../../.env", import.meta.url)));
+} catch {
+  // No root `.env` — the defaults and the ambient environment carry it.
+}
 
 /**
  * The customer app's browser tier (`D12.10`; ADR-0052 §The browser tier, as
@@ -19,6 +40,14 @@ import { defineConfig, devices } from "@playwright/test";
  * whose password is a committed constant (`packages/db/seeds/dev/fixtures.ts`),
  * so there is nothing outside the repository for it to read and a `.env` load
  * would be ceremony around a file it does not need.
+ *
+ * **Amended 2026-09-01 (`D12.12`): it loads it now.** ADR-0056's claim is that
+ * two apps in one browser stop sharing CSRF state, and the only honest way to
+ * walk that is to sign into **both** — so `dual-session.spec.ts` needs the
+ * staff credentials after all. The reasoning above was right about every spec
+ * that existed when it was written; what changed is the suite, not the
+ * argument. The load is at the top of this file, for the reasons the admin's
+ * config gives.
  *
  * Everything else is the admin config's, for the reasons written there and not
  * repeated here: no `webServer` (the tier runs against a dev stack it does not

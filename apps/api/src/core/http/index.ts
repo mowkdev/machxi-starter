@@ -1,10 +1,11 @@
 export {
-  CSRF_COOKIE,
   CSRF_COOKIE_PATH,
   CSRF_HEADER,
+  LEGACY_CSRF_COOKIE,
   REFRESH_COOKIE,
   TRANSPORT_HEADER,
   authCookiePath,
+  csrfCookieName,
   readCookie,
 } from "./cookies.js";
 export { errorEnvelope, listEnvelope, successEnvelope } from "./envelope.js";

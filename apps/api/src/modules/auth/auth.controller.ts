@@ -90,7 +90,7 @@ export const createAuthController = ({
 
     const { refreshToken, ...rest } = resource;
 
-    const csrfToken = setAuthCookies(res, {
+    const csrfToken = setAuthCookies(req, res, {
       population,
       token: refreshToken,
       maxAgeSec: refreshTtlSec,
@@ -121,7 +121,7 @@ export const createAuthController = ({
      */
     csrf: (req: Request, res: Response): void => {
       respond.ok<CsrfResource>(res, {
-        csrfToken: ensureCsrfCookie(req, res, refreshTtlSec),
+        csrfToken: ensureCsrfCookie(req, res, population, refreshTtlSec),
       });
     },
 
@@ -188,13 +188,13 @@ export const createAuthController = ({
      */
     logout: async (req: Request, res: Response): Promise<void> => {
       await service.logout(req.ctx);
-      clearAuthCookies(res, population);
+      clearAuthCookies(req, res, population);
       respond.noContent(res);
     },
 
     logoutAll: async (req: Request, res: Response): Promise<void> => {
       await service.logoutAll(req.ctx);
-      clearAuthCookies(res, population);
+      clearAuthCookies(req, res, population);
       respond.noContent(res);
     },
 

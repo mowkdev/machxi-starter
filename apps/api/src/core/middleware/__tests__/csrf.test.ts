@@ -1,20 +1,25 @@
+import type { Population } from "@repo/contracts";
 import type { NextFunction, Request, Response } from "express";
 import { describe, expect, it, vi } from "vitest";
 
 import { isAppError } from "../../errors/index.js";
-import { CSRF_COOKIE, REFRESH_COOKIE } from "../../http/index.js";
+import { REFRESH_COOKIE, csrfCookieName } from "../../http/index.js";
 import { createCsrfGuard } from "../csrf.js";
 
 /**
- * The double-submit check (ADR-0029 §CSRF).
+ * The double-submit check (ADR-0029 §CSRF, as ADR-0056 splits its cookie).
  *
  * What is under test is mostly *when the guard declines to act*: it must be
  * invisible to every `body`-transport caller — mobile clients, Postman, half
  * of the integration suite — and unavoidable for a request leaning on the
- * refresh cookie.
+ * refresh cookie. The last describe is ADR-0056's addition: which cookie it
+ * reads when a browser presents both.
  */
 
 const TOKEN = "csrf-token-value";
+
+/** The default population below; the split is asserted on its own at the end. */
+const CSRF_COOKIE = csrfCookieName("staff");
 
 interface RequestShape {
   readonly cookies?: readonly string[];
@@ -36,9 +41,13 @@ const requestOf = ({ cookies, header, body }: RequestShape): Request =>
  * to present the credential. The logout shape — where it is false — has its
  * own case at the end.
  */
-const run = (shape: RequestShape, allowBodyToken = true) => {
+const run = (
+  shape: RequestShape,
+  allowBodyToken = true,
+  population: Population = "staff",
+) => {
   const next = vi.fn();
-  const guard = createCsrfGuard({ allowBodyToken });
+  const guard = createCsrfGuard({ population, allowBodyToken });
   const call = () => {
     guard(requestOf(shape), {} as Response, next as NextFunction);
   };
@@ -155,6 +164,57 @@ describe("csrfGuard", () => {
       // use it.
       expectForbidden(
         run({ cookies, body: { refreshToken: "in-the-body" } }, false).call,
+      );
+    });
+  });
+
+  /*
+   * ADR-0056. Both CSRF cookies are at `Path=/`, so a browser signed into the
+   * admin panel and the customer app sends **both** names on every mutating
+   * request to either segment. The guard is mounted per segment and reads that
+   * segment's cookie; reading the wrong one would refuse a request the client
+   * got exactly right, which is the failure this record exists to prevent.
+   */
+  describe("a browser signed into both populations", () => {
+    const OTHER = "the-other-populations-token";
+    const both = [
+      `${REFRESH_COOKIE}=abc`,
+      `${csrfCookieName("staff")}=${TOKEN}`,
+      `${csrfCookieName("user")}=${OTHER}`,
+    ];
+
+    it("accepts each population's own token", () => {
+      const staff = run({ cookies: both, header: TOKEN }, true, "staff");
+
+      staff.call();
+      expect(staff.next).toHaveBeenCalledOnce();
+
+      const user = run({ cookies: both, header: OTHER }, true, "user");
+
+      user.call();
+      expect(user.next).toHaveBeenCalledOnce();
+    });
+
+    it("refuses the other population's token", () => {
+      expectForbidden(
+        run({ cookies: both, header: OTHER }, true, "staff").call,
+      );
+      expectForbidden(run({ cookies: both, header: TOKEN }, true, "user").call);
+    });
+
+    it("refuses the retired host-wide cookie", () => {
+      // A browser that has not yet been migrated still holds
+      // `__Host-machxi.csrf`. It is nobody's population, so it satisfies
+      // nothing — the client re-bootstraps and gets a named cookie.
+      expectForbidden(
+        run(
+          {
+            cookies: [`${REFRESH_COOKIE}=abc`, `__Host-machxi.csrf=${TOKEN}`],
+            header: TOKEN,
+          },
+          true,
+          "staff",
+        ).call,
       );
     });
   });

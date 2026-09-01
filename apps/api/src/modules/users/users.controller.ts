@@ -146,18 +146,18 @@ export const createUserProfileController = (service: UsersService) =>
      * mount by construction — it is the segment's controller, and ADR-0028
      * rule 4 means no staff mirror of this handler will ever exist.
      *
-     * It also clears the host-wide CSRF cookie, which since this deliverable
-     * may be shared with an admin panel signed in in another tab — the plan's
-     * finding 6. That is the pre-existing shape of every `logout`, not
-     * something this endpoint introduces, and the client recovers by
-     * re-bootstrapping (ADR-0030).
+     * It clears **the user population's** CSRF cookie and no other. That was
+     * the plan's finding 6 and is now ADR-0056: the cookie used to be one
+     * host-wide `__Host-machxi.csrf`, so closing a customer account removed
+     * the CSRF token of an admin panel signed in in another tab. Since the
+     * split there is nothing here that an admin session can notice.
      */
     remove: async (
       req: ValidatedRequest<typeof deleteProfileSchema>,
       res: Response,
     ): Promise<void> => {
       await service.deleteProfile(req.ctx, req.valid.body);
-      clearAuthCookies(res, "user");
+      clearAuthCookies(req, res, "user");
       respond.noContent(res);
     },
   }) as const;

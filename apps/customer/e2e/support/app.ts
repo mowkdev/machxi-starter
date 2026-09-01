@@ -166,21 +166,29 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
   }
 
   /*
-   * **34 is measured, not guessed** (`D12.10`, the method `D11.11` set): a full
-   * green run took the window from 227 to 193, this probe and the login
+   * **34 was measured, not guessed** (`D12.10`, the method `D11.11` set): a
+   * full green run took the window from 227 to 193, this probe and the login
    * included. The floor sits above that, so the tier declines a run it cannot
    * finish instead of half-running it — which is the case that reads as a flake
    * in whichever spec happened to be crossing the line.
    *
-   * Together with the admin's 168 and its own probe, `pnpm test:e2e` spends
-   * about 204 of ADR-0020's 300 — so a clear window carries the enlarged run
-   * whole, and a second run inside the same quarter hour does not.
+   * **Moved for `D12.12`.** `dual-session.spec.ts` signs into the *admin panel*
+   * in this suite's own context and reloads it, which is a second app's whole
+   * boot — a login, two `GET /auth/csrf` → `POST /auth/refresh` sequences, and
+   * the settings write and its restore. Measured the same way: a green run took
+   * the window from 299 to 249, this probe included, so the suite costs **49**
+   * and the floor moves with it rather than being left to be crossed mid-run.
+   * The margin over the measurement is kept at the dozen `D12.10` chose.
+   *
+   * Together with the admin's 170 and its own probe, `pnpm test:e2e` now spends
+   * about 219 of ADR-0020's 300 — still a whole run in a clear window, and
+   * still not two runs, and still not a run beside `pnpm test:postman`.
    */
-  const NEEDED = 45;
+  const NEEDED = 60;
 
   if (Number.isFinite(remaining) && remaining < NEEDED) {
     throw new Error(
-      `The API has ${remaining} requests left in ADR-0020's 15-minute window and a full run of the customer tier costs about 34, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
+      `The API has ${remaining} requests left in ADR-0020's 15-minute window and a full run of the customer tier costs about 49, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
     );
   }
 };

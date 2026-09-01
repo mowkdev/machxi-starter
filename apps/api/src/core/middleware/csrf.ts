@@ -1,10 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
+import type { Population } from "@repo/contracts";
 import type { NextFunction, Request, Response } from "express";
 
 import {
-  CSRF_COOKIE,
   CSRF_HEADER,
   REFRESH_COOKIE,
+  csrfCookieName,
   readCookie,
 } from "../http/cookies.js";
 import { forbidden } from "../errors/index.js";
@@ -67,6 +68,18 @@ const equals = (a: string, b: string): boolean => {
 
 export interface CsrfGuardOptions {
   /**
+   * Which population's cookie this guard checks (ADR-0056).
+   *
+   * The CSRF cookie is one per population, so the guard has to be told which
+   * one it is standing in front of — and it is told the same way every other
+   * guard learns it (ADR-0015's segments, ADR-0019): the router factory knows
+   * its own segment and passes it down. There is no default. A guard that
+   * guessed would validate the admin's token on the user's endpoints the day
+   * somebody mounted it without thinking, which is exactly the sharing this
+   * ADR exists to end.
+   */
+  readonly population: Population;
+  /**
    * Whether a refresh token in the body exempts the request.
    *
    * True for `refresh`, which is the only endpoint where a body token is a
@@ -84,8 +97,8 @@ export interface CsrfGuardOptions {
 }
 
 /**
- * Requires `X-CSRF-Token` to match the `machxi.csrf` cookie on a cookie-driven
- * request, and does nothing otherwise.
+ * Requires `X-CSRF-Token` to match this population's `machxi.csrf.*` cookie on
+ * a cookie-driven request, and does nothing otherwise.
  *
  * `403` and not `401`: whoever sent this may well hold a valid session — the
  * point of the check is that we cannot tell whether *they* meant to send the
@@ -93,7 +106,7 @@ export interface CsrfGuardOptions {
  * the session away.
  */
 export const createCsrfGuard =
-  ({ allowBodyToken = false }: CsrfGuardOptions = {}) =>
+  ({ population, allowBodyToken = false }: CsrfGuardOptions) =>
   (req: Request, _res: Response, next: NextFunction): void => {
     const cookieDriven =
       readCookie(req, REFRESH_COOKIE) !== undefined &&
@@ -105,7 +118,12 @@ export const createCsrfGuard =
       return;
     }
 
-    const cookie = readCookie(req, CSRF_COOKIE);
+    /*
+     * This population's cookie and no other. A browser signed into both apps
+     * sends both names here — they are at `Path=/` — and reading the wrong one
+     * would refuse a request the client got exactly right (ADR-0056).
+     */
+    const cookie = readCookie(req, csrfCookieName(population));
     const header = req.get(CSRF_HEADER);
 
     if (

@@ -7,9 +7,9 @@ import { z } from "zod";
 
 import { createTestApp, type TestApp } from "./support/app.js";
 import {
-  CSRF_COOKIE,
   REFRESH_COOKIE,
   TRANSPORTS,
+  csrfCookie,
   cookieValue,
   setCookie,
   type TransportCase,
@@ -123,6 +123,13 @@ const RUNS: readonly Run[] = CASES.flatMap((population) =>
 );
 
 describe.each(RUNS)("$name authentication", ({ population, transport }) => {
+  /*
+   * This population's CSRF cookie, named by ADR-0056 rather than shared.
+   * Everything below reads the same way it did when there was one name; what
+   * the run now proves is that each segment writes and checks its own.
+   */
+  const CSRF_COOKIE = csrfCookie(population.name);
+
   let harness: TestApp;
 
   beforeAll(async () => {
@@ -149,7 +156,7 @@ describe.each(RUNS)("$name authentication", ({ population, transport }) => {
 
     return {
       accessToken: response.body.data.accessToken as string,
-      carrier: transport.carry(response),
+      carrier: transport.carry(response, population.name),
     } as const;
   };
 
@@ -347,7 +354,7 @@ describe.each(RUNS)("$name authentication", ({ population, transport }) => {
       // Rotation is rotation whatever carried the token: the value that comes
       // back is not the value that went out, and the service never learns
       // which one it was.
-      const rotated = transport.carry(response);
+      const rotated = transport.carry(response, population.name);
 
       expect(rotated.token ?? cookieValue(response, REFRESH_COOKIE)).not.toBe(
         first.carrier.token ?? "body-transport-has-no-cookie",
