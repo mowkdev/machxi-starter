@@ -74,12 +74,14 @@ describe("migration 0001", () => {
 
     // The whole public schema, not only `0001`'s share of it: an exact list is
     // what makes a table arriving without a decision behind it visible here.
-    // `staff_settings` and `user_settings` came with `0003` (ADR-0045), and
-    // `audit_events` with `0006` (ADR-0058) — which is also this suite's proof
-    // that `0006` applies from nothing, since the list is taken after a fresh
+    // `staff_settings` and `user_settings` came with `0003` (ADR-0045),
+    // `audit_events` with `0006` (ADR-0058) and `impersonation_handoffs` with
+    // `0007` (ADR-0057 §2) — which is also this suite's proof that the latest
+    // migration applies from nothing, since the list is taken after a fresh
     // replay of every committed migration.
     expect(rows.map((row) => row.table_name)).toEqual([
       "audit_events",
+      "impersonation_handoffs",
       "sessions",
       "staff",
       "staff_roles",

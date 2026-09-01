@@ -12,6 +12,7 @@ import {
 import {
   auditActorTypeEnum,
   auditEvents,
+  impersonationHandoffs,
   principalTypeEnum,
   sessions,
   staff,
@@ -183,6 +184,55 @@ describe("sessions", () => {
     expect(columns.get("revokedAt")?.notNull).toBe(false);
     expect(columns.get("revokedReason")?.notNull).toBe(false);
   });
+
+  it("carries the impersonating staff id, nullable and unreferenced (ADR-0057 §4)", () => {
+    // Nullable because it is null on every ordinary session — its presence is
+    // what makes a session impersonated. Unreferenced because staff are
+    // *hard*-deleted (ADR-0028), and attribution that disappears with its
+    // actor is not attribution; the `foreignKeys` assertion above is what
+    // pins that, and it still reads zero.
+    expect(columns.get("impersonatedByStaffId")?.notNull).toBe(false);
+    expect(columns.get("impersonatedByStaffId")?.getSQLType()).toBe("uuid");
+  });
+});
+
+describe("impersonation_handoffs", () => {
+  const config = getTableConfig(impersonationHandoffs);
+  const columns = columnsOf(impersonationHandoffs);
+
+  it("carries no foreign key either (ADR-0057 §2)", () => {
+    // The `sessions` reason and one more: a consumed row is the record of a
+    // mint that happened, and the exchange looks both accounts up itself
+    // rather than joining to them.
+    expect(config.foreignKeys).toHaveLength(0);
+  });
+
+  it("stores only the hash of the token, uniquely", () => {
+    // The same shape as `sessions.refresh_token_hash`, for the same reason: a
+    // database read must not yield a usable credential.
+    expect(columns.has("token")).toBe(false);
+    expect(columns.get("tokenHash")?.notNull).toBe(true);
+    expect(columns.get("tokenHash")?.isUnique).toBe(true);
+  });
+
+  it("names both identities and requires them", () => {
+    expect(columns.get("staffId")?.notNull).toBe(true);
+    expect(columns.get("userId")?.notNull).toBe(true);
+  });
+
+  it("makes single use a column, not a convention", () => {
+    // `consumed_at` nullable is what lets the exchange consume atomically —
+    // `update … where consumed_at is null returning` — so a replay updates no
+    // row rather than being caught by a check the caller might forget.
+    expect(columns.get("expiresAt")?.notNull).toBe(true);
+    expect(columns.get("consumedAt")?.notNull).toBe(false);
+  });
+
+  it("indexes the expiry, which is what the sweep scans", () => {
+    expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      "impersonation_handoffs_expires_at_idx",
+    ]);
+  });
 });
 
 describe("audit_events", () => {
@@ -237,6 +287,9 @@ describe("shared column helpers", () => {
     ["staff", staff],
     ["users", users],
     ["sessions", sessions],
+    // A mutable row — the consume writes `consumed_at` — so it takes the pair
+    // like every other table; `audit_events` is the one documented exception.
+    ["impersonation_handoffs", impersonationHandoffs],
   ])("gives %s created_at and updated_at, both defaulted", (_name, table) => {
     const columns = columnsOf(table);
 

@@ -2,6 +2,7 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
 import type {
   auditEvents,
+  impersonationHandoffs,
   sessions,
   staff,
   staffRoles,
@@ -37,6 +38,17 @@ export type NewUserRoleGrant = InferInsertModel<typeof userRoles>;
 
 export type Session = InferSelectModel<typeof sessions>;
 export type NewSession = InferInsertModel<typeof sessions>;
+
+/**
+ * A one-time impersonation handoff (ADR-0057 §2). Short-lived, consumed once,
+ * and never joined to a live account — see the table's own note.
+ */
+export type ImpersonationHandoff = InferSelectModel<
+  typeof impersonationHandoffs
+>;
+export type NewImpersonationHandoff = InferInsertModel<
+  typeof impersonationHandoffs
+>;
 
 /**
  * An audit row (ADR-0058).

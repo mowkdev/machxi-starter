@@ -23,6 +23,7 @@ export * as schema from "./schema/index.js";
 
 export {
   auditEvents,
+  impersonationHandoffs,
   sessions,
   staff,
   staffRoles,
@@ -45,7 +46,9 @@ export {
 
 export type {
   AuditEvent,
+  ImpersonationHandoff,
   NewAuditEvent,
+  NewImpersonationHandoff,
   NewSession,
   NewStaff,
   NewStaffRoleGrant,

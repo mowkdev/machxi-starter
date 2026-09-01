@@ -58,9 +58,36 @@ describe("envSchema", () => {
       RATE_LIMIT_GLOBAL_MAX: 300,
       RATE_LIMIT_LOGIN_MAX: 10,
       RATE_LIMIT_REFRESH_MAX: 5,
+      RATE_LIMIT_IMPERSONATION_MAX: 10,
+      // Also seconds, and the two impersonation windows differ by three orders
+      // of magnitude on purpose (ADR-0057 §2/§4): the session is a support
+      // sitting, the handoff is a credential in a URL.
+      IMPERSONATION_SESSION_TTL: 30 * 60,
+      IMPERSONATION_HANDOFF_TTL: 60,
       FEATURE_USER_REGISTRATION: true,
     });
     expect(env.CORS_ORIGINS).toEqual([]);
+  });
+
+  it("ceilings the two impersonation windows, which no other TTL is (ADR-0057)", () => {
+    // The one number keeping "sixty seconds is all an onlooker gets" from
+    // being a phrase: `60m` typed where `60s` was meant has to fail at
+    // startup, not at the first incident.
+    expect(() => parse({ IMPERSONATION_HANDOFF_TTL: "60m" })).toThrow(
+      /IMPERSONATION_HANDOFF_TTL/,
+    );
+    expect(
+      parse({ IMPERSONATION_HANDOFF_TTL: "5m" }).IMPERSONATION_HANDOFF_TTL,
+    ).toBe(300);
+
+    // And the one keeping the session's fixed end from being retired by a
+    // value that leaves rotation-without-extension technically true.
+    expect(() => parse({ IMPERSONATION_SESSION_TTL: "30d" })).toThrow(
+      /IMPERSONATION_SESSION_TTL/,
+    );
+    expect(
+      parse({ IMPERSONATION_SESSION_TTL: "12h" }).IMPERSONATION_SESSION_TTL,
+    ).toBe(12 * 3600);
   });
 
   it("takes the argon2 defaults from @repo/crypto rather than restating them", () => {
@@ -197,6 +224,22 @@ describe("loadConfig", () => {
     expect(config.app.commit).toBe("a1b2c3d");
     expect(config.db.url).toBe(validEnv.DATABASE_URL);
     expect(config.auth.argon2).toEqual(defaultArgon2Params);
+  });
+
+  it("carries the impersonation windows and the mint's own budget (ADR-0057)", () => {
+    const config = loadConfig({
+      ...validEnv,
+      IMPERSONATION_SESSION_TTL: "45m",
+      IMPERSONATION_HANDOFF_TTL: "30s",
+      RATE_LIMIT_IMPERSONATION_MAX: "3",
+    });
+
+    expect(config.auth.impersonationSessionTtlSec).toBe(45 * 60);
+    expect(config.auth.impersonationHandoffTtlSec).toBe(30);
+    // A budget of its own, keyed on the staff principal rather than on an IP:
+    // it must not be readable from, or confused with, the login limiter.
+    expect(config.rateLimit.impersonationMax).toBe(3);
+    expect(config.rateLimit.loginMax).toBe(10);
   });
 
   it("omits commit entirely when GIT_SHA is absent", () => {

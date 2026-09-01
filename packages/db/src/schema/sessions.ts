@@ -53,8 +53,24 @@ export const sessions = pgTable(
     userAgent: text(),
     lastUsedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp({ withTimezone: true }),
-    /** Free text (`logout`, `logout_all`, `refresh_reuse`, `admin_revoke`, `account_disabled`). */
+    /** Free text (`logout`, `logout_all`, `refresh_reuse`, `admin_revoke`, `account_disabled`, `impersonation_ended`). */
     revokedReason: text(),
+    /**
+     * The staff member acting **as** this session's principal, when the session
+     * was minted by impersonation rather than by a password (ADR-0057 §4).
+     *
+     * Null on every ordinary session, and the column is what makes an
+     * impersonated one different: `authenticate` reads it into
+     * `ctx.principal.impersonatedBy`, refresh declines to extend the session's
+     * end while it is set, and the exclusion middleware keys on it.
+     *
+     * **Deliberately no foreign key**, and for a stronger reason than the one
+     * `principal_id` carries above: staff are *hard*-deleted (ADR-0028), so a
+     * reference would either block the deletion or take the attribution with
+     * it — and attribution that disappears when its actor leaves is not
+     * attribution. The same reasoning `audit_events` is built on (ADR-0058).
+     */
+    impersonatedByStaffId: uuid(),
     ...timestamps(),
   },
   (table) => [

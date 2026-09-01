@@ -21,6 +21,7 @@
   "AUTH_REFRESH_REUSED": "Your session was ended for security reasons. Sign in again.",
   "AUTH_ACCOUNT_DISABLED": "This account is disabled. Contact support.",
   "AUTH_CURRENT_PASSWORD_INVALID": "That is not your current password.",
+  "AUTH_IMPERSONATION_REFUSED": "That cannot be done while impersonating this account. The account holder has to do it themselves.",
   "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",
 
   "USER_EMAIL_TAKEN": "That email address is already in use.",

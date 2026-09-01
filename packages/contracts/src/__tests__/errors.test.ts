@@ -37,9 +37,20 @@ describe("ERROR_CODES", () => {
         "AUTH_REFRESH_REUSED",
         "AUTH_ACCOUNT_DISABLED",
         "AUTH_CURRENT_PASSWORD_INVALID",
+        "AUTH_IMPERSONATION_REFUSED",
         "CSRF_TOKEN_INVALID",
       ]),
     );
+  });
+
+  it("names the impersonation refusal once, for the class (ADR-0057 §5)", () => {
+    // One code for the three takeover-enabling operations, not one each: the
+    // client already knows which dialog it opened, so a code per operation
+    // would be enum growth with no reader.
+    expect(ERROR_CODES).toContain("AUTH_IMPERSONATION_REFUSED");
+    expect(
+      ERROR_CODES.filter((code) => code.includes("IMPERSONATION")),
+    ).toHaveLength(1);
   });
 
   it("covers the domain conflicts the modules own", () => {
@@ -91,8 +102,11 @@ describe("isErrorCode", () => {
   it("refuses a code this build does not declare", () => {
     // What a bundle deployed before a code existed sees on the wire (`D13.1`).
     // The answer is what sends `@repo/api-client` to the status family instead
-    // of throwing the whole envelope away.
-    expect(isErrorCode("AUTH_IMPERSONATION_REFUSED")).toBe(false);
+    // of throwing the whole envelope away. The placeholder is invented rather
+    // than borrowed from the next deliverable: `AUTH_IMPERSONATION_REFUSED`
+    // stood here until `D13.3` declared it, at which point this assertion was
+    // asserting the opposite of the truth.
+    expect(isErrorCode("AUTH_SOMETHING_A_LATER_DELIVERABLE_ADDS")).toBe(false);
     expect(isErrorCode("")).toBe(false);
   });
 });

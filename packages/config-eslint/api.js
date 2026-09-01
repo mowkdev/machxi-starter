@@ -244,6 +244,7 @@ const noSchemaTables = [
       // `core/audit` is the one insert path, and it holds no update or delete.
       "auditEvents",
       "auditActorTypeEnum",
+      "impersonationHandoffs",
       "sessions",
       "staff",
       "staffRoles",

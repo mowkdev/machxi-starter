@@ -32,6 +32,7 @@ export {
   usersRelations,
 } from "./users.js";
 export { sessions } from "./sessions.js";
+export { impersonationHandoffs } from "./impersonation.js";
 export { auditEvents } from "./audit.js";
 export {
   staffSettings,

@@ -217,6 +217,67 @@ export const envSchema = z
     // Counts **failed** refreshes only (ADR-0020): a client whose access token
     // expires every 15 minutes must not spend its budget on succeeding.
     RATE_LIMIT_REFRESH_MAX: z.coerce.number().int().positive().default(5),
+    /**
+     * The impersonation mint's own budget, keyed on the **staff principal's
+     * id** rather than on an IP (ADR-0057 §1).
+     *
+     * It needs a limiter of its own because ADR-0020's login limiter keys on
+     * `IP + email` read from the body, and a mint carries neither: it is an
+     * authenticated, high-value operation, so the budget that means anything
+     * is per actor. Ten per window is a support desk's day, and an account
+     * spending it is worth a look.
+     */
+    RATE_LIMIT_IMPERSONATION_MAX: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10),
+
+    /**
+     * How long an impersonated session may live, from the exchange (ADR-0057
+     * §4).
+     *
+     * A **fixed** end, unlike `REFRESH_TOKEN_TTL`: rotation does not extend it
+     * while the session carries an actor, and the access token's `exp` is
+     * capped by it, so no credential outlives the window. An impersonation
+     * that needs longer is re-minted, on the trail, never extended.
+     *
+     * Ceilinged at twelve hours, where no other TTL here is. `durationSchema`
+     * alone accepts up to `365d`, and this is the only number keeping "a fixed
+     * end" from being a phrase: a deployment that wrote `30d` would leave
+     * rotation-without-extension technically true and practically retired,
+     * with no startup failure to notice it. Generous on purpose — a support
+     * sitting is minutes, and anything past a working day should be re-minted.
+     */
+    IMPERSONATION_SESSION_TTL: durationSchema
+      .pipe(
+        z
+          .number()
+          .int()
+          .max(12 * 3600),
+      )
+      .default(30 * 60),
+    /**
+     * How long the one-time handoff token stays redeemable (ADR-0057 §2).
+     *
+     * Seconds, not minutes, and deliberately far shorter than any other TTL
+     * here: this is the one credential in the system that travels through a
+     * URL, so the window between the mint and the exchange is the window an
+     * onlooker has. It is also strictly single-use, with no rotation grace —
+     * the two properties together are why the refresh token could not play
+     * this role (ADR-0018 §Refresh tolerates a replay for
+     * `REFRESH_ROTATION_GRACE_SEC`).
+     *
+     * Ceilinged at five minutes, and this is the tighter of the two ceilings
+     * because the whole safety argument for a URL-borne credential is "sixty
+     * seconds is all an onlooker gets". `60m` typed where `60s` was meant, or
+     * `60` read as minutes, would turn it into a long-lived token resident in
+     * browser history and in whatever copied the link — a misconfiguration
+     * that must fail at startup rather than at the first incident.
+     */
+    IMPERSONATION_HANDOFF_TTL: durationSchema
+      .pipe(z.number().int().max(300))
+      .default(60),
     CORS_ORIGINS: csvSchema,
 
     // `z.stringbool()`, never `z.coerce.boolean()`: the latter is

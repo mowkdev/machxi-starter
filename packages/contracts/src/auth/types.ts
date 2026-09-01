@@ -81,6 +81,19 @@ export interface StaffPrincipalResource {
   readonly roles: readonly StaffRole[];
 }
 
+/**
+ * The staff member behind an impersonated customer session (ADR-0057 §4).
+ *
+ * Enough to name a person in the banner and no more: an id for the trail and
+ * an email for the sentence a support operator reads. Roles are deliberately
+ * absent — nothing on the customer app authorises anything against them, and
+ * a role list the customer's own screens can read is an invitation to.
+ */
+export interface ImpersonatorResource {
+  readonly id: string;
+  readonly email: string;
+}
+
 /** The authenticated user, as `GET /api/v1/user/auth/me` returns it. */
 export interface UserPrincipalResource {
   readonly kind: "user";
@@ -89,6 +102,32 @@ export interface UserPrincipalResource {
   readonly firstName: string | null;
   readonly lastName: string | null;
   readonly roles: readonly UserRole[];
+  /**
+   * Present only while this session was minted by impersonation (ADR-0057 §4).
+   *
+   * **The impersonation fact travels here and nowhere else** — never a URL
+   * parameter, never `localStorage`, never client state. The handoff fragment
+   * is the one-time credential, not the fact; this field is the fact. Two
+   * properties follow from that, and both are the reason the design is a
+   * field on the principal rather than anything the client keeps: it survives
+   * a reload, because the session does and the principal is re-fetched with
+   * it, and it cannot be forged, because only the API sets it. The banner
+   * (ADR-0057 §7) renders from this and from nothing else.
+   *
+   * Optional rather than `| null`: an ordinary session's principal has no such
+   * key at all, so a client written before impersonation existed parses this
+   * one unchanged (ADR-0015 — adding a field is additive).
+   *
+   * Resolved from the `staff` table at the auth endpoints only — exchange,
+   * refresh and `me` — never per request; the session row is the source of
+   * truth, and the access token carries the id in its actor claim so an
+   * ordinary request needs no second lookup.
+   *
+   * Staff never carry it: the mint is `/admin/users/:id` only, so a staff
+   * principal is never impersonated and {@link StaffPrincipalResource} is
+   * deliberately unchanged.
+   */
+  readonly impersonatedBy?: ImpersonatorResource;
 }
 
 /**

@@ -72,6 +72,10 @@ export const migrateFreshDatabase = async (url: string): Promise<void> => {
  */
 export const TRUNCATED_TABLES = [
   "sessions",
+  // Foreign-key-free too (ADR-0057 §2), so `cascade` never reaches it either:
+  // a handoff row minted by one integration file would otherwise still be
+  // consumable in the next.
+  "impersonation_handoffs",
   // The one table `cascade` can never reach: `audit_events` carries no foreign
   // key by decision (ADR-0058), so nothing sweeps it as a side effect and a
   // row written by one integration file would otherwise be counted by the

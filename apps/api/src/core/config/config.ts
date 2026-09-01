@@ -64,11 +64,23 @@ export interface AppConfig {
     readonly refreshRotationGraceSec: number;
     readonly maxConcurrentHashes: number;
     readonly argon2: Argon2Params;
+    /**
+     * The fixed lifetime of an impersonated session, in seconds, parsed from
+     * `IMPERSONATION_SESSION_TTL` (ADR-0057 §4). Rotation does not extend it.
+     */
+    readonly impersonationSessionTtlSec: number;
+    /**
+     * How long a one-time handoff token stays redeemable, in seconds, parsed
+     * from `IMPERSONATION_HANDOFF_TTL` (ADR-0057 §2).
+     */
+    readonly impersonationHandoffTtlSec: number;
   };
   readonly rateLimit: {
     readonly globalMax: number;
     readonly loginMax: number;
     readonly refreshMax: number;
+    /** Per window, keyed on the minting staff member's id (ADR-0057 §1). */
+    readonly impersonationMax: number;
   };
   readonly features: {
     readonly userRegistration: boolean;
@@ -116,11 +128,14 @@ export const toAppConfig = (env: Env): AppConfig =>
         timeCost: env.ARGON2_TIME_COST,
         parallelism: env.ARGON2_PARALLELISM,
       }),
+      impersonationSessionTtlSec: env.IMPERSONATION_SESSION_TTL,
+      impersonationHandoffTtlSec: env.IMPERSONATION_HANDOFF_TTL,
     }),
     rateLimit: Object.freeze({
       globalMax: env.RATE_LIMIT_GLOBAL_MAX,
       loginMax: env.RATE_LIMIT_LOGIN_MAX,
       refreshMax: env.RATE_LIMIT_REFRESH_MAX,
+      impersonationMax: env.RATE_LIMIT_IMPERSONATION_MAX,
     }),
     features: Object.freeze({
       userRegistration: env.FEATURE_USER_REGISTRATION,

@@ -67,6 +67,7 @@ const GENERIC_ERROR_CODES = [
  * | `AUTH_ACCOUNT_DISABLED` | 403 | credentials are correct but `status != active` | show a support message |
  * | `AUTH_CURRENT_PASSWORD_INVALID` | 403 | the caller re-presented their own password on a credential-setting endpoint and it did not verify | ask for the password again |
  * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching that population's `machxi.csrf.{admin,user}` cookie (ADR-0029; ADR-0056 for the per-population name) | re-read the cookie and retry; if it persists, re-login |
+ * | `AUTH_IMPERSONATION_REFUSED` | 403 | the session is impersonated (ADR-0057) and the operation is one of the takeover-enabling ones it is not allowed | tell the operator the account's owner must do it |
  *
  * `AUTH_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
  * *is* authenticated — their session is fine and stays fine — so a `401` would
@@ -86,6 +87,17 @@ const GENERIC_ERROR_CODES = [
  * the same caller (ADR-0027 §Contracts). It was `USER_CURRENT_PASSWORD_INVALID`
  * until D2.3 renamed it, while the only consumer was this repository's Postman
  * collection.
+ *
+ * `AUTH_IMPERSONATION_REFUSED` is **one code for a class**, not one per
+ * operation (ADR-0057 §5). The three excluded routes —
+ * `POST /api/v1/user/profile/change-password`, `DELETE /api/v1/user/profile`
+ * and `POST /api/v1/user/auth/logout-all` — are exactly the operations that
+ * would let an impersonator take the account over, and a code per operation
+ * would be enum growth with no reader: the client already knows which dialog
+ * it opened. It is `403` for the reason `AUTH_CURRENT_PASSWORD_INVALID` is —
+ * the session is fine and stays fine, so a `401` would send every interceptor
+ * that reads `401` as "the session died" to a sign-in screen over a refusal
+ * that has nothing to do with credentials.
  */
 const AUTH_ERROR_CODES = [
   "AUTH_INVALID_CREDENTIALS",
@@ -96,6 +108,7 @@ const AUTH_ERROR_CODES = [
   "AUTH_REFRESH_REUSED",
   "AUTH_ACCOUNT_DISABLED",
   "AUTH_CURRENT_PASSWORD_INVALID",
+  "AUTH_IMPERSONATION_REFUSED",
   "CSRF_TOKEN_INVALID",
 ] as const;
 

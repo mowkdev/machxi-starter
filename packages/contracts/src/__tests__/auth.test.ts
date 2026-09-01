@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import type {
+  StaffPrincipalResource,
+  UserPrincipalResource,
+} from "../index.js";
 import {
   changePasswordBody,
   loginBody,
@@ -243,5 +247,99 @@ describe("setPasswordBody", () => {
         newPassword: password,
       }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * The impersonation fact on the wire (ADR-0057 §4).
+ *
+ * `UserPrincipalResource` is a hand-written resource type, not a zod schema —
+ * ADR-0023's rule that requests get schemas and responses get types — so what
+ * is checked here is what a resource type can be checked for: the shape both
+ * ways across a JSON round trip, which is the only form a client ever sees it
+ * in, plus two compile-time facts about the staff resource: that it has no
+ * such key, and that assigning one to it is refused. A response schema beside
+ * the mapper would be a second description of the same shape, drifting from
+ * the one that actually runs.
+ */
+describe("UserPrincipalResource — impersonatedBy", () => {
+  const ordinary: UserPrincipalResource = {
+    kind: "user",
+    id: "01948f1a-0000-7000-8000-000000000001",
+    email: "anna@acme.com",
+    firstName: "Anna",
+    lastName: null,
+    roles: ["customer"],
+  };
+
+  const impersonated: UserPrincipalResource = {
+    ...ordinary,
+    impersonatedBy: {
+      id: "01948f1a-0000-7000-8000-0000000000ff",
+      email: "support@machxi.local",
+    },
+  };
+
+  it("is absent on an ordinary session, key and all", () => {
+    // Optional rather than `| null`, so a bundle that predates impersonation
+    // meets exactly the payload it always met (ADR-0015: additive).
+    const wire = JSON.parse(JSON.stringify(ordinary)) as UserPrincipalResource;
+
+    expect("impersonatedBy" in wire).toBe(false);
+    expect(wire.impersonatedBy).toBeUndefined();
+  });
+
+  it("names the staff member on an impersonated one, and nothing more", () => {
+    const wire = JSON.parse(
+      JSON.stringify(impersonated),
+    ) as UserPrincipalResource;
+
+    expect(wire.impersonatedBy).toEqual({
+      id: "01948f1a-0000-7000-8000-0000000000ff",
+      email: "support@machxi.local",
+    });
+    // An id for the trail and an email for the banner's sentence. No roles:
+    // nothing on the customer app authorises against the staff member, and a
+    // role list its screens could read is an invitation to.
+    expect(Object.keys(wire.impersonatedBy ?? {})).toEqual(["id", "email"]);
+  });
+
+  it("leaves the customer's own identity untouched", () => {
+    // The banner names both, which only works if the principal is still the
+    // customer: impersonation adds an actor, it does not swap the subject.
+    expect(impersonated.id).toBe(ordinary.id);
+    expect(impersonated.email).toBe(ordinary.email);
+    expect(impersonated.kind).toBe("user");
+  });
+
+  it("has no staff counterpart — the mint is /admin/users/:id only", () => {
+    const staffPrincipal: StaffPrincipalResource = {
+      kind: "staff",
+      id: "01948f1a-0000-7000-8000-0000000000aa",
+      email: "support@machxi.local",
+      firstName: "Sam",
+      lastName: "Support",
+      roles: ["admin"],
+    };
+
+    // The type-level half: the field is not on the staff resource at all, so
+    // a banner reading `principal.impersonatedBy` cannot compile against one.
+    const staffCarriesIt: "impersonatedBy" extends keyof StaffPrincipalResource
+      ? true
+      : false = false;
+
+    // And the other direction — absent from `keyof` is not the same as
+    // refused, and it is the refusal that keeps a mapper from quietly putting
+    // an actor on a staff principal (ADR-0057 §1: the mint is
+    // `/admin/users/:id` only).
+    const withActor: StaffPrincipalResource = {
+      ...staffPrincipal,
+      // @ts-expect-error a staff principal is never impersonated.
+      impersonatedBy: { id: staffPrincipal.id, email: staffPrincipal.email },
+    };
+
+    expect(staffCarriesIt).toBe(false);
+    expect(withActor.kind).toBe("staff");
+    expect(staffPrincipal.kind).toBe("staff");
   });
 });

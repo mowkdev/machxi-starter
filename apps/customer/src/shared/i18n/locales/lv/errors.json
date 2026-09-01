@@ -21,6 +21,7 @@
   "AUTH_REFRESH_REUSED": "Jūsu sesija tika izbeigta drošības apsvērumu dēļ. Piesakieties vēlreiz.",
   "AUTH_ACCOUNT_DISABLED": "Šis konts ir atspējots. Sazinieties ar atbalsta dienestu.",
   "AUTH_CURRENT_PASSWORD_INVALID": "Šī nav jūsu pašreizējā parole.",
+  "AUTH_IMPERSONATION_REFUSED": "To nevar izdarīt, uzdodoties par šo kontu. Tas jāizdara pašam konta īpašniekam.",
   "CSRF_TOKEN_INVALID": "Šo pieprasījumu nevarēja pārbaudīt. Mēģiniet vēlreiz.",
 
   "USER_EMAIL_TAKEN": "Šī e-pasta adrese jau tiek izmantota.",

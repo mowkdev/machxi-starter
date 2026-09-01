@@ -358,8 +358,11 @@ describe("an unrecognised code degrades to its status family", () => {
   /*
    * ADR-0015 makes a new error code additive, so an already-shipped bundle
    * *will* meet a code its `ErrorCode` union does not contain — D13's
-   * `AUTH_IMPERSONATION_REFUSED` is the next one, which is why this landed at
-   * `D13.1`, before the code exists (ADR-0057 §Consequences).
+   * `AUTH_IMPERSONATION_REFUSED` was the next one, which is why this landed at
+   * `D13.1`, before the code existed (ADR-0057 §Consequences). `D13.3` then
+   * declared it, so the codes below are invented: a test of "this build does
+   * not know it" has to use a code the build genuinely does not know, or it
+   * quietly stops testing anything the day the placeholder ships.
    *
    * The property is the one `@repo/contracts`' `errors.ts` already states in
    * as many words: an unrecognised code is "a generic failure of whatever HTTP
@@ -378,7 +381,7 @@ describe("an unrecognised code degrades to its status family", () => {
       http.get(`${API}/staff`, () =>
         fail(
           403,
-          "AUTH_IMPERSONATION_REFUSED" as "FORBIDDEN",
+          "AUTH_SOMETHING_A_LATER_DELIVERABLE_ADDS" as "FORBIDDEN",
           "That is not allowed while impersonating",
         ),
       ),

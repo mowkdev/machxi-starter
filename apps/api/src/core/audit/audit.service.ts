@@ -86,10 +86,19 @@ export const identitiesFromPrincipal = (
  * one query an incident runs would return nothing.
  *
  * Delete both lines in the step that grows the branch.
+ *
+ * **Amended `D13.3`:** the probe reads the *user* branch, not `Principal`.
+ * `keyof` over a union is the intersection of its members' keys, and `D13.3`
+ * decided the field lives on the customer shape alone — `impersonatedBy` is on
+ * `UserPrincipalResource` and deliberately not on `StaffPrincipalResource`
+ * (ADR-0057 §4: the mint is `/admin/users/:id` only). Written against the
+ * whole union, this trip wire would have stayed `true` through `D13.5`, the
+ * gate would have stayed green, and the branch it exists to force would have
+ * been forgotten silently — which is precisely the failure it was written for.
  */
-type ActorClaimAbsentFromPrincipal = "impersonatedBy" extends keyof Principal
-  ? never
-  : true;
+type UserPrincipal = Extract<Principal, { kind: "user" }>;
+type ActorClaimAbsentFromPrincipal =
+  "impersonatedBy" extends keyof UserPrincipal ? never : true;
 export const ACTOR_BRANCH_PENDING: ActorClaimAbsentFromPrincipal = true;
 
 export interface Audit {
