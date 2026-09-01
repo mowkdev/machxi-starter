@@ -1,13 +1,18 @@
 import type {
   ChangePasswordBody,
   DeleteProfileBody,
+  ImpersonatorResource,
   UpdateProfileBody,
   UserPrincipalResource,
   UserResource,
 } from "@repo/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useApiClient, useSetPrincipal } from "@/shared/api/context";
+import {
+  useApiClient,
+  useSession,
+  useSetPrincipal,
+} from "@/shared/api/context";
 import { CREDENTIAL_MUTATION } from "@/shared/api/credential-mutation";
 
 import { createProfileApi } from "./profile.api";
@@ -51,23 +56,41 @@ const FORM_MUTATION_META = { errorToast: false } as const;
  * The customer as the session's principal.
  *
  * Rebuilt from the response rather than spread over the principal already in
- * the store, so a stale field cannot survive the update: everything the wire
- * principal carries is on the resource, and `kind` is `"user"` because this app
- * talks to the `/user` segment and nothing else can answer here (ADR-0015).
+ * the store, so a stale field cannot survive the update, and `kind` is `"user"`
+ * because this app talks to the `/user` segment and nothing else can answer
+ * here (ADR-0015).
+ *
+ * **Amended at `D13.6`: the actor is carried, because it is the one thing the
+ * profile resource does not know.** The paragraph above used to end "everything
+ * the wire principal carries is on the resource", and since `D13.5` that is
+ * false: `impersonatedBy` is set by the API from the session row (ADR-0057 §4)
+ * and `UserResource` has no such field, while `PATCH /user/profile` is
+ * deliberately *not* on the exclusion list, so it is reachable inside an
+ * impersonated session. Rebuilding without the actor would drop it mid-session
+ * — the banner ADR-0057 §7 renders from that field and nothing else would
+ * vanish while the operator went on acting as the customer, and `D13.6`'s cache
+ * boundary would read the same session as a new principal and wipe the cache
+ * under it. A profile write cannot change who is acting, so it is passed
+ * through rather than re-derived.
  */
-const toPrincipal = (user: UserResource): UserPrincipalResource => ({
+const toPrincipal = (
+  user: UserResource,
+  impersonatedBy: ImpersonatorResource | undefined,
+): UserPrincipalResource => ({
   kind: "user",
   id: user.id,
   email: user.email,
   firstName: user.firstName,
   lastName: user.lastName,
   roles: user.roles,
+  ...(impersonatedBy === undefined ? {} : { impersonatedBy }),
 });
 
 export const useUpdateProfile = () => {
   const api = useApi();
   const queryClient = useQueryClient();
   const setPrincipal = useSetPrincipal();
+  const { principal } = useSession();
 
   return useMutation({
     mutationFn: (body: UpdateProfileBody) => api.update(body),
@@ -84,7 +107,12 @@ export const useUpdateProfile = () => {
        * `useSetPrincipal` is the narrowed door's, so a `staff` principal cannot
        * be written here even by accident.
        */
-      setPrincipal(toPrincipal(profile));
+      setPrincipal(
+        toPrincipal(
+          profile,
+          principal?.kind === "user" ? principal.impersonatedBy : undefined,
+        ),
+      );
     },
   });
 };

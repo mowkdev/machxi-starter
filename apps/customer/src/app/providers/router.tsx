@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   RouterProvider,
   createRouter,
@@ -117,4 +118,22 @@ export const createAppRouter = ({
 
 const appRouter = createAppRouter({ session: sessionStore });
 
-export const AppRouter = () => <RouterProvider router={appRouter} />;
+/**
+ * The router's own match cache is server state too (`D13.6`).
+ *
+ * A loader that returns `ensureQueryData`'s answer puts a record — an email
+ * among other things — into the match, and TanStack Router keeps inactive
+ * matches for its own `gcTime`, well past the query cache the principal
+ * boundary empties. This component is mounted under `D13.6`'s per-principal
+ * key, so a mount is a boot or a principal change and nothing else; clearing
+ * here is the same rule one store along. The effect is late enough to be
+ * harmless — a remount re-loads the location it lands on — and early enough to
+ * beat the only thing that reads the cache, which is a later navigation.
+ */
+export const AppRouter = () => {
+  useEffect(() => {
+    appRouter.clearCache();
+  }, []);
+
+  return <RouterProvider router={appRouter} />;
+};

@@ -130,6 +130,26 @@ export const useSetPrincipal = (): ((principal: PrincipalResource) => void) => {
     (principal: PrincipalResource) => {
       if (store.getAccessToken() === null) return;
 
+      /*
+       * **And it refuses to write into a *different* session** (`D13.6`).
+       *
+       * The guard above is the same argument one step short: a name save in
+       * flight can be overtaken by a sign-out, and it can equally be overtaken
+       * by a sign-out *and a sign-in*, which leaves a store holding a live
+       * token for somebody else. Writing the resolved principal there would
+       * name the departed account in the chrome of a session that is not
+       * theirs — and since `D13.6` it does more than mislead: the principal is
+       * what the cache boundary keys on, so it would read a settled session as
+       * a fresh principal and drop the arriving account's cache under it.
+       *
+       * A store with a token and no principal is the mid-bootstrap state and is
+       * left alone; this hook only ever carries fresher data for the account
+       * already in the store.
+       */
+      const current = store.getPrincipal();
+
+      if (current !== null && current.id !== principal.id) return;
+
       store.setSession({ principal });
     },
     [store],

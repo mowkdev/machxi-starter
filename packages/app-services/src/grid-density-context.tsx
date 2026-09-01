@@ -83,15 +83,20 @@ export const GridDensityProvider = ({
    * *later* answer, which is what makes the two paths one behaviour rather
    * than two.
    *
-   * **"Cold boot" is load-bearing and is not this provider's to fix.** Nothing
-   * evicts the settings query when a principal changes, and it is cached with
-   * `staleTime: Infinity`, so a sign-out and a sign-in *in the same tab* leave
-   * the previous account's resource in the cache: the gate does not hold, and
-   * `adopted` seeds with what the last operator chose. That is true of the
-   * theme, the locale and the grid arrangements exactly as it is of this
-   * (ADR-0045 §The client, since `D6.3`) — `D11.6` found it rather than
-   * introduced it, and recorded it in the plan rather than bending one setting
-   * around a cache rule that belongs to all four.
+   * **"Cold boot" is load-bearing, and it was not always true.** Until `D13.6`
+   * nothing evicted the settings query when a principal changed, and it is
+   * cached with `staleTime: Infinity`, so a sign-out and a sign-in *in the same
+   * tab* left the previous account's resource in the cache: the gate did not
+   * hold, and `adopted` seeded with what the last operator chose. That was true
+   * of the theme, the locale and the grid arrangements exactly as it was of
+   * this (ADR-0045 §The client, since `D6.3`) — `D11.6` found it rather than
+   * introduced it, and recorded it rather than bending one setting around a
+   * cache rule that belongs to all four. An app is responsible for evicting at
+   * a principal change; each of the two does it today in its own
+   * `app/providers/principal-cache.tsx`, by dropping every cached resource and
+   * remounting the settings subtree — the whole app under it — so that a boot
+   * and a sign-in reach this provider the same way. The fix stayed out of here
+   * for the reason `D11.6` gave, and it is still not this provider's to make.
    */
   const [density, setDensityState] = useState<GridDensity>(
     adopted ?? DEFAULT_GRID_DENSITY,

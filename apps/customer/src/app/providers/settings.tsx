@@ -11,6 +11,10 @@ import { GridDensityProvider } from "@/shared/density";
 import { ThemeProvider } from "@/shared/theme";
 
 import { I18nProvider } from "./i18n";
+import {
+  PrincipalCacheBoundary,
+  usePrincipalCacheOwner,
+} from "./principal-cache";
 
 /**
  * The account's settings, wired into the running app (`D12.7`; ADR-0045 §The
@@ -50,7 +54,22 @@ export interface SettingsProviderProps {
   readonly fallback?: ReactNode;
 }
 
-export const SettingsProvider = ({
+/**
+ * The provider proper, mounted **once per principal** (`D13.6`).
+ *
+ * Everything below this line is per-session state that the settings query alone
+ * does not describe: the coalescing writer's pending half, and the adoption
+ * latches in the three providers at the bottom — the i18next instance among
+ * them, which is *built* from a locale rather than told one. Dropping the cache
+ * entry without resetting those would evict the answer and keep the conclusions
+ * drawn from it.
+ *
+ * The key is the reset (`SettingsProvider` below), which is React's own answer
+ * to "this subtree belongs to a different thing now" and costs nothing on the
+ * path that matters: an authenticated customer whose settings are in flight
+ * unmounts this subtree anyway, for the gate's own reasons.
+ */
+const AccountSettings = ({
   children,
   fallback = null,
 }: SettingsProviderProps) => {
@@ -162,5 +181,40 @@ export const SettingsProvider = ({
         </GridDensityProvider>
       </I18nProvider>
     </ThemeProvider>
+  );
+};
+
+/**
+ * The account's settings, scoped to the principal they belong to (`D13.6`).
+ *
+ * **The eviction has two halves, both load-bearing, and they are mounted
+ * together here so that neither can ship without the other.** The boundary
+ * drops the cached resource, without which the remount would re-read the
+ * previous customer's entry from a query cached with `staleTime: Infinity` and
+ * change nothing at all. The key drops what this app *concluded* from that
+ * resource — the three adoption latches, the i18next instance among them — without
+ * which the eviction would refetch into conclusions already drawn. It is also
+ * the key that makes the eviction *observable*: `queryCache.clear()` destroys
+ * queries without notifying their observers, so a mounted `useSettings` would
+ * go on rendering the old `data` until something else re-rendered it; the
+ * remount destroys every observer instead.
+ *
+ * The composition is not `app/index.tsx`'s to get right. Nothing in `App` sits
+ * under the boundary but outside this provider, so a wrapper that mounted one
+ * without the other would be a silent return to the `D11.11` defect with every
+ * test still green.
+ */
+export const SettingsProvider = ({
+  children,
+  fallback,
+}: SettingsProviderProps) => {
+  const owner = usePrincipalCacheOwner();
+
+  return (
+    <PrincipalCacheBoundary>
+      <AccountSettings fallback={fallback} key={owner}>
+        {children}
+      </AccountSettings>
+    </PrincipalCacheBoundary>
   );
 };

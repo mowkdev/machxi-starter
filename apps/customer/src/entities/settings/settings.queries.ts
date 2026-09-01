@@ -3,6 +3,7 @@ import type {
   UserSettingsResource,
 } from "@repo/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { useApiClient } from "@/shared/api/context";
 
@@ -75,9 +76,42 @@ export const useUpdateSettings = () => {
   const api = useApi();
   const queryClient = useQueryClient();
 
+  /*
+   * Whether this hook's host is still mounted (`D13.6`).
+   *
+   * A mutation outlives its component: `QueryClient.clear()` removes it from
+   * the mutation cache and unmounting the host detaches the observer, but
+   * neither stops `Mutation.execute` from calling `onSuccess`. So a `PATCH`
+   * queued by one principal can resolve *after* the next one has signed in, and
+   * an unconditional `setQueryData` would write the departed customer's whole
+   * resource back into the entry the principal boundary has just emptied —
+   * ahead of the arriving one's own `GET`, since it was sent first. The settings
+   * gate would then open on it and the new customer would come up in the old
+   * one's theme, locale and density.
+   *
+   * The latch is exactly coincident with a principal change because `D13.6`'s
+   * key remounts the whole settings subtree on one, so every host of this hook
+   * is torn down with it. A host that unmounts for an ordinary reason — a
+   * control whose page is navigated away from — skips the write too, and that
+   * costs nothing: the entry's only reader is the settings provider, which
+   * feeds the adoption latches and the writer's mirror, and both already hold
+   * what this request was sent to persist.
+   */
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   return useMutation({
     mutationFn: (body: UpdateUserSettingsBody) => api.update(body),
     onSuccess: (settings: UserSettingsResource) => {
+      if (!alive.current) return;
+
       queryClient.setQueryData(settingsKeys.detail(), settings);
     },
   });
