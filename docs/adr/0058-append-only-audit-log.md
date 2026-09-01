@@ -26,20 +26,20 @@ data jsonb null                     -- event-specific facts, small by convention
 index (actor_type, actor_id, occurred_at), index (event, occurred_at)
 ```
 
-- **No foreign keys, deliberately** — the `sessions` reasoning doubled: an audit row must survive the hard deletion of its actor (staff, ADR-0028) and of its subject, or the log un-writes itself exactly when it is needed.
+- **No foreign keys, deliberately** — an audit row must survive the hard deletion of its actor (staff, ADR-0028) and of its subject, or the log un-writes itself exactly when it is needed.
 - **Append-only is a rule of the code, not just a word in the name**: the repository exposes insert and read, nothing else; no service holds an update or delete path. `db:*` tooling does not prune it — audit outlives sessions, and retention is a deployment decision recorded in §Consequences, not a job this record ships.
 - **Event names live with their writers in `apps/api`**, not in `@repo/contracts`: no client reads them in v1, and a contracts enum for server-only vocabulary is the altitude mistake ADR-0050 names. The day an admin screen lists these events is the day the names cross the wire and earn a contracts home.
 
 ### The writer
 
-A small `audit` service in the API's core, container-wired (ADR-0009), taking `ctx` first so every row inherits `requestId`, ip, ua and both identities from the principal. Two write disciplines, chosen per call site:
+A small `audit` service in the API's core, container-wired (ADR-0009), taking `ctx` first so every row inherits `requestId`, ip and ua. **The identity mapping is by human, not by principal shape**: `actor` is the identity driving the request — the staff id when the principal carries `impersonatedBy` (ADR-0057 §4), the principal itself otherwise — and `acting_as` is the account the request ran as, set only when the two differ. A builder who maps `ctx.principal` straight onto `actor` writes the inverse and an incident query on the staff id finds nothing; this paragraph is the rule that prevents it. The `impersonation.exchanged` event has no principal at all — the exchange is unauthenticated, the token is the credential — so it derives both identities from the consumed handoff row, never from `ctx`. Two write disciplines, chosen per call site:
 
 - **Lifecycle events are transactional with the operation** — an impersonation mint that cannot be audited does not happen. The writer accepts the caller's transaction.
 - **Trail events** (the per-mutation rows ADR-0057 §6 asks for) are written after the response, best-effort: a failed trail write logs at `error` and does not fail a request that already succeeded. The completion log line still carries both identities, so the trail degrades to the logs rather than to nothing.
 
 ### v1 write points
 
-D13's, and only D13's: `impersonation.minted`, `impersonation.exchanged`, `impersonation.ended`, `impersonation.refused` (an excluded operation attempted), and the mutation trail under an impersonated session. The named future write points — role grants, administrative password resets, deletions, the `staff.service.ts` comment's cases — join when a deliverable takes them; this record decides the mechanism, not the coverage.
+D13's, and only D13's: `impersonation.minted`, `impersonation.exchanged`, `impersonation.ended`, `impersonation.refused` (an excluded operation attempted — a trail-discipline write behind the refusal response, there being no succeeding operation to join transactionally), and the mutation trail under an impersonated session. The named future write points — role grants, administrative password resets, deletions, the `staff.service.ts` comment's cases — join when a deliverable takes them; this record decides the mechanism, not the coverage.
 
 ### No read surface in v1
 
