@@ -74,8 +74,12 @@ describe("migration 0001", () => {
 
     // The whole public schema, not only `0001`'s share of it: an exact list is
     // what makes a table arriving without a decision behind it visible here.
-    // `staff_settings` and `user_settings` came with `0003` (ADR-0045).
+    // `staff_settings` and `user_settings` came with `0003` (ADR-0045), and
+    // `audit_events` with `0006` (ADR-0058) — which is also this suite's proof
+    // that `0006` applies from nothing, since the list is taken after a fresh
+    // replay of every committed migration.
     expect(rows.map((row) => row.table_name)).toEqual([
+      "audit_events",
       "sessions",
       "staff",
       "staff_roles",
@@ -141,6 +145,11 @@ describe("migration 0001", () => {
     expect(
       Object.fromEntries(rows.map((row) => [row.typname, row.labels])),
     ).toEqual({
+      // `audit_actor_type` came with `0006` (`D13.2`, ADR-0058): the same two
+      // labels as `principal_type` and deliberately a second type, so that the
+      // day an audit actor needs a third label it cannot widen the column a
+      // live session is discriminated by.
+      audit_actor_type: ["staff", "user"],
       // `grid_density` came with `0005` (`D11.6`, ADR-0053 §2 as amended):
       // the density is a column and a type, not a key in the `grids` jsonb.
       // Two labels, and comfortable is first because it is the default.

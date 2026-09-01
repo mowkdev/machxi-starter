@@ -80,6 +80,19 @@ export const userStatusEnum = pgEnum("user_status", USER_STATUSES);
 export const principalTypeEnum = pgEnum("principal_type", POPULATIONS);
 
 /**
+ * Who an audit row attributes an event to (ADR-0058) — the same two labels as
+ * {@link principalTypeEnum} and deliberately **not** that type.
+ *
+ * `principal_type` describes a live session; this describes a recorded fact
+ * that outlives every session and every account it names. Sharing one Postgres
+ * enum would tie them: the day an audit actor needs a third label (a scheduled
+ * job, an operator at the console), `ALTER TYPE … ADD VALUE` would widen the
+ * `sessions` column too, and `sessions` has no such value and never will
+ * (ADR-0010 refuses a `system` principal by design). Two types, one tuple.
+ */
+export const auditActorTypeEnum = pgEnum("audit_actor_type", POPULATIONS);
+
+/**
  * The settings enums (ADR-0045), built from the `@repo/contracts` tuples like
  * every other one here — one type per fact, shared by both settings tables.
  *

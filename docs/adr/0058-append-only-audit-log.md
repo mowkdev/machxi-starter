@@ -1,9 +1,9 @@
 # ADR-0058: An append-only audit log
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-01
 
-> Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)), the sibling of [ADR-0057](0057-impersonation-sessions.md). `proposed` at writing; **accepted at the head of `D13.2`**, the step that builds it; amendable in place while D13 is `in progress` (ADR-0025 rule 2). Additive: it supersedes nothing.
+> Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)), the sibling of [ADR-0057](0057-impersonation-sessions.md). `proposed` at writing; **accepted 2026-09-01 at the head of `D13.2`**, the step that builds it; amendable in place while D13 is `in progress` (ADR-0025 rule 2). Additive: it supersedes nothing — no parent moved to `superseded by` when it was accepted, and none needed to: no record before it decided anything about an audit mechanism.
 
 ## Context
 
@@ -26,8 +26,9 @@ data jsonb null                     -- event-specific facts, small by convention
 index (actor_type, actor_id, occurred_at), index (event, occurred_at)
 ```
 
+- **`actor_type` and `acting_as_type` are their own Postgres type, `audit_actor_type`, not `sessions`' `principal_type`. Amended 2026-09-01 (D13.2)** — the sketch above wrote a bare `enum('staff','user')` for both and left the type identity open, which is a schema decision with a migration cost. Both types are built from the one `POPULATIONS` tuple in `@repo/contracts` (ADR-0023, so there is still a single source for the labels), but they are two Postgres types: a recorded fact may one day need an actor label a live session must never have — a scheduled job, an operator at the console — and `ALTER TYPE … ADD VALUE` on a shared type would widen the column `sessions` is discriminated by, which ADR-0010 refuses by design.
 - **No foreign keys, deliberately** — an audit row must survive the hard deletion of its actor (staff, ADR-0028) and of its subject, or the log un-writes itself exactly when it is needed.
-- **Append-only is a rule of the code, not just a word in the name**: the repository exposes insert and read, nothing else; no service holds an update or delete path. `db:*` tooling does not prune it — audit outlives sessions, and retention is a deployment decision recorded in §Consequences, not a job this record ships.
+- **Append-only is a rule of the code, not just a word in the name**: the repository exposes insert and, in v1, nothing else; no service holds an update or delete path. **Amended 2026-09-01 (D13.2).** The sentence first read "insert and read": the built repository ships the insert half only, because §No read surface in v1 makes SQL the reader and a finder written for the tests alone would be production code with no production caller. The read half arrives with the first reader; the update and the delete never do. The rule is enforced rather than asserted — `packages/config-eslint/api.js` restricts `auditEvents` everywhere but `core/audit/audit.repository.ts`, so a service that wanted an update path could not import the table to write one. `db:*` tooling does not prune it — audit outlives sessions, and retention is a deployment decision recorded in §Consequences, not a job this record ships.
 - **Event names live with their writers in `apps/api`**, not in `@repo/contracts`: no client reads them in v1, and a contracts enum for server-only vocabulary is the altitude mistake ADR-0050 names. The day an admin screen lists these events is the day the names cross the wire and earn a contracts home.
 
 ### The writer

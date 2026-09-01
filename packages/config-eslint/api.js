@@ -123,8 +123,24 @@ export const apiConfig = ({ tsconfigRootDir }) =>
     {
       files: ["src/modules/**/*.repository.ts"],
       rules: {
-        // ADR-0009: a repository knows Drizzle and the schema, never HTTP.
-        "no-restricted-imports": ["error", { patterns: noExpress }],
+        // ADR-0009: a repository knows Drizzle and the schema, never HTTP —
+        // and ADR-0058: it knows every table except the append-only one, whose
+        // single insert path lives in `core/audit`.
+        "no-restricted-imports": [
+          "error",
+          { patterns: [...noExpress, ...noAuditTable] },
+        ],
+      },
+    },
+
+    {
+      // ADR-0058, the other half of the same rule: `core/` holds the audit
+      // writer, so it is the one place outside a module repository that could
+      // reach the table — and only `audit.repository.ts` may.
+      files: ["src/core/**/*.ts"],
+      ignores: ["src/core/audit/audit.repository.ts"],
+      rules: {
+        "no-restricted-imports": ["error", { patterns: noAuditTable }],
       },
     },
 
@@ -195,6 +211,24 @@ const noExpress = [
  * root, which re-exports the same tables (ADR-0002, amended 2026-08-18).
  * Restricting only the subpath would leave the rule bypassable by one import.
  */
+/**
+ * `audit_events`, restricted everywhere except its one writer (ADR-0058).
+ *
+ * Separate from {@link noSchemaTables} because it is a different rule with a
+ * different shape: that list keeps SQL out of the layers that should not hold
+ * any, and applies to services and controllers; this one keeps *one table* out
+ * of every layer but a single file, repositories included, because
+ * "append-only" is only real if no other code can call `.update()` on it.
+ */
+const noAuditTable = [
+  {
+    group: ["@repo/db", "@repo/db/schema"],
+    importNames: ["auditEvents", "auditActorTypeEnum"],
+    message:
+      "`audit_events` is append-only (ADR-0058): core/audit's repository holds the only insert, and nothing else may reach the table.",
+  },
+];
+
 const noSchemaTables = [
   {
     group: ["@repo/db/schema"],
@@ -205,6 +239,11 @@ const noSchemaTables = [
     group: ["@repo/db"],
     importNames: [
       "schema",
+      // `audit_events` is append-only by decision (ADR-0058), and the decision
+      // is only real if no service can reach the table: the writer in
+      // `core/audit` is the one insert path, and it holds no update or delete.
+      "auditEvents",
+      "auditActorTypeEnum",
       "sessions",
       "staff",
       "staffRoles",

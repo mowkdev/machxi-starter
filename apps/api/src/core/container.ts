@@ -41,6 +41,7 @@ import {
   createUsersRepository,
   createUsersService,
 } from "../modules/users/index.js";
+import { createAudit, createAuditRepository } from "./audit/index.js";
 import { createLimitedHasher } from "./auth/index.js";
 
 /**
@@ -126,6 +127,15 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
 
   const authenticate = createAuthenticate({ tokens, sessions });
 
+  // The audit writer (ADR-0058). Core rather than a feature module: the
+  // mechanism is infrastructure every module borrows, like the logger and the
+  // context, while the event names belong to the features that write them. It
+  // takes `ctx` first and no transaction of its own — a lifecycle row is
+  // written on the caller's executor, which is what makes "an operation that
+  // cannot be audited does not happen" a property of the database rather than
+  // of a convention.
+  const audit = createAudit({ repository: createAuditRepository(db.db) });
+
   // Hashing with the ADR-0020 cap already applied. The feature services get
   // *this* and never the raw hasher, so they cannot bypass the cap by
   // forgetting to wrap a call; the auth service keeps the raw one because
@@ -181,6 +191,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     db,
     logger,
     hasher,
+    audit,
     authenticate,
     rateLimiters,
     repositories: {

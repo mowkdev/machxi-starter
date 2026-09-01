@@ -6,6 +6,7 @@
  * One file per aggregate; `relations()` sits next to the tables it joins.
  */
 export {
+  auditActorTypeEnum,
   citext,
   gridDensityEnum,
   localeEnum,
@@ -31,6 +32,7 @@ export {
   usersRelations,
 } from "./users.js";
 export { sessions } from "./sessions.js";
+export { auditEvents } from "./audit.js";
 export {
   staffSettings,
   staffSettingsRelations,

@@ -43,8 +43,10 @@ that day: **0057 was accepted 2026-09-01 at `D13.1`'s head**, where
 sessions; the gate's fifth link, `pnpm format:check`, which is why the gate
 now reads
 `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`
-everywhere it is stated), and 0058 is accepted at `D13.2`'s head, additive —
-still `proposed`, so that step is gated on it. **The D12 window shut
+everywhere it is stated), and **0058 was accepted 2026-09-01 at `D13.2`'s
+head**, additive — the `audit_events` table, migration `0006_audit_events` and
+the container-wired writer. Both window records are `accepted`; the window
+stays open until D13 ships. **The D12 window shut
 when D12 shipped 2026-09-01**; it covered [0055](adr/0055-customer-app.md) — `accepted` at `D12.1`'s head,
 where [0022](adr/0022-frontend-apps.md) took the roster delta — and, since
 2026-09-01, [0056](adr/0056-per-population-csrf-cookie.md) — `proposed`,

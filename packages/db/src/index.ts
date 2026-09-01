@@ -22,6 +22,7 @@ export {
 export * as schema from "./schema/index.js";
 
 export {
+  auditEvents,
   sessions,
   staff,
   staffRoles,
@@ -32,6 +33,7 @@ export {
 } from "./schema/index.js";
 
 export {
+  auditActorTypeEnum,
   localeEnum,
   principalTypeEnum,
   staffRoleEnum,
@@ -42,6 +44,8 @@ export {
 } from "./schema/index.js";
 
 export type {
+  AuditEvent,
+  NewAuditEvent,
   NewSession,
   NewStaff,
   NewStaffRoleGrant,

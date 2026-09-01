@@ -43,6 +43,13 @@
       "when": 1788058215818,
       "tag": "0005_grid_density",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788270444233,
+      "tag": "0006_audit_events",
+      "breakpoints": true
     }
   ]
 }

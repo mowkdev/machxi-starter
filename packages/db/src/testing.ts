@@ -72,6 +72,11 @@ export const migrateFreshDatabase = async (url: string): Promise<void> => {
  */
 export const TRUNCATED_TABLES = [
   "sessions",
+  // The one table `cascade` can never reach: `audit_events` carries no foreign
+  // key by decision (ADR-0058), so nothing sweeps it as a side effect and a
+  // row written by one integration file would otherwise be counted by the
+  // next.
+  "audit_events",
   "staff_roles",
   "user_roles",
   // Named although `cascade` on `staff` and `users` already empties them

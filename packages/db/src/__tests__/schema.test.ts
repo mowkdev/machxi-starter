@@ -10,6 +10,8 @@ import {
 } from "@repo/contracts";
 
 import {
+  auditActorTypeEnum,
+  auditEvents,
   principalTypeEnum,
   sessions,
   staff,
@@ -42,6 +44,9 @@ describe("enums", () => {
     ["user_role", userRoleEnum, USER_ROLES],
     ["user_status", userStatusEnum, USER_STATUSES],
     ["principal_type", principalTypeEnum, POPULATIONS],
+    // The same tuple behind two Postgres types, on purpose (ADR-0058): a live
+    // session and a recorded fact must be free to grow apart.
+    ["audit_actor_type", auditActorTypeEnum, POPULATIONS],
   ])(
     "%s mirrors its @repo/contracts tuple, in order",
     (name, pgEnum, contractValues) => {
@@ -177,6 +182,53 @@ describe("sessions", () => {
   it("records revocation as a timestamp plus a reason, not a boolean", () => {
     expect(columns.get("revokedAt")?.notNull).toBe(false);
     expect(columns.get("revokedReason")?.notNull).toBe(false);
+  });
+});
+
+describe("audit_events", () => {
+  const config = getTableConfig(auditEvents);
+  const columns = columnsOf(auditEvents);
+
+  it("carries no foreign key at all (ADR-0058)", () => {
+    // Stronger than `sessions`, which *cannot* have one: this table *must*
+    // not, because a row has to outlive the hard deletion of the actor and
+    // the subject it names. A FK appearing here would delete the log exactly
+    // when an incident needs it.
+    expect(config.foreignKeys).toHaveLength(0);
+  });
+
+  it("requires an actor and leaves acting-as nullable", () => {
+    expect(columns.get("actorType")?.notNull).toBe(true);
+    expect(columns.get("actorId")?.notNull).toBe(true);
+    // Null is the ordinary case: `acting_as` is set only when the human and
+    // the account differ, which is impersonation and nothing else.
+    expect(columns.get("actingAsType")?.notNull).toBe(false);
+    expect(columns.get("actingAsId")?.notNull).toBe(false);
+  });
+
+  it("names the event as free text, not an enum (ADR-0058)", () => {
+    // The names live with their writers in `apps/api`; a contracts enum would
+    // put server-only vocabulary on the wire for no reader.
+    expect(columns.get("event")?.notNull).toBe(true);
+    expect(columns.get("event")?.getSQLType()).toBe("text");
+  });
+
+  it("has one time column and no updated_at", () => {
+    expect(columns.get("occurredAt")?.notNull).toBe(true);
+    expect(columns.get("occurredAt")?.getSQLType()).toBe(
+      "timestamp with time zone",
+    );
+    // `updated_at` on an append-only table is a contradiction, and this is
+    // what keeps a later `...timestamps()` from being spread in by habit.
+    expect(columns.has("updatedAt")).toBe(false);
+    expect(columns.has("createdAt")).toBe(false);
+  });
+
+  it("indexes the actor and the event, both by time", () => {
+    expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      "audit_events_actor_idx",
+      "audit_events_event_idx",
+    ]);
   });
 });
 

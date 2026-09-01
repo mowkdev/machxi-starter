@@ -1,6 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
 import type {
+  auditEvents,
   sessions,
   staff,
   staffRoles,
@@ -36,6 +37,18 @@ export type NewUserRoleGrant = InferInsertModel<typeof userRoles>;
 
 export type Session = InferSelectModel<typeof sessions>;
 export type NewSession = InferInsertModel<typeof sessions>;
+
+/**
+ * An audit row (ADR-0058).
+ *
+ * The pair is declared for the same reason as every other one here, but the
+ * table is written through exactly one shape — `AuditEventRow` in
+ * `apps/api/src/core/audit`, which is `New` with nothing optional and every
+ * absent column spelled `null`, because a row whose actor was merely forgotten
+ * is worse than no row at all.
+ */
+export type AuditEvent = InferSelectModel<typeof auditEvents>;
+export type NewAuditEvent = InferInsertModel<typeof auditEvents>;
 
 /**
  * The settings pair (ADR-0045). Two row types for what is one shape today,
