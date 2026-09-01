@@ -12,6 +12,7 @@ import {
   createHashLimiter,
   createImpersonationController,
   createImpersonationService,
+  createRefuseImpersonated,
   createSessionsRepository,
   createStaffPrincipalAdapter,
   createTokenService,
@@ -105,8 +106,18 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
   const transaction = <T>(fn: (tx: DbExecutor) => Promise<T>): Promise<T> =>
     db.db.transaction(fn);
 
+  // The audit writer (ADR-0058). Core rather than a feature module: the
+  // mechanism is infrastructure every module borrows, like the logger and the
+  // context, while the event names belong to the features that write them. It
+  // takes `ctx` first and no transaction of its own — a lifecycle row is
+  // written on the caller's executor, which is what makes "an operation that
+  // cannot be audited does not happen" a property of the database rather than
+  // of a convention.
+  const audit = createAudit({ repository: createAuditRepository(db.db) });
+
   const authDeps = {
     sessions,
+    audit,
     hasher,
     tokens,
     hashLimiter,
@@ -143,14 +154,10 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
 
   const authenticate = createAuthenticate({ tokens, sessions });
 
-  // The audit writer (ADR-0058). Core rather than a feature module: the
-  // mechanism is infrastructure every module borrows, like the logger and the
-  // context, while the event names belong to the features that write them. It
-  // takes `ctx` first and no transaction of its own — a lifecycle row is
-  // written on the caller's executor, which is what makes "an operation that
-  // cannot be audited does not happen" a property of the database rather than
-  // of a convention.
-  const audit = createAudit({ repository: createAuditRepository(db.db) });
+  // ADR-0057 §5's exclusion list, as one guard named in the router files that
+  // mount it (ADR-0019). Built here because it holds the audit writer: an
+  // excluded operation attempted is itself an audit event.
+  const refuseImpersonated = createRefuseImpersonated({ audit });
 
   // Hashing with the ADR-0020 cap already applied. The feature services get
   // *this* and never the raw hasher, so they cannot bypass the cap by
@@ -232,6 +239,7 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     hasher,
     audit,
     authenticate,
+    refuseImpersonated,
     rateLimiters,
     repositories: {
       staff: staffRepository,

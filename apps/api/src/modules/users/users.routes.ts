@@ -168,17 +168,36 @@ export const createUsersRouter = ({
  * expensive routes is the missing category, and it is recorded there rather
  * than half-built here.
  */
-export const createUserProfileRouter = (
-  controller: UserProfileController,
-): Router => {
+export interface UserProfileRouterDeps {
+  readonly controller: UserProfileController;
+  /**
+   * ADR-0057 §5's exclusion guard, on the two operations here that would let an
+   * impersonator take the account over (ADR-0019's declarative style).
+   *
+   * `PATCH /` is deliberately **not** guarded: a profile edit is what support
+   * opens the app to do, it cannot move the address (ADR-0055 §4 keeps the
+   * email off this body), and every one of them lands in the audit table with
+   * both identities on it.
+   */
+  readonly refuseImpersonated: RequestHandler;
+}
+
+export const createUserProfileRouter = ({
+  controller,
+  refuseImpersonated,
+}: UserProfileRouterDeps): Router => {
   const router = Router();
 
   router.use(noStore);
 
   router.get("/", controller.get);
   router.patch("/", validate(updateProfileSchema), controller.update);
+  // Before `validate`, and that is the ADR-0011 order rather than an exception
+  // to it: this is a guard, and a request that fails it must not first have a
+  // body carrying two passwords parsed to produce a better error message.
   router.post(
     "/change-password",
+    refuseImpersonated,
     validate(changePasswordSchema),
     controller.changePassword,
   );
@@ -191,7 +210,12 @@ export const createUserProfileRouter = (
   // re-authenticates with their current password, because a session is not an
   // identity proof for an irreversible act. There is no `:id` here either, so
   // the only account this can ever close is the caller's own (ADR-0019 §3).
-  router.delete("/", validate(deleteProfileSchema), controller.remove);
+  router.delete(
+    "/",
+    refuseImpersonated,
+    validate(deleteProfileSchema),
+    controller.remove,
+  );
 
   return router;
 };

@@ -16,6 +16,7 @@ export {
 export {
   createUserProfileRouter,
   createUsersRouter,
+  type UserProfileRouterDeps,
   type UsersRouterDeps,
 } from "./users.routes.js";
 export {

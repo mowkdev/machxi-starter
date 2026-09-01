@@ -115,3 +115,23 @@ export const impersonationHandoffInvalid = (): AppError =>
  */
 export const registrationConflict = (): AppError =>
   conflict("Registration could not be completed");
+
+/**
+ * An excluded operation attempted on an impersonated session (ADR-0057 §5).
+ *
+ * **One code for the class**, not one per operation: the client already knows
+ * which dialog the refusal came from, so a code per operation would be enum
+ * growth with no reader (the record says so, and the catalogue entries both
+ * apps grew at `D13.3` are the one sentence either way).
+ *
+ * `403`, not `401`, and the distinction is load-bearing: the session is
+ * perfectly valid and stays valid — it is the *operation* that is refused —
+ * and `AUTH_IMPERSONATION_REFUSED` is deliberately outside `TERMINAL_AUTH_CODES`
+ * so no client interceptor reads a refused password change as a dead session
+ * and signs the operator out of an impersonation they are in the middle of.
+ */
+export const impersonationRefused = (): AppError =>
+  forbidden(
+    "This operation is not available while impersonating an account",
+    "AUTH_IMPERSONATION_REFUSED",
+  );

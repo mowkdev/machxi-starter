@@ -41,6 +41,9 @@ export const createUserRouter = (container: Container): Router => {
       // nowhere else, because the auth router is one factory per segment and
       // an admin-segment twin would turn a URL fragment into a staff session.
       impersonation: container.controllers.impersonation,
+      // ADR-0057 §5: `logout-all` ends the customer's real sessions everywhere
+      // and an impersonator may not.
+      refuseImpersonated: container.refuseImpersonated,
     }),
   );
 
@@ -48,7 +51,10 @@ export const createUserRouter = (container: Container): Router => {
 
   router.use(
     "/profile",
-    createUserProfileRouter(container.controllers.userProfile),
+    createUserProfileRouter({
+      controller: container.controllers.userProfile,
+      refuseImpersonated: container.refuseImpersonated,
+    }),
   );
 
   router.use(

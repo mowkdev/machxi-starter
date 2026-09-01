@@ -63,10 +63,59 @@ const staffPrincipal: Principal = {
   sessionId: "session-1",
 };
 
+const impersonatedPrincipal: Principal = {
+  kind: "user",
+  id: "user-9",
+  roles: ["customer"],
+  sessionId: "session-2",
+  impersonatedBy: "staff-1",
+};
+
 describe("identitiesFromPrincipal", () => {
   it("makes an ordinary principal its own actor, with no acting-as", () => {
     expect(identitiesFromPrincipal(staffPrincipal)).toEqual({
       actor: { type: "staff", id: "staff-1" },
+    });
+  });
+
+  it("puts the staff member on the actor and the customer on the acting-as", () => {
+    // The branch `D13.2`'s trip wire existed to force (ADR-0058). Written the
+    // other way round it would compile, pass the gate, and answer "everything
+    // this operator did" with nothing at all.
+    expect(identitiesFromPrincipal(impersonatedPrincipal)).toEqual({
+      actor: { type: "staff", id: "staff-1" },
+      actingAs: { type: "user", id: "user-9" },
+    });
+  });
+
+  it("leaves a customer signed in as themselves their own actor", () => {
+    expect(
+      identitiesFromPrincipal({
+        kind: "user",
+        id: "user-9",
+        roles: ["customer"],
+        sessionId: "session-3",
+      }),
+    ).toEqual({ actor: { type: "user", id: "user-9" } });
+  });
+});
+
+describe("a row derived from an impersonated principal", () => {
+  it("carries both identities without the call site naming either", async () => {
+    // What `refuseImpersonated` and the mutation trail both rely on: they pass
+    // no `identities`, and the row is still attributable to the human.
+    const fake = createFakeRepository();
+    const audit = createAudit({ repository: fake.repository });
+
+    await audit.record(createContext(impersonatedPrincipal), {
+      event: "impersonation.refused",
+    });
+
+    expect(fake.rows[0]?.row).toMatchObject({
+      actorType: "staff",
+      actorId: "staff-1",
+      actingAsType: "user",
+      actingAsId: "user-9",
     });
   });
 });

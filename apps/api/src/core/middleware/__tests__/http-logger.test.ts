@@ -1,6 +1,13 @@
+import { createLogger } from "@repo/logger";
 import { describe, expect, it } from "vitest";
 
-import { accessLogLevel, resolveRequestId } from "../http-logger.js";
+import { createRequestContext, type Principal } from "../../context/index.js";
+import {
+  accessLogLevel,
+  principalProps,
+  resolveRequestId,
+  type LoggedRequest,
+} from "../http-logger.js";
 
 /**
  * ADR-0005: an inbound `X-Request-Id` is honoured only in a bounded, safe
@@ -94,5 +101,79 @@ describe("accessLogLevel", () => {
     expect(
       accessLogLevel({ url: undefined, statusCode: 200, failed: false }),
     ).toBe("info");
+  });
+});
+
+/**
+ * ADR-0005 names what the completion line carries, and ADR-0057 §6 adds one
+ * field to it: every request served under impersonation must be findable in
+ * the logs by the **operator's** id, not only by the account it ran as. That
+ * matters most for the requests the audit table deliberately does not take —
+ * the reads, which ADR-0058 logs rather than audits.
+ */
+describe("principalProps", () => {
+  const withPrincipal = (principal: Principal | null): LoggedRequest => {
+    const ctx = createRequestContext({
+      requestId: "req-1",
+      logger: createLogger({ level: "silent" }),
+    });
+
+    ctx.principal = principal;
+
+    return { ctx } as LoggedRequest;
+  };
+
+  it("says nothing at all before the request is authenticated", () => {
+    expect(principalProps(withPrincipal(null))).toEqual({});
+    expect(principalProps({} as LoggedRequest)).toEqual({});
+  });
+
+  it("carries the principal and its population on an ordinary session", () => {
+    expect(
+      principalProps(
+        withPrincipal({
+          kind: "user",
+          id: "user-9",
+          roles: ["customer"],
+          sessionId: "session-1",
+        }),
+      ),
+    ).toEqual({ principalId: "user-9", population: "user" });
+  });
+
+  it("carries both identities on an impersonated one", () => {
+    expect(
+      principalProps(
+        withPrincipal({
+          kind: "user",
+          id: "user-9",
+          roles: ["customer"],
+          sessionId: "session-1",
+          impersonatedBy: "staff-1",
+        }),
+      ),
+    ).toEqual({
+      principalId: "user-9",
+      population: "user",
+      // The staff member's id and never their address: the wire principal is
+      // where the email lives, and an access line is not the place for it.
+      impersonatedBy: "staff-1",
+    });
+  });
+
+  it("never puts an actor on a staff principal", () => {
+    // A staff session is never impersonated (ADR-0057 §4), and the field is on
+    // the customer shape alone — so this is a type-level guarantee restated as
+    // a runtime one.
+    expect(
+      principalProps(
+        withPrincipal({
+          kind: "staff",
+          id: "staff-1",
+          roles: ["admin"],
+          sessionId: "session-1",
+        }),
+      ),
+    ).toEqual({ principalId: "staff-1", population: "staff" });
   });
 });

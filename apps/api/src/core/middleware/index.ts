@@ -9,8 +9,11 @@ export {
 export {
   REQUEST_ID_HEADER,
   createHttpLogger,
+  principalProps,
   resolveRequestId,
+  type LoggedRequest,
 } from "./http-logger.js";
+export { createImpersonationTrail } from "./impersonation-trail.js";
 export { noStore } from "./no-store.js";
 export { notFoundHandler } from "./not-found.js";
 export {

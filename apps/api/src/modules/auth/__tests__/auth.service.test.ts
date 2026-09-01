@@ -3,6 +3,7 @@ import { sha256Base64url } from "@repo/crypto";
 import { createLogger } from "@repo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { Audit, AuditEntry } from "../../../core/audit/index.js";
 import {
   createRequestContext,
   type Principal,
@@ -10,7 +11,9 @@ import {
 } from "../../../core/context/index.js";
 import { createHashLimiter } from "../auth.hash-limiter.js";
 import type {
+  EndedImpersonation,
   NewSessionInput,
+  RevokeAllImpersonatedByInput,
   RevokeAllInput,
   RevokeInput,
   RotateSessionInput,
@@ -131,7 +134,8 @@ const createFakeSessions = () => {
         if (
           row.principalType === input.principalType &&
           row.principalId === input.principalId &&
-          row.revokedAt === null
+          row.revokedAt === null &&
+          row.id !== input.exceptSessionId
         ) {
           rows.set(row.id, { ...row, revokedAt: input.at });
           revoked += 1;
@@ -139,6 +143,27 @@ const createFakeSessions = () => {
       }
 
       return Promise.resolve(revoked);
+    },
+
+    /**
+     * The second revocation predicate (ADR-0057 §6): the rows a staff member
+     * is *impersonating through*, which the one above cannot see because they
+     * carry a customer's `principal_id` and the `user` population.
+     */
+    revokeAllImpersonatedBy: (input: RevokeAllImpersonatedByInput) => {
+      const ended: EndedImpersonation[] = [];
+
+      for (const row of rows.values()) {
+        if (
+          row.impersonatedByStaffId === input.staffId &&
+          row.revokedAt === null
+        ) {
+          rows.set(row.id, { ...row, revokedAt: input.at });
+          ended.push({ id: row.id, principalId: row.principalId });
+        }
+      }
+
+      return Promise.resolve(ended);
     },
   };
 
@@ -283,6 +308,40 @@ const createFakePrincipals = (
   return { adapter, rows, events } as const;
 };
 
+/**
+ * The audit writer, recording rather than inserting (ADR-0058).
+ *
+ * Only one event reaches it from this service — `impersonation.ended` on the
+ * exit — and what a unit test can prove about it is the pair of identities and
+ * the discipline: `record` is awaited, so a rejecting writer must fail the
+ * logout it belongs to.
+ */
+const createFakeAudit = () => {
+  const entries: AuditEntry[] = [];
+  let fail: Error | undefined;
+
+  const audit: Audit = {
+    record: (_ctx, entry) => {
+      if (fail !== undefined) return Promise.reject(fail);
+
+      entries.push(entry);
+
+      return Promise.resolve();
+    },
+    trail: (_ctx, entry) => {
+      entries.push(entry);
+    },
+  };
+
+  return {
+    audit,
+    entries,
+    failWith: (error: Error) => {
+      fail = error;
+    },
+  } as const;
+};
+
 /* ── harness ──────────────────────────────────────────────────────────────── */
 
 const context = (principal: Principal | null = null): RequestContext => {
@@ -316,6 +375,7 @@ const build = (
 ) => {
   const population = options.population ?? "staff";
   const sessions = createFakeSessions();
+  const audit = createFakeAudit();
   const hasher = createFakeHasher();
   const principals = createFakePrincipals(
     population,
@@ -346,6 +406,7 @@ const build = (
       ? {}
       : { impersonators: impersonators.adapter }),
     sessions: sessions.repository,
+    audit: audit.audit,
     hasher: hasher.hasher,
     tokens: createTokenService({
       secret: "unit-test-signing-key-at-least-32-characters",
@@ -368,7 +429,14 @@ const build = (
     },
   });
 
-  return { service, sessions, hasher, principals, impersonators } as const;
+  return {
+    service,
+    sessions,
+    audit,
+    hasher,
+    principals,
+    impersonators,
+  } as const;
 };
 
 const login = (harness: ReturnType<typeof build>, password: string) =>
@@ -629,6 +697,7 @@ describe("refresh", () => {
       population: "user",
       principals: staffHarness.principals.adapter,
       sessions: staffHarness.sessions.repository,
+      audit: staffHarness.audit.audit,
       hasher: staffHarness.hasher.hasher,
       tokens: createTokenService({
         secret: "unit-test-signing-key-at-least-32-characters",
@@ -705,6 +774,7 @@ describe("refresh", () => {
       principals: staffHarness.principals.adapter,
       // Same store, so the row genuinely exists — only its population differs.
       sessions: staffHarness.sessions.repository,
+      audit: staffHarness.audit.audit,
       hasher: staffHarness.hasher.hasher,
       tokens: createTokenService({
         secret: "unit-test-signing-key-at-least-32-characters",
@@ -1087,5 +1157,181 @@ describe("refreshing an impersonated session", () => {
 
     expect(rotated.refreshTokenExpiresAt).toBe("2026-08-18T13:01:00.000Z");
     expect(opened.refreshTokenExpiresAt).toBe("2026-08-18T13:00:00.000Z");
+  });
+});
+
+describe("ending an impersonated session", () => {
+  /** The principal `authenticate` builds from an impersonated access token. */
+  const impersonatedPrincipal = (sessionId: string): Principal => ({
+    kind: "user",
+    id: CUSTOMER_ID,
+    roles: ["customer"],
+    sessionId,
+    impersonatedBy: ACTOR_ID,
+  });
+
+  it("revokes with impersonation_ended and audits it, not as an ordinary logout", async () => {
+    // The distinction the trail exists for (ADR-0057 §6): "the customer signed
+    // out" and "a support operator finished acting as them" are different
+    // events, and `logout` is the same endpoint for both.
+    const harness = buildImpersonation();
+
+    await openImpersonated(harness);
+    await harness.service.logout(context(impersonatedPrincipal("session-1")));
+
+    expect([...harness.sessions.rows.values()][0]?.revokedAt).not.toBeNull();
+    expect(harness.audit.entries).toEqual([
+      {
+        event: "impersonation.ended",
+        identities: {
+          actor: { type: "staff", id: ACTOR_ID },
+          actingAs: { type: "user", id: CUSTOMER_ID },
+        },
+        data: { sessionId: "session-1", reason: "logout" },
+      },
+    ]);
+  });
+
+  it("names the staff member as the actor, never the customer", async () => {
+    // The inversion ADR-0058 warns about: mapping `ctx.principal` onto `actor`
+    // compiles, passes, and makes the one query an incident runs return
+    // nothing.
+    const harness = buildImpersonation();
+
+    await openImpersonated(harness);
+    await harness.service.logout(context(impersonatedPrincipal("session-1")));
+
+    expect(harness.audit.entries[0]?.identities?.actor.type).toBe("staff");
+  });
+
+  it("does not end the session when the audit row cannot be written", async () => {
+    // `record`'s lifecycle discipline (ADR-0058): the revoke and the row share
+    // a transaction, so an impersonation cannot end untraceably. The fakes
+    // have no atomicity, so what this pins is that the writer is *awaited* and
+    // its failure reaches the caller.
+    const harness = buildImpersonation();
+
+    await openImpersonated(harness);
+    harness.audit.failWith(new Error("audit_events is unreachable"));
+
+    await expect(
+      harness.service.logout(context(impersonatedPrincipal("session-1"))),
+    ).rejects.toThrow("audit_events is unreachable");
+  });
+
+  it("writes nothing and revokes as an ordinary logout on a real session", async () => {
+    // The supersession's terms: an ordinary session must show no diff.
+    const harness = build();
+
+    await login(harness, "correct-horse-battery");
+    await harness.service.logout(context(principalOf("session-1")));
+
+    expect(harness.audit.entries).toEqual([]);
+  });
+});
+
+describe("revoking a staff member's sessions", () => {
+  /**
+   * ADR-0057 §6, out of `D13.4`'s `security-reviewer` pass: the sessions a
+   * staff member is *impersonating through* are `principal_type = 'user'`
+   * rows, so every revocation the API had — disable, delete, forced logout —
+   * missed them entirely and left an operator revoked for cause with a
+   * full-access customer session.
+   */
+  it("reaches the impersonated rows the principal predicate cannot see", async () => {
+    const harness = buildImpersonation();
+
+    await openImpersonated(harness);
+
+    // The staff-population service over the same session store — which is how
+    // the container wires them: one `sessions` repository, two services.
+    const staffService = createAuthService({
+      population: "staff",
+      principals: harness.principals.adapter,
+      sessions: harness.sessions.repository,
+      audit: harness.audit.audit,
+      hasher: harness.hasher.hasher,
+      tokens: createTokenService({
+        secret: "unit-test-signing-key-at-least-32-characters",
+        issuer: "machxi-api-test",
+        accessTtlSec: 900,
+        now,
+      }),
+      hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
+      refreshTtlSec: REFRESH_TTL_SEC,
+      rotationGraceSec: GRACE_SEC,
+      impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
+      transaction: (fn) => fn(undefined as never),
+      now,
+    });
+
+    const revoked = await staffService.revokeSessionsFor(context(), {
+      principalId: ACTOR_ID,
+      reason: "account_disabled",
+    });
+
+    // Zero of the staff member's *own* sessions — they had none — and the
+    // impersonated row is gone anyway, which is the property.
+    expect(revoked).toBe(0);
+    expect([...harness.sessions.rows.values()][0]?.revokedAt).not.toBeNull();
+
+    // And it left a trail. Without this the exit control produced a complete
+    // `minted → exchanged → ended` and an operator revoked *for cause* — the
+    // case the sweep exists for — produced silence (ADR-0058).
+    expect(harness.audit.entries).toEqual([
+      {
+        event: "impersonation.ended",
+        identities: {
+          actor: { type: "staff", id: ACTOR_ID },
+          actingAs: { type: "user", id: CUSTOMER_ID },
+        },
+        data: { sessionId: "session-1", reason: "account_disabled" },
+      },
+    ]);
+  });
+
+  it("leaves an ordinary session of the same population alone", async () => {
+    // The equality is on `impersonated_by_staff_id`, which is null on every
+    // ordinary row, so nothing outside the delta can be reached by it.
+    const harness = build({ population: "staff" });
+
+    await login(harness, "correct-horse-battery");
+
+    await harness.service.revokeSessionsFor(context(), {
+      principalId: "99999999-9999-7999-8999-999999999999",
+      reason: "account_disabled",
+    });
+
+    expect([...harness.sessions.rows.values()][0]?.revokedAt).toBeNull();
+  });
+
+  it("does not sweep on the user population, where the column is never a subject", async () => {
+    const harness = buildImpersonation();
+
+    await openImpersonated(harness);
+
+    // The customer's *own* id, through the user-population service: the
+    // impersonated row is that customer's, so the first predicate already
+    // matches it and the second never runs.
+    const revoked = await harness.service.revokeSessionsFor(context(), {
+      principalId: CUSTOMER_ID,
+      reason: "logout_all",
+    });
+
+    expect(revoked).toBe(1);
+  });
+
+  it("still counts and revokes the staff member's own sessions", async () => {
+    // The sweep is additive: the number every caller reports is unchanged.
+    const harness = build({ population: "staff" });
+
+    await login(harness, "correct-horse-battery");
+
+    const revoked = await harness.service.revokeSessionsFor(context(), {
+      principalId: STAFF_ID,
+      reason: "admin_revoke",
+    });
+
+    expect(revoked).toBe(1);
   });
 });

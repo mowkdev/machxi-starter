@@ -65,41 +65,24 @@ export interface AuditEntry {
  * query an incident actually runs — "everything this staff member did" —
  * returns nothing at all.
  *
- * Today every principal is its own actor: `impersonatedBy` reaches
- * `ctx.principal` at `D13.5` (ADR-0057 §4), and this is the single place that
- * has to grow its branch when it does.
+ * **The branch arrived at `D13.5`**, which is what the trip wire that used to
+ * stand here (`ACTOR_BRANCH_PENDING`, written at `D13.2` and re-pointed at
+ * `D13.3`) existed to force: `impersonatedBy` is now on the customer shape of
+ * `Principal`, the wire failed `pnpm check-types` exactly as designed, and it
+ * was deleted in the same step that grew the branch below. This function is
+ * still the single place the mapping is made.
  */
 export const identitiesFromPrincipal = (
   principal: Principal,
-): AuditIdentities => ({
-  actor: { type: principal.kind, id: principal.id },
-});
-
-/**
- * The trip wire under the paragraph above.
- *
- * `identitiesFromPrincipal` is correct **only** while `Principal` has no actor
- * claim on it. The day `D13.5` adds `impersonatedBy` (ADR-0057 §4) this type
- * becomes `never`, `pnpm check-types` fails here, and the branch cannot be
- * forgotten — which matters because forgetting it is silent: every impersonated
- * row would name the customer as the actor, the gate would stay green, and the
- * one query an incident runs would return nothing.
- *
- * Delete both lines in the step that grows the branch.
- *
- * **Amended `D13.3`:** the probe reads the *user* branch, not `Principal`.
- * `keyof` over a union is the intersection of its members' keys, and `D13.3`
- * decided the field lives on the customer shape alone — `impersonatedBy` is on
- * `UserPrincipalResource` and deliberately not on `StaffPrincipalResource`
- * (ADR-0057 §4: the mint is `/admin/users/:id` only). Written against the
- * whole union, this trip wire would have stayed `true` through `D13.5`, the
- * gate would have stayed green, and the branch it exists to force would have
- * been forgotten silently — which is precisely the failure it was written for.
- */
-type UserPrincipal = Extract<Principal, { kind: "user" }>;
-type ActorClaimAbsentFromPrincipal =
-  "impersonatedBy" extends keyof UserPrincipal ? never : true;
-export const ACTOR_BRANCH_PENDING: ActorClaimAbsentFromPrincipal = true;
+): AuditIdentities =>
+  principal.kind === "user" && principal.impersonatedBy !== undefined
+    ? {
+        // The human who chose to act, and the account that served the request.
+        // Not the other way round, whatever `ctx.principal` looks like.
+        actor: { type: "staff", id: principal.impersonatedBy },
+        actingAs: { type: "user", id: principal.id },
+      }
+    : { actor: { type: principal.kind, id: principal.id } };
 
 export interface Audit {
   /**

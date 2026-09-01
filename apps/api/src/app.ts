@@ -8,6 +8,7 @@ import {
   createContextMiddleware,
   createErrorHandler,
   createHttpLogger,
+  createImpersonationTrail,
   notFoundHandler,
 } from "./core/middleware/index.js";
 import { createRoutes } from "./routes/index.js";
@@ -112,6 +113,14 @@ export const createApp = (container: Container): Express => {
   // rather than as an empty body.
   app.use(express.urlencoded({ extended: false, limit: JSON_BODY_LIMIT }));
 
+  // Immediately above the routes rather than anywhere earlier, which leaves
+  // ADR-0011's documented 1–5 prefix exactly as it is: this is not a sixth
+  // entry in that order, it is one wrapper around the router. Every route the
+  // API has is mounted on the line below, so "no route added later can escape
+  // the audit trail" (ADR-0057 §6) holds from here just as it would from the
+  // top of the chain — and it costs a `Set` lookup on a read and nothing at
+  // all on an ordinary session.
+  app.use(createImpersonationTrail({ audit: container.audit }));
   app.use(createRoutes(container));
 
   app.use(notFoundHandler);

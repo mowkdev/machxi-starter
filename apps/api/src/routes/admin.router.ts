@@ -53,6 +53,9 @@ export const createAdminRouter = (container: Container): Router => {
       // where the population is `user` (ADR-0057 §3), and the condition that
       // says so lives in the router beside the route.
       impersonation: container.controllers.impersonation,
+      // A no-op on this segment for the same reason: only a customer principal
+      // can carry an actor (ADR-0057 §4), so nothing here can be refused by it.
+      refuseImpersonated: container.refuseImpersonated,
     }),
   );
 

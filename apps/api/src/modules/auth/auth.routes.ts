@@ -41,6 +41,14 @@ export interface AuthRouterDeps {
    * guards, where a reader can see it.
    */
   readonly impersonation: Pick<ImpersonationController, "exchange">;
+  /**
+   * ADR-0057 §5's exclusion guard, mounted on `logout-all` (ADR-0019).
+   *
+   * Passed to both segments and refusing on neither unless the principal
+   * carries an actor, which only a customer's can: the staff mount is a no-op
+   * by construction rather than by a condition someone has to maintain.
+   */
+  readonly refuseImpersonated: RequestHandler;
 }
 
 export const createAuthRouter = ({
@@ -50,6 +58,7 @@ export const createAuthRouter = ({
   loginRateLimiter,
   refreshRateLimiter,
   impersonation,
+  refuseImpersonated,
 }: AuthRouterDeps): Router => {
   const router = Router();
 
@@ -128,9 +137,16 @@ export const createAuthRouter = ({
   // above: this factory is mounted once per segment, so the segment is what
   // decides which CSRF cookie is checked (ADR-0056).
   router.post("/logout", createCsrfGuard({ population }), controller.logout);
+  // `logout-all` is on ADR-0057 §5's exclusion list and `logout` deliberately
+  // is not: one ends the **customer's** real sessions on every device they own,
+  // which is a takeover step and not support work, and the other is the
+  // impersonation banner's own exit control. The guard sits after the CSRF
+  // check and before the controller, so a refusal costs one comparison and
+  // reaches no service.
   router.post(
     "/logout-all",
     createCsrfGuard({ population }),
+    refuseImpersonated,
     controller.logoutAll,
   );
   router.get("/me", controller.me);

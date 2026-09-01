@@ -2,6 +2,7 @@ export {
   accountDisabled,
   currentPasswordInvalid,
   impersonationHandoffInvalid,
+  impersonationRefused,
   invalidCredentials,
   invalidRefreshToken,
   refreshReused,
@@ -61,6 +62,7 @@ export {
 } from "./auth.cookies.js";
 export {
   createAuthenticate,
+  createRefuseImpersonated,
   readBearerToken,
   type Authenticate,
   type AuthenticateDeps,
@@ -71,6 +73,8 @@ export {
 } from "./auth.principals.js";
 export {
   createSessionsRepository,
+  type EndedImpersonation,
+  type RevokeAllImpersonatedByInput,
   type SessionRecord,
   type SessionsRepository,
 } from "./auth.repository.js";

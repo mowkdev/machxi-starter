@@ -4031,7 +4031,7 @@
     },
     {
       "name": "Impersonation",
-      "description": "The mint, the handoff and the exchange (ADR-0057). It runs after 'Admin › Users' and 'Admin › Role guards' because it acts on {{lastUserId}} and needs {{managerAccessToken}}, and before 'Teardown', which ends every session this run opened.",
+      "description": "The mint, the handoff, the exchange, the exclusions and the exit (ADR-0057, ADR-0058). It runs after 'Admin › Users' and 'Admin › Role guards' because it acts on {{lastUserId}} and needs {{managerAccessToken}}, and before 'Teardown', which ends every session this run opened.\n\nThe requests are ordered as the flow is: what an impersonated session may do, what it may not, and how it ends — the exit last, because every request after it would be carrying a dead token.",
       "item": [
         {
           "name": "A manager may not mint",
@@ -4265,6 +4265,189 @@
           }
         },
         {
+          "name": "A settings write under impersonation is allowed, and audited",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the write landed\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.theme).to.eql(\"dark\");",
+                  "});",
+                  "",
+                  "// ADR-0057 section 5: everything the customer can do bar the three",
+                  "// takeover-enabling operations, and the price of that permission is",
+                  "// that every mutating request lands in audit_events with both",
+                  "// identities on it (ADR-0058). That row is written after the response,",
+                  "// on the trail discipline, so it is not something this request can",
+                  "// assert; the API's integration suite owns that half."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"dark\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "settings"]
+            },
+            "description": "Reproducing an issue sometimes needs the customer's own display settings, so settings writes are deliberately not excluded. The operator's call at scoping, and every one of them is audited."
+          }
+        },
+        {
+          "name": "An impersonator may not change the password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_IMPERSONATION_REFUSED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_IMPERSONATION_REFUSED\");",
+                  "});",
+                  "",
+                  "// One code for the class (ADR-0057 section 5). 403 and not 401: the",
+                  "// session is valid and stays valid, and the code sits outside",
+                  "// TERMINAL_AUTH_CODES so a refused dialog cannot sign the operator out",
+                  "// of an impersonation they are in the middle of."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordReset}}\",\n  \"newPassword\": \"TakenOver!2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "change-password"]
+            },
+            "description": "The takeover operation par excellence: a new password is a credential the customer never chose, on an account they cannot get back. The guard runs before the schema and before the argon2 pool, so nothing is verified and nothing is written."
+          }
+        },
+        {
+          "name": "An impersonator may not close the account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_IMPERSONATION_REFUSED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_IMPERSONATION_REFUSED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordReset}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "Self-deletion (ADR-0055 section 4) ends every session and releases the address. Support does not close a customer's account by pretending to be them."
+          }
+        },
+        {
+          "name": "An impersonator may not end the customer's other sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_IMPERSONATION_REFUSED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_IMPERSONATION_REFUSED\");",
+                  "});",
+                  "",
+                  "// The third and last entry on the exclusion list. `logout` is",
+                  "// deliberately not on it, and the request further down is why: that one",
+                  "// is the exit."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/logout-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "logout-all"]
+            },
+            "description": "Ending the customer's real sessions on every device they own locks the owner out while the impersonator stays in, which is a takeover step and not support work."
+          }
+        },
+        {
           "name": "Replaying the handoff is refused",
           "event": [
             {
@@ -4350,6 +4533,121 @@
               "path": ["api", "v1", "admin", "auth", "impersonate"]
             },
             "description": "The twin that must not exist. Registration is conditional on the factory's population, so the guard is that the route is never created."
+          }
+        },
+        {
+          "name": "Exit the impersonation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// The banner's one control calls the ordinary logout, and the service",
+                  "// sees the actor column: the row is revoked with reason",
+                  "// impersonation_ended and an impersonation.ended audit row is written in",
+                  "// the same transaction (ADR-0057 section 6)."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "logout"]
+            },
+            "description": "The exit. Not on the exclusion list, because leaving is the one session operation an impersonator must always be able to perform."
+          }
+        },
+        {
+          "name": "The impersonated session is dead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
+                  "});",
+                  "",
+                  "// Server-side, not merely forgotten by the client: authenticate asks the",
+                  "// database whether the session is still alive on every request",
+                  "// (ADR-0018)."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "The proof that the exit revoked rather than cleared a cookie."
+          }
+        },
+        {
+          "name": "And its refresh token is dead too",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "// A revoked session cannot be rotated back to life, which is what",
+                  "// separates an exit from an expiry."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{impersonatedRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "refresh"]
+            },
+            "description": "The other half of the credential the exchange issued, refused for the same reason."
           }
         }
       ]

@@ -32,6 +32,22 @@ export type Principal =
       readonly id: string;
       readonly roles: readonly UserRole[];
       readonly sessionId: string;
+      /**
+       * The **staff** member acting as this principal, on a session minted by
+       * impersonation (ADR-0057 §4). Absent on every ordinary session.
+       *
+       * An id and nothing more: the wire form's `impersonatedBy: { id, email }`
+       * is resolved from the staff table at the auth endpoints, and resolving
+       * an address here would be a second primary-key probe on every
+       * authenticated request. `authenticate` reads it off the access token's
+       * RFC 8693 `act` claim, which the exchange stamped from the same session
+       * row and which nothing ever rewrites.
+       *
+       * It is on the customer shape alone, because the mint is
+       * `/admin/users/:id` only: a staff principal is never impersonated, and
+       * a field it cannot hold is one no guard has to check for it.
+       */
+      readonly impersonatedBy?: string | undefined;
     };
 
 export interface RequestContext {

@@ -94,7 +94,7 @@ const serializers = {
  * What the access log reads off a request. `originalUrl` is Express's; the base
  * `IncomingMessage` has only `url`.
  */
-type LoggedRequest = IncomingMessage & {
+export type LoggedRequest = IncomingMessage & {
   id?: unknown;
   originalUrl?: string;
   ctx?: RequestContext;
@@ -131,15 +131,33 @@ const requestPath = (req: LoggedRequest): string | undefined =>
  * `principal` on the access line once the request is authenticated (ADR-0005).
  * At completion time `ctx` is there unless the request failed before the
  * context middleware ran.
+ *
+ * `impersonatedBy` joins it on a session minted by impersonation (ADR-0057
+ * §6): every request served under one carries **both** identities, so a
+ * question that starts "what did this operator do" can be answered from the
+ * access log even for the requests the audit table does not take — the reads,
+ * which ADR-0058 logs rather than audits. It is the staff member's id and
+ * never their address; the wire principal is where the email lives.
+ *
+ * Exported so the shape is unit-tested directly rather than inferred from
+ * whatever a running server happened to print, the reason `accessLogLevel` is.
  */
-const principalProps = (
+export const principalProps = (
   req: LoggedRequest,
-): { principalId: string; population: string } | Record<string, never> => {
+):
+  | { principalId: string; population: string; impersonatedBy?: string }
+  | Record<string, never> => {
   const principal = req.ctx?.principal;
 
-  return principal == null
-    ? {}
-    : { principalId: principal.id, population: principal.kind };
+  if (principal == null) return {};
+
+  return {
+    principalId: principal.id,
+    population: principal.kind,
+    ...(principal.kind === "user" && principal.impersonatedBy !== undefined
+      ? { impersonatedBy: principal.impersonatedBy }
+      : {}),
+  };
 };
 
 export const createHttpLogger = (logger: Logger): RequestHandler =>

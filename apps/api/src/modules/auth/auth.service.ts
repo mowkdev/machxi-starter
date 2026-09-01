@@ -10,6 +10,7 @@ import type { PasswordHasher } from "@repo/crypto";
 import { randomToken, sha256Base64url } from "@repo/crypto";
 import type { DbExecutor } from "@repo/db";
 
+import type { Audit } from "../../core/audit/index.js";
 import { requirePopulation } from "../../core/auth/policies.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { internal } from "../../core/errors/index.js";
@@ -151,6 +152,17 @@ export interface AuthServiceDeps {
   readonly population: Population;
   readonly principals: PrincipalAdapter;
   readonly sessions: SessionsRepository;
+  /**
+   * The audit writer (ADR-0058), for the one lifecycle event this service
+   * owns: `impersonation.ended`, written when the exit control ends a session
+   * minted by impersonation (ADR-0057 §6).
+   *
+   * Required rather than optional on both populations, even though only the
+   * `user` instance can ever write a row: a dependency a caller may omit is a
+   * dependency a future wiring mistake omits silently, and the failure mode
+   * here is an impersonation that ends with no trail.
+   */
+  readonly audit: Audit;
   readonly hasher: PasswordHasher;
   readonly tokens: TokenService;
   readonly hashLimiter: HashLimiter;
@@ -188,6 +200,7 @@ export const createAuthService = ({
   population,
   principals,
   sessions,
+  audit,
   hasher,
   tokens,
   hashLimiter,
@@ -201,6 +214,97 @@ export const createAuthService = ({
 }: AuthServiceDeps) => {
   const refreshExpiryFrom = (at: Date): Date =>
     new Date(at.getTime() + refreshTtlSec * 1000);
+
+  /**
+   * Every "end this account's sessions" path of this service, in one place
+   * (ADR-0057 §6, amended `D13.5`).
+   *
+   * Two predicates, not one. `revokeAllForPrincipal` matches the rows whose
+   * `principal_id` is the account — which is what every revocation in the API
+   * has ever meant — and on the **staff** population a second statement
+   * matches the rows that account is *impersonating through*. Those rows are
+   * `principal_type = 'user'` carrying a customer's id, so the first predicate
+   * cannot see them: disabling an operator, deleting them, or pressing the
+   * forced-logout button would otherwise leave them a full-access customer
+   * session for the rest of `IMPERSONATION_SESSION_TTL`.
+   *
+   * It runs on **every** staff revoke-all path rather than only the three
+   * ADR-0057 §6 enumerated, which is the amendment this function is: a
+   * revocation that must not reach an impersonated session does not exist, and
+   * a seventh path added later inherits the sweep instead of having to
+   * remember it. `exceptSessionId` is deliberately not carried across — it
+   * spares the caller's own *staff* session, and an impersonated session is a
+   * different row of a different population that the caller is not on.
+   *
+   * Each ended row gets an **`impersonation.ended` audit row of its own**, on
+   * `record`'s lifecycle discipline and inside the caller's transaction
+   * (`D13.5`, out of `security-reviewer`'s finding 2). Without it the exit
+   * control produced `minted → exchanged → ended` and an operator revoked *for
+   * cause* — the case this sweep exists for, and the one an incident actually
+   * queries — produced `minted → exchanged → ` nothing at all, with
+   * `sessions.revoked_reason` as the only trace: a prunable free-text column,
+   * which is exactly the near-audit ADR-0058 §Context was written to replace.
+   *
+   * Ordinary sessions are untouched by construction: `impersonated_by_staff_id`
+   * is null on all of them, and the second predicate is an equality on it — so
+   * on the user population nothing below the first statement runs at all.
+   */
+  const revokeEverySessionOf = async (
+    ctx: RequestContext,
+    input: {
+      readonly principalId: string;
+      readonly reason: RevokeReason;
+      readonly at: Date;
+      readonly exceptSessionId?: string | undefined;
+    },
+    tx?: DbExecutor,
+  ): Promise<{ readonly revoked: number; readonly impersonated: number }> => {
+    const revoked = await sessions.revokeAllForPrincipal(
+      {
+        principalType: population,
+        principalId: input.principalId,
+        reason: input.reason,
+        at: input.at,
+        exceptSessionId: input.exceptSessionId,
+      },
+      tx,
+    );
+
+    if (population !== "staff") return { revoked, impersonated: 0 };
+
+    const ended = await sessions.revokeAllImpersonatedBy(
+      {
+        staffId: input.principalId,
+        // Its own reason, never the caller's: the audit trail has to be able
+        // to tell "this staff session was revoked" from "the customer sessions
+        // that staff member was driving ended with it".
+        reason: REVOKE_REASONS.impersonationEnded,
+        at: input.at,
+      },
+      tx,
+    );
+
+    for (const session of ended) {
+      await audit.record(
+        ctx,
+        {
+          event: "impersonation.ended",
+          identities: {
+            actor: { type: "staff", id: input.principalId },
+            actingAs: { type: "user", id: session.principalId },
+          },
+          // `reason` is the revocation that ended it — `account_disabled`,
+          // `account_deleted`, `admin_revoke` — which is the difference
+          // between "the operator left" and "the operator was removed", and
+          // the first question asked of a row like this.
+          data: { sessionId: session.id, reason: input.reason },
+        },
+        tx,
+      );
+    }
+
+    return { revoked, impersonated: ended.length };
+  };
 
   /**
    * `sessions.impersonated_by_staff_id` → the wire field the banner renders
@@ -493,8 +597,7 @@ export const createAuthService = ({
       }
 
       if (!principal.active) {
-        await sessions.revokeAllForPrincipal({
-          principalType: population,
+        await revokeEverySessionOf(ctx, {
           principalId: principal.id,
           reason: REVOKE_REASONS.accountDisabled,
           at,
@@ -657,15 +760,75 @@ export const createAuthService = ({
       return auth;
     },
 
-    /** `POST /auth/logout` — revokes the session the access token names. */
+    /**
+     * `POST /auth/logout` — revokes the session the access token names.
+     *
+     * **And it is the impersonation exit** (ADR-0057 §6). `logout` is
+     * deliberately not on §5's exclusion list, because the banner's one
+     * control calls it: the operator leaves the same way the customer would.
+     * What changes when the actor column is set is the reason written to the
+     * row and one audit event — the trail has to tell "the customer signed
+     * out" apart from "a support operator finished acting as them", the same
+     * distinction `passwordReset` draws against `passwordChanged`.
+     *
+     * The impersonated branch is transactional: the revoke and the
+     * `impersonation.ended` row commit together, on `audit.record`'s lifecycle
+     * discipline, so no impersonation can end without its trail (ADR-0058).
+     * An ordinary logout takes the identical single-statement path it always
+     * has, transaction included — there is nothing to join.
+     */
     logout: async (ctx: RequestContext): Promise<void> => {
       const principal = requirePopulation(ctx, population);
       const at = now();
+      const actorId =
+        principal.kind === "user" ? principal.impersonatedBy : undefined;
 
-      await sessions.revoke({
-        id: principal.sessionId,
-        reason: REVOKE_REASONS.logout,
-        at,
+      if (actorId === undefined) {
+        await sessions.revoke({
+          id: principal.sessionId,
+          reason: REVOKE_REASONS.logout,
+          at,
+        });
+
+        ctx.logger.info(
+          {
+            population,
+            principalId: principal.id,
+            sessionId: principal.sessionId,
+          },
+          "logged out",
+        );
+
+        return;
+      }
+
+      await transaction(async (tx) => {
+        await sessions.revoke(
+          {
+            id: principal.sessionId,
+            reason: REVOKE_REASONS.impersonationEnded,
+            at,
+          },
+          tx,
+        );
+
+        await audit.record(
+          ctx,
+          {
+            event: "impersonation.ended",
+            // Explicit rather than derived, even though `ctx.principal` would
+            // derive the same pair here: this row states the two identities
+            // the event is *about*, and a reader of this call site should not
+            // have to open the audit service to find out which way round they
+            // go (ADR-0058).
+            identities: {
+              actor: { type: "staff", id: actorId },
+              actingAs: { type: "user", id: principal.id },
+            },
+            data: { sessionId: principal.sessionId, reason: "logout" },
+          },
+          tx,
+        );
       });
 
       ctx.logger.info(
@@ -673,25 +836,32 @@ export const createAuthService = ({
           population,
           principalId: principal.id,
           sessionId: principal.sessionId,
+          impersonatedBy: actorId,
         },
-        "logged out",
+        "impersonation ended",
       );
     },
 
-    /** `POST /auth/logout-all` — every device, including this one. */
+    /**
+     * `POST /auth/logout-all` — every device, including this one.
+     *
+     * On the user segment this is one of ADR-0057 §5's excluded operations and
+     * an impersonated caller never reaches it: `refuseImpersonated` is mounted
+     * on the route, because ending the *customer's* real sessions everywhere
+     * is a takeover step and not support work.
+     */
     logoutAll: async (ctx: RequestContext): Promise<void> => {
       const principal = requirePopulation(ctx, population);
       const at = now();
 
-      const revoked = await sessions.revokeAllForPrincipal({
-        principalType: population,
+      const { revoked, impersonated } = await revokeEverySessionOf(ctx, {
         principalId: principal.id,
         reason: REVOKE_REASONS.logoutAll,
         at,
       });
 
       ctx.logger.info(
-        { population, principalId: principal.id, revoked },
+        { population, principalId: principal.id, revoked, impersonated },
         "logged out of every session",
       );
     },
@@ -717,8 +887,7 @@ export const createAuthService = ({
         // The account was deleted or disabled inside the token's lifetime.
         // Revoking here rather than only refusing means the refresh token dies
         // with it, instead of minting a fresh access token 15 minutes later.
-        await sessions.revokeAllForPrincipal({
-          principalType: population,
+        await revokeEverySessionOf(ctx, {
           principalId: authenticated.id,
           reason:
             principal === undefined
@@ -754,24 +923,22 @@ export const createAuthService = ({
       ctx: RequestContext,
       { principalId, reason, exceptSessionId, tx }: RevokeSessionsForInput,
     ): Promise<number> => {
-      const revoked = await sessions.revokeAllForPrincipal(
-        {
-          principalType: population,
-          principalId,
-          reason,
-          at: now(),
-          exceptSessionId,
-        },
+      const { revoked, impersonated } = await revokeEverySessionOf(
+        ctx,
+        { principalId, reason, at: now(), exceptSessionId },
         tx,
       );
 
-      if (revoked > 0) {
+      if (revoked > 0 || impersonated > 0) {
         ctx.logger.info(
-          { population, principalId, revoked, reason },
+          { population, principalId, revoked, impersonated, reason },
           "sessions revoked",
         );
       }
 
+      // The account's **own** sessions, which is what every caller counts and
+      // reports. The impersonated rows are a different population's and are on
+      // the log line above rather than in this number.
       return revoked;
     },
 

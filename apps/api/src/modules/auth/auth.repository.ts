@@ -93,6 +93,26 @@ export interface RevokeAllInput {
   readonly exceptSessionId?: string | undefined;
 }
 
+/**
+ * One session ended by {@link SessionsRepository.revokeAllImpersonatedBy}.
+ *
+ * The customer's id, because that is what the `impersonation.ended` audit row
+ * needs for its acting-as and what only the row can supply: the caller knows
+ * which staff member it revoked and has no idea whose accounts they were in.
+ */
+export interface EndedImpersonation {
+  readonly id: string;
+  readonly principalId: string;
+}
+
+/** What {@link SessionsRepository.revokeAllImpersonatedBy} acts on (ADR-0057 §6). */
+export interface RevokeAllImpersonatedByInput {
+  /** The staff member in `impersonated_by_staff_id` — never the session's own principal. */
+  readonly staffId: string;
+  readonly reason: string;
+  readonly at: Date;
+}
+
 /** Selected by every read, so a caller cannot depend on a column by accident. */
 const recordColumns = {
   id: sessions.id,
@@ -262,6 +282,49 @@ export const createSessionsRepository = (db: DbExecutor) =>
         .returning({ id: sessions.id });
 
       return revoked.length;
+    },
+
+    /**
+     * Revokes every live session **minted by impersonation on behalf of one
+     * staff member** (ADR-0057 §6).
+     *
+     * The second revocation predicate, and it is a different question from the
+     * one above: an impersonated row is `principal_type = 'user'` carrying the
+     * customer's id, so `revokeAllForPrincipal({ principalType: "staff", … })`
+     * — which is what every revocation path in the API calls — does not match
+     * a single one of them. Without this, disabling an operator for cause left
+     * them a full-access customer session, rotating happily, for the rest of
+     * `IMPERSONATION_SESSION_TTL`.
+     *
+     * `impersonated_by_staff_id` is never null on a match, so no ordinary
+     * session can be reached by this statement whatever is passed to it —
+     * which is what keeps ADR-0018's behaviour identical outside the deltas.
+     *
+     * @returns the ended sessions, and not merely how many. Each one is an
+     *   impersonation that ended, and ADR-0058's `impersonation.ended` names
+     *   the customer it ended *on* — which is this row's `principal_id` and
+     *   nothing the caller could have known.
+     */
+    revokeAllImpersonatedBy: async (
+      input: RevokeAllImpersonatedByInput,
+      tx: DbExecutor = db,
+    ): Promise<readonly EndedImpersonation[]> => {
+      const revoked = await tx
+        .update(sessions)
+        .set({
+          revokedAt: input.at,
+          revokedReason: input.reason,
+          updatedAt: input.at,
+        })
+        .where(
+          and(
+            eq(sessions.impersonatedByStaffId, input.staffId),
+            isNull(sessions.revokedAt),
+          ),
+        )
+        .returning({ id: sessions.id, principalId: sessions.principalId });
+
+      return revoked;
     },
 
     // `last_used_at` is written by `rotate` above and nowhere else: refresh is
