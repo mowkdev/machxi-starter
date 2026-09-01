@@ -134,6 +134,40 @@ export const useRevokeUserSessions = () => {
 };
 
 /**
+ * The impersonation mint (ADR-0057 §1, `D13.8`).
+ *
+ * **`CREDENTIAL_MUTATION` for the response rather than for the variables**,
+ * which is a first in this app and the reason it is spelled out. Every other
+ * user of that marker carries a plaintext password *in*; this one carries a
+ * live handoff token *out*, and TanStack Query keeps a settled mutation's
+ * `data` in the mutation cache for `gcTime` exactly as it keeps its
+ * `variables`. Without the marker a one-time credential with a sixty-second
+ * life would sit in memory reachable from `queryClient.getMutationCache()` for
+ * five minutes — four of them after the token is dead, one of them while it is
+ * not. The posture is `shared/api/credential-mutation.ts`'s: nothing reads it,
+ * and the point is that nothing *can*.
+ *
+ * **It invalidates nothing**, for the reason `useRevokeUserSessions` does not:
+ * the mint writes `impersonation_handoffs` and an audit row, and touches no
+ * field of the `users` row this app caches.
+ *
+ * **And it declares no `success` outcome.** The success path navigates this tab
+ * to the customer app (`ImpersonateUserDialog`), so a toast raised here would
+ * be raised onto a document that is being torn down — an outcome nobody can
+ * read is worse than none, because it looks maintained. The failure keeps the
+ * default toast: a refused mint leaves the operator exactly where they were,
+ * looking at the confirm, which is where ADR-0034's message map can reach them.
+ */
+export const useImpersonateUser = () => {
+  const api = useApi();
+
+  return useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: (id: string) => api.impersonate(id),
+  });
+};
+
+/**
  * The **soft** delete (ADR-0028), which is why the list is invalidated rather
  * than the row being dropped from the cache: the account stays listed, with
  * `deletedAt` set and `status` written to `disabled`, and the grid has to show

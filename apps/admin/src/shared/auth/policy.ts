@@ -45,7 +45,24 @@ export type ResourceName = "staff" | "users";
  * the one the routers use, which is the whole objection to permission strings.
  */
 export type ResourceAction =
-  "read" | "create" | "update" | "delete" | "setPassword" | "revokeSessions";
+  | "read"
+  | "create"
+  | "update"
+  | "delete"
+  | "setPassword"
+  | "revokeSessions"
+  /**
+   * `POST /admin/users/:id/impersonate` (`D13.8`, ADR-0057 §1/§7) — named for
+   * the route like the five above it.
+   *
+   * **The first action no resource row grants uniformly**, and the first live
+   * case for the `Partial` in `ResourcePolicy`: `staff` has no such route at
+   * all — the mint is `/admin/users/:id` only, and staff impersonating staff is
+   * a loose end ADR-0057 explicitly does not take — so `staff` has no
+   * `impersonate` key, which is deny-by-default describing the API rather than
+   * a hole in a transcription.
+   */
+  | "impersonate";
 
 /**
  * This table's shape, from `@repo/app-services` since `D9.6`.
@@ -74,9 +91,10 @@ export const RESOURCE_POLICY = {
   },
   /*
    * Mounted `authorize("admin", "manager")` — a manager may *read* the customer
-   * base — and `users.routes.ts` narrows five writing routes back to
+   * base — and `users.routes.ts` narrows six writing routes back to
    * `authorize("admin")`: `POST /`, `PATCH /:id`, `POST /:id/sessions/revoke`,
-   * `POST /:id/password`, `DELETE /:id`. Five, counted from the call sites.
+   * `POST /:id/password`, `POST /:id/impersonate`, `DELETE /:id`. Six, counted
+   * from the call sites — five until `D13.4` added the mint.
    */
   users: {
     read: ["admin", "manager"],
@@ -85,6 +103,26 @@ export const RESOURCE_POLICY = {
     delete: ["admin"],
     setPassword: ["admin"],
     revokeSessions: ["admin"],
+    /*
+     * ADR-0057 §1: `admin` only, never `manager` — reading the customer base is
+     * a manager's job and becoming a customer is not. `super_admin` passes on
+     * `can`'s one bypass line, as it does at the guard.
+     *
+     * **Gated rather than shown-and-refused, which the other five writes are
+     * not uniformly** (ADR-0042 §Containment controls): reset password and sign
+     * out everywhere stay visible to a manager because they are what somebody
+     * reaches for *during* an incident, and a hidden control is a silent
+     * absence. Impersonation is the opposite — it is the highest-privilege
+     * affordance in this app, and nothing about an incident is made worse by
+     * its absence.
+     *
+     * A third reason was written here and struck: that an offered mint would
+     * spend one of §1's per-actor budget for a `403`. It would not. The
+     * limiter mounts **after** `authorize` precisely so that a refused
+     * `manager` spends nothing (ADR-0057 §1, amended `D13.4`) — that budget
+     * bounds the operators who *can* mint.
+     */
+    impersonate: ["admin"],
   },
   /*
    * **`/profile` is deliberately absent.** It mounts with no `authorize` at

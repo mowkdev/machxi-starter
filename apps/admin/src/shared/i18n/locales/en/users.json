@@ -38,6 +38,7 @@
     "edit": "Edit",
     "resetPassword": "Reset password",
     "revokeSessions": "Sign out everywhere",
+    "impersonate": "Impersonate",
     "delete": "Delete"
   },
   "create": {
@@ -62,6 +63,11 @@
     "title_other": "Delete {{count}} user accounts?",
     "description": "Each account is kept and marked deleted, and every session ends. They cannot sign in, and admin edits are refused. Their email addresses become available to register again — there is no undo. An account that is already deleted will be refused, and you will be told which.",
     "confirm": "Delete"
+  },
+  "impersonate": {
+    "title": "Open the customer app as {{email}}?",
+    "description": "This tab moves to the customer app signed in as them, with a banner naming you both and a way out. Your own session here is untouched — come back and you are still signed in as yourself. Changing their password, deleting their account and signing them out everywhere are refused while you are there, and everything else you do is recorded against both of you.",
+    "confirm": "Impersonate"
   },
   "revokeSessions": {
     "title": "Sign {{email}} out everywhere?",

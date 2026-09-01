@@ -1,3 +1,4 @@
+import { ImpersonateUserDialog } from "./impersonate-user-dialog";
 import { ResetUserPasswordDialog } from "./reset-user-password-dialog";
 import type { UserAction } from "./types";
 import {
@@ -31,6 +32,8 @@ export const UserDialogs = ({
       return <ResetUserPasswordDialog user={action.user} onClose={onClose} />;
     case "revoke-sessions":
       return <RevokeUserSessionsDialog user={action.user} onClose={onClose} />;
+    case "impersonate":
+      return <ImpersonateUserDialog user={action.user} onClose={onClose} />;
     case "delete":
       return <DeleteUserDialog user={action.user} onClose={onClose} />;
     case "bulk-delete":

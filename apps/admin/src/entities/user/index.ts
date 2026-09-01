@@ -4,6 +4,7 @@ export { userKeys } from "./user.keys";
 export {
   useCreateUser,
   useDeleteUser,
+  useImpersonateUser,
   useRevokeUserSessions,
   useSetUserPassword,
   useUser,

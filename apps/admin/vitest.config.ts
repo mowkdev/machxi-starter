@@ -66,6 +66,16 @@ export default mergeConfig(
          * the lens asks `renderApp` for it, which needs no environment.
          */
         VITE_I18N_PSEUDO: "false",
+        /*
+         * The customer app's origin (`D13.8`), pinned for the reason
+         * `VITE_API_URL` is: `shared/config` parses it at module load and the
+         * schema requires it, so a suite that read this from outside the
+         * repository would fail on a machine without an `apps/admin/.env` and
+         * would be invisible to Turbo's hash on one with it. The value is a
+         * hostname no test resolves — the Impersonate action's assertion is on
+         * the URL it hands to `window.open`, which is never fetched.
+         */
+        VITE_CUSTOMER_APP_URL: "http://customer.test",
       },
     },
   }),

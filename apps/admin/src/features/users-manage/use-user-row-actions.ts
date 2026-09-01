@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
 import { useMemo } from "react";
 
+import { useCan } from "@/shared/auth";
 import { useT } from "@/shared/i18n";
 import type { RowAction } from "@/shared/grid/types";
 import type { GridCapabilities } from "@/shared/resource/types";
@@ -38,6 +39,17 @@ import type { UserActionHandler } from "./types";
  * confirm and a credential ceremony must not be addressable. The staff menu
  * splits the same way for the same reason.
  *
+ * **Impersonate is gated by `can()` directly, and it is the first entry here
+ * that is** (`D13.8`, ADR-0057 §7). Every other flag in this menu arrives
+ * pre-narrowed in the capability block, which is ADR-0042's arrangement and
+ * exists so `shared/grid` never learns a resource's name — but `impersonate`
+ * is not a grid capability and must not become one: `GridCapabilities` lives in
+ * `@repo/resource`, a platform package every app is built from, and a
+ * `canImpersonate` flag there would put one deployment's feature in the
+ * vocabulary of all of them. So the conjunction happens here instead, where the
+ * resource's name is already known, and the block keeps the four flags a grid
+ * actually reads.
+ *
  * **Since `D4.3` the menu reads the capability block** (ADR-0038), already
  * narrowed by ADR-0042's `can()`. This resource is where that narrowing earns
  * its keep: `/admin/users` mounts `authorize("admin", "manager")` and the router
@@ -55,6 +67,7 @@ export const useUserRowActions = (
 ): readonly RowAction<UserResource>[] => {
   const { t } = useT("users");
   const navigate = useNavigate();
+  const can = useCan();
   const { openState } = useRecordNavigation();
 
   return useMemo(() => {
@@ -72,6 +85,45 @@ export const useUserRowActions = (
             // page and filters travel as history state (ADR-0044, `D5.3`).
             state: openState,
           });
+        },
+      });
+
+    /*
+     * Between the navigation and the credential controls, which is where it
+     * belongs on both counts: it is a way of *looking at* the account rather
+     * than of changing it, and it is not one of the three ADR-0042 keeps
+     * permanently visible. A `manager` never sees it — the one entry in this
+     * menu `can()` removes rather than defers, because impersonation is not a
+     * containment control and hiding it costs nobody anything during an
+     * incident. (Not because a refused `manager` would spend rate-limit
+     * budget: ADR-0057 §1's limiter mounts after `authorize`, so they spend
+     * nothing. The budget argument belongs to `isDisabled` below, where the
+     * caller is an `admin` and the request really is made.)
+     *
+     * **`isDisabled` predicts a refusal here, and nowhere else in this menu.**
+     * The paragraph at the top of this file declines to grey out the other
+     * four actions on a soft-deleted row, and every clause of that argument
+     * inverts for this one. The permissive direction is what mattered there —
+     * those are containment controls somebody reaches for mid-incident, and a
+     * stale row must not stop them; nothing about an incident calls for
+     * impersonating anybody. And the mint *is* rate-limited per acting staff
+     * member (ADR-0057 §1), so a doomed press by an `admin` — the only
+     * principal who sees this entry — really does spend one of ten. What it
+     * buys the operator is the refusal they would otherwise read as the
+     * catalogue's generic conflict sentence, which ADR-0057 §1's `D13.8`
+     * amendment concedes says nothing useful. The cost is a stale row that has
+     * just become active and greys a mint the API would have allowed; the grid
+     * shows `Status` and `Deleted` in the same row, so the operator can see
+     * why, and a refetch is the fix.
+     */
+    if (can("impersonate", "users"))
+      actions.push({
+        key: "impersonate",
+        label: t("actions.impersonate"),
+        isDisabled: (user) =>
+          user.deletedAt !== null || user.status !== "active",
+        onSelect: (user) => {
+          onAction({ kind: "impersonate", user });
         },
       });
 
@@ -103,5 +155,5 @@ export const useUserRowActions = (
       });
 
     return actions;
-  }, [capabilities, navigate, onAction, openState, t]);
+  }, [can, capabilities, navigate, onAction, openState, t]);
 };

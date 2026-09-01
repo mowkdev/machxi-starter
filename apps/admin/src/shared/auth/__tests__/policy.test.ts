@@ -35,9 +35,14 @@ import { RESOURCE_POLICY, type ResourcePolicy } from "../policy";
  *   - `router.use("/staff", authorize("admin"), …)`
  *   - `router.use("/users", authorize("admin", "manager"), …)`
  * - `apps/api/src/modules/staff/staff.routes.ts` — no `authorize(` call
- * - `apps/api/src/modules/users/users.routes.ts` — five `authorize("admin")`:
+ * - `apps/api/src/modules/users/users.routes.ts` — six `authorize("admin")`:
  *   `POST /`, `PATCH /:id`, `POST /:id/sessions/revoke`, `POST /:id/password`,
- *   `DELETE /:id`
+ *   `POST /:id/impersonate`, `DELETE /:id`
+ *
+ * **Re-read 2026-09-01 (`D13.8`)**, when the mint arrived: the sixth
+ * `authorize("admin")` in that router is the row below, and the `impersonate`
+ * grep finds nothing in `staff.routes.ts` — which is the fixture's answer to
+ * why `staff` has no such key.
  */
 const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
   staff: {
@@ -55,6 +60,7 @@ const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
     delete: ["admin"],
     setPassword: ["admin"],
     revokeSessions: ["admin"],
+    impersonate: ["admin"],
   },
 };
 
@@ -67,7 +73,14 @@ const staff = (...roles: readonly StaffRole[]): StaffPrincipalResource => ({
   roles,
 });
 
-const ACTIONS = [
+/**
+ * The actions **every** resource's row must grant somebody.
+ *
+ * `impersonate` is deliberately absent: it is the one action with a route on a
+ * single resource, so requiring it everywhere would ask `staff` to describe an
+ * endpoint that does not exist. The completeness case below says the rest.
+ */
+const UNIVERSAL_ACTIONS = [
   "read",
   "create",
   "update",
@@ -117,23 +130,64 @@ describe("can(principal, action, resource)", () => {
     expect(can(staff("editor"), "read", "users")).toBe(false);
   });
 
-  it("leaves deny-by-default with no live case, because the table is complete", () => {
+  it("grants every universally-routed action on both resources", () => {
     /*
      * The `Partial` record exists so absence is expressible and `can`'s `?? []`
      * answers it — an action absent from a row is allowed to `super_admin`
-     * alone (ADR-0019 §Rules, read from the client side). No row is missing one
-     * today, and that is the property worth pinning rather than the fallback:
-     * **completeness is what makes the fixture above a transcription.** A row
-     * that quietly lost an action would make the table describe a smaller API
-     * than the one that exists, and the gating rule — which is narrower than
-     * the table (see `allowedCapabilities`) — would silently follow it.
+     * alone (ADR-0019 §Rules, read from the client side). **Completeness is
+     * what makes the fixture above a transcription**: a row that quietly lost
+     * an action would make the table describe a smaller API than the one that
+     * exists, and the gating rule — which is narrower than the table (see
+     * `allowedCapabilities`) — would silently follow it.
+     *
+     * Six actions rather than seven since `D13.8`. That is not a weakening: the
+     * seventh has a route on one resource only, and the case below pins its
+     * absence on the other as the fact it is.
      */
     for (const resource of ["staff", "users"] as const)
-      for (const action of ACTIONS)
+      for (const action of UNIVERSAL_ACTIONS)
         expect(
           RESOURCE_POLICY[resource][action],
           `${resource}.${action}`,
         ).toBeDefined();
+  });
+
+  it("gives deny-by-default its first live case, in `staff.impersonate`", () => {
+    /*
+     * `D13.8`. Until the mint arrived, every row granted every action and the
+     * `Partial` in `ResourcePolicy` had no instance — `policy.ts` said as much.
+     * It has one now, and it is a transcription rather than an omission: the
+     * mint is `POST /admin/users/:id/impersonate` and there is no staff twin,
+     * because an admin-segment route that mints a *staff* session from a URL is
+     * what ADR-0057 declines to build. Staff impersonating staff is on that
+     * record's loose-end list.
+     *
+     * So the assertion is on the key's absence and on what the predicate does
+     * with it, which is the pair that would have to change together if somebody
+     * ever built the route.
+     */
+    expect(RESOURCE_POLICY.staff).not.toHaveProperty("impersonate");
+    expect(can(staff("admin"), "impersonate", "staff")).toBe(false);
+
+    // …and `super_admin` still passes, because the bypass is a line in `can`
+    // and not a row here. Nothing asks this question today; the answer is
+    // recorded so that a screen which starts asking it finds the `404` the API
+    // will give it documented rather than surprising.
+    expect(can(staff("super_admin"), "impersonate", "staff")).toBe(true);
+  });
+
+  it("offers the mint to an admin and to nobody else who reads the list", () => {
+    /*
+     * The affordance half of ADR-0057 §1, and the one row where `can` hides
+     * rather than defers: a `manager` may read the customer base and may not
+     * become a customer. Not a security claim — `authorize("admin")` on the
+     * route is — but the difference between an affordance that ends in a `403`
+     * and one that is not offered (ADR-0042 §The cost).
+     */
+    expect(can(staff("admin"), "impersonate", "users")).toBe(true);
+    expect(can(staff("manager"), "impersonate", "users")).toBe(false);
+    expect(can(staff("editor"), "impersonate", "users")).toBe(false);
+    expect(can(staff("super_admin"), "impersonate", "users")).toBe(true);
   });
 
   it("answers false for a principal that is not there yet", () => {

@@ -5,6 +5,7 @@ import {
   setPasswordBody,
   updateUserBody,
   type CreateUserBody,
+  type ImpersonationHandoffResource,
   type ListUsersQuery,
   type SetPasswordBody,
   type UpdateUserBody,
@@ -16,6 +17,9 @@ import { API } from "./auth.handlers";
 import { fail, listOk, ok } from "./envelope";
 import { parseListSearch } from "./list-query";
 import { ACTOR_PASSWORD } from "./staff.handlers";
+
+/** The handoff this mock's mint returns, so an assertion can name it. */
+export const HANDOFF_TOKEN = "a-minted-handoff-token";
 
 /**
  * The users endpoints, as MSW answers them (ADR-0036 §The load-bearing rule).
@@ -85,6 +89,8 @@ export interface UsersMockState {
     updated: { id: string; body: UpdateUserBody }[];
     passwords: { id: string; body: SetPasswordBody }[];
     revoked: string[];
+    /** Target ids the mint was asked for, in order (`D13.8`, ADR-0057 §1). */
+    minted: string[];
     deleted: string[];
   };
 }
@@ -100,6 +106,7 @@ export const createUsersMockState = (
     updated: [],
     passwords: [],
     revoked: [],
+    minted: [],
     deleted: [],
   },
 });
@@ -298,6 +305,49 @@ export const createUsersHandlers = (state: UsersMockState) =>
         return new Response(null, { status: 204 });
       },
     ),
+
+    /*
+     * The mint (ADR-0057 §1), and its **three** refusals, because the affordance
+     * this suite tests rests on them being told apart. The service refuses
+     * before a token exists if the target is not an active, non-deleted
+     * customer: `404` for an unknown id, `409 USER_DELETED` for a row that is
+     * present but deleted, and a plain `409 CONFLICT` for a row that is present
+     * and not `active` — no domain code for the last, because nothing branches
+     * on it and `AUTH_ACCOUNT_DISABLED` would be a lie about whose account was
+     * refused (ADR-0013, and `auth.impersonation.service.ts` says so at the
+     * throw).
+     *
+     * Unlike the exchange, these are deliberately distinguishable: the caller
+     * is authenticated staff who may already list every customer and read its
+     * status, so there is no enumeration oracle to close. A mock that answered
+     * one code for all three would let this suite certify an API that hides
+     * from staff what it shows them one column over.
+     *
+     * `expiresAt` is a fixed instant rather than `Date.now() + ttl`: nothing in
+     * this app reads it yet, and a clock in a fixture is a flake waiting for a
+     * test that does.
+     */
+    http.post(`${API}/users/:id/impersonate`, ({ params }): Response => {
+      const id = String(params["id"]);
+
+      state.seen.minted.push(id);
+
+      const target = state.rows.find((row) => row.id === id);
+
+      const refused = refusedIfDeleted(target);
+      if (refused !== null || target === undefined)
+        return refused ?? fail(404, "NOT_FOUND");
+
+      if (target.status !== "active") return fail(409, "CONFLICT");
+
+      // Explicitly typed, or `T` is inferred from the literal and this one
+      // handler stops being held to the contract the file's header promises
+      // every handler is held to (ADR-0036, `envelope.ts`).
+      return ok<ImpersonationHandoffResource>({
+        token: HANDOFF_TOKEN,
+        expiresAt: "2026-09-01T12:01:00.000Z",
+      });
+    }),
 
     http.post(`${API}/users/:id/sessions/revoke`, ({ params }): Response => {
       const id = String(params["id"]);

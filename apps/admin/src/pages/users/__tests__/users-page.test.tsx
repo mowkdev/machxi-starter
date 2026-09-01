@@ -33,9 +33,11 @@ import { staffPrincipal } from "@/test/principals";
  * A signed-in operator, parameterised by role since `D4.3` (ADR-0042).
  *
  * This resource is the one the parameter was added for: `/admin/users` mounts
- * `authorize("admin", "manager")` and refines its five writes back to `admin`,
+ * `authorize("admin", "manager")` and refines its six writes back to `admin`,
  * so an `admin` and a `manager` are offered genuinely different screens — which
- * is the D3.8 defect and the assertion that closes it.
+ * is the D3.8 defect and the assertion that closes it. The sixth write is the
+ * impersonation mint (`D13.8`), and it is the third affordance the two
+ * principals differ on.
  */
 const authenticated = (
   roles: readonly StaffRole[] = ["admin"],
@@ -253,7 +255,13 @@ describe("the users grid", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["Edit", "Reset password", "Sign out everywhere", "Delete"]);
+    ).toEqual([
+      "Edit",
+      "Impersonate",
+      "Reset password",
+      "Sign out everywhere",
+      "Delete",
+    ]);
 
     await user.click(within(menu).getByRole("menuitem", { name: "Edit" }));
 
@@ -335,7 +343,7 @@ describe("the users screen for a manager", () => {
 
     /*
      * `/admin/users` mounts `authorize("admin", "manager")` — a manager may read
-     * the customer base — and the router refines its five writing routes back to
+     * the customer base — and the router refines its six writing routes back to
      * `authorize("admin")`. So these two were affordances that could only ever
      * end in a `403`, which is the D3.8 defect this closes.
      */
@@ -350,6 +358,30 @@ describe("the users screen for a manager", () => {
     ).toBeInTheDocument();
 
     expect(await menuItemsFor(CARA.id)).not.toContain("Delete");
+  });
+
+  it("is not offered the mint, which is the one control `can` hides rather than defers", async () => {
+    openUsers(["manager"]);
+
+    await screen.findByRole("cell", { name: CARA.email });
+
+    /*
+     * `D13.8`, ADR-0057 §1. `admin` only, never `manager`: reading the customer
+     * base is a manager's job and becoming a customer is not.
+     *
+     * **The asymmetry with the test below it is the decision.** Reset password
+     * and Sign out everywhere stay visible to a manager and `403`, because they
+     * are what somebody reaches for during an incident and a hidden control is
+     * a silent absence (ADR-0042 §Containment controls). Impersonation is the
+     * opposite on every count — nothing about an incident is made worse by its
+     * absence, it is the highest-privilege affordance in this app, and an
+     * offered mint that ends in a `403` would spend a request against the
+     * per-actor budget ADR-0057 §1 gives the endpoint.
+     *
+     * Not a security claim: `authorize("admin")` on the route is the control,
+     * and this suite would pass unchanged if the table were tampered with.
+     */
+    expect(await menuItemsFor(CARA.id)).not.toContain("Impersonate");
   });
 
   it("still sees every containment control, and the server still answers them", async () => {
@@ -383,6 +415,10 @@ describe("the users screen for a manager", () => {
     expect(screen.getByRole("link", { name: "New user" })).toBeInTheDocument();
     expect(await menuItemsFor(CARA.id)).toEqual([
       "Edit",
+      // Between the navigation and the credential controls (`D13.8`): a way of
+      // looking at the account rather than of changing it, and not one of the
+      // three ADR-0042 keeps permanently visible.
+      "Impersonate",
       "Reset password",
       "Sign out everywhere",
       "Delete",

@@ -36,6 +36,49 @@ const envSchema = z.object({
    * configuration rather than as a member of an enum.
    */
   VITE_I18N_PSEUDO: z.stringbool().default(false),
+  /**
+   * Where `apps/customer` answers, with no trailing path (`D13.8`, ADR-0057 §7).
+   *
+   * The Impersonate action builds `<this>/impersonate#token=…` from it, so the
+   * two apps' addresses are a deployment's fact rather than a constant in a
+   * feature. Same shape as `VITE_API_URL`: an origin, and the code appends the
+   * path — `new URL("/impersonate", …)` then also absorbs a stray trailing
+   * slash instead of producing a double one.
+   *
+   * **The scheme is constrained, and `z.url()` alone would not have done it.**
+   * Bare, that check is `new URL(value)`, which accepts `javascript:`,
+   * `data:`, `file://` and the schemeless-authority `http:example.com`. This
+   * is the one value that decides where a live bearer credential is deposited,
+   * so a non-hierarchical origin would throw inside `handoffUrl` *after* the
+   * mint had already happened, and a `javascript:` one would be a sink for it.
+   * `z.regexes.httpProtocol` is `/^https?$/`, and matching that source also
+   * turns on zod's `^https?://` pre-check, which is what rejects the fourth
+   * case (`D13.8`'s `security-reviewer`).
+   *
+   * `http` stays allowed because the dev default is `http://localhost:3002`;
+   * a deployment that serves the customer app over cleartext puts the fragment
+   * in a document an active attacker can inject script into, and that is a
+   * deployment fact this schema cannot decide from here.
+   *
+   * **Required rather than defaulted, unlike `VITE_I18N_PSEUDO`.** An absent
+   * flag means a build nobody asked for a lens in; an absent origin means the
+   * action mints a live sixty-second credential and posts it to
+   * `undefined/impersonate`, which is a broken feature that looks like a
+   * working one. ADR-0033 §Configuration wants that loud at the first import,
+   * and it is the same argument that makes `VITE_API_URL` required.
+   *
+   * The cost is stated rather than buried, because it is larger than the
+   * feature: this parse runs at module load, so a build shipped without the
+   * variable is a blank panel — including sign-in and the containment controls
+   * ADR-0042 §Containment controls keeps reachable *during* an incident. The
+   * alternative is hiding the Impersonate action when the origin is absent,
+   * which costs exactly the feature that needs it. Required was kept anyway
+   * (`D13.8`), on the ground that the failure is immediate and total in every
+   * environment — the first page load of any build, in development first — so
+   * it cannot be the thing that is discovered during an incident; a silently
+   * missing row-menu entry can be.
+   */
+  VITE_CUSTOMER_APP_URL: z.url({ protocol: z.regexes.httpProtocol }),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

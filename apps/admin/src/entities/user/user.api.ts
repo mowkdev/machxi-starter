@@ -1,5 +1,6 @@
 import type {
   CreateUserBody,
+  ImpersonationHandoffResource,
   ListEnvelope,
   ListUsersQuery,
   Page,
@@ -80,6 +81,27 @@ export const createUserApi = (client: ApiClient) =>
     /** `POST /admin/users/:id/sessions/revoke` — forced sign-out. `204`. */
     revokeSessions: async (id: string): Promise<void> => {
       await client.instance.post(`/users/${id}/sessions/revoke`);
+    },
+
+    /**
+     * `POST /admin/users/:id/impersonate` — the mint (ADR-0057 §1, `D13.8`).
+     *
+     * **The response is a credential and the response alone**: a one-time
+     * handoff token with a sixty-second life, and no `Set-Cookie` of any kind.
+     * That absence is the design — the admin segment's cookies are never
+     * written by this flow, which is what leaves the minting operator's own
+     * session untouched — so nothing here touches the session store either.
+     *
+     * `admin` only at the guard, never `manager`; the row menu declines to
+     * offer it to one (`RESOURCE_POLICY.users.impersonate`), and the router is
+     * what enforces it.
+     */
+    impersonate: async (id: string): Promise<ImpersonationHandoffResource> => {
+      const { data } = await client.instance.post<
+        SuccessEnvelope<ImpersonationHandoffResource>
+      >(`/users/${id}/impersonate`);
+
+      return data.data;
     },
 
     /** A **soft** delete (ADR-0028): the row survives with `deletedAt` set. */

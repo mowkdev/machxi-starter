@@ -18,6 +18,14 @@ import type { UserResource } from "@repo/contracts";
  */
 export type UserAction =
   | { readonly kind: "reset-password"; readonly user: UserResource }
+  /**
+   * The impersonation confirm (`D13.8`, ADR-0057 §7).
+   *
+   * Ephemeral like the rest of this union and for the sharpest version of the
+   * union's own reason: `/users?impersonate=<id>` would be a link that mints a
+   * live credential when it is opened, and a link is a thing people paste.
+   */
+  | { readonly kind: "impersonate"; readonly user: UserResource }
   | { readonly kind: "revoke-sessions"; readonly user: UserResource }
   | { readonly kind: "delete"; readonly user: UserResource }
   /** The bulk confirm (`D4.3`); `staff-manage/types.ts` carries the reasoning. */

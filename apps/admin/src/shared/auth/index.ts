@@ -63,8 +63,12 @@ export const can = (
  * That action is exactly the deny-by-default case the `Partial` in
  * `ResourcePolicy` exists to express (`./policy`, ADR-0019 §Rules): absent
  * means `super_admin` only. Naming both parameters binds the vocabulary to
- * the union it belongs to and leaves the table free to have holes. Invisible
- * today only because `policy.test.ts` pins the table complete.
+ * the union it belongs to and leaves the table free to have holes.
+ *
+ * **That was hypothetical until `D13.8` and is not any more**: `impersonate`
+ * is routed on `users` and on nothing else, so `staff` has no such key and the
+ * table has its first hole. Inferred, `TAction` would now come out narrower
+ * than `ResourceAction` and this annotation is what catches it.
  */
 export const useCan = (): CanFn =>
   useCanBase<ResourceName, ResourceAction>(RESOURCE_POLICY);

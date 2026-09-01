@@ -39,6 +39,7 @@
     "edit": "Rediģēt",
     "resetPassword": "Atiestatīt paroli",
     "revokeSessions": "Atteikt visur",
+    "impersonate": "Uzdoties par lietotāju",
     "delete": "Dzēst"
   },
   "create": {
@@ -64,6 +65,11 @@
     "title_other": "Dzēst {{count}} lietotāju kontus?",
     "description": "Katrs konts tiek saglabāts un atzīmēts kā dzēsts, un visas sesijas tiek pārtrauktas. Tie nevar pieteikties, un administratora izmaiņas tiek atteiktas. To e-pasta adreses kļūst pieejamas atkārtotai reģistrācijai — atsaukt to nevar. Jau dzēsts konts tiks atteikts, un jums tiks pateikts, kurš.",
     "confirm": "Dzēst"
+  },
+  "impersonate": {
+    "title": "Atvērt klienta lietotni kā {{email}}?",
+    "description": "Šī cilne pāries uz klienta lietotni, pieteikta kā šis lietotājs, ar joslu, kas nosauc jūs abus, un ar izeju. Jūsu pašu sesija šeit paliek neskarta — atgriežoties jūs joprojām būsiet pieteicies kā jūs pats. Viņu paroles maiņa, konta dzēšana un atteikšana visur tur tiek atteikta, un viss pārējais, ko darāt, tiek reģistrēts uz jūsu abu vārda.",
+    "confirm": "Uzdoties par lietotāju"
   },
   "revokeSessions": {
     "title": "Atteikt {{email}} visur?",

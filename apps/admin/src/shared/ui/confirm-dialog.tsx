@@ -27,7 +27,9 @@ import { useT } from "@/shared/i18n";
  *   toast over a screen that already looks like it succeeded. The click is
  *   prevented and the caller closes on success instead.
  * - **It cannot be dismissed while pending**, for the reason `AppFormDialog`
- *   cannot: the request lands either way.
+ *   cannot: the request lands either way. A caller that needs to refuse a
+ *   second press *without* taking the exits away passes `confirmDisabled`
+ *   instead (`D13.8`).
  *
  * The refusal itself is ADR-0034's business — a confirm has no field for one to
  * land on, so these mutations keep their error toast and this component renders
@@ -42,6 +44,21 @@ export interface ConfirmDialogProps {
   /** Renders the confirm in the destructive style — deletion, revocation. */
   readonly destructive?: boolean;
   readonly isPending: boolean;
+  /**
+   * Refuses a second confirmation **without** locking the dialog shut
+   * (`D13.8`).
+   *
+   * One prop wide because a screen named it — the shape ADR-0048 §3 uses for
+   * `Banner`'s `action` slot. `isPending` deliberately does both jobs, and its
+   * reason for the second is that the request lands either way, so there is
+   * nothing dismissing could undo. The impersonation confirm has a state where
+   * only the first job applies: the mint has answered and the browser is
+   * navigating away, so pressing again must not mint a second time — but if
+   * the navigation never happens, an operator locked out of Cancel, Escape and
+   * the backdrop has only a reload left. Re-submission and dismissal are two
+   * questions, and this is the prop that stops them being one.
+   */
+  readonly confirmDisabled?: boolean;
   readonly onConfirm: () => void;
 }
 
@@ -53,6 +70,7 @@ export const ConfirmDialog = ({
   confirmLabel,
   destructive = false,
   isPending,
+  confirmDisabled = false,
   onConfirm,
 }: ConfirmDialogProps) => {
   const { t } = useT("common");
@@ -75,7 +93,7 @@ export const ConfirmDialog = ({
           </AlertDialogCancel>
           <AlertDialogAction
             variant={destructive ? "destructive" : "default"}
-            disabled={isPending}
+            disabled={isPending || confirmDisabled}
             onClick={(event) => {
               // Keeps the dialog open so the pending state is visible and a
               // refusal arrives while the operator is still looking at what they

@@ -2,11 +2,12 @@ import { createUserBody, setPasswordBody } from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API } from "@/test/msw/handlers/auth.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
 import {
+  HANDOFF_TOKEN,
   USER_ROWS,
   createUsersHandlers,
   createUsersMockState,
@@ -23,6 +24,7 @@ import { renderApp, renderWithProviders } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 
 import { asCreateBody } from "../create-user-surface";
+import { handoffUrl } from "../impersonate-user-dialog";
 import { passwordFields } from "../reset-user-password-dialog";
 import type { UserAction } from "../types";
 import { UserDialogs } from "../user-dialogs";
@@ -465,5 +467,284 @@ describe("the confirms", () => {
       expect(onClose).toHaveBeenCalled();
     });
     expect(state.seen.revoked).toEqual([CARA.id]);
+  });
+});
+
+/**
+ * The impersonation mint, from the confirm to the address bar (`D13.8`,
+ * ADR-0057 §1/§2/§7).
+ *
+ * **What this tier can and cannot see.** It drives the whole of this app's
+ * half — the mint is requested for the right target, the token comes back, the
+ * URL is built with the token in the *fragment*, and the credential is dropped
+ * from memory the moment the mutation settles. What it cannot see is anything
+ * on the other side of that navigation: jsdom does not follow it, MSW cannot
+ * show a `Set-Cookie`, and the customer app is a different bundle. `D13.7`'s
+ * suites drive the redemption from the fragment; `D13.9` walks the pair in a
+ * browser.
+ */
+describe("opening the customer app as a user", () => {
+  /**
+   * The addresses this tab was sent to, and the targets it was sent with.
+   *
+   * A spy on the *real* method rather than a seam invented for the test — this
+   * harness has no `vi.mock` anywhere and is not about to start for a
+   * navigation. It is spyable at all because the dialog navigates through
+   * `window.open(…, "_self")`: `Location`'s own members are
+   * `[LegacyUnforgeable]`, so `window.location.assign` cannot be redefined in
+   * jsdom any more than it can in a browser.
+   */
+  const navigations = (): { url: string; target: string }[] =>
+    vi.mocked(window.open).mock.calls.map(([url, target]) => ({
+      url: String(url),
+      target: String(target),
+    }));
+
+  beforeEach(() => {
+    vi.spyOn(window, "open").mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("mints for the chosen user and lands on the customer app with the token in the fragment", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = open({ kind: "impersonate", user: CARA });
+
+    await user.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    await waitFor(() => {
+      expect(navigations()).toHaveLength(1);
+    });
+
+    // The mint was asked for this row and no other.
+    expect(state.seen.minted).toEqual([CARA.id]);
+
+    const [navigation] = navigations();
+
+    // `_self`, so this is the browsing context that already exists rather than
+    // a popup a blocker could refuse without saying so.
+    expect(navigation?.target).toBe("_self");
+
+    const url = new URL(String(navigation?.url));
+
+    /*
+     * The origin is configuration (`VITE_CUSTOMER_APP_URL`, pinned by
+     * `vitest.config.ts`), the path is the route `D13.7` built, and the token
+     * is in the **fragment** — which is the security property rather than a
+     * formatting choice: a query parameter would put a live credential in the
+     * customer app's server logs and in the next navigation's `Referer`, and a
+     * fragment is never transmitted (ADR-0057 §2).
+     */
+    expect(url.origin).toBe("http://customer.test");
+    expect(url.pathname).toBe("/impersonate");
+    expect(url.search).toBe("");
+    expect(new URLSearchParams(url.hash.slice(1)).get("token")).toBe(
+      HANDOFF_TOKEN,
+    );
+
+    /*
+     * And the handoff is not left lying in memory. TanStack Query keeps a
+     * settled mutation's `data` for `gcTime`, so without `CREDENTIAL_MUTATION`
+     * a one-time credential with a sixty-second life would be readable from
+     * `getMutationCache()` for five minutes — four of them after it is dead,
+     * one of them while it is not. This is the same assertion `D3.9` makes
+     * about a submitted password, made about a returned token.
+     *
+     * **`gcTime: 0` alone does not get there here, which is what this case
+     * caught.** Eviction waits for the last observer, and every other
+     * credential mutation in this app loses its observer by closing its dialog
+     * on success — this one deliberately stays mounted through the navigation,
+     * so the dialog resets the mutation itself once the token has been spent.
+     */
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+    });
+  });
+
+  it("cannot be fired twice while the browser is on its way", async () => {
+    const user = userEvent.setup();
+
+    open({ kind: "impersonate", user: CARA });
+
+    const confirm = screen.getByRole("button", { name: "Impersonate" });
+
+    await user.click(confirm);
+
+    await waitFor(() => {
+      expect(navigations()).toHaveLength(1);
+    });
+
+    /*
+     * A navigation is not instant and a settled mutation re-enables its own
+     * button, so without the dialog holding itself busy this second press
+     * would mint again — a second request against ADR-0057 §1's per-actor
+     * budget, a second live credential, and a second `impersonation.minted`
+     * row against the operator's name for one intention.
+     */
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+
+    expect(state.seen.minted).toEqual([CARA.id]);
+    expect(navigations()).toHaveLength(1);
+  });
+
+  it("builds the address the customer app parses, and only that", () => {
+    /*
+     * The two halves of the handoff link, asserted against the shape
+     * `useRedeemHandoff` reads on the other side — `new URLSearchParams(hash)`.
+     * A token that ever contained a `+`, a `/` or a `=` must survive the round
+     * trip, and a template literal is what would not make it.
+     */
+    expect(handoffUrl("a+b/c=")).toBe(
+      "http://customer.test/impersonate#token=a%2Bb%2Fc%3D",
+    );
+  });
+
+  it("keeps the operator where they are when the mint is refused", async () => {
+    const user = userEvent.setup();
+    const { onClose } = open({ kind: "impersonate", user: GONE });
+
+    await user.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    /*
+     * A deleted account is refused before a token exists (ADR-0057 §1), and the
+     * refusal renders as catalogue copy like any other code. The confirm stays
+     * open — `ConfirmDialog`'s contract — so the sentence arrives while the
+     * operator is still looking at what they asked for, and nothing navigates.
+     */
+    expect(
+      await screen.findByText("That user is deleted and cannot be changed."),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(navigations()).toEqual([]);
+  });
+
+  it("refuses an account that is present but not active", async () => {
+    const user = userEvent.setup();
+
+    // `pending_verification`, which is neither deleted nor active — the third
+    // of the mint's three refusals, and the one with no domain code of its own
+    // because `AUTH_ACCOUNT_DISABLED` would be a lie about whose account it is.
+    open({ kind: "impersonate", user: PAT });
+
+    await user.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    /*
+     * The catalogue's sentence for a bare `CONFLICT`, and it is **generic**:
+     * ADR-0057 §1 argues for these three refusals being distinguishable partly
+     * so that "an operator who is told 'that account is disabled' does not open
+     * a support ticket about a broken button", and what the operator is
+     * actually told is this. The API's choice of code is right by ADR-0013 —
+     * nothing branches on it and `AUTH_ACCOUNT_DISABLED` would be a lie about
+     * whose account was refused — and the copy is what the choice costs. The
+     * ADR now says so at §1; giving it a domain code is an API change to an
+     * already-built step and a scoping call, so it is the operator's.
+     */
+    expect(
+      await screen.findByText(
+        "That conflicts with something that already exists.",
+      ),
+    ).toBeInTheDocument();
+    expect(navigations()).toEqual([]);
+  });
+
+  it("says the three things the button cannot", async () => {
+    open({ kind: "impersonate", user: CARA });
+
+    const dialog = await screen.findByRole("alertdialog");
+
+    /*
+     * The confirm is where an operator learns what impersonation does *not* do
+     * to them and what it does to the record — none of it discoverable from a
+     * menu item. Asserted as three fragments rather than the whole sentence, so
+     * a rewrite of the copy is free while a silent deletion of any of the three
+     * facts is not.
+     */
+    expect(within(dialog).getByText(/untouched/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/refused while you are there/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/recorded against both of you/),
+    ).toBeInTheDocument();
+  });
+
+  it("has no string the pseudo-locale cannot reach", async () => {
+    /*
+     * `D13.7`'s review finding 6, applied here rather than rediscovered: the
+     * ADR-0046 §14 route walk visits every *route* under an ordinary session,
+     * and this copy lives behind a row menu inside a dialog, so nothing in that
+     * walk would ever have accented it. The lens is driven directly instead.
+     */
+    renderWithProviders(
+      <UserDialogs
+        action={{ kind: "impersonate", user: CARA }}
+        onClose={vi.fn()}
+      />,
+      { pseudo: true },
+    );
+
+    const dialog = await screen.findByRole("alertdialog");
+
+    /*
+     * The **description** is in this list and was missing from the first draft
+     * (`adr-reviewer`), which made the case skip the largest new string in the
+     * step — the one carrying the three facts the case above asserts — while
+     * claiming to be the reason that string is covered at all. It is neither a
+     * heading nor a button, so `getAllByRole` never saw it.
+     *
+     * Reached through `aria-describedby` rather than by its text, because
+     * under the lens the text is exactly what has changed — a `getByText`
+     * matcher written in English is a query that passes only when the
+     * assertion would fail.
+     */
+    const describedBy = dialog.getAttribute("aria-describedby");
+    const description =
+      describedBy === null ? null : document.getElementById(describedBy);
+
+    expect(description).not.toBeNull();
+
+    for (const node of [
+      within(dialog).getByRole("heading"),
+      description as HTMLElement,
+      ...within(dialog).getAllByRole("button"),
+    ])
+      expect(node.textContent ?? "").toMatch(/\[.*\]/u);
+  });
+
+  it("greys the mint on a row the API is certain to refuse", async () => {
+    const user = userEvent.setup();
+
+    renderApp({ initialPath: "/users", store: signedIn() });
+
+    await screen.findByRole("cell", { name: PAT.email });
+
+    await user.click(
+      screen.getByRole("button", { name: `Row actions for ${PAT.id}` }),
+    );
+
+    /*
+     * `pending_verification`: present, not deleted, not active. The one entry
+     * in this menu that predicts a refusal rather than deferring to the API,
+     * and `use-user-row-actions.ts` carries the argument for why this action
+     * splits from the four beside it — the permissive direction protects a
+     * containment control mid-incident, and impersonation is not one.
+     *
+     * Asserted through `aria-disabled` because that is what a Radix menu item
+     * sets; the entry is *visible* and refuses, which is the difference from
+     * the manager case one file over, where it is absent entirely.
+     */
+    const item = within(await screen.findByRole("menu")).getByRole("menuitem", {
+      name: "Impersonate",
+    });
+
+    expect(item).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(item);
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(state.seen.minted).toEqual([]);
   });
 });
