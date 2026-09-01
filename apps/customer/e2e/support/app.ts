@@ -87,13 +87,73 @@ export const leadCard = (page: Page): Locator =>
   settingsContent(page).locator('[data-slot="card-title"]').first();
 
 /**
- * Where the API answers, for the one request this suite makes directly.
+ * Where the API answers, for the requests this suite makes directly.
  *
  * Shared with the admin's tier on purpose, and it is the variable that shows
  * why `E2E_CUSTOMER_BASE_URL` is not: there is one API, so there is one
  * address, while two apps mean two ports.
+ *
+ * **Exported since `D13.9`**, because it stopped being one file's constant:
+ * `dual-session.spec.ts` had already written it out a second time and
+ * `impersonation.spec.ts` would have been the third. One address, one line.
  */
-const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
+export const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
+
+/**
+ * Where the **admin panel** answers, beside this suite's own `baseURL`
+ * (`D12.12`, moved here at `D13.9`).
+ *
+ * `E2E_BASE_URL` and not `E2E_CUSTOMER_BASE_URL`: the unprefixed one is the
+ * admin's, which is the convention this file already names — one API means one
+ * `E2E_API_URL`, two apps mean two ports. Both are declared on the `test:e2e`
+ * task in `turbo.json`.
+ *
+ * **Two specs in this suite reach the admin panel now**, which is what moved
+ * this out of `dual-session.spec.ts`: that one walks ADR-0056's two-population
+ * cookie jar, and `impersonation.spec.ts` walks the mint that starts on that
+ * origin and ends on this one. A second copy of an address is a second thing to
+ * get wrong when a port moves.
+ */
+export const ADMIN_URL = process.env["E2E_BASE_URL"] ?? "http://localhost:3001";
+
+/**
+ * The operator the admin half of a spec signs in as (`D12.12`, moved here at
+ * `D13.9`).
+ *
+ * `apps/admin/e2e/support/app.ts`' constant, written out rather than imported
+ * across an app boundary: that file is `apps/admin`'s, and reaching into it
+ * would make a spec in this suite a diff against another app. Environment
+ * first, the seeded super admin as the default, exactly as it is there.
+ *
+ * The email is what `impersonation.spec.ts` asserts the banner names, so it is
+ * the whole record rather than only the credentials — the `D13.7` review's "one
+ * value, not two literals across two suites" applied to the operator as it was
+ * applied to the fixture principal.
+ */
+export const OPERATOR = {
+  email: process.env["SEED_SUPER_ADMIN_EMAIL"] ?? "admin@machxi.local",
+  password: process.env["SEED_SUPER_ADMIN_PASSWORD"] ?? "ChangeMe123!local",
+};
+
+/**
+ * Signs into the admin panel in the page given, and waits for its shell.
+ *
+ * The wait is on the dashboard heading rather than on a URL, for the reason
+ * {@link signIn} gives about this app: the boot sequence runs after `load`, so
+ * an address bar that already says `/` is not yet an app. "Dashboard" is the
+ * admin's word — ADR-0055 §5 is why it is not this app's.
+ */
+export const signInAsOperator = async (page: Page): Promise<void> => {
+  await page.goto(`${ADMIN_URL}/login`);
+
+  await page.getByLabel("Email").fill(OPERATOR.email);
+  await page.getByLabel("Password").fill(OPERATOR.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Dashboard", level: 1 }),
+  ).toBeVisible();
+};
 
 /**
  * Stops the run, by name, when ADR-0020's window is spent — `D11.11`'s probe,
@@ -117,11 +177,24 @@ const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
  *
  * **The admin's floor of 180 was not raised, and that is a decision.** It
  * would have to be, if the two suites' costs together crossed 300 — they do
- * not, at about 204 — and raising it means a diff under `apps/admin`, which
- * this deliverable spends nothing on by design (the plan's §Definition-of-done
- * item 2).
+ * not, at about 251 since `D13.9` — and raising it means a diff under
+ * `apps/admin`, which D12 spent nothing on by design and D13 has no reason to.
+ * The headroom is thinner than it was; the arithmetic is in the body, beside
+ * the floor it justifies, so there is one copy of it rather than two.
+ *
+ * **`needed` is a parameter since `D13.9`, and that is the whole point of it.**
+ * The default is the suite's own cost, which is the right number for the
+ * worker fixture, because the fixture probes before the tier's first request.
+ * A spec that probes from the *middle* of the tier must ask for what remains to
+ * be spent — the suite's cost has already been partly paid by the time it runs,
+ * and asserting the whole of it there aborts a perfectly healthy run with a
+ * diagnosis that is exactly backwards. `D13.9`'s `security-reviewer` pass found
+ * that; the parameter is the fix.
  */
-export const assertApiWindowClear = async (page: Page): Promise<void> => {
+export const assertApiWindowClear = async (
+  page: Page,
+  needed = 90,
+): Promise<void> => {
   /*
    * Throttled and absent are different failures, and this is the function that
    * has to tell them apart: a stack that is not running rejects here rather
@@ -180,15 +253,138 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
    * and the floor moves with it rather than being left to be crossed mid-run.
    * The margin over the measurement is kept at the dozen `D12.10` chose.
    *
-   * Together with the admin's 170 and its own probe, `pnpm test:e2e` now spends
-   * about 219 of ADR-0020's 300 — still a whole run in a clear window, and
-   * still not two runs, and still not a run beside `pnpm test:postman`.
+   * **Moved again for `D13.9`, and this is the largest single move the floor
+   * has taken.** `impersonation.spec.ts` walks two apps end to end in one
+   * context: an admin login and boot, a searched grid, a mint, a cross-origin
+   * exchange and the customer app's own boot, a refused password change, a
+   * settings write and its restore, a logout, one deliberately failed refresh,
+   * and a second admin boot to prove the staff session outlived all of it.
+   * Measured the same way — a green run of that spec alone took the window from
+   * 226 to 197, its own probe included — so it costs **28** and the suite costs
+   * **77**. The margin over the measurement is the dozen `D12.10` chose, rounded
+   * up to the next ten.
+   *
+   * Together with the admin's 168 and its own probe, `pnpm test:e2e` now spends
+   * **251** of ADR-0020's 300 — measured on the run that closed `D13.9`, which
+   * took a fresh window from 299 to 47 — still a whole run in a clear window,
+   * and now
+   * emphatically not two runs, and still not a run beside `pnpm test:postman`.
+   * The next spec that crosses an origin is the one that has to ask whether
+   * `RATE_LIMIT_GLOBAL_MAX` should differ in the dev profile, which is the fix
+   * `D11.6` left available and nobody has needed yet.
    */
-  const NEEDED = 60;
-
-  if (Number.isFinite(remaining) && remaining < NEEDED) {
+  if (Number.isFinite(remaining) && remaining < needed) {
     throw new Error(
-      `The API has ${remaining} requests left in ADR-0020's 15-minute window and a full run of the customer tier costs about 49, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
+      `The API has ${remaining} requests left in ADR-0020's 15-minute window and what is about to run costs about ${needed - 13}, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
     );
   }
+};
+
+/**
+ * The option an account is currently on, read as the enum the API stores
+ * (`D12.10`, moved here at `D13.9` when a second spec needed it).
+ *
+ * `:checked` rather than a role query, deliberately: every other locator in
+ * this tier names a control the way a customer finds it, but what has to be put
+ * back afterwards is the **value** — `dark`, `lv` — and a label would make the
+ * restore depend on the language the previous case left the panel in.
+ */
+export const chosen = async (page: Page, name: string): Promise<string> => {
+  const value = await page
+    .locator(`input[name="${name}"]:checked`)
+    .getAttribute("value");
+
+  if (value === null) throw new Error(`no ${name} option is checked`);
+
+  return value;
+};
+
+/**
+ * Chooses an option and waits for the account row to have taken it (`D12.10`,
+ * moved here at `D13.9`).
+ *
+ * **The label is clicked, not the input.** `SettingsOptions` renders a native
+ * radio that is `sr-only` — it *is* the control, so it is present to the
+ * keyboard and to a screen reader — and the box a customer points at is the
+ * `<label>` wrapped around it. The radio is still what the assertion names,
+ * which is what keeps the accessible name under test.
+ *
+ * **And the wait is on the request, not on a timeout.** The theme rides
+ * ADR-0045's coalescing writer, whose window is a second; the locale goes
+ * straight through. Waiting for the `PATCH` covers both without this helper
+ * knowing which is which — and without it, the round trip would assert a radio
+ * the app had flipped locally and call that persistence.
+ *
+ * **It moved out of `account.spec.ts` at `D13.9`** because
+ * `impersonation.spec.ts` needs exactly this — a settings write that lands, and
+ * a restore that is not a second implementation of the same thing — and a third
+ * inline copy in one tier is what `D13.7`'s review called out as two literals
+ * agreeing by coincidence.
+ */
+export const choose = async (
+  page: Page,
+  name: string,
+  label: string,
+): Promise<void> => {
+  /*
+   * The role and the group together: the accessible name is what a customer
+   * reads and the radio `name` is what makes the set a set. A label matched
+   * outside its own group would be a control this helper drove by accident.
+   */
+  const radio = page
+    .locator(`input[name="${name}"]`)
+    .and(page.getByRole("radio", { name: label, exact: true }));
+
+  /*
+   * **Already in force is not a write, and waiting for one hangs.** A checked
+   * radio fires no `change` on a second click, so no `PATCH` follows and the
+   * wait below burns its full timeout — which matters most on the restore path,
+   * where a forward `choose` that failed before it moved anything leaves the
+   * option exactly where this call is about to ask for it.
+   */
+  if (await radio.isChecked()) return;
+
+  /*
+   * Registered before the click, so a fast `PATCH` cannot be missed. The status
+   * is asserted after the await rather than filtered inside the predicate: a
+   * rejected write would otherwise not match, and the failure would read as
+   * "timed out waiting for a response" instead of naming the status the API
+   * actually sent.
+   */
+  const patched = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/user/settings") &&
+      response.request().method() === "PATCH",
+  );
+
+  await radio.locator("xpath=ancestor::label[1]").click();
+
+  await expect(radio).toBeChecked();
+  expect((await patched).status()).toBe(200);
+};
+
+/**
+ * Endonym-free labels for the theme enum, and the lookup that refuses an
+ * unknown value (`D12.10`'s table, hoisted at `D13.9`).
+ *
+ * **It throws rather than falling back**, which is the point: `system` is a
+ * third value, and mapping an unrecognised one to "Light" on the way back would
+ * silently *rewrite* the fixture account's preference instead of restoring it.
+ * A restore that guesses is worse than a restore that fails loudly.
+ */
+export const THEME_LABELS: Record<string, string> = {
+  light: "Light",
+  dark: "Dark",
+  system: "System",
+};
+
+export const labelFor = (
+  labels: Record<string, string>,
+  value: string,
+): string => {
+  const label = labels[value];
+
+  if (label === undefined) throw new Error(`no label for ${value}`);
+
+  return label;
 };

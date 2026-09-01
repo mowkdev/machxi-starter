@@ -2,7 +2,14 @@ import type { Page } from "@playwright/test";
 
 import { expect, test } from "./support/fixtures";
 
-import { leadCard, settingsNav } from "./support/app";
+import {
+  THEME_LABELS,
+  choose,
+  chosen,
+  labelFor,
+  leadCard,
+  settingsNav,
+} from "./support/app";
 
 /**
  * The account area, walked (`D12.10`; ADR-0053, ADR-0055 §3).
@@ -44,103 +51,21 @@ const SECTIONS = [
   { path: "/account/preferences", nav: "Preferences", card: "Appearance" },
 ] as const;
 
-/**
- * The option an account is currently on, read as the enum the API stores.
- *
- * `:checked` rather than a role query, deliberately: every other assertion here
- * names a control the way a customer finds it, but what has to be put back
- * afterwards is the *value* — `dark`, `lv` — and a label would make the restore
- * depend on the language the previous case left the panel in.
+/*
+ * `chosen`, `choose`, `THEME_LABELS` and `labelFor` were written here at
+ * `D12.10` and moved into `support/app.ts` at `D13.9`, when
+ * `impersonation.spec.ts` needed the same settings round trip. The reasoning
+ * for each is now in that file, beside the code.
  */
-const chosen = async (page: Page, name: string): Promise<string> => {
-  const value = await page
-    .locator(`input[name="${name}"]:checked`)
-    .getAttribute("value");
-
-  if (value === null) throw new Error(`no ${name} option is checked`);
-
-  return value;
-};
-
-/**
- * Chooses an option and waits for the account row to have taken it.
- *
- * **The label is clicked, not the input.** `SettingsOptions` renders a native
- * radio that is `sr-only` — it *is* the control, so it is present to the
- * keyboard and to a screen reader — and the box a customer points at is the
- * `<label>` wrapped around it. The radio is still what the assertion names,
- * which is what keeps the accessible name under test.
- *
- * **And the wait is on the request, not on a timeout.** The theme rides
- * ADR-0045's coalescing writer, whose window is a second; the locale goes
- * straight through. Waiting for the `PATCH` covers both without this file
- * knowing which is which — and without it, the round trip would assert a radio
- * the app had flipped locally and call that persistence.
- */
-const choose = async (
-  page: Page,
-  name: string,
-  label: string,
-): Promise<void> => {
-  /*
-   * The role and the group together: the accessible name is what a customer
-   * reads and the radio `name` is what makes the set a set. A label matched
-   * outside its own group would be a control this helper drove by accident.
-   */
-  const radio = page
-    .locator(`input[name="${name}"]`)
-    .and(page.getByRole("radio", { name: label, exact: true }));
-
-  /*
-   * **Already in force is not a write, and waiting for one hangs.** A checked
-   * radio fires no `change` on a second click, so no `PATCH` follows and the
-   * wait below burns its full timeout — which matters most on the restore path,
-   * where a forward `choose` that failed before it moved anything leaves the
-   * option exactly where this call is about to ask for it.
-   */
-  if (await radio.isChecked()) return;
-
-  /*
-   * Registered before the click, so a fast `PATCH` cannot be missed. The status
-   * is asserted after the await rather than filtered inside the predicate: a
-   * rejected write would otherwise not match, and the failure would read as
-   * "timed out waiting for a response" instead of naming the status the API
-   * actually sent.
-   */
-  const patched = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/user/settings") &&
-      response.request().method() === "PATCH",
-  );
-
-  await radio.locator("xpath=ancestor::label[1]").click();
-
-  await expect(radio).toBeChecked();
-  expect((await patched).status()).toBe(200);
-};
 
 /** Whether `<html>` is painted dark — `applyTheme`'s one observable effect. */
 const painted = (page: Page): Promise<boolean> =>
   page.evaluate(() => document.documentElement.classList.contains("dark"));
 
-const THEME_LABELS: Record<string, string> = {
-  light: "Light",
-  dark: "Dark",
-  system: "System",
-};
-
 /** Endonyms, so the restore is legible whatever language the case left. */
 const LOCALE_LABELS: Record<string, string> = {
   en: "English",
   lv: "Latviešu",
-};
-
-const labelFor = (labels: Record<string, string>, value: string): string => {
-  const label = labels[value];
-
-  if (label === undefined) throw new Error(`no label for ${value}`);
-
-  return label;
 };
 
 for (const { path, nav, card } of SECTIONS) {

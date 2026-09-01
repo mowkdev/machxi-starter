@@ -55,6 +55,16 @@ try {
  * (ADR-0018 rotates refresh tokens, so a session cannot be copied), retries
  * off, and traces retained only on failure because `fill()` records its
  * argument verbatim.
+ *
+ * **What a retained trace holds grew at `D13.9`**, and it is worth naming
+ * rather than leaving to be discovered. Beside the passwords `fill()` records,
+ * a failed run of `impersonation.spec.ts` writes the mint's response body — the
+ * handoff token — and the navigation URL that carries the same token in its
+ * fragment, which is the one place ADR-0057 §2 takes trouble to keep it out of.
+ * Bounded rather than fixed: the token is single-use, `IMPERSONATION_HANDOFF_TTL`
+ * is ceilinged in minutes, and `apps/customer/test-results/` is gitignored — so
+ * a trace is a local artefact with a short-lived credential in it, and one to
+ * delete rather than to attach to anything.
  */
 export default defineConfig({
   testDir: "./e2e",

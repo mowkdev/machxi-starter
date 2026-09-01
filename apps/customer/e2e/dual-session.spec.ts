@@ -1,8 +1,8 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext } from "@playwright/test";
 
 import { expect, test } from "./support/fixtures";
 
-import { leadCard } from "./support/app";
+import { API_URL, leadCard, signInAsOperator } from "./support/app";
 
 /**
  * Two apps, one browser (`D12.12`; [ADR-0056](../../../docs/adr/0056-per-population-csrf-cookie.md)).
@@ -28,31 +28,12 @@ import { leadCard } from "./support/app";
  * context this suite already owns.
  */
 
-/**
- * Where the admin panel answers, beside this suite's own `baseURL`.
- *
- * `E2E_BASE_URL` and not `E2E_CUSTOMER_BASE_URL`: the unprefixed one is the
- * admin's, which is the convention `support/app.ts` already names — one API
- * means one `E2E_API_URL`, two apps mean two ports. Both are declared on the
- * `test:e2e` task in `turbo.json`.
+/*
+ * `ADMIN_URL`, `API_URL`, `OPERATOR` and `signInAsOperator` were written out
+ * here at `D12.12` and moved into `support/app.ts` at `D13.9`, when
+ * `impersonation.spec.ts` became the second spec in this suite that reaches the
+ * admin panel. The reasoning for each is now in that file, beside the values.
  */
-const ADMIN_URL = process.env["E2E_BASE_URL"] ?? "http://localhost:3001";
-
-/** Where the API answers — `support/app.ts`' variable, one API, one address. */
-const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
-
-/**
- * The operator the admin half signs in as.
- *
- * `apps/admin/e2e/support/app.ts`' constant, written out rather than imported
- * across an app boundary: that file is `apps/admin`'s, and reaching into it
- * would make this spec a diff against an app D12 does not touch. Environment
- * first, the seeded super admin as the default, exactly as it is there.
- */
-const OPERATOR = {
-  email: process.env["SEED_SUPER_ADMIN_EMAIL"] ?? "admin@machxi.local",
-  password: process.env["SEED_SUPER_ADMIN_PASSWORD"] ?? "ChangeMe123!local",
-};
 
 /**
  * One population's CSRF cookie, out of the context's jar.
@@ -70,19 +51,6 @@ const csrfCookie = async (
 
   return (await context.cookies()).find((cookie) => cookie.name === name)
     ?.value;
-};
-
-/** Signs into the admin panel in the page given, and waits for its shell. */
-const signInAsOperator = async (page: Page): Promise<void> => {
-  await page.goto(`${ADMIN_URL}/login`);
-
-  await page.getByLabel("Email").fill(OPERATOR.email);
-  await page.getByLabel("Password").fill(OPERATOR.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-
-  await expect(
-    page.getByRole("heading", { name: "Dashboard", level: 1 }),
-  ).toBeVisible();
 };
 
 test("an admin session's traffic leaves the customer app's alone", async ({
