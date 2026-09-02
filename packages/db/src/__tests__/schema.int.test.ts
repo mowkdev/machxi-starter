@@ -96,12 +96,33 @@ describe("migration 0001", () => {
     // Drizzle puts `__drizzle_migrations` in its own `drizzle` schema. Worth
     // pinning: `db:reset` has to drop that schema too, and a reset that
     // forgets it leaves the journal claiming an empty database is migrated.
+    //
+    // `pg_tables`, not `information_schema.tables`, since `D14.4`: this client
+    // is the **application** role (ADR-0061 §1), and `information_schema` shows
+    // only what the current role has a privilege on — the journal is the
+    // owner's and the application role has none on it, so the standard view
+    // reports nothing and the assertion would read as "the table does not
+    // exist". The catalog view is not privilege-filtered and answers the
+    // question this test is actually asking, which is where the table lives.
+    const rows = await rowsOf<{ schemaname: string }>(
+      sql`select schemaname from pg_tables
+          where tablename = '__drizzle_migrations'`,
+    );
+
+    expect(rows).toEqual([{ schemaname: "drizzle" }]);
+  });
+
+  it("does not show the journal to the application role at all", async () => {
+    // The other half of the same fact, and the one worth an assertion of its
+    // own (ADR-0061 §1): the role the API connects as has no privilege on the
+    // migration journal, so a query through it cannot read — let alone
+    // rewrite — the record of what has been applied.
     const rows = await rowsOf<{ table_schema: string }>(
       sql`select table_schema from information_schema.tables
           where table_name = '__drizzle_migrations'`,
     );
 
-    expect(rows).toEqual([{ table_schema: "drizzle" }]);
+    expect(rows).toEqual([]);
   });
 
   it("names every column snake_case (ADR-0006)", async () => {

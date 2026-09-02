@@ -42,7 +42,17 @@ const main = async (): Promise<void> => {
     }),
   });
 
-  const db = createDb(config.db.url, { max: config.db.poolMax });
+  // Every bound this process's connections carry, from validated config
+  // (ADR-0061 §3): the two timeouts and the `pg_stat_activity` name go onto
+  // each connection postgres.js opens, and `preparedStatements` is what makes
+  // a transaction-mode pooler a configuration change rather than a code one.
+  const db = createDb(config.db.url, {
+    max: config.db.poolMax,
+    statementTimeoutMs: config.db.statementTimeoutMs,
+    idleTransactionTimeoutMs: config.db.idleTransactionTimeoutMs,
+    applicationName: config.db.applicationName,
+    noPreparedStatements: !config.db.preparedStatements,
+  });
 
   try {
     await probeDatabase({

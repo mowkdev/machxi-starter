@@ -1,11 +1,12 @@
 import { auditEvents } from "@repo/db";
-import { truncateAll } from "@repo/db/testing";
+import { truncateAllWithOwner } from "@repo/db/testing";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createSystemContext } from "../src/core/context/index.js";
 import type { AuditIdentities } from "../src/core/audit/index.js";
 import { createTestApp, type TestApp } from "./support/app.js";
+import { loadTestEnv } from "./setup/env.js";
 
 /**
  * The audit writer against real Postgres (ADR-0058, ADR-0021).
@@ -38,7 +39,9 @@ const allRows = () => harness.db.db.select().from(auditEvents);
 
 beforeAll(async () => {
   harness = createTestApp();
-  await truncateAll(harness.db.db);
+  // The owner's connection, because the application role has no `TRUNCATE` on
+  // this table by decision (ADR-0061 §1–§2) — see `truncateAllWithOwner`.
+  await truncateAllWithOwner(loadTestEnv().ownerDatabaseUrl);
 });
 
 afterAll(async () => {

@@ -108,8 +108,29 @@ const required = (key: string): string => {
   return value;
 };
 
-/** Where migrations, seeds and `drizzle-kit` point by default. */
+/**
+ * The **application** role's connection (ADR-0061 §1).
+ *
+ * What the API connects as, and what a script that only reads and writes rows
+ * — `db:sessions:prune` — connects as. It holds `SELECT`, `INSERT`, `UPDATE`
+ * and `DELETE` on the tables it needs and nothing else: no DDL, no ownership,
+ * and no `UPDATE` or `DELETE` on `audit_events`.
+ */
 export const readDatabaseUrl = (): string => required("DATABASE_URL");
+
+/**
+ * The **owner** role's connection (ADR-0061 §1).
+ *
+ * What runs DDL: `db:migrate`, `db:seed`, `db:reset`, `drizzle-kit` and the
+ * test harness's `migrateFreshDatabase`.
+ *
+ * **Required, with no fallback to `DATABASE_URL`.** A fallback is how a
+ * deployment ends up migrating as its application role and never finding out —
+ * the migration fails on a `CREATE TABLE` it has no privilege for, or worse,
+ * succeeds because somebody quietly gave the application role DDL back.
+ */
+export const readOwnerDatabaseUrl = (): string =>
+  required("DATABASE_URL_OWNER");
 
 /**
  * The integration-test database (ADR-0021). Tooling-only — deliberately absent
@@ -121,6 +142,17 @@ export const readDatabaseUrl = (): string => required("DATABASE_URL");
  * integration tests run before that file exists.
  */
 export const readTestDatabaseUrl = (): string => required("DATABASE_URL_TEST");
+
+/**
+ * The integration-test database as the **owner** (ADR-0061 §1).
+ *
+ * The harness migrates and truncates through this one and runs the suite
+ * through {@link readTestDatabaseUrl}, so every query a test makes carries
+ * exactly the privileges production has — which is the only way a missing
+ * grant is ever found by a machine rather than by a deployment.
+ */
+export const readTestOwnerDatabaseUrl = (): string =>
+  required("DATABASE_URL_TEST_OWNER");
 
 /** `NODE_ENV`, defaulted the same way the API's config schema defaults it. */
 export const readNodeEnv = (): string => read("NODE_ENV") ?? "development";

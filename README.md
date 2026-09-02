@@ -30,6 +30,9 @@ cp .env.example .env         # every variable is documented there (ADR-0004)
 cp apps/admin/.env.example apps/admin/.env   # each browser app reads its own (ADR-0033)
 cp apps/customer/.env.example apps/customer/.env
 pnpm docker:up               # local Postgres, waits until healthy (ADR-0007)
+                             # first start also creates the machxi_app and
+                             # machxi_owner roles (ADR-0061); a data volume
+                             # from before that needs `pnpm docker:reset`
 pnpm db:setup                # migrations + super admin seed (ADR-0008)
 pnpm db:seed -- --dev        # local fixture accounts (optional, but the smoke test needs them)
 pnpm dev --filter api        # http://localhost:4000
@@ -134,6 +137,15 @@ pnpm db:reset                # drop, migrate, seed — refuses NODE_ENV=producti
 pnpm db:studio
 pnpm db:sessions:prune       # delete expired sessions and spent handoffs (nothing schedules this yet)
 ```
+
+Everything above except `db:sessions:prune` connects as **`machxi_owner`**
+(`DATABASE_URL_OWNER`), because all of it is DDL or runs beside DDL; the API,
+the prune job and the integration suite connect as **`machxi_app`**
+(`DATABASE_URL`), which holds table privileges and nothing else — no schema
+changes, and no `UPDATE` or `DELETE` on `audit_events`, which the database
+refuses through both a revoked grant and a trigger (ADR-0061). The owner
+variables are required where they are read, with no fallback: a fallback is how
+a deployment ends up migrating as its application role and never finding out.
 
 ## What's inside
 

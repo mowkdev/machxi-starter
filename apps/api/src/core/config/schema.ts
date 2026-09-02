@@ -1,6 +1,15 @@
 import { defaultArgon2Params, minArgon2Params } from "@repo/crypto";
 import { z } from "zod";
 
+// Through `core/db`, the API's one view of `@repo/db` (ADR-0009). The two
+// defaults are stated by `createDb` and mirrored into this schema rather than
+// retyped, for the reason the argon2 parameters are taken from `@repo/crypto`:
+// a floor or a default that exists in two places is a floor that will one day
+// exist in one.
+import {
+  DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS,
+  DEFAULT_STATEMENT_TIMEOUT_MS,
+} from "../db/index.js";
 import { parseDurationSeconds } from "./duration.js";
 import { isProductionTrustProxy } from "./trust-proxy.js";
 
@@ -192,9 +201,37 @@ export const envSchema = z
     // are startup failures.
     TRUST_PROXY: z.string().default("false"),
 
+    // The **application** role (ADR-0061 §1). `DATABASE_URL_OWNER` is
+    // deliberately absent from this schema, exactly as `DATABASE_URL_TEST` is:
+    // DDL belongs to `packages/db`'s tooling, and the API must not be able to
+    // reach a connection that has any by reading its own configuration.
     DATABASE_URL: z.url(),
     DB_POOL_MAX: z.coerce.number().int().positive().default(10),
     DB_CONNECT_RETRIES: z.coerce.number().int().positive().default(10),
+    // Session bounds carried by every connection in the pool (ADR-0061 §3).
+    // Milliseconds, and `0` disables — hence `min(0)` rather than `positive()`:
+    // turning one off is a deployment's decision to make, and `0` is what
+    // Postgres itself reads as "no limit".
+    DB_STATEMENT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .default(DEFAULT_STATEMENT_TIMEOUT_MS),
+    DB_IDLE_TX_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .default(DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS),
+    DB_APPLICATION_NAME: z.string().min(1).default("machxi-api"),
+    // `false` behind a transaction-mode pooler, where a prepared statement does
+    // not survive to the next query on the same logical connection. The
+    // `noPreparedStatements` option this feeds has existed since D1 with no
+    // variable behind it, which meant that pooler could not actually be used.
+    //
+    // `z.stringbool()` for the reason `FEATURE_USER_REGISTRATION` gives below:
+    // `z.coerce.boolean()` is `Boolean(value)` over a string, so `=false`
+    // would parse to `true` and this could never be turned off.
+    DB_PREPARED_STATEMENTS: z.stringbool().default(true),
 
     JWT_ISSUER: z.string().min(1).default("machxi-api"),
     JWT_ACCESS_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),

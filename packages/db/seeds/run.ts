@@ -4,8 +4,8 @@ import { createDb } from "../src/index.js";
 import { isEntryPoint } from "../src/tooling/entrypoint.js";
 import { readArgon2Params } from "../src/tooling/argon2.js";
 import {
-  readDatabaseUrl,
   readNodeEnv,
+  readOwnerDatabaseUrl,
   readSuperAdminCredentials,
 } from "../src/tooling/env.js";
 import {
@@ -89,13 +89,22 @@ const main = async (): Promise<void> => {
   const args = parseSeedArgs(process.argv.slice(2));
   const nodeEnv = readNodeEnv();
   const seeders = selectSeeders(args, nodeEnv);
-  const url = readDatabaseUrl();
+  // The owner's connection (ADR-0061 §1). Seeding writes rows, which the
+  // application role could do — but the seeders are tooling, they run beside
+  // `db:migrate` in `db:setup`, and a second connection string in that one
+  // command is a second thing to get wrong. One rule: `packages/db`'s CLI
+  // entry points connect as the owner.
+  const url = readOwnerDatabaseUrl();
 
   writeLine(
     `db:seed → ${describeTarget(url)} (NODE_ENV=${nodeEnv}${args.dev ? ", --dev" : ""})`,
   );
 
-  const client = createDb(url, { max: 1, idleTimeout: 5 });
+  const client = createDb(url, {
+    max: 1,
+    idleTimeout: 5,
+    applicationName: "machxi-seed",
+  });
   const hasher = createArgon2Hasher(readArgon2Params());
   const { email, password } = readSuperAdminCredentials();
 

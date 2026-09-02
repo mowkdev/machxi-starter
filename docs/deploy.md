@@ -13,7 +13,7 @@ The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.
 
 Three facts to have in mind before the click path:
 
-- **Postgres and Redis are not in the compose file.** They are managed resources on the platform, so their backups, restores, upgrades and monitoring are the platform's; the deployment is handed `DATABASE_URL` and `REDIS_URL`.
+- **Postgres and Redis are not in the compose file.** They are managed resources on the platform, so their backups, restores, upgrades and monitoring are the platform's; the deployment is handed `DATABASE_URL`, `DATABASE_URL_OWNER` and `REDIS_URL`.
 - **The two SPA images are environment-specific.** Vite inlines `VITE_*` at build time, so they are build arguments, not environment variables. Changing an API URL means rebuilding, and an image built for staging cannot be promoted to production. That is a property of the tool.
 - **Rolling back means rolling back the image.** It does not mean rolling back a migration: migrations are forward-only and hand-written (ADR-0008). A release that has to be undone is undone by deploying the previous commit, and by writing a new migration if the schema has to move back.
 
@@ -31,13 +31,31 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 1. **New resource → Docker Compose**, pointed at this repository, branch `main`, compose file `docker/prod/compose.yaml`. Coolify builds the images itself from the Dockerfiles the file names; there is no registry step in this setup.
 
-2. **Add the managed Postgres** (Resources → Database → PostgreSQL 16) in the same project. Copy its internal connection string.
+2. **Add the managed Postgres** (Resources → Database → PostgreSQL 16) in the same project, then **create the two roles** the deployment connects as (ADR-0061 §1). The compose file does not create them, and migration `0008` refuses to run if the application role is missing — deliberately, because a migration that could create roles would need `CREATEROLE`, which is most of the privilege this split exists to take away. Once, against the new database as its administrative user:
+
+   ```sql
+   CREATE ROLE machxi_owner LOGIN PASSWORD '…';
+   CREATE ROLE machxi_app   LOGIN PASSWORD '…';
+   GRANT CONNECT, CREATE ON DATABASE machxi TO machxi_owner;
+   GRANT CONNECT ON DATABASE machxi TO machxi_app;
+   ALTER SCHEMA public OWNER TO machxi_owner;
+   GRANT USAGE ON SCHEMA public TO machxi_app;
+   ```
+
+   Table privileges are not granted here: migration `0008` grants them, and its `ALTER DEFAULT PRIVILEGES` is what makes every table a later migration creates usable without a grant nobody remembers to write. Copy both connection strings — the owner's is only ever used by the one-shot `migrate` service, and the API never receives it.
+
+   **On an existing database** — one that already ran D1–D13 — the snippet above is not enough, and this is the one upgrade step that bites. `ALTER SCHEMA public OWNER` moves the schema; it does not move the **tables**, which are still owned by whatever role created them, and migration `0008` grants on tables. It fails loudly rather than quietly: on PostgreSQL 16 the `GRANT` raises `permission denied for table users` and the whole migration rolls back, and `0008` also asserts its own post-condition for the partial case Postgres answers with a warning instead. The fix, run once as the current administrative role:
+
+   ```sql
+   REASSIGN OWNED BY <the role that created the tables> TO machxi_owner;
+   ```
 
 3. **Environment variables**, on the compose resource. [`docker/prod/.env.example`](../docker/prod/.env.example) is the checklist; the ones with no safe default are:
 
    | Variable                                      | Value                                                                    |
    | --------------------------------------------- | ------------------------------------------------------------------------ |
-   | `DATABASE_URL`                                | the managed Postgres string from step 2                                  |
+   | `DATABASE_URL`                                | the **`machxi_app`** string from step 2 — the API's connection           |
+   | `DATABASE_URL_OWNER`                          | the **`machxi_owner`** string — read only by the `migrate` service       |
    | `JWT_ACCESS_SECRET`                           | the key generated above, ≥ 32 characters                                 |
    | `TRUST_PROXY`                                 | `1` — Coolify puts one Traefik hop in front of you                       |
    | `CORS_ORIGINS`                                | `https://admin.example.com,https://app.example.com` — exact, no wildcard |
@@ -53,10 +71,12 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 6. **Seed the first super admin, once.** The image deliberately carries only the migration runner: seeding is not a release step, it is a first-run one, and `SEED_SUPER_ADMIN_*` never reaches the API's request path (ADR-0008). Run it from a checkout against the managed database, once, with the two variables set for that command only:
 
    ```sh
-   DATABASE_URL='postgres://…' NODE_ENV=production \
+   DATABASE_URL_OWNER='postgres://machxi_owner:…' NODE_ENV=production \
    SEED_SUPER_ADMIN_EMAIL=you@example.com SEED_SUPER_ADMIN_PASSWORD='…' \
      pnpm db:seed
    ```
+
+   The **owner's** connection string, like every other `packages/db` CLI entry point (ADR-0061 §1).
 
    A password committed anywhere in this repository is refused here (ADR-0020 §Known-public secrets): the account holds `super_admin`, which bypasses every staff role check.
 
@@ -67,14 +87,15 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 Useful for checking the images before a real deploy, and the shape the definition of done uses:
 
 ```sh
-cp docker/prod/.env.example docker/prod/.env     # then edit DATABASE_URL and the key
-                                                # (the committed placeholder is refused)
+cp docker/prod/.env.example docker/prod/.env     # then edit the two DATABASE_URL* values
+                                                # and the key (the committed
+                                                # placeholder is refused)
 docker compose -f docker/prod/compose.yaml build
 docker compose -f docker/prod/compose.yaml up -d
 curl -s localhost:4000/health/ready
 ```
 
-Point `DATABASE_URL` at the local compose Postgres with `host.docker.internal` rather than `localhost` — the API is in a container now, and `localhost` is the container. The published ports bind to `127.0.0.1`, so the stack is reachable from the host and from nowhere else; a platform routes to it over the compose network instead and needs no published port at all.
+Point both `DATABASE_URL*` values at the local compose Postgres with `host.docker.internal` rather than `localhost` — the API is in a container now, and `localhost` is the container. The published ports bind to `127.0.0.1`, so the stack is reachable from the host and from nowhere else; a platform routes to it over the compose network instead and needs no published port at all.
 
 ## What this does not decide
 

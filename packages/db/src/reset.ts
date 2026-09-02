@@ -2,7 +2,11 @@ import { sql as raw } from "drizzle-orm";
 
 import { createDb } from "./client.js";
 import { isEntryPoint } from "./tooling/entrypoint.js";
-import { isProduction, readDatabaseUrl, readNodeEnv } from "./tooling/env.js";
+import {
+  isProduction,
+  readNodeEnv,
+  readOwnerDatabaseUrl,
+} from "./tooling/env.js";
 import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
 
 /**
@@ -22,10 +26,20 @@ import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
  * query. ADR-0008 says "drop & recreate schema `public`" — that is the intent,
  * and this is what it takes.
  *
+ * **The owner's connection** (ADR-0061 §1): dropping and creating a schema is
+ * DDL, and the application role has none. The recreated `public` is owned by
+ * whoever ran this, which is why migration `0008` re-grants the application
+ * role its `USAGE` — a reset followed by `db:migrate` restores both.
+ *
  * Local only. Refused when `NODE_ENV=production`.
  */
 export const resetSchema = async (url: string): Promise<void> => {
-  const client = createDb(url, { max: 1, idleTimeout: 5 });
+  const client = createDb(url, {
+    max: 1,
+    idleTimeout: 5,
+    statementTimeoutMs: 0,
+    applicationName: "machxi-reset",
+  });
 
   try {
     await client.db.execute(raw`drop schema if exists public cascade`);
@@ -45,7 +59,7 @@ const main = async (): Promise<void> => {
     );
   }
 
-  const url = readDatabaseUrl();
+  const url = readOwnerDatabaseUrl();
 
   writeLine(`db:reset → ${describeTarget(url)} (NODE_ENV=${nodeEnv})`);
   await resetSchema(url);

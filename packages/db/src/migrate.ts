@@ -3,8 +3,8 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { createDb } from "./client.js";
 import {
   migrationsFolder,
-  readDatabaseUrl,
-  readTestDatabaseUrl,
+  readOwnerDatabaseUrl,
+  readTestOwnerDatabaseUrl,
 } from "./tooling/env.js";
 import { isEntryPoint } from "./tooling/entrypoint.js";
 import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
@@ -28,8 +28,12 @@ import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
  * **The API never calls this** — migrating is an explicit deploy step, not a
  * boot step, so startup stays deterministic across replicas (ADR-0008).
  *
- *   pnpm db:migrate            # DATABASE_URL
- *   pnpm db:migrate --test     # DATABASE_URL_TEST
+ * **It connects as the owner role** (ADR-0061 §1). DDL is the owner's; the
+ * application role the API uses holds table privileges and nothing else, so
+ * `DATABASE_URL` cannot apply a migration and is not read here.
+ *
+ *   pnpm db:migrate            # DATABASE_URL_OWNER
+ *   pnpm db:migrate --test     # DATABASE_URL_TEST_OWNER
  *   node dist/migrate.js       # the bundled entry, inside the API image
  */
 
@@ -61,7 +65,27 @@ export const runMigrations = async (url: string): Promise<void> => {
   // next query — and the lock would die with the old one, silently, leaving
   // exactly the race this function closes. `close()` below is what lets the
   // process exit; the idle timeout was never doing that job.
-  const client = createDb(url, { max: 1, idleTimeout: 0 });
+  //
+  // `statementTimeoutMs: 0` because a migration is a long statement by nature
+  // — an index build on a populated table is the ordinary case — and the
+  // API-shaped default (ADR-0061 §3) would cancel one halfway, leaving the
+  // journal and the schema disagreeing. The advisory lock, not a timeout, is
+  // what bounds this run against another.
+  //
+  // `onNotice` because a migration is the one place a server notice carries
+  // something an operator has to act on: a `GRANT` that only partly applies
+  // commits with a `WARNING` rather than an error (ADR-0061 §1), and the
+  // default handler in `createDb` discards it. Migration `0008` also asserts
+  // its own post-condition, so this is the explanation rather than the guard.
+  const client = createDb(url, {
+    max: 1,
+    idleTimeout: 0,
+    statementTimeoutMs: 0,
+    applicationName: "machxi-migrate",
+    onNotice: (notice) => {
+      writeLine(`  postgres: ${notice.message ?? "(no message)"}`);
+    },
+  });
 
   try {
     // Blocks until whatever holds it releases. No timeout on purpose: the
@@ -93,7 +117,7 @@ if (isEntryPoint(import.meta.url)) {
 
   try {
     await runMigrations(
-      useTestDatabase ? readTestDatabaseUrl() : readDatabaseUrl(),
+      useTestDatabase ? readTestOwnerDatabaseUrl() : readOwnerDatabaseUrl(),
     );
   } catch (error) {
     // The message, not the stack, for the reason `seeds/run.ts` gives: a

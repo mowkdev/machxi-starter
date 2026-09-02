@@ -1,7 +1,9 @@
 import type { PasswordHasher } from "@repo/crypto";
 import type { DbClient } from "@repo/db";
 import { baseSeeders, devSeeders, runSeeders } from "@repo/db/seeds";
-import { truncateAll } from "@repo/db/testing";
+import { truncateAllWithOwner } from "@repo/db/testing";
+
+import { loadTestEnv } from "../setup/env.js";
 
 /**
  * Per-file fixtures for the integration suite (ADR-0021).
@@ -104,10 +106,19 @@ export const seed = async ({
   });
 };
 
-/** Empties every table, then seeds. What each integration file starts from. */
+/**
+ * Empties every table, then seeds. What each integration file starts from.
+ *
+ * The truncate goes through a short-lived **owner** connection (ADR-0061 §1),
+ * not through the app's `options.db`: `TRUNCATE` is not in the application
+ * role's grant, and it is deliberately not added, because a row-level trigger
+ * never fires for it and it is therefore the one statement that could empty
+ * the append-only log. Seeding stays on the app connection — it inserts rows,
+ * which is exactly what production does.
+ */
 export const resetAndSeed = async (
   options: ResetAndSeedOptions,
 ): Promise<void> => {
-  await truncateAll(options.db.db);
+  await truncateAllWithOwner(loadTestEnv().ownerDatabaseUrl);
   await seed(options);
 };

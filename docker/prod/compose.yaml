@@ -43,7 +43,13 @@ services:
     restart: "no"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
+      # The **owner's** connection (ADR-0061 §1). Migrating is DDL, and the
+      # role the API connects as below has none — deliberately, so that a SQL
+      # injection or a stray repository cannot alter the schema and so that
+      # row-level security has a non-owner to apply to. There is no fallback to
+      # DATABASE_URL: a fallback is how a deployment ends up migrating as its
+      # application role and never finding out.
+      - DATABASE_URL_OWNER=${DATABASE_URL_OWNER}
     networks: [machxi]
 
   api:
@@ -69,6 +75,10 @@ services:
       # `req.ip` is what the login limiter, the refresh limiter and the audit
       # trail key on. Behind one reverse proxy that is `1`.
       - TRUST_PROXY=${TRUST_PROXY}
+      # The **application** role: table privileges and nothing else, and no
+      # UPDATE or DELETE on audit_events, which the database refuses twice over
+      # (ADR-0061). The owner's URL is not injected here — the API has no use
+      # for it and must not be able to reach it.
       - DATABASE_URL=${DATABASE_URL}
       # The seam ADR-0066 fills at `D14.6` — the shared rate-limit store.
       # Nothing reads it yet; it is injected here because the resource is

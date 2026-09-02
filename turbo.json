@@ -19,7 +19,13 @@
     "test": {
       "cache": false,
       "dependsOn": [],
-      "env": ["DATABASE_URL", "DATABASE_URL_TEST"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DATABASE_URL_TEST",
+        "DATABASE_URL_TEST_OWNER",
+        "DB_*"
+      ]
     },
     "test:unit": {
       "dependsOn": []
@@ -42,7 +48,13 @@
     "test:int": {
       "cache": false,
       "dependsOn": [],
-      "env": ["DATABASE_URL", "DATABASE_URL_TEST"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DATABASE_URL_TEST",
+        "DATABASE_URL_TEST_OWNER",
+        "DB_*"
+      ]
     },
     "test:watch": {
       "cache": false,
@@ -66,32 +78,74 @@
     },
     "db:generate": {
       "cache": false,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     },
     "db:migrate": {
       "cache": false,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     },
     "db:seed": {
       "cache": false,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     },
     "db:sessions:prune": {
       "cache": false,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     },
     "db:setup": {
       "cache": false,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     },
     "db:reset": {
       "cache": false,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     },
     "db:studio": {
       "cache": false,
       "persistent": true,
-      "env": ["DATABASE_URL", "ARGON2_*", "SEED_SUPER_ADMIN_*"]
+      "env": [
+        "DATABASE_URL",
+        "DATABASE_URL_OWNER",
+        "DB_*",
+        "ARGON2_*",
+        "SEED_SUPER_ADMIN_*"
+      ]
     }
   }
 }

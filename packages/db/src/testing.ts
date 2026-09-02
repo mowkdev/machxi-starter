@@ -1,6 +1,6 @@
 import { sql as raw } from "drizzle-orm";
 
-import type { DbExecutor } from "./client.js";
+import { createDb, type DbExecutor } from "./client.js";
 import { runMigrations } from "./migrate.js";
 import { resetSchema } from "./reset.js";
 import { isProduction } from "./tooling/env.js";
@@ -42,6 +42,11 @@ export const assertTestDatabase = (url: string): void => {
 /**
  * Drops schemas `public` and `drizzle`, then replays every committed migration
  * onto the empty result.
+ *
+ * **Takes the owner's URL** (ADR-0061 §1) — `DATABASE_URL_TEST_OWNER`. Both
+ * halves are DDL, and the application role the suite itself runs as has none;
+ * that split is the point, because it means every query a test makes carries
+ * exactly the privileges production has.
  */
 export const migrateFreshDatabase = async (url: string): Promise<void> => {
   // Both guards, not one. The suffix check is the primary one, but this entry
@@ -95,7 +100,14 @@ export const TRUNCATED_TABLES = [
 ] as const;
 
 /**
- * Empties every application table (ADR-0021).
+ * Empties every application table (ADR-0021), **on an owner executor**.
+ *
+ * `TRUNCATE` is not in the application role's grant (ADR-0061 §1 grants
+ * `SELECT, INSERT, UPDATE, DELETE`), and it is deliberately not added: a
+ * row-level `BEFORE UPDATE OR DELETE` trigger never fires for a truncate, so
+ * `TRUNCATE` is the one door §2's pair cannot close and the application role
+ * must not hold the key to it. Emptying the database between files is harness
+ * work, not suite work — {@link truncateAllWithOwner} is what a harness calls.
  *
  * Used between integration files so fixtures one test mutates cannot leak into
  * the next. One statement with `cascade`, so declaration order does not
@@ -120,4 +132,35 @@ export const truncateAll = async (db: DbExecutor): Promise<void> => {
   await db.execute(
     raw`truncate table ${raw.raw(TRUNCATED_TABLES.join(", "))} restart identity cascade`,
   );
+};
+
+/**
+ * Opens an owner connection, {@link truncateAll}s through it, and closes it.
+ *
+ * What every integration harness calls between files (ADR-0061 §1). The
+ * connection is short-lived on purpose: a harness has no teardown hook to
+ * close a long-lived one from, and a per-file connect costs a millisecond
+ * against a truncate that costs more.
+ *
+ * The URL is the **owner's** (`DATABASE_URL_TEST_OWNER`), for the reason
+ * {@link truncateAll} gives: the application role has no `TRUNCATE`, and
+ * granting it would open the one door the append-only trigger cannot.
+ */
+export const truncateAllWithOwner = async (ownerUrl: string): Promise<void> => {
+  // The `_test`-suffix refusal, which the executor-taking form above cannot
+  // apply because it has no URL to look at (ADR-0008 §Environment guardrails).
+  // Here there is one, so it is checked.
+  assertTestDatabase(ownerUrl);
+
+  const client = createDb(ownerUrl, {
+    max: 1,
+    idleTimeout: 2,
+    applicationName: "machxi-test-harness",
+  });
+
+  try {
+    await truncateAll(client.db);
+  } finally {
+    await client.close();
+  }
 };

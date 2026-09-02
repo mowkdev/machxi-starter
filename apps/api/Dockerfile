@@ -65,7 +65,9 @@ WORKDIR /app
 # The image's own default, not configuration: every production guard in the
 # config schema branches on it, and an absent value is a startup failure by
 # design (ADR-0004). Everything else — `DATABASE_URL`, `JWT_ACCESS_SECRET`,
-# `TRUST_PROXY`, `CORS_ORIGINS` — is injected by the deployment.
+# `TRUST_PROXY`, `CORS_ORIGINS` — is injected by the deployment, and so is
+# `DATABASE_URL_OWNER`, which this image reads only when it is run as the
+# one-shot `migrate` service (ADR-0061 §1); the API process never sees it.
 ENV NODE_ENV=production \
     PORT=4000
 

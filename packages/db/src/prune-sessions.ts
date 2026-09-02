@@ -94,6 +94,11 @@ export const pruneImpersonationHandoffs = async (
 };
 
 const main = async (): Promise<void> => {
+  // The **application** role, alone among this package's CLI entry points
+  // (ADR-0061 §1): this one runs no DDL — two `delete … where expired`
+  // statements — and running it as the owner would mean a scheduled job
+  // holding a connection that can drop tables. The privileges it needs are
+  // exactly the ones the API already has.
   const url = readDatabaseUrl();
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400 * 1000);
 
@@ -101,7 +106,11 @@ const main = async (): Promise<void> => {
     `db:sessions:prune → ${describeTarget(url)} (NODE_ENV=${readNodeEnv()}, cutoff ${cutoff.toISOString()})`,
   );
 
-  const client = createDb(url, { max: 1, idleTimeout: 5 });
+  const client = createDb(url, {
+    max: 1,
+    idleTimeout: 5,
+    applicationName: "machxi-prune",
+  });
 
   try {
     // `vacuum` is left to autovacuum; a delete of a few thousand rows does not

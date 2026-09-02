@@ -12,6 +12,9 @@
  */
 export {
   createDb,
+  DEFAULT_APPLICATION_NAME,
+  DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS,
+  DEFAULT_STATEMENT_TIMEOUT_MS,
   type CreateDbOptions,
   type Db,
   type DbClient,

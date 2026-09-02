@@ -1,6 +1,6 @@
 import { defineConfig } from "drizzle-kit";
 
-import { readDatabaseUrl } from "./src/tooling/env.js";
+import { readOwnerDatabaseUrl } from "./src/tooling/env.js";
 
 /**
  * `drizzle-kit` configuration (ADR-0006, ADR-0008).
@@ -9,6 +9,10 @@ import { readDatabaseUrl } from "./src/tooling/env.js";
  * committed migrations and writes the next SQL file, and `db:studio`. Applying
  * migrations is `src/migrate.ts`, never `drizzle-kit push` — the committed SQL
  * is the reviewed artefact.
+ *
+ * **The owner's connection** (ADR-0061 §1): both commands are DDL tools —
+ * `studio` can alter and drop — and the application role the API connects as
+ * has no DDL at all.
  */
 export default defineConfig({
   dialect: "postgresql",
@@ -18,7 +22,7 @@ export default defineConfig({
   // camelCase, physical columns are snake_case. If these two ever disagree,
   // `generate` writes a migration renaming every column in the database.
   casing: "snake_case",
-  dbCredentials: { url: readDatabaseUrl() },
+  dbCredentials: { url: readOwnerDatabaseUrl() },
   strict: true,
   verbose: true,
 });

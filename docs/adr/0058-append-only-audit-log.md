@@ -1,7 +1,9 @@
 # ADR-0058: An append-only audit log
 
-- Status: accepted
+- Status: superseded by [ADR-0061](0061-database-roles-and-append-only-enforcement.md) (delta: append-only gains database enforcement beside the rule of the code)
 - Date: 2026-09-01
+
+> **Superseded in part 2026-09-03 by [ADR-0061](0061-database-roles-and-append-only-enforcement.md)**, at the head of `D14.4`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and an additive one: nothing this record decided is withdrawn. The table and its columns, the no-foreign-key rule, the single insert path in `core/audit`, the lint ban that keeps a second one from being written, the two write disciplines, the absence of a read surface and the unbounded-retention default all **stand and are in force**. What 0061 §2 adds is enforcement in the one place that can enforce it: `REVOKE UPDATE, DELETE ON audit_events` from the application role, and a `BEFORE UPDATE OR DELETE` trigger that raises for everyone — the owner connection and a `psql` session included. The lint rule stops a colleague; the grant stops the API; the trigger stops the 3 a.m. `DELETE FROM`. Retention gains its one sanctioned path, a reviewed migration that drops the trigger, deletes and restores it. Read 0061 §2 for the enforcement; read this record for the log itself.
 
 > Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)), the sibling of [ADR-0057](0057-impersonation-sessions.md). `proposed` at writing; **accepted 2026-09-01 at the head of `D13.2`**, the step that builds it; amendable in place while D13 is `in progress` (ADR-0025 rule 2). Additive: it supersedes nothing — no parent moved to `superseded by` when it was accepted, and none needed to: no record before it decided anything about an audit mechanism.
 

@@ -229,6 +229,33 @@ const noAuditTable = [
   },
 ];
 
+/**
+ * Every table `@repo/db` exports from its package root, by export name.
+ *
+ * Hand-maintained and therefore checked: a unit test in `packages/db` diffs
+ * this list against the schema's own table exports and fails naming the
+ * missing one (ADR-0061 §4). A table that escapes it is reachable from any
+ * service, silently — which is the whole failure mode this rule exists to
+ * prevent, arriving through the one door the rule does not cover.
+ *
+ * Exported for that test alone. Nothing else should read it.
+ */
+export const RESTRICTED_SCHEMA_TABLE_IMPORTS = [
+  // `audit_events` is append-only by decision (ADR-0058), and the decision is
+  // only real if no service can reach the table: the writer in `core/audit` is
+  // the one insert path, and it holds no update or delete. The database
+  // enforces the same thing twice over since ADR-0061 §2.
+  "auditEvents",
+  "impersonationHandoffs",
+  "sessions",
+  "staff",
+  "staffRoles",
+  "staffSettings",
+  "userRoles",
+  "userSettings",
+  "users",
+];
+
 const noSchemaTables = [
   {
     group: ["@repo/db/schema"],
@@ -239,17 +266,8 @@ const noSchemaTables = [
     group: ["@repo/db"],
     importNames: [
       "schema",
-      // `audit_events` is append-only by decision (ADR-0058), and the decision
-      // is only real if no service can reach the table: the writer in
-      // `core/audit` is the one insert path, and it holds no update or delete.
-      "auditEvents",
+      ...RESTRICTED_SCHEMA_TABLE_IMPORTS,
       "auditActorTypeEnum",
-      "impersonationHandoffs",
-      "sessions",
-      "staff",
-      "staffRoles",
-      "userRoles",
-      "users",
       "principalTypeEnum",
       "staffRoleEnum",
       "staffStatusEnum",

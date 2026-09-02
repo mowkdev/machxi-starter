@@ -33,9 +33,71 @@ export interface CreateDbOptions {
    * Disables the prepared-statement cache. Required behind a transaction-mode
    * pooler (PgBouncer, Supabase's 6543 port), where a prepared statement does
    * not survive to the next query on the same logical connection.
+   *
+   * The API passes `DB_PREPARED_STATEMENTS` (ADR-0061 §3); before that this
+   * option had no call site and no variable behind it, which meant the pooler
+   * it was written for could not actually be used.
    */
   noPreparedStatements?: boolean;
+  /**
+   * `statement_timeout`, in milliseconds; `0` disables it (ADR-0061 §3).
+   *
+   * Set on the *connection*, so every session in the pool carries it and no
+   * query has to remember. Without one, a pathological query holds a
+   * connection until the driver gives up, which at `DB_POOL_MAX` of them is an
+   * outage. The default is high enough that tripping it means something is
+   * wrong rather than that something is slow.
+   *
+   * The CLI entry points that run DDL pass `0` explicitly: a migration is a
+   * long statement by nature, and an API-shaped bound would eventually cancel
+   * one halfway.
+   */
+  statementTimeoutMs?: number;
+  /**
+   * `idle_in_transaction_session_timeout`, in milliseconds; `0` disables it.
+   *
+   * The other half of the bound above: a transaction left open by a crashed
+   * handler holds its locks and pins `xmin`, so autovacuum stops reclaiming
+   * rows database-wide. Postgres cancels the session instead.
+   */
+  idleTransactionTimeoutMs?: number;
+  /**
+   * `application_name` — what `pg_stat_activity` shows for these sessions.
+   *
+   * Free, and the difference between "some connection is blocking" and "the
+   * API is blocking" at the moment someone is looking (ADR-0061 §3).
+   */
+  applicationName?: string;
+  /**
+   * What to do with a server notice. Default: discard.
+   *
+   * The default is right for the API — logging belongs to the caller's logger
+   * (ADR-0005), and postgres.js would otherwise print to stdout. It is wrong
+   * for the migration runner, where a notice is sometimes the only channel a
+   * partial result has: a `GRANT` whose grantor holds the grant option on some
+   * privileges and not others commits with
+   * `WARNING: no privileges were granted`, and a discarded notice makes that
+   * indistinguishable from a clean run (ADR-0061 §1).
+   */
+  onNotice?: (notice: { message?: string }) => void;
 }
+
+/**
+ * The default `statement_timeout`, in milliseconds (ADR-0061 §3).
+ *
+ * Thirty seconds: an order of magnitude above the slowest query this
+ * repository has (a seeded list page answers in single-digit milliseconds) and
+ * well inside any reverse proxy's own timeout, so it fires on the query that
+ * is wrong rather than on the one that is merely large. A deployment that
+ * disagrees sets `DB_STATEMENT_TIMEOUT_MS`, and `0` turns it off.
+ */
+export const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
+
+/** The default `idle_in_transaction_session_timeout`, in milliseconds. */
+export const DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS = 60_000;
+
+/** The default `application_name`, overridden by the API's `DB_APPLICATION_NAME`. */
+export const DEFAULT_APPLICATION_NAME = "machxi";
 
 const createDrizzle = (sql: postgres.Sql) =>
   // `casing: 'snake_case'` is what lets every column be declared as
@@ -62,6 +124,10 @@ export const createDb = (url: string, options: CreateDbOptions = {}) => {
     idleTimeout = 0,
     connectTimeout = 10,
     noPreparedStatements = false,
+    statementTimeoutMs = DEFAULT_STATEMENT_TIMEOUT_MS,
+    idleTransactionTimeoutMs = DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS,
+    applicationName = DEFAULT_APPLICATION_NAME,
+    onNotice,
   } = options;
 
   const sql = postgres(url, {
@@ -69,9 +135,22 @@ export const createDb = (url: string, options: CreateDbOptions = {}) => {
     idle_timeout: idleTimeout,
     connect_timeout: connectTimeout,
     prepare: !noPreparedStatements,
+    // Session parameters, applied by postgres.js on every connection it opens
+    // — including the ones it opens to replace a closed idle connection
+    // (ADR-0061 §3). A `SET` issued once after connecting would cover the
+    // first connection of the pool and no other.
+    //
+    // Bare numbers, which is what both GUCs read as milliseconds.
+    connection: {
+      statement_timeout: statementTimeoutMs,
+      idle_in_transaction_session_timeout: idleTransactionTimeoutMs,
+      application_name: applicationName,
+    },
     // postgres.js prints connection notices to stdout unless told otherwise;
     // logging belongs to the caller's logger (ADR-0005), not to the driver.
-    onnotice: () => undefined,
+    // A caller that wants them — the migration runner does, see `onNotice` —
+    // says so.
+    onnotice: onNotice ?? (() => undefined),
   });
 
   const db = createDrizzle(sql);

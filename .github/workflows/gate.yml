@@ -38,14 +38,16 @@ jobs:
     timeout-minutes: 45
 
     services:
-      # The developer's database, with the developer's credentials: the
-      # committed `apps/api/.env.test` and `.env.example` both point at
-      # `postgres://machxi:machxi@localhost:5432/...`, and ADR-0004 fixes those
-      # files as the ones the suite follows. CI matches them rather than
-      # exporting a URL, because `packages/db`'s tooling loads the root `.env`
-      # **without** overriding (`src/tooling/env.ts`): an exported
-      # `DATABASE_URL_TEST` would win there and decide which database that
-      # package's own integration run rebuilds.
+      # The developer's cluster, with the developer's credentials. `machxi` is
+      # the superuser the container bootstraps with; nothing in the repository
+      # connects as it any more (ADR-0061) — the committed `.env.example` and
+      # `apps/api/.env.test` name `machxi_app` and `machxi_owner`, and those two
+      # roles are created by the init directory replayed below, before either
+      # file is copied. ADR-0004 fixes those files as the ones the suite
+      # follows, and CI matches them rather than exporting a URL, because
+      # `packages/db`'s tooling loads the root `.env` **without** overriding
+      # (`src/tooling/env.ts`): an exported `DATABASE_URL_TEST` would win there
+      # and decide which database that package's own integration run rebuilds.
       postgres:
         image: postgres:16-alpine
         env:
@@ -88,14 +90,21 @@ jobs:
             turbo-${{ runner.os }}-
 
       # The same SQL `docker/local` mounts into `docker-entrypoint-initdb.d`,
-      # run against the service container: one definition of the test database,
-      # and extensions still arrive by migration `0000` (ADR-0007, ADR-0008).
-      # The whole directory, not one named file, because that is what compose
-      # mounts — a second init file must not apply locally and not here.
-      - name: Create the test database
+      # run against the service container: one definition of the two roles and
+      # the test database, and extensions still arrive by migration `0000`
+      # (ADR-0007 as carried by ADR-0061 §1, ADR-0008). The whole directory, not
+      # one named file, because that is what compose mounts — `00-roles.sql`
+      # arrived exactly that way, and a third init file must not apply locally
+      # and not here.
+      - name: Create the roles and the test database
+        # `PGPASSWORD` rather than the password in the URI alone: `01-test-db.sql`
+        # ends with a `\c machxi_test`, and a reconnect that had to re-prompt
+        # would hang the job rather than fail it.
+        env:
+          PGPASSWORD: machxi
         run: |
           for f in docker/local/postgres/init/*.sql; do
-            psql "postgres://machxi:machxi@localhost:5432/machxi" -v ON_ERROR_STOP=1 -f "$f"
+            psql "postgres://machxi@localhost:5432/machxi" -v ON_ERROR_STOP=1 -f "$f"
           done
 
       # The documented setup, verbatim (README §Quick start). The three files

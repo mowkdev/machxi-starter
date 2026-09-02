@@ -34,6 +34,14 @@ export interface AppConfig {
     readonly url: string;
     readonly poolMax: number;
     readonly connectRetries: number;
+    /** `statement_timeout` in milliseconds; `0` disables (ADR-0061 §3). */
+    readonly statementTimeoutMs: number;
+    /** `idle_in_transaction_session_timeout` in milliseconds; `0` disables. */
+    readonly idleTransactionTimeoutMs: number;
+    /** What `pg_stat_activity` shows for this process's sessions. */
+    readonly applicationName: string;
+    /** `false` behind a transaction-mode pooler. */
+    readonly preparedStatements: boolean;
   };
   readonly auth: {
     readonly issuer: string;
@@ -96,6 +104,10 @@ export const toAppConfig = (env: Env): AppConfig =>
       url: env.DATABASE_URL,
       poolMax: env.DB_POOL_MAX,
       connectRetries: env.DB_CONNECT_RETRIES,
+      statementTimeoutMs: env.DB_STATEMENT_TIMEOUT_MS,
+      idleTransactionTimeoutMs: env.DB_IDLE_TX_TIMEOUT_MS,
+      applicationName: env.DB_APPLICATION_NAME,
+      preparedStatements: env.DB_PREPARED_STATEMENTS,
     }),
     auth: Object.freeze({
       issuer: env.JWT_ISSUER,

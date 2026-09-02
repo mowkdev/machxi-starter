@@ -1,7 +1,9 @@
 # ADR-0007: Local development infrastructure with Docker Compose
 
-- Status: accepted
+- Status: superseded by [ADR-0061](0061-database-roles-and-append-only-enforcement.md) (delta: the local init creates two roles beside the compose superuser)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-03 by [ADR-0061](0061-database-roles-and-append-only-enforcement.md)**, at the head of `D14.4`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and the narrowest kind: one file in the init directory. Everything this record decides — Postgres 16 alone in compose, the `docker/local` layout with room for siblings, the root `.env` as the one credential source, the named volume, the `docker:*` scripts, the second `machxi_test` database, extensions by migration and not by init — **stands and is in force**. 0061 §1 adds `docker/local/postgres/init/00-roles.sql`: the init that ran once to create a test database now also creates the **owner** and **application** roles the API and the tooling connect as, and hands the schema to the owner. The one visible cost is this record's own "runs once, on first start of an empty data volume" property — a tree that predates 0061 needs `pnpm docker:reset`, or the two roles created by hand. Read 0061 §1 for the roles; read this record for the compose setup they live in.
 
 ## Context
 

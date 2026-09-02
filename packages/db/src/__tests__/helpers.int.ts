@@ -2,7 +2,10 @@ import { createArgon2Hasher } from "@repo/crypto";
 
 import { createDb, type DbClient } from "../client.js";
 import { migrateFreshDatabase } from "../testing.js";
-import { readTestDatabaseUrl } from "../tooling/env.js";
+import {
+  readTestDatabaseUrl,
+  readTestOwnerDatabaseUrl,
+} from "../tooling/env.js";
 
 /**
  * Shared setup for the integration suite (ADR-0021).
@@ -18,11 +21,14 @@ import { readTestDatabaseUrl } from "../tooling/env.js";
  * `apps/api/.env.test` and follows the root `.env` (ADR-0004).
  */
 export const migrateFreshTestDatabase = async (): Promise<DbClient> => {
-  const url = readTestDatabaseUrl();
+  // Two roles, and the asymmetry is the point (ADR-0061 §1): the rebuild is
+  // DDL and runs as the **owner**, while what the suite gets back is a client
+  // on the **application** role — the one the API connects as. A test that
+  // passes on a connection with more privilege than production has proves
+  // nothing about production.
+  await migrateFreshDatabase(readTestOwnerDatabaseUrl());
 
-  await migrateFreshDatabase(url);
-
-  return createDb(url, { max: 2, idleTimeout: 2 });
+  return createDb(readTestDatabaseUrl(), { max: 2, idleTimeout: 2 });
 };
 
 /**

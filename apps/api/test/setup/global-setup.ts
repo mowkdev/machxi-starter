@@ -12,9 +12,15 @@ import { loadTestEnv } from "./env.js";
  *
  * Seeding is per-file from step 8 on, through the real seeders: fixtures that
  * one test mutates must not leak into the next.
+ *
+ * **As the owner** (ADR-0061 §1). Dropping and replaying schemas is DDL, which
+ * the application role the suite itself runs as does not have — and that is
+ * the property this split exists for: the tests execute with exactly the
+ * privileges production has, so a grant that migration `0008` forgets fails
+ * here rather than in a deployment.
  */
 export default async function setup(): Promise<void> {
-  const { databaseUrl } = loadTestEnv();
+  const { ownerDatabaseUrl } = loadTestEnv();
 
-  await migrateFreshDatabase(databaseUrl);
+  await migrateFreshDatabase(ownerDatabaseUrl);
 }

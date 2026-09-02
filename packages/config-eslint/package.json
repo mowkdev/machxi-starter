@@ -6,7 +6,10 @@
   "exports": {
     ".": "./index.js",
     "./react": "./react.js",
-    "./api": "./api.js",
+    "./api": {
+      "types": "./api.d.ts",
+      "default": "./api.js"
+    },
     "./admin": "./admin.js"
   },
   "scripts": {

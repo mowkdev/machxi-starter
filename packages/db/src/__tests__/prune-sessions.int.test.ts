@@ -8,7 +8,8 @@ import {
   pruneSessions,
 } from "../prune-sessions.js";
 import { impersonationHandoffs, sessions } from "../index.js";
-import { truncateAll } from "../testing.js";
+import { truncateAllWithOwner } from "../testing.js";
+import { readTestOwnerDatabaseUrl } from "../tooling/env.js";
 import { migrateFreshTestDatabase } from "./helpers.int.js";
 
 /**
@@ -61,7 +62,10 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await truncateAll(client.db);
+  // The owner's connection: `TRUNCATE` is not in the application role's grant
+  // and is deliberately left out of it (ADR-0061 §1), so emptying the database
+  // between cases is harness work rather than something `client` can do.
+  await truncateAllWithOwner(readTestOwnerDatabaseUrl());
 });
 
 describe("pruneSessions", () => {

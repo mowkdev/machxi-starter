@@ -1,7 +1,9 @@
 # ADR-0006: PostgreSQL with Drizzle ORM in a shared `@repo/db` package
 
-- Status: accepted
+- Status: superseded by [ADR-0061](0061-database-roles-and-append-only-enforcement.md) (delta: which role the API connects as, and four more client options)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-03 by [ADR-0061](0061-database-roles-and-append-only-enforcement.md)**, at the head of `D14.4`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and a narrow one: this record chose Postgres 16, Drizzle over postgres.js, the `@repo/db` package, snake_case casing, UUIDv7 primary keys, the executor-taking repository and the no-singleton client — **all of that stands and is in force**. 0061 §1 changes one fact about the connection: the API connects as an **application role** with table privileges and no DDL, while migrations, seeds and `drizzle-kit` connect as an **owner role** through `DATABASE_URL_OWNER`. 0061 §3 adds four options to the `createDb` this record designed — `statement_timeout`, `idle_in_transaction_session_timeout`, `application_name` and the `DB_PREPARED_STATEMENTS` variable behind the `noPreparedStatements` option that had none. Read 0061 §1 and §3 for the connection; read this record for everything else about the store.
 
 ## Context
 

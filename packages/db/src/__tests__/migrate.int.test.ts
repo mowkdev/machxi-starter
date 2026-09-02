@@ -8,7 +8,7 @@ import { createDb, type DbClient } from "../client.js";
 import { MIGRATION_LOCK_KEY, runMigrations } from "../migrate.js";
 import { resetSchema } from "../reset.js";
 import { assertTestDatabase } from "../testing.js";
-import { migrationsFolder, readTestDatabaseUrl } from "../tooling/env.js";
+import { migrationsFolder, readTestOwnerDatabaseUrl } from "../tooling/env.js";
 
 /**
  * The migration runner's advisory lock (ADR-0059 §5, `D14.3`).
@@ -26,7 +26,9 @@ import { migrationsFolder, readTestDatabaseUrl } from "../tooling/env.js";
  * cannot have one.
  */
 
-const url = readTestDatabaseUrl();
+// The owner's URL: every statement in this file is DDL or a lock taken
+// around DDL, and the application role has neither (ADR-0061 §1).
+const url = readTestOwnerDatabaseUrl();
 
 /** How many migrations the committed journal says exist. */
 const journalEntryCount = (): number => {
