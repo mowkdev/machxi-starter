@@ -1,10 +1,14 @@
 # machxi-starter
 
-Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin panel and a web app.
+Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin
+panel and a customer app.
 
-The API is complete and runnable: Express 5 on Node 22, PostgreSQL via Drizzle,
-two authenticated populations (staff and users) with roles, a unified response
-envelope, and a Postman collection that proves the whole surface works.
+All three are complete and runnable: an Express 5 API on Node 22 with PostgreSQL
+via Drizzle, two authenticated populations (staff and users) with roles, a
+unified response envelope and a Postman collection that proves the whole surface
+works; `apps/admin` and `apps/customer`, two Vite + React SPAs built from the
+same platform packages, localized, themed, and able to run an impersonated
+session end to end.
 
 Architecture is decided in [`docs/adr/`](docs/adr/README.md) — read the relevant
 ADR before changing anything it covers. Work is staged into numbered deliverables
@@ -35,14 +39,15 @@ Then, in a second terminal:
 
 ```sh
 curl http://localhost:4000/health/ready
-pnpm test:postman            # 103 requests, 317 assertions — did it actually work?
+pnpm test:postman            # 119 requests, 365 assertions — did it actually work?
 ```
 
 `pnpm test:postman` runs the Postman collection headless with newman against
 `localhost`, signing in as the super admin from your `.env`. It is the executable
 half of the ADR-0021 acceptance checklist: if it is green, the clone works.
 
-`pnpm dev` with no filter starts the API, `admin` (port 3001), `customer` (port 3002) and `web` (port 3003) together.
+`pnpm dev` with no filter starts the API, `admin` (port 3001) and `customer`
+(port 3002) together.
 
 ### Signing in
 
@@ -76,12 +81,12 @@ Port 4000 by default. Every response with a body carries the ADR-0012 envelope
 (`{ success, data | error, meta }`), and every response echoes `X-Request-Id`.
 Logout, `sessions/revoke` and `change-password` answer `204` with nothing in it.
 
-| Route                                          | What                                                                                                               |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `GET /health/live`, `/health/ready`, `/health` | liveness, and readiness including a database probe (ADR-0016)                                                      |
-| `/api/v1/public/*`                             | unauthenticated — registration, behind `FEATURE_USER_REGISTRATION`                                                 |
-| `/api/v1/user/*`                               | `profile`, and `auth/*` — `login` and `refresh` are mounted above the guard, the rest need a user access token     |
-| `/api/v1/admin/*`                              | `staff` and `users`, and `auth/*` on the same rule — a staff access token for everything but `login` and `refresh` |
+| Route                                          | What                                                                                                                                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health/live`, `/health/ready`, `/health` | liveness, and readiness including a database probe (ADR-0016)                                                                                            |
+| `/api/v1/public/*`                             | unauthenticated — registration, behind `FEATURE_USER_REGISTRATION`                                                                                       |
+| `/api/v1/user/*`                               | `profile`, `settings`, and `auth/*` — `login` and `refresh` are mounted above the guard, the rest need a user access token                               |
+| `/api/v1/admin/*`                              | `staff`, `users`, `profile`, `settings` and impersonation, and `auth/*` on the same rule — a staff access token for everything but `login` and `refresh` |
 
 Authentication is a JWT access token (15 minutes by default) plus an opaque
 rotating refresh token stored hashed in `sessions` (ADR-0018); `authorize()`
@@ -94,15 +99,28 @@ it does, and the ones that turn on a decision name the ADR.
 ## Commands
 
 ```sh
-pnpm dev --filter api        # API in watch mode
+pnpm dev --filter api        # the API alone, in watch mode
 pnpm build                   # all apps; the API bundles to a single dist/main.js
-pnpm lint && pnpm check-types
-pnpm test                    # every unit suite, plus the API's integration suite — needs Docker
-pnpm test:unit               # no database required
+pnpm check                   # the fast inner loop: lint + check-types + test:unit + i18n:check, cached
+pnpm test:unit               # unit suites alone, no database required
 pnpm test:int                # the API's supertest suite and @repo/db's, against DATABASE_URL_TEST
+pnpm test:e2e                # Playwright over the dev stack — beside the gate, never in it
 pnpm test:postman            # newman smoke run against a running API
 pnpm format
 ```
+
+**The gate — five links, and every change ends green on all five:**
+
+```sh
+pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check
+```
+
+`test` includes the API's integration tier, so it needs Docker up; `size` builds
+each SPA and weighs the gzipped output against its own `size-budget.json`; and
+`format:check` is prettier over the tree. `lint`, `check-types` and `size` are
+turbo tasks and cached, so they cost nothing when nothing changed; `test` is
+uncached by design because it depends on a live database (ADR-0026), and
+`format:check` runs prettier directly.
 
 Database and infrastructure:
 
@@ -136,20 +154,36 @@ pnpm db:sessions:prune       # delete expired sessions and spent handoffs (nothi
   is the second consumer the platform packages were extracted for, and anything
   it cannot build from them without changing them is recorded as a finding in
   `docs/plan/0012-customer-app.md`.
-- `apps/web` — Next.js app, marketing only (ADR-0055 narrowed ADR-0022's roster).
-  It runs on 3003 so it does not sit on the customer app's port; where the
-  marketing site actually lives is a later deliverable's decision.
 
-`apps/web` is configured but not built out — that is a later deliverable, not
-this one.
+The marketing site is the one app that is not here yet: it is Next.js, marketing
+only (ADR-0055 narrowed ADR-0022's roster), and the last deliverable in the ledger
+scaffolds it fresh rather than growing the placeholder that used to sit at
+`apps/web`.
 
 ### Packages
 
-- `@repo/contracts` — zod request schemas, resource types, envelope and error codes shared by the API and the frontends (ADR-0023)
+Shared by the API and the frontends:
+
+- `@repo/contracts` — zod request schemas, resource types, envelope and error codes (ADR-0023)
 - `@repo/db` — Postgres schema, client, migrations and seeds (ADR-0006, ADR-0008)
 - `@repo/crypto` — argon2id hashing and token generation (ADR-0018)
-- `@repo/logger` — structured logger (ADR-0005)
-- `@repo/ui` — the shadcn/ui design system and the compositions both apps are built from, owned as source (ADR-0047)
+- `@repo/logger` — structured logger, Node-only (ADR-0005)
+
+The frontend packages both SPAs are built from and reach only through their own
+`shared/` doors — the design system, and the **six platform packages** ADR-0051
+extracted the behavioural machinery into. Each app keeps its dictionary, its
+policy data and its config:
+
+- `@repo/ui` — the shadcn/ui design system and the shell and record compositions, owned as source (ADR-0047, ADR-0048)
+- `@repo/api-client` — client, session, CSRF, the URL⇄query codec, bulk fan-out (ADR-0033, ADR-0043)
+- `@repo/i18n` — the `createI18n` factory (ADR-0046)
+- `@repo/resource` — `ResourceConfig` and its readers (ADR-0035)
+- `@repo/grid` — the v2 data grid (ADR-0038, ADR-0052)
+- `@repo/form` — the field vocabulary, the three record shells, the zod locale installer
+- `@repo/app-services` — theme, `can()` (ADR-0042) and route meta
+
+Configuration:
+
 - `@repo/eslint-config` — shared ESLint flat configs, including the rules that enforce the ADRs
 - `@repo/typescript-config` — shared tsconfig bases
 - `@repo/vitest-config` — shared Vitest presets (`node`, `react`)

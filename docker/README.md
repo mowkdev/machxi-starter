@@ -9,8 +9,8 @@ get the root `.env` as their variable source.
 | Local development | [`local/`](local/compose.yaml) | Postgres 16 for the API, the drizzle tooling and the integration tests. |
 
 Future setups (`ci/`, `prod/`, per-app `Dockerfile`s) are added as siblings of
-`local/`. Only Postgres is containerised for now: the api, admin and web apps
-run on the host so hot reload and the debugger stay native.
+`local/`. Only Postgres is containerised for now: the api, admin and customer
+apps run on the host so hot reload and the debugger stay native.
 
 ## Local development
 

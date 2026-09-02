@@ -15,12 +15,6 @@ export const nodeConfig = defineConfig({
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "lcov"],
-      include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts", "src/**/*.int.test.ts"],
-    },
   },
 });
 

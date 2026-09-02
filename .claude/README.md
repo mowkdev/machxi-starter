@@ -4,7 +4,7 @@
   - Recursive shell search (`grep -r`, `grep -R`, `find`, `rg`) is denied. Those commands ignore `.gitignore` and walk `node_modules` and `.turbo`, which is slow and floods the context. Use Claude's Grep/Glob tools instead — they are ripgrep-backed and skip anything `.gitignore`d.
 - `agents/` — subagents: `adr-reviewer`, `module-builder`, `ui-builder`, `db-migrator`, `test-engineer`, `security-reviewer`, `adr-author`, and `gate-runner` (haiku, low effort, Bash-only: runs `pnpm check` or the full gate and returns a structured pass/fail). The reviewers stay on the strongest model; the mechanical agents are the ones to tier down.
 - `rules/` — path-scoped rules (`paths:` frontmatter): `api.md` loads with `apps/api` and the data packages, `frontend.md` with `apps/admin` and `packages/ui`. They carry the ADR non-negotiables that used to make `CLAUDE.md` 13 KB; `CLAUDE.md` keeps what always applies.
-- `.worktreeinclude` (repo root) — the untracked files copied into a worktree Claude creates: `.env`, `apps/admin/.env`.
+- `.worktreeinclude` (repo root) — the untracked files copied into a worktree Claude creates: `.env`, `apps/admin/.env`, `apps/customer/.env`. Each browser app reads its own (ADR-0033), so a worktree without the customer file starts an app that cannot reach the API.
 - `skills/` — slash-command workflows, split by where the code lives:
   - API and data: `/api-conventions`, `/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/postman-sync`.
   - Admin app and design system: `/frontend-conventions`, `/new-resource-ui`, `/ui-component`.

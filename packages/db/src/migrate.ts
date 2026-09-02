@@ -15,8 +15,14 @@ import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
  * Programmatic `migrate()` rather than `drizzle-kit push`: the committed SQL in
  * `migrations/` is the reviewed artefact, and `push` diffs the live database
  * against the schema instead of replaying it. Drizzle's `__drizzle_migrations`
- * table is the applied-state record, and `migrate()` takes an advisory lock, so
- * two deploy jobs starting at once do not both apply `0002`.
+ * table is the applied-state record.
+ *
+ * **Concurrent runs are not yet serialized.** Drizzle's pg dialect wraps the
+ * pending statements in one transaction but takes no advisory lock, so two
+ * deploy jobs starting together can both read the same last-applied row and
+ * both replay `0002` — the second one failing on whatever it re-creates. Today
+ * that is survivable because migrating is a manual step; `D14.3` wraps this
+ * function in a `pg_advisory_lock` (ADR-0059 §5) and makes the guarantee real.
  *
  * **The API never calls this** — migrating is an explicit deploy step, not a
  * boot step, so startup stays deterministic across replicas (ADR-0008).
