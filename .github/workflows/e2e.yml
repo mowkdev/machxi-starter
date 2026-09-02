@@ -1,0 +1,126 @@
+# The browser tier (ADR-0059 §1), nightly and on demand — never on push.
+#
+# ADR-0052 §The browser tier put `pnpm test:e2e` beside the gate and never in
+# it: forty-odd serial specs against a seeded stack cost more on every push
+# than they save, and a nightly run catches the same regressions within a day.
+# ADR-0059 carries that decision into CI rather than re-litigating it with a
+# scheduler, which is why this file has `schedule` and `workflow_dispatch` and
+# no `push` trigger.
+#
+# Unlike the gate, this workflow does start a stack: the suite has no
+# `webServer` (apps/*/playwright.config.ts says why — starting a stack the tier
+# does not own hides which half broke), so the stack is brought up here the way
+# a developer brings it up, with the documented commands.
+name: e2e
+
+on:
+  schedule:
+    # 03:00 UTC, after the day's pushes and before the operator's morning.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: playwright, both apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: machxi
+          POSTGRES_PASSWORD: machxi
+          POSTGRES_DB: machxi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U machxi -d machxi"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Copy the example environment files
+        run: |
+          cp .env.example .env
+          cp apps/admin/.env.example apps/admin/.env
+          cp apps/customer/.env.example apps/customer/.env
+
+      # One browser, installed once: both apps depend on the same
+      # `@playwright/test` version, so one download serves both runs.
+      - name: Install Chromium
+        run: pnpm --filter admin exec playwright install --with-deps chromium
+
+      # The documented setup: migrate, seed the super admin from `.env`, then
+      # the dev fixtures the customer specs sign in as (`--dev`).
+      - name: Migrate and seed
+        run: |
+          pnpm db:setup
+          pnpm db:seed -- --dev
+
+      # `pnpm dev` is persistent, so each server is backgrounded and then
+      # polled for. The API is polled on `/health/ready`, not `/live`: the
+      # suite needs the database reachable, not merely the process alive
+      # (ADR-0016). `TURBO_UI=stream` because turbo's TUI has no terminal here
+      # and its output has to reach the log the failure step tails.
+      - name: Start the stack
+        env:
+          TURBO_UI: stream
+        run: |
+          pnpm dev --filter api > /tmp/api.log 2>&1 &
+          pnpm dev --filter admin > /tmp/admin.log 2>&1 &
+          pnpm dev --filter customer > /tmp/customer.log 2>&1 &
+          node --input-type=module -e '
+            const wait = async (url) => {
+              for (let i = 0; i < 120; i += 1) {
+                try {
+                  const res = await fetch(url);
+                  if (res.ok) { console.log(`up: ${url}`); return; }
+                } catch {}
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+              throw new Error(`timed out waiting for ${url}`);
+            };
+            await wait("http://localhost:4000/health/ready");
+            await wait("http://localhost:3001/");
+            await wait("http://localhost:3002/");
+          '
+
+      - name: Run the browser tier
+        run: pnpm test:e2e
+
+      - name: Server logs
+        if: failure()
+        run: tail -n 200 /tmp/api.log /tmp/admin.log /tmp/customer.log
+
+      - name: Playwright reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/admin/playwright-report
+            apps/admin/test-results
+            apps/customer/playwright-report
+            apps/customer/test-results
+          retention-days: 7
+          if-no-files-found: ignore

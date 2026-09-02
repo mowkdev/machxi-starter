@@ -1,0 +1,119 @@
+# The gate (ADR-0059 §1), run on every push to `main` and every pull request.
+#
+# It runs the five documented links and nothing else — `pnpm lint`,
+# `pnpm check-types`, `pnpm test`, `pnpm size`, `pnpm format:check`, in that
+# order (ADR-0052 as carried by ADR-0057 §8). There is deliberately no
+# CI-only script: a green pipeline and a green terminal have to mean the same
+# thing, or the pipeline is a second, weaker gate.
+#
+# The browser tier stays out (ADR-0052 §The browser tier, carried by ADR-0059
+# §1): it needs a running stack and a seeded database, and it runs nightly in
+# `e2e.yml`.
+name: gate
+
+on:
+  # `main` on push, because `/step` commits straight to it from an
+  # interactive session (ADR-0050) and the required check has to exist for
+  # the commit that is actually on `main` (ADR-0059 §2). Every other branch
+  # is covered by `pull_request`, which is how an unattended run's branch
+  # reaches the gate — one run per change rather than two.
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per ref: a second push to a branch cancels the first, and `main`'s
+# runs are never cancelled because the required check has to exist for the
+# commit that is on `main` (ADR-0059 §2).
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: lint, check-types, test, size, format:check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      # The developer's database, with the developer's credentials: the
+      # committed `apps/api/.env.test` and `.env.example` both point at
+      # `postgres://machxi:machxi@localhost:5432/...`, and ADR-0004 fixes those
+      # files as the ones the suite follows. CI matches them rather than
+      # exporting a URL, because `packages/db`'s tooling loads the root `.env`
+      # **without** overriding (`src/tooling/env.ts`): an exported
+      # `DATABASE_URL_TEST` would win there and decide which database that
+      # package's own integration run rebuilds.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: machxi
+          POSTGRES_PASSWORD: machxi
+          POSTGRES_DB: machxi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U machxi -d machxi"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Turbo's local cache, so a re-run of an unchanged task is a cache hit
+      # here exactly as it is on a developer's machine (ADR-0026). Which tasks
+      # may be cached is that record's decision, not this file's: `test` and
+      # `test:int` declare `cache: false` because they talk to Postgres.
+      - name: Restore the turbo cache
+        uses: actions/cache@v4
+        with:
+          # `.turbo/cache` and not `.turbo`: the parent also holds the daemon's
+          # sockets and logs, `runs/` and `cookies/`, which would grow the cache
+          # with every run and restore a stale daemon directory.
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      # The same SQL `docker/local` mounts into `docker-entrypoint-initdb.d`,
+      # run against the service container: one definition of the test database,
+      # and extensions still arrive by migration `0000` (ADR-0007, ADR-0008).
+      # The whole directory, not one named file, because that is what compose
+      # mounts — a second init file must not apply locally and not here.
+      - name: Create the test database
+        run: |
+          for f in docker/local/postgres/init/*.sql; do
+            psql "postgres://machxi:machxi@localhost:5432/machxi" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      # The documented setup, verbatim (README §Quick start). The three files
+      # are committed examples holding no secret; copying them is what makes
+      # `pnpm size` build the two SPAs with the same `VITE_*` values a
+      # developer builds them with.
+      - name: Copy the example environment files
+        run: |
+          cp .env.example .env
+          cp apps/admin/.env.example apps/admin/.env
+          cp apps/customer/.env.example apps/customer/.env
+
+      - run: pnpm lint
+
+      - run: pnpm check-types
+
+      - run: pnpm test
+
+      - run: pnpm size
+
+      - run: pnpm format:check

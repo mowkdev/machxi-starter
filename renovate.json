@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+  "timezone": "Etc/UTC",
+  "schedule": ["before 6am on monday"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "ADR-0059 §3: minor and patch arrive as one weekly pull request.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "weekly minor and patch",
+      "groupSlug": "weekly"
+    },
+    {
+      "description": "ADR-0059 §3: majors stay one per dependency, so a breaking change is read on its own and reverted on its own. Deliberately not behind dashboard approval — nothing merges because it is newer, and the gate on the PR is the whole argument, which a PR that never opens never reaches.",
+      "matchUpdateTypes": ["major"],
+      "groupName": null
+    }
+  ]
+}

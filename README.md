@@ -193,6 +193,9 @@ bundler, so there is no per-package build step (ADR-0002).
 
 ### Everything else
 
+- `.github/workflows/` — CI (ADR-0059): `gate.yml` runs the five links above on
+  every push and pull request against a Postgres service; `e2e.yml` runs the
+  browser tier nightly and on demand, never on push.
 - `docker/local/` — the compose setup; see [`docker/README.md`](docker/README.md)
   for the scripts, the two databases (`machxi` and `machxi_test`) and troubleshooting.
 - `docs/` — ADRs, the implementation plan, and the Postman collection.
