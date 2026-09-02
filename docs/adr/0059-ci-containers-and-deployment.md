@@ -4,7 +4,7 @@
 - Date: 2026-09-02
 - Supersedes: [ADR-0008](0008-database-migrations-and-seeding.md) (delta: the migration runner gains a bundled entry point and a real advisory lock; every other migration and seeding decision, including "the API never auto-migrates", stands); [ADR-0004](0004-configuration-and-environment.md) and [ADR-0020](0020-security-baseline.md) (delta: `TRUST_PROXY` must be stated explicitly in production)
 
-> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; accepted at the head of the step that builds it.
+> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; accepted at the head of the step that builds it. Deltas: ADR-0008 (the migration runner gains a bundled entry and an advisory lock), ADR-0004 and ADR-0020 (trust proxy must be stated in production), ADR-0007 (the local compose is no longer the only compose), ADR-0021 and ADR-0026 (the gate and the browser tier now also run in CI, with the same cache semantics) — the parents stand for everything else.
 
 ## Context
 

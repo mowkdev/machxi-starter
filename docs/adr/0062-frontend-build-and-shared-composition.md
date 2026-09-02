@@ -37,7 +37,7 @@ packages/app-kit/src/
 
 Each app reaches it **only through its own `shared/` doors**, exactly as it reaches the six D9 packages — one more row in a table, not a new kind of dependency. The app-specific parts stay in the apps and do not move: the route tree, the dictionaries, the policy data, `shared/config`, the size budget.
 
-**The doors are declared once per app, as data.** The customer's `DOORS` table and its `doorRules()` helper are the shape; the admin's hand-copied blocks are ported onto it. A package becomes one row in both files.
+**The doors are declared once per app, as data.** The customer's `DOORS` table is the shape; its `doorRules()` helper moves into `@repo/eslint-config` (`packages/config-eslint`) so both apps — and any third — consume one implementation and declare only their table. The admin's hand-copied blocks are deleted, not ported. A package becomes one row in each app's table. The kit's contents beyond the providers: the auth layout, the app loader, the account-area shell, the settings options, the router error and not-found defaults, the top-level error boundary, the i18n app factory and the test harness (render helpers, the MSW server bootstrap).
 
 The stylesheet defect is fixed by rule rather than by a line:
 

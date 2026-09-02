@@ -48,6 +48,10 @@ Two rules, and `/db-schema-change` carries them:
 - **An enum `ADD VALUE` and its first use are separate migrations.** One transaction cannot add an enum label and then write it; the migration that adds the value ships alone.
 - **An index on a table expected to be large is written down as blocking.** The migrator's single transaction rules out `CREATE INDEX CONCURRENTLY`, so the choice is made explicitly per index and recorded in the migration's comment. Document it now — every table in this blueprint is small — and revisit the migrator's shape when a real deployment has a table that cannot take the lock.
 
+### The session prune, batched
+
+`packages/db/src/prune-sessions.ts` deletes every expired row in one statement and `returning`s each id to count them — every deleted id in memory, one lock for the whole set. It becomes a loop of bounded batches (`delete … where id in (select id … limit N)`, counting rows affected), so a table that has never been pruned is pruned in bounded steps rather than in one transaction that grows with the backlog. The pool options that make a runaway statement fail rather than hold a connection — `statement_timeout`, `idle_in_transaction_session_timeout`, `application_name`, and the prepared-statements switch — are ADR-0061's, beside the roles they protect.
+
 ## Consequences
 
 - A forked project inherits lists that stay bounded as its tables grow: no unbounded deep page, a count it can decline, and no advertised sort that turns into a sequential scan.

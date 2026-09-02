@@ -57,6 +57,8 @@ A generic feature travels back as a branch off `starter/main`, **re-implemented 
 - **The gate command is defined once**, in `CLAUDE.md` §Commands, and referenced everywhere else by name.
 - **Source-code comments keep their step references.** They are the reasoning attached to the code that carries it; a fork may strip them, and the starter does not sweep them.
 - A **`/bootstrap` skill** writes an empty ADR index, the ADR template and an empty ledger for a fork, so `/scope` and `/step` work on day one of an empty project. `/step`'s reviewer reference is corrected to an agent that exists.
+- **A current-rules digest per area, regenerated at ship.** Two ideas taken from OpenSpec at scoping (the framework itself was not adopted): `docs/rules/<area>.md` — API and data, frontend and platform, process — is a compact statement of the rules currently in force, each line naming the record it comes from, and `/ship` regenerates it as part of the sweep. Skills and agents load the digest for their area instead of the ADR chain; the ADRs remain the source of truth and the digest is derived, never edited by hand. The `.claude/rules/*.md` files become the loaders of those digests rather than restatements.
+- **A measurement spike before the digests are adopted as the loading path**: one comparable step run twice in a worktree — once with the skills loading the ADR chain as today, once loading the digest — and the two input-token counts recorded in the D14 plan. The digest stays the loading path only if it is cheaper; either way the number is written down.
 
 ### 6. Licence
 
