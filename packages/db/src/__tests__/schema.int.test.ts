@@ -64,6 +64,90 @@ describe("migration 0000", () => {
   });
 });
 
+describe("migrations 0009 and 0010", () => {
+  it("installs pg_trgm, the second extension a migration owns", async () => {
+    // ADR-0060 §3 puts it exactly where `citext` is, and for the same reason:
+    // one place, every environment. It ships in its own file ahead of the
+    // indexes because `USING gin (… gin_trgm_ops)` cannot name an operator
+    // class the database does not have.
+    const rows = await rowsOf<{ extname: string }>(
+      sql`select extname from pg_extension where extname = 'pg_trgm'`,
+    );
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it("indexes every column the list allow-lists admit (ADR-0060 §3)", async () => {
+    const rows = await rowsOf<{ indexname: string }>(
+      sql`select indexname from pg_indexes where schemaname = 'public' order by indexname`,
+    );
+
+    expect(rows.map((row) => row.indexname)).toEqual(
+      expect.arrayContaining([
+        "users_updated_at_idx",
+        "users_email_idx",
+        "users_first_name_idx",
+        "users_last_name_idx",
+        "users_status_idx",
+        "users_last_login_at_idx",
+        "users_deleted_at_idx",
+        "users_email_trgm_idx",
+        "users_first_name_trgm_idx",
+        "users_last_name_trgm_idx",
+        "staff_updated_at_idx",
+        "staff_first_name_idx",
+        "staff_last_name_idx",
+        "staff_status_idx",
+        "staff_last_login_at_idx",
+        "staff_email_trgm_idx",
+        "staff_first_name_trgm_idx",
+        "staff_last_name_trgm_idx",
+        "sessions_impersonated_by_staff_id_idx",
+        "audit_events_acting_as_idx",
+        "audit_events_occurred_at_idx",
+      ]),
+    );
+  });
+
+  it("rebuilds the two created_at indexes as the pagination key", async () => {
+    // `(created_at, id)`, because `applyListQuery` appends `asc(id)` to every
+    // ORDER BY: the composite *is* the key, and the old single-column index
+    // was a prefix of it.
+    const rows = await rowsOf<{ indexdef: string }>(
+      sql`select indexdef from pg_indexes
+          where schemaname = 'public'
+            and indexname in ('users_created_at_idx', 'staff_created_at_idx')
+          order by indexname`,
+    );
+
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.indexdef).toContain("created_at, id");
+  });
+
+  it("makes the trgm indexes reachable from the search the API writes", async () => {
+    /*
+     * The measurement ADR-0060 §3's amendment records, kept as a test rather
+     * than as a paragraph: on a `citext` column the GIN index is created but
+     * `email ilike $1` cannot use it — citext's own `~~*` is in no trgm
+     * operator family — while `email::text ilike $1` can. `toSearchCondition`
+     * writes the cast for exactly this reason, and if that ever regresses the
+     * index stays green while the query goes back to a sequential scan.
+     */
+    const rows = await rowsOf<{ "QUERY PLAN": string }>(
+      sql`explain (costs off) select id from users where email::text ilike '%anna%'`,
+    );
+    const plan = rows.map((row) => row["QUERY PLAN"]).join(" ");
+
+    // `enable_seqscan` is left alone: on an empty table the planner chooses a
+    // sequential scan whatever is available, so what this pins is the
+    // *operator* — `(email)::text ~~*`, the text one `gin_trgm_ops` knows,
+    // rather than citext's `~~*`, which it does not. That is the half of the
+    // pairing that can regress in code; the index half is asserted above.
+    expect(plan).toContain("(email)::text ~~*");
+    expect(plan).not.toContain("::citext");
+  });
+});
+
 describe("migration 0001", () => {
   it("creates every table of the identity model", async () => {
     const rows = await rowsOf<{ table_name: string }>(

@@ -109,6 +109,40 @@ describe("pruneSessions", () => {
     expect(await pruneSessions(client.db, days(-RETENTION_DAYS))).toBe(0);
   });
 
+  it("clears a backlog larger than one batch, and counts all of it", async () => {
+    /*
+     * The loop of ADR-0060 §The session prune, batched, proved rather than
+     * assumed. A batch size of one turns three dead rows into three
+     * statements; a function that ran its `DELETE` once would return 1 and
+     * leave two rows behind, which is exactly the failure a table that has
+     * never been pruned would produce with the old single-statement sweep.
+     */
+    await insert("dead-1", { expiresAt: days(-RETENTION_DAYS - 1) });
+    await insert("dead-2", { expiresAt: days(-RETENTION_DAYS - 2) });
+    await insert("dead-3", { expiresAt: days(-RETENTION_DAYS - 3) });
+    await insert("alive", { expiresAt: days(1) });
+
+    expect(await pruneSessions(client.db, days(-RETENTION_DAYS), 1)).toBe(3);
+    expect(await remaining()).toEqual(["alive"]);
+  });
+
+  it("stops on the first short batch rather than looping forever", async () => {
+    await insert("dead", { expiresAt: days(-RETENTION_DAYS - 1) });
+
+    // Two rows would fit in the batch and one matches, so the first pass is
+    // already short: the loop must return without asking again.
+    expect(await pruneSessions(client.db, days(-RETENTION_DAYS), 2)).toBe(1);
+    expect(await remaining()).toEqual([]);
+  });
+
+  it("refuses a batch size that would make the loop spin", async () => {
+    // `limit 0` deletes nothing and `0 < 0` is false, so the loop would never
+    // reach its exit. Refused where it is cheap to say so.
+    await expect(
+      pruneSessions(client.db, days(-RETENTION_DAYS), 0),
+    ).rejects.toThrow(/positive integer/);
+  });
+
   it("leaves nothing behind for the principal it pruned", async () => {
     await insert("gone", { expiresAt: days(-RETENTION_DAYS - 1) });
     await pruneSessions(client.db, days(-RETENTION_DAYS));
@@ -208,6 +242,17 @@ describe("pruneImpersonationHandoffs", () => {
     expect(
       await pruneImpersonationHandoffs(client.db, days(-RETENTION_DAYS)),
     ).toBe(0);
+  });
+
+  it("clears a handoff backlog larger than one batch", async () => {
+    await insertHandoff("spent-1", { expiresAt: days(-RETENTION_DAYS - 1) });
+    await insertHandoff("spent-2", { expiresAt: days(-RETENTION_DAYS - 2) });
+    await insertHandoff("live", { expiresAt: days(1) });
+
+    expect(
+      await pruneImpersonationHandoffs(client.db, days(-RETENTION_DAYS), 1),
+    ).toBe(2);
+    expect(await remainingHandoffs()).toEqual(["live"]);
   });
 
   it("leaves sessions alone, and the sessions sweep leaves handoffs alone", async () => {

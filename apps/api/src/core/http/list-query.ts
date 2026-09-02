@@ -18,6 +18,7 @@ import {
   lt,
   lte,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
@@ -35,6 +36,7 @@ import type { PgColumn } from "drizzle-orm/pg-core";
 export {
   DEFAULT_LIMIT,
   MAX_LIMIT,
+  MAX_OFFSET,
   filtersToRecord,
   listQuerySchema,
   type Filter,
@@ -68,7 +70,12 @@ export type ColumnMap = Readonly<Record<string, PgColumn>>;
  */
 export interface ListResult<T> {
   readonly rows: readonly T[];
-  readonly total: number;
+  /**
+   * `null` when the caller sent `count=false` and the repository skipped the
+   * aggregate (ADR-0060 §2). The envelope has allowed it since D1.4 and
+   * `GridPager` has always had the branch; this is what finally produces it.
+   */
+  readonly total: number | null;
 }
 
 /** What a repository spreads over its Drizzle query. */
@@ -113,7 +120,13 @@ export const toCondition = (filter: Filter, columns: ColumnMap): SQL => {
     case "lte":
       return lte(column, filter.value);
     case "like":
-      return ilike(column, filter.value);
+      // The same `::text` cast {@link toSearchCondition} writes, and for the
+      // same measured reason (ADR-0060 §3, amended): `email` is filterable
+      // with `like` on both endpoints, its column is `citext`, and citext's
+      // own `~~*` reaches no `pg_trgm` index. A filter that admits a pattern
+      // and cannot use the index built for it is the allow-list lying in the
+      // other direction.
+      return ilike(sql`${column}::text`, filter.value);
     case "null":
       return filter.value ? isNull(column) : isNotNull(column);
   }
@@ -204,7 +217,24 @@ export const toSearchCondition = (
 
   const pattern = `%${escapeLikePattern(term)}%`;
 
-  return or(...columns.map((column) => ilike(column, pattern)));
+  /*
+   * The `::text` cast is what lets the `pg_trgm` GIN indexes of ADR-0060 §3
+   * serve this, and it was measured rather than reasoned.
+   *
+   * A `gin_trgm_ops` index *creates* on a `citext` column — the type is
+   * binary-coercible to `text`, so the named operator class is accepted — but
+   * `email ilike $1` resolves to citext's own `~~*`, which belongs to no
+   * `pg_trgm` operator family: `EXPLAIN` shows a sequential scan even with
+   * `enable_seqscan = off`. The same index is chosen the moment the query
+   * says `email::text ilike $1`.
+   *
+   * Applied to every searched column rather than to the citext ones alone: on
+   * a `text` column the cast parses away to the bare column, so the plain
+   * index still matches and there is no second code path to keep true. The
+   * result is unchanged either way — `ILIKE` is case-insensitive by the
+   * operator, citext by the type.
+   */
+  return or(...columns.map((column) => ilike(sql`${column}::text`, pattern)));
 };
 
 /**

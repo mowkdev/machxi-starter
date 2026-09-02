@@ -64,6 +64,16 @@ describe("toCondition", () => {
     );
   });
 
+  it("casts a like filter to text, as the q search does (ADR-0060 §3)", () => {
+    // `email` is `citext` and `like` is the one filter operator that admits a
+    // pattern, so it is the second path to `*_email_trgm_idx` — and citext's
+    // own `~~*` reaches no trgm index. The cast is what makes the filter use
+    // the index its own allow-list entry implies.
+    const [parsed] = parse({ filter: { email: { like: "%acme%" } } }).filters;
+
+    expect(render(toCondition(parsed!, columns))).toContain('"email"::text');
+  });
+
   it("refuses a field the column map does not cover", () => {
     // The query schema allow-lists fields; a gap here is a wiring bug between
     // the allow-list and the column map, so it must be loud, not silent.
@@ -204,8 +214,28 @@ describe("toSearchCondition", () => {
 
     expect(condition).toBeDefined();
     expect(render(condition!).toLowerCase()).toMatch(
-      /"email" ilike .* or .*"first_name" ilike/,
+      /"email"::text ilike .* or .*"first_name"::text ilike/,
     );
+  });
+
+  it("casts every searched column to text, so the trgm indexes serve it", () => {
+    /*
+     * ADR-0060 §3, amended: a `gin_trgm_ops` index creates on a `citext`
+     * column, but `email ilike $1` resolves to citext's own `~~*`, which is in
+     * no trgm operator family — measured on PostgreSQL 16, `EXPLAIN` shows a
+     * sequential scan even with `enable_seqscan = off`. The same index is used
+     * the moment the query says `email::text ilike $1`.
+     *
+     * Applied to the `text` columns too, where the cast parses away to the
+     * bare column and the plain index still matches: one code path rather than
+     * a citext branch nobody would remember to extend.
+     */
+    const rendered = render(
+      toSearchCondition([staff.email, staff.firstName], "anna")!,
+    );
+
+    expect(rendered).toContain('"email"::text');
+    expect(rendered).toContain('"first_name"::text');
   });
 
   it("binds the term wrapped in wildcards", () => {

@@ -172,12 +172,26 @@ describe("sessions", () => {
     expect(columns.get("rotatedAt")?.notNull).toBe(false);
   });
 
-  it("indexes the principal, the previous hash and the expiry", () => {
+  it("indexes the principal, the previous hash, the expiry and the impersonator", () => {
     expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      // Partial (`where impersonated_by_staff_id is not null`) since
+      // ADR-0060 §4: the column is null on every ordinary session, so the
+      // predicate indexes the rows `revokeAllImpersonatedBy` is about and
+      // nothing else.
+      "sessions_impersonated_by_staff_id_idx",
       "sessions_previous_refresh_token_hash_idx",
       "sessions_principal_idx",
       "sessions_refresh_token_expires_at_idx",
     ]);
+  });
+
+  it("makes the impersonator index partial rather than table-wide", () => {
+    const index = config.indexes.find(
+      (candidate) =>
+        candidate.config.name === "sessions_impersonated_by_staff_id_idx",
+    );
+
+    expect(index?.config.where).toBeDefined();
   });
 
   it("records revocation as a timestamp plus a reason, not a boolean", () => {
@@ -274,10 +288,16 @@ describe("audit_events", () => {
     expect(columns.has("createdAt")).toBe(false);
   });
 
-  it("indexes the actor and the event, both by time", () => {
+  it("indexes the actor, the subject and the event by time, and time alone", () => {
     expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      // "Everything done **to** this account" — the question an incident asks
+      // second, which the actor index cannot answer (ADR-0060 §4).
+      "audit_events_acting_as_idx",
       "audit_events_actor_idx",
       "audit_events_event_idx",
+      // `occurred_at` alone, for the one job that reads this table by time
+      // and not by who: retention.
+      "audit_events_occurred_at_idx",
     ]);
   });
 });

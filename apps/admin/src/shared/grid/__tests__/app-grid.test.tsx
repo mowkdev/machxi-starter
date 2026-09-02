@@ -717,6 +717,9 @@ describe("the applied-filters bar", () => {
       limit: 50,
       sort: [{ field: "name", direction: "asc" }],
       filters: [],
+      // Carried through untouched: "clear all" clears what is *listed*, and
+      // whether the endpoint counts is not one of those things (ADR-0060 §2).
+      count: true,
     });
   });
 });

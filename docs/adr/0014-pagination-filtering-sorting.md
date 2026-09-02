@@ -1,7 +1,9 @@
 # ADR-0014: Pagination, filtering and sorting conventions
 
-- Status: accepted
+- Status: superseded by [ADR-0060](0060-list-endpoints-at-scale.md) (delta: an `offset` ceiling, the `count` flag, and the allow-list/index claim made a checked rule)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-03 by [ADR-0060](0060-list-endpoints-at-scale.md)**, at the head of `D14.5`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and a narrow one: this record chose offset pagination, the parameter names, the bracket filter syntax, the `-` sort prefix, the per-endpoint allow-lists, the `id` tiebreaker, the `q` search and the `meta` echo — **all of that stands and is in force**. 0060 changes three things. `offset` gains a ceiling of 10 000 beside `limit`'s existing 100, so a deep page is a `VALIDATION_ERROR` rather than a sequential scan. The language gains one flag, `count`, whose `false` skips the aggregate and returns the `total: null` this record's §Consequences already reserved and nothing could take. And §Consequences' claim that "allow-listing prevents sorting/filtering on non-indexed columns" — the one sentence here the schema did not back — becomes true, enforced by a per-module test that diffs the allow-lists against the table's index declarations. Read 0060 §1–§3 for those three; read this record for the query language itself.
 
 ## Context
 

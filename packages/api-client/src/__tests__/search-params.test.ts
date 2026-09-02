@@ -49,6 +49,25 @@ describe("the router's search adapter", () => {
     });
   });
 
+  it("routes count through the canonical writer, not the router's own", () => {
+    /*
+     * ADR-0060 §2 says `count=true` is never written and `count=false` always
+     * is, and that is a rule of `stringifyListSearch` — so this adapter has to
+     * *claim* the key. It round-tripped before it did, because
+     * `defaultStringifySearch` happens to spell a boolean the same way; the
+     * point of ADR-0043 is that the language has one syntax rather than two
+     * that agree today.
+     */
+    expect(stringifyAdminSearch({ offset: 0, count: false })).toBe(
+      "?offset=0&count=false",
+    );
+    expect(stringifyAdminSearch({ offset: 0, count: true })).toBe("?offset=0");
+    expect(parseAdminSearch("?offset=0&count=false")).toEqual({
+      offset: 0,
+      count: false,
+    });
+  });
+
   it("says nothing when there is nothing to say", () => {
     expect(stringifyAdminSearch({})).toBe("");
     expect(parseAdminSearch("")).toEqual({});

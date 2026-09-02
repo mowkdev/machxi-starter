@@ -44,9 +44,39 @@ export const staff = pgTable(
     ...timestamps(),
   },
   (table) => [
-    // Serves the default `-createdAt` order of GET /api/v1/admin/staff
-    // (ADR-0014) and its `createdAt` range filters.
-    index("staff_created_at_idx").on(table.createdAt),
+    /*
+     * One btree index per sortable column, composite with `id`
+     * (ADR-0060 §3) — `applyListQuery` appends `asc(id)` to every `ORDER BY`,
+     * so `(column, id)` is the pagination key rather than a prefix of it, and
+     * a filter on the leading column is served by the same index.
+     *
+     * **`email` is absent on purpose**: it is `unique` across the whole table
+     * (no partial predicate, unlike `users.email`), so Postgres has already
+     * built a btree index on it and a second one would be write cost for
+     * nothing. `staff.list-indexes.test.ts` reads unique constraints as index
+     * declarations for exactly this reason.
+     */
+    index("staff_created_at_idx").on(table.createdAt, table.id),
+    index("staff_updated_at_idx").on(table.updatedAt, table.id),
+    index("staff_first_name_idx").on(table.firstName, table.id),
+    index("staff_last_name_idx").on(table.lastName, table.id),
+    index("staff_status_idx").on(table.status, table.id),
+    index("staff_last_login_at_idx").on(table.lastLoginAt, table.id),
+    /*
+     * The `q` search (ADR-0060 §3), mirroring `users`: `ilike '%term%'` reads
+     * no btree index, so each searched column gets a `pg_trgm` GIN one. See
+     * the note on `users.email` for why the operator class is named on a
+     * `citext` column and why the query casts to `text`.
+     */
+    index("staff_email_trgm_idx").using("gin", table.email.op("gin_trgm_ops")),
+    index("staff_first_name_trgm_idx").using(
+      "gin",
+      table.firstName.op("gin_trgm_ops"),
+    ),
+    index("staff_last_name_trgm_idx").using(
+      "gin",
+      table.lastName.op("gin_trgm_ops"),
+    ),
   ],
 );
 

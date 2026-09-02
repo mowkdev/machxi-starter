@@ -341,6 +341,7 @@ const emptyQuery = (): ListUsersQuery => ({
   limit: 20,
   sort: [{ field: "createdAt", direction: "desc" }],
   filters: [],
+  count: true,
 });
 
 /* ── tests ────────────────────────────────────────────────────────────────── */

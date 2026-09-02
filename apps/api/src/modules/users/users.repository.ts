@@ -115,8 +115,15 @@ const toRecord = (row: UserRowWithRoles): UserRecord => ({
   roles: row.roles.map((grant) => grant.role),
 });
 
-/** The API field names of `listUsersQuery` mapped to their columns (ADR-0014). */
-const listColumns: ColumnMap = {
+/**
+ * The API field names of `listUsersQuery` mapped to their columns (ADR-0014).
+ *
+ * Exported for this module's index test (ADR-0060 §3): the rule "a column
+ * enters an allow-list only with its index in the same step" is checked by
+ * diffing this map against the `users` table's own index declarations, and it
+ * has to be *this* map rather than a copy of it to mean anything.
+ */
+export const listColumns: ColumnMap = {
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
   email: users.email,
@@ -127,7 +134,8 @@ const listColumns: ColumnMap = {
   deletedAt: users.deletedAt,
 };
 
-const searchColumns = [users.email, users.firstName, users.lastName];
+/** The columns `q` reaches, exported with {@link listColumns} and for its reason. */
+export const searchColumns = [users.email, users.firstName, users.lastName];
 
 /** The field whose presence in a query means "the client is asking about deletion". */
 const DELETED_AT_FIELD = "deletedAt";
@@ -223,6 +231,14 @@ export const createUsersRepository = (db: DbExecutor) =>
         limit: plan.limit,
         offset: plan.offset,
       });
+
+      /*
+       * The aggregate is skipped, not made cheaper, when the caller declines
+       * it (ADR-0060 §2). `total: null` is the branch `Page` has typed since
+       * D1.4 and `GridPager` has always rendered; before this flag nothing
+       * could produce it.
+       */
+      if (!query.count) return { rows: rows.map(toRecord), total: null };
 
       const [counted] = await tx
         .select({ total: count() })

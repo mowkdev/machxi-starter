@@ -1,0 +1,16 @@
+-- Custom migration (ADR-0008, ADR-0060 §3): trigram matching, the extension
+-- the `q` search's GIN indexes are built with.
+--
+-- The second required extension after `citext` (`0000_citext.sql`), and it is
+-- here for the same reason: one place, every environment — the local database,
+-- the `machxi_test` database the integration suite uses, CI, and production.
+--
+-- It ships **alone**, ahead of `0010_list_indexes.sql`, because `CREATE INDEX
+-- … USING gin (… gin_trgm_ops)` cannot name an operator class the database
+-- does not have. The two files are applied in one transaction by `migrate()`,
+-- so the ordering is what matters, not a commit between them.
+--
+-- Requires a role with CREATE on the database — true for the compose owner and
+-- for CI. In a managed environment where the DBA pre-creates extensions,
+-- `IF NOT EXISTS` makes this a no-op rather than a failed deploy.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;

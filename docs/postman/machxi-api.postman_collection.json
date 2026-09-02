@@ -1407,6 +1407,100 @@
           }
         },
         {
+          "name": "List users — count=false declines the total",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a page and a null total\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.data, \"the page itself is unchanged\").to.be.an(\"array\");",
+                  "  pm.expect(body.meta.pagination.limit).to.eql(5);",
+                  "  pm.expect(body.meta.pagination.offset).to.eql(0);",
+                  "  pm.expect(body.meta.pagination.total, \"the aggregate was skipped, not zeroed\").to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?limit=5&count=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                },
+                {
+                  "key": "count",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "`count=false` skips the `COUNT(*)` and answers `total: null` — the branch the envelope has always allowed and `GridPager` has always had (ADR-0060 §2). The default stays `true`: an admin grid wants its page count, and only the call site that has become expensive knows it has.\n\nThe control is \"List users\" three requests up, which sends no flag and asserts `total` is a number; a `pm.sendRequest` control inside a `pm.test` here would be scored as a pass unconditionally, for the reason \"Update my profile with an email\" records."
+          }
+        },
+        {
+          "name": "List users — an offset past the ceiling is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR naming offset\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(",
+                  "    body.error.details.map(function (d) {",
+                  "      return d.path;",
+                  "    }),",
+                  "  ).to.include(\"offset\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?offset=10001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "10001"
+                }
+              ]
+            },
+            "description": "`offset` is capped at 10 000 (ADR-0060 §1). Beyond it the answer is the ordinary `VALIDATION_ERROR` — the same shape `?limit=101` gets — rather than a query Postgres serves by walking the table. The successor for a list that must page deeper is keyset pagination, which ADR-0060 names and deliberately does not build.\n\nThat the ceiling *itself* is legal is asserted by the integration tier (`list-query.int.test.ts`, \"allows the ceiling itself\"), where a second request costs nothing and is really checked."
+          }
+        },
+        {
           "name": "Create a user",
           "event": [
             {

@@ -23,6 +23,7 @@ export const LIST_QUERY_PARAMS = {
   sort: "sort",
   filter: "filter",
   q: "q",
+  count: "count",
 } as const;
 
 /**
@@ -91,6 +92,15 @@ export interface ListQuery {
   readonly sort: readonly SortSpec[];
   readonly filters: readonly Filter[];
   readonly q?: string;
+  /**
+   * Whether the caller wants `meta.pagination.total` (ADR-0060 §2).
+   *
+   * `false` tells the repository to skip the aggregate and report
+   * `total: null` — the branch {@link Page} has typed since D1.4 and nothing
+   * could take. Defaults to `true`, because an admin grid wants its page
+   * count and only the call site that has become expensive knows it has.
+   */
+  readonly count: boolean;
 }
 
 /**
@@ -112,6 +122,24 @@ export const DEFAULT_LIMIT = 20;
 
 /** Hard ceiling on `limit`; no endpoint may raise its `maxLimit` above this. */
 export const MAX_LIMIT = 100;
+
+/**
+ * Hard ceiling on `offset` (ADR-0060 §1).
+ *
+ * `limit` has been bounded since D1.4 and `offset` carried only `.min(0)`, so
+ * `?offset=50000000` was a legal request Postgres answered by walking fifty
+ * million rows. Beyond this the API answers `400 VALIDATION_ERROR` through the
+ * ordinary validation path (ADR-0011, ADR-0013) — a bound spelled like every
+ * other bound, with no special case in a controller. (ADR-0060 §1 said `422`
+ * when it was written; it is amended, because a status the ordinary path does
+ * not use could only have come from the special case the decision refuses.)
+ *
+ * The successor for a list that genuinely needs to go deeper is **keyset
+ * pagination on `(sort key, id)`**, which ADR-0060 §1 names and deliberately
+ * does not build: the `id` tiebreaker `applyListQuery` already appends is the
+ * second half of that key, but the first half is a contract change.
+ */
+export const MAX_OFFSET = 10_000;
 
 /** Longest accepted free-text `q` term. */
 export const MAX_SEARCH_LENGTH = 200;
@@ -236,11 +264,15 @@ export const filterSchema: z.ZodType<Filter> = z.union([
 ]) as z.ZodType<Filter>;
 
 export const listQuerySearchSchema = z.object({
-  offset: z.number().int().min(0).default(0),
+  offset: z.number().int().min(0).max(MAX_OFFSET).default(0),
   limit: z.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
   sort: z.array(sortSpecSchema).default([]),
   filters: z.array(filterSchema).default([]),
   q: z.string().min(1).max(MAX_SEARCH_LENGTH).optional(),
+  // Defaulted rather than optional, so a router holding a parsed query always
+  // holds the flag's real value and `stripSearchParams` can drop it when it
+  // equals the default (ADR-0060 §2).
+  count: z.boolean().default(true),
 });
 
 export type ListQuerySearch = z.infer<typeof listQuerySearchSchema>;
@@ -290,11 +322,16 @@ export const listQuerySchema = (options: ListQueryOptions) => {
   ]);
 
   const shape = {
-    offset: z.coerce.number().int().min(0).default(0),
+    offset: z.coerce.number().int().min(0).max(MAX_OFFSET).default(0),
     limit: z.coerce.number().int().min(1).max(maxLimit).default(defaultLimit),
     sort: z.string().max(MAX_SORT_LENGTH).optional(),
     filter: z.record(z.string(), rawFilterValue).optional(),
     q: z.string().trim().min(1).max(MAX_SEARCH_LENGTH).optional(),
+    // `z.coerce.boolean()` is not this: it is JavaScript truthiness, and the
+    // string "false" is truthy. A query string carries characters, so the two
+    // words are the schema (the `filter[x][null]` value above, for the same
+    // reason).
+    count: z.enum(["true", "false"]).default("true"),
   };
 
   return z.strictObject(shape).transform((raw, ctx): ListQuery => {
@@ -447,6 +484,7 @@ export const listQuerySchema = (options: ListQueryOptions) => {
       limit: raw.limit,
       sort,
       filters,
+      count: raw.count === "true",
       ...(q === undefined ? {} : { q }),
     };
   });

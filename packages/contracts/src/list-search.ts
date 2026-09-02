@@ -64,6 +64,15 @@ export interface ListSearchState {
   readonly sort?: readonly SortSpec[];
   readonly filters?: readonly Filter[];
   readonly q?: string | undefined;
+  /**
+   * `count=false` asks the endpoint to skip the aggregate (ADR-0060 §2).
+   *
+   * Written **only when it is `false`**, for the reason an empty `sort` writes
+   * nothing: `count=true` is the default on both sides of the wire, so
+   * spelling it would put a parameter in every grid's URL that says what its
+   * absence already says.
+   */
+  readonly count?: boolean | undefined;
 }
 
 /** `-createdAt,email` — a leading `-` is descending (ADR-0014). */
@@ -142,6 +151,8 @@ export const stringifyListSearch = (state: ListSearchState): string => {
 
   if (state.q !== undefined && state.q !== "")
     search.set(LIST_QUERY_PARAMS.q, state.q);
+
+  if (state.count === false) search.set(LIST_QUERY_PARAMS.count, "false");
 
   return canonical(search);
 };
@@ -234,6 +245,14 @@ export const parseListSearch = (
 
     if (key === LIST_QUERY_PARAMS.q) {
       state[key] = raw;
+      continue;
+    }
+
+    if (key === LIST_QUERY_PARAMS.count) {
+      // `count=maybe` is passed through as the string it was, for the reason
+      // `toNumber` passes `"x"` through: a wrong value is the schema's to
+      // reject and name, not the codec's to guess at.
+      state[key] = raw === "true" || raw === "false" ? raw === "true" : raw;
       continue;
     }
 

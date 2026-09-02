@@ -1,4 +1,9 @@
 import { sql as raw } from "drizzle-orm";
+import {
+  getTableConfig,
+  type PgColumn,
+  type PgTable,
+} from "drizzle-orm/pg-core";
 
 import { createDb, type DbExecutor } from "./client.js";
 import { runMigrations } from "./migrate.js";
@@ -163,4 +168,135 @@ export const truncateAllWithOwner = async (ownerUrl: string): Promise<void> => {
   } finally {
     await client.close();
   }
+};
+
+/**
+ * What an allow-list needs on the other side: which columns the table declares
+ * an index for, and of which kind (ADR-0060 §3).
+ *
+ * Three kinds, because the three allow-lists need three different things.
+ *
+ * A **sortable** column needs a btree index it *leads* and whose coverage is
+ * the whole table: the pagination key is `(column, id)`, only an index's first
+ * column orders by that column, and a **partial** index orders only the rows
+ * its predicate admits — `users_email_active_unique` is `where deleted_at is
+ * null`, so it cannot order a list that includes deleted accounts, which is
+ * exactly what `filter[deletedAt][null]=false` asks for.
+ *
+ * A **filterable** column is happy with a partial index, because a filter can
+ * imply the predicate: `deleted_at is not null` is served by an index built on
+ * exactly those rows, and a full index on a column that is null almost
+ * everywhere would be a copy of the table for nothing.
+ *
+ * A **searched** column needs a GIN index, because `ilike '%term%'` reads no
+ * btree at all.
+ */
+export interface IndexCoverage {
+  /** Columns a **complete** btree index — or a unique constraint — leads with. */
+  readonly ordered: ReadonlySet<string>;
+  /** Columns any btree index leads with, partial ones included. */
+  readonly filtered: ReadonlySet<string>;
+  /** Columns a GIN index covers. */
+  readonly searched: ReadonlySet<string>;
+}
+
+/**
+ * Reads a table's index declarations into the three sets above.
+ *
+ * A **column-level `.unique()`** counts as complete coverage: Postgres builds
+ * a unique btree index for it, and a column constraint cannot be partial.
+ * That is why `staff.email` needs no index of its own while `users.email`
+ * does — the latter's uniqueness is the partial index above, and this reader
+ * is what makes the distinction rather than a comment claiming it.
+ *
+ * This reports what the schema **declares**, not what a planner would choose.
+ * ADR-0060 §3 asked for a set comparison naming the columns that claim an
+ * order nothing serves, and deliberately not for a query planner in a test.
+ */
+export const indexCoverage = (table: PgTable): IndexCoverage => {
+  const config = getTableConfig(table);
+  const ordered = new Set<string>();
+  const filtered = new Set<string>();
+  const searched = new Set<string>();
+
+  const addComplete = (name: string): void => {
+    ordered.add(name);
+    filtered.add(name);
+  };
+
+  for (const column of config.columns) {
+    if (column.isUnique || column.primary) addComplete(column.name);
+  }
+
+  for (const constraint of config.uniqueConstraints) {
+    const [first] = constraint.columns;
+
+    if (first !== undefined) addComplete(first.name);
+  }
+
+  for (const index of config.indexes) {
+    const [first] = index.config.columns;
+
+    // An expression index (a bare `SQL`) has no single column to attribute,
+    // and nothing in this schema declares one; if that changes, the column it
+    // stands for is named explicitly rather than guessed at here.
+    if (first === undefined || !("name" in first)) continue;
+
+    const name = first.name;
+
+    if (typeof name !== "string") continue;
+
+    if (index.config.method === "gin") {
+      searched.add(name);
+      continue;
+    }
+
+    if (index.config.where === undefined) addComplete(name);
+    else filtered.add(name);
+  }
+
+  return { ordered, filtered, searched };
+};
+
+/**
+ * The allow-listed columns a table declares no adequate index for
+ * (ADR-0060 §3).
+ *
+ * The rule this makes checkable rather than remembered:
+ *
+ * > A column enters a `sortable`, `filterable` or searchable allow-list only
+ * > with its index in the same step.
+ *
+ * Columns are passed as the `PgColumn`s a module's own `ColumnMap` and search
+ * list already hold, so the test asserts the objects the repository queries
+ * with — not a second list of names that could drift from them.
+ *
+ * @returns the offending column names, per kind; empty means covered.
+ */
+export const uncoveredListColumns = (
+  table: PgTable,
+  claims: {
+    readonly ordered?: readonly PgColumn[];
+    readonly filtered?: readonly PgColumn[];
+    readonly searched?: readonly PgColumn[];
+  },
+): {
+  readonly ordered: readonly string[];
+  readonly filtered: readonly string[];
+  readonly searched: readonly string[];
+} => {
+  const coverage = indexCoverage(table);
+  const missing = (
+    columns: readonly PgColumn[] | undefined,
+    covered: ReadonlySet<string>,
+  ): string[] =>
+    (columns ?? [])
+      .filter((column) => !covered.has(column.name))
+      .map((column) => column.name);
+
+  return {
+    ordered: missing(claims.ordered, coverage.ordered),
+    filtered: missing(claims.filtered, coverage.filtered),
+    searched: missing(claims.searched, coverage.searched),
+  };
 };

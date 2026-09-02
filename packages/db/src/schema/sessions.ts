@@ -1,3 +1,4 @@
+import { isNotNull } from "drizzle-orm";
 import {
   index,
   inet,
@@ -87,5 +88,17 @@ export const sessions = pgTable(
     index("sessions_refresh_token_expires_at_idx").on(
       table.refreshTokenExpiresAt,
     ),
+    /*
+     * "Every session this staff member minted" — `revokeAllImpersonatedBy`
+     * (ADR-0057 §4) filters on exactly this column and had no index at all
+     * until ADR-0060 §4.
+     *
+     * **Partial**, because the column is null on every ordinary session: the
+     * predicate indexes the handful of rows the query is about and nothing
+     * else, and it costs nothing on the write path a password login takes.
+     */
+    index("sessions_impersonated_by_staff_id_idx")
+      .on(table.impersonatedByStaffId)
+      .where(isNotNull(table.impersonatedByStaffId)),
   ],
 );

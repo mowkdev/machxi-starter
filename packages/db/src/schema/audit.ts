@@ -86,5 +86,23 @@ export const auditEvents = pgTable(
     ),
     // "Every mint, ever" — the same question asked of one kind of event.
     index("audit_events_event_idx").on(table.event, table.occurredAt),
+    /*
+     * "Everything done **to** this account" — the question an incident asks
+     * second, and the one the actor index above cannot answer: a staff member
+     * impersonating a customer is the actor, and the customer is here
+     * (ADR-0060 §4).
+     */
+    index("audit_events_acting_as_idx").on(
+      table.actingAsType,
+      table.actingAsId,
+      table.occurredAt,
+    ),
+    /*
+     * `occurred_at` alone, for the one job that reads this table by time and
+     * not by who: retention. ADR-0058 leaves retention to the deployment, and
+     * a deployment that writes that migration should not have to add an index
+     * to a table it is already holding a lock on.
+     */
+    index("audit_events_occurred_at_idx").on(table.occurredAt),
   ],
 );

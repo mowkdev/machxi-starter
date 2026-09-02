@@ -49,6 +49,7 @@ const LIST_STATE: ListQuerySearch = {
   limit: 20,
   sort: [],
   filters: [],
+  count: true,
 };
 
 const page: Page<Row> = {

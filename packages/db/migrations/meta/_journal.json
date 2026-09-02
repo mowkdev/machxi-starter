@@ -64,6 +64,20 @@
       "when": 1788384400981,
       "tag": "0008_database_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788387055912,
+      "tag": "0009_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788387070891,
+      "tag": "0010_list_indexes",
+      "breakpoints": true
     }
   ]
 }

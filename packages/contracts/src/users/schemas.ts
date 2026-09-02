@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { USER_ROLES, USER_STATUSES } from "../enums.js";
-import { listQuerySchema } from "../list-query.js";
+import { listQuerySchema, type FilterSpec } from "../list-query.js";
 import { customRule } from "../locales/source.js";
 import {
   emailSchema,
@@ -111,26 +111,41 @@ export type DeleteProfileBody = z.infer<typeof deleteProfileBody>;
  * internal soft-delete marker, but "show me deleted accounts" is a real admin
  * question (ADR-0017).
  */
-export const listUsersQuery = listQuerySchema({
-  sortable: [
-    "createdAt",
-    "updatedAt",
-    "email",
-    "firstName",
-    "lastName",
-    "status",
-    "lastLoginAt",
-  ],
-  filterable: {
-    status: { ops: ["eq", "in"], value: z.enum(USER_STATUSES) },
-    email: { ops: ["eq", "like"], value: emailSchema },
-    createdAt: { ops: ["gt", "gte", "lt", "lte"], value: z.coerce.date() },
-    lastLoginAt: {
-      ops: ["gt", "gte", "lt", "lte", "null"],
-      value: z.coerce.date(),
-    },
-    deletedAt: { ops: ["null"] },
+/**
+ * The sortable allow-list, named so the module's index test can read it
+ * (ADR-0060 §3).
+ *
+ * `listQuerySchema` swallows its options into a parser, and the rule "a column
+ * enters an allow-list only with its index in the same step" needs the list
+ * back out to be checked against the schema's index declarations. Exported as
+ * a `const` tuple rather than restated in the test, so the thing asserted is
+ * the thing the endpoint enforces.
+ */
+export const LIST_USERS_SORTABLE = [
+  "createdAt",
+  "updatedAt",
+  "email",
+  "firstName",
+  "lastName",
+  "status",
+  "lastLoginAt",
+] as const;
+
+/** The filterable allow-list, exported for the same reason. */
+export const LIST_USERS_FILTERABLE = {
+  status: { ops: ["eq", "in"], value: z.enum(USER_STATUSES) },
+  email: { ops: ["eq", "like"], value: emailSchema },
+  createdAt: { ops: ["gt", "gte", "lt", "lte"], value: z.coerce.date() },
+  lastLoginAt: {
+    ops: ["gt", "gte", "lt", "lte", "null"],
+    value: z.coerce.date(),
   },
+  deletedAt: { ops: ["null"] },
+} satisfies FilterSpec;
+
+export const listUsersQuery = listQuerySchema({
+  sortable: LIST_USERS_SORTABLE,
+  filterable: LIST_USERS_FILTERABLE,
   defaultSort: "-createdAt",
   searchable: true,
 });

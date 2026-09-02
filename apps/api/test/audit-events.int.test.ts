@@ -49,7 +49,7 @@ afterAll(async () => {
 });
 
 describe("migration 0006", () => {
-  it("creates audit_events with both of its indexes", async () => {
+  it("creates audit_events with the four indexes it now carries", async () => {
     const rows = (await harness.db.db.execute(
       sql`select indexname from pg_indexes
           where schemaname = 'public' and tablename = 'audit_events'
@@ -57,8 +57,13 @@ describe("migration 0006", () => {
     )) as unknown as { indexname: string }[];
 
     expect(rows.map((row) => row.indexname)).toEqual([
+      // Two since `0010_list_indexes` (ADR-0060 §4): the subject index, for
+      // "everything done **to** this account", and `occurred_at` alone, for
+      // the retention job ADR-0058 leaves to the deployment.
+      "audit_events_acting_as_idx",
       "audit_events_actor_idx",
       "audit_events_event_idx",
+      "audit_events_occurred_at_idx",
       "audit_events_pkey",
     ]);
   });

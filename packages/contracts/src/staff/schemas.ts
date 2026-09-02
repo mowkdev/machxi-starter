@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { STAFF_ROLES, STAFF_STATUSES } from "../enums.js";
-import { listQuerySchema } from "../list-query.js";
+import { listQuerySchema, type FilterSpec } from "../list-query.js";
 import { customRule } from "../locales/source.js";
 import {
   emailSchema,
@@ -97,25 +97,40 @@ export type UpdateStaffProfileBody = z.infer<typeof updateStaffProfileBody>;
  * other entry here resolves to a column on `staff` that an index can serve.
  * `q` searches email and name.
  */
-export const listStaffQuery = listQuerySchema({
-  sortable: [
-    "createdAt",
-    "updatedAt",
-    "email",
-    "firstName",
-    "lastName",
-    "status",
-    "lastLoginAt",
-  ],
-  filterable: {
-    status: { ops: ["eq", "in"], value: z.enum(STAFF_STATUSES) },
-    email: { ops: ["eq", "like"], value: emailSchema },
-    createdAt: { ops: ["gt", "gte", "lt", "lte"], value: z.coerce.date() },
-    lastLoginAt: {
-      ops: ["gt", "gte", "lt", "lte", "null"],
-      value: z.coerce.date(),
-    },
+/**
+ * The sortable allow-list, named so the module's index test can read it
+ * (ADR-0060 §3).
+ *
+ * `listQuerySchema` swallows its options into a parser, and the rule "a column
+ * enters an allow-list only with its index in the same step" needs the list
+ * back out to be checked against the schema's index declarations. Exported as
+ * a `const` tuple rather than restated in the test, so the thing asserted is
+ * the thing the endpoint enforces.
+ */
+export const LIST_STAFF_SORTABLE = [
+  "createdAt",
+  "updatedAt",
+  "email",
+  "firstName",
+  "lastName",
+  "status",
+  "lastLoginAt",
+] as const;
+
+/** The filterable allow-list, exported for the same reason. */
+export const LIST_STAFF_FILTERABLE = {
+  status: { ops: ["eq", "in"], value: z.enum(STAFF_STATUSES) },
+  email: { ops: ["eq", "like"], value: emailSchema },
+  createdAt: { ops: ["gt", "gte", "lt", "lte"], value: z.coerce.date() },
+  lastLoginAt: {
+    ops: ["gt", "gte", "lt", "lte", "null"],
+    value: z.coerce.date(),
   },
+} satisfies FilterSpec;
+
+export const listStaffQuery = listQuerySchema({
+  sortable: LIST_STAFF_SORTABLE,
+  filterable: LIST_STAFF_FILTERABLE,
   defaultSort: "-createdAt",
   searchable: true,
 });

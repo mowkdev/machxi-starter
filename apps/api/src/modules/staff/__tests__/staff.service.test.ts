@@ -348,6 +348,7 @@ describe("createStaffService", () => {
         limit: 20,
         sort: [{ field: "createdAt", direction: "desc" }],
         filters: [],
+        count: true,
       });
 
       expect(page.items).toHaveLength(2);
@@ -363,6 +364,7 @@ describe("createStaffService", () => {
         limit: 20,
         sort: [],
         filters: [],
+        count: true,
       });
 
       expect(page.items[0]).not.toHaveProperty("passwordHash");

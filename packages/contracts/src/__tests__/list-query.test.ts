@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   DEFAULT_LIMIT,
   MAX_LIMIT,
+  MAX_OFFSET,
   filtersToRecord,
   listQuerySchema,
   type Filter,
@@ -41,6 +42,10 @@ describe("listQuerySchema — defaults", () => {
       limit: DEFAULT_LIMIT,
       sort: [{ field: "createdAt", direction: "desc" }],
       filters: [],
+      // ADR-0060 §2: the default is `true`, because an admin grid wants its
+      // page count and only a call site that has become expensive knows it
+      // has.
+      count: true,
     });
   });
 
@@ -67,6 +72,18 @@ describe("listQuerySchema — bounds", () => {
     expect(parse({ limit: "0" }).success).toBe(false);
     expect(parse({ limit: String(MAX_LIMIT + 1) }).success).toBe(false);
     expect(parse({ limit: String(MAX_LIMIT) }).success).toBe(true);
+  });
+
+  it("rejects an offset past the ceiling (ADR-0060 §1)", () => {
+    // `limit` has been capped since D1.4 and `offset` carried only `.min(0)`,
+    // so `?offset=50000000` was a legal request Postgres answered by walking
+    // fifty million rows. It is now a VALIDATION_ERROR through the ordinary
+    // path — no special case in a controller.
+    expect(parse({ offset: String(MAX_OFFSET + 1) }).success).toBe(false);
+    expect(parse({ offset: String(MAX_OFFSET) }).success).toBe(true);
+    expect(issuePaths(parse({ offset: String(MAX_OFFSET + 1) }))).toEqual([
+      "offset",
+    ]);
   });
 
   it("rejects non-integers rather than truncating them", () => {
@@ -256,5 +273,24 @@ describe("filtersToRecord", () => {
 
   it("is empty for no filters", () => {
     expect(filtersToRecord([])).toEqual({});
+  });
+});
+
+describe("listQuerySchema — the count flag (ADR-0060 §2)", () => {
+  it("parses count=false into the flag a repository reads", () => {
+    expect(parse({ count: "false" }).data?.count).toBe(false);
+    expect(parse({ count: "true" }).data?.count).toBe(true);
+  });
+
+  it("defaults to counting when the client says nothing", () => {
+    expect(parse({}).data?.count).toBe(true);
+  });
+
+  it("takes the two words and nothing else", () => {
+    // Not `z.coerce.boolean()`: that is JavaScript truthiness, under which the
+    // string "false" is `true` — which would make `count=false` count.
+    expect(parse({ count: "0" }).success).toBe(false);
+    expect(parse({ count: "" }).success).toBe(false);
+    expect(issuePaths(parse({ count: "maybe" }))).toEqual(["count"]);
   });
 });

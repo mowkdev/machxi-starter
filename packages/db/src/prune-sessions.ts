@@ -1,4 +1,4 @@
-import { lt, or } from "drizzle-orm";
+import { inArray, lt, or } from "drizzle-orm";
 
 import { createDb, type DbExecutor } from "./client.js";
 import { impersonationHandoffs, sessions } from "./schema/index.js";
@@ -35,26 +35,102 @@ import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
 export const RETENTION_DAYS = 30;
 
 /**
+ * Rows one `DELETE` may take (ADR-0060 §The session prune, batched).
+ *
+ * Both sweeps below used to delete every matching row in one statement and
+ * `returning` each id to count them: one lock held for the whole set, and
+ * every deleted id in memory. A table that has never been pruned is exactly
+ * the case that breaks — the backlog is unbounded, so the transaction is too.
+ *
+ * A thousand is small enough that the lock is held for a moment and large
+ * enough that a real backlog does not turn into ten thousand round trips.
+ * Both functions take it as a parameter so a test can prove the loop rather
+ * than assume it: with a batch of one, a fixture of three dead rows must still
+ * leave zero behind.
+ */
+export const PRUNE_BATCH_SIZE = 1000;
+
+/**
+ * Runs `deleteBatch` until it reports a short batch, summing what it deleted.
+ *
+ * A short batch is the last one: the statement asked for `batchSize` rows and
+ * the table had fewer, so there is nothing for the next pass to find and
+ * asking again would cost a round trip to learn it.
+ *
+ * The loop is here and the statement is at each call site because a helper
+ * generic enough to take either table cannot be typed: Drizzle resolves
+ * `.from()`'s selection per table, and a `TTable extends PgTable` parameter
+ * loses exactly that.
+ */
+const pruneInBatches = async (
+  batchSize: number,
+  deleteBatch: () => Promise<number>,
+): Promise<number> => {
+  // A batch of zero would make `limit 0` delete nothing and `0 < 0` false, so
+  // the loop would spin forever against the database. Unreachable through the
+  // CLI, which passes the constant; reachable from a test, which is exactly
+  // where a hang is hardest to read.
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new Error(
+      `prune batch size must be a positive integer, got ${String(batchSize)}`,
+    );
+  }
+
+  let total = 0;
+
+  for (;;) {
+    const deleted = await deleteBatch();
+
+    total += deleted;
+
+    if (deleted < batchSize) return total;
+  }
+};
+
+/**
  * Deletes sessions whose refresh token expired, or which were revoked, before
- * `cutoff`.
+ * `cutoff` — in bounded batches (ADR-0060 §The session prune, batched).
+ *
+ * `delete … where id in (select id … limit N)`, because Postgres has no
+ * `LIMIT` on a `DELETE`. The subquery is re-evaluated per batch, so a row that
+ * became prunable while the loop was running is taken by a later pass rather
+ * than missed, and a row another process deleted meanwhile simply stops
+ * matching.
+ *
+ * The count is the driver's rows-affected rather than a `returning` list: the
+ * point of batching is to stop holding the whole set, and returning every id
+ * would put it back in memory a batch at a time for no caller.
  *
  * @returns how many rows were deleted.
  */
 export const pruneSessions = async (
   db: DbExecutor,
   cutoff: Date,
+  batchSize: number = PRUNE_BATCH_SIZE,
 ): Promise<number> => {
-  const deleted = await db
-    .delete(sessions)
-    .where(
-      or(
-        lt(sessions.refreshTokenExpiresAt, cutoff),
-        lt(sessions.revokedAt, cutoff),
-      ),
-    )
-    .returning({ id: sessions.id });
+  // `or` widens to `SQL | undefined` only for the empty call; both arguments
+  // are present here, and a `where(undefined)` would delete the table.
+  const dead = or(
+    lt(sessions.refreshTokenExpiresAt, cutoff),
+    lt(sessions.revokedAt, cutoff),
+  );
 
-  return deleted.length;
+  return pruneInBatches(batchSize, async () => {
+    const result = await db
+      .delete(sessions)
+      .where(
+        inArray(
+          sessions.id,
+          db
+            .select({ id: sessions.id })
+            .from(sessions)
+            .where(dead)
+            .limit(batchSize),
+        ),
+      );
+
+    return result.count;
+  });
 };
 
 /**
@@ -79,18 +155,29 @@ export const pruneSessions = async (
 export const pruneImpersonationHandoffs = async (
   db: DbExecutor,
   cutoff: Date,
+  batchSize: number = PRUNE_BATCH_SIZE,
 ): Promise<number> => {
-  const deleted = await db
-    .delete(impersonationHandoffs)
-    .where(
-      or(
-        lt(impersonationHandoffs.expiresAt, cutoff),
-        lt(impersonationHandoffs.consumedAt, cutoff),
-      ),
-    )
-    .returning({ id: impersonationHandoffs.id });
+  const spent = or(
+    lt(impersonationHandoffs.expiresAt, cutoff),
+    lt(impersonationHandoffs.consumedAt, cutoff),
+  );
 
-  return deleted.length;
+  return pruneInBatches(batchSize, async () => {
+    const result = await db
+      .delete(impersonationHandoffs)
+      .where(
+        inArray(
+          impersonationHandoffs.id,
+          db
+            .select({ id: impersonationHandoffs.id })
+            .from(impersonationHandoffs)
+            .where(spent)
+            .limit(batchSize),
+        ),
+      );
+
+    return result.count;
+  });
 };
 
 const main = async (): Promise<void> => {

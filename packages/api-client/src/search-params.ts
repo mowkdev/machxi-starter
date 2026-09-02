@@ -45,6 +45,12 @@ const LIST_STATE_KEYS: ReadonlySet<string> = new Set([
   LIST_QUERY_PARAMS.limit,
   LIST_QUERY_PARAMS.sort,
   LIST_QUERY_PARAMS.q,
+  // `count` is a key of this language too (ADR-0060 §2), and it has to be
+  // claimed here or the address bar writes it in the router's dialect while
+  // the API client writes it in this one. It round-tripped either way —
+  // `defaultStringifySearch` happens to spell a boolean the same — and
+  // "happens to" is the second syntax ADR-0043 exists to prevent.
+  LIST_QUERY_PARAMS.count,
   "filters",
 ]);
 
@@ -98,6 +104,7 @@ const isListValue = (key: string, value: unknown): boolean => {
     return typeof value === "number";
   if (key === LIST_QUERY_PARAMS.sort || key === "filters")
     return Array.isArray(value);
+  if (key === LIST_QUERY_PARAMS.count) return typeof value === "boolean";
 
   return typeof value === "string";
 };

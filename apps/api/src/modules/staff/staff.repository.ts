@@ -110,8 +110,13 @@ const toRecord = (row: StaffRowWithRoles): StaffRecord => ({
  * lists: a field the schema admits but this map omits throws when the request
  * is built, because the allow-list already rejected anything outside it and a
  * disagreement between the two is a wiring bug, not client input.
+ *
+ * **Exported for this module's index test** (ADR-0060 §3): the rule "a column
+ * enters an allow-list only with its index in the same step" is checked by
+ * diffing this map against the `staff` table's own index declarations, and it
+ * has to be *this* map rather than a copy of it to mean anything.
  */
-const listColumns: ColumnMap = {
+export const listColumns: ColumnMap = {
   createdAt: staff.createdAt,
   updatedAt: staff.updatedAt,
   email: staff.email,
@@ -121,8 +126,12 @@ const listColumns: ColumnMap = {
   lastLoginAt: staff.lastLoginAt,
 };
 
-/** What `q` searches. Roles are not here: they are rows in another table. */
-const searchColumns = [staff.email, staff.firstName, staff.lastName];
+/**
+ * What `q` searches. Roles are not here: they are rows in another table.
+ *
+ * Exported with {@link listColumns} and for its reason (ADR-0060 §3).
+ */
+export const searchColumns = [staff.email, staff.firstName, staff.lastName];
 
 /**
  * The advisory-lock key that serialises the ADR-0017 super-admin invariant.
@@ -194,6 +203,14 @@ export const createStaffRepository = (db: DbExecutor) =>
         limit: plan.limit,
         offset: plan.offset,
       });
+
+      /*
+       * The aggregate is skipped, not made cheaper, when the caller declines
+       * it (ADR-0060 §2). `total: null` is the branch `Page` has typed since
+       * D1.4 and `GridPager` has always rendered; before this flag nothing
+       * could produce it.
+       */
+      if (!query.count) return { rows: rows.map(toRecord), total: null };
 
       const [counted] = await tx
         .select({ total: count() })

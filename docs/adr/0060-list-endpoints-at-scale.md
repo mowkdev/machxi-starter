@@ -1,9 +1,14 @@
-# ADR-0060: List endpoints at scale (supersedes ADR-0014 and ADR-0006 in part — deltas)
+# ADR-0060: List endpoints at scale (supersedes ADR-0014 in part — a delta)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-02
+- Supersedes (**landed at `D14.5`** 2026-09-03, the step that builds every section of this record): [ADR-0014](0014-pagination-filtering-sorting.md) (delta: `offset` gains a ceiling, the language gains a `count` flag, and the allow-list/index claim becomes a checked rule; every other pagination, filtering and sorting decision stands)
 
-> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; accepted at the head of the step that builds it.
+> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; **accepted 2026-09-03 at the head of `D14.5`**, the step that builds it. Amendable in place, labelled, while D14 is `in progress` (ADR-0025 rule 2).
+>
+> **Amended 2026-09-03 (D14.5)**, five times, each labelled where it applies: the header's parent list, which claimed [ADR-0006](0006-database-postgres-drizzle.md) as a second parent it does not touch; §1 on the status the ordinary validation path actually answers with; §2 on what declining the count costs a grid; §3 on the operator class a `citext` column needs before a `pg_trgm` index can serve it, and on the second query path that needs the same cast; and §5 on what those two rules are to [ADR-0008](0008-database-migrations-and-seeding.md).
+>
+> **Amended 2026-09-03 (D14.5) — one parent, not two.** The title written by `/scope` claimed "supersedes ADR-0014 and ADR-0006 in part". ADR-0006 chose Postgres, Drizzle over postgres.js, the `@repo/db` package, snake_case casing, UUIDv7 primary keys, the executor-taking repository and the no-singleton client; **this record touches none of them** — its one sentence about indexes ("UUIDv7 … time-ordered, index-friendly") is a property of the key, not a decision about which columns are indexed. The parent list is reconciled to the one record that really moves, which is the same correction [ADR-0059](0059-ci-containers-and-deployment.md) took at `D14.3`'s head and the reading [ADR-0030](0030-csrf-bootstrap-endpoint.md) got at `D12.12`: restating a decision, or standing near one, is not making it.
 
 ## Context
 
@@ -17,7 +22,9 @@ There is also a migration hazard the current shape hides. `migrate()` applies ev
 
 ### 1. Bound `offset`; name keyset as the successor without adopting it
 
-`offset` takes `.max(10_000)` in `listQuerySchema` beside `limit`'s existing ceiling. Beyond it the API answers `422` through the ordinary validation path (ADR-0011) — a bound, spelled like every other bound, with no special case in a controller.
+`offset` takes `.max(10_000)` in `listQuerySchema` beside `limit`'s existing ceiling. Beyond it the API answers through the ordinary validation path (ADR-0011) — a bound, spelled like every other bound, with no special case in a controller.
+
+**Amended 2026-09-03 (D14.5) — `400`, not the `422` written here.** [ADR-0013](0013-error-model.md) gives `VALIDATION_ERROR` the status `400` and every zod failure in this API has answered `400` since D1.7; `?limit=101` and `?offset=-1` both do, and they are the two bounds this one is spelled like. Naming a status the ordinary path does not use would have made the sentence contradict itself — the point of the decision is that there is no special case, and a special case is the only way `422` could have happened.
 
 **Cursor pagination is deliberately not adopted now.** The successor, when a list is expected to exceed a few hundred thousand rows, is **keyset pagination on `(sort key, id)`** — the tiebreaker `applyListQuery` already appends is exactly the second half of that key. It is a contract change, not an implementation detail: it touches the query language, the codec, both grids' pagers, and Postman, so it is a deliberable of its own and this record names it rather than half-building it.
 
@@ -27,9 +34,15 @@ The list-query language gains one flag: `count` (boolean, default `true`). `coun
 
 The default stays `true`: an admin grid wants its page count, and an endpoint that becomes expensive opts out at the call site that knows it has.
 
+**Amended 2026-09-03 (D14.5) — declining the count also declines the stranded-offset repair.** `AppGrid`'s `isStranded` (`@repo/grid`) asks whether the requested offset is past `total`, and navigates to the last page that holds a row when it is; with `total: null` it cannot ask, so a deep link past the end shows an empty page and stays there. That is a real consequence of this flag rather than a defect in the grid — there is no last page to jump to when nobody counted, which is the same reason the pager's jump-to-last is disabled in that branch. A surface that sets `count=false` accepts it, and no surface in this repository sets the flag today.
+
 ### 3. An index for every column the allow-lists admit
 
 Every column a repository declares `sortable` gets a btree index — composite with `id` where the sort is the pagination key, so the tiebreaker is served by the same index. Every column reachable through `q` gets a **`pg_trgm` GIN index**, the extension installed by its own migration exactly as `citext` is by `0000_citext.sql`: one place, every environment, `IF NOT EXISTS`.
+
+**Amended 2026-09-03 (D14.5) — the search condition casts to `text`, because a `citext` column's `ILIKE` is not the one the index serves.** Measured on the PostgreSQL 16 this repository runs, not reasoned: a GIN `gin_trgm_ops` index *creates* on a `citext` column (the type is binary-coercible to `text`, so the named operator class is accepted), but `email ilike '%term%'` resolves to citext's own `~~*` operator, which is in no `pg_trgm` operator family — `EXPLAIN` shows a sequential scan even with `enable_seqscan=off`. The same index is used the moment the query says `email::text ilike '%term%'`. So `toSearchCondition` casts **every** searched column to `text`: on a `text` column the cast parses away to the bare column and the plain index still matches, and on a `citext` column it is what makes the index reachable at all. The index declarations stay on the columns themselves; it is the query that had to change. An index that cannot be used is the same lie as an allow-list without an index, which is what this record exists to end.
+
+The cast belongs to **both** paths that reach those indexes: `q` and the `like` filter operator. `email` is `filterable` with `like` on each endpoint, so `filter[email][like]=%40acme.com` is the same query in the same place, and leaving it uncast would have fixed the search and left the filter reading the table.
 
 The rule going forward is the point, not the backfill:
 
@@ -47,6 +60,8 @@ Two rules, and `/db-schema-change` carries them:
 
 - **An enum `ADD VALUE` and its first use are separate migrations.** One transaction cannot add an enum label and then write it; the migration that adds the value ships alone.
 - **An index on a table expected to be large is written down as blocking.** The migrator's single transaction rules out `CREATE INDEX CONCURRENTLY`, so the choice is made explicitly per index and recorded in the migration's comment. Document it now — every table in this blueprint is small — and revisit the migrator's shape when a real deployment has a table that cannot take the lock.
+
+**Amended 2026-09-03 (D14.5) — these two rules are additive to [ADR-0008](0008-database-migrations-and-seeding.md), not a supersession of it.** 0008 decides where migrations come from, that they are committed, that they are never edited, and that hand-written SQL goes in a `--custom` migration; it says nothing about enum labels or about lock behaviour, so nothing here diverges from it — these rules fill a silence. `pg_trgm` joins `citext` as a required extension by that record's own custom-migration path rather than against it. The [ADR-0058](0058-append-only-audit-log.md) precedent: additive supersedes nothing, and 0008 keeps the two partial successors it already has.
 
 ### The session prune, batched
 

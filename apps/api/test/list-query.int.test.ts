@@ -1,4 +1,8 @@
-import { listEnvelopeSchema, stringifyListSearch } from "@repo/contracts";
+import {
+  MAX_OFFSET,
+  listEnvelopeSchema,
+  stringifyListSearch,
+} from "@repo/contracts";
 import { users } from "@repo/db";
 import { eq } from "drizzle-orm";
 import supertest from "supertest";
@@ -224,6 +228,31 @@ describe("list queries (ADR-0014)", () => {
       const response = await list(USERS_BASE, { offset: -1 }).expect(400);
 
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("rejects an offset past the ceiling (ADR-0060 §1)", async () => {
+      // `?offset=50000000` used to be a legal request that Postgres answered
+      // by walking fifty million rows. `400`, not a special case in a
+      // controller: it is the same bound, spelled the same way, as the
+      // `limit` ceiling two cases above (ADR-0013 gives VALIDATION_ERROR its
+      // status).
+      const response = await list(USERS_BASE, {
+        offset: MAX_OFFSET + 1,
+      }).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+      expect(
+        response.body.error.details.map((d: { path: string }) => d.path),
+      ).toContain("offset");
+    });
+
+    it("allows the ceiling itself", async () => {
+      const response = await list(USERS_BASE, { offset: MAX_OFFSET }).expect(
+        200,
+      );
+
+      expect(response.body.data).toEqual([]);
+      expect(response.body.meta.pagination.offset).toBe(MAX_OFFSET);
     });
 
     it("rejects an unknown query parameter", async () => {
@@ -608,6 +637,48 @@ describe("list queries (ADR-0014)", () => {
       const response = await list(USERS_BASE, { q: "Gone" }).expect(200);
 
       expect(response.body.data).toEqual([]);
+    });
+  });
+
+  describe("the count flag (ADR-0060 §2)", () => {
+    it("answers total: null with the same items the counted page returns", async () => {
+      const counted = await list(USERS_BASE, { limit: 3 }).expect(200);
+      const declined = await list(USERS_BASE, {
+        limit: 3,
+        count: "false",
+      }).expect(200);
+
+      // The page is the same page — same rows, same order, same offset and
+      // limit. The only difference is the number the caller declined.
+      expect(emailsOf(declined.body)).toEqual(emailsOf(counted.body));
+      expect(counted.body.meta.pagination.total).toBe(TOTAL_USERS);
+      expect(declined.body.meta.pagination.total).toBeNull();
+      expect(declined.body.meta.pagination.offset).toBe(0);
+      expect(declined.body.meta.pagination.limit).toBe(3);
+      expect(userListEnvelope.safeParse(declined.body).success).toBe(true);
+    });
+
+    it("still counts when the client says nothing", async () => {
+      const response = await list(USERS_BASE, { count: "true" }).expect(200);
+
+      expect(response.body.meta.pagination.total).toBe(TOTAL_USERS);
+    });
+
+    it("declines the count on staff too, filters and all", async () => {
+      const response = await list(STAFF_BASE, {
+        "filter[status]": "active",
+        count: "false",
+      }).expect(200);
+
+      expect(response.body.meta.pagination.total).toBeNull();
+      expect(response.body.data.length).toBeGreaterThan(0);
+      expect(staffListEnvelope.safeParse(response.body).success).toBe(true);
+    });
+
+    it("takes the two words and nothing else", async () => {
+      const response = await list(USERS_BASE, { count: "0" }).expect(400);
+
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
     });
   });
 });

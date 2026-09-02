@@ -28,7 +28,15 @@ import type { ListSearchState } from "../list-search.js";
 const roundTrip = (state: ListSearchState) =>
   listQuerySearchSchema.parse(parseListSearch(stringifyListSearch(state)));
 
-const base = { offset: 0, limit: 20, sort: [], filters: [] } as const;
+const base = {
+  offset: 0,
+  limit: 20,
+  sort: [],
+  filters: [],
+  // The schema's default, so `stringifyListSearch` writes nothing for it and
+  // the round trip below still returns it (ADR-0060 §2).
+  count: true,
+} as const;
 
 const cases: ReadonlyArray<readonly [string, ListSearchState]> = [
   ["the empty state", base],
@@ -79,6 +87,10 @@ const cases: ReadonlyArray<readonly [string, ListSearchState]> = [
   ],
   ["a search term", { ...base, q: "ada lovelace" }],
   [
+    "a declined count, the one value of the flag that is written",
+    { ...base, count: false },
+  ],
+  [
     "everything at once",
     {
       offset: 60,
@@ -90,6 +102,7 @@ const cases: ReadonlyArray<readonly [string, ListSearchState]> = [
         { field: "deletedAt", op: "null", value: true },
       ],
       q: "ann",
+      count: false,
     },
   ],
 ];
@@ -183,6 +196,18 @@ describe("list search codec", () => {
       expect(written).toBe("offset=0&limit=20");
     });
 
+    it("writes count only when it is declined (ADR-0060 §2)", () => {
+      // `count=true` is the default on both sides of the wire, so spelling it
+      // would put a parameter in every grid's URL that says what its absence
+      // already says.
+      expect(stringifyListSearch({ ...base, count: true })).toBe(
+        "offset=0&limit=20",
+      );
+      expect(stringifyListSearch({ ...base, count: false })).toBe(
+        "offset=0&limit=20&count=false",
+      );
+    });
+
     it("writes a Date as an ISO instant, not a JS date string", () => {
       const written = stringifyListSearch({
         ...base,
@@ -233,6 +258,17 @@ describe("list search codec", () => {
        */
       expect(parseListSearch("offset=x")).toEqual({ offset: "x" });
       expect(listQuerySearchSchema.safeParse({ offset: "x" }).success).toBe(
+        false,
+      );
+    });
+
+    it("reads count as a boolean, and passes a malformed one through", () => {
+      expect(parseListSearch("count=false")).toEqual({ count: false });
+      expect(parseListSearch("count=true")).toEqual({ count: true });
+      // For the reason `offset=x` survives: a wrong value is the schema's to
+      // reject and name, not the codec's to guess at.
+      expect(parseListSearch("count=maybe")).toEqual({ count: "maybe" });
+      expect(listQuerySearchSchema.safeParse({ count: "maybe" }).success).toBe(
         false,
       );
     });

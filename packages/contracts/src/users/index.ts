@@ -7,6 +7,8 @@ export {
   type SetPasswordBody,
 } from "../auth/schemas.js";
 export {
+  LIST_USERS_FILTERABLE,
+  LIST_USERS_SORTABLE,
   createUserBody,
   deleteProfileBody,
   listUsersQuery,

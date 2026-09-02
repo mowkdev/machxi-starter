@@ -78,10 +78,17 @@ describe("list params", () => {
   it("drops an absent search term rather than passing `undefined` through", () => {
     // The `exactOptionalPropertyTypes` hand-off `toListQuery` exists for.
     expect(
-      toListQuery({ offset: 0, limit: 20, sort: [], filters: [] }),
+      toListQuery({ offset: 0, limit: 20, sort: [], filters: [], count: true }),
     ).not.toHaveProperty("q");
     expect(
-      toListQuery({ offset: 0, limit: 20, sort: [], filters: [], q: "ada" }),
+      toListQuery({
+        offset: 0,
+        limit: 20,
+        sort: [],
+        filters: [],
+        count: true,
+        q: "ada",
+      }),
     ).toHaveProperty("q", "ada");
   });
 });

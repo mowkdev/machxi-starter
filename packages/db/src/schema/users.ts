@@ -1,4 +1,4 @@
-import { isNull, relations } from "drizzle-orm";
+import { isNotNull, isNull, relations } from "drizzle-orm";
 import {
   index,
   pgTable,
@@ -76,9 +76,67 @@ export const users = pgTable(
     uniqueIndex("users_email_active_unique")
       .on(table.email)
       .where(isNull(table.deletedAt)),
-    // Default `-createdAt` order and `createdAt` range filters of
-    // GET /api/v1/admin/users (ADR-0014).
-    index("users_created_at_idx").on(table.createdAt),
+    /*
+     * One btree index per sortable column, composite with `id`
+     * (ADR-0060 §3).
+     *
+     * `id` is the second column because it is the second column of the sort:
+     * `applyListQuery` appends `asc(id)` to every `ORDER BY` as the
+     * determinism tiebreaker (ADR-0014 §Determinism), so `(column, id)` is
+     * the pagination key itself rather than a prefix of it. A filter on the
+     * leading column — `createdAt` ranges, a `status` equality — is served by
+     * the same index.
+     *
+     * The rule they exist for is checked, not remembered:
+     * `users.list-indexes.test.ts` in `apps/api` diffs this list against the
+     * endpoint's `sortable`, `filterable` and searched allow-lists, and fails
+     * when a column claims an order nothing serves.
+     */
+    index("users_created_at_idx").on(table.createdAt, table.id),
+    index("users_updated_at_idx").on(table.updatedAt, table.id),
+    /*
+     * Unlike `staff.email`, which is unique across the whole table and
+     * therefore already indexed, this address is unique only among **live**
+     * rows: `users_email_active_unique` above is partial, so it cannot serve
+     * an order over a list that includes deleted accounts — which is exactly
+     * what `filter[deletedAt][null]=false` asks for.
+     */
+    index("users_email_idx").on(table.email, table.id),
+    index("users_first_name_idx").on(table.firstName, table.id),
+    index("users_last_name_idx").on(table.lastName, table.id),
+    index("users_status_idx").on(table.status, table.id),
+    index("users_last_login_at_idx").on(table.lastLoginAt, table.id),
+    /*
+     * `deletedAt` is filterable by presence only, and only one of the two
+     * presences is worth indexing: the column is null on every live account,
+     * so a full index would be a copy of the table, while the partial form
+     * indexes exactly the rows "show me deleted accounts" is about.
+     */
+    index("users_deleted_at_idx")
+      .on(table.deletedAt)
+      .where(isNotNull(table.deletedAt)),
+    /*
+     * The `q` search (ADR-0060 §3): `ilike '%term%'` cannot use a btree index
+     * at all, so each searched column gets a `pg_trgm` GIN index. The
+     * extension arrives by migration `0009_pg_trgm.sql`, exactly as `citext`
+     * does by `0000`.
+     *
+     * The operator class is named on the column itself even for `email`,
+     * whose type is `citext`: `citext` is binary-coercible to `text`, so
+     * Postgres accepts `gin_trgm_ops` here. What it does **not** accept is
+     * `citext ILIKE`, whose operator is in no trgm family — which is why
+     * `toSearchCondition` casts every searched column to `text` before
+     * comparing (ADR-0060 §3, amended).
+     */
+    index("users_email_trgm_idx").using("gin", table.email.op("gin_trgm_ops")),
+    index("users_first_name_trgm_idx").using(
+      "gin",
+      table.firstName.op("gin_trgm_ops"),
+    ),
+    index("users_last_name_trgm_idx").using(
+      "gin",
+      table.lastName.op("gin_trgm_ops"),
+    ),
   ],
 );
 
