@@ -33,8 +33,8 @@ built on, every grid decision the data-grid rebuild made, D5's pair of
 supersessions, D6's user-settings record, D7's localization one, D8's four and
 D9's platform extraction. D10 shipped 2026-08-29 and the window on
 [0052](adr/0052-grid-and-admin-followups.md) shut with it.
-**ADRs 0001–0056 are closed and the D13 window is open** — D13 (customer
-impersonation) went `in progress` 2026-09-01, the day D12 shipped, covering
+**ADRs 0001–0058 are closed and no window is open** — D13 (customer
+impersonation) shipped 2026-09-02; it went `in progress` 2026-09-01, the day D12 shipped, covering
 [0057](adr/0057-impersonation-sessions.md) and
 [0058](adr/0058-append-only-audit-log.md), both written `proposed` by `/scope`
 that day: **0057 was accepted 2026-09-01 at `D13.1`'s head**, where
@@ -45,8 +45,7 @@ now reads
 `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`
 everywhere it is stated), and **0058 was accepted 2026-09-01 at `D13.2`'s
 head**, additive — the `audit_events` table, migration `0006_audit_events` and
-the container-wired writer. Both window records are `accepted`; the window
-stays open until D13 ships. **The D12 window shut
+the container-wired writer. Both records are `accepted`; the window shut when D13 shipped 2026-09-02. D14 (starter hardening) is the next row, `planned`; ADRs 0059–0067 are `proposed` and gated until it opens. **The D12 window shut
 when D12 shipped 2026-09-01**; it covered [0055](adr/0055-customer-app.md) — `accepted` at `D12.1`'s head,
 where [0022](adr/0022-frontend-apps.md) took the roster delta — and, since
 2026-09-01, [0056](adr/0056-per-population-csrf-cookie.md) — `proposed`,

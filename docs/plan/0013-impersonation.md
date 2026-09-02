@@ -2,7 +2,7 @@
 
 > **Renumbered from D12 on 2026-08-29**, when the design foundations and account area ([D11](0011-design-foundations-and-account-area.md)) were inserted ahead of the customer app — a ledger decision, the D5 precedent; see `docs/plan/README.md` §How D11 was inserted.
 
-- Status: **in progress** — opened 2026-09-01, the day D12 shipped; scoped by `/scope` the same day
+- Status: **shipped 2026-09-02** — opened 2026-09-01, the day D12 shipped; scoped by `/scope` the same day; all nine steps built, the definition of done run at `D13.9` on 2026-09-01 and again by `/ship` on 2026-09-02 (ledger §How D13 closed)
 - Records: [ADR-0057](../adr/0057-impersonation-sessions.md) (impersonation sessions; accepted at `D13.1`'s head, where ADR-0018 and ADR-0052 take deltas) and [ADR-0058](../adr/0058-append-only-audit-log.md) (the append-only audit log; accepted at `D13.2`'s head) — both written `proposed` at scoping; a step whose ADR is still `proposed` is gated
 - Ledger: [`docs/plan/README.md`](README.md)
 
