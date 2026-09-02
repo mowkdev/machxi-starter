@@ -1,0 +1,99 @@
+# D14 — Starter hardening
+
+> **Inserted 2026-09-02 ahead of the marketing site**, which moves from D14 to D16 (D15 is [organizations](0015-organizations.md), inserted the same sitting) — a ledger decision, the D5 and D11 precedent; see `docs/plan/README.md` §How D14 and D15 were inserted.
+
+- Status: **planned** — scoped 2026-09-02 by `/scope` from a blueprint review of the same day (three reviewers over the API and data layer, the frontend and platform packages, and the process and tooling; every High finding verified against the code before it was written here). Opens when D13 ships (ADR-0025 rule 5: one deliverable in progress at a time) — D13's nine steps are built and its close-out is committed; only `/ship` is outstanding.
+- Records, all written `proposed` 2026-09-02 and each accepted at the head of the step that builds it: [ADR-0059](../adr/0059-ci-containers-and-deployment.md) (CI, images, the reference deployment), [ADR-0060](../adr/0060-list-endpoints-at-scale.md) (list endpoints at scale), [ADR-0061](../adr/0061-database-roles-and-append-only-enforcement.md) (database roles, append-only enforcement), [ADR-0062](../adr/0062-frontend-build-and-shared-composition.md) (frontend build, shared composition), [ADR-0063](../adr/0063-typed-resource-configs-and-generators.md) (typed resource configs, generators), [ADR-0064](../adr/0064-brand-seams.md) (brand seams), [ADR-0065](../adr/0065-starter-lifecycle.md) (the starter lifecycle), [ADR-0066](../adr/0066-infrastructure-seams.md) (mail, metrics, error reporting, shared rate-limit state). [ADR-0067](../adr/0067-organizations.md) (organizations) belongs to D15 and was written in the same sitting so that every step below is built tenant-aware; it is accepted at D15, not here.
+- Ledger: [`docs/plan/README.md`](README.md)
+
+## Goal
+
+Turn a very good two-app reference implementation into a starter a project can clone, deploy and build on without paying for the same ground-zero mistakes twice: a production edge (CI, images, a reference deployment, database roles, observability and mail seams), scale defaults that hold past ten thousand rows, one shared composition for the SPAs instead of two drifting copies, resource configs the compiler checks against the contracts, generators for the two shapes every feature repeats, and a documented, mechanical way to fork the starter and to bring generic features back. The decisions are ADRs 0059–0066; the tenancy model every step accommodates is ADR-0067.
+
+## Constraints
+
+- **`security-reviewer` runs on `D14.3`, `D14.4`, `D14.6` and `D14.7`** — the steps that touch the deployment, the database connection, the rate limiters, the mail and metrics surfaces, and the cookie and token names. A BLOCKER stops the step.
+- **Nothing here changes the envelope, the error shape or the auth flows** (ADR-0012, ADR-0013, ADR-0018 as carried by ADR-0057). Every change to a list contract is additive: `offset` gains a maximum and `count` is a new optional flag (ADR-0060); a client that sends neither sees today's behaviour.
+- **The API still never auto-migrates** (ADR-0008). The bundled migrate entry runs as a release step (ADR-0059 §5) — `migrate` is a one-shot service the API waits on, never a line in `main.ts`.
+- **Packages stay source-only** (ADR-0002 as carried by ADR-0062 §3): project references add a declaration build for type-checking, not a publish step; Vite still consumes `src`.
+- **Every step ends green on the gate** — `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` (ADR-0052 as carried by ADR-0057 §8) — and, from `D14.2` on, on the CI run of the same gate.
+- **Tenant-aware, not tenant-built**: indexes, the count flag, the generators' templates and the typed config all leave room for `organization_id` (ADR-0067 §1/§5) — a column, an index prefix, a template variable, a scoped executor parameter — and none of them creates a tenant table. That is D15.
+- **The window**: ADRs 0059–0066 may be amended in place, labelled, while this row is `in progress` (ADR-0025 rule 2). Every earlier record they touch takes a **delta** supersession and stands for everything not named.
+
+## Steps
+
+Each PR-sized; each ends green on the gate; each takes one bounded diff review (ADR-0050). ADR acceptance happens at the head of the step named.
+
+- [ ] **D14.1 — Housekeeping.** Delete `apps/web` and its dependencies (the marketing site scaffolds fresh at D16 — ADR-0062 §Consequences records the roster delta on ADR-0055); add `LICENSE` and `"license": "UNLICENSED"` (ADR-0065 §6); `.worktreeinclude` and `.claude/README.md` gain `apps/customer/.env`; correct `packages/db/src/migrate.ts`'s advisory-lock comment to the truth until `D14.3` makes it true; remove the inert coverage block from `packages/config-vitest/node.ts` (a promise nothing keeps — thresholds return when a step wants them); refresh `README.md` (the platform package roster, the five-link gate, `apps/customer` in the first line, the smoke-test numbers).
+  - **ADRs:** 0065 §6, 0062 §Consequences, 0002.
+  - **Done when:** `pnpm check` green with `apps/web` gone; `git ls-files apps/web` prints nothing; `pnpm ls -r next --depth 0` finds no consumer; `pnpm test:postman` green and its request and assertion counts match the ones `README.md` now states.
+
+- [ ] **D14.2 — CI, branch protection, Renovate.** Accept ADR-0059 at the head. `.github/workflows/gate.yml` runs the five links on push and PR against a Postgres service carrying the same test-database init the local compose runs (citext itself arrives by migration `0000`, as everywhere); `.github/workflows/e2e.yml` runs `pnpm test:e2e` on a nightly schedule and on dispatch; `renovate.json` groups minor and patch weekly with majors separate; `main` gets the gate as a required check with force-push blocked.
+  - **ADRs:** 0059 §1–§3, 0026 (which tasks are cached — CI uses the same turbo cache semantics), 0036 (e2e beside the gate).
+  - **Done when:** the gate workflow is green on the commit that adds it (the run URL recorded in the commit body); `e2e.yml` has `schedule` and `workflow_dispatch` triggers and no `push` trigger; `npx --yes renovate-config-validator` passes; **operator item:** branch protection on `main` set and a rejected force-push observed.
+
+- [ ] **D14.3 — Images, migrate entry and the reference deployment.** `apps/api/Dockerfile` (multi-stage, non-root, `HEALTHCHECK` on `/health/live`, satisfying `tsdown.config.ts`'s two constraints), `apps/admin/Dockerfile` and `apps/customer/Dockerfile` (nginx, SPA fallback, security headers, `VITE_*` as build args); `packages/db` builds `dist/migrate.js` with a `pg_advisory_lock` around the run and it ships in the API image; `docker/prod/compose.yaml` with `api`, `migrate` (one-shot; `api` depends on `service_completed_successfully`), `admin`, `customer`, and external `DATABASE_URL`/`REDIS_URL`; `docs/deploy.md` walks Coolify; the `TRUST_PROXY` production refinement (`"false"` refused in production) with its config test.
+  - **ADRs:** 0059 §4–§7, 0008 (the runner delta), 0004 and 0020 (trust proxy), 0003 (startup ordering).
+  - **Done when:** `docker compose -f docker/prod/compose.yaml build` succeeds for all four services; a config schema test named for it asserts `NODE_ENV=production` with `TRUST_PROXY=false` fails with `TRUST_PROXY` in the path; a `packages/db` integration test asserts two concurrent `runMigrations` calls serialize (one waits, both succeed, the migration applies once); **operator item:** the compose stack brought up against a local Postgres and `curl /health/ready` answering `200` through the built API image.
+
+- [ ] **D14.4 — Database roles and append-only enforcement.** Accept ADR-0061 at the head. The application role and the owner role (local init SQL, the test harness, `.env.example`, the config schema, `turbo.json` `env`); a migration granting the app role its table privileges, revoking `UPDATE`/`DELETE` on `audit_events`, and adding the `BEFORE UPDATE OR DELETE` trigger that raises; pool `statement_timeout`, `idle_in_transaction_session_timeout`, `application_name` and `DB_PREPARED_STATEMENTS` threaded from config; the schema-enumeration test diffing the schema's table exports against the ESLint import-ban list and `TRUNCATED_TABLES`.
+  - **ADRs:** 0061, 0058 (append-only), 0006 (client options), 0007 and 0008 (init and tooling connections), 0004 (new variables).
+  - **Done when:** integration tests named for them assert that an `UPDATE` and a `DELETE` on `audit_events` raise on the app connection **and** on the owner connection; a unit test in `packages/db` fails when a schema table is missing from either enumeration (proved by the test's own negative case); `pnpm test:int --filter api` green while the API's test connection uses the app role.
+
+- [ ] **D14.5 — List endpoints at scale.** Accept ADR-0060 at the head. `offset` max `10000` and the `count` flag in `@repo/contracts` and the codec; repositories skip the aggregate on `count=false` and return `total: null`; the `pg_trgm` extension migration and GIN indexes on the searched columns; btree indexes on every sortable column of `staff` and `users`; the partial index on `sessions.impersonated_by_staff_id` and the two `audit_events` indexes; a per-module test asserting every sortable and searched column has a covering index declaration; the `/db-schema-change` skill gains ADR-0060 §5's two migration rules; both grids' pagers tolerate `total: null`.
+  - **ADRs:** 0060, 0014 (the contract it extends), 0043 (the URL codec), 0057 and 0058 (the two tables gaining indexes).
+  - **Done when:** contracts unit tests assert `offset=10001` is rejected and `count=false` parses; integration tests assert `GET /api/v1/admin/users?offset=10001` answers `422` and `?count=false` answers `total: null` with the same `items`; a `packages/db` or module unit test fails when a sortable column has no index (negative case proved); grid tests in `@repo/grid` render the pager with `total: null`; `pnpm test:postman` green with the two new requests.
+
+- [ ] **D14.6 — Infrastructure seams.** Accept ADR-0066 at the head. The `MailSender` port with the log adapter and the SMTP adapter, config-selected; Mailpit in `docker/local/compose.yaml`; `GET /metrics` with `prom-client` outside the limiters and behind `METRICS_TOKEN`; the error-reporting seam in the API's error handler and behind both SPAs' top-level boundary, dynamic-imported only when a DSN is set; the Redis rate-limit store behind `REDIS_URL` with the memory store as the default.
+  - **ADRs:** 0066, 0020 (limiters), 0016 (health's sibling), 0013 (the handler hook), 0005 (what the reporter may and may not see).
+  - **Done when:** unit tests assert the log adapter records subject and recipient and the SMTP adapter is chosen only by `MAIL_TRANSPORT=smtp`; integration tests assert `/metrics` answers `200` with the token and `401` without, and that a `5xx` reaches the reporter stub while a `4xx` does not; a unit test asserts the limiter store is Redis when `REDIS_URL` is set and memory otherwise; `pnpm docker:up` reports Mailpit healthy.
+
+- [ ] **D14.7 — Brand seams.** Accept ADR-0064 at the head. `APP_ID` in the API config deriving the cookie names and the JWT audience; `VITE_APP_ID` in both SPAs deriving every device-storage key as `${appId}.${segment}.${fact}` through parameters on `@repo/app-services`, `@repo/i18n` and `@repo/grid`; `scripts/rename.mjs` with `--dry-run`; `docs/rebranding.md` rewritten to the three-line recipe.
+  - **ADRs:** 0064, 0029 and 0056 (cookie names), 0018 as carried by 0057 (audience), 0041 and 0045 (storage keys), 0004 (variables).
+  - **Done when:** API unit tests assert the cookie names and the audience derive from `APP_ID` and that the defaults equal today's literals; package tests assert the admin and customer keys differ for the same fact; `node scripts/rename.mjs --dry-run acme` lists the files it would touch and exits `0`; `pnpm test:e2e` green (the default names are unchanged, so live cookies still verify).
+
+- [ ] **D14.8 — Shared composition: `@repo/app-kit`.** Accept ADR-0062 at the head. The seventh platform package holding the provider stack, the auth layout, the account-area shell, the app loader, the error boundary, the router defaults, the i18n app factory and the test harness; both apps consume it through doors declared in one `DOORS` table with `doorRules()`; admin gains the router defaults and both apps the boundary; every app's `styles.css` declares `@source` for each rendering package it depends on, with a test asserting the pairs.
+  - **ADRs:** 0062 §1–§2, 0051 (doors), 0049 and 0055 (what an app owns), 0046 (`UiStrings` and the dictionaries stay per app).
+  - **Done when:** both apps' suites green; a test named for it fails when an app depends on `@repo/form` or `@repo/grid` without the matching `@source` line (negative case proved); `apps/admin/eslint.config.js` contains one `DOORS` table and no hand-copied group list; `pnpm size` green; the customer's built CSS contains the utilities `@repo/form` uses (asserted by the size script or a build test).
+
+- [ ] **D14.9 — Project references and bundles.** `composite` on the packages, `references` in the apps, `check-types` as `tsc -b` with a gitignored declaration output; `manualChunks` for the vendor groups in both Vite configs; `build.sourcemap: "hidden"`; `size-budget.json` gains per-chunk ceilings and `size.mjs` enforces them; the admin `testTimeout` returns to the value the comment says it wanted.
+  - **ADRs:** 0062 §3–§4, 0002 (source-only stands), 0052 (the budget shape delta), 0026 (`check-types` stays cached).
+  - **Done when:** `pnpm check-types` green through `tsc -b` and a second run reports every project up to date; `pnpm size` green with per-chunk budgets and fails when one ceiling is set below its measured chunk (proved once, then restored); the entry chunk is below the budget file's new `entry` ceiling, which is set no higher than 60 % of `js`.
+
+- [ ] **D14.10 — Typed resource configs.** Accept ADR-0063 at the head. `ResourceConfig<TRow, TCreate, TUpdate>` with columns keyed by the row and fields by the bodies; the row and body types carried through `createAppFormInput` and `AppGrid`; `assertConfigMatchesContract` in `@repo/resource`; both configs migrated and both per-resource claims tests reduced to a call of the helper.
+  - **ADRs:** 0063 §1–§2, 0035 (the config it types), 0038 (capability flags unchanged).
+  - **Done when:** a type test (`@ts-expect-error` or `expectTypeOf`) in `@repo/resource` fails to compile a misspelt column and a field not in either body; `apps/admin/src/entities/{staff,user}/__tests__/*.config.test.ts` each call the helper and nothing else of substance; `pnpm check-types` and both suites green.
+
+- [ ] **D14.11 — Generators.** `turbo/generators` with `api-module` and `resource-screen`, templates carrying an `organizationScoped` variable that emits the ADR-0067 column, index prefix and executor parameter when set; `/new-api-module` and `/new-resource-ui` run the generator first and describe only what it cannot do.
+  - **ADRs:** 0063 §3, 0009 (the module shape the template encodes), 0049 (the slice shape), 0067 §1/§5 (the variable).
+  - **Done when:** in a throwaway worktree, `pnpm turbo gen api-module` followed by `pnpm turbo gen resource-screen` for one sample name yields a tree on which `pnpm check` is green with the generated tests passing (the commands and the sample name recorded in the commit body); the two skills' first instruction is the generator command.
+
+- [ ] **D14.12 — The starter lifecycle.** Accept ADR-0065 at the head. `CLAUDE.md` reduced to rules, commands, repo map, search and workflow; one window section in `docs/plan/README.md` that every rule file, skill and agent links to; `.claude/**` swept to glossed citations with no step numbers, dates or bare ranges; the gate defined once; `/bootstrap` written; `/step`'s reviewer reference corrected; `/ship` gains the tag, the `CHANGELOG.md` entry and the widened sweep list; `docs/forking.md`, `docs/upstreaming.md`, `docs/CHANGELOG.md` (seeded with D1–D13 one-liners from the ledger); the ADR index gains a topic → record-in-force table at its head and the five unannotated delta supersessions (0026, 0033, 0036, 0039, 0049) gain their delta note.
+  - **ADRs:** 0065, 0025 and 0050 (the parents), 0001 (the index).
+  - **Done when:** `node --test scripts/` green, with a test asserting no `D<n>.<step>`, no date and no bare ADR range appears under `.claude/**` and that every window statement outside the ledger is a link (negative case proved); `CLAUDE.md` under 6 KB; `pnpm format:check` green; **operator item:** a fresh clone with `/bootstrap` run reaches `/scope D1` without an error.
+
+- [ ] **D14.13 — Close-out.** The definition of done below, run verbatim; the ledger row; the tag `starter-D14` (the first use of ADR-0065 §2); `/scope D15` offered.
+
+## Definition of done
+
+Machine items, run verbatim on a clean tree:
+
+1. `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` green, and the same five links green on CI for the closing commit (the run URL in the ledger note).
+2. `pnpm test:unit` twice, the second run fully cached (ADR-0026).
+3. `pnpm test:postman` green, counts as stated in `README.md`.
+4. `docker compose -f docker/prod/compose.yaml build` succeeds; `pnpm docker:up` reports Postgres and Mailpit healthy.
+5. `node scripts/rename.mjs --dry-run acme` exits `0`; `node --test scripts/` green.
+6. `git tag --list 'starter-D14'` prints the tag after `/ship`.
+
+Operator items, each recorded as _accepted_ or _pending_ in the ledger note: the compose stack answering `/health/ready` through the built images; branch protection observed; a Coolify deployment from `docs/deploy.md` reaching the login page of both SPAs; a fresh clone bootstrapped to `/scope D1`.
+
+## Out of scope, and where it went
+
+- **Organizations** — D15, [ADR-0067](../adr/0067-organizations.md), written now, built there.
+- **The mail flows** (self-service reset, verification, email change, invitations) — their own deliverable after D15; ADR-0066 ships the port they need.
+- **Cursor pagination** — ADR-0060 §1 names it as the successor and the trigger.
+- **Row-level security** — ADR-0067 §5 fixes the shape; enabling it is a D15 follow-up once the app role exists (`D14.4`).
+- **OpenTelemetry tracing** — ADR-0066 §2 names the seam.
+- **Sweeping step numbers out of source comments** — ADR-0065 §5 leaves them; a fork may strip them.
+- **A registry for the platform packages** — ADR-0065 §1, revisited at three forks.
+- **The marketing site** — D16.

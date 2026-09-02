@@ -1,0 +1,78 @@
+# ADR-0062: Frontend build and shared app composition (supersedes ADR-0051, ADR-0002, ADR-0052 and ADR-0049/ADR-0055 in part — deltas)
+
+- Status: proposed
+- Date: 2026-09-02
+
+> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; accepted at the head of the step that builds it.
+
+## Context
+
+[ADR-0051](0051-platform-extraction.md) (platform extraction) moved the behavioural machinery into six packages and left each app its own `shared/` doors, its dictionary, its policy data and its config. D12 then built `apps/customer` from those records and reported the headline the extraction was for: the six packages and `@repo/ui` took **no diff at all** from a second consuming app. That was true of the machinery. It was not true of the **composition** around it.
+
+`apps/customer/src` holds roughly 128 files. About 110 have a same-path twin in `apps/admin/src`, and about 52 are code-identical — the i18n, query-client and ui-strings providers, `widgets/auth-layout`, the account-area shell, `shared/ui/app-loader`, `test/render` and the MSW harness, the app i18n factory. Nothing owns them, so they drift, and they already have, in both directions:
+
+- **The customer app's stylesheet lost a package.** `apps/customer/src/app/styles.css` declares no `@source` at all — correct when it was written, and its own comment says `D12.6` will add the `form` pair with the first form. `D12.6` added three `@repo/form` renderers under `features/profile-manage` and did not add the lines. So the built customer CSS is missing utilities the form package uses (`gap-5` is in the admin's `dist` CSS and absent from the customer's) — the exact D9 defect `D10.4` diagnosed at length in the admin's own file, reproduced one app over, invisible to lint, types and every test.
+- **The customer app is ahead of the admin.** Its router sets `defaultErrorComponent` and `defaultNotFoundComponent`, from `D12.2`'s review, because the router's own defaults render `error.message` behind a **Show Error** button in production. The admin's router still has neither.
+- **The customer's lint config is the better one.** It generates its door blocks from a `DOORS` table through a `doorRules()` helper, in 324 lines; the admin hand-copies nine `no-restricted-imports` blocks with every other door's patterns written out inside each, in 745.
+
+Neither app has a top-level React error boundary, so a render-time throw outside a route's own error component is a white screen with nothing recorded.
+
+The build has its own slack. Every package exports raw TypeScript (`"exports": { ".": "./src/index.ts" }`, [ADR-0002](0002-monorepo-layout-and-tooling.md)'s no-build-step decision, which is why dev is fast); no package sets `composite` and no app sets `references`, so `check-types` in each app is a `tsc --noEmit` that re-checks every package from source, and `apps/admin/vitest.config.ts` raised `testTimeout` to 30 s at `D9.4` for the same reason. `autoCodeSplitting` is on but there is no `manualChunks`: the admin's entry chunk is 258 kB of 336 kB gzipped — about 76% of all JavaScript paid before anything renders — and `size-budget.json` prices only the totals ([ADR-0052](0052-grid-and-admin-followups.md) §The bundle budget), so vendor code moving into the entry costs nothing at the gate. Sourcemaps are off, so a production stack trace is unreadable.
+
+## Decision
+
+### 1. A seventh platform package, `@repo/app-kit`
+
+`packages/app-kit` holds what both SPAs compose identically:
+
+```
+packages/app-kit/src/
+  providers/      the provider stack (i18n, query client, ui-strings, settings)
+  layouts/        the auth layout, the account-area shell
+  feedback/       the app loader, the top-level error boundary
+  router/         the router defaults — error and not-found components
+  i18n/           the app i18n factory
+  testing/        render helpers, the MSW server bootstrap
+```
+
+Each app reaches it **only through its own `shared/` doors**, exactly as it reaches the six D9 packages — one more row in a table, not a new kind of dependency. The app-specific parts stay in the apps and do not move: the route tree, the dictionaries, the policy data, `shared/config`, the size budget.
+
+**The doors are declared once per app, as data.** The customer's `DOORS` table and its `doorRules()` helper are the shape; the admin's hand-copied blocks are ported onto it. A package becomes one row in both files.
+
+The stylesheet defect is fixed by rule rather than by a line:
+
+> **Every app's `styles.css` declares an `@source` for every platform package it depends on that renders**, and the pair is asserted — the app's dependencies read against its `@source` list, in a test or in `scripts/size.mjs`.
+
+That is the check the admin's comment asked for in prose and nothing enforced.
+
+### 2. A top-level error boundary in every SPA
+
+Each app wraps its tree in `@repo/app-kit`'s error boundary, above the router and below the providers that give it copy. It renders a localized failure surface, never `error.message`, and reports through the reporting seam ADR-0066 decides. A route's own error component still handles what the router catches; this catches everything else.
+
+### 3. TypeScript project references
+
+The packages set `composite: true`; the apps declare `references`; `check-types` becomes `tsc -b`. Type-checking then walks each package once and caches it, instead of every app re-checking every package from source.
+
+**ADR-0002's decision stands** — packages have no publish step and no bundling step, and Vite and `tsdown` still consume `src/*.ts` directly. The delta is narrow and worth stating exactly: a **declarations-only build exists for type-checking**, emitted to a gitignored directory, and nothing at runtime resolves to it.
+
+### 4. Chunks, sourcemaps and per-chunk budgets
+
+Each app's Vite build declares `manualChunks` for the vendor groups it actually has — react, router, query, table — so the entry carries the app and the framework is cached across deploys of it. `build.sourcemap: "hidden"` emits maps without referencing them from the bundle.
+
+`size-budget.json` gains **per-chunk ceilings beside the totals**, and `scripts/size.mjs` fails on any chunk over its own ceiling. That is the delta on ADR-0052: the budget's shape grows a dimension, and the mechanism it decided — a committed number, raised only by a reviewed diff — is unchanged.
+
+## Consequences
+
+- The composition has an owner, so a fix like `D12.2`'s router defaults lands once for both apps, and the next divergence is a diff in one package rather than an invisible asymmetry.
+- A third app — `apps/web`'s successor, a mobile shell — starts from `@repo/app-kit` plus a route tree and a dictionary.
+- **The roster delta on [ADR-0055](0055-customer-app.md) §1 (and ADR-0022 as carried by it): `apps/web` leaves the tree at `D14.1`.** The placeholder scaffolded at `D3.1` never grew past one card, carried the heaviest dependency in the install for one consumer with no tests and no budget, and paid a Next type generation on every gate run. The marketing site is still a Next.js app on port 3003 — every stack decision 0022 and 0055 made about it stands — and D16 scaffolds it fresh on the current Next rather than upgrading a stub. Until then the port roster is two SPAs and the API.
+- `@repo/app-kit` is the first package that may depend on other platform packages; its dependency direction is downward-only, and it must not learn a route name, a resource name or a policy.
+- `tsc -b` makes the first check slower and every later one much faster; the `testTimeout` raised at `D9.4` can be revisited once it lands, on measurement rather than on hope.
+- Splitting vendor chunks moves bytes rather than removing them; the totals in `size-budget.json` should barely move, and the entry ceiling should fall. If it does not, the split was cosmetic and the numbers say so.
+
+## Alternatives considered
+
+- **Fix the drift and move on** — sync the stylesheet, port the router defaults, copy the doors helper. It repairs the three known divergences and leaves the next one just as invisible, which is the actual defect.
+- **Merge the two SPAs into one app with two route trees.** Contradicts [ADR-0055](0055-customer-app.md)'s separate app on its own port and [ADR-0056](0056-per-population-csrf-cookie.md)'s per-population cookie split, which exists precisely because the two populations must not share a document.
+- **Build the packages to JS + `.d.ts`.** A full supersession of ADR-0002's no-build-step decision and a build step in every dev loop, to buy what project references buy for a declaration emit alone.
+- **Per-route bundle budgets instead of per-chunk.** More faithful to what a user waits for, and it prices numbers that move whenever a route file is renamed; per-chunk ceilings are stable enough to be reviewed.
