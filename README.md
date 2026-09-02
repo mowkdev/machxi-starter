@@ -198,7 +198,12 @@ bundler, so there is no per-package build step (ADR-0002).
   browser tier nightly and on demand, never on push.
 - `docker/local/` — the compose setup; see [`docker/README.md`](docker/README.md)
   for the scripts, the two databases (`machxi` and `machxi_test`) and troubleshooting.
-- `docs/` — ADRs, the implementation plan, and the Postman collection.
+- `docker/prod/` — the reference deployment (ADR-0059 §6): `migrate` (one-shot,
+  under a `pg_advisory_lock`), `api`, `admin` and `customer`, with Postgres and
+  Redis external. The images are `apps/*/Dockerfile`, and
+  [`docs/deploy.md`](docs/deploy.md) walks it on Coolify.
+- `docs/` — ADRs, the implementation plan, the deployment guide, and the Postman
+  collection.
 - `scripts/` — repo-level tooling outside the workspaces, so **not** covered by
   `turbo run lint` or `check-types` (ADR-0002). Today: `postman.mjs`.
 - `.claude/` — Claude Code setup: subagents and slash-command skills that encode

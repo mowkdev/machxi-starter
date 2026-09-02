@@ -4,13 +4,21 @@ Container definitions live here, one directory per setup (ADR-0007). Everything
 is driven from the repo root through `pnpm` scripts, so the compose files always
 get the root `.env` as their variable source.
 
-| Setup             | Path                           | Contents                                                                |
-| ----------------- | ------------------------------ | ----------------------------------------------------------------------- |
-| Local development | [`local/`](local/compose.yaml) | Postgres 16 for the API, the drizzle tooling and the integration tests. |
+| Setup                | Path                           | Contents                                                                                             |
+| -------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Local development    | [`local/`](local/compose.yaml) | Postgres 16 for the API, the drizzle tooling and the integration tests.                              |
+| Reference deployment | [`prod/`](prod/compose.yaml)   | `migrate` (one-shot), `api`, `admin`, `customer`. Postgres and Redis are **external** (ADR-0059 §6). |
 
-Future setups (`ci/`, `prod/`, per-app `Dockerfile`s) are added as siblings of
-`local/`. Only Postgres is containerised for now: the api, admin and customer
-apps run on the host so hot reload and the debugger stay native.
+The two are siblings and neither is the other's environment: `local/` runs the
+one dependency a developer needs so the apps themselves stay on the host with
+hot reload and a debugger (ADR-0007), and `prod/` runs the built images with no
+database beside them at all. The per-app `Dockerfile`s live with their apps
+(`apps/*/Dockerfile`, ADR-0059 §4), because a build context is the repository
+root and the file belongs to the thing it builds.
+
+CI is not a third setup: the gate workflow uses a GitHub Actions service
+container and runs `local/postgres/init` against it, so there is one definition
+of the test database (`.github/workflows/gate.yml`, ADR-0059 §1).
 
 ## Local development
 
@@ -127,3 +135,22 @@ file-sharing configuration is needed.
 ```sh
 pnpm docker:reset && pnpm db:setup
 ```
+
+## Reference deployment
+
+[`prod/compose.yaml`](prod/compose.yaml) is the deployable shape: four services
+from three images, with `DATABASE_URL` and `REDIS_URL` injected because
+Postgres and Redis are managed resources on the platform (ADR-0059 §6).
+[`docs/deploy.md`](../docs/deploy.md) walks it on Coolify end to end.
+
+```sh
+cp docker/prod/.env.example docker/prod/.env      # then edit it
+docker compose -f docker/prod/compose.yaml build  # all four services
+docker compose -f docker/prod/compose.yaml up -d
+```
+
+Compose reads `docker/prod/.env` automatically — it sits beside the compose
+file — so unlike the local scripts there is no `--env-file` flag to pass. The
+release order is in the file rather than in a runbook: `migrate` applies the
+committed migrations under a `pg_advisory_lock` and exits, and `api` starts
+only once it has exited zero. The API never migrates itself (ADR-0008).

@@ -1,7 +1,9 @@
 # ADR-0020: API security baseline
 
-- Status: accepted
+- Status: superseded by [ADR-0059](0059-ci-containers-and-deployment.md) (delta: a production deployment must state its proxy hop, so `req.ip` is a decision rather than a default)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-02 by [ADR-0059](0059-ci-containers-and-deployment.md)**, at the head of `D14.3` — the step that builds its §4–§7 and makes the delta true, not at 0059's acceptance (the `D10.5` precedent). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): this record refuses `TRUST_PROXY="true"` in production because it makes `req.ip` attacker-controlled, and 0059 §7 closes the other half — `"false"` is refused in production too, because a deployment behind a reverse proxy that simply never set the variable collapses the login limiter, the refresh limiter and the audit trail's `ip` onto the proxy's address, silently and in the permissive direction. **Everything else this record decides stands and is in force**: helmet, CORS, the body limits, the three rate limiters and their keys, the argon2 concurrency cap, `no-store`, the known-public-secret enumeration and §Residual risks. Read 0059 §7 for the production refinement and this record for the baseline.
 
 ## Context
 

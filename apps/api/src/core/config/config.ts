@@ -3,6 +3,7 @@ import type { LogLevel } from "@repo/logger";
 import { z } from "zod";
 
 import { envSchema, type Env } from "./schema.js";
+import { toTrustProxy, type TrustProxy } from "./trust-proxy.js";
 
 /**
  * Loading and grouping of the process configuration (ADR-0004).
@@ -13,26 +14,6 @@ import { envSchema, type Env } from "./schema.js";
  * grouped object handed to the container (ADR-0009). Nothing downstream can
  * reach an unvalidated value or a variable this schema does not declare.
  */
-
-/** What Express accepts for its `trust proxy` setting. */
-export type TrustProxy = boolean | number | string;
-
-/**
- * Interprets `TRUST_PROXY`. Express itself accepts three forms, so the
- * variable stays a string in the schema and is resolved once, here:
- * `false`/`true`, a hop count, or a value Express parses itself
- * (`loopback`, a CIDR list).
- */
-export const toTrustProxy = (raw: string): TrustProxy => {
-  const value = raw.trim();
-
-  if (value === "false") return false;
-  if (value === "true") return true;
-
-  const hops = Number(value);
-
-  return Number.isInteger(hops) && hops >= 0 ? hops : value;
-};
 
 export interface AppConfig {
   readonly env: Env["NODE_ENV"];

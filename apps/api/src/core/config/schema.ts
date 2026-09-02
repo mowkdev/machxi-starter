@@ -2,6 +2,7 @@ import { defaultArgon2Params, minArgon2Params } from "@repo/crypto";
 import { z } from "zod";
 
 import { parseDurationSeconds } from "./duration.js";
+import { isProductionTrustProxy } from "./trust-proxy.js";
 
 /**
  * The environment contract of the API process (ADR-0004).
@@ -44,18 +45,31 @@ export const TEST_JWT_ACCESS_SECRET =
   "test-only-signing-key-do-not-use-anywhere-else";
 
 /**
+ * The `JWT_ACCESS_SECRET` shipped in `docker/prod/.env.example`.
+ *
+ * The third, and the one most likely to be copied verbatim: that file is the
+ * checklist for a **production** compose deployment, and `docs/deploy.md`
+ * documents `cp docker/prod/.env.example docker/prod/.env` as the way to try
+ * the images locally. It is 41 characters, so length alone accepts it.
+ */
+export const PROD_COMPOSE_JWT_ACCESS_SECRET =
+  "replace-me-with-48-random-bytes-base64url";
+
+/**
  * Every signing key that exists in the repository, and is therefore public.
  *
  * A list rather than one comparison, because the placeholder is not the only
- * one: `.env.test` carries a second working key, and `.env.test` is the file
- * someone copies when they want something that already runs. Both are 32+
- * characters, so length cannot tell them apart from a real key — only
- * enumeration can. A unit test reads both files and asserts their values appear
- * here, so a third dummy key cannot be added without being listed.
+ * one: `.env.test` carries a second working key, `docker/prod/.env.example` a
+ * third (`D14.3`), and each of those is the file someone copies when they want
+ * something that already runs. All are 32+ characters, so length cannot tell
+ * them apart from a real key — only enumeration can. A unit test reads every
+ * one of those files and asserts its value appears here, so a fourth dummy key
+ * cannot be added without being listed.
  */
 export const KNOWN_PUBLIC_SECRETS: readonly string[] = [
   PLACEHOLDER_JWT_ACCESS_SECRET,
   TEST_JWT_ACCESS_SECRET,
+  PROD_COMPOSE_JWT_ACCESS_SECRET,
 ];
 
 /** The `SEED_SUPER_ADMIN_PASSWORD` shipped in `.env.example`. */
@@ -166,6 +180,16 @@ export const envSchema = z
     // Express `trust proxy`: 'false' | 'true' | a hop count | a CIDR list.
     // Interpreted by `toTrustProxy`; kept as a string here because the three
     // forms are what Express itself accepts.
+    //
+    // The default is for a developer's machine. **Production must state the
+    // hop** (ADR-0059 §7, the delta on ADR-0004 and ADR-0020), and the
+    // refinement below checks the **resolved** value rather than the string:
+    // `"false"`, `"0"` and `""` are one instruction to Express, and `""` is
+    // what an unset variable becomes on its way through a compose file's
+    // `TRUST_PROXY=${TRUST_PROXY}` — so a raw-string comparison would refuse
+    // the spelling nobody writes by accident and pass the two that happen by
+    // themselves. Neither failure is visible in a response, which is why they
+    // are startup failures.
     TRUST_PROXY: z.string().default("false"),
 
     DATABASE_URL: z.url(),
@@ -323,11 +347,12 @@ export const envSchema = z
     },
   )
   .refine(
-    (env) => env.NODE_ENV !== "production" || env.TRUST_PROXY.trim() !== "true",
+    (env) =>
+      env.NODE_ENV !== "production" || isProductionTrustProxy(env.TRUST_PROXY),
     {
       path: ["TRUST_PROXY"],
       message:
-        'must not be "true" in production; Express then takes the left-most X-Forwarded-For entry verbatim, which makes req.ip attacker-controlled and the login rate limit bypassable (ADR-0020). Use a hop count, a CIDR list, or "loopback"',
+        'must state the proxy hop in production: a count, a CIDR list, or "loopback". Both constants are refused, and so is anything that resolves to one — "true" makes Express take the left-most X-Forwarded-For entry verbatim, so req.ip becomes attacker-controlled and the login rate limit bypassable (ADR-0020), while "false", "0" and an empty value make every request behind a proxy report the proxy\'s address instead, collapsing the login limiter, the refresh limiter and the audit trail onto one key (ADR-0059 §7). A production deployment with nothing in front of it is the case this refuses to guess at',
     },
   );
 

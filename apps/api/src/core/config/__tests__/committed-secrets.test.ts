@@ -33,6 +33,10 @@ describe("committed signing keys", () => {
   it.each([
     [".env.example", resolve(repoRoot, ".env.example")],
     ["apps/api/.env.test", resolve(apiDir, ".env.test")],
+    // `D14.3` added the third, and the most dangerous of them: this one is the
+    // checklist for a **production** compose deployment, and `docs/deploy.md`
+    // documents copying it as the way to try the images locally.
+    ["docker/prod/.env.example", resolve(repoRoot, "docker/prod/.env.example")],
   ])("lists the key in %s as publicly known", (_label, file) => {
     const secret = readSecret(file);
 
@@ -40,12 +44,16 @@ describe("committed signing keys", () => {
     expect(KNOWN_PUBLIC_SECRETS).toContain(secret);
   });
 
-  it("keeps the two files' keys distinct", () => {
+  it("keeps the committed files' keys distinct", () => {
     // A test that verified a token signed with the documented placeholder
     // would also pass against a deployment that never changed it.
-    expect(readSecret(resolve(repoRoot, ".env.example"))).not.toBe(
+    const secrets = [
+      readSecret(resolve(repoRoot, ".env.example")),
       readSecret(resolve(apiDir, ".env.test")),
-    );
+      readSecret(resolve(repoRoot, "docker/prod/.env.example")),
+    ];
+
+    expect(new Set(secrets).size).toBe(secrets.length);
   });
 
   it("only lists keys that would otherwise pass the length rule", () => {

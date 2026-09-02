@@ -2,8 +2,8 @@ import { createArgon2Hasher } from "@repo/crypto";
 
 import { createDb } from "../src/index.js";
 import { isEntryPoint } from "../src/tooling/entrypoint.js";
+import { readArgon2Params } from "../src/tooling/argon2.js";
 import {
-  readArgon2Params,
   readDatabaseUrl,
   readNodeEnv,
   readSuperAdminCredentials,

@@ -150,7 +150,11 @@ describe("envSchema", () => {
   });
 
   describe("production guards", () => {
-    const production = { NODE_ENV: "production" } as const;
+    // `TRUST_PROXY` is stated here, not defaulted, so each guard below fails
+    // for its own reason: since ADR-0059 §7 an unstated hop is itself a
+    // production failure, and leaving it out would make every assertion in
+    // this block pass for two reasons at once.
+    const production = { NODE_ENV: "production", TRUST_PROXY: "1" } as const;
 
     it.each(KNOWN_PUBLIC_SECRETS)(
       "refuses the signing key committed as %s",
@@ -171,6 +175,42 @@ describe("envSchema", () => {
       expect(() => parse({ ...production, TRUST_PROXY: "true" })).toThrow(
         /TRUST_PROXY/,
       );
+    });
+
+    it('refuses TRUST_PROXY="false" in production, so the hop is stated (ADR-0059 §7)', () => {
+      // The other half of the refusal above, and the quieter one: behind a
+      // reverse proxy that never set the variable, `req.ip` is the proxy's
+      // address on every request — so the login limiter, the refresh limiter
+      // and the audit trail collapse onto one key, in the permissive
+      // direction, with nothing in any response to show for it.
+      expect(() =>
+        envSchema.parse({ ...validEnv, NODE_ENV: "production" }),
+      ).toThrow(/TRUST_PROXY/);
+      expect(() => parse({ ...production, TRUST_PROXY: "false" })).toThrow(
+        /TRUST_PROXY/,
+      );
+    });
+
+    it.each(["", "  ", "0", "+0", " 0 "])(
+      "refuses %j, which resolves to the same instruction as false",
+      (raw) => {
+        // The check is on the resolved value, not the string, because these
+        // are the spellings that happen *by themselves*: a zod default fires
+        // only for `undefined`, so a compose file's `TRUST_PROXY=${TRUST_PROXY}`
+        // turns an unset variable into `""`, and `"0"` is what an operator
+        // told to "state a hop count" writes when there is no proxy. Express
+        // reads all of them as "trust nothing" — exactly what `false` means.
+        expect(() => parse({ ...production, TRUST_PROXY: raw })).toThrow(
+          /TRUST_PROXY/,
+        );
+      },
+    );
+
+    it("leaves the default alone outside production", () => {
+      // A developer's machine has no proxy in front of it, and the whole point
+      // of the refusal is that it is production's to answer (ADR-0004).
+      expect(parse().TRUST_PROXY).toBe("false");
+      expect(() => parse({ NODE_ENV: "test" })).not.toThrow();
     });
 
     it("allows a hop count or a named proxy set", () => {

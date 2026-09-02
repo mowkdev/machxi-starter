@@ -1,10 +1,9 @@
 /* eslint-disable no-restricted-properties -- the one module allowed to read process.env (ADR-0004). */
-import { dirname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { config as loadDotenv } from "dotenv";
-
-import { defaultArgon2Params, type Argon2Params } from "@repo/crypto";
 
 /**
  * The only place in `@repo/db` that reads `process.env` (ADR-0004).
@@ -21,7 +20,55 @@ import { defaultArgon2Params, type Argon2Params } from "@repo/crypto";
  * API's schema declares are enforced for variables the API never sees.
  */
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The directory holding `migrations/`.
+ *
+ * Found by walking up from this module rather than by counting `../` from it,
+ * because since `D14.3` this file has **two** layouts to answer for (ADR-0059
+ * §5): the source tree, where it sits at `packages/db/src/tooling/`, and the
+ * bundled `dist/migrate.js`, where it has been inlined into a file at
+ * `<root>/dist/` — inside the API image, `/app/dist/migrate.js` beside
+ * `/app/migrations`. A fixed `../..` is correct in exactly one of them, and
+ * the failure in the other is a migrate job that reports "up to date" against
+ * a folder that does not exist.
+ *
+ * The journal file, not the directory name, is what the walk matches: it is
+ * the artefact Drizzle actually reads, so a `migrations/` belonging to
+ * something else cannot be mistaken for this one.
+ */
+const findPackageRoot = (): string => {
+  let dir = moduleDir;
+
+  for (;;) {
+    if (existsSync(join(dir, "migrations", "meta", "_journal.json"))) {
+      return dir;
+    }
+
+    const parent = dirname(dir);
+
+    if (parent === dir) {
+      // The source layout's answer, so a checkout with no generated journal
+      // yet still points `drizzle-kit generate` at the right folder.
+      return resolve(moduleDir, "../..");
+    }
+
+    dir = parent;
+  }
+};
+
+const packageRoot = findPackageRoot();
+
+/**
+ * Where `loadEnvFile` looks for the root `.env`.
+ *
+ * In the source tree that is the repository root. Inside the API image, where
+ * `packageRoot` is `/app`, it resolves to `/` and there is no file there — a
+ * deployed environment injects its variables and dotenv is a no-op, which is
+ * the case `loadEnvFile` was written for. It is additive either way: dotenv
+ * does not override, so an injected value always wins.
+ */
 const repoRoot = resolve(packageRoot, "../..");
 
 let loaded = false;
@@ -84,7 +131,11 @@ export const readNodeEnv = (): string => read("NODE_ENV") ?? "development";
  */
 export const isProduction = (): boolean => readNodeEnv() === "production";
 
-const readInt = (key: string, fallback: number): number => {
+/**
+ * An optional integer variable, defaulted. Exported for `argon2.ts`, which is
+ * the one reader that had to move out of this module (see the note there).
+ */
+export const readInt = (key: string, fallback: number): number => {
   const value = read(key);
 
   if (value === undefined) {
@@ -99,18 +150,6 @@ const readInt = (key: string, fallback: number): number => {
 
   return parsed;
 };
-
-/**
- * The `ARGON2_*` variables, defaulted from `@repo/crypto` so the seeder hashes
- * with exactly the parameters the API verifies against (ADR-0008). Values
- * below the OWASP floor are rejected by `createArgon2Hasher`, not here — one
- * check, in the package that owns the algorithm.
- */
-export const readArgon2Params = (): Argon2Params => ({
-  memoryKib: readInt("ARGON2_MEMORY_KIB", defaultArgon2Params.memoryKib),
-  timeCost: readInt("ARGON2_TIME_COST", defaultArgon2Params.timeCost),
-  parallelism: readInt("ARGON2_PARALLELISM", defaultArgon2Params.parallelism),
-});
 
 /** The shortest password ADR-0018 accepts anywhere, mirrored from ADR-0004's `min(12)`. */
 const minSuperAdminPasswordLength = 12;

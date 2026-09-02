@@ -1,7 +1,9 @@
 # ADR-0004: Configuration and environment validation
 
-- Status: accepted
+- Status: superseded by [ADR-0059](0059-ci-containers-and-deployment.md) (delta: `TRUST_PROXY` must be stated explicitly in production — `"false"` is refused there alongside `"true"`)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-02 by [ADR-0059](0059-ci-containers-and-deployment.md)**, at the head of `D14.3` — the step that builds its §4–§7 and makes the delta true, not at 0059's acceptance (the `D10.5` precedent: a parent must not be marked superseded over a delta the tree does not yet carry). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): the one variable that changes is `TRUST_PROXY`, whose `.default("false")` this record gave it. Under 0059 §7 a **production** deployment must state its proxy hop — a count, a CIDR list or `"loopback"` — and `"false"` is refused there beside `"true"`; the default itself is unchanged and is still what a developer's machine gets. **Everything else this record decides stands and is in force**: one zod schema validated once at startup, the fail-fast-with-keys-not-values rule, the three-place change for a new variable, the single reader outside `core/config`, and every other variable's default. Read 0059 §7 for the production refinement and this record for everything else.
 
 ## Context
 

@@ -1,0 +1,47 @@
+# What never enters a build context (ADR-0059 §4).
+#
+# All three images build from the repository root, because a pnpm workspace
+# cannot be installed from one app's directory — the lockfile, the workspace
+# file and every internal package it links are at the top. That makes this file
+# load-bearing rather than cosmetic: without it every build would ship the
+# developer's `node_modules`, their `.env` and the whole git history, and
+# invalidate its own cache on any of them.
+
+# Installed inside the image, from the committed lockfile.
+node_modules
+**/node_modules
+
+# Build output and caches, all of which the image regenerates.
+dist
+**/dist
+.turbo
+**/.turbo
+*.tsbuildinfo
+**/*.tsbuildinfo
+coverage
+**/coverage
+**/test-results
+**/playwright-report
+**/.tanstack
+
+# Every env file, including the committed examples. Nothing in a build reads
+# one: the API takes its configuration at run time (ADR-0004) and the SPAs take
+# theirs as build arguments (ADR-0059 §4, and see the note in each SPA's
+# Dockerfile about why Vite forces that). Excluding the whole family — rather
+# than `.env` alone — is what stops a developer's file, or `apps/api/.env.test`
+# and its committed signing key, from riding into an image.
+.env
+**/.env
+**/.env.*
+
+# The Playwright storage state, which holds a live refresh cookie
+# (`.gitignore` says so). It only ever reaches the discarded build stage, but a
+# credential has no business in a build context or a builder cache.
+**/e2e/.auth
+
+# History and tooling that no build step reads.
+.git
+.github
+.claude
+docs
+**/*.log

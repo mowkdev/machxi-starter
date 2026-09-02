@@ -1,0 +1,128 @@
+# The reference deployment (ADR-0059 §6).
+#
+# Platform-neutral on purpose: no `fly.toml`, no `render.yaml`, no Coolify
+# export. A compose file is the one description every platform accepts and the
+# only one that also reads as documentation. `docs/deploy.md` walks Coolify
+# with it.
+#
+# **Postgres and Redis are deliberately absent.** `DATABASE_URL` and
+# `REDIS_URL` name managed resources, so a deployment keeps their backups,
+# restores, upgrades and monitoring instead of re-implementing them beside a
+# compose volume. That is the decision; running a database here to save one
+# configuration screen was considered and rejected.
+#
+# **`migrate` is the release gate.** It runs the bundled migration entry once
+# and exits; `api` will not start until it has exited zero. The API still never
+# auto-migrates (ADR-0008) — the ordering lives here, where an operator can see
+# it, rather than inside `main.ts` where every replica would race.
+#
+#   docker compose -f docker/prod/compose.yaml build
+#   docker compose -f docker/prod/compose.yaml up -d
+#
+# Values come from `docker/prod/.env` — compose reads it automatically because
+# it sits beside this file. Copy `.env.example` there and fill it in; on a
+# platform, the same names are injected as environment variables instead.
+name: machxi
+
+x-api-image: &api-image
+  # One image for both services, built once: `migrate` is the same artefact
+  # with a different command, which is what keeps the migration that runs and
+  # the code that runs it from ever being different versions.
+  image: ${IMAGE_PREFIX:-machxi}/api:${IMAGE_TAG:-local}
+  build:
+    context: ../..
+    dockerfile: apps/api/Dockerfile
+
+services:
+  migrate:
+    <<: *api-image
+    container_name: machxi-migrate
+    command: ["node", "dist/migrate.js"]
+    # Never restarted: a migration run that failed must be looked at, not
+    # retried in a loop against a database it may have half-changed.
+    restart: "no"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+    networks: [machxi]
+
+  api:
+    <<: *api-image
+    container_name: machxi-api
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # List form, not the mapping, so the two optional variables can be written
+    # as bare keys: a bare key is passed through only when it is actually set,
+    # where `GIT_SHA: ${GIT_SHA:-}` would inject an empty string — and an empty
+    # string is a *stated* value, so `/health/ready` would answer
+    # `"commit": ""` instead of omitting the field (ADR-0016).
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - APP_VERSION=${APP_VERSION:-0.0.0}
+      - GIT_SHA
+      # Required in production and refused as both `true` and `false`
+      # (ADR-0059 §7): a deployment states the hop it is behind, because
+      # `req.ip` is what the login limiter, the refresh limiter and the audit
+      # trail key on. Behind one reverse proxy that is `1`.
+      - TRUST_PROXY=${TRUST_PROXY}
+      - DATABASE_URL=${DATABASE_URL}
+      # The seam ADR-0066 fills at `D14.6` — the shared rate-limit store.
+      # Nothing reads it yet; it is injected here because the resource is
+      # external for the same reason Postgres is, and the deployment that has
+      # one should not have to change shape to use it.
+      - REDIS_URL
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      # The exact browser origins the two SPAs answer on. `*` is refused here
+      # (ADR-0020), and an origin that never matches is a startup failure
+      # rather than a dead entry.
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    # **Loopback, not `0.0.0.0`.** A published port is a DNAT rule that sits in
+    # front of the host firewall, so `"4000:4000"` on a VPS would answer plain
+    # HTTP beside the proxy rather than behind it — and with `TRUST_PROXY` set
+    # for that proxy, a direct request carrying its own `X-Forwarded-For` would
+    # hand Express an attacker's `req.ip`, which is the failure §7 exists to
+    # prevent arriving by the other door. A platform's proxy joins the network
+    # below and needs no published port at all; this binding is for checking
+    # the images on the host itself.
+    ports:
+      - "127.0.0.1:${API_PORT:-4000}:4000"
+    networks: [machxi]
+
+  admin:
+    image: ${IMAGE_PREFIX:-machxi}/admin:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: apps/admin/Dockerfile
+      # Build arguments, not environment: Vite inlines them, so this image is
+      # built per environment (ADR-0059 §4).
+      args:
+        VITE_API_URL: ${VITE_ADMIN_API_URL}
+        VITE_CUSTOMER_APP_URL: ${VITE_CUSTOMER_APP_URL}
+    container_name: machxi-admin
+    restart: unless-stopped
+    # Loopback, for the reason the API's is.
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-3001}:80"
+    networks: [machxi]
+
+  customer:
+    image: ${IMAGE_PREFIX:-machxi}/customer:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: apps/customer/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_CUSTOMER_API_URL}
+    container_name: machxi-customer
+    restart: unless-stopped
+    # Loopback, for the reason the API's is.
+    ports:
+      - "127.0.0.1:${CUSTOMER_PORT:-3002}:80"
+    networks: [machxi]
+
+networks:
+  machxi:
+    name: machxi-prod

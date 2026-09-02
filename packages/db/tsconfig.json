@@ -4,6 +4,7 @@
     "src",
     "seeds",
     "drizzle.config.ts",
+    "tsdown.config.ts",
     "vitest.config.ts",
     "vitest.int.config.ts"
   ]

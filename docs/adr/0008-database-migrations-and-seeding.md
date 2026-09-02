@@ -1,7 +1,9 @@
 # ADR-0008: Database migrations, setup and seeding
 
-- Status: accepted
+- Status: superseded by [ADR-0059](0059-ci-containers-and-deployment.md) (delta: the migration runner gains a bundled entry point and a real advisory lock)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-02 by [ADR-0059](0059-ci-containers-and-deployment.md)**, at the head of `D14.3` — the step that builds its §4–§7 and makes the delta true, not at 0059's acceptance (the `D10.5` precedent). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and a narrow one: this record says migrations are applied programmatically from `packages/db/src/migrate.ts`, which means a deployment ships TypeScript and a TypeScript runtime to apply one. 0059 §5 adds a **bundled `dist/migrate.js`**, built the way the API's bundle is built and shipped inside the API image, and wraps the run in a **`pg_advisory_lock`** so two release jobs serialise — which is what this record's own doc comment had claimed since D1 and what 0059 makes true. **Everything else this record decides stands and is in force**, including the one it is most often read for: **the API never auto-migrates** — migrating is an explicit deploy step, and 0059 §6 makes it a one-shot `migrate` service the API waits on rather than a line in `main.ts`. The committed-and-never-edited SQL, the journal table, the `db:*` script family, the idempotent seeders, and every environment guardrail are untouched. Read 0059 §5–§6 for the runner and this record for everything else.
 
 ## Context
 
