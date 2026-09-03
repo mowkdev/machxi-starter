@@ -3,17 +3,18 @@ import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AppUiStrings } from "@/app/providers/ui-strings";
 import { EN_RESOURCES, NAMESPACES, createI18n, type I18n } from "@/shared/i18n";
 import enCommon from "@/shared/i18n/locales/en/common.json";
 import {
   AppShell,
+  AppUiStrings,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
   SidebarProvider,
   SidebarTrigger,
+  UI_STRING_KEYS,
 } from "@/shared/ui";
 
 /**
@@ -101,7 +102,7 @@ const shell: ReactElement = (
 const renderUnder = (i18n: I18n, ui: ReactElement) =>
   render(
     <I18nextProvider i18n={i18n.instance}>
-      <AppUiStrings>{ui}</AppUiStrings>
+      <AppUiStrings keys={UI_STRING_KEYS}>{ui}</AppUiStrings>
     </I18nextProvider>,
   );
 

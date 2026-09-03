@@ -91,7 +91,8 @@ export const createAppRouter = ({
      * What a customer meets when a route throws or an address matches nothing
      * (`D12.2`'s review). The router's own defaults render `error.message` —
      * the API's developer-facing English default (ADR-0013) — behind a **Show
-     * Error** button that ships in production. See `shared/ui/app-error.tsx`.
+     * Error** button that ships in production. See `@repo/app-kit`'s
+     * `router/defaults.tsx`, which has owned both since `D14.8`.
      */
     defaultErrorComponent: AppError,
     defaultNotFoundComponent: AppNotFound,

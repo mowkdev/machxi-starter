@@ -1,10 +1,12 @@
 # ADR-0051: Platform extraction — six packages, the router as a peer, a door in every app
 
-- Status: accepted
+- Status: superseded by [ADR-0062](0062-frontend-build-and-shared-composition.md) (delta: a seventh package, `@repo/app-kit`, holds the composition the six left behind)
 - Date: 2026-08-27
 - Supersedes: [ADR-0033](0033-browser-api-client-and-session.md) (delta: where the machinery lives); [ADR-0049](0049-admin-app-architecture.md) (delta: what the `shared/` slices are)
 
 > Written 2026-08-27 ahead of D9 opening ([`docs/plan/0009-platform-extraction.md`](../plan/0009-platform-extraction.md)) — writing is not opening. Accepted at the head of `D9.1`, where both parents move to `superseded by ADR-0051`; amendable in place while D9 is `in progress` (ADR-0025 rule 2). The first supersession written under [ADR-0050](0050-adr-lifecycle-and-verification.md)'s delta rule: **each parent's delta is stated below, and everything else in both parents stands as written and is in force as part of this record.**
+>
+> **Superseded in part 2026-09-03 by [ADR-0062](0062-frontend-build-and-shared-composition.md)**, accepted at the head of `D14.8`: a delta on the **count and contents** alone. D9 extracted the behavioural machinery into six packages and left every app its own composition; D12 proved that the six take no diff from a second consumer and that the composition around them takes plenty. So a seventh package, `@repo/app-kit`, holds what both SPAs compose identically. **Nothing else moves**: the door rule is this record's, applied one more time; each app still owns its dictionary, its policy data, its config, its size budget and its route tree; the dependency direction is still downward-only; and every one of the six packages and every seam this record parameterised stands exactly as written.
 
 ## Context
 

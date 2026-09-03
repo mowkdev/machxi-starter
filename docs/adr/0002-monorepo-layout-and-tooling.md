@@ -1,7 +1,9 @@
 # ADR-0002: Monorepo layout and tooling
 
-- Status: accepted
+- Status: superseded by [ADR-0062](0062-frontend-build-and-shared-composition.md) (delta: a declarations-only build exists for type-checking, emitted to a gitignored directory nothing resolves to at runtime)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-03 by [ADR-0062](0062-frontend-build-and-shared-composition.md)**, accepted at the head of `D14.8` (the delta itself builds at `D14.9`): TypeScript project references need a declaration emit, so packages set `composite` and `check-types` becomes `tsc -b` over a **gitignored declarations-only output**. **The no-build-step decision stands**: packages still export `./src/index.ts`, Vite and `tsdown` still consume TypeScript source directly, there is still no publish step and no bundling step in any package, and nothing at runtime resolves to the emitted directory. Every other decision this record made — the workspace layout, the shared configs, the pins, the root `scripts/` carve-out — is untouched and in force.
 
 ## Context
 

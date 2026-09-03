@@ -3,6 +3,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import { fileURLToPath } from "node:url";
 
 import { adminConfig } from "@repo/eslint-config/admin";
+import {
+  doorBypass,
+  doorExemption,
+  doorRules,
+  restrictImports,
+} from "@repo/eslint-config/doors";
 
 /**
  * `apps/admin` — the shared admin config plus the thing that makes ADR-0032
@@ -39,6 +45,154 @@ const publicApiOf = (types) => ({
 });
 
 const anyFileOf = (types) => ({ to: { element: { type: types } } });
+
+/**
+ * The doors: one row per platform package this app reaches through `shared/`
+ * (ADR-0051's door rule, as data since `D14.8` — ADR-0062 §1).
+ *
+ * Until this step the blocks below were written out by hand: nine of them,
+ * each restating every *other* door's patterns inside itself, in 745 lines.
+ * Correct, and nine copies of one list that had to be edited together.
+ * `apps/customer` generated them from a table from its first day; the helper
+ * that does it now lives in `@repo/eslint-config/doors`, so both apps — and
+ * any third — consume one implementation and declare only their table.
+ *
+ * `slices` is which `src/shared/*` directories are the door for that package.
+ * One package can have several (`@repo/app-services` has four here, because
+ * the theme, the grid density, `can()` and the route readers belong in four
+ * slices), and one slice can be the door for several packages (`shared/ui`
+ * fronts `@repo/ui` and the rendering half of `@repo/app-kit`) — which is why
+ * `doorRules` groups its blocks by slice rather than by row.
+ */
+/**
+ * The seventh door, named so {@link harnessRule} below can point at it
+ * without counting rows (`D14.8`, ADR-0062 §1).
+ */
+const APP_KIT_DOOR = {
+    /*
+     * `D14.8`, ADR-0062 §1 — the seventh package, and the first whose door is
+     * three slices of three different kinds: the rendering surfaces come
+     * through `shared/ui`, the app i18n factory and its provider through
+     * `shared/i18n`, and the query client through `shared/api`.
+     *
+     * The suite reaches `@repo/app-kit/testing` directly, and {@link doorBypass}
+     * below is what allows it: the group matches by prefix, so the harness
+     * entry cannot be carved out of the pattern here.
+     */
+    slices: ["ui", "i18n", "api"],
+    group: ["@repo/app-kit", "@repo/app-kit/*"],
+    message:
+      "Import the shared composition through `@/shared/{ui,i18n,api}/*`, not from @repo/app-kit directly (ADR-0062).",
+  };
+
+const DOORS = [
+  {
+    slices: ["ui"],
+    group: [
+      "@repo/ui/components/*",
+      // The compositions path of ADR-0047 §What-code — the shell, the record
+      // surfaces and the banner. Design-system surface like the primitives, so
+      // it comes through the same door.
+      "@repo/ui/compositions/*",
+      "@repo/ui/hooks/*",
+      // `lib/*` too: `cn` is re-exported through the door like everything
+      // else, and a rule with a gap teaches the gap.
+      "@repo/ui/lib/*",
+      // The `UiStrings` seam of ADR-0046 §12 is design-system surface like the
+      // rest, and `app` is the one layer that must not reach past `shared`.
+      "@repo/ui/ui-strings",
+    ],
+    message:
+      "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
+  },
+  {
+    // `D9.1`. `shared/api` is a set of named re-export files over the client;
+    // every layer above it imports `@/shared/api/*` exactly as it did before
+    // the extraction, and this pattern is what keeps the package path from
+    // leaking into a feature and quietly making the door optional.
+    slices: ["api"],
+    group: ["@repo/api-client", "@repo/api-client/*"],
+    message:
+      "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
+  },
+  {
+    // `D9.2`. The app owns its dictionary — namespaces, catalogues, the
+    // `CustomTypeOptions` merge — and reaches the factory, the locale
+    // negotiation and the pseudo lens through `@/shared/i18n`.
+    slices: ["i18n"],
+    group: ["@repo/i18n", "@repo/i18n/*"],
+    message:
+      "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
+  },
+  {
+    // `D9.3`. `ResourceConfig` and its readers, through `@/shared/resource/*`.
+    slices: ["resource"],
+    group: ["@repo/resource", "@repo/resource/*"],
+    message:
+      "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
+  },
+  {
+    // `D9.4`. The table, its preferences and the record-navigation carrier.
+    slices: ["grid"],
+    group: ["@repo/grid", "@repo/grid/*"],
+    message:
+      "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
+  },
+  {
+    // `D9.5`. The adapters, the frame, the three record shells and the
+    // server-error landing.
+    slices: ["form"],
+    group: ["@repo/form", "@repo/form/*"],
+    message:
+      "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
+  },
+  {
+    // `D9.6`, and `density` since `D11.6`. Four doors over one package,
+    // because the theme, the grid density, `can()` and the route readers
+    // belong in four slices — not because the package is four packages.
+    slices: ["auth", "theme", "lib", "density"],
+    group: ["@repo/app-services", "@repo/app-services/*"],
+    message:
+      "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
+  },
+  APP_KIT_DOOR,
+];
+
+/**
+ * The one file that is exempt, and it is a file rather than a slice.
+ *
+ * `app-i18n.ts` is where this app composes the namespaces its rendering
+ * packages ship (ADR-0046 §13), so it is the one place that must reach a
+ * package's catalogues directly — routing them through `@/shared/form/*` would
+ * make that door export translation bundles. It is also where the zod
+ * installer's two seams come from, for the same reason.
+ *
+ * A **file**, not the slice: `index.ts`, `keys.ts`, `namespaces.ts`,
+ * `resources.ts` and this slice's checks need no such reach, and an exemption
+ * that covered them would be a hole rather than a permission.
+ */
+const packageCatalogueRule = doorExemption({
+  doors: DOORS,
+  files: ["src/shared/i18n/app-i18n.ts"],
+  opens: ["i18n", "form", "grid"],
+});
+
+/**
+ * The one door the suite opens for itself (`D14.8`, ADR-0062 §1).
+ *
+ * Every test file imports the MSW server from `@repo/app-kit/testing`, which
+ * is a second entry point holding the harness and nothing an app renders. The
+ * pattern matches by prefix and a negation does not undo one, so **the whole
+ * `@repo/app-kit` door is what opens here, not just the subpath** — a test may
+ * import the kit directly. That is the latitude `boundaries/ignore` already
+ * gives these same files, and it opens exactly one door: every other stays
+ * shut, and a slice's own tests keep their own open too.
+ */
+const harnessRules = doorBypass({
+  doors: DOORS,
+  files: ["src/test/**", "src/**/__tests__/**"],
+  opens: [APP_KIT_DOOR],
+});
 
 /** @type {import("eslint").Linter.Config} */
 export default defineConfig(
@@ -91,7 +245,7 @@ export default defineConfig(
        * Without this the whole rule above is decoration: the plugin resolves
        * every import to the element that owns it, and an import it cannot
        * resolve is simply "unknown" and passes. `@/…` comes from the tsconfig
-       * paths and `../widgets/auth-layout` is a directory with an `index.tsx`
+       * paths and a slice import is a directory with an `index.ts`
        * — neither resolves without a resolver that knows TypeScript.
        *
        * Verified by probe rather than assumed: with the elements matching but
@@ -203,543 +357,15 @@ export default defineConfig(
         { allowList: ["DEV", "PROD", "MODE", "SSR", "BASE_URL"] },
       ],
 
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: [
-                "@repo/ui/components/*",
-                // The compositions path of ADR-0047 §What-code — hand-written
-                // shell, record surface and banner. It is design-system
-                // surface like the primitives, so it comes through the same
-                // door, and the pattern lands when the path opens (`D8.1`)
-                // rather than with the first composition.
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                // `lib/*` too: `cn` is re-exported through the door like
-                // everything else, and a rule with a gap teaches the gap.
-                "@repo/ui/lib/*",
-                // The `UiStrings` seam of ADR-0046 §12 is design-system
-                // surface like the rest, so it comes through the door: the
-                // provider is mounted from `app/providers`, and `app` is the
-                // one layer that must not reach past `shared` (`D7.3`).
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-            {
-              /*
-               * The same door rule, generalised to the extracted behavioural
-               * machinery (`D9.1`, ADR-0051). `shared/api` is a set of named
-               * re-export files over `@repo/api-client`; every layer above it
-               * imports `@/shared/api/*` exactly as it did before the move, and
-               * this pattern is what keeps the package path from leaking into
-               * a feature and quietly making the door optional.
-               */
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              // The same door rule for the i18n machinery (`D9.2`). The app
-              // owns its dictionary — namespaces, catalogues, the
-              // `CustomTypeOptions` merge — and reaches the factory, the
-              // locale negotiation and the pseudo lens through `@/shared/i18n`.
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-            {
-              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
-              // come through `@/shared/resource/*`, like every other slice.
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              // The grid door (`D9.4`). The table, its preferences and the
-              // record-navigation carrier come through `@/shared/grid/*`.
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              // The form door (`D9.5`). The adapters, the frame, the three
-              // record shells and the server-error landing come through
-              // `@/shared/form/*`.
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              // The tail's doors (`D9.6`, and `density` since `D11.6`). The
-              // theme, the grid density, `can()` and the route readers come
-              // through `@/shared/theme`, `@/shared/density`, `@/shared/auth`
-              // and `@/shared/lib/route-meta` — four doors over one package,
-              // which is why the message names them all.
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-          ],
-        },
-      ],
+      "no-restricted-imports": restrictImports(DOORS),
     },
   },
 
-  /*
-   * The doors themselves — **each exempt from its own group only** (ADR-0047
-   * for `ui`, ADR-0051 for `api`).
-   *
-   * Turning the rule off wholesale for both directories would open a hole in
-   * the other's door: `src/shared/api/` still holds two app-owned files that
-   * are not doors (`bulk-outcome.ts` and `query-meta.ts`, staying until their
-   * own slices extract), and a blanket `off` would let them — and anything
-   * added to either slice later — reach `@repo/ui/components/*` directly. So
-   * each block re-declares the rule carrying only the group it is *not* the
-   * door for.
-   */
-  {
-    files: ["src/shared/ui/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
-              // come through `@/shared/resource/*`, like every other slice.
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              // The grid door (`D9.4`). The table, its preferences and the
-              // record-navigation carrier come through `@/shared/grid/*`.
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              // The form door (`D9.5`). The adapters, the frame, the three
-              // record shells and the server-error landing come through
-              // `@/shared/form/*`.
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              // The tail's doors (`D9.6`, and `density` since `D11.6`). The
-              // theme, the grid density, `can()` and the route readers come
-              // through `@/shared/theme`, `@/shared/density`, `@/shared/auth`
-              // and `@/shared/lib/route-meta` — four doors over one package,
-              // which is why the message names them all.
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  {
-    files: ["src/shared/grid/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  {
-    files: ["src/shared/resource/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  {
-    files: ["src/shared/i18n/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
-              // come through `@/shared/resource/*`, like every other slice.
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  /*
-   * **The one file that is exempt, and it is a file rather than a slice**
-   * (`D9.4`, `D9.5`).
-   *
-   * `create-app-i18n.ts` is where this app composes the namespaces its
-   * packages ship (ADR-0046 §13), so it is the one place that must reach a
-   * package's catalogues directly — routing that through `@/shared/grid` or
-   * `@/shared/form` would make those doors export translation bundles, which
-   * is copy travelling through a door built for a table and a door built for a
-   * form. It is also where the zod installer's two seams now come from, for the
-   * same reason: the sentences they resolve are `@repo/form`'s.
-   *
-   * **Named as a file because `D9.4` named it as a slice, and that was wider
-   * than the reason.** `index.ts`, `keys.ts`, `namespaces.ts`, `resources.ts`
-   * and this slice's suites need no such reach, and an exemption that covers
-   * them is a hole rather than a permission — the same invariant the door
-   * blocks above keep, one level finer. `D9.6` adds its package to the two
-   * dropped here and to nothing else.
-   */
-  {
-    files: ["src/shared/i18n/create-app-i18n.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  {
-    files: ["src/shared/api/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              // The vocabulary door (`D9.3`). `ResourceConfig` and its readers
-              // come through `@/shared/resource/*`, like every other slice.
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              // The grid door (`D9.4`). The table, its preferences and the
-              // record-navigation carrier come through `@/shared/grid/*`.
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              // The form door (`D9.5`). The adapters, the frame, the three
-              // record shells and the server-error landing come through
-              // `@/shared/form/*`.
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              // The tail's doors (`D9.6`, and `density` since `D11.6`). The
-              // theme, the grid density, `can()` and the route readers come
-              // through `@/shared/theme`, `@/shared/density`, `@/shared/auth`
-              // and `@/shared/lib/route-meta` — four doors over one package,
-              // which is why the message names them all.
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  {
-    files: ["src/shared/form/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["@repo/app-services", "@repo/app-services/*"],
-              message:
-                "Import the app services through `@/shared/{auth,theme,density,lib}/*`, not from @repo/app-services directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  /*
-   * **Three doors, one package, one block** (`D9.6`).
-   *
-   * `@repo/app-services` is the deliberate exception to one-package-one-slice:
-   * ADR-0051 named it "the small remainder" and left each piece's placement to
-   * this step, and the placements landed in three existing slices rather than
-   * in a new one — `shared/theme`, `shared/auth` and `shared/lib/route-meta`;
-   * `D11.6` added a fourth, `shared/density`, because the grid density is the
-   * theme's sibling rather than part of it. Naming them all here keeps the
-   * invariant intact while stating why they share it: what makes each a door is that it is the only path to that
-   * package's symbols, and four doors onto one package is still one exemption.
-   *
-   * `shared/auth` holds `policy.ts` beside its door — the app's own
-   * transcription of this API's `authorize(` calls — which is exactly why this
-   * block declares the other six groups rather than turning the rule off.
-   */
-  {
-    files: [
-      "src/shared/auth/**",
-      "src/shared/theme/**",
-      "src/shared/density/**",
-      "src/shared/lib/**",
-    ],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["@repo/api-client", "@repo/api-client/*"],
-              message:
-                "Import the API client through `@/shared/api/*`, not from @repo/api-client directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/i18n", "@repo/i18n/*"],
-              message:
-                "Import the i18n machinery through `@/shared/i18n`, not from @repo/i18n directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/resource", "@repo/resource/*"],
-              message:
-                "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/grid", "@repo/grid/*"],
-              message:
-                "Import the data grid through `@/shared/grid/*`, not from @repo/grid directly (ADR-0051).",
-            },
-            {
-              group: ["@repo/form", "@repo/form/*"],
-              message:
-                "Import the form machinery through `@/shared/form/*`, not from @repo/form directly (ADR-0051).",
-            },
-            {
-              group: [
-                "@repo/ui/components/*",
-                "@repo/ui/compositions/*",
-                "@repo/ui/hooks/*",
-                "@repo/ui/lib/*",
-                "@repo/ui/ui-strings",
-              ],
-              message:
-                "Import design-system components through `@/shared/ui`, not from @repo/ui directly (ADR-0047).",
-            },
-          ],
-        },
-      ],
-    },
-  },
+  ...doorRules(DOORS),
+  // After the slice blocks, so it is the one that wins for the file it names.
+  packageCatalogueRule,
+  // Last, so they win for the test files they name whatever slice those sit
+  // in — and the per-slice blocks among them come after the blanket one, so a
+  // slice's tests keep the door that slice is the door for.
+  ...harnessRules,
 );

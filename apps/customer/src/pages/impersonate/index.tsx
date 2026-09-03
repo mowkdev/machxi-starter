@@ -2,11 +2,9 @@ import { Link } from "@tanstack/react-router";
 
 import { useRedeemHandoff, type HandoffStatus } from "@/features/impersonation";
 
-import { AuthLayout } from "@/widgets/auth-layout";
-
 import { useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
-import { Card } from "@/shared/ui";
+import { AuthLayout, Card } from "@/shared/ui";
 
 /**
  * The sentence per state, as a table rather than an interpolated key.

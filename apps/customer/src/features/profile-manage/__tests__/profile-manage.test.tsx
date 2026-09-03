@@ -19,7 +19,7 @@ import {
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp, renderWithProviders } from "@/test/render";
 
@@ -133,7 +133,7 @@ describe("the details form", () => {
     /*
      * The whole of ADR-0034's outcome path, end to end and for the first time
      * in this app: a `meta.success` **key** declared on the mutation, resolved
-     * by the one global handler in `app/providers/query-client.ts`, delivered
+     * by the one global handler in `@repo/app-kit`'s query client, delivered
      * to the `<Toaster>` the harness mounts. A raw `profile:outcomes.updated`
      * here would mean the translator never reached the cache.
      */

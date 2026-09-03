@@ -3,6 +3,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import { fileURLToPath } from "node:url";
 
 import { adminConfig } from "@repo/eslint-config/admin";
+import {
+  doorBypass,
+  doorExemption,
+  doorRules,
+  restrictImports,
+} from "@repo/eslint-config/doors";
 
 /**
  * `apps/customer` — the shared admin-shaped config plus what makes ADR-0049's
@@ -15,19 +21,21 @@ import { adminConfig } from "@repo/eslint-config/admin";
  *
  * What stays here is what names directories only this app has: the FSD element
  * map below, and the door list. **The doors are per-app** (ADR-0051), so this
- * file names the seven this app has today — `shared/ui`, `shared/i18n`,
- * `shared/api`, `shared/theme`, `shared/lib` and, since `D12.6`, `shared/form`
- * and `shared/resource` — and grows with the packages the later steps adopt.
+ * file names the slices this app has today — `shared/ui`, `shared/i18n`,
+ * `shared/api`, `shared/theme`, `shared/lib`, `shared/density` and, since
+ * `D12.6`, `shared/form` and `shared/resource` — and grows with the packages
+ * the later steps adopt. `D14.8` added the seventh row without adding a slice:
+ * `@repo/app-kit` comes through three doors this app already had.
  * `@repo/grid` has no row at all, because ADR-0055 §3 keeps it out of this app
  * until a domain entity arrives.
  *
  * **The door blocks are generated from one table rather than hand-written per
- * slice.** `apps/admin`'s config states each door by writing out every *other*
- * door's pattern inside it — correct, and six copies of one list that have to
- * be edited together. Here the list is data and {@link doorRules} subtracts the
- * one group each door is the door for, so adding a package is one row. Nothing
- * about the rule changes: a door is exempt from its own group and from no
- * other, which is exactly the invariant the admin's blocks keep by repetition.
+ * slice**, and since `D14.8` the generator is shared: `doorRules` moved into
+ * `@repo/eslint-config/doors` and `apps/admin`'s nine hand-copied blocks were
+ * deleted rather than ported (ADR-0062 §1). The list here is data, the helper
+ * subtracts the groups each slice is the door for, and adding a package is one
+ * row. Nothing about the rule changes: a door is exempt from its own groups
+ * and from no others.
  */
 
 /** The layers of ADR-0049, in the order the dependency rule allows them. */
@@ -55,6 +63,29 @@ const anyFileOf = (types) => ({ to: { element: { type: types } } });
  * package holds the theme and the route-meta readers and neither belongs in the
  * other's slice.
  */
+/**
+ * The seventh door, named so {@link harnessRule} below can point at it
+ * without counting rows (`D14.8`, ADR-0062 §1).
+ */
+const APP_KIT_DOOR = {
+    /*
+     * `D14.8`, ADR-0062 §1 — the seventh package, and the first whose door is
+     * three slices of three different kinds: the rendering surfaces come
+     * through `shared/ui`, the app i18n factory and its provider through
+     * `shared/i18n`, and the query client through `shared/api`. It is also
+     * what makes `doorRules` group by slice rather than by row: `shared/ui`
+     * is now the door for two packages.
+     *
+     * The suite reaches `@repo/app-kit/testing` directly, and {@link doorBypass}
+     * below is what allows it: the group matches by prefix, so the harness
+     * entry cannot be carved out of the pattern here.
+     */
+    slices: ["ui", "i18n", "api"],
+    group: ["@repo/app-kit", "@repo/app-kit/*"],
+    message:
+      "Import the shared composition through `@/shared/{ui,i18n,api}/*`, not from @repo/app-kit directly (ADR-0062).",
+  };
+
 const DOORS = [
   {
     slices: ["ui"],
@@ -113,64 +144,44 @@ const DOORS = [
     message:
       "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
   },
-];
-
-const restrict = (doors) => [
-  "error",
-  { patterns: doors.map(({ group, message }) => ({ group, message })) },
+  APP_KIT_DOOR,
 ];
 
 /**
- * One config block per door slice, each carrying every group **except** the one
- * it is the door for.
+ * The one file that is exempt, and it is a file rather than a slice (`D12.6`).
  *
- * Turning the rule off wholesale for a door's directory would open a hole in
- * the other doors: `shared/i18n` will hold `create-app-i18n.ts`, which composes
- * package catalogues, and a blanket `off` would let it — and anything added to
- * the slice later — reach `@repo/ui/components/*` directly.
- */
-const doorRules = () =>
-  DOORS.flatMap(({ slices, group }) =>
-    slices.map((slice) => ({
-      files: [`src/shared/${slice}/**`],
-      rules: {
-        "no-restricted-imports": restrict(
-          DOORS.filter((door) => door.group !== group),
-        ),
-      },
-    })),
-  );
-
-/**
- * The one file that is exempt, and it is a file rather than a slice (`D12.6`,
- * the admin's call at `D9.4`/`D9.5` arriving here with its first package
- * namespace).
- *
- * `create-app-i18n.ts` is where this app composes the namespaces its packages
- * ship (ADR-0046 §13), so it is the one place that must reach a package's
- * catalogues directly — routing them through `@/shared/form/*` would make that
- * door export translation bundles, which is copy travelling through a door
- * built for a form. It is also where the zod installer's two seams come from,
- * for the same reason: the sentences they resolve are `@repo/form`'s.
+ * `app-i18n.ts` is where this app composes the namespaces its rendering
+ * packages ship (ADR-0046 §13), so it is the one place that must reach a
+ * package's catalogues directly — routing them through `@/shared/form/*` would
+ * make that door export translation bundles, which is copy travelling through
+ * a door built for a form. It is also where the zod installer's two seams come
+ * from, for the same reason: the sentences they resolve are `@repo/form`'s.
  *
  * A **file**, not the slice: `index.ts`, `keys.ts`, `namespaces.ts`,
  * `resources.ts` and this slice's checks need no such reach, and an exemption
  * that covered them would be a hole rather than a permission.
- *
- * It drops exactly two groups — its own slice's and `form`'s — and keeps every
- * other door standing, which is the same shape the per-slice blocks have.
  */
-const EXEMPT = ["i18n", "form"];
+const packageCatalogueRule = doorExemption({
+  doors: DOORS,
+  files: ["src/shared/i18n/app-i18n.ts"],
+  opens: ["i18n", "form"],
+});
 
-const packageCatalogueRule = () => ({
-  files: ["src/shared/i18n/create-app-i18n.ts"],
-  rules: {
-    "no-restricted-imports": restrict(
-      DOORS.filter(({ slices }) =>
-        slices.every((slice) => !EXEMPT.includes(slice)),
-      ),
-    ),
-  },
+/**
+ * The one door the suite opens for itself (`D14.8`, ADR-0062 §1).
+ *
+ * Every test file imports the MSW server from `@repo/app-kit/testing`, which
+ * is a second entry point holding the harness and nothing an app renders. The
+ * pattern matches by prefix and a negation does not undo one, so **the whole
+ * `@repo/app-kit` door is what opens here, not just the subpath** — a test may
+ * import the kit directly. That is the latitude `boundaries/ignore` already
+ * gives these same files, and it opens exactly one door: every other stays
+ * shut, and a slice's own tests keep their own open too.
+ */
+const harnessRules = doorBypass({
+  doors: DOORS,
+  files: ["src/test/**", "src/**/__tests__/**"],
+  opens: [APP_KIT_DOOR],
 });
 
 /** @type {import("eslint").Linter.Config} */
@@ -314,11 +325,15 @@ export default defineConfig(
         { allowList: ["DEV", "PROD", "MODE", "SSR", "BASE_URL"] },
       ],
 
-      "no-restricted-imports": restrict(DOORS),
+      "no-restricted-imports": restrictImports(DOORS),
     },
   },
 
-  ...doorRules(),
+  ...doorRules(DOORS),
   // After the slice blocks, so it is the one that wins for the file it names.
-  packageCatalogueRule(),
+  packageCatalogueRule,
+  // Last, so they win for the test files they name whatever slice those sit
+  // in — and the per-slice blocks among them come after the blanket one, so a
+  // slice's tests keep the door that slice is the door for.
+  ...harnessRules,
 );

@@ -12,7 +12,7 @@ import {
   createStaffMockState,
   STAFF_ROWS,
 } from "@/test/msw/handlers/staff.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 import { authenticatedAs } from "@/test/principals";
 

@@ -8,9 +8,9 @@ import {
 } from "@/entities/settings";
 import { useSession } from "@/shared/api/context";
 import { GridDensityProvider } from "@/shared/density";
+import { I18nProvider } from "@/shared/i18n";
 import { ThemeProvider } from "@/shared/theme";
 
-import { I18nProvider } from "./i18n";
 import {
   PrincipalCacheBoundary,
   usePrincipalCacheOwner,

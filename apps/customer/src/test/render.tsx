@@ -5,9 +5,8 @@ import { render, type RenderResult } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 
-import { createQueryClient } from "@/app/providers/query-client";
+import { createQueryClient } from "@/shared/api/query-client";
 import { createAppRouter } from "@/app/providers/router";
-import { AppUiStrings } from "@/app/providers/ui-strings";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
 import { ApiProvider } from "@/shared/api/context";
 import {
@@ -25,7 +24,7 @@ import {
 import { GridDensityProvider } from "@/shared/density";
 import { createMessageForError } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
-import { Toaster } from "@/shared/ui";
+import { AppUiStrings, Toaster, UI_STRING_KEYS } from "@/shared/ui";
 
 /**
  * The two ways this app is rendered under test (ADR-0036, ADR-0055 §2).
@@ -206,7 +205,7 @@ export const renderWithProviders = (
                  * ships, and one the pseudo-locale walk would then report as
                  * untranslated copy.
                  */}
-                <AppUiStrings>
+                <AppUiStrings keys={UI_STRING_KEYS}>
                   {ui}
                   {/*
                    * And the surface ADR-0034's outcomes are delivered to
@@ -307,7 +306,7 @@ export const renderApp = ({
           <ApiProvider value={{ client: value.client, store: value.store }}>
             <QueryClientProvider client={value.queryClient}>
               <I18nextProvider i18n={value.i18n.instance}>
-                <AppUiStrings>
+                <AppUiStrings keys={UI_STRING_KEYS}>
                   {/*
                    * This tree is hand-built, so a provider the app mounts in
                    * `app/index.tsx` reaches no test unless it is added here too

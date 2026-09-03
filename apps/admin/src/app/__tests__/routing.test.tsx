@@ -14,7 +14,7 @@ import {
   createStaffHandlers,
   createStaffMockState,
 } from "@/test/msw/handlers/staff.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 

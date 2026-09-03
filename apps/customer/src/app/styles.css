@@ -1,16 +1,37 @@
 /*
  * The whole of this app's styling entry: the design system's stylesheet carries
  * Tailwind, Instrument's tokens (ADR-0054 §2) and the `dark` variant.
- *
- * **No `@source` lines yet, and that is a decision rather than an omission.**
- * `apps/admin/src/app/styles.css` registers `@repo/grid` and `@repo/form`
- * because Tailwind generates a utility only for classes it finds in a scanned
- * source, and D9's extraction moved rendering code out of `src/` where nothing
- * followed it — a class used *only* inside a package had its rule silently not
- * exist. This app renders neither package today (ADR-0055 §3: no grid before a
- * domain entity), and the admin's own comment says the customer app declares
- * these for itself, visibly, rather than inheriting them. `D12.6` adds the
- * `form` pair with the first form; a line added before the dependency would
- * scan a package this app does not have.
  */
 @import "@repo/ui/globals.css";
+
+/*
+ * The platform packages this app renders (ADR-0062 §1, `D14.8`).
+ *
+ * Tailwind generates a utility only for classes it finds in a scanned source,
+ * and `@repo/ui`'s stylesheet registers its own tree and no other — so a class
+ * used *only* inside a package this app depends on is scanned by nothing and
+ * its rule silently does not exist.
+ *
+ * **This file had none of these lines and needed one of them.** Its own
+ * comment said `D12.6` would add the `@repo/form` pair with the first form;
+ * `D12.6` added three `@repo/form` renderers and did not add the lines, so the
+ * built CSS shipped without the utilities those renderers use — `gap-5` was in
+ * the admin's `dist` CSS and absent from this app's. Nothing could see it:
+ * every class the package *shares* with this app kept working, which is
+ * exactly how the same defect survived D9 in the admin until `pnpm test:e2e`
+ * caught it at `D10.4`.
+ *
+ * So it is a rule now rather than a habit: **every app declares an `@source`
+ * for every rendering platform package it depends on**, and the pair is
+ * asserted by `packages/app-kit/src/__tests__/composition.test.ts` against
+ * this app's `package.json`. `pnpm size` re-checks the outcome in the built
+ * CSS, so a stylesheet that is right and a build that is wrong both fail.
+ *
+ * Only the packages that render: `api-client`, `app-services`, `resource` and
+ * `i18n` hold no `className` at all. Tests are excluded because a class
+ * mentioned only in a test is exactly how the original defect stayed hidden.
+ */
+@source "../../../../packages/app-kit/src";
+@source not "../../../../packages/app-kit/src/__tests__";
+@source "../../../../packages/form/src";
+@source not "../../../../packages/form/src/__tests__";

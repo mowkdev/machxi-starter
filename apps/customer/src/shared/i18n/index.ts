@@ -6,7 +6,13 @@ import {
   writeStoredLocale as writeStoredLocaleFor,
 } from "@repo/i18n";
 
-import { DEVICE_KEY_PREFIX } from "@/shared/config";
+import { createI18nProvider } from "@repo/app-kit";
+
+import { config, DEVICE_KEY_PREFIX } from "@/shared/config";
+
+import { createI18n } from "./app-i18n";
+import { NAMESPACES } from "./namespaces";
+import { EN_RESOURCES } from "./resources";
 
 /**
  * The door onto `@repo/i18n`, plus the parts of the seam this app owns
@@ -18,7 +24,7 @@ import { DEVICE_KEY_PREFIX } from "@/shared/config";
  * **What this app owns and re-exports from beside the door**: its namespaces,
  * the `en` catalogues they are cut into, the `CustomTypeOptions` augmentation
  * in `types.d.ts` that makes `TranslationKey` real, and the factory in
- * `./create-app-i18n` that binds them. Those are the dictionary, and a
+ * `./app-i18n` that binds them. Those are the dictionary, and a
  * dictionary belongs to an app — which is why this file is *not* the admin's
  * with a rename: the two apps share the machinery and share none of the words.
  *
@@ -60,7 +66,7 @@ export {
  * namespace and the catalogue loader, whose relative specifier only this
  * module can write.
  */
-export { createI18n, type CreateAppI18nOptions } from "./create-app-i18n";
+export { createI18n, type CreateAppI18nOptions } from "./app-i18n";
 /*
  * The pre-instance translator and its binder (`D12.6`). Both read this app's
  * own `en` catalogue, which is why they stayed in the app while the rest of
@@ -103,3 +109,24 @@ export const writeStoredLocale = (locale: Locale): void => {
 
 export const preferredLocale = (settings: Locale | null = null): Locale =>
   preferredLocaleFor(DEVICE_KEY_PREFIX, settings);
+
+/**
+ * The i18n provider, bound to this app's instance builder (ADR-0046 §4,
+ * ADR-0062 §1).
+ *
+ * `@repo/app-kit` owns the adoption latch, the publish latch and the
+ * `I18nextProvider`/`LocalePublisherProvider` pair — all of which were
+ * code-identical in both apps. What is this app's is the one expression below:
+ * which catalogues, which namespaces, which device cache, and whether the
+ * pseudo lens is on (ADR-0046 §10).
+ */
+export const I18nProvider = createI18nProvider((adopted) =>
+  createI18n({
+    resources: { en: EN_RESOURCES },
+    namespaces: NAMESPACES,
+    locale: preferredLocale(adopted),
+    pseudo: config.VITE_I18N_PSEUDO,
+  }),
+);
+
+export type { I18nProviderProps } from "@repo/app-kit";

@@ -1,7 +1,7 @@
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createQueryClient } from "@/app/providers/query-client";
+import { createQueryClient } from "@/shared/api/query-client";
 import { createAppRouter } from "@/app/providers/router";
 import { createApiClient } from "@/shared/api/client";
 import { createSessionStore } from "@/shared/api/session-store";
@@ -23,7 +23,7 @@ import {
   createSettingsHandlers,
   createSettingsMockState,
 } from "@/test/msw/handlers/settings.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 
@@ -180,7 +180,8 @@ beforeEach(() => {
  *
  * Built rather than rendered, and that is not a style choice: `it.each` needs
  * the list while the file is being *collected*, and the jsdom stubs this suite
- * renders under are installed in `beforeAll` (`src/test/setup.ts`). A router is
+ * renders under are installed in `beforeAll` (`@repo/app-kit/testing/setup`). A
+ * router is
  * a data structure until something mounts it, so asking one for its own routes
  * costs nothing and touches no DOM.
  */

@@ -117,6 +117,37 @@ const measure = () => {
   return totals;
 };
 
+/**
+ * The utilities a rendering package puts in this app's CSS — checked in the
+ * built output rather than in the stylesheet (`D14.8`, ADR-0062 §1).
+ *
+ * `packages/app-kit/src/__tests__/composition.test.ts` asserts that
+ * `src/app/styles.css` declares an `@source` for every rendering package this
+ * app depends on. That is the *intent*; this is the **outcome**, and the two
+ * fail for different reasons: a missing `@source` line, and a build that had
+ * one and emitted nothing anyway — a renamed package directory, a Tailwind
+ * upgrade that resolves `@source` differently, a `dist/` from a stale cache.
+ *
+ * Each class below is one the package uses and this app's own source does not,
+ * so its rule exists only because that package was scanned. This is the check
+ * that would have caught `apps/customer` shipping without `@repo/form`'s
+ * utilities between `D12.6` and `D14.8`, which nothing else could see.
+ */
+const REQUIRED_UTILITIES = [
+  { className: "gap-5", from: "@repo/form" },
+  { className: "size-[34px]", from: "@repo/grid" },
+  { className: "max-w-[400px]", from: "@repo/app-kit" },
+];
+
+/** `max-w-[400px]` is written `.max-w-\[400px\]` once it is a CSS selector. */
+const cssSelector = (className) =>
+  `.${className.replace(/[^A-Za-z0-9_-]/g, (char) => `\\${char}`)}`;
+
+const missingUtilities = (css) =>
+  REQUIRED_UTILITIES.filter(
+    ({ className }) => !css.includes(cssSelector(className)),
+  );
+
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} kB`;
 
 const main = () => {
@@ -131,6 +162,28 @@ const main = () => {
   }
 
   const measured = measure();
+
+  const missing = missingUtilities(
+    walk(DIST)
+      .filter(({ name }) => name.endsWith(".css"))
+      .map(({ path }) => readFileSync(path, "utf8"))
+      .join("\n"),
+  );
+
+  if (missing.length > 0) {
+    fail(
+      [
+        "",
+        ...missing.map(
+          ({ className, from }) =>
+            `size: the built CSS carries no rule for \`${className}\`, which ${from} uses. That package's @source line in src/app/styles.css is missing or no longer resolves (ADR-0062 §1).`,
+        ),
+        "",
+        "Tailwind emits a utility only for a class it finds in a scanned source, and a missing rule is invisible: the screen renders without the property and nothing errors.",
+      ].join("\n"),
+    );
+  }
+
   const rows = Object.entries(budget.budgets);
   const breaches = [];
   const lines = ["size (gzipped):"];

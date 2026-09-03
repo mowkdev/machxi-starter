@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { I18nProvider } from "@/app/providers/i18n";
+import { I18nProvider } from "@/shared/i18n";
 import { SettingsProvider } from "@/app/providers/settings";
 import { createSessionStore } from "@/shared/api/session-store";
 import { LOCALE_STORAGE_KEY, useT } from "@/shared/i18n";
@@ -9,7 +9,7 @@ import {
   createSettingsHandlers,
   createSettingsMockState,
 } from "@/test/msw/handlers/settings.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { authenticatedAs } from "@/test/principals";
 import { renderWithProviders } from "@/test/render";
 

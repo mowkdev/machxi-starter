@@ -23,7 +23,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 
 /**

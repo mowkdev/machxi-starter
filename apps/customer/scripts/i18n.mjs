@@ -76,10 +76,26 @@ const DYNAMIC = [
     reason: "resolved from an ErrorCode by messageForError (ADR-0046 §2)",
   },
   /*
-   * The admin's second entry — `common:options.`, composed by `dynamicKey` from
-   * a contracts enum — has no counterpart here: it follows a `ResourceConfig`,
+   * The admin's `common:options.` entry — composed by `dynamicKey` from a
+   * contracts enum — has no counterpart here: it follows a `ResourceConfig`,
    * which ADR-0055 §3 says waits for a domain entity.
    */
+  {
+    /*
+     * `common:loading.starting` in `@repo/app-kit`'s `AppLoader`, and
+     * `common:brand.authTagline` in its `AuthLayout` (`D14.8`, ADR-0062 §1).
+     *
+     * The composition both SPAs share lives in a package, and this scan reads
+     * `src/` — so a `t()` call that moved out of the app is invisible here
+     * exactly as a runtime-composed key is. The sentences are still this app's
+     * (the kit resolves them through this app's mounted instance), and the
+     * compiler still checks the keys at the kit's call sites against this
+     * app's catalogues, which is what keeps this entry an exemption from the
+     * *scan* rather than from the type.
+     */
+    pattern: /^common:(loading\.starting|brand\.authTagline)$/,
+    reason: "read inside @repo/app-kit (ADR-0062 §1)",
+  },
 ];
 
 /** `Intl` through `shared/i18n` or not at all (ADR-0046 §5). */

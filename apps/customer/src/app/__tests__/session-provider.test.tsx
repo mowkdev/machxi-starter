@@ -12,7 +12,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 
 /**
  * The loading gate (ADR-0033 §Boot, ADR-0030 for the CSRF half).

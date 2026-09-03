@@ -7,7 +7,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import {
   USER_ROWS,
   createUsersHandlers,

@@ -14,7 +14,7 @@ import {
   createProfileMockState,
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderWithProviders } from "@/test/render";
 
 import {

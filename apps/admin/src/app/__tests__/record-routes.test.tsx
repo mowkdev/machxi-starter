@@ -16,7 +16,7 @@ import {
   createUsersHandlers,
   createUsersMockState,
 } from "@/test/msw/handlers/users.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 

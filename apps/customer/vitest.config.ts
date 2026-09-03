@@ -31,11 +31,11 @@ export default mergeConfig(
       },
     },
     test: {
-      setupFiles: ["./src/test/setup.ts"],
+      setupFiles: ["@repo/app-kit/testing/setup"],
       /*
        * Thirty, matching the admin's, and for the reason that file writes
        * down rather than by imitation: the suite's ceiling has to sit above
-       * Testing Library's `asyncUtilTimeout` in `src/test/setup.ts`, or a
+       * Testing Library's `asyncUtilTimeout` in `@repo/app-kit/testing/setup`, or a
        * genuinely failing `findBy*` races the test timeout and reports "Test
        * timed out" instead of naming the element it could not find. The
        * extracted packages are transformed per worker, and under `pnpm test`

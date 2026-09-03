@@ -28,10 +28,18 @@
  * declares these two lines for itself — which is the same shape as its `shared/`
  * doors, and visible rather than inherited.
  *
- * Only the two packages that render: `api-client`, `app-services`, `resource`
+ * `@repo/app-kit` joined them at `D14.8` (ADR-0062 §1), which is when the
+ * pairing stopped being a habit and became a rule with a test behind it:
+ * `packages/app-kit/src/__tests__/composition.test.ts` reads this app's
+ * dependencies against the `@source` lines below, and `pnpm size` re-checks
+ * the outcome in the built CSS.
+ *
+ * Only the packages that render: `api-client`, `app-services`, `resource`
  * and `i18n` hold no `className` at all. Tests are excluded because a class
  * mentioned only in a test is exactly how the original defect stayed hidden.
  */
+@source "../../../../packages/app-kit/src";
+@source not "../../../../packages/app-kit/src/__tests__";
 @source "../../../../packages/grid/src";
 @source not "../../../../packages/grid/src/__tests__";
 @source "../../../../packages/form/src";

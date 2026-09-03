@@ -53,9 +53,10 @@ const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
  *
  * ADR-0046 §7 predicted this list and asked `D7.6` to decide how the extractor
  * is told about it; this is the answer, and it is deliberately an enumeration
- * with a call site beside each entry rather than a rule. There are exactly two,
- * and both exist because an enum declared once in `@repo/contracts` (ADR-0023)
- * must not be copied into a catalogue key list that could then disagree with it.
+ * with a call site beside each entry rather than a rule. The first two exist
+ * because an enum declared once in `@repo/contracts` (ADR-0023) must not be
+ * copied into a catalogue key list that could then disagree with it; the third
+ * exists because a scan of `src/` cannot see a `t()` call in a package.
  */
 const DYNAMIC = [
   {
@@ -69,6 +70,22 @@ const DYNAMIC = [
     // `optionLabel` in `shared/resource/config.ts`: `t(dynamicKey(...))`.
     pattern: /^common:options\./,
     reason: "composed by dynamicKey from a contracts enum (ADR-0046 §7)",
+  },
+  {
+    /*
+     * `common:loading.starting` in `@repo/app-kit`'s `AppLoader`, and
+     * `common:brand.authTagline` in its `AuthLayout` (`D14.8`, ADR-0062 §1).
+     *
+     * The composition both SPAs share lives in a package, and this scan reads
+     * `src/` — so a `t()` call that moved out of the app is invisible here
+     * exactly as a runtime-composed key is. The sentences are still this app's
+     * (the kit resolves them through this app's mounted instance), and the
+     * compiler still checks the keys at the kit's call sites against this
+     * app's catalogues, which is what keeps this entry an exemption from the
+     * *scan* rather than from the type.
+     */
+    pattern: /^common:(loading\.starting|brand\.authTagline)$/,
+    reason: "read inside @repo/app-kit (ADR-0062 §1)",
   },
 ];
 

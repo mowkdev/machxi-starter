@@ -178,12 +178,36 @@ export {
 } from "@repo/ui/compositions/settings-layout";
 
 // Not re-exports: app components with behaviour of their own (see their files).
-export { AppLoader } from "./app-loader";
 export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";
 export { QueryError } from "./query-error";
 export { RecordError } from "./record-error";
+
+/*
+ * The shared composition, through this door (`D14.8`, ADR-0062 §1).
+ *
+ * `shared/ui` is the door for the rendering half of `@repo/app-kit` as well as
+ * for `@repo/ui`, which is why its `DOORS` row lists this slice: every one of
+ * these was app code in *both* apps until the kit took ownership, and every
+ * consumer above `shared` keeps the import it already had.
+ */
 export {
+  ACCOUNT_SECTION_LINK,
+  AccountShell,
+  AccountSummary,
+  AppCrash,
+  AppError,
+  AppErrorBoundary,
+  AppLoader,
+  AppNotFound,
+  AppUiStrings,
+  AuthLayout,
   SettingsOptions,
+  type AccountShellProps,
+  type AccountSummaryProps,
+  type AppUiStringsProps,
+  type AuthLayoutProps,
   type SettingsOption,
   type SettingsOptionsProps,
-} from "./settings-options";
+} from "@repo/app-kit";
+
+export { UI_STRING_KEYS } from "./ui-strings";

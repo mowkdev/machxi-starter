@@ -5,9 +5,8 @@ import { render, type RenderResult } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { I18nextProvider } from "react-i18next";
 
-import { createQueryClient } from "@/app/providers/query-client";
+import { createQueryClient } from "@/shared/api/query-client";
 import { createAppRouter } from "@/app/providers/router";
-import { AppUiStrings } from "@/app/providers/ui-strings";
 import { createApiClient, type ApiClient } from "@/shared/api/client";
 import { ApiProvider } from "@/shared/api/context";
 import {
@@ -25,7 +24,7 @@ import {
 import { createMessageForError } from "@/shared/notifications/messages";
 import { GridDensityProvider } from "@/shared/density";
 import { ThemeProvider } from "@/shared/theme";
-import { Toaster } from "@/shared/ui";
+import { AppUiStrings, Toaster, UI_STRING_KEYS } from "@/shared/ui";
 
 import demoCatalogue from "./fixtures/demo-catalogue.json";
 
@@ -242,7 +241,7 @@ export const renderWithProviders = (
                  * defaults, which is a different code path from the one that
                  * ships.
                  */}
-                <AppUiStrings>
+                <AppUiStrings keys={UI_STRING_KEYS}>
                   {ui}
                   <Toaster />
                 </AppUiStrings>
@@ -314,7 +313,7 @@ export const renderApp = ({
         <ThemeProvider>
           <GridDensityProvider>
             <I18nextProvider i18n={value.i18n.instance}>
-              <AppUiStrings>
+              <AppUiStrings keys={UI_STRING_KEYS}>
                 {/*
                  * This tree is hand-built, so a provider the app mounts in
                  * `app/index.tsx` reaches no test unless it is added here too

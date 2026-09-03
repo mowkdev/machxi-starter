@@ -16,7 +16,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp, renderWithProviders } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 

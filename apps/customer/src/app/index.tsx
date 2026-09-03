@@ -9,13 +9,18 @@ import {
   useT,
 } from "@/shared/i18n";
 import { createDeferredErrorMessage } from "@/shared/notifications/messages";
-import { AppLoader } from "@/shared/ui";
+import { reportError } from "@/shared/error-reporting";
+import {
+  AppErrorBoundary,
+  AppLoader,
+  AppUiStrings,
+  UI_STRING_KEYS,
+} from "@/shared/ui";
 
-import { createQueryClient } from "./providers/query-client";
+import { createQueryClient } from "@/shared/api/query-client";
 import { AppRouter } from "./providers/router";
 import { SessionProvider } from "./providers/session";
 import { SettingsProvider } from "./providers/settings";
-import { AppUiStrings } from "./providers/ui-strings";
 
 /*
  * The design language's faces (ADR-0054 §1), self-hosted beside the stylesheet
@@ -141,7 +146,7 @@ const App = () => (
        */}
       <SettingsProvider fallback={<AppLoader />}>
         <BindTranslations />
-        <AppUiStrings>
+        <AppUiStrings keys={UI_STRING_KEYS}>
           {/*
            * Whether the dev-only pseudo-locale notice shows (`D12.9`,
            * ADR-0048 §3). The context lives in `@repo/i18n` and comes through
@@ -156,9 +161,22 @@ const App = () => (
            * simply because that is the smallest place it fits, and any claim
            * that it had to sit here would be a comment inventing a rule.
            */}
-          <PseudoNoticeProvider enabled={config.VITE_I18N_PSEUDO}>
-            <AppRouter />
-          </PseudoNoticeProvider>
+          {/*
+           * The top-level error boundary (`D14.8`, ADR-0062 §2).
+           *
+           * **Above the router and below the providers that give it copy.** A
+           * route's own error component handles what the router catches; this
+           * catches what it does not — a throw from a provider, from the shell,
+           * or from a render between two navigations — which without it is a
+           * white window with nothing recorded. It renders the localized
+           * failure surface and reports through ADR-0066 §3's seam, which is
+           * `undefined` in a build with no DSN.
+           */}
+          <AppErrorBoundary report={reportError}>
+            <PseudoNoticeProvider enabled={config.VITE_I18N_PSEUDO}>
+              <AppRouter />
+            </PseudoNoticeProvider>
+          </AppErrorBoundary>
         </AppUiStrings>
       </SettingsProvider>
     </QueryClientProvider>

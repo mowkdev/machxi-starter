@@ -24,7 +24,7 @@ import { useMessageForError } from "@/shared/notifications/messages";
  * **It imports `@repo/ui/components/button` directly**, and that is the door
  * rule rather than a hole in it: this file *is* inside `shared/ui`, which is the
  * door, and going through `./index` would make the slice import its own barrel.
- * `app-loader.tsx` and `app-error.tsx` do the same.
+ * `@repo/app-kit`'s loader and router defaults do the same.
  */
 export const QueryError = ({
   error,

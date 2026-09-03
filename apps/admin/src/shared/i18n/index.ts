@@ -6,7 +6,13 @@ import {
   writeStoredLocale as writeStoredLocaleFor,
 } from "@repo/i18n";
 
-import { DEVICE_KEY_PREFIX } from "@/shared/config";
+import { createI18nProvider } from "@repo/app-kit";
+
+import { config, DEVICE_KEY_PREFIX } from "@/shared/config";
+
+import { createI18n } from "./app-i18n";
+import { NAMESPACES } from "./namespaces";
+import { EN_RESOURCES } from "./resources";
 
 /**
  * The door onto `@repo/i18n`, plus the parts of the seam this app owns
@@ -55,7 +61,7 @@ export {
  * `createI18n` is this app's wrapper, not the package's: it binds the default
  * namespace and the two locale-change seams the package leaves open (`D9.2`).
  */
-export { createI18n, type CreateAppI18nOptions } from "./create-app-i18n";
+export { createI18n, type CreateAppI18nOptions } from "./app-i18n";
 export { DEFAULT_NAMESPACE, NAMESPACES, type Namespace } from "./namespaces";
 /*
  * The app's own `Catalogue`/`Catalogues`, which are narrower than the
@@ -99,3 +105,24 @@ export const writeStoredLocale = (locale: Locale): void => {
 
 export const preferredLocale = (settings: Locale | null = null): Locale =>
   preferredLocaleFor(DEVICE_KEY_PREFIX, settings);
+
+/**
+ * The i18n provider, bound to this app's instance builder (ADR-0046 §4,
+ * ADR-0062 §1).
+ *
+ * `@repo/app-kit` owns the adoption latch, the publish latch and the
+ * `I18nextProvider`/`LocalePublisherProvider` pair — all of which were
+ * code-identical in both apps. What is this app's is the one expression below:
+ * which catalogues, which namespaces, which device cache, and whether the
+ * pseudo lens is on (ADR-0046 §10).
+ */
+export const I18nProvider = createI18nProvider((adopted) =>
+  createI18n({
+    resources: { en: EN_RESOURCES },
+    namespaces: NAMESPACES,
+    locale: preferredLocale(adopted),
+    pseudo: config.VITE_I18N_PSEUDO,
+  }),
+);
+
+export type { I18nProviderProps } from "@repo/app-kit";

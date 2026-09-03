@@ -12,7 +12,7 @@ import {
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 
 /**

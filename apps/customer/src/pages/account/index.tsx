@@ -13,6 +13,9 @@ import {
 import { ThemeCards } from "@/features/theme";
 import { dateTimeFormat, useT } from "@/shared/i18n";
 import {
+  ACCOUNT_SECTION_LINK,
+  AccountShell,
+  AccountSummary,
   Button,
   Card,
   CardAction,
@@ -22,7 +25,6 @@ import {
   CardTitle,
   QueryError,
   Separator,
-  SettingsLayout,
   Skeleton,
 } from "@/shared/ui";
 
@@ -81,9 +83,6 @@ const SECTIONS = [
  * amended that section to say: 36 is where this app's generated controls sit,
  * 14 is §3's body rung, and a nav label is read as copy rather than typed into.
  */
-const LINK =
-  "flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[active=true]:bg-primary-tint data-[active=true]:text-foreground data-[active=true]:shadow-[inset_2px_0_0_var(--primary)] [&>svg]:size-4 [&>svg]:shrink-0";
-
 const SectionNav = () => {
   const { t } = useT("account");
 
@@ -92,7 +91,7 @@ const SectionNav = () => {
       {SECTIONS.map(({ to, label, icon: Icon }) => (
         <Link
           activeProps={{ "data-active": true }}
-          className={LINK}
+          className={ACCOUNT_SECTION_LINK}
           key={to}
           to={to}
         >
@@ -125,9 +124,9 @@ export const AccountPage = ({ children }: AccountPageProps) => {
   const { t } = useT("account");
 
   return (
-    <SettingsLayout nav={<SectionNav />} navLabel={t("nav.label")}>
+    <AccountShell nav={<SectionNav />} navLabel={t("nav.label")}>
       {children}
-    </SettingsLayout>
+    </AccountShell>
   );
 };
 
@@ -158,21 +157,6 @@ const dateTime = (value: string | null): string =>
   value === null
     ? "—"
     : dateTimeFormat(DATE_TIME_OPTIONS).format(new Date(value));
-
-const Summary = ({
-  label,
-  children,
-}: {
-  readonly label: string;
-  readonly children: ReactNode;
-}) => (
-  <div className="flex flex-col gap-1">
-    <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-      {label}
-    </dt>
-    <dd className="text-sm">{children}</dd>
-  </div>
-);
 
 /**
  * `/account/profile` — who you are (ADR-0053 §1).
@@ -234,16 +218,18 @@ export const AccountProfileSection = () => {
              * would put an email address in 220px.
              */}
             <dl className="grid gap-6 sm:grid-cols-2">
-              <Summary label={t("summary.email")}>{profile.data.email}</Summary>
-              <Summary label={t("summary.memberSince")}>
+              <AccountSummary label={t("summary.email")}>
+                {profile.data.email}
+              </AccountSummary>
+              <AccountSummary label={t("summary.memberSince")}>
                 {dateTime(profile.data.createdAt)}
-              </Summary>
+              </AccountSummary>
               {/* This session's own sign-in, so it is never `null` here — the
                   formatter still handles it, because the type says it can be
                   and a page is not the place to argue with a contract. */}
-              <Summary label={t("summary.lastLogin")}>
+              <AccountSummary label={t("summary.lastLogin")}>
                 {dateTime(profile.data.lastLoginAt)}
-              </Summary>
+              </AccountSummary>
             </dl>
 
             <Separator className="my-6" />

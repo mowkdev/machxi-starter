@@ -15,7 +15,7 @@ import {
   createSettingsMockState,
   type SettingsMockState,
 } from "@/test/msw/handlers/settings.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { createSessionStore } from "@/shared/api/session-store";
 
 /**

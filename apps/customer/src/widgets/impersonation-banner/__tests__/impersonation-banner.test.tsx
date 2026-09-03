@@ -12,7 +12,7 @@ import {
   createProfileHandlers,
   createProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { authenticated, impersonated, impersonator } from "@/test/principals";
 import { renderApp } from "@/test/render";
 

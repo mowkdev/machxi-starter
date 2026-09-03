@@ -1,10 +1,10 @@
 # ADR-0055: The customer app — `apps/customer`, the roster, and user-segment self-service
 
-- Status: accepted
+- Status: superseded by [ADR-0062](0062-frontend-build-and-shared-composition.md) (delta: the app roster — `apps/web` leaves the tree and the marketing site scaffolds fresh at D16)
 - Date: 2026-08-31
 - Supersedes: [ADR-0022](0022-frontend-apps.md) (delta: the app roster — `apps/web` narrows to marketing and `apps/customer` joins; every stack decision stands)
 
-> Written 2026-08-31 for D12 ([`docs/plan/0012-customer-app.md`](../plan/0012-customer-app.md)). **Accepted 2026-08-31 at the head of `D12.1`**, where ADR-0022 moved to `superseded by` in the same commit; amendable in place while D12 is `in progress` (ADR-0025 rule 2). This record is **deliberately mostly by reference**: the customer app is the second consumer of the platform D8–D11 built, and its architecture *is* those records — what it decides is the roster, the deltas the `/user` segment forces, and the self-service endpoints that segment still lacks. The 2026-08-22 re-scoping deferred 0022's supersession "until an app actually changes"; this is that day.
+> Written 2026-08-31 for D12 ([`docs/plan/0012-customer-app.md`](../plan/0012-customer-app.md)). **Accepted 2026-08-31 at the head of `D12.1`**, where ADR-0022 moved to `superseded by` in the same commit; amendable in place while D12 is `in progress` (ADR-0025 rule 2). This record is **deliberately mostly by reference**: the customer app is the second consumer of the platform D8–D11 built, and its architecture *is* those records — what it decides is the roster, the deltas the `/user` segment forces, and the self-service endpoints that segment still lacks. The 2026-08-22 re-scoping deferred 0022's supersession "until an app actually changes"; this is that day. **Superseded in part 2026-09-03 by [ADR-0062](0062-frontend-build-and-shared-composition.md)**, accepted at the head of `D14.8`, on §1's roster alone: `apps/web` — the `D3.1` placeholder that never grew past one card — left the tree at `D14.1`, and the marketing site scaffolds fresh at D16 on the current Next rather than being upgraded from a stub. It is still a Next.js app on port 3003 when it returns; **every other decision in this record stands**, the `/user` segment's deltas and the self-service endpoints among them.
 
 ## Context
 

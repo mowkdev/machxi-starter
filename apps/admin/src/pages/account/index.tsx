@@ -14,6 +14,9 @@ import { RolesList, StatusBadge } from "@/shared/grid/cells";
 import { dateTime } from "@/shared/grid/formatters";
 import { useT } from "@/shared/i18n";
 import {
+  ACCOUNT_SECTION_LINK,
+  AccountShell,
+  AccountSummary,
   Button,
   Card,
   CardAction,
@@ -23,7 +26,6 @@ import {
   CardTitle,
   QueryError,
   Separator,
-  SettingsLayout,
   Skeleton,
 } from "@/shared/ui";
 
@@ -90,9 +92,6 @@ const SECTIONS = [
  * Preferences card, which is `D11.10`'s. The amendment names all of it, so the
  * next reader finds a stated gap rather than a silent disagreement.
  */
-const LINK =
-  "flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[active=true]:bg-primary-tint data-[active=true]:text-foreground data-[active=true]:shadow-[inset_2px_0_0_var(--primary)] [&>svg]:size-4 [&>svg]:shrink-0";
-
 const SectionNav = () => {
   const { t } = useT("account");
 
@@ -101,7 +100,7 @@ const SectionNav = () => {
       {SECTIONS.map(({ to, label, icon: Icon }) => (
         <Link
           activeProps={{ "data-active": true }}
-          className={LINK}
+          className={ACCOUNT_SECTION_LINK}
           key={to}
           to={to}
         >
@@ -135,26 +134,11 @@ export const AccountPage = ({ children }: AccountPageProps) => {
   const { t } = useT("account");
 
   return (
-    <SettingsLayout nav={<SectionNav />} navLabel={t("nav.label")}>
+    <AccountShell nav={<SectionNav />} navLabel={t("nav.label")}>
       {children}
-    </SettingsLayout>
+    </AccountShell>
   );
 };
-
-const Summary = ({
-  label,
-  children,
-}: {
-  readonly label: string;
-  readonly children: ReactNode;
-}) => (
-  <div className="flex flex-col gap-1">
-    <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-      {label}
-    </dt>
-    <dd className="text-sm">{children}</dd>
-  </div>
-);
 
 /**
  * `/account/profile` — identity (ADR-0053 §1).
@@ -210,7 +194,9 @@ export const AccountProfileSection = () => {
              * would put an email address and a role list in 180px each.
              */}
             <dl className="grid gap-6 sm:grid-cols-2">
-              <Summary label={t("summary.email")}>{profile.data.email}</Summary>
+              <AccountSummary label={t("summary.email")}>
+                {profile.data.email}
+              </AccountSummary>
               {/*
                * The grid's own renderers, not a second pair (D3.9 review).
                * They are resource-agnostic by ADR-0035's rule — `statusBadge`
@@ -218,19 +204,19 @@ export const AccountProfileSection = () => {
                * neither knows what a staff member is — so a screen with no
                * table on it is still entitled to the vocabulary.
                */}
-              <Summary label={t("summary.status")}>
+              <AccountSummary label={t("summary.status")}>
                 <StatusBadge value={profile.data.status} />
-              </Summary>
-              <Summary label={t("summary.roles")}>
+              </AccountSummary>
+              <AccountSummary label={t("summary.roles")}>
                 <RolesList value={profile.data.roles} />
-              </Summary>
-              <Summary label={t("summary.lastLogin")}>
+              </AccountSummary>
+              <AccountSummary label={t("summary.lastLogin")}>
                 {/* This session's own sign-in, so it is never `null` here —
                     the formatter still handles it, because the type says it
                     can be and a page is not the place to argue with a
                     contract. */}
                 {dateTime(profile.data.lastLoginAt)}
-              </Summary>
+              </AccountSummary>
             </dl>
 
             <Separator className="my-6" />

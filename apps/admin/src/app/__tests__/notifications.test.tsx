@@ -16,7 +16,7 @@ import { createMessageForError } from "@/shared/notifications/messages";
 import { Toaster } from "@/shared/ui";
 import { createTestI18n } from "@/test/render";
 
-import { createQueryClient } from "../providers/query-client";
+import { createQueryClient } from "@/shared/api/query-client";
 
 /**
  * The notification policy (ADR-0034 §Notifications).

@@ -1,8 +1,7 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 
-import { AuthLayout } from "@/widgets/auth-layout";
-
 import { useRouteDescription, useRouteTitle } from "@/shared/lib/route-meta";
+import { AuthLayout } from "@/shared/ui";
 
 /**
  * The unauthenticated half of ADR-0049 §Layout topology — a pathless layout

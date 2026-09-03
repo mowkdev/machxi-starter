@@ -10,7 +10,8 @@
  *
  * Re-exports only, and deliberately so: a component with app-specific
  * behaviour is not a re-export, it is a `shared/ui` component of its own, and
- * it goes in a file beside this one — `app-loader.tsx` is the first.
+ * it goes in a file beside this one — `query-error.tsx` is the one left,
+ * everything else having moved into `@repo/app-kit` at `D14.8`.
  *
  * Named rather than `export *` because the door is also the inventory: what
  * this app uses from the design system is readable in one screen, and adding to
@@ -86,7 +87,7 @@ export { Skeleton } from "@repo/ui/components/skeleton";
 export { Spinner } from "@repo/ui/components/spinner";
 /*
  * ADR-0034's one delivery surface for mutation outcomes (`D12.6`). `toast` is
- * called from exactly one place — `app/providers/query-client.ts`'s global
+ * called from exactly one place — `@repo/app-kit`'s query client and its global
  * caches — and `<Toaster>` is mounted once, on the root route.
  */
 export { Toaster, toast } from "@repo/ui/components/sonner";
@@ -126,17 +127,33 @@ export {
 } from "@repo/ui/compositions/settings-layout";
 
 /** The components in this slice with behaviour of their own. */
-export { AppLoader } from "./app-loader";
-export { AppError, AppNotFound } from "./app-error";
 export { QueryError } from "./query-error";
 /*
- * The Preferences section's one control shape (`D12.7`, ADR-0054 §3/§7). Not a
- * re-export — `@repo/ui` ships no radio primitive and this is a hand-written
- * group over native inputs — so it sits beside the door rather than in it, and
- * its three consumers are `features/{theme,density,locale}`.
+ * The shared composition, through this door (`D14.8`, ADR-0062 §1).
+ *
+ * `shared/ui` is the door for the rendering half of `@repo/app-kit` as well as
+ * for `@repo/ui`, which is why its `DOORS` row lists this slice: every one of
+ * these was app code in *both* apps until the kit took ownership, and every
+ * consumer above `shared` keeps the import it already had.
  */
 export {
+  ACCOUNT_SECTION_LINK,
+  AccountShell,
+  AccountSummary,
+  AppCrash,
+  AppError,
+  AppErrorBoundary,
+  AppLoader,
+  AppNotFound,
+  AppUiStrings,
+  AuthLayout,
   SettingsOptions,
+  type AccountShellProps,
+  type AccountSummaryProps,
+  type AppUiStringsProps,
+  type AuthLayoutProps,
   type SettingsOption,
   type SettingsOptionsProps,
-} from "./settings-options";
+} from "@repo/app-kit";
+
+export { UI_STRING_KEYS } from "./ui-strings";

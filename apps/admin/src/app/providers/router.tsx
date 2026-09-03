@@ -11,13 +11,14 @@ import {
   parseAdminSearch,
   stringifyAdminSearch,
 } from "@/shared/api/search-params";
+import { createQueryClient } from "@/shared/api/query-client";
 import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import { AppError, AppNotFound } from "@/shared/ui";
 
 import { routeTree } from "../routeTree.gen";
-import { createQueryClient } from "./query-client";
 import { apiClient, onSessionEnded, sessionStore } from "./session";
 
 /**
@@ -97,6 +98,16 @@ export const createAppRouter = ({
       client,
     },
     defaultPreload: "intent",
+    /*
+     * The router's own defaults are not shippable (`D14.8`, ADR-0062 §1):
+     * `defaultErrorComponent` renders `error.message` behind a **Show Error**
+     * button and `defaultNotFoundComponent` renders the literal `"Not Found"`,
+     * both in production and both in English. `D12.2` fixed it in the customer
+     * app; this is the same fix arriving here from the package that now owns
+     * both components, which is the asymmetry ADR-0062 exists to end.
+     */
+    defaultErrorComponent: AppError,
+    defaultNotFoundComponent: AppNotFound,
     /*
      * One serialization for the list-query language, here rather than on the
      * routes (ADR-0043, `D5.2`). `validateSearch` has to round-trip its own

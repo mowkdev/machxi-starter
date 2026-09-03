@@ -80,7 +80,7 @@ export const englishMessageForError: ErrorMessage = (error) =>
 
 /**
  * The one consumer that is constructed before any instance exists: ADR-0034's
- * global cache handlers (`app/providers/query-client.ts`).
+ * global cache handlers (`@repo/app-kit`, through `shared/api/query-client`).
  *
  * They are built with the query client at the composition root, and the
  * instance is built *inside* the session gate, in `I18nProvider`. That ordering

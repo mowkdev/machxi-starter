@@ -10,7 +10,8 @@
       "types": "./api.d.ts",
       "default": "./api.js"
     },
-    "./admin": "./admin.js"
+    "./admin": "./admin.js",
+    "./doors": "./doors.js"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0"

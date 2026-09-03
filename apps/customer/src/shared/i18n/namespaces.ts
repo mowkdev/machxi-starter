@@ -19,7 +19,7 @@
  * built here; both are catalogues in `locales/`. `form` is `@repo/form`'s
  * (ADR-0046 §13) — the field-rule sentences and the frame's two actions — so the
  * name is in this list because `init` must load it, while the words live in the
- * package and are composed in by `create-app-i18n`.
+ * package and are composed in by `app-i18n`.
  *
  * **`D12.7` added `settings`, and it is the one name here that is not a
  * slice's.** The appearance control, the density mode and the language switch

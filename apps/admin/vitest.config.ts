@@ -35,10 +35,10 @@ export default mergeConfig(
       },
     },
     test: {
-      setupFiles: ["./src/test/setup.ts"],
+      setupFiles: ["@repo/app-kit/testing/setup"],
       /*
        * Vitest's default is 5s, which is exactly Testing Library's
-       * `asyncUtilTimeout` in `src/test/setup.ts` — so a genuinely failing
+       * `asyncUtilTimeout` in `@repo/app-kit/testing/setup` — so a genuinely failing
        * `findBy*` raced the test timeout and reported "Test timed out" instead
        * of naming the element it could not find. The ceiling has to sit above
        * the query's, or the diagnostic is the first thing lost.

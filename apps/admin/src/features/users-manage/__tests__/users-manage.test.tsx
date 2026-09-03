@@ -13,7 +13,7 @@ import {
   createUsersMockState,
   type UsersMockState,
 } from "@/test/msw/handlers/users.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { userResourceConfig } from "@/entities/user";
 import {
   createSessionStore,

@@ -15,7 +15,7 @@ import {
   createStaffMockState,
 } from "@/test/msw/handlers/staff.handlers";
 import enCommon from "@/shared/i18n/locales/en/common.json";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 

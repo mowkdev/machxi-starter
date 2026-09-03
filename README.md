@@ -183,9 +183,10 @@ Shared by the API and the frontends:
 - `@repo/logger` — structured logger, Node-only (ADR-0005)
 
 The frontend packages both SPAs are built from and reach only through their own
-`shared/` doors — the design system, and the **six platform packages** ADR-0051
-extracted the behavioural machinery into. Each app keeps its dictionary, its
-policy data and its config:
+`shared/` doors — the design system, the **six platform packages** ADR-0051
+extracted the behavioural machinery into, and the **seventh** ADR-0062 added for
+the composition around it. Each app keeps its dictionary, its policy data, its
+config, its route tree and its size budget:
 
 - `@repo/ui` — the shadcn/ui design system and the shell and record compositions, owned as source (ADR-0047, ADR-0048)
 - `@repo/api-client` — client, session, CSRF, the URL⇄query codec, bulk fan-out (ADR-0033, ADR-0043)
@@ -194,6 +195,7 @@ policy data and its config:
 - `@repo/grid` — the v2 data grid (ADR-0038, ADR-0052)
 - `@repo/form` — the field vocabulary, the three record shells, the zod locale installer
 - `@repo/app-services` — theme, `can()` (ADR-0042) and route meta
+- `@repo/app-kit` — the composition both SPAs share: the provider stack, the auth and account layouts, the app loader, the top-level error boundary, the router defaults, the app i18n factory, and the test harness behind `@repo/app-kit/testing` (ADR-0062)
 
 Configuration:
 

@@ -11,7 +11,7 @@ import {
   createSettingsHandlers,
   createSettingsMockState,
 } from "@/test/msw/handlers/settings.handlers";
-import { server } from "@/test/msw/server";
+import { server } from "@repo/app-kit/testing";
 import { staffPrincipal } from "@/test/principals";
 import { renderWithProviders } from "@/test/render";
 
