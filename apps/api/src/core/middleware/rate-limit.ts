@@ -3,6 +3,7 @@ import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 
 import type { AppConfig } from "../config/index.js";
 import { rateLimited } from "../errors/index.js";
+import type { RateLimitStore } from "../rate-limit/index.js";
 
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
@@ -14,10 +15,20 @@ import { rateLimited } from "../errors/index.js";
  * `/health` is deliberately outside all of them — a probe that gets
  * rate-limited takes a healthy instance out of rotation (ADR-0016).
  *
- * The store is `express-rate-limit`'s in-memory default, which is per process.
- * A multi-instance deployment therefore gets N times the configured limit
- * until the Redis store is wired in; that is recorded in ADR-0020
- * §Consequences and is a configuration change, not a code one.
+ * The store is a **parameter** since `D14.6` (ADR-0066 §4, a delta on
+ * ADR-0020): `undefined` selects `express-rate-limit`'s in-memory default,
+ * which counts per process, and a `Store` — Redis, when `REDIS_URL` is set —
+ * makes one budget out of N instances. The *choice* is made once in
+ * `core/rate-limit` and applied to all four factories from the composition
+ * root, because a per-limiter choice is a choice one limiter can be left out
+ * of — but each limiter is handed its **own** store instance under its own key
+ * prefix, because three of the four key on the address alone and would
+ * otherwise share a counter.
+ *
+ * **None of the limits, windows or keys changed with it.** ADR-0020's
+ * `300 / 15 min / IP`, `10 / 15 min / IP + email` and `5 / 15 min / IP` on
+ * failed refreshes, and ADR-0057 §1's per-staff-principal mint budget, are
+ * exactly as decided; only where the counter lives is configurable.
  */
 
 /** The window every limit in ADR-0020 is expressed over. */
@@ -67,12 +78,24 @@ const retryAfterSeconds = (req: Request, windowMs: number): number => {
  */
 const ipKey = (req: Request): string => ipKeyGenerator(req.ctx.ip ?? "");
 
-const baseOptions = (windowMs: number) =>
+const baseOptions = (windowMs: number, store: RateLimitStore) =>
   ({
     windowMs,
     standardHeaders: "draft-8",
     legacyHeaders: false,
     keyGenerator: ipKey,
+    // `undefined` is not the same as absent to a spread, so the key is only
+    // written when there is a store: `{ store: undefined }` would override
+    // `express-rate-limit`'s own default with nothing.
+    ...(store === undefined ? {} : { store }),
+    /**
+     * **Fail closed** (ADR-0066 §4). The library's default, stated here
+     * because it is a decision rather than an accident: a configured Redis
+     * that cannot be reached must refuse requests, not admit every one of
+     * them. The refusal goes through the error handler like any other, so the
+     * store's error is logged with the request id that hit it.
+     */
+    passOnStoreError: false,
     handler: (req: Request, res: Response, next: NextFunction) => {
       const seconds = retryAfterSeconds(req, windowMs);
 
@@ -87,9 +110,12 @@ const baseOptions = (windowMs: number) =>
  * A backstop against a client hammering any endpoint, not a substitute for the
  * strict limits below: 300 requests of *login* would already be far too many.
  */
-export const createGlobalRateLimiter = (config: AppConfig): RequestHandler =>
+export const createGlobalRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
   rateLimit({
-    ...baseOptions(RATE_LIMIT_WINDOW_MS),
+    ...baseOptions(RATE_LIMIT_WINDOW_MS, store),
     limit: config.rateLimit.globalMax,
   });
 
@@ -104,9 +130,12 @@ export const createGlobalRateLimiter = (config: AppConfig): RequestHandler =>
  * request it admits costs an argon2 hash, which holds a libuv thread and
  * 64 MiB for ~130 ms (ADR-0020 §Hashing cost vs. liveness).
  */
-export const createLoginRateLimiter = (config: AppConfig): RequestHandler =>
+export const createLoginRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
   rateLimit({
-    ...baseOptions(RATE_LIMIT_WINDOW_MS),
+    ...baseOptions(RATE_LIMIT_WINDOW_MS, store),
     limit: config.rateLimit.loginMax,
     keyGenerator: (req) => `${ipKey(req)}:${keyEmail(req)}`,
   });
@@ -128,9 +157,12 @@ export const createLoginRateLimiter = (config: AppConfig): RequestHandler =>
  * so a spent budget is not "retry later", it is the session ending at the next
  * access-token expiry.
  */
-export const createRefreshRateLimiter = (config: AppConfig): RequestHandler =>
+export const createRefreshRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
   rateLimit({
-    ...baseOptions(RATE_LIMIT_WINDOW_MS),
+    ...baseOptions(RATE_LIMIT_WINDOW_MS, store),
     limit: config.rateLimit.refreshMax,
     skipSuccessfulRequests: true,
     requestWasSuccessful: (_req, res) => res.statusCode !== 401,
@@ -162,9 +194,10 @@ export const createRefreshRateLimiter = (config: AppConfig): RequestHandler =>
  */
 export const createImpersonationRateLimiter = (
   config: AppConfig,
+  store: RateLimitStore,
 ): RequestHandler =>
   rateLimit({
-    ...baseOptions(RATE_LIMIT_WINDOW_MS),
+    ...baseOptions(RATE_LIMIT_WINDOW_MS, store),
     limit: config.rateLimit.impersonationMax,
     keyGenerator: (req) => {
       const { principal } = req.ctx;

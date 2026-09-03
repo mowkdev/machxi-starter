@@ -13,13 +13,13 @@ The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.
 
 Three facts to have in mind before the click path:
 
-- **Postgres and Redis are not in the compose file.** They are managed resources on the platform, so their backups, restores, upgrades and monitoring are the platform's; the deployment is handed `DATABASE_URL`, `DATABASE_URL_OWNER` and `REDIS_URL`.
+- **Postgres and Redis are not in the compose file.** They are managed resources on the platform, so their backups, restores, upgrades and monitoring are the platform's; the deployment is handed `DATABASE_URL`, `DATABASE_URL_OWNER` and `REDIS_URL`. Since `D14.6` the last of those is read: it is the rate limiters' shared store (ADR-0066 §4).
 - **The two SPA images are environment-specific.** Vite inlines `VITE_*` at build time, so they are build arguments, not environment variables. Changing an API URL means rebuilding, and an image built for staging cannot be promoted to production. That is a property of the tool.
 - **Rolling back means rolling back the image.** It does not mean rolling back a migration: migrations are forward-only and hand-written (ADR-0008). A release that has to be undone is undone by deploying the previous commit, and by writing a new migration if the schema has to move back.
 
 ## Before the first deploy
 
-A managed Postgres 16, a managed Redis (optional — nothing reads it until ADR-0066 lands), and a domain per SPA plus one for the API. Three domains, because the two SPAs are two origins and the API is a third; `CORS_ORIGINS` names the first two exactly.
+A managed Postgres 16, a managed Redis (optional for one instance, required in effect for two — see below), and a domain per SPA plus one for the API. Three domains, because the two SPAs are two origins and the API is a third; `CORS_ORIGINS` names the first two exactly.
 
 Generate a signing key. Every key committed to this repository — the root `.env.example`'s, `apps/api/.env.test`'s and the placeholder in `docker/prod/.env.example` — is enumerated in the config schema and refused outright in production, so this is not optional even for a local trial of the images:
 
@@ -61,6 +61,12 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
    | `CORS_ORIGINS`                                | `https://admin.example.com,https://app.example.com` — exact, no wildcard |
    | `VITE_ADMIN_API_URL`, `VITE_CUSTOMER_API_URL` | `https://api.example.com`                                                |
    | `VITE_CUSTOMER_APP_URL`                       | `https://app.example.com`                                                |
+   | `MAIL_TRANSPORT`                              | `log` or `smtp` — production must state one (ADR-0066 §1)                |
+   | `METRICS_TOKEN`                               | ≥ 32 random characters — `GET /metrics` is open without it               |
+
+   **`MAIL_TRANSPORT` and `METRICS_TOKEN` are required in production** (ADR-0066 §1–§2). `log` is an honest answer for the transport while no flow sends mail — it writes a line per message and delivers nothing — but it has to be _stated_, because a deployment that inherited it would silently swallow every message the first credential flow ever sends. `METRICS_TOKEN` is a bearer credential: without one, `GET /metrics` answers anybody, and its body names every route the API has.
+
+   **`REDIS_URL` is optional and stops being so at two instances** (ADR-0066 §4). Unset, the four rate limiters count in process memory, so N instances admit N times every limit in ADR-0020 — the login limiter included. Set, they share one budget. A configured Redis that cannot be reached stops the API from starting, and refuses requests rather than admitting them if it goes away later.
 
    **`TRUST_PROXY` is required and both constants are refused** (ADR-0059 §7). `true` makes Express take the left-most `X-Forwarded-For` entry verbatim, so `req.ip` becomes attacker-controlled; `false` behind a proxy makes every request report the proxy's address, so the login limiter, the refresh limiter and the audit trail collapse onto one key. Neither failure shows up in a response, which is why the API refuses to start rather than guess.
 

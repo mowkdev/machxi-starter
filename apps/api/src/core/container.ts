@@ -48,6 +48,10 @@ import {
 } from "../modules/users/index.js";
 import { createAudit, createAuditRepository } from "./audit/index.js";
 import { createLimitedHasher } from "./auth/index.js";
+import { createMailSender } from "./mail/index.js";
+import { createMetrics } from "./metrics/index.js";
+import type { RateLimitStoreFactory } from "./rate-limit/index.js";
+import { createErrorReporter, type ErrorReporter } from "./reporting/index.js";
 
 /**
  * The composition root (ADR-0009).
@@ -66,9 +70,35 @@ export interface ContainerDeps {
   /** Already connected and probed by `main.ts` (ADR-0003). */
   readonly db: DbClient;
   readonly logger: Logger;
+  /**
+   * The shared rate-limit store (ADR-0066 §4), built and connected by
+   * `main.ts` because a Redis client's `connect` is asynchronous and this
+   * factory is not.
+   *
+   * A **factory taking the limiter's name**, not one store: `rate-limit-redis`
+   * keys on `prefix + key`, and three of the four limiters key on the address
+   * alone, so one shared instance would merge the global and refresh counters.
+   * Absent — the default, and what the whole test suite uses — every limiter
+   * gets `express-rate-limit`'s own in-memory store, which is per instance
+   * already.
+   */
+  readonly rateLimitStore?: RateLimitStoreFactory;
+  /**
+   * The error-reporting seam (ADR-0066 §3). Normally built here from
+   * `ERROR_REPORTING_DSN`; the integration suite passes a stub, because "a
+   * 5xx reaches the reporter and a 4xx does not" is a property of the error
+   * handler and there is nothing to learn from a third party's SDK.
+   */
+  readonly reporter?: ErrorReporter | undefined;
 }
 
-export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
+export const buildContainer = ({
+  config,
+  db,
+  logger,
+  rateLimitStore = () => undefined,
+  reporter,
+}: ContainerDeps) => {
   const health = createHealthService({
     // The database is the only registered indicator in the first deliverable
     // (ADR-0016); a cache or a queue is one more entry in this array.
@@ -218,10 +248,10 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
   // really be ten per login endpoint. Stateful components belong to the
   // composition root (ADR-0009), and this is why.
   const rateLimiters = {
-    global: createGlobalRateLimiter(config),
+    global: createGlobalRateLimiter(config, rateLimitStore("global")),
     /** Shared by both segments' `login` and by `register` (ADR-0018). */
-    login: createLoginRateLimiter(config),
-    refresh: createRefreshRateLimiter(config),
+    login: createLoginRateLimiter(config, rateLimitStore("login")),
+    refresh: createRefreshRateLimiter(config, rateLimitStore("refresh")),
     /**
      * The mint's own budget, and the only limiter here keyed on a principal
      * rather than an address (ADR-0057 §1). Built here for the reason all the
@@ -229,8 +259,24 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
      * admin segment, after `authenticate`, because its key does not exist
      * before that.
      */
-    impersonation: createImpersonationRateLimiter(config),
+    impersonation: createImpersonationRateLimiter(
+      config,
+      rateLimitStore("impersonation"),
+    ),
   } as const;
+
+  // The three ADR-0066 seams, all built here for the reason everything else
+  // is: they hold state (a transporter's connection pool, a metrics registry,
+  // a memoised adapter promise), and stateful components belong to the
+  // composition root.
+  //
+  // Two of the three are inert in a default clone — `createMailSender` returns
+  // the log transport and `createErrorReporter` returns `undefined` — while
+  // the registry is always built, because the registry *is* the endpoint.
+  const mail = createMailSender(config);
+  const metrics = createMetrics();
+  const errorReporter =
+    reporter ?? createErrorReporter({ dsn: config.reporting.dsn, logger });
 
   return {
     config,
@@ -241,6 +287,10 @@ export const buildContainer = ({ config, db, logger }: ContainerDeps) => {
     authenticate,
     refuseImpersonated,
     rateLimiters,
+    mail,
+    metrics,
+    /** `undefined` unless a DSN is configured or a test supplied a stub. */
+    reporter: errorReporter,
     repositories: {
       staff: staffRepository,
       users: usersRepository,

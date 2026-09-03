@@ -11,6 +11,7 @@ export {
 export { errorEnvelope, listEnvelope, successEnvelope } from "./envelope.js";
 export { respond } from "./respond.js";
 export { sendErrorEnvelope } from "./send-error.js";
+export { sendText } from "./send-text.js";
 export {
   applyListQuery,
   escapeLikePattern,

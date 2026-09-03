@@ -15,6 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@prometheus-io/client": "^0.16.1",
     "@repo/contracts": "workspace:*",
     "@repo/crypto": "workspace:*",
     "@repo/db": "workspace:*",
@@ -25,10 +26,13 @@
     "express": "5.2.1",
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
     "jose": "^6.2.9",
+    "nodemailer": "^8.0.11",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "qs": "^6.15.3",
+    "rate-limit-redis": "^6.0.1",
     "uuidv7": "^1.2.1",
     "zod": "^4.4.3"
   },
@@ -39,6 +43,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "5.0.6",
     "@types/node": "^22.15.3",
+    "@types/nodemailer": "^8.0.1",
     "@types/qs": "^6.15.1",
     "@types/supertest": "^6.0.2",
     "dotenv": "^17.4.2",

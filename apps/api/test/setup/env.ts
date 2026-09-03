@@ -83,6 +83,24 @@ export const loadTestEnv = (): {
   // line is what keeps that true if something ever does.
   process.env.DATABASE_URL_OWNER = ownerDatabaseUrl;
 
+  // The three ADR-0066 seams a developer or a CI job might have exported for
+  // something else, removed rather than overridden — there is no value for
+  // them that means "off" except absence. They are declared on the `test` and
+  // `test:int` tasks in `turbo.json` for the reason ADR-0026 asks: a task that
+  // reads a variable declares it, and "reads it in order to delete it" is
+  // still reading it.
+  //
+  // `REDIS_URL` would point the limiters at a shared store, so one test file's
+  // counts would survive into the next run of another; `ERROR_REPORTING_DSN`
+  // would send this suite's deliberate 500s to a real error tracker; and a
+  // `METRICS_TOKEN` in the shell would put a bearer requirement on an endpoint
+  // whose tests set their own. All three are the same failure the
+  // `DATABASE_URL` overwrite above exists to prevent: the suite reaching
+  // something outside itself because a shell said so.
+  delete process.env.REDIS_URL;
+  delete process.env.ERROR_REPORTING_DSN;
+  delete process.env.METRICS_TOKEN;
+
   return { databaseUrl, ownerDatabaseUrl };
 };
 

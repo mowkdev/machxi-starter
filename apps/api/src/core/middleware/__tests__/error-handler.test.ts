@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { createRequestContext } from "../../context/index.js";
+import type { ErrorReporter } from "../../reporting/index.js";
 import {
   forbidden,
   internal,
@@ -47,7 +48,10 @@ const fakeResponse = () => {
 
 const handle = (
   error: unknown,
-  { includeDebug = false }: { includeDebug?: boolean } = {},
+  {
+    includeDebug = false,
+    reporter,
+  }: { includeDebug?: boolean; reporter?: ErrorReporter } = {},
 ) => {
   const res = fakeResponse();
   const next = vi.fn();
@@ -59,6 +63,7 @@ const handle = (
   createErrorHandler({
     includeDebug,
     logger: createLogger({ level: "silent" }),
+    ...(reporter === undefined ? {} : { reporter }),
   })(
     error,
     { ctx } as Request,
@@ -320,5 +325,43 @@ describe("errorHandler", () => {
     expect(error.mock.calls[0]?.[0]).toHaveProperty("err");
     expect(warn).toHaveBeenCalledOnce();
     expect(warn.mock.calls[0]?.[0]).not.toHaveProperty("err");
+  });
+});
+
+/**
+ * ADR-0066 §3, the delta this record takes on ADR-0013: the handler gains one
+ * optional side effect and loses none of its guarantees.
+ */
+describe("the error-reporting hook", () => {
+  it("fires on a 5xx and not on a 4xx", () => {
+    const report = vi.fn();
+
+    handle(notFound(), { reporter: { report } });
+    expect(report).not.toHaveBeenCalled();
+
+    handle(new Error("boom"), { reporter: { report } });
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report.mock.calls[0]?.[0]).toMatchObject({
+      status: 500,
+      requestId,
+      principal: null,
+    });
+  });
+
+  it("still renders the response when the reporter throws", () => {
+    // `ContainerDeps.reporter` is the injection point a fork uses for a vendor
+    // SDK, and `report` is synchronous: an unguarded throw would land before
+    // the envelope is written and make the reporter the reason a 500 never
+    // renders — the one failure mode ADR-0066 §3 says it must not have.
+    const { res, body } = handle(new Error("boom"), {
+      reporter: {
+        report: () => {
+          throw new Error("the reporter exploded");
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(declaredErrorEnvelopeSchema.safeParse(body).success).toBe(true);
   });
 });

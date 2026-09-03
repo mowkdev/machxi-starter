@@ -93,6 +93,14 @@ export const createApp = (container: Container): Express => {
   app.use(createHttpLogger(logger));
   app.use(createContextMiddleware());
 
+  // Above helmet, CORS and the body parsers, so that everything the process
+  // answers is counted — a 429 from the global limiter, a rejected preflight
+  // and a 404 included (ADR-0066 §2). It observes on the response's `finish`
+  // event and calls `next()` immediately, so it is not a sixth entry in
+  // ADR-0011's order any more than the impersonation trail below is: nothing
+  // downstream can tell it is there.
+  app.use(container.metrics.middleware);
+
   app.use(helmet());
   app.use(
     cors({
@@ -124,7 +132,15 @@ export const createApp = (container: Container): Express => {
   app.use(createRoutes(container));
 
   app.use(notFoundHandler);
-  app.use(createErrorHandler({ includeDebug: config.isDevelopment, logger }));
+  app.use(
+    createErrorHandler({
+      includeDebug: config.isDevelopment,
+      logger,
+      // `undefined` in a default clone (ADR-0066 §3): no DSN, no reporter, and
+      // no adapter module ever evaluated.
+      reporter: container.reporter,
+    }),
+  );
 
   return app;
 };

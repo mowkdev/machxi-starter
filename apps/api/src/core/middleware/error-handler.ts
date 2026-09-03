@@ -16,6 +16,12 @@ import {
   type AppError,
 } from "../errors/index.js";
 import { sendErrorEnvelope } from "../http/index.js";
+// The pattern, not the index: `core/metrics/index.ts` re-exports the router,
+// which imports this middleware barrel — a cycle that ESM would tolerate and
+// nobody should have to reason about. `metrics.ts` imports express and the
+// registry and nothing of ours.
+import { routeLabel } from "../metrics/metrics.js";
+import type { ErrorReporter } from "../reporting/index.js";
 
 /**
  * The single place an error becomes a response (ADR-0013), last in the chain.
@@ -106,11 +112,21 @@ export interface ErrorHandlerOptions {
    * stack in a response body is an information leak, not a convenience.
    */
   readonly includeDebug: boolean;
+  /**
+   * The ADR-0066 §3 seam, absent unless `ERROR_REPORTING_DSN` is set.
+   *
+   * Called on **5xx only**, from inside the same branch that logs the stack:
+   * a 4xx is the API working. The response is unaffected either way — that is
+   * the whole of the delta on ADR-0013, and a client cannot tell whether a
+   * deployment reports.
+   */
+  readonly reporter?: ErrorReporter | undefined;
 }
 
 export const createErrorHandler = ({
   includeDebug,
   logger: fallbackLogger,
+  reporter,
 }: ErrorHandlerOptions): ErrorRequestHandler => {
   return (error, req, res, next) => {
     // Something already started writing the response; the only safe action is
@@ -136,6 +152,33 @@ export const createErrorHandler = ({
     if (appError.status >= 500) {
       // `err` so pino serialises the stack and the `cause` chain (ADR-0005).
       logger.error({ err: error, code: appError.code }, "request failed");
+
+      // The reporter gets the same facts the line above does and no more: no
+      // body, no query, no headers (ADR-0066 §3).
+      //
+      // Guarded **here** rather than trusted to the implementation. The
+      // shipped `createErrorReporter` swallows its own failures, but
+      // `ContainerDeps.reporter` accepts any `ErrorReporter` — that is the
+      // injection point a fork uses to drop in a vendor SDK — and `report` is
+      // synchronous by signature, so a throw would land before
+      // `sendErrorEnvelope` and make the reporter the reason a 500 never
+      // renders. The guarantee ADR-0066 §3 makes belongs to the seam, not to
+      // one implementation of it (`D14.6`'s `security-reviewer`).
+      try {
+        reporter?.report({
+          requestId,
+          route: routeLabel(req),
+          method: req.method,
+          status: appError.status,
+          principal:
+            ctx?.principal == null
+              ? null
+              : { kind: ctx.principal.kind, id: ctx.principal.id },
+          error,
+        });
+      } catch (reportingError) {
+        logger.warn({ err: reportingError }, "error reporter threw");
+      }
     } else {
       // No stack: a 4xx is the client's problem and its stack is this file.
       logger.warn(

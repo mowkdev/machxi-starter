@@ -1,7 +1,9 @@
 # ADR-0016: Health check endpoints
 
-- Status: accepted
+- Status: superseded by [ADR-0066](0066-infrastructure-seams.md) (delta: `/metrics` joins `/health` as a second unversioned operational endpoint outside every limiter)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-03 by [ADR-0066](0066-infrastructure-seams.md)**, accepted at the head of `D14.6`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): this record made `/health` the one unversioned, unlimited operational surface, and 0066 §2 adds a second — `GET /metrics`, mounted beside it and before the `/api/v1` limiter for the reason stated here, that an operational endpoint which can be rate-limited takes a working instance out of rotation. **The two are not the same thing and neither absorbs the other**: a probe stays cheap, unauthenticated and bounded, while a scrape is behind `METRICS_TOKEN` and answers an unbounded body of counters. **Everything this record decides stands**: the `live`/`ready` split, the indicator registry, the 200/503 mapping, the `no-store` headers and the rule that a health response leaks no configuration.
 
 ## Context
 

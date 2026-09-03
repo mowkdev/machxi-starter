@@ -20,7 +20,22 @@
           "// below hold for all of them, and a new request inherits them for free.",
           "const status = pm.response.code;",
           "",
+          "// `GET /metrics` is the one response in this API that is not the envelope",
+          "// (ADR-0066 §2, the delta on ADR-0012): a Prometheus exposition is a wire",
+          "// format a scraper defined, and wrapping it would make it unparseable by",
+          "// every client that exists. Its own request asserts its shape; the no-store",
+          "// invariant below still applies to it.",
+          "const isMetricsScrape = pm.request.url.getPath() === \"/metrics\";",
+          "",
           "pm.test(\"envelope: the response has the documented shape\", function () {",
+          "  if (isMetricsScrape) {",
+          "    pm.expect(",
+          "      pm.response.headers.get(\"Content-Type\") || \"\",",
+          "      \"Content-Type\",",
+          "    ).to.include(\"text/plain\");",
+          "    return;",
+          "  }",
+          "",
           "  if (status === 204) {",
           "    pm.expect(pm.response.text(), \"a 204 carries no body\").to.eql(\"\");",
           "    return;",
@@ -197,6 +212,47 @@
               "path": ["health"]
             },
             "description": "The same resource readiness returns — a second shape would only be a second thing to keep in sync (ADR-0016)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metrics",
+      "description": "Prometheus text, mounted beside /health and outside every rate limiter (ADR-0066 §2). Unauthenticated only while METRICS_TOKEN is unset, which the config schema permits outside production; set it and this request needs `Authorization: Bearer {{metricsToken}}`.",
+      "item": [
+        {
+          "name": "Scrape",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, Prometheus text, and no id in a label\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/plain\");",
+                  "",
+                  "  const body = pm.response.text();",
+                  "",
+                  "  pm.expect(body, \"the HTTP counter\").to.include(\"http_requests_total\");",
+                  "  pm.expect(body, \"default process metrics\").to.include(\"process_cpu_seconds_total\");",
+                  "  // The route label is a pattern, never a path: a uuid here would be one",
+                  "  // time series per record (ADR-0066 §2).",
+                  "  pm.expect(body, \"no uuid in a label\").to.not.match(/route=\"[^\"]*[0-9a-f]{8}-[0-9a-f]{4}/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["metrics"]
+            },
+            "description": "Unversioned like /health, and above the global limiter: a scraper polling every fifteen seconds would otherwise spend the budget and make a healthy instance look down."
           }
         }
       ]

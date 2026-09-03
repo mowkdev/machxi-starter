@@ -150,11 +150,18 @@ describe("envSchema", () => {
   });
 
   describe("production guards", () => {
-    // `TRUST_PROXY` is stated here, not defaulted, so each guard below fails
-    // for its own reason: since ADR-0059 §7 an unstated hop is itself a
-    // production failure, and leaving it out would make every assertion in
-    // this block pass for two reasons at once.
-    const production = { NODE_ENV: "production", TRUST_PROXY: "1" } as const;
+    // `TRUST_PROXY`, `MAIL_TRANSPORT` and `METRICS_TOKEN` are stated here,
+    // not defaulted, so each guard below fails for its own reason: since
+    // ADR-0059 §7 an unstated hop is itself a production failure, and since
+    // ADR-0066 §1–§2 so are an unstated mail transport and a missing metrics
+    // token — leaving any of them out would make every assertion in this
+    // block pass for four reasons at once.
+    const production = {
+      NODE_ENV: "production",
+      TRUST_PROXY: "1",
+      MAIL_TRANSPORT: "log",
+      METRICS_TOKEN: "m".repeat(32),
+    } as const;
 
     it.each(KNOWN_PUBLIC_SECRETS)(
       "refuses the signing key committed as %s",
@@ -184,7 +191,12 @@ describe("envSchema", () => {
       // and the audit trail collapse onto one key, in the permissive
       // direction, with nothing in any response to show for it.
       expect(() =>
-        envSchema.parse({ ...validEnv, NODE_ENV: "production" }),
+        envSchema.parse({
+          ...validEnv,
+          NODE_ENV: "production",
+          MAIL_TRANSPORT: "log",
+          METRICS_TOKEN: "m".repeat(32),
+        }),
       ).toThrow(/TRUST_PROXY/);
       expect(() => parse({ ...production, TRUST_PROXY: "false" })).toThrow(
         /TRUST_PROXY/,
@@ -347,5 +359,103 @@ describe("formatConfigIssues", () => {
 
     expect(lines.some((line) => line.startsWith("PORT:"))).toBe(true);
     expect(lines.some((line) => line.startsWith("DATABASE_URL:"))).toBe(true);
+  });
+});
+
+/**
+ * ADR-0066: four seams, all off in a default clone, and two of them refused as
+ * defaults in production.
+ */
+describe("the ADR-0066 seams", () => {
+  it("reads an unstated MAIL_TRANSPORT as the log transport", () => {
+    // A fresh clone and the whole test suite need no mail server, which is
+    // what makes `log` the right default everywhere but production.
+    expect(loadConfig(validEnv).mail.transport).toBe("log");
+    expect(loadConfig(validEnv).mail.smtp).toMatchObject({
+      host: "localhost",
+      port: 1025,
+      secure: false,
+    });
+  });
+
+  it("requires production to state its transport", () => {
+    const production = {
+      ...validEnv,
+      NODE_ENV: "production",
+      TRUST_PROXY: "1",
+      METRICS_TOKEN: "m".repeat(32),
+    };
+
+    expect(() => loadConfig(production)).toThrow(/MAIL_TRANSPORT/);
+    expect(
+      loadConfig({ ...production, MAIL_TRANSPORT: "log" }).mail.transport,
+    ).toBe("log");
+  });
+
+  it("requires production to set a metrics token", () => {
+    const production = {
+      ...validEnv,
+      NODE_ENV: "production",
+      TRUST_PROXY: "1",
+      MAIL_TRANSPORT: "log",
+    };
+
+    // The body is numbers, but the numbers name every route the API has.
+    expect(() => loadConfig(production)).toThrow(/METRICS_TOKEN/);
+    expect(() => loadConfig({ ...production, METRICS_TOKEN: "short" })).toThrow(
+      /METRICS_TOKEN/,
+    );
+    expect(
+      loadConfig({ ...production, METRICS_TOKEN: "m".repeat(32) }).metrics
+        .token,
+    ).toHaveLength(32);
+  });
+
+  it("refuses half a pair of SMTP credentials", () => {
+    // nodemailer reads the *presence* of `auth` as "authenticate", so a
+    // mistyped password variable would otherwise connect to the relay
+    // unauthenticated instead of failing at startup.
+    expect(() => loadConfig({ ...validEnv, SMTP_USER: "relay" })).toThrow(
+      /SMTP_USER/,
+    );
+    expect(() => loadConfig({ ...validEnv, SMTP_PASSWORD: "s3cret" })).toThrow(
+      /SMTP_USER/,
+    );
+    expect(
+      loadConfig({ ...validEnv, SMTP_USER: "relay", SMTP_PASSWORD: "s3cret" })
+        .mail.smtp.user,
+    ).toBe("relay");
+    // Neither is the default, and Mailpit authenticates nobody.
+    expect(loadConfig(validEnv).mail.smtp.user).toBeUndefined();
+  });
+
+  it("reads a blank optional variable as absent, not as a malformed value", () => {
+    // `REDIS_URL=` is how `.env.example` writes "set this if you have one",
+    // and `KEY=${KEY}` in a compose file turns an unset variable into exactly
+    // this on its way into a container.
+    const config = loadConfig({
+      ...validEnv,
+      REDIS_URL: "",
+      METRICS_TOKEN: "  ",
+      ERROR_REPORTING_DSN: "",
+    });
+
+    expect(config.rateLimit.redisUrl).toBeUndefined();
+    expect(config.metrics.token).toBeUndefined();
+    expect(config.reporting.dsn).toBeUndefined();
+  });
+
+  it("constrains the schemes of the two URLs it is handed", () => {
+    // Each is passed to a client that will open whatever it parses.
+    expect(() =>
+      loadConfig({ ...validEnv, REDIS_URL: "http://localhost:6379" }),
+    ).toThrow(/REDIS_URL/);
+    expect(() =>
+      loadConfig({ ...validEnv, ERROR_REPORTING_DSN: "javascript:alert(1)" }),
+    ).toThrow(/ERROR_REPORTING_DSN/);
+    expect(
+      loadConfig({ ...validEnv, REDIS_URL: "rediss://cache.internal:6379" })
+        .rateLimit.redisUrl,
+    ).toBe("rediss://cache.internal:6379");
   });
 });

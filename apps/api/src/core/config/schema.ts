@@ -172,6 +172,26 @@ const durationSchema = z
     return seconds;
   });
 
+/**
+ * An optional variable that an env file may spell as an empty value.
+ *
+ * `REDIS_URL=` and `METRICS_TOKEN=` are how a committed `.env.example` writes
+ * "set this if you have one", and compose's `KEY=${KEY}` turns an unset
+ * variable into an empty string on its way into a container. Both would reach
+ * a bare `.optional()` as `""` — a *stated* value — and fail the inner schema
+ * with a message about a malformed URL rather than being read as absent.
+ *
+ * The blank is therefore folded into absence before the inner check runs,
+ * which is the same reading `csvSchema` above gives an empty allow-list and
+ * `TRUST_PROXY` gives `""` (ADR-0059 §7).
+ */
+const optionalEnv = <T extends z.ZodType>(schema: T) =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    schema.optional(),
+  );
+
 export const envSchema = z
   .object({
     // No default, on purpose. Every production hardening below branches on
@@ -346,6 +366,70 @@ export const envSchema = z
     // flag can never be turned off (ADR-0004, amended 2026-08-18).
     FEATURE_USER_REGISTRATION: z.stringbool().default(true),
 
+    // ─── Mail (ADR-0066 §1) ───────────────────────────────────────────────
+    /**
+     * Which transport `createMailSender` builds.
+     *
+     * **Optional rather than defaulted, and the absence is load-bearing**: the
+     * refinement below refuses an unstated transport in production, so a
+     * deployment states `log` or `smtp` instead of inheriting a default nobody
+     * chose. `toAppConfig` reads an absent value as `log`, which is what makes
+     * a fresh clone and the test run need no mail server at all — a port that
+     * must be up to run the API is a worse default than a log line.
+     */
+    MAIL_TRANSPORT: optionalEnv(z.enum(["log", "smtp"])),
+    /**
+     * The envelope sender. A deployment's fact, never a caller's — no code
+     * path can choose the address a message is sent as.
+     */
+    MAIL_FROM: z.email().default("no-reply@machxi.local"),
+    /**
+     * The `SMTP_*` defaults are **Mailpit's** (`docker/local/compose.yaml`):
+     * `localhost:1025`, no TLS, no credentials. So `MAIL_TRANSPORT=smtp` on a
+     * developer's machine needs nothing else set, and the message appears in a
+     * browser at `http://localhost:8025`.
+     */
+    SMTP_HOST: z.string().min(1).default("localhost"),
+    SMTP_PORT: z.coerce.number().int().positive().max(65535).default(1025),
+    /** Implicit TLS (port 465); `false` still upgrades through STARTTLS. */
+    SMTP_SECURE: z.stringbool().default(false),
+    // Both, or neither: nodemailer treats the presence of credentials as
+    // "authenticate", so half a pair would send an empty AUTH to a relay that
+    // wanted none.
+    SMTP_USER: optionalEnv(z.string().min(1)),
+    SMTP_PASSWORD: optionalEnv(z.string().min(1)),
+
+    // ─── Observability (ADR-0066 §2, §3) ──────────────────────────────────
+    /**
+     * The bearer token `GET /metrics` requires (ADR-0066 §2).
+     *
+     * Unset means unauthenticated, which the refinement below permits outside
+     * production only: the body is numbers, but the numbers **name every route
+     * the API has**. 32 characters, because this is a bearer credential and
+     * the endpoint is unauthenticated without it.
+     */
+    METRICS_TOKEN: optionalEnv(z.string().min(32)),
+    /**
+     * Turns the error-reporting seam on (ADR-0066 §3). Absent means no
+     * reporter is built and the adapter module is never evaluated.
+     *
+     * The scheme is constrained for the reason `VITE_CUSTOMER_APP_URL` is: a
+     * bare `z.url()` accepts `javascript:`, `data:` and `file://`, and this
+     * value decides where a stack trace is sent.
+     */
+    ERROR_REPORTING_DSN: optionalEnv(z.url({ protocol: /^https?$/ })),
+
+    /**
+     * The shared rate-limit store (ADR-0066 §4). Absent means the in-memory
+     * default, which counts per process — correct for one instance and wrong
+     * for two.
+     *
+     * `redis:` or `rediss:` and nothing else, for the same reason as above:
+     * this string is handed to a client that will happily try to open
+     * whatever it parses.
+     */
+    REDIS_URL: optionalEnv(z.url({ protocol: /^rediss?$/ })),
+
     // Read by the seed runner, not by the API (ADR-0008). They are validated
     // here so a deployment whose seed credentials are unusable fails at
     // startup, and they are deliberately **not** carried into `AppConfig` —
@@ -390,6 +474,31 @@ export const envSchema = z
       path: ["TRUST_PROXY"],
       message:
         'must state the proxy hop in production: a count, a CIDR list, or "loopback". Both constants are refused, and so is anything that resolves to one — "true" makes Express take the left-most X-Forwarded-For entry verbatim, so req.ip becomes attacker-controlled and the login rate limit bypassable (ADR-0020), while "false", "0" and an empty value make every request behind a proxy report the proxy\'s address instead, collapsing the login limiter, the refresh limiter and the audit trail onto one key (ADR-0059 §7). A production deployment with nothing in front of it is the case this refuses to guess at',
+    },
+  )
+  .refine(
+    (env) => env.NODE_ENV !== "production" || env.MAIL_TRANSPORT !== undefined,
+    {
+      path: ["MAIL_TRANSPORT"],
+      message:
+        'must be stated in production: "log" or "smtp" (ADR-0066 §1). An unset value is read as "log" everywhere else, which is what lets a fresh clone and the test run work with no mail server — but a production deployment that inherits it swallows every message it ever sends, silently and with a log line nobody is reading',
+    },
+  )
+  .refine(
+    (env) =>
+      (env.SMTP_USER === undefined) === (env.SMTP_PASSWORD === undefined),
+    {
+      path: ["SMTP_USER"],
+      message:
+        'must be set together with SMTP_PASSWORD, or neither (ADR-0066 §1). nodemailer reads the *presence* of credentials as "authenticate", so half a pair is silently dropped and the API connects to the relay unauthenticated — a mail path whose security properties differ from what the operator configured, with nothing in a response or a log to say so',
+    },
+  )
+  .refine(
+    (env) => env.NODE_ENV !== "production" || env.METRICS_TOKEN !== undefined,
+    {
+      path: ["METRICS_TOKEN"],
+      message:
+        "must be set in production (ADR-0066 §2): GET /metrics is unauthenticated without it, and its body names every route the API has. At least 32 characters — it is a bearer credential",
     },
   );
 

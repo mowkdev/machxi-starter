@@ -37,6 +37,22 @@ const envSchema = z.object({
    * configuration rather than as a member of an enum.
    */
   VITE_I18N_PSEUDO: z.stringbool().default(false),
+  /**
+   * The error-reporting seam (ADR-0066 §3), off unless a build sets it.
+   *
+   * `shared/error-reporting` branches on the absence: no DSN means no reporter
+   * and no adapter chunk downloaded. A DSN is an ingest address rather than a
+   * credential, which is why it may live in a file this app inlines into the
+   * bundle — the note at the top of this schema still holds for everything
+   * else.
+   *
+   * The scheme is constrained for the reason `VITE_CUSTOMER_APP_URL` is: a
+   * bare `z.url()` accepts `javascript:` and `data:`, and this value is handed
+   * to a client that will open whatever it parses.
+   */
+  VITE_ERROR_REPORTING_DSN: z
+    .url({ protocol: z.regexes.httpProtocol })
+    .optional(),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

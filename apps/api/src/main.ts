@@ -4,6 +4,7 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./core/config/index.js";
 import { buildContainer } from "./core/container.js";
 import { createDb, probeDatabase } from "./core/db/index.js";
+import { createRateLimitStore } from "./core/rate-limit/index.js";
 import { startServer } from "./server.js";
 
 /**
@@ -74,7 +75,28 @@ const main = async (): Promise<void> => {
     );
   }
 
-  const container = buildContainer({ config, db, logger });
+  // After the database probe and before the container, because the limiters
+  // are built inside it and a client's `connect` is asynchronous (ADR-0066
+  // §4). With no `REDIS_URL` this resolves immediately to the in-memory store
+  // and logs which one is in force — "every limit counts per process" is a
+  // property of a deployment that an operator should be able to read in the
+  // startup lines rather than infer from the absence of a variable.
+  //
+  // A configured Redis that cannot be reached rejects here, so the process
+  // exits rather than starting with limiters that would fail closed on every
+  // request: a shared store is a deployment's decision, and half of one is
+  // worse than either.
+  const rateLimitStore = await createRateLimitStore({
+    url: config.rateLimit.redisUrl,
+    logger,
+  });
+
+  const container = buildContainer({
+    config,
+    db,
+    logger,
+    rateLimitStore: rateLimitStore.store,
+  });
 
   // Before the port opens, not after: the dummy password hash has to exist by
   // the time the first login can arrive, or that request pays hash + verify
@@ -86,7 +108,13 @@ const main = async (): Promise<void> => {
     app: createApp(container),
     port: config.http.port,
     logger,
-    onShutdown: db.close,
+    // Both, in the order they were opened: in-flight queries finish first,
+    // then the rate-limit client goes. `close` is a no-op when there is no
+    // Redis.
+    onShutdown: async () => {
+      await db.close();
+      await rateLimitStore.close();
+    },
   });
 
   for (const signal of SIGNALS) {

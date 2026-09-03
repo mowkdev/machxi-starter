@@ -1,10 +1,10 @@
 # ADR-0066: Infrastructure seams — mail, metrics, error reporting and shared rate-limit state
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-02
 - Supersedes: [ADR-0020](0020-security-baseline.md) (delta: the rate limiters take a shared store when one is configured; every limit, key and window stands); [ADR-0016](0016-health-checks.md) (delta: `/metrics` joins `/health` as an unversioned operational endpoint); [ADR-0013](0013-error-model.md) (delta: the error handler gains a reporting hook — the response shape does not widen). Additive for mail.
 
-> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; accepted at the head of the step that builds it.
+> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; **accepted 2026-09-03 at the head of `D14.6`**, the step that builds every section — so all three parents moved to `superseded by` at that one head, the [ADR-0061](0061-database-roles-and-append-only-enforcement.md) shape rather than [ADR-0059](0059-ci-containers-and-deployment.md)'s split across two steps. Amendable in place while D14 is `in progress` ([ADR-0025](0025-deliverables-and-adr-windows.md) rule 2); **amended three times in the accepting step**, each labelled at the point it applies: §2 (the library's real name, and the pool gauges deferred with their reason), §3 (no vendor SDK enters the repository) and §Consequences (three dependency groups, not four, and none in the SPAs).
 
 ## Context
 
@@ -37,6 +37,11 @@ Templates are plain functions returning `{ subject, text, html }`. No template e
 
 Mounted in `routes/index.ts` next to `/health` — unversioned, and **before** the `/api/v1` global limiter, for the reason ADR-0016 put health there: an operational endpoint that gets rate-limited takes a working instance out of rotation. `prom-client` in `core/metrics`: default process metrics, HTTP request count and duration labelled by **route pattern** (never the raw path — an id in a label is an unbounded cardinality bug), status class, and the pool's gauges.
 
+**Amended 2026-09-03 (`D14.6`).** Two corrections, both found while building this section.
+
+- **The package is [`@prometheus-io/client`](https://www.npmjs.com/package/@prometheus-io/client), not `prom-client`.** They are the same project: `prom-client@15.1.3` is marked deprecated on npm with the message "prom-client has been replaced by @prometheus-io/client", and the successor ships its own type definitions (so no `@types/*` is needed either). Nothing about the decision changes — a scrapeable text endpoint from a small library — but a starter that installs a package npm itself calls deprecated is a starter that hands every fork a Renovate warning on day one.
+- **The pool gauges are deferred, with the reason.** postgres.js exposes no public pool-state API: the number of open, idle and waiting connections lives in the driver's internals, and a gauge that reads them would be a metric that silently breaks or starts lying on a driver upgrade — which is worse than an absent one. What the question they answered is answered by instead: `/health/ready` reports whether the database is reachable ([ADR-0016](0016-health-checks.md)), the `statement_timeout` and `idle_in_transaction_session_timeout` of [ADR-0061](0061-database-roles-and-append-only-enforcement.md) §3 bound the pathologies, and `pg_stat_activity` filtered by `application_name` — which `DB_APPLICATION_NAME` exists to make possible — shows the pool from the side that actually knows. The seam is named here so the day postgres.js exposes one, this is where it goes.
+
 Access: a bearer token in `METRICS_TOKEN` when set, and unauthenticated only when it is unset outside production — production refuses an unset token at startup, in the shape [ADR-0004](0004-configuration-and-environment.md)'s other production refinements already use. The body is numbers, but the numbers name every route the API has.
 
 Tracing is deferred with its seam named: OpenTelemetry would instrument the same middleware and the same pool, and it earns its dependency the day there is a collector to send spans to.
@@ -47,7 +52,17 @@ In the API: an optional reporter behind `ERROR_REPORTING_DSN`, hooked into the e
 
 In both SPAs: the same seam behind `VITE_ERROR_REPORTING_DSN`, read by each app's single `import.meta.env` reader (`apps/{admin,customer}/src/shared/config/index.ts`, where a zod schema parses it once and hands out a frozen object) and reaching the top-level error boundary.
 
-No DSN, no reporter and **no dependency loaded**: the SDK arrives through a dynamic import inside the branch, so a deployment that reports nothing does not ship or execute a reporting client. The response envelope does not change in any of this — that is the whole of the delta on [ADR-0013](0013-error-model.md).
+No DSN, no reporter and **no dependency loaded**: the adapter arrives through a dynamic import inside the branch, so a deployment that reports nothing does not execute a reporting client. The response envelope does not change in any of this — that is the whole of the delta on [ADR-0013](0013-error-model.md).
+
+**Amended 2026-09-03 (`D14.6`): no vendor SDK enters this repository.** The paragraph above was written as though the dynamic import named `@sentry/node`; it names a **local adapter module** instead — `apps/api/src/core/reporting/log-error-reporter.ts` and `apps/{admin,customer}/src/shared/error-reporting/reporter.ts` — and those three files are the whole of what a fork replaces. Three reasons, and they are the same three §Alternatives gives for shipping a mail *port* rather than a mail *flow*:
+
+1. **A starter must not choose its forks' vendor.** Picking Sentry here is exactly the coupling §1 refuses for SMTP, on a decision that is even more a matter of taste and contract.
+2. **It would not be inert.** §Consequences claims three of the four new dependencies do nothing without configuration; a Node error SDK is not one of them — importing `@sentry/node` installs OpenTelemetry instrumentation on the process, which is a cost paid by every deployment that reports nothing.
+3. **The browser half has a budget.** [ADR-0052](0052-grid-and-admin-followups.md)'s `size-budget.json` prices every byte in both SPAs, and a browser SDK is a large one to carry for a feature most forks will not turn on.
+
+So the API ships a **log adapter** — one structured `error` line per 5xx carrying exactly the fields enumerated above, tagged `reported`, which is a real behaviour a deployment with a DSN and no SDK gets — and each SPA ships an adapter that does nothing but is the documented place three lines of `init` and `captureException` go. The seam's testable properties are unchanged and are what the step asserts: a 5xx reaches the reporter, a 4xx does not, the body never does, and no DSN means the adapter module is never evaluated.
+
+**Also amended: the browser half's consumer arrives one step later.** The SPAs have no top-level error boundary yet — it is part of `@repo/app-kit` and lands at `D14.8` ([ADR-0062](0062-frontend-build-and-shared-composition.md) §1). `D14.6` ships the configuration, the seam and its tests in both apps; `D14.8` is where the boundary calls it.
 
 ### 4. Rate limiting gets a shared store when there is one
 
@@ -59,9 +74,12 @@ Redis is the first shared-state seam in this repository, and it is deliberately 
 
 - D15's invitations, and every credential flow after them, have a mail port to build on instead of a decision to make first.
 - An operator can answer error-rate and saturation questions with a scrape, and can be told about a 5xx without reading logs — both optional, both off in a default clone.
-- Four new dependency groups enter `apps/api` (nodemailer, prom-client, a reporting SDK, a Redis client) and one enters each SPA. Three of the four are inert without configuration; `prom-client` is always loaded, because the registry is the endpoint.
+- **Amended 2026-09-03 (`D14.6`): three new dependency groups enter `apps/api`, and none enters either SPA.** They are `nodemailer` (with `@types/nodemailer`, which that package does not ship), `@prometheus-io/client` (see §2's amendment on the name), and the Redis pair `ioredis` + `rate-limit-redis`. The fourth — a reporting SDK — is not added, for the reasons in §3's amendment; the SPAs gain a configuration variable and a seam module and no package at all, so both bundle budgets are untouched. Two of the three are inert without configuration: nodemailer is constructed only when `MAIL_TRANSPORT=smtp` and ioredis only when `REDIS_URL` is set. `@prometheus-io/client` is always loaded, because the registry is the endpoint.
+  - `ioredis` rather than the official `@redis/client`, and the reason is mechanical rather than a preference: `@redis/client` declares an optional peer on `@opentelemetry/api`, which `drizzle-orm` also declares — so installing it made pnpm resolve **two** `drizzle-orm` instances, one per peer set, and `apps/api` stopped type-checking against `@repo/db`'s tables. `ioredis` has no peer dependencies and ships its own types.
 - More configuration surface: every variable above is a three-place change ([ADR-0004](0004-configuration-and-environment.md)) and the production refinements are what keep the defaults from shipping.
 - Multi-instance deployment stops multiplying ADR-0020's limits, which removes the caveat that record's §Consequences has carried since D1.
+- **Added 2026-09-03 (`D14.6`): a configured Redis becomes a hard availability dependency of the whole API, not of the limiters alone.** §4's "fails closed" is the decision, and this is its blast radius written down: the global limiter is the first thing every `/api/v1` request meets, so a Redis outage refuses all of them, and the client is configured with no offline queue precisely so a command rejects rather than holding a request open until Redis returns. A deployment choosing `REDIS_URL` is choosing that trade — correct limits over availability under a dependency failure — and should give the store the same monitoring as Postgres. The alternative, failing open, would mean an attacker who can reach the store can remove the login limit, which is not a trade this record is willing to make silently.
+- **Added at the same head: each limiter gets its own key prefix.** `rate-limit-redis` keys on `prefix + key`, and three of the four limiters key on the address alone, so one store instance shared between them merges the global and refresh counters — five ordinary requests would spend an address's refresh budget, and the refresh limiter's `skipSuccessfulRequests` would decrement the global one. `express-rate-limit` detects the reuse and only logs it, so the collision would have been silent and visible only on the Redis path. The store is therefore built per limiter, named at the composition root, over one connection.
 - Still open, and deliberately: tracing, log shipping, a metrics dashboard, and the mail flows themselves.
 
 ## Alternatives considered

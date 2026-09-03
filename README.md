@@ -29,10 +29,11 @@ pnpm install
 cp .env.example .env         # every variable is documented there (ADR-0004)
 cp apps/admin/.env.example apps/admin/.env   # each browser app reads its own (ADR-0033)
 cp apps/customer/.env.example apps/customer/.env
-pnpm docker:up               # local Postgres, waits until healthy (ADR-0007)
-                             # first start also creates the machxi_app and
-                             # machxi_owner roles (ADR-0061); a data volume
-                             # from before that needs `pnpm docker:reset`
+pnpm docker:up               # local Postgres + Mailpit, waits until both are
+                             # healthy (ADR-0007, ADR-0066); first start also
+                             # creates the machxi_app and machxi_owner roles
+                             # (ADR-0061); a data volume from before that needs
+                             # `pnpm docker:reset`
 pnpm db:setup                # migrations + super admin seed (ADR-0008)
 pnpm db:seed -- --dev        # local fixture accounts (optional, but the smoke test needs them)
 pnpm dev --filter api        # http://localhost:4000
@@ -210,6 +211,9 @@ bundler, so there is no per-package build step (ADR-0002).
   browser tier nightly and on demand, never on push.
 - `docker/local/` — the compose setup; see [`docker/README.md`](docker/README.md)
   for the scripts, the two databases (`machxi` and `machxi_test`) and troubleshooting.
+  Since `D14.6` it also runs **Mailpit**: the API's `MAIL_TRANSPORT` defaults to
+  `log` and delivers nothing, and switching it to `smtp` puts the message in an
+  inbox at <http://localhost:8025> (ADR-0066 §1).
 - `docker/prod/` — the reference deployment (ADR-0059 §6): `migrate` (one-shot,
   under a `pg_advisory_lock`), `api`, `admin` and `customer`, with Postgres and
   Redis external. The images are `apps/*/Dockerfile`, and

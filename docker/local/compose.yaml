@@ -1,7 +1,8 @@
 # Local development infrastructure (ADR-0007).
 #
-# Only Postgres runs in Docker for the first deliverable — the api, admin and
-# web apps run on the host so hot reload and the debugger stay native.
+# Postgres and, since `D14.6`, Mailpit — the apps themselves run on the host so
+# hot reload and the debugger stay native. (`docker/prod/compose.yaml` is the
+# other, unrelated file: the reference *deployment*, ADR-0059 §6.)
 #
 # Credentials come from the ROOT .env (ADR-0004), which is also what the API and
 # the drizzle tooling read, so there is one source of truth. Always invoke this
@@ -34,12 +35,50 @@ services:
       retries: 10
     networks: [machxi]
 
+  # The local mail server (ADR-0066 §1).
+  #
+  # It is **not** what the API talks to by default: `MAIL_TRANSPORT` defaults
+  # to `log`, so a fresh clone runs with no mail server at all and this
+  # container is only started because it is cheap. A developer who wants to
+  # *read* a message sets `MAIL_TRANSPORT=smtp` — the `SMTP_*` defaults are
+  # this service's — and opens http://localhost:8025.
+  #
+  # No volume: a development inbox is scratch data by definition, and keeping
+  # it across a `docker compose down` would only be a thing to explain.
+  mailpit:
+    image: axllent/mailpit:v1.31.0
+    container_name: machxi-mailpit
+    restart: unless-stopped
+    environment:
+      # A bounded ring buffer, so a loop that sends ten thousand messages
+      # during a test costs a fixed amount of memory.
+      MP_MAX_MESSAGES: 500
+      # Accept anything as credentials over plaintext. This is a development
+      # relay on a loopback port; the point is that `SMTP_USER`/`SMTP_PASSWORD`
+      # can be set or left out and either works.
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      # SMTP, and the web inbox. Both are host ports, so both are overridable
+      # for the same reason POSTGRES_PORT is.
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      # The image is `scratch`-based and has no shell, so this is the exec form
+      # against the binary's own readiness endpoint — `pnpm docker:up` passes
+      # `--wait`, which is what makes "Mailpit healthy" a checkable claim.
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [machxi]
+
 volumes:
   # Named, so `down` keeps the data and `down -v` (pnpm docker:reset) is the
   # single documented way to wipe it.
   postgres-data:
 
 networks:
-  # Named, so future services (api container, mailhog, redis) can join by name.
+  # Named, so future services (an api container, redis) can join by name.
   machxi:
     name: machxi-local

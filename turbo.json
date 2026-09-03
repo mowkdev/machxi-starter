@@ -24,7 +24,10 @@
         "DATABASE_URL_OWNER",
         "DATABASE_URL_TEST",
         "DATABASE_URL_TEST_OWNER",
-        "DB_*"
+        "DB_*",
+        "REDIS_URL",
+        "ERROR_REPORTING_DSN",
+        "METRICS_TOKEN"
       ]
     },
     "test:unit": {
@@ -53,7 +56,10 @@
         "DATABASE_URL_OWNER",
         "DATABASE_URL_TEST",
         "DATABASE_URL_TEST_OWNER",
-        "DB_*"
+        "DB_*",
+        "REDIS_URL",
+        "ERROR_REPORTING_DSN",
+        "METRICS_TOKEN"
       ]
     },
     "test:watch": {

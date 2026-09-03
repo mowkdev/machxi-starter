@@ -1,7 +1,9 @@
 # ADR-0013: Error model and HTTP status mapping
 
-- Status: accepted
+- Status: superseded by [ADR-0066](0066-infrastructure-seams.md) (delta: the error handler gains a reporting hook on 5xx; the response shape does not widen)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-03 by [ADR-0066](0066-infrastructure-seams.md)**, accepted at the head of `D14.6`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and the smallest one in this repository: the handler this record makes the single writer of an error body gains **one optional side effect** — a reporter, off unless `ERROR_REPORTING_DSN` is set, called on `status >= 500` only and given the request id, the route pattern, the status and the principal's kind and id, never the body. **Everything else stands and is in force**: the one branded `AppError`, the factories, the status table, `error.debug` in development alone, and the rule that nothing outside `core/http` writes an error body. The envelope is byte-for-byte what it was — a client cannot tell whether a deployment reports.
 
 ## Context
 

@@ -80,11 +80,29 @@ services:
       # (ADR-0061). The owner's URL is not injected here — the API has no use
       # for it and must not be able to reach it.
       - DATABASE_URL=${DATABASE_URL}
-      # The seam ADR-0066 fills at `D14.6` — the shared rate-limit store.
-      # Nothing reads it yet; it is injected here because the resource is
-      # external for the same reason Postgres is, and the deployment that has
-      # one should not have to change shape to use it.
+      # The shared rate-limit store (ADR-0066 §4), external for the same
+      # reason Postgres is. A bare key, so an unset variable stays unset:
+      # absent means the in-memory store, which is correct for one instance
+      # and multiplies every limit by N for N of them.
       - REDIS_URL
+      # The mail transport (ADR-0066 §1). **Bare keys, no `:-` fallback**: the
+      # config schema refuses an unstated transport in production precisely so
+      # a deployment cannot inherit "swallow every message", and a default
+      # written here would supply the inherited value itself and put the
+      # refinement back to sleep. `docker/prod/.env.example` states `log`,
+      # where an operator reads it. (`D14.6`'s `security-reviewer`.)
+      - MAIL_TRANSPORT
+      - MAIL_FROM
+      - SMTP_HOST
+      - SMTP_PORT
+      - SMTP_SECURE
+      - SMTP_USER
+      - SMTP_PASSWORD
+      # Required in production (ADR-0066 §2): GET /metrics is unauthenticated
+      # without it, and its body names every route the API has.
+      - METRICS_TOKEN=${METRICS_TOKEN}
+      # Optional (ADR-0066 §3). Absent means no reporter is built.
+      - ERROR_REPORTING_DSN
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
       # The exact browser origins the two SPAs answer on. `*` is refused here
       # (ADR-0020), and an origin that never matches is a startup failure

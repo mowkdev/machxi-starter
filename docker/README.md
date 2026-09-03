@@ -4,10 +4,10 @@ Container definitions live here, one directory per setup (ADR-0007). Everything
 is driven from the repo root through `pnpm` scripts, so the compose files always
 get the root `.env` as their variable source.
 
-| Setup                | Path                           | Contents                                                                                             |
-| -------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Local development    | [`local/`](local/compose.yaml) | Postgres 16 for the API, the drizzle tooling and the integration tests.                              |
-| Reference deployment | [`prod/`](prod/compose.yaml)   | `migrate` (one-shot), `api`, `admin`, `customer`. Postgres and Redis are **external** (ADR-0059 §6). |
+| Setup                | Path                           | Contents                                                                                                             |
+| -------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Local development    | [`local/`](local/compose.yaml) | Postgres 16 for the API, the drizzle tooling and the integration tests, and Mailpit for the mail port (ADR-0066 §1). |
+| Reference deployment | [`prod/`](prod/compose.yaml)   | `migrate` (one-shot), `api`, `admin`, `customer`. Postgres and Redis are **external** (ADR-0059 §6).                 |
 
 The two are siblings and neither is the other's environment: `local/` runs the
 one dependency a developer needs so the apps themselves stay on the host with
@@ -47,7 +47,7 @@ connections.
 | `pnpm docker:up`    | Starts the stack detached and waits for health.                                                      |
 | `pnpm docker:down`  | Stops and removes the containers. **Data survives.**                                                 |
 | `pnpm docker:reset` | `down -v` (drops the volume, so both databases and all data) then `up`. Follow with `pnpm db:setup`. |
-| `pnpm docker:logs`  | Tails the Postgres log.                                                                              |
+| `pnpm docker:logs`  | Tails every service's log.                                                                           |
 
 Each is `docker compose --env-file .env -f docker/local/compose.yaml …`. Run
 those flags yourself if you need a subcommand the scripts do not wrap, e.g.
@@ -58,8 +58,15 @@ docker compose --env-file .env -f docker/local/compose.yaml ps
 
 ### What you get
 
-- **Container** `machxi-postgres`, **project** `machxi-local`, **network**
-  `machxi-local` (named, so later services join it by name).
+- **Containers** `machxi-postgres` and `machxi-mailpit`, **project**
+  `machxi-local`, **network** `machxi-local` (named, so later services join it
+  by name).
+- **A local inbox** at <http://localhost:8025>, and SMTP on 1025. The API does
+  **not** use it by default: `MAIL_TRANSPORT` defaults to `log`, which writes a
+  line per message and delivers nothing (ADR-0066 §1). Set `MAIL_TRANSPORT=smtp`
+  to read messages here — the `SMTP_*` defaults already point at this service,
+  which accepts any credentials or none. Mailpit has no volume, so the inbox is
+  empty after every `docker:down`.
 - **Volume** `machxi-local_postgres-data` — data survives `down`; `docker:reset`
   is the only documented way to wipe it.
 - **Two databases**: `machxi` (dev) and `machxi_test`. The test database is

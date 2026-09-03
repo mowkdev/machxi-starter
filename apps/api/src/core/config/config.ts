@@ -70,6 +70,37 @@ export interface AppConfig {
     readonly refreshMax: number;
     /** Per window, keyed on the minting staff member's id (ADR-0057 §1). */
     readonly impersonationMax: number;
+    /**
+     * Where the counters live (ADR-0066 §4). `undefined` is the in-memory
+     * store, which counts per process; a URL makes one budget out of N
+     * instances. None of the limits above change with it.
+     */
+    readonly redisUrl: string | undefined;
+  };
+  /** The mail port's transport and its settings (ADR-0066 §1). */
+  readonly mail: {
+    readonly transport: "log" | "smtp";
+    /** The envelope sender; a deployment's fact, never a caller's. */
+    readonly from: string;
+    /** Read only when `transport` is `"smtp"`; defaults are Mailpit's. */
+    readonly smtp: {
+      readonly host: string;
+      readonly port: number;
+      readonly secure: boolean;
+      readonly user: string | undefined;
+      readonly password: string | undefined;
+    };
+  };
+  readonly metrics: {
+    /**
+     * `undefined` leaves `GET /metrics` unauthenticated, which the schema
+     * permits outside production only (ADR-0066 §2).
+     */
+    readonly token: string | undefined;
+  };
+  readonly reporting: {
+    /** `undefined` builds no reporter and evaluates no adapter (ADR-0066 §3). */
+    readonly dsn: string | undefined;
   };
   readonly features: {
     readonly userRegistration: boolean;
@@ -129,6 +160,27 @@ export const toAppConfig = (env: Env): AppConfig =>
       loginMax: env.RATE_LIMIT_LOGIN_MAX,
       refreshMax: env.RATE_LIMIT_REFRESH_MAX,
       impersonationMax: env.RATE_LIMIT_IMPERSONATION_MAX,
+      redisUrl: env.REDIS_URL,
+    }),
+    mail: Object.freeze({
+      // The one place the "unstated means log" reading lives (ADR-0066 §1).
+      // The schema keeps `MAIL_TRANSPORT` optional so that production can be
+      // made to state it; every other environment gets the default here.
+      transport: env.MAIL_TRANSPORT ?? "log",
+      from: env.MAIL_FROM,
+      smtp: Object.freeze({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        secure: env.SMTP_SECURE,
+        user: env.SMTP_USER,
+        password: env.SMTP_PASSWORD,
+      }),
+    }),
+    metrics: Object.freeze({
+      token: env.METRICS_TOKEN,
+    }),
+    reporting: Object.freeze({
+      dsn: env.ERROR_REPORTING_DSN,
     }),
     features: Object.freeze({
       userRegistration: env.FEATURE_USER_REGISTRATION,
