@@ -98,7 +98,7 @@ describe("the appearance control", () => {
     // The device cache is written whether or not there is an account: it is
     // what `main.tsx` reads before React exists, so the next first paint is
     // right even for someone who has not signed in yet.
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("dark");
+    expect(window.localStorage.getItem("machxi.user.theme")).toBe("dark");
     expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Light" })).not.toBeChecked();
   });
@@ -112,7 +112,7 @@ describe("the appearance control", () => {
     // The harness's `matchMedia` answers "not dark" for everything, so this is
     // the resolution happening rather than the value being stored as a class.
     expect(document.documentElement).not.toHaveClass("dark");
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("system");
+    expect(window.localStorage.getItem("machxi.user.theme")).toBe("system");
   });
 });
 

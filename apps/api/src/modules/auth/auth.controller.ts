@@ -4,11 +4,7 @@ import type { Request, Response } from "express";
 import { validation } from "../../core/errors/index.js";
 import { respond } from "../../core/http/index.js";
 import type { ValidatedRequest } from "../../core/middleware/index.js";
-import {
-  clearAuthCookies,
-  readRefreshCookie,
-  ensureCsrfCookie,
-} from "./auth.cookies.js";
+import type { AuthCookies } from "./auth.cookies.js";
 import type { IssuedAuthResource } from "./auth.mapper.js";
 import type { AuthService } from "./auth.service.js";
 import { applyAuthTransport } from "./auth.transport.js";
@@ -36,6 +32,11 @@ import type {
 export interface AuthControllerDeps {
   readonly service: AuthService;
   /**
+   * This deployment's cookie writers, derived from `APP_ID` and built once in
+   * the container (ADR-0064 §1).
+   */
+  readonly cookies: AuthCookies;
+  /**
    * Which segment this controller answers on. It decides the cookie `Path`,
    * so that a browser signed into both populations never sends one
    * population's refresh token to the other's endpoints (ADR-0029).
@@ -47,6 +48,7 @@ export interface AuthControllerDeps {
 
 export const createAuthController = ({
   service,
+  cookies,
   population,
   refreshTtlSec,
 }: AuthControllerDeps) => {
@@ -67,6 +69,7 @@ export const createAuthController = ({
     cookieDriven = false,
   ): AuthResource =>
     applyAuthTransport(req, res, resource, {
+      cookies,
       population,
       maxAgeSec: refreshTtlSec,
       cookieDriven,
@@ -90,7 +93,12 @@ export const createAuthController = ({
      */
     csrf: (req: Request, res: Response): void => {
       respond.ok<CsrfResource>(res, {
-        csrfToken: ensureCsrfCookie(req, res, population, refreshTtlSec),
+        csrfToken: cookies.ensureCsrfCookie(
+          req,
+          res,
+          population,
+          refreshTtlSec,
+        ),
       });
     },
 
@@ -116,7 +124,7 @@ export const createAuthController = ({
       req: ValidatedRequest<typeof refreshSchema>,
       res: Response,
     ): Promise<void> => {
-      const fromCookie = readRefreshCookie(req);
+      const fromCookie = cookies.readRefreshCookie(req);
       const refreshToken = req.valid.body.refreshToken ?? fromCookie;
       const cookieDriven =
         req.valid.body.refreshToken === undefined && fromCookie !== undefined;
@@ -157,13 +165,13 @@ export const createAuthController = ({
      */
     logout: async (req: Request, res: Response): Promise<void> => {
       await service.logout(req.ctx);
-      clearAuthCookies(req, res, population);
+      cookies.clearAuthCookies(req, res, population);
       respond.noContent(res);
     },
 
     logoutAll: async (req: Request, res: Response): Promise<void> => {
       await service.logoutAll(req.ctx);
-      clearAuthCookies(req, res, population);
+      cookies.clearAuthCookies(req, res, population);
       respond.noContent(res);
     },
 

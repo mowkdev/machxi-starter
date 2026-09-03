@@ -10,6 +10,10 @@ import {
   DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS,
   DEFAULT_STATEMENT_TIMEOUT_MS,
 } from "../db/index.js";
+// The brand default is taken from the module that builds the names out of it
+// (ADR-0064 §1), for the reason the two pool timeouts above are taken from
+// `createDb`: a default that exists in two places will one day exist in one.
+import { DEFAULT_APP_ID } from "../http/cookies.js";
 import { parseDurationSeconds } from "./duration.js";
 import { isProductionTrustProxy } from "./trust-proxy.js";
 
@@ -204,6 +208,37 @@ export const envSchema = z
     NODE_ENV: z.enum(NODE_ENVS),
     PORT: z.coerce.number().int().positive().max(65535).default(4000),
     LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
+    /**
+     * The brand identifier every derived name reads (ADR-0064 §1).
+     *
+     * One variable, four names: the refresh cookie, both per-population CSRF
+     * cookies, the legacy CSRF cookie and the JWT audience. It defaults to
+     * `machxi`, so a deployment that never sets it gets byte-identical cookies
+     * and tokens to the ones this repository shipped before the variable
+     * existed — which is what makes the change reviewable.
+     *
+     * **A fork-day value, not a live knob** (ADR-0064 §2): changing it
+     * invalidates every refresh and CSRF cookie in every browser and orphans
+     * every device preference. There is no dual-read and no migration window,
+     * and the record says so rather than leaving an operator to discover it.
+     *
+     * The pattern is the cookie-name grammar narrowed to what a brand is.
+     * RFC 6265 §4.1.1 forbids separators, whitespace and control characters in
+     * a cookie name, and a value that broke it would be rejected by the
+     * browser rather than by us — a deployment whose sessions simply never
+     * persist. Lowercase because a cookie name is case-sensitive: allowing
+     * `Acme` and `acme` would be two brands that read as one. The leading and
+     * trailing characters are constrained so a value cannot start or end in
+     * `-`, which reads as a truncation in `__Secure-${appId}.refresh`.
+     */
+    APP_ID: z
+      .string()
+      .regex(
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+        "must be lowercase letters, digits and hyphens, starting and ending with a letter or digit",
+      )
+      .max(32)
+      .default(DEFAULT_APP_ID),
     APP_VERSION: z.string().default("0.0.0"),
     GIT_SHA: z.string().optional(),
     // Express `trust proxy`: 'false' | 'true' | a hop count | a CIDR list.

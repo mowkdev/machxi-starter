@@ -84,10 +84,13 @@ export const PreferenceStorageProvider = PreferenceStorageContext.Provider;
  */
 export const useGridPreferences = ({
   gridId,
+  keyPrefix,
   movable,
   storage,
 }: {
   readonly gridId: string | undefined;
+  /** The app's device-key prefix, `${appId}.${segment}` (ADR-0064 §1). */
+  readonly keyPrefix: string;
   /** The movable column ids, in config declaration order. */
   readonly movable: readonly string[];
   /** The adapter seam, exposed so a caller can supply another implementation. */
@@ -109,6 +112,7 @@ export const useGridPreferences = ({
          * and cannot collide with another grid's.
          */
         gridId: gridId ?? "unnamed",
+        keyPrefix,
         /*
          * No id, no persistence — unconditionally, and the supplied adapter is
          * ignored rather than pointed at the placeholder key. A caller that
@@ -124,7 +128,7 @@ export const useGridPreferences = ({
     // `movableKey` stands in for `movable`, whose identity changes every render
     // while its contents do not; see the note on SEPARATOR above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gridId, movableKey, storage, provided],
+    [gridId, keyPrefix, movableKey, storage, provided],
   );
 
   return [useSyncExternalStore(store.subscribe, store.get), store];

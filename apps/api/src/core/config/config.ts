@@ -21,6 +21,11 @@ export interface AppConfig {
   readonly isDevelopment: boolean;
   readonly isTest: boolean;
   readonly app: {
+    /**
+     * The brand every derived name reads (ADR-0064 §1): both cookie families
+     * and the JWT audience. A fork-day value, defaulting to `machxi`.
+     */
+    readonly id: string;
     readonly version: string;
     /** Absent unless the build injected `GIT_SHA`. */
     readonly commit?: string;
@@ -123,6 +128,7 @@ export const toAppConfig = (env: Env): AppConfig =>
     isDevelopment: env.NODE_ENV === "development",
     isTest: env.NODE_ENV === "test",
     app: Object.freeze({
+      id: env.APP_ID,
       version: env.APP_VERSION,
       ...(env.GIT_SHA === undefined ? {} : { commit: env.GIT_SHA }),
     }),

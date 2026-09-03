@@ -3,6 +3,7 @@ import {
   type AppGridProps as AppGridBaseProps,
 } from "@repo/grid";
 
+import { DEVICE_KEY_PREFIX } from "@/shared/config";
 import { useGridDensityValue } from "@/shared/density";
 import { QueryError } from "@/shared/ui";
 
@@ -31,6 +32,12 @@ import { QueryError } from "@/shared/ui";
  * worked on one screen. Reading it once at the door is the same move the error
  * panel makes and leaves the two grid pages untouched.
  *
+ * **The device-key prefix is bound here too** (`D14.7`, ADR-0064 §1). The
+ * package takes `${appId}.${segment}` as a parameter because it may hold
+ * neither a brand nor an app name; reading it once at the door is the same
+ * move the error panel and the density make, and leaves the two grid pages and
+ * every suite that mounts one untouched.
+ *
  * It is the **value** hook, not the view: a table with no provider above it
  * renders comfortable rather than throwing, because a table is allowed to
  * exist without an account. The control that *writes* the mode is the one
@@ -39,7 +46,7 @@ import { QueryError } from "@/shared/ui";
 
 export type AppGridProps<TRow> = Omit<
   AppGridBaseProps<TRow>,
-  "renderError" | "density"
+  "renderError" | "density" | "keyPrefix"
 >;
 
 export const AppGrid = <TRow,>(props: AppGridProps<TRow>) => {
@@ -48,6 +55,7 @@ export const AppGrid = <TRow,>(props: AppGridProps<TRow>) => {
   return (
     <AppGridBase
       {...props}
+      keyPrefix={DEVICE_KEY_PREFIX}
       density={density}
       renderError={({ error, onRetry }) => (
         <QueryError error={error} onRetry={onRetry} />

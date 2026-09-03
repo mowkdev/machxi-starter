@@ -45,6 +45,7 @@ export const createAdminRouter = (container: Container): Router => {
     "/auth",
     createAuthRouter({
       controller: container.controllers.staffAuth,
+      cookieNames: container.cookieNames,
       authenticate: container.authenticate,
       population: "staff",
       loginRateLimiter: container.rateLimiters.login,

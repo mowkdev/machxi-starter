@@ -51,12 +51,9 @@ export {
   toUserPrincipalResource,
 } from "./auth.mapper.js";
 export {
-  clearAuthCookies,
-  ensureCsrfCookie,
-  readRefreshCookie,
+  createAuthCookies,
   readTransport,
-  setAuthCookies,
-  setCsrfCookie,
+  type AuthCookies,
   type AuthTransport,
   type RefreshCookieInput,
 } from "./auth.cookies.js";

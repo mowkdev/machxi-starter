@@ -19,6 +19,8 @@ import { createRegister } from "../register";
 const instanceWith = (en: Record<string, object>) =>
   createI18n({
     resources: { en },
+    // A prefix an app would supply (ADR-0064 §1); nothing here reads it back.
+    storageKeyPrefix: "test.admin",
     namespaces: Object.keys(en),
     locale: "en",
   });

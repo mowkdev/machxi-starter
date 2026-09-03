@@ -1,3 +1,13 @@
+import type { Locale } from "@repo/contracts";
+import {
+  localeStorageKey,
+  preferredLocale as preferredLocaleFor,
+  readStoredLocale as readStoredLocaleFor,
+  writeStoredLocale as writeStoredLocaleFor,
+} from "@repo/i18n";
+
+import { DEVICE_KEY_PREFIX } from "@/shared/config";
+
 /**
  * The door onto `@repo/i18n`, plus the parts of the seam this app owns
  * (`D9.2`, ADR-0051).
@@ -15,7 +25,6 @@
  */
 
 export {
-  LOCALE_STORAGE_KEY,
   LocalePublisherProvider,
   PSEUDO_POST_PROCESSOR,
   PseudoNoticeProvider,
@@ -26,14 +35,11 @@ export {
   dateTimeFormat,
   dynamicKey,
   navigatorLocales,
-  preferredLocale,
-  readStoredLocale,
   resolveInitialLocale,
   setIntlLocale,
   useLocale,
   useKeyT,
   usePseudoNotice,
-  writeStoredLocale,
   type DeferredTranslate,
   type I18n,
   type LocalePublisher,
@@ -72,3 +78,24 @@ export { createDeferredTranslate, englishTranslation } from "./keys";
  * library changes there is one import to rewrite (ADR-0046 §13).
  */
 export { useT } from "@repo/i18n";
+
+/*
+ * The locale's device key, bound to this app's prefix (ADR-0064 §1).
+ *
+ * `@repo/i18n` takes the prefix as a parameter and holds no brand; the door
+ * binds it, so every slice above keeps the call it already wrote and a fork's
+ * brand never reaches a package. `machxi.admin.locale` and `machxi.user.locale`
+ * are what the two apps write by default — D12's finding 1, closed by the
+ * mechanism rather than by a special case.
+ */
+export const LOCALE_STORAGE_KEY: string = localeStorageKey(DEVICE_KEY_PREFIX);
+
+export const readStoredLocale = (): Locale | null =>
+  readStoredLocaleFor(DEVICE_KEY_PREFIX);
+
+export const writeStoredLocale = (locale: Locale): void => {
+  writeStoredLocaleFor(DEVICE_KEY_PREFIX, locale);
+};
+
+export const preferredLocale = (settings: Locale | null = null): Locale =>
+  preferredLocaleFor(DEVICE_KEY_PREFIX, settings);

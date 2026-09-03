@@ -39,6 +39,8 @@ const common = {
 export const gridI18n = () =>
   createI18n({
     resources: { en: { grid: en, common } },
+    // A prefix an app would supply (ADR-0064 §1); nothing here reads it back.
+    storageKeyPrefix: "test.admin",
     namespaces: ["grid", "common"],
     locale: "en",
   });

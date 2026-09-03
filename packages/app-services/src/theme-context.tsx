@@ -51,6 +51,15 @@ const ThemeContext = createContext<ThemeView | null>(null);
 export interface ThemeProviderProps {
   readonly children: ReactNode;
   /**
+   * The device-key prefix this app owns, `${appId}.${segment}`
+   * (ADR-0064 §1).
+   *
+   * Required, and supplied by the app's `shared/theme` door rather than by
+   * each mount: the door is where a fork's brand lives, and a prop each screen
+   * remembered to pass would be a key that differed by screen.
+   */
+  readonly storageKeyPrefix: string;
+  /**
    * The account's theme, once `GET /settings` has answered. `undefined` while
    * the app is anonymous or the read failed — which is the local-only app this
    * panel was before ADR-0045, unchanged.
@@ -65,10 +74,13 @@ export interface ThemeProviderProps {
 
 export const ThemeProvider = ({
   children,
+  storageKeyPrefix,
   adopted,
   publish,
 }: ThemeProviderProps) => {
-  const [theme, setThemeState] = useState<Theme>(preferredTheme);
+  const [theme, setThemeState] = useState<Theme>(() =>
+    preferredTheme(storageKeyPrefix),
+  );
 
   /*
    * The adoption latch. Without it, the effect would re-apply the server's
@@ -83,8 +95,8 @@ export const ThemeProvider = ({
 
     lastAdopted.current = adopted;
     setThemeState(adopted);
-    applyTheme(adopted);
-  }, [adopted]);
+    applyTheme(storageKeyPrefix, adopted);
+  }, [adopted, storageKeyPrefix]);
 
   /*
    * `"system"` is a live deferral, not a snapshot: an operator who has chosen
@@ -97,7 +109,7 @@ export const ThemeProvider = ({
 
     const query = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
-      applyTheme("system");
+      applyTheme(storageKeyPrefix, "system");
     };
 
     query.addEventListener("change", onChange);
@@ -105,17 +117,17 @@ export const ThemeProvider = ({
     return () => {
       query.removeEventListener("change", onChange);
     };
-  }, [theme]);
+  }, [theme, storageKeyPrefix]);
 
   const setTheme = useCallback(
     (next: Theme) => {
       setThemeState(next);
       // The cache first and unconditionally: it is what the next first paint
       // reads, and it must be right whether or not there is an account.
-      applyTheme(next);
+      applyTheme(storageKeyPrefix, next);
       publish?.(next);
     },
-    [publish],
+    [publish, storageKeyPrefix],
   );
 
   const value = useMemo<ThemeView>(

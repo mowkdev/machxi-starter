@@ -1,9 +1,11 @@
 # ADR-0018: Custom authentication — DB sessions, JWT access token, rotating refresh token
 
-- Status: superseded by [ADR-0057](0057-impersonation-sessions.md) (delta: impersonated sessions — a second mint path beside login, `sessions.impersonated_by_staff_id`, and rotation without the sliding extension)
+- Status: superseded by [ADR-0057](0057-impersonation-sessions.md) and [ADR-0064](0064-brand-seams.md) (deltas: impersonated sessions — a second mint path beside login, `sessions.impersonated_by_staff_id`, and rotation without the sliding extension; and the `aud` claim's leading word comes from `APP_ID`)
 - Date: 2026-08-17
 
 > **Superseded in part 2026-09-01 by [ADR-0057](0057-impersonation-sessions.md)**, accepted at the head of `D13.1`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): 0057 adds a **second way to mint a `user` session** (an admin-guarded mint, a single-use handoff token, and an exchange endpoint), an **actor column** on `sessions` recording the staff id that minted it, and — for those sessions only — a **fixed end that rotation does not extend**, with the access token's `exp` capped at it. **Everything this record decides about ordinary sessions stands and is in force**: the token model and claims, the 30-day sliding refresh, rotation and reuse detection with its grace window, the session table and its revocation reasons, `authenticate`'s hot path, the transport delegation, and the cleanup sweep — which grows the handoff rows' deletion rather than changing. Read 0057 for impersonation and this record for everything else.
+>
+> **Superseded in part a second time 2026-09-03, at the head of `D14.7`.** [ADR-0064](0064-brand-seams.md) makes the audience `` `${appId}-${population}` ``, from the API's `APP_ID`, which defaults to `machxi` — so `machxi-staff` and `machxi-user` are what this repository still signs and verifies. **Audience verification itself is untouched**, and so is its purpose: it remains the second line of defence behind `authenticate(population)`, checked inside `jose` before any of our code reads a claim. The brand in the string is a fork-day value; the claim, the check and the cross-population guarantee are this record's and stand. `JWT_ISSUER` is unchanged and deliberately separate — fusing an issuer with a cookie name would make a key rotation a sign-out (0064 §Alternatives).
 
 ## Context
 

@@ -7,6 +7,7 @@ import type {
   exchangeImpersonationSchema,
   mintImpersonationSchema,
 } from "./auth.impersonation.schemas.js";
+import type { AuthCookies } from "./auth.cookies.js";
 import { applyAuthTransport } from "./auth.transport.js";
 
 /**
@@ -24,6 +25,11 @@ import { applyAuthTransport } from "./auth.transport.js";
 export interface ImpersonationControllerDeps {
   readonly service: ImpersonationService;
   /**
+   * The **same** cookie writers login uses, so the exchange places the same
+   * names with the same attributes (ADR-0057 §3, ADR-0064 §1).
+   */
+  readonly cookies: AuthCookies;
+  /**
    * `REFRESH_TOKEN_TTL` (ADR-0004) — the refresh cookie's `Max-Age`, the same
    * value login uses.
    *
@@ -39,6 +45,7 @@ export interface ImpersonationControllerDeps {
 
 export const createImpersonationController = ({
   service,
+  cookies,
   refreshTtlSec,
 }: ImpersonationControllerDeps) =>
   ({
@@ -62,7 +69,7 @@ export const createImpersonationController = ({
      *
      * The same `applyAuthTransport` login goes through, with the same
      * population and the same TTL, so a customer app that opted into cookie
-     * transport gets `__Secure-machxi.refresh` and `__Host-machxi.csrf.user`
+     * transport gets this deployment's refresh and user CSRF cookies
      * exactly as it would from a sign-in — and a browser that already held a
      * real customer session has those cookies **overwritten** while its
      * session row is left alive, which is the operator's call recorded in
@@ -77,6 +84,7 @@ export const createImpersonationController = ({
       respond.ok(
         res,
         applyAuthTransport(req, res, resource, {
+          cookies,
           population: "user",
           maxAgeSec: refreshTtlSec,
         }),

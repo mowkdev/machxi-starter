@@ -253,6 +253,18 @@ export interface AppGridProps<TRow> {
    */
   readonly gridId?: string | undefined;
   /**
+   * The device-key prefix this app owns, `${appId}.${segment}`
+   * (ADR-0064 §1).
+   *
+   * Required, and bound once by the app's `shared/grid` door rather than
+   * passed per screen — the same move that door already makes for
+   * `renderError` and the density, and for the same reason: the brand belongs
+   * to the app, and a prop each page remembered to pass would be a key that
+   * differed by page. It is required rather than defaulted because a package
+   * default would be a brand this package holds.
+   */
+  readonly keyPrefix: string;
+  /**
    * The storage adapter (ADR-0041), defaulting to `localStorage`.
    *
    * This is the seam the ADR is built around rather than a test hook: the
@@ -389,6 +401,7 @@ export const AppGrid = <TRow,>({
   toolbarEnd = null,
   renderToolbar,
   gridId,
+  keyPrefix,
   preferenceStorage,
   pageSizes,
   striped = false,
@@ -419,6 +432,7 @@ export const AppGrid = <TRow,>({
 
   const [preferences, preferenceStore] = useGridPreferences({
     gridId,
+    keyPrefix,
     movable,
     storage: preferenceStorage,
   });

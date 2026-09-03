@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { describe, expect, it, vi } from "vitest";
 
 import { isAppError } from "../../errors/index.js";
-import { REFRESH_COOKIE, csrfCookieName } from "../../http/index.js";
+import { DEFAULT_APP_ID, createCookieNames } from "../../http/index.js";
 import { createCsrfGuard } from "../csrf.js";
 
 /**
@@ -19,7 +19,9 @@ import { createCsrfGuard } from "../csrf.js";
 const TOKEN = "csrf-token-value";
 
 /** The default population below; the split is asserted on its own at the end. */
-const CSRF_COOKIE = csrfCookieName("staff");
+const cookieNames = createCookieNames(DEFAULT_APP_ID);
+const REFRESH_COOKIE = cookieNames.refresh;
+const CSRF_COOKIE = cookieNames.csrf("staff");
 
 interface RequestShape {
   readonly cookies?: readonly string[];
@@ -47,7 +49,11 @@ const run = (
   population: Population = "staff",
 ) => {
   const next = vi.fn();
-  const guard = createCsrfGuard({ population, allowBodyToken });
+  const guard = createCsrfGuard({
+    cookies: cookieNames,
+    population,
+    allowBodyToken,
+  });
   const call = () => {
     guard(requestOf(shape), {} as Response, next as NextFunction);
   };
@@ -179,8 +185,8 @@ describe("csrfGuard", () => {
     const OTHER = "the-other-populations-token";
     const both = [
       `${REFRESH_COOKIE}=abc`,
-      `${csrfCookieName("staff")}=${TOKEN}`,
-      `${csrfCookieName("user")}=${OTHER}`,
+      `${cookieNames.csrf("staff")}=${TOKEN}`,
+      `${cookieNames.csrf("user")}=${OTHER}`,
     ];
 
     it("accepts each population's own token", () => {

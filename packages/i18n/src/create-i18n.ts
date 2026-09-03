@@ -90,18 +90,28 @@ export type Catalogues = Readonly<Partial<Record<Locale, Catalogue>>> & {
  */
 const applyLocale = (
   locale: Locale,
+  keyPrefix: string,
   translate: TranslateKey,
   onLocaleApplied:
     ((locale: Locale, translate: TranslateKey) => void) | undefined,
 ): void => {
   setIntlLocale(locale);
   document.documentElement.lang = INTL_TAGS[locale];
-  writeStoredLocale(locale);
+  writeStoredLocale(keyPrefix, locale);
   onLocaleApplied?.(locale, translate);
 };
 
 export interface CreateI18nOptions {
   readonly resources: Catalogues;
+  /**
+   * The device-key prefix this app owns, `${appId}.${segment}` (ADR-0064 §1).
+   *
+   * A parameter for the reason the catalogues are one: a package may not hold
+   * an app's identity. The composition root builds it from `VITE_APP_ID` and
+   * the segment it already declares to `createApiClient`, and this factory
+   * writes exactly one key under it.
+   */
+  readonly storageKeyPrefix: string;
   readonly namespaces: readonly string[];
   /**
    * What an unprefixed key means (`D9.2`, ADR-0051).
@@ -169,6 +179,7 @@ export interface CreateI18nOptions {
 
 export const createI18n = ({
   resources,
+  storageKeyPrefix,
   namespaces,
   locale,
   defaultNamespace,
@@ -189,6 +200,7 @@ export const createI18n = ({
   instance.on("languageChanged", (language: string) => {
     applyLocale(
       asLocale(language) ?? DEFAULT_LOCALE,
+      storageKeyPrefix,
       instance.t as TranslateKey,
       onLocaleApplied,
     );
@@ -289,7 +301,12 @@ export const createI18n = ({
     react: { useSuspense: false },
   });
 
-  applyLocale(locale, instance.t as TranslateKey, onLocaleApplied);
+  applyLocale(
+    locale,
+    storageKeyPrefix,
+    instance.t as TranslateKey,
+    onLocaleApplied,
+  );
 
   return {
     instance,
@@ -315,9 +332,12 @@ export type I18n = ReturnType<typeof createI18n>;
  * The pure half is {@link resolveInitialLocale}, which is where the decision
  * is tested; this is the two lines that touch the browser.
  */
-export const preferredLocale = (settings: Locale | null = null): Locale =>
+export const preferredLocale = (
+  storageKeyPrefix: string,
+  settings: Locale | null = null,
+): Locale =>
   resolveInitialLocale({
     settings,
-    stored: readStoredLocale(),
+    stored: readStoredLocale(storageKeyPrefix),
     navigator: navigatorLocales(),
   });

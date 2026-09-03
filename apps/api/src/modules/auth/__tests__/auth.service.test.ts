@@ -410,6 +410,7 @@ const build = (
     hasher: hasher.hasher,
     tokens: createTokenService({
       secret: "unit-test-signing-key-at-least-32-characters",
+      appId: "machxi",
       issuer: "machxi-api-test",
       accessTtlSec: 900,
       now,
@@ -701,6 +702,7 @@ describe("refresh", () => {
       hasher: staffHarness.hasher.hasher,
       tokens: createTokenService({
         secret: "unit-test-signing-key-at-least-32-characters",
+        appId: "machxi",
         issuer: "machxi-api-test",
         accessTtlSec: 900,
         now,
@@ -778,6 +780,7 @@ describe("refresh", () => {
       hasher: staffHarness.hasher.hasher,
       tokens: createTokenService({
         secret: "unit-test-signing-key-at-least-32-characters",
+        appId: "machxi",
         issuer: "machxi-api-test",
         accessTtlSec: 900,
         now,
@@ -1253,6 +1256,7 @@ describe("revoking a staff member's sessions", () => {
       hasher: harness.hasher.hasher,
       tokens: createTokenService({
         secret: "unit-test-signing-key-at-least-32-characters",
+        appId: "machxi",
         issuer: "machxi-api-test",
         accessTtlSec: 900,
         now,

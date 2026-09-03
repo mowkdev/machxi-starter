@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   CSRF_COOKIE_PATH,
-  LEGACY_CSRF_COOKIE,
-  REFRESH_COOKIE,
+  DEFAULT_APP_ID,
   authCookiePath,
-  csrfCookieName,
+  createCookieNames,
   readCookie,
 } from "../cookies.js";
 
@@ -26,7 +25,10 @@ import {
  * `readCookie` (ADR-0056 made the constant a function; the describe below is
  * where the names themselves are asserted).
  */
-const CSRF_COOKIE = csrfCookieName("staff");
+const COOKIE_NAMES = createCookieNames(DEFAULT_APP_ID);
+const REFRESH_COOKIE = COOKIE_NAMES.refresh;
+const LEGACY_CSRF_COOKIE = COOKIE_NAMES.legacyCsrf;
+const CSRF_COOKIE = COOKIE_NAMES.csrf("staff");
 
 const withCookies = (header?: string): Request =>
   ({ headers: header === undefined ? {} : { cookie: header } }) as Request;
@@ -133,13 +135,13 @@ describe("the cookie names", () => {
   });
 });
 
-describe("csrfCookieName", () => {
+describe("the population's CSRF cookie name", () => {
   it("gives each population its own name (ADR-0056)", () => {
     // The whole of the fix: two SPAs against one API host stop sharing one
     // mutable cookie, so neither app's rotation strands the other's token.
-    expect(csrfCookieName("staff")).toBe("__Host-machxi.csrf.admin");
-    expect(csrfCookieName("user")).toBe("__Host-machxi.csrf.user");
-    expect(csrfCookieName("staff")).not.toBe(csrfCookieName("user"));
+    expect(COOKIE_NAMES.csrf("staff")).toBe("__Host-machxi.csrf.admin");
+    expect(COOKIE_NAMES.csrf("user")).toBe("__Host-machxi.csrf.user");
+    expect(COOKIE_NAMES.csrf("staff")).not.toBe(COOKIE_NAMES.csrf("user"));
   });
 
   it("keeps the `__Host-` prefix on both", () => {
@@ -147,7 +149,7 @@ describe("csrfCookieName", () => {
     // costs none of the prefix's guarantees — the alternative considered and
     // rejected in ADR-0056 was scoping by path, which would have.
     for (const population of ["staff", "user"] as const) {
-      expect(csrfCookieName(population).startsWith("__Host-")).toBe(true);
+      expect(COOKIE_NAMES.csrf(population).startsWith("__Host-")).toBe(true);
     }
   });
 
@@ -157,7 +159,7 @@ describe("csrfCookieName", () => {
     // double-submit check as though it were a population's. `readCookie`
     // matches the whole name, which is what makes the retired cookie satisfy
     // nothing. Neither new name is a suffix of the other either.
-    const names = [csrfCookieName("staff"), csrfCookieName("user")];
+    const names = [COOKIE_NAMES.csrf("staff"), COOKIE_NAMES.csrf("user")];
 
     for (const name of names) {
       expect(name.startsWith(LEGACY_CSRF_COOKIE)).toBe(true);
@@ -166,5 +168,58 @@ describe("csrfCookieName", () => {
 
     expect(names[0]?.endsWith(names[1] ?? "")).toBe(false);
     expect(names[1]?.endsWith(names[0] ?? "")).toBe(false);
+  });
+});
+
+/**
+ * ADR-0064 §1: one identifier, four names.
+ *
+ * Two claims, and the second is what makes the change reviewable at all: the
+ * brand is a parameter, and the parameter's default reproduces every literal
+ * this file used to hold byte for byte.
+ */
+describe("createCookieNames", () => {
+  it("defaults to the names this repository has always set", () => {
+    expect(DEFAULT_APP_ID).toBe("machxi");
+    expect(COOKIE_NAMES.refresh).toBe("__Secure-machxi.refresh");
+    expect(COOKIE_NAMES.legacyCsrf).toBe("__Host-machxi.csrf");
+    expect(COOKIE_NAMES.csrf("staff")).toBe("__Host-machxi.csrf.admin");
+    expect(COOKIE_NAMES.csrf("user")).toBe("__Host-machxi.csrf.user");
+  });
+
+  it("takes the leading word of every name from the identifier", () => {
+    const acme = createCookieNames("acme");
+
+    expect(acme.refresh).toBe("__Secure-acme.refresh");
+    expect(acme.legacyCsrf).toBe("__Host-acme.csrf");
+    expect(acme.csrf("staff")).toBe("__Host-acme.csrf.admin");
+    expect(acme.csrf("user")).toBe("__Host-acme.csrf.user");
+  });
+
+  it("keeps every prefix and every suffix the brand does not own", () => {
+    // The *shape* of these names is still a constant (ADR-0064 §1): a rename
+    // must not be able to drop `__Secure-`, drop `__Host-`, or turn the
+    // segment suffix into the population word.
+    const acme = createCookieNames("acme");
+
+    expect(acme.refresh.startsWith("__Secure-")).toBe(true);
+    expect(acme.csrf("staff").startsWith("__Host-")).toBe(true);
+    expect(acme.csrf("user").startsWith("__Host-")).toBe(true);
+    expect(acme.csrf("staff").endsWith(".admin")).toBe(true);
+    expect(acme.csrf("user").endsWith(".user")).toBe(true);
+  });
+
+  it("gives two deployments on one host four distinct names", () => {
+    // The property a fork depends on: an `acme` deployment beside a `machxi`
+    // one shares no cookie, so neither can clear or shadow the other's.
+    const acme = createCookieNames("acme");
+    const all = [
+      COOKIE_NAMES.refresh,
+      COOKIE_NAMES.csrf("staff"),
+      acme.refresh,
+      acme.csrf("staff"),
+    ];
+
+    expect(new Set(all).size).toBe(all.length);
   });
 });

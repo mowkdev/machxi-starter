@@ -1,13 +1,21 @@
+import type { Population } from "@repo/contracts";
 import type { Request } from "express";
 
 /**
  * The cookies this API sets, and the one thing it needs to do with an incoming
  * `Cookie` header (ADR-0029).
  *
- * Both names and every attribute are constants rather than configuration, on
- * purpose: a deployment that needs to change them is a deployment with a
- * different security model, and that is an ADR rather than an environment
- * variable.
+ * Every *attribute* is a constant rather than configuration, on purpose: a
+ * deployment that needs to change one is a deployment with a different
+ * security model, and that is an ADR rather than an environment variable. The
+ * **shape** of each name is a constant for the same reason.
+ *
+ * The brand inside the name is the one thing that is neither (ADR-0064 §1).
+ * It is a fork-day value: every name below is derived from one `APP_ID`, which
+ * defaults to {@link DEFAULT_APP_ID}, so this repository's own cookies are
+ * byte-identical to the literals this file used to hold. Renaming a live
+ * deployment signs every browser out, which ADR-0064 §2 records as the design
+ * rather than as a hazard to mitigate.
  *
  * The names live in `core` rather than in the auth module because two things
  * need them and they sit on opposite sides of the dependency rule: the auth
@@ -24,7 +32,8 @@ import type { Request } from "express";
  * cookie cannot be set over plain HTTP, which is the property worth having,
  * and it leaves the path scope free — see {@link authCookiePath}.
  */
-export const REFRESH_COOKIE = "__Secure-machxi.refresh";
+const refreshCookieName = (appId: string): string =>
+  `__Secure-${appId}.refresh`;
 
 /**
  * The double-submit CSRF token of one population (ADR-0056, superseding
@@ -60,10 +69,8 @@ export const REFRESH_COOKIE = "__Secure-machxi.refresh";
  * `admin`, not `staff` — for the same reason {@link authCookiePath} is
  * spelled in segments: what a person debugging this reads beside it is a URL.
  */
-export const csrfCookieName = (population: "staff" | "user"): string =>
-  population === "staff"
-    ? "__Host-machxi.csrf.admin"
-    : "__Host-machxi.csrf.user";
+const csrfCookieNameFor = (appId: string, population: Population): string =>
+  `__Host-${appId}.csrf.${population === "staff" ? "admin" : "user"}`;
 
 /**
  * The one host-wide cookie ADR-0029 shipped, retired by ADR-0056.
@@ -76,7 +83,44 @@ export const csrfCookieName = (population: "staff" | "user"): string =>
  * request actually presented it, so the migration costs one `Set-Cookie` once
  * rather than one on every login forever.
  */
-export const LEGACY_CSRF_COOKIE = "__Host-machxi.csrf";
+const legacyCsrfCookieName = (appId: string): string => `__Host-${appId}.csrf`;
+
+/**
+ * The brand this repository ships with, and the default of `APP_ID`
+ * (ADR-0064 §1).
+ *
+ * Stated here rather than only in the config schema for the reason the argon2
+ * floors are taken from `@repo/crypto`: the value belongs beside the names it
+ * builds, and a default that exists in two places is a default that will one
+ * day exist in one. `core/config/schema.ts` reads it from here.
+ */
+export const DEFAULT_APP_ID = "machxi";
+
+/**
+ * The three names one deployment answers to, built once from its `APP_ID`.
+ *
+ * A bundle rather than three loose functions because two sides of the
+ * dependency rule need them and neither may build its own: the auth
+ * controller writes the cookies, `core/middleware/csrf.ts` reads them, and a
+ * guard that derived a name from a second copy of the identifier is a guard
+ * that can disagree with the writer. The container builds exactly one of
+ * these and hands it to both (ADR-0009).
+ */
+export interface CookieNames {
+  /** {@link refreshCookieName} for this deployment. */
+  readonly refresh: string;
+  /** This deployment's retired host-wide CSRF cookie (ADR-0056). */
+  readonly legacyCsrf: string;
+  /** This deployment's CSRF cookie for one population (ADR-0056). */
+  readonly csrf: (population: Population) => string;
+}
+
+export const createCookieNames = (appId: string): CookieNames =>
+  Object.freeze({
+    refresh: refreshCookieName(appId),
+    legacyCsrf: legacyCsrfCookieName(appId),
+    csrf: (population: Population) => csrfCookieNameFor(appId, population),
+  });
 
 /** `__Host-` requires it, and readability by the app's own pages needs it. */
 export const CSRF_COOKIE_PATH = "/";
@@ -113,15 +157,15 @@ export const authCookiePath = (population: "staff" | "user"): string =>
  * stating because they are what a naive implementation gets wrong.
  *
  * A value may contain `=` — base64 padding does — so the split is on the
- * *first* one only. A name must match **exactly**, or `machxi.csrf` would also
- * answer for `evil.machxi.csrf`.
+ * *first* one only. A name must match **exactly**, or `<app>.csrf` would also
+ * answer for `evil.<app>.csrf`.
  *
  * And **a name that appears twice yields nothing**, which is the one that is a
  * security property rather than a correctness one. A `Cookie` header may
  * legitimately carry two cookies of the same name from different paths or
  * domains, ordered by descending path length (RFC 6265 §5.4) — so a sibling
  * subdomain that can set `Domain=example.com` cookies chooses which one a
- * first-match reader sees. For `machxi.csrf` that hands the attacker both
+ * first-match reader sees. For the CSRF cookie that hands the attacker both
  * halves of the double-submit; for the refresh cookie it is session fixation,
  * with the shadow winning every subsequent rotation because the API's own
  * cookie is host-only at a shorter path. `__Secure-` does not help: it

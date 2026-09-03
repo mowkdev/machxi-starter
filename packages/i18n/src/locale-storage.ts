@@ -19,20 +19,33 @@ import { asLocale } from "./resolve-locale";
  * blank app.
  */
 
-/** Unchanged across D7, so a locale chosen in `D7.5` survives every later step. */
-export const LOCALE_STORAGE_KEY = "machxi.admin.locale";
+/**
+ * The key one app writes its locale under, from the prefix that app supplies
+ * (ADR-0064 §1).
+ *
+ * The prefix is `${appId}.${segment}` — `machxi.admin`, `machxi.user` — and
+ * it arrives as a parameter because this package must hold no brand and no app
+ * name. It also closes D12's finding 1 by construction: two SPAs on one origin
+ * used to share `machxi.admin.locale`, so a customer's language followed an
+ * operator's, and now each app writes under the segment it speaks to.
+ *
+ * `apps/admin` still writes `machxi.admin.locale`, which is what makes this a
+ * seam rather than a migration.
+ */
+export const localeStorageKey = (keyPrefix: string): string =>
+  `${keyPrefix}.locale`;
 
-export const readStoredLocale = (): Locale | null => {
+export const readStoredLocale = (keyPrefix: string): Locale | null => {
   try {
-    return asLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY));
+    return asLocale(window.localStorage.getItem(localeStorageKey(keyPrefix)));
   } catch {
     return null;
   }
 };
 
-export const writeStoredLocale = (locale: Locale): void => {
+export const writeStoredLocale = (keyPrefix: string, locale: Locale): void => {
   try {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    window.localStorage.setItem(localeStorageKey(keyPrefix), locale);
   } catch {
     /* not persisting is an acceptable outcome; an unreadable app is not */
   }

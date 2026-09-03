@@ -1,10 +1,12 @@
 # ADR-0056: A CSRF cookie per population
 
-- Status: accepted
+- Status: superseded by [ADR-0064](0064-brand-seams.md) (delta: the leading word of both names comes from `APP_ID`; the split itself and every attribute stand)
 - Date: 2026-09-01
 - Supersedes: [ADR-0029](0029-browser-token-transport.md) (delta: the CSRF cookie's name is per-population; every other transport decision stands)
 
 > Written 2026-09-01 for `D12.12` ([`docs/plan/0012-customer-app.md`](../plan/0012-customer-app.md)), a step added at the operator's post-close review out of the deliverable's own finding 6 — the D11.12 precedent: the close-out's reading produced a build step, and the row and window wait on it. **Accepted 2026-09-01**, at the head of `D12.12`, where ADR-0029 moved to `superseded by`; amendable in place while D12 is `in progress` (ADR-0025 rule 2). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): **everything ADR-0029 decided that is not named below stands** — the httpOnly refresh cookie with its per-segment `authCookiePath`, the double-submit check, the `__Host-` prefix discipline, the rotation points, and [0030](0030-csrf-bootstrap-endpoint.md)'s echoing bootstrap.
+>
+> **Superseded in part 2026-09-03, at the head of `D14.7`.** [ADR-0064](0064-brand-seams.md) derives the leading word of both names from the API's `APP_ID` — `__Host-${appId}.csrf.admin` and `__Host-${appId}.csrf.user`, with `machxi` as the default, so the two cookies this record named are byte-identical in this repository. **The split is what this record decided and it is untouched**: one cookie per population, each segment setting, rotating, echoing and clearing only its own, the `admin`/`user` segment words as the suffix, `Path=/`, the guard with no default population, and the legacy cookie's one-shot retirement. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md) rule 1.
 
 ## Context
 

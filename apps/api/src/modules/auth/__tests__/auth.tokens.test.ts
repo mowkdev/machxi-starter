@@ -2,6 +2,7 @@ import { decodeJwt, decodeProtectedHeader } from "jose";
 import { describe, expect, it } from "vitest";
 
 import { isAppError } from "../../../core/errors/index.js";
+import { DEFAULT_APP_ID } from "../../../core/http/index.js";
 import { audienceFor, createTokenService } from "../auth.tokens.js";
 
 /**
@@ -11,12 +12,14 @@ import { audienceFor, createTokenService } from "../auth.tokens.js";
 
 const SECRET = "unit-test-signing-key-at-least-32-characters";
 const ISSUER = "machxi-api-test";
+const APP_ID = "machxi";
 
 const at = (iso: string) => () => new Date(iso);
 
 const service = (now = at("2026-08-18T12:00:00.000Z"), secret = SECRET) =>
   createTokenService({
     secret,
+    appId: APP_ID,
     issuer: ISSUER,
     accessTtlSec: 900,
     now,
@@ -61,9 +64,38 @@ describe("createTokenService", () => {
   });
 
   it("gives each population its own audience", () => {
-    expect(audienceFor("staff")).toBe("machxi-staff");
-    expect(audienceFor("user")).toBe("machxi-user");
-    expect(audienceFor("staff")).not.toBe(audienceFor("user"));
+    expect(audienceFor(APP_ID, "staff")).toBe("machxi-staff");
+    expect(audienceFor(APP_ID, "user")).toBe("machxi-user");
+    expect(audienceFor(APP_ID, "staff")).not.toBe(audienceFor(APP_ID, "user"));
+  });
+
+  /*
+   * ADR-0064 §1: the brand is the deployment's `APP_ID`, and the default is
+   * what this repository has always signed. Both halves matter — the second
+   * is what makes the change reviewable, the first is what makes it a seam.
+   */
+  it("takes the audience's leading word from APP_ID", () => {
+    expect(audienceFor("acme", "staff")).toBe("acme-staff");
+    expect(audienceFor("acme", "user")).toBe("acme-user");
+    expect(audienceFor(DEFAULT_APP_ID, "staff")).toBe("machxi-staff");
+  });
+
+  it("verifies against the audience of the APP_ID that signed it", async () => {
+    const acme = createTokenService({
+      secret: SECRET,
+      appId: "acme",
+      issuer: ISSUER,
+      accessTtlSec: 900,
+      now: at("2026-08-18T12:00:00.000Z"),
+    });
+    const { token } = await issueStaff(acme);
+
+    expect(decodeJwt(token).aud).toBe("acme-staff");
+    // The same secret and the same issuer: only the brand differs, and that is
+    // enough for the default deployment to refuse the token.
+    await expect(service().verify(token, "staff")).rejects.toMatchObject({
+      code: "AUTH_TOKEN_INVALID",
+    });
   });
 
   it("verifies a token it issued", async () => {
@@ -127,6 +159,7 @@ describe("createTokenService", () => {
   it("refuses a token from another issuer", async () => {
     const foreign = createTokenService({
       secret: SECRET,
+      appId: APP_ID,
       issuer: "someone-elses-api",
       accessTtlSec: 900,
     });

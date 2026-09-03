@@ -21,6 +21,8 @@ import {
   type I18n,
 } from "@repo/i18n";
 
+import { DEVICE_KEY_PREFIX } from "@/shared/config";
+
 import { DEFAULT_NAMESPACE, type Namespace } from "./namespaces";
 import type { Catalogues, PackageNamespace } from "./resources";
 
@@ -98,7 +100,7 @@ const loadCatalogue = async (
  */
 export type CreateAppI18nOptions = Omit<
   CreateI18nOptions,
-  "namespaces" | "resources"
+  "namespaces" | "resources" | "storageKeyPrefix"
 > & {
   readonly resources: Catalogues;
   readonly namespaces: readonly Namespace[];
@@ -188,6 +190,9 @@ const withPackageBundles = (resources: Catalogues): Catalogues => {
 
 export const createI18n = (options: CreateAppI18nOptions): I18n =>
   createI18nBase({
+    // This app's device-key prefix (ADR-0064 §1): the package writes one key
+    // and may not know whose it is.
+    storageKeyPrefix: DEVICE_KEY_PREFIX,
     defaultNamespace: DEFAULT_NAMESPACE,
     loadCatalogue,
     onLocaleApplied: (locale, translate) => {

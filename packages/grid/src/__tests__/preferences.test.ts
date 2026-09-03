@@ -20,13 +20,27 @@ import {
  * stopped being a seam.
  */
 
+/**
+ * The prefix an app supplies (ADR-0064 §1).
+ *
+ * `apps/admin`'s own, so every literal key asserted below is exactly what
+ * that app writes — which is what makes "the parameter changed nothing" a
+ * claim this suite carries rather than one the record only makes.
+ */
+const KEY_PREFIX = "machxi.admin";
+
 const DEFAULTS = { order: ["email", "status", "createdAt"] } as const;
 
 const storeWith = (storage: PreferenceStorage, gridId = "staff") =>
-  createGridPreferences({ gridId, storage, defaults: DEFAULTS });
+  createGridPreferences({
+    gridId,
+    keyPrefix: KEY_PREFIX,
+    storage,
+    defaults: DEFAULTS,
+  });
 
 const stored = (storage: PreferenceStorage, gridId = "staff"): unknown =>
-  JSON.parse(storage.read(gridStorageKey(gridId)) ?? "null");
+  JSON.parse(storage.read(gridStorageKey(KEY_PREFIX, gridId)) ?? "null");
 
 describe("defaults", () => {
   it("starts from the config when storage is empty", () => {
@@ -47,7 +61,7 @@ describe("defaults", () => {
 
     storeWith(storage);
 
-    expect(storage.read(gridStorageKey("staff"))).toBeNull();
+    expect(storage.read(gridStorageKey(KEY_PREFIX, "staff"))).toBeNull();
   });
 });
 
@@ -107,7 +121,9 @@ describe("the round trip", () => {
   it("names its key by grid and version", () => {
     // Versioned in the key as well as the payload, extending the naming the
     // theme preference began.
-    expect(gridStorageKey("staff")).toBe("machxi.admin.grid:staff:v1");
+    expect(gridStorageKey(KEY_PREFIX, "staff")).toBe(
+      "machxi.admin.grid:staff:v1",
+    );
   });
 
   /**
@@ -119,15 +135,19 @@ describe("the round trip", () => {
    */
   it("reads a grid id back out of its own key", () => {
     for (const gridId of ["staff", "users", "a:colon:inside", "x".repeat(64)]) {
-      expect(parseGridStorageKey(gridStorageKey(gridId))).toBe(gridId);
+      expect(
+        parseGridStorageKey(KEY_PREFIX, gridStorageKey(KEY_PREFIX, gridId)),
+      ).toBe(gridId);
     }
   });
 
   it("refuses a key it did not write", () => {
-    expect(parseGridStorageKey("machxi.admin.theme")).toBeNull();
+    expect(parseGridStorageKey(KEY_PREFIX, "machxi.admin.theme")).toBeNull();
     // A future version is somebody else's entry, not a v1 one to upload.
-    expect(parseGridStorageKey("machxi.admin.grid:staff:v2")).toBeNull();
-    expect(parseGridStorageKey("machxi.admin.grid::v1")).toBeNull();
+    expect(
+      parseGridStorageKey(KEY_PREFIX, "machxi.admin.grid:staff:v2"),
+    ).toBeNull();
+    expect(parseGridStorageKey(KEY_PREFIX, "machxi.admin.grid::v1")).toBeNull();
   });
 
   it("notifies subscribers, and stops when they leave", () => {
@@ -160,7 +180,7 @@ describe("a stored value the store will not trust", () => {
   const survives = (raw: string) => {
     const storage = createMemoryStorage();
 
-    storage.write(gridStorageKey("staff"), raw);
+    storage.write(gridStorageKey(KEY_PREFIX, "staff"), raw);
 
     return storeWith(storage).get();
   };
@@ -332,11 +352,11 @@ describe("reset", () => {
     const store = storeWith(storage);
 
     store.set({ sizing: { email: 320 }, order: ["email"], hidden: ["status"] });
-    expect(storage.read(gridStorageKey("staff"))).not.toBeNull();
+    expect(storage.read(gridStorageKey(KEY_PREFIX, "staff"))).not.toBeNull();
 
     store.reset();
 
-    expect(storage.read(gridStorageKey("staff"))).toBeNull();
+    expect(storage.read(gridStorageKey(KEY_PREFIX, "staff"))).toBeNull();
     expect(store.get()).toEqual({
       sizing: {},
       order: ["email", "status", "createdAt"],
@@ -397,5 +417,61 @@ describe("a storage that refuses", () => {
     }).not.toThrow();
 
     vi.restoreAllMocks();
+  });
+});
+
+/**
+ * The key's prefix, as a parameter (ADR-0064 §1).
+ *
+ * ADR-0041 wrote the prefix into the module; `D14.7` made it the composing
+ * app's, so `@repo/grid` holds neither a brand nor an app name. Two claims:
+ * `apps/admin`'s prefix reproduces the key this store has always written, and
+ * two apps on one origin no longer share an entry.
+ */
+describe("the key prefix", () => {
+  const CUSTOMER_PREFIX = "machxi.user";
+
+  it("reproduces the key ADR-0041 named, under the admin's prefix", () => {
+    expect(gridStorageKey(KEY_PREFIX, "staff")).toBe(
+      "machxi.admin.grid:staff:v1",
+    );
+  });
+
+  it("gives the two apps different entries for the same grid", () => {
+    const admin = gridStorageKey(KEY_PREFIX, "staff");
+    const customer = gridStorageKey(CUSTOMER_PREFIX, "staff");
+
+    expect(admin).not.toBe(customer);
+    expect(parseGridStorageKey(KEY_PREFIX, customer)).toBeNull();
+    expect(parseGridStorageKey(CUSTOMER_PREFIX, admin)).toBeNull();
+  });
+
+  it("keeps two apps' stores out of each other's entries", () => {
+    const storage = createMemoryStorage();
+    const store = createGridPreferences({
+      gridId: "staff",
+      keyPrefix: KEY_PREFIX,
+      storage,
+      defaults: DEFAULTS,
+    });
+    const other = createGridPreferences({
+      gridId: "staff",
+      keyPrefix: CUSTOMER_PREFIX,
+      storage,
+      defaults: DEFAULTS,
+    });
+
+    store.set({ ...store.get(), hidden: ["status"] });
+
+    expect(other.get().hidden).toEqual([]);
+  });
+
+  it("treats the prefix as a literal, never as a pattern", () => {
+    // `.` is in every real prefix, so an unescaped one would make
+    // `machxi.admin` answer for a key written by `machxiXadmin` — a different
+    // deployment's entry read as this one's.
+    expect(parseGridStorageKey(KEY_PREFIX, "machxiXadmin.grid:staff:v1")).toBe(
+      null,
+    );
   });
 });

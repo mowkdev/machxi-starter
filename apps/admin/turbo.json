@@ -3,10 +3,22 @@
   "tasks": {
     "build": {
       "outputs": ["dist/**"],
-      "env": ["VITE_API_URL", "VITE_I18N_PSEUDO", "VITE_CUSTOMER_APP_URL"]
+      "env": [
+        "VITE_API_URL",
+        "VITE_APP_ID",
+        "VITE_I18N_PSEUDO",
+        "VITE_ERROR_REPORTING_DSN",
+        "VITE_CUSTOMER_APP_URL"
+      ]
     },
     "dev": {
-      "env": ["VITE_API_URL", "VITE_I18N_PSEUDO", "VITE_CUSTOMER_APP_URL"]
+      "env": [
+        "VITE_API_URL",
+        "VITE_APP_ID",
+        "VITE_I18N_PSEUDO",
+        "VITE_ERROR_REPORTING_DSN",
+        "VITE_CUSTOMER_APP_URL"
+      ]
     }
   }
 }

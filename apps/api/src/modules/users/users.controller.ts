@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 
 import { respond } from "../../core/http/index.js";
 import type { ValidatedRequest } from "../../core/middleware/index.js";
-import { clearAuthCookies } from "../auth/index.js";
+import type { AuthCookies } from "../auth/index.js";
 import type {
   changePasswordSchema,
   createUserSchema,
@@ -100,8 +100,22 @@ export const createUsersController = (service: UsersService) =>
 
 export type UsersController = ReturnType<typeof createUsersController>;
 
+export interface UserProfileControllerDeps {
+  readonly service: UsersService;
+  /**
+   * This deployment's cookie writers (ADR-0064 §1). Self-deletion clears the
+   * user population's cookies, so this controller needs the same bundle the
+   * auth controller writes with — one built object, so a clear can never name
+   * a cookie a write did not.
+   */
+  readonly cookies: AuthCookies;
+}
+
 /** `/api/v1/user/profile` — a user acting on their own account. */
-export const createUserProfileController = (service: UsersService) =>
+export const createUserProfileController = ({
+  service,
+  cookies,
+}: UserProfileControllerDeps) =>
   ({
     /** No `:id` and no schema: the account is `ctx.principal` (ADR-0019 §3). */
     get: async (req: Request, res: Response): Promise<void> => {
@@ -133,7 +147,7 @@ export const createUserProfileController = (service: UsersService) =>
      * `204`: the account is closed and every session of it, this one included,
      * is gone (ADR-0055 §4).
      *
-     * The cookies go with it. `clearAuthCookies` is what `logout` and
+     * The cookies go with it. `cookies.clearAuthCookies` is what `logout` and
      * `logout-all` call, for a reason that applies here with nothing left to
      * argue: the refresh cookie is scoped to `/api/v1/user/auth`, so it is not
      * even sent to this request, and a browser that keeps it would spend a
@@ -148,16 +162,17 @@ export const createUserProfileController = (service: UsersService) =>
      *
      * It clears **the user population's** CSRF cookie and no other. That was
      * the plan's finding 6 and is now ADR-0056: the cookie used to be one
-     * host-wide `__Host-machxi.csrf`, so closing a customer account removed
+     * host-wide `__Host-<app>.csrf`, so closing a customer account removed
      * the CSRF token of an admin panel signed in in another tab. Since the
-     * split there is nothing here that an admin session can notice.
+     * split there is nothing here that an admin session can notice, and since
+     * `D14.7` the name's leading word comes from `APP_ID` (ADR-0064 §1).
      */
     remove: async (
       req: ValidatedRequest<typeof deleteProfileSchema>,
       res: Response,
     ): Promise<void> => {
       await service.deleteProfile(req.ctx, req.valid.body);
-      clearAuthCookies(req, res, "user");
+      cookies.clearAuthCookies(req, res, "user");
       respond.noContent(res);
     },
   }) as const;

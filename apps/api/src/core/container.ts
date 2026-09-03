@@ -6,6 +6,7 @@ import type { AppConfig } from "./config/index.js";
 import type { DbClient } from "./db/index.js";
 import {
   createAuthController,
+  createAuthCookies,
   createAuthenticate,
   createAuthService,
   createHandoffsRepository,
@@ -47,6 +48,7 @@ import {
   createUsersService,
 } from "../modules/users/index.js";
 import { createAudit, createAuditRepository } from "./audit/index.js";
+import { createCookieNames } from "./http/index.js";
 import { createLimitedHasher } from "./auth/index.js";
 import { createMailSender } from "./mail/index.js";
 import { createMetrics } from "./metrics/index.js";
@@ -118,8 +120,16 @@ export const buildContainer = ({
     maxConcurrent: config.auth.maxConcurrentHashes,
   });
 
+  // Every browser-visible name this deployment answers to, derived once from
+  // `APP_ID` (ADR-0064 §1). One object, so the controller that writes a cookie
+  // and the guard that reads it cannot be built from two copies of the
+  // identifier and disagree.
+  const cookieNames = createCookieNames(config.app.id);
+  const authCookies = createAuthCookies(cookieNames);
+
   const tokens = createTokenService({
     secret: config.auth.accessSecret,
+    appId: config.app.id,
     issuer: config.auth.issuer,
     accessTtlSec: config.auth.accessTtlSec,
   });
@@ -282,6 +292,8 @@ export const buildContainer = ({
     config,
     db,
     logger,
+    /** The cookie names the segment routers hand to their CSRF guards. */
+    cookieNames,
     hasher,
     audit,
     authenticate,
@@ -315,11 +327,13 @@ export const buildContainer = ({
       // endpoints, and `REFRESH_TOKEN_TTL` is its `Max-Age` (ADR-0029).
       staffAuth: createAuthController({
         service: staffAuth,
+        cookies: authCookies,
         population: "staff",
         refreshTtlSec: config.auth.refreshTtlSec,
       }),
       userAuth: createAuthController({
         service: userAuth,
+        cookies: authCookies,
         population: "user",
         refreshTtlSec: config.auth.refreshTtlSec,
       }),
@@ -329,7 +343,10 @@ export const buildContainer = ({
       // exposes only the functions that read their subject from
       // `ctx.principal`, so the admin handlers are not reachable from the user
       // segment even by a routing mistake (ADR-0019).
-      userProfile: createUserProfileController(usersService),
+      userProfile: createUserProfileController({
+        service: usersService,
+        cookies: authCookies,
+      }),
       // The same pairing on the staff side since D2.3: `/api/v1/admin/profile`
       // exposes only the functions that read their subject from
       // `ctx.principal`, so no handler taking an `:id` is reachable from it
@@ -346,6 +363,7 @@ export const buildContainer = ({
       // (ADR-0057 §3).
       impersonation: createImpersonationController({
         service: impersonationService,
+        cookies: authCookies,
         refreshTtlSec: config.auth.refreshTtlSec,
       }),
     } as const,

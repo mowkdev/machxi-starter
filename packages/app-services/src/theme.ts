@@ -35,8 +35,18 @@ import { DEFAULT_THEME, THEMES, type Theme } from "@repo/contracts";
  */
 export type { Theme };
 
-/** The local cache's key. Unchanged, so a stored preference survives `D6.3`. */
-const STORAGE_KEY = "machxi.admin.theme";
+/**
+ * The local cache's key, from the prefix the app supplies (ADR-0064 §1).
+ *
+ * `D9.6` left this a constant on the argument that "the key is per-origin and
+ * the two SPAs are two origins", and named `D12.1` as the test of whether it
+ * would read wrong in a second app. It did — a customer's devtools said
+ * `admin` — and two SPAs deployed on one origin do not merely read wrong,
+ * they share a theme between an operator and a customer. The prefix is
+ * `${appId}.${segment}`, so `apps/admin` still writes `machxi.admin.theme`
+ * and `apps/customer` writes its own.
+ */
+const themeStorageKey = (keyPrefix: string): string => `${keyPrefix}.theme`;
 
 const isTheme = (value: unknown): value is Theme =>
   THEMES.includes(value as Theme);
@@ -48,9 +58,9 @@ const isTheme = (value: unknown): value is Theme =>
  * than to a blank app — this runs before the first paint, so an exception here
  * is the whole panel.
  */
-export const readStoredTheme = (): Theme | null => {
+export const readStoredTheme = (keyPrefix: string): Theme | null => {
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = window.localStorage.getItem(themeStorageKey(keyPrefix));
 
     return isTheme(stored) ? stored : null;
   } catch {
@@ -65,7 +75,8 @@ export const readStoredTheme = (): Theme | null => {
  * media query — so a visitor with nothing stored gets exactly the behaviour
  * this function had when it consulted `prefers-color-scheme` itself.
  */
-export const preferredTheme = (): Theme => readStoredTheme() ?? DEFAULT_THEME;
+export const preferredTheme = (keyPrefix: string): Theme =>
+  readStoredTheme(keyPrefix) ?? DEFAULT_THEME;
 
 export const prefersDark = (): boolean =>
   window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -82,14 +93,14 @@ export const resolveTheme = (theme: Theme): "light" | "dark" =>
  * there is a session to ask. The account is written separately, by the
  * coalescing writer of ADR-0045, and only when there is one.
  */
-export const applyTheme = (theme: Theme): void => {
+export const applyTheme = (keyPrefix: string, theme: Theme): void => {
   document.documentElement.classList.toggle(
     "dark",
     resolveTheme(theme) === "dark",
   );
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    window.localStorage.setItem(themeStorageKey(keyPrefix), theme);
   } catch {
     /* not persisting is an acceptable outcome; an unpainted app is not */
   }

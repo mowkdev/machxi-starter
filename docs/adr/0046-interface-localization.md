@@ -1,9 +1,11 @@
 # ADR-0046: Interface localization — react-i18next, typed namespaced catalogues, zod's error map on the client, and `UiStrings` for the design system
 
-- Status: accepted
+- Status: superseded by [ADR-0064](0064-brand-seams.md) (delta: §4's locale cache key takes its prefix as a parameter; every localization decision stands)
 - Date: 2026-08-22
 
 > One of the D7 (interface localization) decision set — the "i18n strategy ADR" that [`docs/plan/0007-localization.md`](../plan/0007-localization.md) names as the one decision the deliverable needs. Written 2026-08-22 **ahead of D7 opening**, while D6 is `in progress`: writing is not opening, the D4 precedent (ADR-0037–0042 were written under D3 and accepted one step at a time under D4). **Accepted 2026-08-22 at the head of `D7.1`** ([ADR-0025](0025-deliverables.md) rule 3), the per-step acceptance D4, D5 and D6 each ran on; it governs `D7.1`–`D7.6` and stays amendable in place while D7 is `in progress` in [`docs/plan/README.md`](../plan/README.md) (rule 2). It supersedes nothing. It is additive beside frozen [ADR-0031](0031-ui-design-system.md), [ADR-0033](0033-browser-api-client-and-session.md), [ADR-0035](0035-config-driven-resource-ui.md), [ADR-0036](0036-admin-testing-strategy.md) and [ADR-0043](0043-readable-list-search-params.md), and beside [ADR-0045](0045-user-settings.md), which is amendable while D6 is in progress — and this record asks nothing of it beyond the `LOCALES` append it already reserved.
+>
+> **Superseded in part 2026-09-03, at the head of `D14.7`.** [ADR-0064](0064-brand-seams.md) changes one string in §4's negotiation list: the device cache is keyed `` `${appId}.${segment}.locale` ``, supplied to `@repo/i18n` by the app that composes it, so the package holds no brand and a customer app stops writing a key that says `admin`. `machxi.admin.locale` is still exactly what `apps/admin` writes. **Everything else stands**: the four negotiation sources and their order, the ten namespaces and the typed catalogues, the `en`/`lv` pair and the Intl tags, the pseudo lens, zod's error map, `UiStrings`, and §13's rule that an app owns its dictionary while a package owns its machinery — which is the rule 0064's parameter obeys.
 
 ## Context
 

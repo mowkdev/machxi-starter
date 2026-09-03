@@ -1,6 +1,8 @@
 import type { Population } from "@repo/contracts";
 import { Router, type RequestHandler } from "express";
 
+import type { CookieNames } from "../../core/http/index.js";
+
 import {
   createCsrfGuard,
   noStore,
@@ -27,6 +29,12 @@ import { loginSchema, refreshSchema, registerSchema } from "./auth.schemas.js";
 
 export interface AuthRouterDeps {
   readonly controller: AuthController;
+  /**
+   * This deployment's cookie names, for the three CSRF guards below
+   * (ADR-0064 §1). The container builds one bundle, and the controller these
+   * routes call writes with the same one.
+   */
+  readonly cookieNames: CookieNames;
   /** `authenticate(population)` from the container (ADR-0011). */
   readonly authenticate: (population: Population) => RequestHandler;
   readonly population: Population;
@@ -53,6 +61,7 @@ export interface AuthRouterDeps {
 
 export const createAuthRouter = ({
   controller,
+  cookieNames,
   authenticate,
   population,
   loginRateLimiter,
@@ -94,7 +103,11 @@ export const createAuthRouter = ({
     // The one endpoint where a token in the body is a legitimate way to
     // present the credential, and therefore the only one where it exempts the
     // request from the check (ADR-0029 §CSRF).
-    createCsrfGuard({ population, allowBodyToken: true }),
+    createCsrfGuard({
+      cookies: cookieNames,
+      population,
+      allowBodyToken: true,
+    }),
     validate(refreshSchema),
     controller.refresh,
   );
@@ -136,7 +149,11 @@ export const createAuthRouter = ({
   // `population` reaches the guard the same way it reaches `authenticate`
   // above: this factory is mounted once per segment, so the segment is what
   // decides which CSRF cookie is checked (ADR-0056).
-  router.post("/logout", createCsrfGuard({ population }), controller.logout);
+  router.post(
+    "/logout",
+    createCsrfGuard({ cookies: cookieNames, population }),
+    controller.logout,
+  );
   // `logout-all` is on ADR-0057 §5's exclusion list and `logout` deliberately
   // is not: one ends the **customer's** real sessions on every device they own,
   // which is a takeover step and not support work, and the other is the
@@ -145,7 +162,7 @@ export const createAuthRouter = ({
   // reaches no service.
   router.post(
     "/logout-all",
-    createCsrfGuard({ population }),
+    createCsrfGuard({ cookies: cookieNames, population }),
     refuseImpersonated,
     controller.logoutAll,
   );

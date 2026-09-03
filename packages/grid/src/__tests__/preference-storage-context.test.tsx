@@ -32,6 +32,7 @@ const width = (value: number) =>
 
 const Probe = ({ storage }: { storage?: PreferenceStorage | undefined }) => {
   const [preferences] = useGridPreferences({
+    keyPrefix: "machxi.admin",
     gridId: "staff",
     movable: DEFAULTS,
     storage,
@@ -48,7 +49,7 @@ describe("where a grid's adapter comes from", () => {
   it("uses the one the app provided", () => {
     const provided = createMemoryStorage();
 
-    provided.write(gridStorageKey("staff"), width(300));
+    provided.write(gridStorageKey("machxi.admin", "staff"), width(300));
 
     render(
       <PreferenceStorageProvider value={provided}>
@@ -63,8 +64,8 @@ describe("where a grid's adapter comes from", () => {
     const provided = createMemoryStorage();
     const override = createMemoryStorage();
 
-    provided.write(gridStorageKey("staff"), width(300));
-    override.write(gridStorageKey("staff"), width(500));
+    provided.write(gridStorageKey("machxi.admin", "staff"), width(300));
+    override.write(gridStorageKey("machxi.admin", "staff"), width(500));
 
     render(
       <PreferenceStorageProvider value={provided}>
@@ -76,7 +77,10 @@ describe("where a grid's adapter comes from", () => {
   });
 
   it("falls back to `localStorage` where nothing provides one", () => {
-    window.localStorage.setItem(gridStorageKey("staff"), width(180));
+    window.localStorage.setItem(
+      gridStorageKey("machxi.admin", "staff"),
+      width(180),
+    );
 
     render(<Probe />);
 

@@ -45,6 +45,14 @@ export default mergeConfig(
       env: {
         VITE_API_URL: "http://api.test",
         /*
+         * Pinned, for the reason `VITE_API_URL` is (ADR-0064 §1): the device
+         * keys every suite reads are built from it, so a variable read from
+         * outside the repository would be invisible to Turbo's hash and would
+         * move the key literals this suite asserts on. `machxi` is the
+         * schema's own default, so nothing about the pin changes behaviour.
+         */
+        VITE_APP_ID: "machxi",
+        /*
          * Pinned off, for the reason `VITE_API_URL` is pinned at all
          * (ADR-0046 §10): a variable read from outside the repository is
          * invisible to Turbo's hash, and this one would silently accent every

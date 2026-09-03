@@ -1,9 +1,11 @@
 # ADR-0041: Persisted grid preferences — column sizing, order and visibility
 
-- Status: superseded by [ADR-0054](0054-design-language-instrument.md) (delta: where Create and the Columns control are drawn)
+- Status: superseded by [ADR-0054](0054-design-language-instrument.md) and [ADR-0064](0064-brand-seams.md) (deltas: where Create and the Columns control are drawn; the storage key's prefix is a parameter rather than a constant)
 - Date: 2026-08-20
 
 > Written at the opening of D4 (data grid v2), alongside ADR-0037–0040. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D4.5` implements this store ([`docs/plan/0004-data-grid-v2.md`](../plan/0004-data-grid-v2.md)), on the frame [0037-grid-viewport-layout.md](0037-grid-viewport-layout.md) budgets and the toolbar [0038-grid-selection-and-capabilities.md](0038-grid-selection-and-capabilities.md) owns. It stays amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.5` — the last of the D4 set to be accepted, on the per-step schedule the deliverable runs on. **Superseded in part 2026-08-30 by [ADR-0054](0054-design-language-instrument.md)**, at the head of `D11.12`: a **delta** per [ADR-0050](0050-adr-lifecycle-and-verification.md) §Lifecycle rule 1, and the delta is four words below — the Columns menu no longer lives "in the toolbar region 0038 reserves" but in the page-header band, icon-only. **The surface itself is untouched**: the popover rather than a menu, the checkbox-and-reorder row, drag within the list, Reset to defaults disabled while nothing deviates, the zod-validated store behind its three-function adapter, and the URL/preferences/history/table taxonomy.
+>
+> **Superseded in part a second time 2026-09-03, at the head of `D14.7`.** [ADR-0064](0064-brand-seams.md) makes the key's prefix a **parameter** the consuming app supplies — `` `${appId}.${segment}.grid:<gridId>:v1` `` — so `@repo/grid` holds no brand and no app name, and the `admin` word in `machxi.admin.grid:staff:v1` is now whichever segment the composing app speaks to rather than a constant every app inherits. `machxi.admin.grid:staff:v1` is still exactly what `apps/admin` writes. **Everything else here stands**: one entry per grid, the version in the key *and* in the payload, `gridId` defaulting to `ResourceConfig.name`, the greedy parse, the reconcile-on-load rule, and the three-function adapter seam. This record joins the list of records with two partial successors and stands for everything neither touches.
 
 ## Context
 

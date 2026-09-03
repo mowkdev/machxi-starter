@@ -167,11 +167,13 @@ describe("the settings gate", () => {
     expect(document.documentElement).toHaveClass("dark");
     /*
      * The device cache is written too, so the next first paint is right before
-     * any session exists to ask. The key still reads `machxi.admin.theme` in an
-     * app that is not the admin — the plan's finding 1, pinned here so the day
-     * it is parameterised is a visible diff rather than a silent one.
+     * any session exists to ask. **The key reads `machxi.user.theme` since
+     * `D14.7`** (ADR-0064 §1): it said `machxi.admin.theme` in an app that is
+     * not the admin — D12's finding 1, pinned here so the day it was
+     * parameterised would be a visible diff rather than a silent one, and this
+     * is that diff. Two SPAs on one origin no longer share a theme.
      */
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("dark");
+    expect(window.localStorage.getItem("machxi.user.theme")).toBe("dark");
   });
 
   it("renders immediately for an anonymous visitor, and asks for nothing", async () => {
@@ -211,7 +213,7 @@ describe("the settings gate", () => {
     // A toggle on the sign-in screen writes the device and speaks to nobody.
     await user.click(screen.getByRole("button", { name: "Light" }));
 
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("light");
+    expect(window.localStorage.getItem("machxi.user.theme")).toBe("light");
     await new Promise((resolve) => {
       setTimeout(resolve, SETTINGS_WRITE_DEBOUNCE_MS + 250);
     });
@@ -246,7 +248,7 @@ describe("what a chosen preference does to the account", () => {
 
     await user.click(await screen.findByRole("button", { name: "Light" }));
 
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("light");
+    expect(window.localStorage.getItem("machxi.user.theme")).toBe("light");
     expect(document.documentElement).not.toHaveClass("dark");
 
     // The account half is debounced, so it arrives after the window rather

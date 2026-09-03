@@ -32,9 +32,15 @@ import { tokenExpired, tokenInvalid } from "./auth.errors.js";
  * if a router were mounted with the wrong guard, a staff token presented on a
  * user route fails audience verification inside `jose` before any of our code
  * looks at it (ADR-0018).
+ *
+ * **The leading word is the deployment's `APP_ID`** (ADR-0064 §1), which
+ * defaults to `machxi` — so `machxi-staff` and `machxi-user` are still what
+ * this repository signs. It is deliberately not `JWT_ISSUER`: fusing a token
+ * claim with the brand that also names the cookies would make an issuer
+ * rotation a sign-out (ADR-0064 §Alternatives).
  */
-export const audienceFor = (population: Population): string =>
-  `machxi-${population}`;
+export const audienceFor = (appId: string, population: Population): string =>
+  `${appId}-${population}`;
 
 /** HS256 for v1. Pinned on verification so a token cannot choose its own algorithm. */
 const ALGORITHM = "HS256";
@@ -124,6 +130,8 @@ const errorCode = (error: unknown): string | undefined =>
 export interface TokenServiceDeps {
   /** `JWT_ACCESS_SECRET` (ADR-0004); at least 32 characters. */
   readonly secret: string;
+  /** `APP_ID` (ADR-0064 §1) — the audience's leading word. */
+  readonly appId: string;
   readonly issuer: string;
   readonly accessTtlSec: number;
   /** Injected so expiry is testable without sleeping (ADR-0018 §Testability). */
@@ -161,6 +169,7 @@ export interface IssuedAccessToken {
 
 export const createTokenService = ({
   secret,
+  appId,
   issuer,
   accessTtlSec,
   now = () => new Date(),
@@ -204,7 +213,7 @@ export const createTokenService = ({
         .setProtectedHeader({ alg: ALGORITHM, typ: "JWT" })
         .setSubject(principalId)
         .setIssuer(issuer)
-        .setAudience(audienceFor(population))
+        .setAudience(audienceFor(appId, population))
         .setIssuedAt(issuedAtSec)
         .setExpirationTime(expiresAtSec)
         // A unique id per token, so a future denylist or an audit log can name
@@ -231,7 +240,7 @@ export const createTokenService = ({
       try {
         ({ payload } = await jwtVerify(token, key, {
           issuer,
-          audience: audienceFor(population),
+          audience: audienceFor(appId, population),
           algorithms: [ALGORITHM],
           currentDate: now(),
         }));

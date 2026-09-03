@@ -459,3 +459,37 @@ describe("the ADR-0066 seams", () => {
     ).toBe("rediss://cache.internal:6379");
   });
 });
+
+/**
+ * ADR-0064 §1: the brand is one variable, and its default is what this
+ * repository has always shipped.
+ */
+describe("APP_ID", () => {
+  it("defaults to the brand every derived name already used", () => {
+    expect(loadConfig(validEnv).app.id).toBe("machxi");
+  });
+
+  it("takes a fork's own identifier", () => {
+    expect(loadConfig({ ...validEnv, APP_ID: "acme" }).app.id).toBe("acme");
+    expect(loadConfig({ ...validEnv, APP_ID: "acme-eu" }).app.id).toBe(
+      "acme-eu",
+    );
+  });
+
+  it.each([
+    // Every one of these would produce a name a browser refuses or reads as
+    // two: RFC 6265 §4.1.1 forbids separators and whitespace in a cookie name,
+    // and a `Set-Cookie` a browser drops is a deployment whose sessions simply
+    // never persist. Failing at startup is the only place this can be caught.
+    ["", "empty"],
+    ["Acme", "uppercase, which a cookie name would read as a second brand"],
+    ["acme corp", "whitespace"],
+    ["acme.eu", "a separator"],
+    ["acme;drop", "a cookie-pair separator"],
+    ["-acme", "a leading hyphen, which reads as a truncation"],
+    ["acme-", "a trailing hyphen"],
+    ["a".repeat(33), "longer than the ceiling"],
+  ])("refuses %j at startup (%s)", (value) => {
+    expect(() => loadConfig({ ...validEnv, APP_ID: value })).toThrow(/APP_ID/);
+  });
+});

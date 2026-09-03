@@ -24,6 +24,7 @@ const now = () => new Date("2026-08-18T12:00:00.000Z");
 
 const tokens = createTokenService({
   secret: SECRET,
+  appId: "machxi",
   issuer: "machxi-api-test",
   accessTtlSec: 900,
   now,

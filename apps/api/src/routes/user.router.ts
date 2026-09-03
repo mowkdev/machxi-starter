@@ -33,6 +33,7 @@ export const createUserRouter = (container: Container): Router => {
     "/auth",
     createAuthRouter({
       controller: container.controllers.userAuth,
+      cookieNames: container.cookieNames,
       authenticate: container.authenticate,
       population: "user",
       loginRateLimiter: container.rateLimiters.login,

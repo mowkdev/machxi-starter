@@ -50,7 +50,7 @@ export {
 } from "./locale-context";
 
 export {
-  LOCALE_STORAGE_KEY,
+  localeStorageKey,
   readStoredLocale,
   writeStoredLocale,
 } from "./locale-storage";

@@ -1,7 +1,7 @@
 import type { AuthResource, Population } from "@repo/contracts";
 import type { Request, Response } from "express";
 
-import { readTransport, setAuthCookies } from "./auth.cookies.js";
+import { readTransport, type AuthCookies } from "./auth.cookies.js";
 import type { IssuedAuthResource } from "./auth.mapper.js";
 
 /**
@@ -22,6 +22,15 @@ import type { IssuedAuthResource } from "./auth.mapper.js";
  */
 
 export interface AuthTransportOptions {
+  /**
+   * This deployment's cookie writers, built once in the container from
+   * `APP_ID` (ADR-0064 §1).
+   *
+   * An argument rather than an import for the reason the population is one:
+   * the rule this module owns is *which representation a caller gets*, and it
+   * is the same rule whatever the cookies are called.
+   */
+  readonly cookies: AuthCookies;
   /** The segment answering, which decides the cookie `Path` (ADR-0029). */
   readonly population: Population;
   /** `REFRESH_TOKEN_TTL` (ADR-0004) — the cookie's `Max-Age`. */
@@ -49,8 +58,8 @@ export interface AuthTransportOptions {
  * Puts the refresh token where the caller asked for it.
  *
  * On `body` transport — the default — this is the identity function and no
- * cookie is set. On `cookie` transport the token goes into
- * `__Secure-machxi.refresh`, a fresh CSRF token goes beside it, and the field
+ * cookie is set. On `cookie` transport the token goes into this deployment's
+ * refresh cookie, a fresh CSRF token goes beside it, and the field
  * is **removed from the body**: leaving it in both places would defeat the
  * point, since the value an XSS is being denied would still be sitting in the
  * response it can read.
@@ -63,13 +72,18 @@ export const applyAuthTransport = (
   req: Request,
   res: Response,
   resource: IssuedAuthResource,
-  { population, maxAgeSec, cookieDriven = false }: AuthTransportOptions,
+  {
+    cookies,
+    population,
+    maxAgeSec,
+    cookieDriven = false,
+  }: AuthTransportOptions,
 ): AuthResource => {
   if (!cookieDriven && readTransport(req) === "body") return resource;
 
   const { refreshToken, ...rest } = resource;
 
-  const csrfToken = setAuthCookies(req, res, {
+  const csrfToken = cookies.setAuthCookies(req, res, {
     population,
     token: refreshToken,
     maxAgeSec,

@@ -70,6 +70,11 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - APP_VERSION=${APP_VERSION:-0.0.0}
       - GIT_SHA
+      # The brand every cookie name and the JWT audience are derived from
+      # (ADR-0064 §1). A bare key: unset means the schema's own `machxi`, and
+      # the SPAs' VITE_APP_ID below must carry the same word — they are two
+      # halves of one identity, and a fork sets both or neither.
+      - APP_ID
       # Required in production and refused as both `true` and `false`
       # (ADR-0059 §7): a deployment states the hop it is behind, because
       # `req.ip` is what the login limiter, the refresh limiter and the audit
@@ -129,6 +134,7 @@ services:
       # built per environment (ADR-0059 §4).
       args:
         VITE_API_URL: ${VITE_ADMIN_API_URL}
+        VITE_APP_ID: ${APP_ID:-machxi}
         VITE_CUSTOMER_APP_URL: ${VITE_CUSTOMER_APP_URL}
     container_name: machxi-admin
     restart: unless-stopped
@@ -144,6 +150,7 @@ services:
       dockerfile: apps/customer/Dockerfile
       args:
         VITE_API_URL: ${VITE_CUSTOMER_API_URL}
+        VITE_APP_ID: ${APP_ID:-machxi}
     container_name: machxi-customer
     restart: unless-stopped
     # Loopback, for the reason the API's is.

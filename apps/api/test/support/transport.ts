@@ -20,6 +20,13 @@ import { expect } from "vitest";
  * which is the thing under test.
  */
 
+/**
+ * Written out, like every name below it (see {@link csrfCookie}).
+ *
+ * Since `D14.7` these literals do a second job: `APP_ID` defaults to `machxi`
+ * (ADR-0064 §1), so the whole integration suite passing unchanged is the proof
+ * that deriving the names moved nothing on the wire.
+ */
 export const REFRESH_COOKIE = "__Secure-machxi.refresh";
 
 /**

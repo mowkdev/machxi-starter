@@ -23,9 +23,15 @@ WORKDIR /repo
 # env mode would hand the build an empty one.
 ARG VITE_API_URL
 ARG VITE_CUSTOMER_APP_URL
+# The brand this build's device-storage keys are prefixed with (ADR-0064 §1).
+# Defaulted here rather than required, like VITE_I18N_PSEUDO and unlike
+# VITE_API_URL: the API's own APP_ID defaults to the same word, so an image
+# built without it agrees with an API deployed without it.
+ARG VITE_APP_ID=machxi
 ARG VITE_I18N_PSEUDO=false
 ENV VITE_API_URL=$VITE_API_URL \
     VITE_CUSTOMER_APP_URL=$VITE_CUSTOMER_APP_URL \
+    VITE_APP_ID=$VITE_APP_ID \
     VITE_I18N_PSEUDO=$VITE_I18N_PSEUDO
 
 COPY . .

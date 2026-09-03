@@ -64,6 +64,7 @@ const page: Page<Row> = {
 const renderGrid = (striped?: boolean) =>
   renderWithI18n(
     <AppGrid
+      keyPrefix="machxi.admin"
       columns={COLUMNS}
       listState={LIST_STATE}
       page={page}
@@ -238,6 +239,7 @@ describe("band chrome", () => {
   it("gives the rows the Comfortable band and the data cells the mono face", () => {
     renderWithI18n(
       <AppGrid
+        keyPrefix="machxi.admin"
         columns={{ email: { header: "grid:filter.title", mono: true } }}
         listState={LIST_STATE}
         page={page}
@@ -292,6 +294,7 @@ describe("the band stack", () => {
   it("declares the toolbar and pager bands at 48px with no gap between them", () => {
     renderWithI18n(
       <AppGrid
+        keyPrefix="machxi.admin"
         columns={COLUMNS}
         listState={LIST_STATE}
         page={page}
@@ -329,6 +332,7 @@ describe("the band stack", () => {
   it("gives the toolbar search §3's 32px and 13px control type", () => {
     renderWithI18n(
       <AppGrid
+        keyPrefix="machxi.admin"
         columns={COLUMNS}
         listState={LIST_STATE}
         page={page}
@@ -356,6 +360,7 @@ describe("the band stack", () => {
   it("gives the pager's controls §3's 30px", () => {
     renderWithI18n(
       <AppGrid
+        keyPrefix="machxi.admin"
         columns={COLUMNS}
         listState={LIST_STATE}
         page={page}
@@ -415,6 +420,7 @@ describe("density", () => {
   const renderAt = (density?: "comfortable" | "compact") =>
     renderWithI18n(
       <AppGrid
+        keyPrefix="machxi.admin"
         columns={COLUMNS_WITH_ROLES}
         listState={LIST_STATE}
         page={rolePage}

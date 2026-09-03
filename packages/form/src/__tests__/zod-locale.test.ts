@@ -57,6 +57,8 @@ const build = (lv: object = {}): I18n =>
     },
     namespaces: [FORM_NAMESPACE],
     defaultNamespace: FORM_NAMESPACE,
+    // A prefix an app would supply (ADR-0064 §1); nothing here reads it back.
+    storageKeyPrefix: "test.admin",
     locale: "en",
     /*
      * **The two seams a consuming app binds, bound here.** `@repo/i18n`'s

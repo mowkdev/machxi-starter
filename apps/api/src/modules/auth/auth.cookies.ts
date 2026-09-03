@@ -4,12 +4,10 @@ import type { Request, Response } from "express";
 
 import {
   CSRF_COOKIE_PATH,
-  LEGACY_CSRF_COOKIE,
-  REFRESH_COOKIE,
   TRANSPORT_HEADER,
   authCookiePath,
-  csrfCookieName,
   readCookie,
+  type CookieNames,
 } from "../../core/http/index.js";
 
 /**
@@ -21,6 +19,12 @@ import {
  * `Set-Cookie`. This file is what keeps that true — the service is untouched
  * by cookie transport, and rotation, the grace window and reuse detection go
  * on operating on the token's value without caring how it arrived.
+ *
+ * **A factory over the deployment's cookie names since `D14.7`** (ADR-0064
+ * §1). The names are derived from `APP_ID` and built once in the container,
+ * so this module holds attributes and rules and no brand at all; every
+ * signature below is otherwise the one it had. `readTransport` stays a free
+ * function because it reads a header, and a header name is not a brand.
  */
 
 /**
@@ -83,44 +87,6 @@ const csrfAttributes = {
 } as const;
 
 /**
- * Removes the one host-wide cookie ADR-0029 shipped, on the first response
- * that writes or clears a population's own (ADR-0056 §Decision).
- *
- * It is at `Path=/` with the refresh token's `Max-Age`, so a browser signed in
- * before the split would otherwise carry it — and send it on every request —
- * for a month, and nothing else would ever remove it. The guard is that the
- * request actually presented it: the migration then costs one `Set-Cookie`
- * once per browser rather than one on every login forever.
- *
- * A *shadowed* legacy cookie reads as absent ({@link readCookie} fails closed,
- * ADR-0029) and is therefore not cleared. That is the right way round: it is
- * already absent as far as this API is concerned, its own `Max-Age` retires
- * it, and clearing on an ambiguous name is not a decision to make from a
- * header somebody else can write to.
- */
-const retireLegacyCsrfCookie = (req: Request, res: Response): void => {
-  if (readCookie(req, LEGACY_CSRF_COOKIE) === undefined) return;
-
-  res.clearCookie(LEGACY_CSRF_COOKIE, csrfAttributes);
-};
-
-const writeCsrfCookie = (
-  req: Request,
-  res: Response,
-  population: Population,
-  csrfToken: string,
-  maxAgeSec: number,
-): string => {
-  res.cookie(csrfCookieName(population), csrfToken, {
-    ...csrfAttributes,
-    maxAge: maxAgeSec * 1000,
-  });
-  retireLegacyCsrfCookie(req, res);
-
-  return csrfToken;
-};
-
-/**
  * Issues a **new** CSRF token, replacing whatever the client held.
  *
  * The rotating half, used by {@link setAuthCookies}: every response that sets
@@ -136,12 +102,12 @@ const writeCsrfCookie = (
  * `population` selects **which** cookie, and `req` is here only so the legacy
  * one can be retired beside it (ADR-0056).
  */
-export const setCsrfCookie = (
+type SetCsrfCookie = (
   req: Request,
   res: Response,
   population: Population,
   maxAgeSec: number,
-): string => writeCsrfCookie(req, res, population, randomToken(32), maxAgeSec);
+) => string;
 
 /**
  * Returns the caller's current CSRF token, minting one only if it has none.
@@ -169,19 +135,7 @@ export const setCsrfCookie = (
  * and bootstrapping the admin's segment must not read, and therefore must not
  * re-issue, the customer app's token.
  */
-export const ensureCsrfCookie = (
-  req: Request,
-  res: Response,
-  population: Population,
-  maxAgeSec: number,
-): string =>
-  writeCsrfCookie(
-    req,
-    res,
-    population,
-    readCookie(req, csrfCookieName(population)) ?? randomToken(32),
-    maxAgeSec,
-  );
+type EnsureCsrfCookie = SetCsrfCookie;
 
 export interface RefreshCookieInput {
   readonly population: Population;
@@ -194,7 +148,7 @@ export interface RefreshCookieInput {
  * Sets the refresh cookie and a fresh CSRF token beside it.
  *
  * The two always move together: every response that sets or rotates the
- * refresh cookie issues a new `machxi.csrf.<segment>`, so a stolen CSRF token
+ * refresh cookie issues a new `<app>.csrf.<segment>`, so a stolen CSRF token
  * is worth one rotation, and a client that has the cookie always has a
  * matching header value to send.
  *
@@ -205,19 +159,11 @@ export interface RefreshCookieInput {
  *
  * @returns the CSRF token, for the caller that wants to log or assert on it.
  */
-export const setAuthCookies = (
+type SetAuthCookies = (
   req: Request,
   res: Response,
-  { population, token, maxAgeSec }: RefreshCookieInput,
-): string => {
-  res.cookie(REFRESH_COOKIE, token, {
-    ...baseAttributes(population),
-    httpOnly: true,
-    maxAge: maxAgeSec * 1000,
-  });
-
-  return setCsrfCookie(req, res, population, maxAgeSec);
-};
+  input: RefreshCookieInput,
+) => string;
 
 /**
  * Clears both cookies, with the attributes they were set with.
@@ -233,19 +179,103 @@ export const setAuthCookies = (
  * this record a `logout` here — or `DELETE /user/profile`, which calls the
  * same function — removed the other app's CSRF cookie host-wide.
  */
-export const clearAuthCookies = (
+type ClearAuthCookies = (
   req: Request,
   res: Response,
   population: Population,
-): void => {
-  res.clearCookie(REFRESH_COOKIE, {
-    ...baseAttributes(population),
-    httpOnly: true,
-  });
-  res.clearCookie(csrfCookieName(population), csrfAttributes);
-  retireLegacyCsrfCookie(req, res);
-};
+) => void;
 
 /** The refresh token the browser attached, if it is on cookie transport. */
-export const readRefreshCookie = (req: Request): string | undefined =>
-  readCookie(req, REFRESH_COOKIE);
+type ReadRefreshCookie = (req: Request) => string | undefined;
+
+/**
+ * Everything above, bound to one deployment's names (ADR-0064 §1).
+ *
+ * The interface is written out rather than inferred so that each function's
+ * doc comment above stays the contract a caller reads, and so a fork that
+ * writes a fourth cookie has a shape to satisfy rather than a shape to guess.
+ */
+export interface AuthCookies {
+  readonly setCsrfCookie: SetCsrfCookie;
+  readonly ensureCsrfCookie: EnsureCsrfCookie;
+  readonly setAuthCookies: SetAuthCookies;
+  readonly clearAuthCookies: ClearAuthCookies;
+  readonly readRefreshCookie: ReadRefreshCookie;
+}
+
+export const createAuthCookies = (names: CookieNames): AuthCookies => {
+  /**
+   * Removes the one host-wide cookie ADR-0029 shipped, on the first response
+   * that writes or clears a population's own (ADR-0056 §Decision).
+   *
+   * It is at `Path=/` with the refresh token's `Max-Age`, so a browser signed in
+   * before the split would otherwise carry it — and send it on every request —
+   * for a month, and nothing else would ever remove it. The guard is that the
+   * request actually presented it: the migration then costs one `Set-Cookie`
+   * once per browser rather than one on every login forever.
+   *
+   * A *shadowed* legacy cookie reads as absent ({@link readCookie} fails closed,
+   * ADR-0029) and is therefore not cleared. That is the right way round: it is
+   * already absent as far as this API is concerned, its own `Max-Age` retires
+   * it, and clearing on an ambiguous name is not a decision to make from a
+   * header somebody else can write to.
+   */
+  const retireLegacyCsrfCookie = (req: Request, res: Response): void => {
+    if (readCookie(req, names.legacyCsrf) === undefined) return;
+
+    res.clearCookie(names.legacyCsrf, csrfAttributes);
+  };
+
+  const writeCsrfCookie = (
+    req: Request,
+    res: Response,
+    population: Population,
+    csrfToken: string,
+    maxAgeSec: number,
+  ): string => {
+    res.cookie(names.csrf(population), csrfToken, {
+      ...csrfAttributes,
+      maxAge: maxAgeSec * 1000,
+    });
+    retireLegacyCsrfCookie(req, res);
+
+    return csrfToken;
+  };
+
+  const setCsrfCookie: SetCsrfCookie = (req, res, population, maxAgeSec) =>
+    writeCsrfCookie(req, res, population, randomToken(32), maxAgeSec);
+
+  return {
+    setCsrfCookie,
+
+    ensureCsrfCookie: (req, res, population, maxAgeSec) =>
+      writeCsrfCookie(
+        req,
+        res,
+        population,
+        readCookie(req, names.csrf(population)) ?? randomToken(32),
+        maxAgeSec,
+      ),
+
+    setAuthCookies: (req, res, { population, token, maxAgeSec }) => {
+      res.cookie(names.refresh, token, {
+        ...baseAttributes(population),
+        httpOnly: true,
+        maxAge: maxAgeSec * 1000,
+      });
+
+      return setCsrfCookie(req, res, population, maxAgeSec);
+    },
+
+    clearAuthCookies: (req, res, population) => {
+      res.clearCookie(names.refresh, {
+        ...baseAttributes(population),
+        httpOnly: true,
+      });
+      res.clearCookie(names.csrf(population), csrfAttributes);
+      retireLegacyCsrfCookie(req, res);
+    },
+
+    readRefreshCookie: (req) => readCookie(req, names.refresh),
+  } as const;
+};

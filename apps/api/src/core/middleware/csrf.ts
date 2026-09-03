@@ -2,12 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Population } from "@repo/contracts";
 import type { NextFunction, Request, Response } from "express";
 
-import {
-  CSRF_HEADER,
-  REFRESH_COOKIE,
-  csrfCookieName,
-  readCookie,
-} from "../http/cookies.js";
+import { CSRF_HEADER, readCookie, type CookieNames } from "../http/cookies.js";
 import { forbidden } from "../errors/index.js";
 
 /**
@@ -68,6 +63,17 @@ const equals = (a: string, b: string): boolean => {
 
 export interface CsrfGuardOptions {
   /**
+   * This deployment's cookie names, built once in the container from `APP_ID`
+   * (ADR-0064 §1).
+   *
+   * Handed in rather than derived here, which is the argument the population
+   * below makes as well: a guard that built its own names from a second copy
+   * of the identifier could disagree with the controller that wrote the
+   * cookies, and the disagreement would look like a client sending the wrong
+   * token. One object, written and read by both.
+   */
+  readonly cookies: CookieNames;
+  /**
    * Which population's cookie this guard checks (ADR-0056).
    *
    * The CSRF cookie is one per population, so the guard has to be told which
@@ -97,7 +103,7 @@ export interface CsrfGuardOptions {
 }
 
 /**
- * Requires `X-CSRF-Token` to match this population's `machxi.csrf.*` cookie on
+ * Requires `X-CSRF-Token` to match this population's `<app>.csrf.*` cookie on
  * a cookie-driven request, and does nothing otherwise.
  *
  * `403` and not `401`: whoever sent this may well hold a valid session — the
@@ -106,10 +112,10 @@ export interface CsrfGuardOptions {
  * the session away.
  */
 export const createCsrfGuard =
-  ({ population, allowBodyToken = false }: CsrfGuardOptions) =>
+  ({ cookies, population, allowBodyToken = false }: CsrfGuardOptions) =>
   (req: Request, _res: Response, next: NextFunction): void => {
     const cookieDriven =
-      readCookie(req, REFRESH_COOKIE) !== undefined &&
+      readCookie(req, cookies.refresh) !== undefined &&
       !(allowBodyToken && carriesBodyToken(req));
 
     if (!cookieDriven) {
@@ -123,7 +129,7 @@ export const createCsrfGuard =
      * sends both names here — they are at `Path=/` — and reading the wrong one
      * would refuse a request the client got exactly right (ADR-0056).
      */
-    const cookie = readCookie(req, csrfCookieName(population));
+    const cookie = readCookie(req, cookies.csrf(population));
     const header = req.get(CSRF_HEADER);
 
     if (

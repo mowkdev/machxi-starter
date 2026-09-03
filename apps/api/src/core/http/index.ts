@@ -1,12 +1,12 @@
 export {
   CSRF_COOKIE_PATH,
   CSRF_HEADER,
-  LEGACY_CSRF_COOKIE,
-  REFRESH_COOKIE,
+  DEFAULT_APP_ID,
   TRANSPORT_HEADER,
   authCookiePath,
-  csrfCookieName,
+  createCookieNames,
   readCookie,
+  type CookieNames,
 } from "./cookies.js";
 export { errorEnvelope, listEnvelope, successEnvelope } from "./envelope.js";
 export { respond } from "./respond.js";

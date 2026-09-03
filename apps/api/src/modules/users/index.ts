@@ -2,6 +2,7 @@ export {
   createUserProfileController,
   createUsersController,
   type UserProfileController,
+  type UserProfileControllerDeps,
   type UsersController,
 } from "./users.controller.js";
 export { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";

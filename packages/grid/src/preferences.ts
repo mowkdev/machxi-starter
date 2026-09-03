@@ -28,7 +28,7 @@ import {
  *
  * **On ADR-0033, plainly.** This is the non-credential display state that
  * ADR's D3.1 amendment carves out, with the theme provider as the standing
- * precedent. An XSS that reads `machxi.admin.grid:staff:v1` learns which
+ * precedent. An XSS that reads one of these entries learns which
  * columns an operator prefers wide. Nothing else may ever enter it: column
  * names and numbers only — never row data, never a filter value, never
  * anything typed into the grid.
@@ -95,8 +95,25 @@ export { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH };
 export const clampColumnWidth = (width: number): number =>
   Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
 
-export const gridStorageKey = (gridId: string): string =>
-  `machxi.admin.grid:${gridId}:v1`;
+/**
+ * One grid's entry, under the prefix the app supplies (ADR-0064 §1).
+ *
+ * `${appId}.${segment}.grid:<gridId>:v1` — so `apps/admin` still writes
+ * `machxi.admin.grid:staff:v1`, and this package holds neither a brand nor an
+ * app name. The version stays in the key and in the payload, which ADR-0041
+ * decided and this does not touch.
+ */
+export const gridStorageKey = (keyPrefix: string, gridId: string): string =>
+  `${keyPrefix}.grid:${gridId}:v1`;
+
+/**
+ * Escapes a literal for use inside a `RegExp` source.
+ *
+ * Only the key prefix passes through it, and only because a prefix is data
+ * rather than a pattern — see {@link parseGridStorageKey}.
+ */
+const escapeForPattern = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The inverse of {@link gridStorageKey}, added by `D6.3` (ADR-0045).
@@ -114,12 +131,22 @@ export const gridStorageKey = (gridId: string): string =>
  * ignored here rather than uploaded as a `v1` one.
  *
  * The greedy capture is deliberate: a `gridId` may contain a colon, and
- * `gridStorageKey("a:v1")` must come back as `"a:v1"` rather than as `"a"`.
+ * `gridStorageKey(prefix, "a:v1")` must come back as `"a:v1"` rather than as
+ * `"a"`.
+ *
+ * The prefix is escaped before it becomes a pattern (ADR-0064 §1). It is an
+ * app's own `${appId}.${segment}`, so it always contains a `.` — unescaped,
+ * that would match any character, and `machxi.admin` would answer for a key
+ * written by `machxiXadmin`. Cheap, and the alternative is a rule about
+ * identifiers that nothing enforces.
  */
-const GRID_KEY_PATTERN = /^machxi\.admin\.grid:(.+):v1$/;
+const gridKeyPattern = (keyPrefix: string): RegExp =>
+  new RegExp(`^${escapeForPattern(keyPrefix)}\\.grid:(.+):v1$`);
 
-export const parseGridStorageKey = (key: string): string | null =>
-  GRID_KEY_PATTERN.exec(key)?.[1] ?? null;
+export const parseGridStorageKey = (
+  keyPrefix: string,
+  key: string,
+): string | null => gridKeyPattern(keyPrefix).exec(key)?.[1] ?? null;
 
 /**
  * `window.localStorage`, best-effort in both directions.
@@ -206,15 +233,18 @@ export const reconcile = (
 
 export const createGridPreferences = ({
   gridId,
+  keyPrefix,
   storage,
   defaults,
 }: {
   /** One entry per grid. Defaults to `ResourceConfig.name` at the call site. */
   readonly gridId: string;
+  /** The app's device-key prefix, `${appId}.${segment}` (ADR-0064 §1). */
+  readonly keyPrefix: string;
   readonly storage: PreferenceStorage;
   readonly defaults: GridPreferenceDefaults;
 }) => {
-  const key = gridStorageKey(gridId);
+  const key = gridStorageKey(keyPrefix, gridId);
   const listeners = new Set<() => void>();
 
   const fromDefaults = (): GridPreferences => ({
