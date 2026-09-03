@@ -1,0 +1,255 @@
+import {
+  list{{pascalCase plural}}Query,
+  type List{{pascalCase plural}}Query,
+} from "@repo/contracts";
+import { createLogger } from "@repo/logger";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createRequestContext,
+  type RequestContext,
+} from "../../../core/context/index.js";
+import { isAppError } from "../../../core/errors/index.js";
+import type {
+  New{{pascalCase name}}Input,
+  {{pascalCase name}}Patch,
+  {{pascalCase name}}Record,
+  {{pascalCase plural}}Repository,
+} from "../{{kebabCase plural}}.repository.js";
+import { create{{pascalCase plural}}Service } from "../{{kebabCase plural}}.service.js";
+
+/**
+ * The {{plural}} service against a fake repository (ADR-0021 §Unit).
+ *
+ * No database and no Express — the tier is for the rules a guard cannot see and
+ * a `404` cannot describe. What the generator can honestly assert is the shape:
+ * that reads and writes go through the mapper, that a missing row is a refusal
+ * rather than an `undefined` flowing outward, and that a patch carries one
+ * instant. **Everything domain-specific is yours to add here**, and this file
+ * is where the rules that are not expressible as a schema belong.
+ */
+
+const ID = "0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f11";
+const MISSING_ID = "0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f12";
+{{#if organizationScoped}}
+const ORGANIZATION_ID = "0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f21";
+/** A second tenant, so "scoped" is asserted rather than assumed. */
+const OTHER_ORGANIZATION_ID = "0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f22";
+{{/if}}
+const NOW = new Date("2026-01-01T12:00:00.000Z");
+
+const record = (over: Partial<{{pascalCase name}}Record> = {}): {{pascalCase name}}Record => ({
+  id: ID,
+{{#if organizationScoped}}
+  organizationId: ORGANIZATION_ID,
+{{/if}}
+  name: "First",
+  description: null,
+  createdAt: NOW,
+  updatedAt: NOW,
+  ...over,
+});
+
+/**
+ * An in-memory `{{snakeCase plural}}`.
+{{#if organizationScoped}}
+ *
+ * It reproduces the one behaviour the service leans on and the type enforces:
+ * every read and write is filtered by `organizationId` first, so a row of
+ * another tenant is invisible rather than merely unreturned (ADR-0067 §5).
+{{/if}}
+ */
+const createFakeRepository = (seed: readonly {{pascalCase name}}Record[]) => {
+  const rows = new Map(seed.map((row) => [row.id, { ...row }]));
+
+{{#if organizationScoped}}
+  const visible = (organizationId: string, id: string) => {
+    const row = rows.get(id);
+
+    return row?.organizationId === organizationId ? row : undefined;
+  };
+
+{{/if}}
+  const repository = {
+    list: async (
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      query: List{{pascalCase plural}}Query,
+    ) => {
+      const all = [...rows.values()]
+{{#if organizationScoped}}
+        .filter((row) => row.organizationId === organizationId)
+{{/if}}
+        .slice(query.offset, query.offset + query.limit);
+
+      return { rows: all, total: query.count ? rows.size : null };
+    },
+{{#if organizationScoped}}
+    findById: async (organizationId: string, id: string) =>
+      visible(organizationId, id),
+{{else}}
+    findById: async (id: string) => rows.get(id),
+{{/if}}
+    create: async (input: New{{pascalCase name}}Input) => {
+      const created = record({ ...input, id: ID });
+
+      rows.set(created.id, created);
+
+      return created;
+    },
+    update: async (
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+      patch: {{pascalCase name}}Patch,
+      at: Date,
+    ) => {
+{{#if organizationScoped}}
+      const current = visible(organizationId, id);
+{{else}}
+      const current = rows.get(id);
+{{/if}}
+
+      if (current === undefined) return undefined;
+
+      const next = {
+        ...current,
+        ...(patch.name === undefined ? {} : { name: patch.name }),
+        ...(patch.description === undefined
+          ? {}
+          : { description: patch.description }),
+        updatedAt: at,
+      };
+
+      rows.set(id, next);
+
+      return next;
+    },
+{{#if organizationScoped}}
+    remove: async (organizationId: string, id: string) =>
+      visible(organizationId, id) !== undefined && rows.delete(id),
+{{else}}
+    remove: async (id: string) => rows.delete(id),
+{{/if}}
+  };
+
+  return repository as unknown as {{pascalCase plural}}Repository;
+};
+
+const anyContext = (): RequestContext =>
+  createRequestContext({
+    requestId: "req-1",
+    logger: createLogger({ level: "silent", name: "test" }),
+  });
+
+/**
+ * The endpoint's own defaults, parsed rather than restated.
+ *
+ * `list{{pascalCase plural}}Query.parse({})` is what a request with no query
+ * string produces, so this fixture cannot drift from the contract the way a
+ * hand-written object would.
+ */
+const listQuery = (): List{{pascalCase plural}}Query =>
+  list{{pascalCase plural}}Query.parse({});
+
+/**
+ * The error a rejected promise carried.
+ *
+ * Written out rather than reached for through a matcher, because what is being
+ * asserted is that the refusal is an `AppError` — the shape the error
+ * middleware renders (ADR-0013) — and not merely that something was thrown.
+ */
+const rejection = async (promise: Promise<unknown>): Promise<unknown> => {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error("expected the call to be refused");
+};
+
+let ctx: RequestContext;
+
+beforeEach(() => {
+  ctx = anyContext();
+});
+
+const service = (seed: readonly {{pascalCase name}}Record[] = [record()]) =>
+  create{{pascalCase plural}}Service({
+    repository: createFakeRepository(seed),
+    now: () => NOW,
+  });
+
+describe("the {{plural}} service", () => {
+  it("returns resources, never rows — dates leave as ISO-8601 instants", async () => {
+{{#if organizationScoped}}
+    const page = await service().list(ctx, ORGANIZATION_ID, listQuery());
+{{else}}
+    const page = await service().list(ctx, listQuery());
+{{/if}}
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]?.createdAt).toBe(NOW.toISOString());
+  });
+
+  it("refuses a read of an id nothing has (ADR-0013)", async () => {
+    const error = await rejection(
+{{#if organizationScoped}}
+      service().getById(ctx, ORGANIZATION_ID, MISSING_ID),
+{{else}}
+      service().getById(ctx, MISSING_ID),
+{{/if}}
+    );
+
+    expect(isAppError(error)).toBe(true);
+  });
+
+  it("normalises an absent description to null on create", async () => {
+{{#if organizationScoped}}
+    const created = await service([]).create(ctx, ORGANIZATION_ID, {
+      name: "Second",
+    });
+{{else}}
+    const created = await service([]).create(ctx, { name: "Second" });
+{{/if}}
+
+    expect(created.description).toBeNull();
+  });
+
+  it("keeps 'clear it' apart from 'leave it' on update", async () => {
+    const subject = service([record({ description: "kept" })]);
+
+{{#if organizationScoped}}
+    expect((await subject.update(ctx, ORGANIZATION_ID, ID, { name: "Renamed" })).description).toBe("kept");
+    expect((await subject.update(ctx, ORGANIZATION_ID, ID, { description: null })).description).toBeNull();
+{{else}}
+    expect((await subject.update(ctx, ID, { name: "Renamed" })).description).toBe("kept");
+    expect((await subject.update(ctx, ID, { description: null })).description).toBeNull();
+{{/if}}
+  });
+
+  it("refuses a delete of an id nothing has, rather than answering 204", async () => {
+    const error = await rejection(
+{{#if organizationScoped}}
+      service().remove(ctx, ORGANIZATION_ID, MISSING_ID),
+{{else}}
+      service().remove(ctx, MISSING_ID),
+{{/if}}
+    );
+
+    expect(isAppError(error)).toBe(true);
+  });
+{{#if organizationScoped}}
+
+  it("cannot see another organization's row (ADR-0067 §5)", async () => {
+    const subject = service([record({ organizationId: OTHER_ORGANIZATION_ID })]);
+
+    expect(isAppError(await rejection(subject.getById(ctx, ORGANIZATION_ID, ID)))).toBe(
+      true,
+    );
+  });
+{{/if}}
+});

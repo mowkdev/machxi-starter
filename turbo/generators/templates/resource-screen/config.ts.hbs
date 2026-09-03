@@ -1,0 +1,135 @@
+import type {
+  Create{{pascalCase name}}Body,
+  Update{{pascalCase name}}Body,
+  {{pascalCase name}}Resource,
+} from "@repo/contracts";
+
+import { createAppFormInput } from "@/shared/form/app-form-input";
+import type { ResourceConfig } from "@/shared/resource/types";
+
+/**
+ * The {{name}} resource, declared once (ADR-0035, ADR-0063 §1).
+ *
+ * Columns and fields sit together so the grid and the two forms cannot disagree
+ * about what a {{name}} is. The three type arguments are the contract: columns
+ * are keyed by `{{pascalCase name}}Resource` and fields by the two bodies, so a
+ * misspelt key is a compile error on the line that wrote it rather than a
+ * header over an empty column.
+ *
+ * **Every `sortable` and every `filter` below is a claim about
+ * `list{{pascalCase plural}}Query`**, and no type can reach an endpoint's
+ * allow-lists — `__tests__/{{camelCase name}}.config.test.ts` is where the
+ * claims meet the schema, in both directions.
+ *
+ * `as const satisfies` is the authoring form and is load-bearing: it keeps the
+ * literal key types {@link createAppFormInput} needs, and it makes a key
+ * outside `GridConfig` an excess-property error.
+ */
+export const {{camelCase name}}ResourceConfig = {
+  name: "{{camelCase plural}}",
+  grid: {
+    /*
+     * Which shell `new` and `$id` render in (ADR-0040). `"dialog"` for a short
+     * form, `"drawer"` where the list should stay legible beside it, `"page"`
+     * where the record is the screen.
+     */
+    editSurface: "dialog",
+    /*
+     * What this grid *offers* (ADR-0038) — one line per affordance.
+     *
+     * These are **not** permissions: they are conjoined with ADR-0042's `can()`
+     * above the grid, and the API's guards remain the enforcement either way.
+     * `canBulkDelete` goes with `selectable`, never without — the config test
+     * refuses the pair, because the failure mode is a toolbar button with
+     * nothing to act on.
+     */
+    selectable: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+    canBulkDelete: true,
+    /*
+     * Whether the endpoint implements ADR-0014's `q` (ADR-0063 §2). A claim
+     * about the contract like every other line here, checked in both
+     * directions: a search box over an endpoint with no `q` returns an
+     * unfiltered page and looks like a working one.
+     */
+    searchable: true,
+    /*
+     * The stances this resource offers one press away (ADR-0039). None by
+     * default: a hot filter is a claim that operators ask this question many
+     * times a session, and that is a product decision rather than a shape.
+     */
+    hotFilters: [],
+  },
+  columns: {
+    name: {
+      header: "{{camelCase plural}}:columns.name",
+      sortable: true,
+      /*
+       * `like` and not `eq`: an operator types a partial term, and ADR-0014
+       * exempts `like` from the field's value schema because a pattern is not
+       * a value of the column's type.
+       */
+      filter: {
+        kind: "text",
+        op: "like",
+        placeholder: "grid:filter.containsPlaceholder",
+      },
+    },
+    description: { header: "{{camelCase plural}}:columns.description" },
+    createdAt: {
+      header: "{{camelCase plural}}:columns.createdAt",
+      sortable: true,
+      formatter: "date",
+      // A timestamp is data, not prose (ADR-0054 §4).
+      mono: true,
+      filter: { kind: "dateRange", from: "gte", to: "lte" },
+    },
+    actions: {
+      header: "{{camelCase plural}}:columns.actions",
+      cellRenderer: "rowActions",
+      align: "end",
+    },
+  },
+  fields: {
+    name: {
+      label: "{{camelCase plural}}:fields.name.label",
+      component: "input",
+      initialValue: "",
+    },
+    description: {
+      label: "{{camelCase plural}}:fields.description.label",
+      component: "textarea",
+      /*
+       * The column is nullable, so an emptied control submits `null` rather
+       * than `""` — three distinct requests the body distinguishes: leave it
+       * (absent), set it (a string), clear it (`null`). The seed is `null` for
+       * the same reason: `""` looks equivalent and is the third of the three.
+       */
+      nullable: true,
+      initialValue: null,
+    },
+  },
+  /*
+   * The domain failures the API reports with no field path, and the box an
+   * operator would have to change to fix each one (ADR-0035). Empty until this
+   * resource has a `409` of its own — a conflict about the *request* carries no
+   * zod issue, so without an entry here it lands at the top of the form.
+   */
+  errorFields: {},
+} as const satisfies ResourceConfig<
+  {{pascalCase name}}Resource,
+  Create{{pascalCase name}}Body,
+  Update{{pascalCase name}}Body
+>;
+
+/**
+ * The typed input for this resource's fields (ADR-0035).
+ *
+ * One line, and from here on `<{{pascalCase name}}FormInput fieldName="nmae" />`
+ * is a compile error rather than a control that silently never renders.
+ */
+export const {{pascalCase name}}FormInput = createAppFormInput(
+  {{camelCase name}}ResourceConfig.fields,
+);

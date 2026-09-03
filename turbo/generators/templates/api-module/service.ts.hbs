@@ -1,0 +1,155 @@
+import type {
+  Create{{pascalCase name}}Body,
+  List{{pascalCase plural}}Query,
+  Page,
+  Update{{pascalCase name}}Body,
+  {{pascalCase name}}Resource,
+} from "@repo/contracts";
+
+import type { RequestContext } from "../../core/context/index.js";
+import { toPage } from "../../core/http/index.js";
+import { {{camelCase name}}NotFound } from "./{{kebabCase plural}}.errors.js";
+import { to{{pascalCase name}}Resource } from "./{{kebabCase plural}}.mapper.js";
+import type { {{pascalCase plural}}Repository } from "./{{kebabCase plural}}.repository.js";
+
+/**
+ * The {{plural}} module's business logic (ADR-0009).
+ *
+ * Every function takes the `RequestContext` first, whether or not it reads it,
+ * so a caller sees one shape across the module and adding a log line or an
+ * audit event later is not a signature change. It returns **resources**, never
+ * rows: the mapper is the boundary, and a controller that could see a row would
+ * eventually send one.
+ *
+ * Everything it refuses is an `AppError` thrown from here (ADR-0013); nothing
+ * below this layer knows what an HTTP status is.
+ */
+
+export interface {{pascalCase plural}}ServiceDeps {
+  readonly repository: {{pascalCase plural}}Repository;
+  /** Injected so a test can pin the instant a write records. */
+  readonly now?: () => Date;
+}
+
+export const create{{pascalCase plural}}Service = ({
+  repository,
+  now = () => new Date(),
+}: {{pascalCase plural}}ServiceDeps) => {
+  /** One read, one refusal — so five functions cannot disagree about `404`. */
+  const read = async (
+{{#if organizationScoped}}
+    organizationId: string,
+{{/if}}
+    id: string,
+  ) => {
+{{#if organizationScoped}}
+    const record = await repository.findById(organizationId, id);
+{{else}}
+    const record = await repository.findById(id);
+{{/if}}
+
+    if (record === undefined) throw {{camelCase name}}NotFound();
+
+    return record;
+  };
+
+  return {
+    list: async (
+      _ctx: RequestContext,
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      query: List{{pascalCase plural}}Query,
+    ): Promise<Page<{{pascalCase name}}Resource>> => {
+{{#if organizationScoped}}
+      const { rows, total } = await repository.list(organizationId, query);
+{{else}}
+      const { rows, total } = await repository.list(query);
+{{/if}}
+
+      return toPage(query, rows.map(to{{pascalCase name}}Resource), total);
+    },
+
+    getById: async (
+      _ctx: RequestContext,
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+    ): Promise<{{pascalCase name}}Resource> =>
+{{#if organizationScoped}}
+      to{{pascalCase name}}Resource(await read(organizationId, id)),
+{{else}}
+      to{{pascalCase name}}Resource(await read(id)),
+{{/if}}
+
+    create: async (
+      _ctx: RequestContext,
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      body: Create{{pascalCase name}}Body,
+    ): Promise<{{pascalCase name}}Resource> =>
+      to{{pascalCase name}}Resource(
+        await repository.create({
+{{#if organizationScoped}}
+          organizationId,
+{{/if}}
+          name: body.name,
+          /*
+           * `undefined` and `null` are the same *stored* value on a create —
+           * the row has no description either way — so the absent case is
+           * normalised once, here, rather than in the repository's `values`.
+           */
+          description: body.description ?? null,
+        }),
+      ),
+
+    update: async (
+      _ctx: RequestContext,
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+      body: Update{{pascalCase name}}Body,
+    ): Promise<{{pascalCase name}}Resource> => {
+      const updated = await repository.update(
+{{#if organizationScoped}}
+        organizationId,
+{{/if}}
+        id,
+        body,
+        now(),
+      );
+
+      if (updated === undefined) throw {{camelCase name}}NotFound();
+
+      return to{{pascalCase name}}Resource(updated);
+    },
+
+    remove: async (
+      _ctx: RequestContext,
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+    ): Promise<void> => {
+{{#if organizationScoped}}
+      const removed = await repository.remove(organizationId, id);
+{{else}}
+      const removed = await repository.remove(id);
+{{/if}}
+
+      /*
+       * A delete of something that is not there is a `404`, not a silent `204`:
+       * the two answers mean different things to the client that just tried,
+       * and idempotence is not worth the ambiguity here.
+       */
+      if (!removed) throw {{camelCase name}}NotFound();
+    },
+  } as const;
+};
+
+export type {{pascalCase plural}}Service = ReturnType<
+  typeof create{{pascalCase plural}}Service
+>;

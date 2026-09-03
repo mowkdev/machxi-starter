@@ -1,0 +1,144 @@
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  update{{pascalCase name}}Body,
+  type Update{{pascalCase name}}Body,
+  type {{pascalCase name}}Resource,
+} from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import { useForm } from "react-hook-form";
+
+import {
+  {{pascalCase name}}FormInput,
+  {{camelCase name}}ResourceConfig,
+  useUpdate{{pascalCase name}},
+  use{{pascalCase name}},
+} from "@/entities/{{kebabCase name}}";
+import { AppFormSurface } from "@/shared/form/app-form-surface";
+import {
+  applyServerErrors,
+  schemaFieldRules,
+} from "@/shared/form/server-errors";
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
+import { useT } from "@/shared/i18n";
+import { useMessageForError } from "@/shared/notifications/messages";
+import {
+  dirtyValuesOf,
+  editSurfaceOf,
+  fieldsForVariant,
+} from "@/shared/resource/config";
+
+/**
+ * `PATCH /{{plural}}/:id` — the same field configuration as the create form,
+ * rendered under `variant="edit"`.
+ *
+ * One declaration, two forms, and no way for them to disagree about what a
+ * {{name}} is: a field the config marks create-only disappears here, and one it
+ * marks edit-only appears.
+ *
+ * **The record arrives from the route loader, not from the row that was
+ * clicked** (ADR-0040). That is what the URL buys: `/{{kebabCase plural}}/$id`
+ * is reachable by reload, by Back and by somebody else's link, and in none of
+ * those cases is there a grid row to hand over.
+ */
+
+/** What the edit form puts on screen — the config decides, not this file. */
+const FIELD_NAMES = fieldsForVariant(
+  {{camelCase name}}ResourceConfig.fields,
+  "edit",
+).map(([name]) => name);
+
+const toFormValues = (
+  {{camelCase name}}: {{pascalCase name}}Resource,
+): Update{{pascalCase name}}Body => ({
+  name: {{camelCase name}}.name,
+  description: {{camelCase name}}.description,
+});
+
+export const Edit{{pascalCase name}}Surface = ({
+  {{camelCase name}},
+}: {
+  /** The record the route loaded. */
+  readonly {{camelCase name}}: {{pascalCase name}}Resource;
+}) => {
+  const { t } = useT("{{camelCase plural}}");
+  const navigate = useNavigate();
+  const { closeSearch } = useRecordNavigation();
+  const update{{pascalCase name}} = useUpdate{{pascalCase name}}();
+  const messageForError = useMessageForError();
+
+  const close = () => {
+    void navigate({ to: "/{{kebabCase plural}}", search: closeSearch });
+  };
+
+  /*
+   * The same key the loader primed, so this resolves from cache on the first
+   * render and refetches only when ADR-0034's `staleTime` says it is worth it.
+   * It stays a `useQuery` rather than reading the loader's value once, because
+   * a subscription is what notices the cache being invalidated underneath.
+   */
+  const detail = use{{pascalCase name}}({{camelCase name}}.id);
+
+  const form = useForm<Update{{pascalCase name}}Body>({
+    resolver: zodResolver(update{{pascalCase name}}Body),
+    defaultValues: toFormValues({{camelCase name}}),
+    /*
+     * `values` + `keepDirtyValues` is RHF's own answer to "the server told us
+     * something newer while the operator was typing": untouched fields take the
+     * fresh value, touched ones are left alone.
+     */
+    values: toFormValues(detail.data ?? {{camelCase name}}),
+    resetOptions: { keepDirtyValues: true },
+    disabled: update{{pascalCase name}}.isPending,
+  });
+
+  const onSubmit = async (values: Update{{pascalCase name}}Body) => {
+    /*
+     * Pruned to what the operator actually changed (ADR-0035), which is what
+     * makes the contract's "provide at least one field" refinement measure a
+     * real edit — and what stops a re-send of every seeded value overwriting a
+     * field somebody else changed in the meantime.
+     */
+    const body = dirtyValuesOf(values, form.formState.dirtyFields);
+
+    // Unreachable through the disabled button, kept because implicit submission
+    // from a text field is not consistently blocked by it — and an empty body
+    // is a `VALIDATION_ERROR` the operator did nothing to earn.
+    if (Object.keys(body).length === 0) {
+      close();
+      return;
+    }
+
+    try {
+      await update{{pascalCase name}}.mutateAsync({ id: {{camelCase name}}.id, body });
+      close();
+    } catch (error) {
+      applyServerErrors(error, form.setError, {
+        fields: FIELD_NAMES,
+        codeFields: {{camelCase name}}ResourceConfig.errorFields,
+        messageForError,
+        rules: schemaFieldRules(update{{pascalCase name}}Body, form.getValues()),
+      });
+    }
+  };
+
+  return (
+    <AppFormSurface
+      surface={editSurfaceOf({{camelCase name}}ResourceConfig)}
+      onClose={close}
+      title={t("edit.title", { name: {{camelCase name}}.name })}
+      description={t("edit.description")}
+      form={form}
+      fields={ {{camelCase name}}ResourceConfig.fields}
+      variant="edit"
+      onSubmit={onSubmit}
+      isPending={update{{pascalCase name}}.isPending}
+      submitLabel={t("edit.submit")}
+      // Nothing changed is nothing to send, and saying so on the button is
+      // kinder than a validation error that says the same thing afterwards.
+      canSubmit={form.formState.isDirty}
+    >
+      <{{pascalCase name}}FormInput fieldName="name" />
+      <{{pascalCase name}}FormInput fieldName="description" />
+    </AppFormSurface>
+  );
+};

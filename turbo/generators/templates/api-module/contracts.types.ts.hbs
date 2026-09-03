@@ -1,0 +1,20 @@
+import type { IsoDateTime } from "../primitives.js";
+
+/**
+ * A {{name}} as the API returns it (ADR-0012 §Resource shape rules).
+ *
+ * Deliberately not the `{{snakeCase plural}}` row: a resource must be free to
+ * diverge from storage, and a column with no wire representation must have
+ * nowhere to land. The module's mapper is the only place one is produced.
+ */
+export interface {{pascalCase name}}Resource {
+  readonly id: string;
+{{#if organizationScoped}}
+  /** The owning organization (ADR-0067 §1). Never optional, never nullable. */
+  readonly organizationId: string;
+{{/if}}
+  readonly name: string;
+  readonly description: string | null;
+  readonly createdAt: IsoDateTime;
+  readonly updatedAt: IsoDateTime;
+}

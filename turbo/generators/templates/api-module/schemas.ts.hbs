@@ -1,0 +1,28 @@
+import {
+  create{{pascalCase name}}Body,
+  list{{pascalCase plural}}Query,
+  {{camelCase name}}IdParams,
+  update{{pascalCase name}}Body,
+} from "@repo/contracts";
+
+/**
+ * The route schemas of the {{plural}} module (ADR-0011).
+ *
+ * Re-exported from `@repo/contracts` rather than declared here (ADR-0023): the
+ * admin panel builds the same forms and the same list query against the same
+ * objects, so a field the server rejects is a field the client never sends. A
+ * server-only refinement — one a client could not evaluate — would be layered
+ * on top of the imported schema, in this file.
+ *
+ * Grouped as `{ params?, query?, body? }` because that is what `validate()`
+ * takes and what `ValidatedRequest<typeof schema>` reads to type `req.valid`.
+ */
+
+export const list{{pascalCase plural}}Schema = { query: list{{pascalCase plural}}Query } as const;
+export const get{{pascalCase name}}Schema = { params: {{camelCase name}}IdParams } as const;
+export const create{{pascalCase name}}Schema = { body: create{{pascalCase name}}Body } as const;
+export const update{{pascalCase name}}Schema = {
+  params: {{camelCase name}}IdParams,
+  body: update{{pascalCase name}}Body,
+} as const;
+export const delete{{pascalCase name}}Schema = { params: {{camelCase name}}IdParams } as const;

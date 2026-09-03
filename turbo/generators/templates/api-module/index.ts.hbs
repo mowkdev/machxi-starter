@@ -1,0 +1,26 @@
+export {
+  create{{pascalCase plural}}Controller,
+  type {{pascalCase plural}}Controller,
+} from "./{{kebabCase plural}}.controller.js";
+export { {{camelCase name}}NotFound } from "./{{kebabCase plural}}.errors.js";
+export { to{{pascalCase name}}Resource } from "./{{kebabCase plural}}.mapper.js";
+export {
+  create{{pascalCase plural}}Repository,
+  type New{{pascalCase name}}Input,
+  type {{pascalCase name}}Patch,
+  type {{pascalCase name}}Record,
+  type {{pascalCase plural}}Repository,
+} from "./{{kebabCase plural}}.repository.js";
+export { create{{pascalCase plural}}Router } from "./{{kebabCase plural}}.routes.js";
+export {
+  create{{pascalCase name}}Schema,
+  delete{{pascalCase name}}Schema,
+  get{{pascalCase name}}Schema,
+  list{{pascalCase plural}}Schema,
+  update{{pascalCase name}}Schema,
+} from "./{{kebabCase plural}}.schemas.js";
+export {
+  create{{pascalCase plural}}Service,
+  type {{pascalCase plural}}Service,
+  type {{pascalCase plural}}ServiceDeps,
+} from "./{{kebabCase plural}}.service.js";

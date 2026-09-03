@@ -5,17 +5,31 @@ description: Step-by-step checklist to create a new API feature module (routes/c
 
 # New API module — `$ARGUMENTS` (module name, kebab-case)
 
-Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/users`) for exact style.
+## 0. Run the generator first
 
-## 1. Contracts (`packages/contracts/src/<module>/`)
+```
+pnpm turbo gen api-module
+```
 
-- [ ] `schemas.ts`: zod for params (`idParams`), bodies (`.strict()`, max lengths), list query (`listQuerySchema({ sortable: [...] as const, filterable: {...}, defaultSort: '-createdAt' })`).
+It asks for the aggregate (singular, lower case), its plural, the route segment and whether the aggregate is owned by an organization (ADR-0067 §1 — the tenant column, its composite index, a required scope on every repository function; answer `yes` only when it is, because retrofitting it is a rewrite).
+
+**The templates in `turbo/generators/templates/api-module/` are the description of a module** (ADR-0063 §3). When the shape changes, the template changes in the same step — a shape that lives only in this document decays, because nothing runs it.
+
+The generator writes the contract folder and its barrel entry, the Drizzle table and both hand-maintained table enumerations (the ESLint import ban and `TRUNCATED_TABLES`, ADR-0061 §4), the `@repo/db` barrel export, the eight module files of ADR-0009 and the unit and index tests — then runs prettier over what it wrote and prints the rest. Read `/api-conventions` for the conventions the templates encode; mirror `apps/api/src/modules/users` where a question the templates do not answer comes up.
+
+**Everything below is what the generator deliberately does not do**, because each of them is a decision rather than a shape. Sections 1–3 are the seeded files you now replace with the real domain; sections 4–6 are the edits it printed.
+
+## 1. Contracts (`packages/contracts/src/<module>/`) — seeded, now make them true
+
+- [ ] `schemas.ts`: zod for params (`idParams`), bodies (`.strict()`, max lengths), list query (`listQuerySchema({ sortable: [...] as const, filterable: {...}, defaultSort: '-createdAt' })`). A field enters `sortable`/`filterable` **only with the index that serves it** (ADR-0060 §3) — the generated `<m>.list-indexes.test.ts` is what refuses the pair.
 - [ ] `types.ts`: `<X>Resource` (wire shape; no DB types), inferred DTOs.
-- [ ] Export from `packages/contracts/src/index.ts`. Add new enums as `as const` arrays + unions.
+- [ ] New enums as `as const` arrays + unions (the barrel export is already written).
 
-## 2. DB (only if a new aggregate) — run `/db-schema-change`.
+## 2. DB — the migration is yours: run `/db-schema-change`.
 
-## 3. Module files (`apps/api/src/modules/<module>/`)
+The table is generated; the SQL is not. `pnpm db:generate`, review, `pnpm db:migrate` — migrations come from drizzle-kit and never from a template (ADR-0006).
+
+## 3. Module files (`apps/api/src/modules/<module>/`) — seeded, now make them true
 
 - [ ] `<m>.schemas.ts` — re-export contracts schemas.
 - [ ] `<m>.errors.ts` — domain factories built on `core/errors` (`conflict('…', 'X_CODE')`), add codes to contracts `ErrorCode`.
@@ -33,9 +47,10 @@ Read `/api-conventions` first. Mirror an existing module (`apps/api/src/modules/
 
 ## 5. Tests (ADR-0021)
 
-- [ ] `__tests__/<m>.service.test.ts` — fake repository literals; success + each error path.
-- [ ] `__tests__/<m>.mapper.test.ts` — strips internals.
-- [ ] `__tests__/<m>.int.test.ts` — supertest per endpoint: happy, 400 validation, 401 no token, 403 wrong role/population, 404; list: pagination/sort/filter/invalid sort.
+- [ ] `__tests__/<m>.service.test.ts` — **generated**, one case per seeded path; grow it as the service does: fake repository literals, success + each error path.
+- [ ] `__tests__/<m>.list-indexes.test.ts` — **generated** and needs no edit: it reads the repository's own `ColumnMap` against the allow-lists, so it only reddens when the two disagree (ADR-0060 §3).
+- [ ] `__tests__/<m>.mapper.test.ts` — yours: strips internals.
+- [ ] `__tests__/<m>.int.test.ts` — yours, because it is written against endpoints that exist: supertest per endpoint: happy, 400 validation, 401 no token, 403 wrong role/population, 404; list: pagination/sort/filter/invalid sort.
 
 ## 6. Docs & tooling
 

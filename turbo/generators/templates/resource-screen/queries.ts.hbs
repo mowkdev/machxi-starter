@@ -1,0 +1,111 @@
+import type {
+  Create{{pascalCase name}}Body,
+  List{{pascalCase plural}}Query,
+  Update{{pascalCase name}}Body,
+} from "@repo/contracts";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import { useApiClient } from "@/shared/api/context";
+
+import { create{{pascalCase plural}}Api } from "./{{kebabCase name}}.api";
+import { {{camelCase plural}}Keys } from "./{{kebabCase name}}.keys";
+
+/**
+ * The {{plural}} hooks (ADR-0034).
+ *
+ * Every mutation follows the same invalidation rule, and there is nothing
+ * clever about it — which is the point: invalidate the entity's `lists()`
+ * prefix and the touched `detail(id)`. A rule with no exceptions is one nobody
+ * has to remember per call site.
+ *
+ * `meta.success` is how a mutation states its outcome; the global mutation
+ * cache delivers it. Nothing here calls `toast()`, which is the anti-pattern
+ * ADR-0034 replaces.
+ */
+
+const useApi = () => create{{pascalCase plural}}Api(useApiClient());
+
+export const use{{pascalCase plural}}List = (params: List{{pascalCase plural}}Query) => {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: {{camelCase plural}}Keys.list(params),
+    queryFn: () => api.list(params),
+    // Paging does not flash an empty table: the previous page stays put until
+    // the next one arrives.
+    placeholderData: keepPreviousData,
+  });
+};
+
+export const use{{pascalCase name}} = (id: string) => {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: {{camelCase plural}}Keys.detail(id),
+    queryFn: () => api.get(id),
+  });
+};
+
+/**
+ * `errorToast: false` on the two mutations a **form** hosts.
+ *
+ * ADR-0034 splits the two halves cleanly: field-level failures belong to the
+ * form, operation-level outcomes belong to toasts. Each of these is submitted
+ * from a form that calls `applyServerErrors`, which lands what it can next to a
+ * field and everything else at the top of the form — so leaving the toast on
+ * would say the same thing twice, once where the operator is already looking
+ * and once over the top of it. The confirm below keeps its toast, because a
+ * confirm has no field for a refusal to land on.
+ */
+const FORM_MUTATION_META = { errorToast: false } as const;
+
+export const useCreate{{pascalCase name}} = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: Create{{pascalCase name}}Body) => api.create(body),
+    meta: { ...FORM_MUTATION_META, success: "{{camelCase plural}}:outcomes.created" },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: {{camelCase plural}}Keys.lists() });
+    },
+  });
+};
+
+export const useUpdate{{pascalCase name}} = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Update{{pascalCase name}}Body }) =>
+      api.update(id, body),
+    meta: { ...FORM_MUTATION_META, success: "{{camelCase plural}}:outcomes.updated" },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: {{camelCase plural}}Keys.lists() });
+      void queryClient.invalidateQueries({
+        queryKey: {{camelCase plural}}Keys.detail(id),
+      });
+    },
+  });
+};
+
+export const useDelete{{pascalCase name}} = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.remove(id),
+    meta: { success: "{{camelCase plural}}:outcomes.deleted" },
+    onSuccess: (_data, id) => {
+      void queryClient.invalidateQueries({ queryKey: {{camelCase plural}}Keys.lists() });
+      void queryClient.invalidateQueries({
+        queryKey: {{camelCase plural}}Keys.detail(id),
+      });
+    },
+  });
+};

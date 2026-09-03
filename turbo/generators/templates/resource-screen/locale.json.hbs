@@ -1,0 +1,57 @@
+{
+  "title": "{{titleCase plural}}",
+  "description": "Seeded copy — say what this screen is for.",
+  "empty": "No {{plural}} match this view.",
+  "backToList": "Back to {{plural}}",
+{{#each extraPluralForms}}
+  "noun_{{this}}": "{{../plural}}",
+{{/each}}
+  "noun_one": "{{name}}",
+  "noun_other": "{{plural}}",
+  "columns": {
+    "name": "Name",
+    "description": "Description",
+    "createdAt": "Created",
+    "actions": "Actions"
+  },
+  "fields": {
+    "name": { "label": "Name" },
+    "description": { "label": "Description" }
+  },
+  "actions": {
+    "create": "New {{name}}",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "create": {
+    "routeTitle": "New {{name}}",
+    "title": "New {{name}}",
+    "description": "Seeded copy — say what saving this does.",
+    "submit": "Create"
+  },
+  "edit": {
+    "routeTitle": "Edit {{name}}",
+    "title": "Edit \{{name}}",
+    "description": "Seeded copy — say what cannot be changed here, and why.",
+    "submit": "Save changes"
+  },
+  "delete": {
+    "title": "Delete \{{name}}?",
+    "description": "Seeded copy — say exactly what happens to the row, and whether it can be undone.",
+    "confirm": "Delete"
+  },
+  "bulkDelete": {
+{{#each extraPluralForms}}
+    "title_{{this}}": "Delete \{{count}} {{../plural}}?",
+{{/each}}
+    "title_one": "Delete \{{count}} {{name}}?",
+    "title_other": "Delete \{{count}} {{plural}}?",
+    "description": "Seeded copy — say what happens, and that some may be refused.",
+    "confirm": "Delete"
+  },
+  "outcomes": {
+    "created": "The {{name}} was created.",
+    "updated": "The {{name}} was updated.",
+    "deleted": "The {{name}} was deleted."
+  }
+}

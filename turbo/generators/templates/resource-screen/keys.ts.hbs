@@ -1,0 +1,23 @@
+import type { List{{pascalCase plural}}Query } from "@repo/contracts";
+
+/**
+ * The one place a {{name}} query key is built (ADR-0034 §Query keys).
+ *
+ * **No inline key arrays at call sites, ever** — a key written twice is an
+ * invalidation that misses, and the miss is silent: the screen shows stale data
+ * until something else happens to refetch it.
+ *
+ * Keys are hierarchical data rather than strings, so invalidation targets a
+ * prefix: `lists()` hits every page, sort and filter permutation without naming
+ * any of them. The params object inside `list()` is the *parsed* query, and
+ * TanStack Query hashes keys structurally, so two objects meaning the same
+ * request are the same cache entry regardless of property order.
+ */
+export const {{camelCase plural}}Keys = {
+  all: ["{{camelCase plural}}"] as const,
+  lists: () => [...{{camelCase plural}}Keys.all, "list"] as const,
+  list: (params: List{{pascalCase plural}}Query) =>
+    [...{{camelCase plural}}Keys.lists(), params] as const,
+  details: () => [...{{camelCase plural}}Keys.all, "detail"] as const,
+  detail: (id: string) => [...{{camelCase plural}}Keys.details(), id] as const,
+} as const;

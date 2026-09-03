@@ -113,6 +113,14 @@ pnpm test:postman            # newman smoke run against a running API
 pnpm format
 ```
 
+Scaffolding (ADR-0063 §3) — each prints the edits it deliberately leaves to you,
+because each of those is a decision rather than a shape:
+
+```sh
+pnpm turbo gen api-module       # a feature module: contract, table, the eight files, its tests
+pnpm turbo gen resource-screen  # its admin screen: entity, feature, page, routes, catalogues, mocks, tests
+```
+
 **The gate — five links, and every change ends green on all five:**
 
 ```sh
@@ -224,6 +232,11 @@ bundler, so there is no per-package build step (ADR-0002).
   collection.
 - `scripts/` — repo-level tooling outside the workspaces, so **not** covered by
   `turbo run lint` or `check-types` (ADR-0002). Today: `postman.mjs`.
+- `turbo/generators/` — the two scaffolds behind `pnpm turbo gen` (ADR-0063 §3).
+  **The templates are the description of a module and of a resource screen**:
+  when the shape changes, the template changes in the same step, because a shape
+  that lives only in a document decays and one that lives in a template is
+  exercised the next time anyone adds a resource.
 - `.claude/` — Claude Code setup: subagents and slash-command skills that encode
   the ADR checklists. See [`.claude/README.md`](.claude/README.md).
 

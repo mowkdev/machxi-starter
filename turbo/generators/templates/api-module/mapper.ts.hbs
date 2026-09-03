@@ -1,0 +1,24 @@
+import type { {{pascalCase name}}Resource } from "@repo/contracts";
+
+import type { {{pascalCase name}}Record } from "./{{kebabCase plural}}.repository.js";
+
+/**
+ * Storage row → wire resource (ADR-0012).
+ *
+ * A pure function, and the only place a `{{snakeCase plural}}` row becomes
+ * something a client sees. A column with no field here cannot reach a response
+ * by omission; dates leave as ISO-8601 instants because the envelope has no
+ * other date form.
+ */
+export const to{{pascalCase name}}Resource = (
+  record: {{pascalCase name}}Record,
+): {{pascalCase name}}Resource => ({
+  id: record.id,
+{{#if organizationScoped}}
+  organizationId: record.organizationId,
+{{/if}}
+  name: record.name,
+  description: record.description,
+  createdAt: record.createdAt.toISOString(),
+  updatedAt: record.updatedAt.toISOString(),
+});

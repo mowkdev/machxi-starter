@@ -1,0 +1,132 @@
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  create{{pascalCase name}}Body,
+  type Create{{pascalCase name}}Body,
+} from "@repo/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import { useForm } from "react-hook-form";
+
+import {
+  {{pascalCase name}}FormInput,
+  {{camelCase name}}ResourceConfig,
+  useCreate{{pascalCase name}},
+} from "@/entities/{{kebabCase name}}";
+import { AppFormSurface } from "@/shared/form/app-form-surface";
+import {
+  applyServerErrors,
+  schemaFieldRules,
+} from "@/shared/form/server-errors";
+import { useRecordNavigation } from "@/shared/grid/record-navigation";
+import { useT } from "@/shared/i18n";
+import { useMessageForError } from "@/shared/notifications/messages";
+import {
+  editSurfaceOf,
+  fieldsForVariant,
+  initialValuesFor,
+} from "@/shared/resource/config";
+
+/**
+ * `POST /{{plural}}` — composing a record (ADR-0040).
+ *
+ * The whole form is the resource's config: which fields exist, what they are
+ * labelled, which control each one is and what it starts as were all declared
+ * once in `entities/{{camelCase name}}`. What this file contributes is *where*
+ * they go and what happens on submit — the line ADR-0035 draws, and the reason
+ * config never grows a `layout` key.
+ *
+ * Validation is `create{{pascalCase name}}Body`, the object the API validates
+ * with (ADR-0011/0023), so a rule tightened in `@repo/contracts` tightens this
+ * form in the same commit and there is no second copy to drift.
+ *
+ * **It is mounted by a route, not by a page's state**: `/{{kebabCase plural}}/new`
+ * is what opens it, Back is what closes it, and a reload lands back here rather
+ * than on a bare list. So there is no `open` prop and no `onClose` to thread.
+ */
+
+/** What the create form puts on screen — the config decides, not this file. */
+const FIELD_NAMES = fieldsForVariant(
+  {{camelCase name}}ResourceConfig.fields,
+  "create",
+).map(([name]) => name);
+
+export const Create{{pascalCase name}}Surface = () => {
+  const { t } = useT("{{camelCase plural}}");
+  const navigate = useNavigate();
+  const { closeSearch } = useRecordNavigation();
+  const create{{pascalCase name}} = useCreate{{pascalCase name}}();
+  const messageForError = useMessageForError();
+
+  /*
+   * The way back is history state, not the URL (ADR-0044): this record carries
+   * no list params, so the view the operator left comes from the navigation
+   * that opened it. A record reached by somebody else's link carries none, and
+   * closes to the bare list — which is honest, because the recipient never had
+   * the sender's view.
+   */
+  const close = () => {
+    void navigate({ to: "/{{kebabCase plural}}", search: closeSearch });
+  };
+
+  const form = useForm<Create{{pascalCase name}}Body>({
+    resolver: zodResolver(create{{pascalCase name}}Body),
+    /*
+     * `initialValuesFor` reads the config's `initialValue`s, so every control
+     * starts at a value rather than `undefined` — which is what stops React
+     * taking them as uncontrolled on the first render and warning the moment
+     * the operator types.
+     */
+    defaultValues: initialValuesFor(
+      {{camelCase name}}ResourceConfig.fields,
+      "create",
+    ) as unknown as Create{{pascalCase name}}Body,
+    // The submit lock, half one (ADR-0035): RHF disables every registered field.
+    disabled: create{{pascalCase name}}.isPending,
+  });
+
+  const onSubmit = async (values: Create{{pascalCase name}}Body) => {
+    try {
+      await create{{pascalCase name}}.mutateAsync(values);
+      form.reset();
+      close();
+    } catch (error) {
+      /*
+       * `fields` is **this variant's** names, not the resource's whole map:
+       * `applyServerErrors` reads the list as "fields this form renders", and
+       * that is what makes its guarantee true — a detail it cannot place falls
+       * through to `root.server` and is shown rather than set on a control that
+       * is not on screen.
+       */
+      applyServerErrors(error, form.setError, {
+        fields: FIELD_NAMES,
+        codeFields: {{camelCase name}}ResourceConfig.errorFields,
+        messageForError,
+        /*
+         * The same schema, caught a second time and in this operator's
+         * language (ADR-0046 §6): a detail whose path this form renders is
+         * answered by the schema the form validates with rather than echoed
+         * from the wire, because the wire's English is the API's and not
+         * necessarily the operator's.
+         */
+        rules: schemaFieldRules(create{{pascalCase name}}Body, form.getValues()),
+      });
+    }
+  };
+
+  return (
+    <AppFormSurface
+      surface={editSurfaceOf({{camelCase name}}ResourceConfig)}
+      onClose={close}
+      title={t("create.title")}
+      description={t("create.description")}
+      form={form}
+      fields={ {{camelCase name}}ResourceConfig.fields}
+      variant="create"
+      onSubmit={onSubmit}
+      isPending={create{{pascalCase name}}.isPending}
+      submitLabel={t("create.submit")}
+    >
+      <{{pascalCase name}}FormInput fieldName="name" />
+      <{{pascalCase name}}FormInput fieldName="description" />
+    </AppFormSurface>
+  );
+};

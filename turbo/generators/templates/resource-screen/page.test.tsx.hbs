@@ -1,0 +1,105 @@
+import { server } from "@repo/app-kit/testing";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createSessionStore,
+  type SessionStore,
+} from "@/shared/api/session-store";
+import { renderApp } from "@/test/render";
+import {
+  {{constantCase plural}}_ROWS,
+  create{{pascalCase plural}}Handlers,
+  create{{pascalCase name}}MockState,
+  type {{pascalCase name}}MockState,
+} from "@/test/msw/handlers/{{kebabCase plural}}.handlers";
+import { staffPrincipal } from "@/test/principals";
+
+/**
+ * The {{plural}} screen end to end (ADR-0034, ADR-0035, ADR-0036).
+ *
+ * Mounted through the **real route tree** on a memory history, so what is under
+ * test includes the things a hand-built tree would quietly replace: the
+ * `_dashboard` guard, `validateSearch` on the list route, and the round trip
+ * where a control writes the URL, the URL becomes the query key, and the
+ * refetched page renders.
+ *
+ * The assertions are about *requests*, not about re-sorted rows: the grid never
+ * sorts what it holds (ADR-0035 §The grid half), so the evidence that a control
+ * worked is the query the server was asked, which is what the handler records.
+ *
+ * **This is the floor, not the ceiling.** Add the cases this resource's own
+ * behaviour earns — a refusal it can meet, a filter an operator lives in, a
+ * field the form must not send.
+ */
+
+const authenticated = (): SessionStore => {
+  const store = createSessionStore();
+
+  store.setSession({
+    accessToken: "test-access-token",
+    principal: staffPrincipal(["admin"]),
+  });
+
+  return store;
+};
+
+let state: {{pascalCase name}}MockState;
+
+const open{{pascalCase plural}} = () => {
+  state = create{{pascalCase name}}MockState();
+  server.use(...create{{pascalCase plural}}Handlers(state));
+
+  return renderApp({
+    initialPath: "/{{kebabCase plural}}",
+    store: authenticated(),
+  });
+};
+
+/** The last query the API was actually asked for. */
+const lastList = () => state.seen.list.at(-1);
+
+/**
+ * The first seeded row, narrowed once.
+ *
+ * `{{constantCase plural}}_ROWS[0]` is `T | undefined` under
+ * `noUncheckedIndexedAccess`, and an assertion written against `?.name` would
+ * pass against `undefined` — which is a test that cannot fail.
+ */
+const FIRST_ROW = {{constantCase plural}}_ROWS[0];
+
+if (FIRST_ROW === undefined) throw new Error("the mock rows are empty");
+
+beforeEach(() => {
+  server.use(...create{{pascalCase plural}}Handlers(create{{pascalCase name}}MockState()));
+  window.localStorage.clear();
+});
+
+describe("the {{plural}} screen", () => {
+  it("renders the page the endpoint answered", async () => {
+    open{{pascalCase plural}}();
+
+    expect(
+      await screen.findByRole("cell", { name: FIRST_ROW.name }),
+    ).toBeInTheDocument();
+  });
+
+  it("puts the search term on the wire as `q` (ADR-0014)", async () => {
+    const user = userEvent.setup();
+
+    open{{pascalCase plural}}();
+
+    await screen.findByRole("cell", { name: FIRST_ROW.name });
+
+    await user.type(screen.getByRole("searchbox"), FIRST_ROW.name);
+
+    // Debounced: one request for the term, not one per keystroke.
+    await waitFor(
+      () => {
+        expect(lastList()?.q).toBe(FIRST_ROW.name);
+      },
+      { timeout: 2000 },
+    );
+  });
+});

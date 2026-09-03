@@ -1,0 +1,15 @@
+import { notFound, type AppError } from "../../core/errors/index.js";
+
+/**
+ * The {{plural}} module's error factories (ADR-0013).
+ *
+ * Thin wrappers over the generic ones: they fix the `code` and the message and
+ * inherit the status, so there is no new error type and no `instanceof` check
+ * anywhere. Clients branch on the code; the table in `@repo/contracts` says
+ * what each one means — a **new** code goes there first, or the client has
+ * nothing to branch on.
+ */
+
+/** No {{name}} with that id{{#if organizationScoped}}, in this organization{{/if}}. */
+export const {{camelCase name}}NotFound = (): AppError =>
+  notFound("{{sentenceCase name}} not found");

@@ -1,0 +1,272 @@
+import type { List{{pascalCase plural}}Query } from "@repo/contracts";
+import { {{camelCase plural}}, type DbExecutor } from "@repo/db";
+import { {{#if organizationScoped}}and, {{/if}}count, eq } from "drizzle-orm";
+
+import {
+  applyListQuery,
+  toSearchCondition,
+  type ColumnMap,
+  type ListResult,
+} from "../../core/http/index.js";
+
+/**
+ * Every query against `{{snakeCase plural}}` (ADR-0009).
+ *
+ * SQL lives here and nowhere above it — the ESLint rule in
+ * `@repo/eslint-config/api` is what enforces that, and this table is in its
+ * list from the moment the generator wrote it.
+ *
+ * Every function takes an optional `tx` so a service can compose several
+ * repositories inside one transaction (ADR-0006); outside one it is the client.
+ */
+
+/** A `{{snakeCase plural}}` row, whole. */
+export interface {{pascalCase name}}Record {
+  readonly id: string;
+{{#if organizationScoped}}
+  readonly organizationId: string;
+{{/if}}
+  readonly name: string;
+  readonly description: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/** `POST` — what a create writes. */
+export interface New{{pascalCase name}}Input {
+{{#if organizationScoped}}
+  readonly organizationId: string;
+{{/if}}
+  readonly name: string;
+  readonly description: string | null;
+}
+
+/**
+ * `PATCH`, column side.
+ *
+ * `undefined` means "leave it" and `null` means "clear it", which are two
+ * different requests: `description` is nullable, so both are reachable and the
+ * `set` below keeps them apart rather than collapsing one into the other.
+ */
+export interface {{pascalCase name}}Patch {
+  readonly name?: string | undefined;
+  readonly description?: string | null | undefined;
+}
+
+/**
+ * Columns every read selects, in the two shapes drizzle wants them.
+ *
+ * The relational query API takes a `{ column: true }` map and `returning()`
+ * takes `{ alias: column }`; they are the same list written twice because the
+ * two builders are different APIs, and keeping both here is what stops a
+ * column being added to one and not the other.
+ */
+const recordColumns = {
+  id: true,
+{{#if organizationScoped}}
+  organizationId: true,
+{{/if}}
+  name: true,
+  description: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const returnedColumns = {
+  id: {{camelCase plural}}.id,
+{{#if organizationScoped}}
+  organizationId: {{camelCase plural}}.organizationId,
+{{/if}}
+  name: {{camelCase plural}}.name,
+  description: {{camelCase plural}}.description,
+  createdAt: {{camelCase plural}}.createdAt,
+  updatedAt: {{camelCase plural}}.updatedAt,
+} as const;
+
+/**
+ * The API field names of `list{{pascalCase plural}}Query` mapped to their columns
+ * (ADR-0014).
+ *
+ * It must cover every entry of that schema's `sortable` and `filterable` lists:
+ * a field the schema admits but this map omits throws when the request is
+ * built, because the allow-list already rejected anything outside it and a
+ * disagreement between the two is a wiring bug rather than client input.
+ *
+ * **Exported for this module's index test** (ADR-0060 §3): the rule "a column
+ * enters an allow-list only with its index in the same step" is checked by
+ * diffing this map against the table's own index declarations, and it has to be
+ * *this* map rather than a copy of it to mean anything.
+ */
+export const listColumns: ColumnMap = {
+  createdAt: {{camelCase plural}}.createdAt,
+  updatedAt: {{camelCase plural}}.updatedAt,
+  name: {{camelCase plural}}.name,
+};
+
+/** What `q` searches. Exported with {@link listColumns} and for its reason. */
+export const searchColumns = [{{camelCase plural}}.name];
+
+export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
+  ({
+    /**
+     * `GET /{{plural}}` (ADR-0014).
+{{#if organizationScoped}}
+     *
+     * `organizationId` is the first parameter and is required, never optional
+     * (ADR-0067 §5): a query on a tenant-owned table written without a scope
+     * must not type-check, and an optional parameter would make forgetting it
+     * the default behaviour of a typo.
+{{/if}}
+     */
+    list: async (
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      query: List{{pascalCase plural}}Query,
+      tx: DbExecutor = db,
+    ): Promise<ListResult<{{pascalCase name}}Record>> => {
+      const plan = applyListQuery(query, {
+        columns: listColumns,
+        tiebreaker: {{camelCase plural}}.id,
+        extraWhere: [
+{{#if organizationScoped}}
+          eq({{camelCase plural}}.organizationId, organizationId),
+{{/if}}
+          toSearchCondition(searchColumns, query.q),
+        ],
+      });
+
+      const rows = await tx.query.{{camelCase plural}}.findMany({
+        columns: recordColumns,
+        where: plan.where,
+        orderBy: [...plan.orderBy],
+        limit: plan.limit,
+        offset: plan.offset,
+      });
+
+      /*
+       * The aggregate is skipped, not made cheaper, when the caller declines it
+       * (ADR-0060 §2). `total: null` is the branch `Page` types and the pagers
+       * render; nothing else can produce it.
+       */
+      if (!query.count) return { rows, total: null };
+
+      const [counted] = await tx
+        .select({ total: count() })
+        .from({{camelCase plural}})
+        .where(plan.where);
+
+      return { rows, total: counted?.total ?? 0 };
+    },
+
+    findById: async (
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+      tx: DbExecutor = db,
+    ): Promise<{{pascalCase name}}Record | undefined> =>
+      tx.query.{{camelCase plural}}.findFirst({
+        columns: recordColumns,
+{{#if organizationScoped}}
+        where: and(
+          eq({{camelCase plural}}.organizationId, organizationId),
+          eq({{camelCase plural}}.id, id),
+        ),
+{{else}}
+        where: eq({{camelCase plural}}.id, id),
+{{/if}}
+      }),
+
+    create: async (
+      input: New{{pascalCase name}}Input,
+      tx: DbExecutor = db,
+    ): Promise<{{pascalCase name}}Record> => {
+      const [created] = await tx
+        .insert({{camelCase plural}})
+        .values(input)
+        .returning(returnedColumns);
+
+      /*
+       * `returning` on an unconditional insert always yields the row, so the
+       * branch is unreachable — and it is written rather than asserted away,
+       * because a `!` here would be the one place a schema change could turn a
+       * failed insert into `undefined` flowing on as a resource.
+       */
+      if (created === undefined) {
+        throw new Error("insert into {{snakeCase plural}} returned no row");
+      }
+
+      return created;
+    },
+
+    /**
+     * Writes a patch.
+     *
+     * `updatedAt` is set here, not by a trigger (ADR-0006), and the caller
+     * passes the instant so one edit carries a single timestamp.
+     *
+     * @returns the updated record, or `undefined` when no row has that id.
+     */
+    update: async (
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+      patch: {{pascalCase name}}Patch,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<{{pascalCase name}}Record | undefined> => {
+      const [updated] = await tx
+        .update({{camelCase plural}})
+        .set({
+          ...(patch.name === undefined ? {} : { name: patch.name }),
+          ...(patch.description === undefined
+            ? {}
+            : { description: patch.description }),
+          updatedAt: at,
+        })
+{{#if organizationScoped}}
+        .where(
+          and(
+            eq({{camelCase plural}}.organizationId, organizationId),
+            eq({{camelCase plural}}.id, id),
+          ),
+        )
+{{else}}
+        .where(eq({{camelCase plural}}.id, id))
+{{/if}}
+        .returning(returnedColumns);
+
+      return updated;
+    },
+
+    /** @returns `false` when no row has that id. */
+    remove: async (
+{{#if organizationScoped}}
+      organizationId: string,
+{{/if}}
+      id: string,
+      tx: DbExecutor = db,
+    ): Promise<boolean> => {
+      const deleted = await tx
+        .delete({{camelCase plural}})
+{{#if organizationScoped}}
+        .where(
+          and(
+            eq({{camelCase plural}}.organizationId, organizationId),
+            eq({{camelCase plural}}.id, id),
+          ),
+        )
+{{else}}
+        .where(eq({{camelCase plural}}.id, id))
+{{/if}}
+        .returning({ id: {{camelCase plural}}.id });
+
+      return deleted.length > 0;
+    },
+  }) as const;
+
+export type {{pascalCase plural}}Repository = ReturnType<
+  typeof create{{pascalCase plural}}Repository
+>;

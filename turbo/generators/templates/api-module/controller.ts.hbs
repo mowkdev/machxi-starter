@@ -1,0 +1,109 @@
+import type { Response } from "express";
+
+{{#if organizationScoped}}
+import type { RequestContext } from "../../core/context/index.js";
+import { internal } from "../../core/errors/index.js";
+{{/if}}
+import { respond } from "../../core/http/index.js";
+import type { ValidatedRequest } from "../../core/middleware/index.js";
+import type {
+  create{{pascalCase name}}Schema,
+  delete{{pascalCase name}}Schema,
+  get{{pascalCase name}}Schema,
+  list{{pascalCase plural}}Schema,
+  update{{pascalCase name}}Schema,
+} from "./{{kebabCase plural}}.schemas.js";
+import type { {{pascalCase plural}}Service } from "./{{kebabCase plural}}.service.js";
+
+/**
+ * HTTP adapters for the {{plural}} module (ADR-0009).
+ *
+ * Each is one line: read `req.ctx` and `req.valid`, call the service, respond
+ * through the envelope. No branching and no error handling — a failure is an
+ * `AppError` thrown by the service and rendered by the error middleware
+ * (ADR-0013).
+ *
+ * The `ValidatedRequest<typeof …Schema>` parameter types are what keep
+ * `req.valid` honest (ADR-0011): the base `Request` types it as `any`, so a
+ * controller that does not declare its schema reads an untyped value that
+ * compiles and means nothing.
+ */
+{{#if organizationScoped}}
+
+/**
+ * The organization this request is scoped to (ADR-0067 §4).
+ *
+ * `requireMembership` is the guard that resolves `:orgId` to a membership and
+ * puts `ctx.organization` on the request context; it lands with ADR-0067 at
+ * D15. **This is the one line to change when it does**, and until then it
+ * refuses rather than guessing — a default here would be an unscoped query
+ * wearing a scope's clothes, which is the failure ADR-0067 §5 exists to make
+ * impossible.
+ */
+const organizationIdOf = (_ctx: RequestContext): string => {
+  throw internal("organization resolution is not wired yet (ADR-0067 §4)");
+};
+{{/if}}
+
+export const create{{pascalCase plural}}Controller = (service: {{pascalCase plural}}Service) =>
+  ({
+    list: async (
+      req: ValidatedRequest<typeof list{{pascalCase plural}}Schema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.list(
+        res,
+        await service.list(req.ctx, {{#if organizationScoped}}organizationIdOf(req.ctx), {{/if}}req.valid.query),
+      );
+    },
+
+    getById: async (
+      req: ValidatedRequest<typeof get{{pascalCase name}}Schema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.ok(
+        res,
+        await service.getById(req.ctx, {{#if organizationScoped}}organizationIdOf(req.ctx), {{/if}}req.valid.params.id),
+      );
+    },
+
+    create: async (
+      req: ValidatedRequest<typeof create{{pascalCase name}}Schema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.created(
+        res,
+        await service.create(req.ctx, {{#if organizationScoped}}organizationIdOf(req.ctx), {{/if}}req.valid.body),
+      );
+    },
+
+    update: async (
+      req: ValidatedRequest<typeof update{{pascalCase name}}Schema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.ok(
+        res,
+        await service.update(
+          req.ctx,
+{{#if organizationScoped}}
+          organizationIdOf(req.ctx),
+{{/if}}
+          req.valid.params.id,
+          req.valid.body,
+        ),
+      );
+    },
+
+    /** `204`: the row is gone, and there is no resource left to describe. */
+    remove: async (
+      req: ValidatedRequest<typeof delete{{pascalCase name}}Schema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.remove(req.ctx, {{#if organizationScoped}}organizationIdOf(req.ctx), {{/if}}req.valid.params.id);
+      respond.noContent(res);
+    },
+  }) as const;
+
+export type {{pascalCase plural}}Controller = ReturnType<
+  typeof create{{pascalCase plural}}Controller
+>;

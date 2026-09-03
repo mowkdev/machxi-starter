@@ -1,0 +1,70 @@
+import { z } from "zod";
+
+import { listQuerySchema, type FilterSpec } from "../list-query.js";
+import { customRule } from "../locales/source.js";
+import { idSchema, nameSchema } from "../primitives.js";
+
+/**
+ * Request schemas for the {{plural}} module (ADR-0015, ADR-0023).
+ *
+ * Declared here and nowhere else: the API validates with these objects and the
+ * admin panel builds its forms and its list query from the same ones, so a
+ * field the server rejects is a field the client never sends.
+ */
+
+/** `:id` of any single-{{name}} route. */
+export const {{camelCase name}}IdParams = z.strictObject({ id: idSchema });
+export type {{pascalCase name}}IdParams = z.infer<typeof {{camelCase name}}IdParams>;
+
+/** Free text a person types. Bounded, because an unbounded column is a payload. */
+export const {{camelCase name}}DescriptionSchema = z.string().trim().max(500);
+
+export const create{{pascalCase name}}Body = z.strictObject({
+  name: nameSchema,
+  description: {{camelCase name}}DescriptionSchema.nullable().optional(),
+});
+export type Create{{pascalCase name}}Body = z.infer<typeof create{{pascalCase name}}Body>;
+
+/**
+ * `PATCH` — every field optional, and an empty body refused.
+ *
+ * `null` is how a client *clears* `description` and `undefined` is how it
+ * leaves it alone; the two are different requests and the repository keeps them
+ * apart. `updateNotEmpty` is what stops a `PATCH {}` counting as a write.
+ */
+export const update{{pascalCase name}}Body = z
+  .strictObject({
+    name: nameSchema.optional(),
+    description: {{camelCase name}}DescriptionSchema.nullable().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, customRule("updateNotEmpty"));
+export type Update{{pascalCase name}}Body = z.infer<typeof update{{pascalCase name}}Body>;
+
+/**
+ * The sortable allow-list, named so the module's index test can read it
+ * (ADR-0060 §3).
+ *
+ * `listQuerySchema` swallows its options into a parser, and the rule "a column
+ * enters an allow-list only with its index in the same step" needs the list
+ * back out to be diffed against the table's index declarations. A tuple rather
+ * than a restatement in the test, so what is asserted is what is enforced.
+ */
+export const LIST_{{constantCase plural}}_SORTABLE = [
+  "createdAt",
+  "updatedAt",
+  "name",
+] as const;
+
+/** The filterable allow-list, exported for the same reason. */
+export const LIST_{{constantCase plural}}_FILTERABLE = {
+  name: { ops: ["eq", "like"], value: nameSchema },
+  createdAt: { ops: ["gt", "gte", "lt", "lte"], value: z.coerce.date() },
+} satisfies FilterSpec;
+
+export const list{{pascalCase plural}}Query = listQuerySchema({
+  sortable: LIST_{{constantCase plural}}_SORTABLE,
+  filterable: LIST_{{constantCase plural}}_FILTERABLE,
+  defaultSort: "-createdAt",
+  searchable: true,
+});
+export type List{{pascalCase plural}}Query = z.infer<typeof list{{pascalCase plural}}Query>;

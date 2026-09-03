@@ -1,0 +1,72 @@
+import {
+  LIST_{{constantCase plural}}_FILTERABLE,
+  LIST_{{constantCase plural}}_SORTABLE,
+} from "@repo/contracts";
+import { {{camelCase plural}} } from "@repo/db";
+import { uncoveredListColumns } from "@repo/db/testing";
+import { describe, expect, it } from "vitest";
+
+import { listColumns, searchColumns } from "../{{kebabCase plural}}.repository.js";
+
+import type { PgColumn } from "drizzle-orm/pg-core";
+
+/**
+ * The allow-list/index pairing of ADR-0060 §3, for `GET /{{plural}}`.
+ *
+ * A column enters a `sortable` or `filterable` allow-list only with the index
+ * that serves it, in the same step. Nothing about that is expressible as a
+ * type, and the failure it prevents is invisible until the table is large: an
+ * `ORDER BY` with no index is a sequential scan that is fast on the seed data
+ * every test runs against.
+ *
+ * The map is imported rather than restated, so what is checked is what the
+ * repository actually builds requests from.
+ */
+
+const columnFor = (field: string): PgColumn => {
+  const column = listColumns[field];
+
+  if (column === undefined) {
+    throw new Error(
+      `"${field}" is allow-listed by list{{pascalCase plural}}Query but absent from the {{plural}} ColumnMap.`,
+    );
+  }
+
+  return column;
+};
+
+const sortableColumns = LIST_{{constantCase plural}}_SORTABLE.map(columnFor);
+const filterableColumns = Object.keys(LIST_{{constantCase plural}}_FILTERABLE).map(columnFor);
+
+describe("the {{plural}} list allow-lists and the {{plural}} indexes (ADR-0060 §3)", () => {
+  it("gives every sortable column a complete btree index", () => {
+    expect(
+      uncoveredListColumns({{camelCase plural}}, { ordered: sortableColumns }).ordered,
+    ).toEqual([]);
+  });
+
+  it("gives every filterable column an index, partial ones counting", () => {
+    expect(
+      uncoveredListColumns({{camelCase plural}}, { filtered: filterableColumns }).filtered,
+    ).toEqual([]);
+  });
+
+  it("gives every column q searches a GIN index", () => {
+    expect(
+      uncoveredListColumns({{camelCase plural}}, { searched: [...searchColumns] }).searched,
+    ).toEqual([]);
+  });
+
+  /** The negative case: without it the three above could pass vacuously. */
+  it("reports a column that claims an order nothing serves", () => {
+    expect(
+      uncoveredListColumns({{camelCase plural}}, { ordered: [{{camelCase plural}}.description] })
+        .ordered,
+    ).toEqual(["description"]);
+
+    expect(
+      uncoveredListColumns({{camelCase plural}}, { searched: [{{camelCase plural}}.description] })
+        .searched,
+    ).toEqual(["description"]);
+  });
+});

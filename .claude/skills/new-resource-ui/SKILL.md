@@ -9,6 +9,20 @@ Read `/frontend-conventions` first. **The architecture record is ADR-0049**, sup
 
 The contract comes first: everything below is derived from `@repo/contracts`. If the endpoints do not exist yet, that is `/new-api-module`, not this.
 
+## 0. Run the generator first
+
+```
+pnpm turbo gen resource-screen
+```
+
+It asks for the resource (singular, lower case), its plural, and whether it is owned by an organization (ADR-0067 §1).
+
+**The templates in `turbo/generators/templates/resource-screen/` are the description of a resource screen** (ADR-0063 §3). When the shape changes, the template changes in the same step — a shape that lives only in this document decays, because nothing runs it.
+
+The generator writes the entity slice, the feature slice, the thin page, the four record routes, the MSW handlers, the config and page tests, and a seeded catalogue per locale — each with the plural forms _its_ locale requires, so `pnpm i18n:check` is green on the first run. It also applies every enumeration a compiler or a test would redden: the namespace list, `EN_RESOURCES`, the `CustomTypeOptions` augmentation and the two hand-written `lv` fixtures. Then it runs prettier over what it wrote, rebuilds `routeTree.gen.ts` through the app's own Vite config, and prints the three edits it will not take for you.
+
+**Everything below is what the generator deliberately does not do.** Sections 1–4 are the seeded files you now make true — the domain, the copy and the claims; section 3's nav entry and the policy row of ADR-0042 are the two it printed, and the policy row exists to be **transcribed from the `authorize(` calls that mount the endpoints** and from nothing else, so a generated guess would be the transcription lying.
+
 ## 1. Entity slice — `src/entities/<x>/`
 
 - `<x>.keys.ts` — `all` / `lists()` / `list(params)` / `details()` / `detail(id)`. Never an inline key array at a call site.
@@ -47,7 +61,7 @@ The contract comes first: everything below is derived from `@repo/contracts`. If
   - `_dashboard.<x>.index.tsx` — the **index leaf the grid does not live on**. The grid lives on the parent; putting it here unmounts it whenever a record surface opens, which is exactly what an overlay must not do. The corollary: "a record is open" is not a count of child matches, because the index is a child too.
   - `_dashboard.<x>.new.tsx` and `_dashboard.<x>.$<x>Id.tsx` — the record surfaces, the detail one loading through `ensureQueryData` on the entity's own `detail(id)` key. A loader has no hooks, so it reaches the API client through the router context. Its `errorComponent`'s way back uses `closeSearch`, so even a record that failed to load returns to the view it was opened from.
   - Every entry point spreads `openState` and every close passes `closeSearch`, both from `useRecordNavigation` — four call sites per resource, and forgetting one is an operator losing their page rather than a type error.
-- Add the nav entry in `widgets/app-sidebar` if it belongs there, with its `resource` so ADR-0042 can narrow it.
+- **The two printed edits land here.** Add the nav entry in `widgets/app-sidebar` if it belongs there, with its `resource` so ADR-0042 can narrow it; and add this resource's row to `shared/auth/policy.ts` and its fixture in `shared/auth/__tests__/policy.test.ts`, then replace the generated page's `const capabilities = <x>ResourceConfig.grid` with `useAllowedCapabilities(config.grid, "<x>")`. The generated page passes the config's block **ungated** and says so where it does it, which is a screen that offers every capability to every role until the row exists.
 
 ## 4. Mocks and tests (ADR-0036)
 

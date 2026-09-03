@@ -1,0 +1,46 @@
+import { Router } from "express";
+
+import { noStore, validate } from "../../core/middleware/index.js";
+import type { {{pascalCase plural}}Controller } from "./{{kebabCase plural}}.controller.js";
+import {
+  create{{pascalCase name}}Schema,
+  delete{{pascalCase name}}Schema,
+  get{{pascalCase name}}Schema,
+  list{{pascalCase plural}}Schema,
+  update{{pascalCase name}}Schema,
+} from "./{{kebabCase plural}}.schemas.js";
+
+/**
+ * `/api/v1/{{segment}}/{{plural}}/*` (ADR-0015).
+ *
+ * **There is no guard in this file, and that has to be a decision rather than
+ * an omission.** The segment router mounts `authenticate` and the resource's
+ * `authorize(...)` once at the mount point, and every route below inherits them
+ * (ADR-0019 §2) — so a resource router mounted with no `authorize` is a review
+ * failure. Narrow an individual route here only where it needs *more* than the
+ * mount gives it, beside the route it narrows.
+ *
+ * The order within a route is the one ADR-0011 fixes:
+ * `rateLimit → authenticate → authorize → validate → controller`.
+ *
+ * `no-store` covers the whole resource. Review that: RFC 9111 already stops a
+ * shared cache storing a response to a request carrying `Authorization`, so
+ * this is the belt to those suspenders, and it is right for anything an
+ * operator would not want a proxy holding (ADR-0020).
+ */
+export const create{{pascalCase plural}}Router = (
+  controller: {{pascalCase plural}}Controller,
+): Router => {
+  const router = Router();
+
+  router.use(noStore);
+
+  router.get("/", validate(list{{pascalCase plural}}Schema), controller.list);
+  router.post("/", validate(create{{pascalCase name}}Schema), controller.create);
+
+  router.get("/:id", validate(get{{pascalCase name}}Schema), controller.getById);
+  router.patch("/:id", validate(update{{pascalCase name}}Schema), controller.update);
+  router.delete("/:id", validate(delete{{pascalCase name}}Schema), controller.remove);
+
+  return router;
+};

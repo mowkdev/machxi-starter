@@ -32,6 +32,7 @@
     "db:studio": "turbo run db:studio"
   },
   "devDependencies": {
+    "@turbo/gen": "^2.10.12",
     "newman": "^6.2.2",
     "prettier": "^3.6.0",
     "turbo": "^2.10.10"

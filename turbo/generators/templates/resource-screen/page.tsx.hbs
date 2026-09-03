@@ -1,0 +1,155 @@
+import type { ListQuerySearch } from "@repo/contracts";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+
+import {
+  {{camelCase name}}ResourceConfig,
+  use{{pascalCase plural}}List,
+} from "@/entities/{{kebabCase name}}";
+import {
+  {{pascalCase name}}Dialogs,
+  use{{pascalCase name}}RowActions,
+  type {{pascalCase name}}Action,
+} from "@/features/{{kebabCase name}}-manage";
+import { toListQuery } from "@/shared/api/list-params";
+import { AppGrid } from "@/shared/grid/app-grid";
+import {
+  useCarriedListState,
+  useRecordNavigation,
+} from "@/shared/grid/record-navigation";
+import { useT } from "@/shared/i18n";
+import { Button } from "@/shared/ui";
+
+/**
+ * The {{plural}} screen — and the point of it is how little is here.
+ *
+ * A page is thin composition (ADR-0049): the columns, their sort arrows and
+ * their filter controls come from `{{camelCase name}}ResourceConfig`; the rows,
+ * the pager and the search box come from `AppGrid` reading the URL; the dialogs
+ * and the row menu come from `features/{{kebabCase name}}-manage`. What this
+ * file decides is the arrangement and one piece of state — which dialog, if
+ * any, is open.
+ *
+ * **The URL is the list state** (ADR-0034). The route validates the search
+ * params, this hands them to the query as its key and to the grid as its state,
+ * and every control reports back through `navigate`. So a view is a link, the
+ * back button walks table states, and the cache falls out correctly because the
+ * same URL is the same query key.
+ */
+export const {{pascalCase plural}}Page = () => {
+  const { t } = useT("{{camelCase plural}}");
+  const navigate = useNavigate();
+  /*
+   * The route's search, **or the snapshot a record surface is carrying**
+   * (ADR-0044). While a dialog or drawer is open the URL is the record's and
+   * holds no list params, so reading `useSearch` alone would render this grid
+   * at page one, unfiltered, behind the overlay — and closing would land the
+   * operator there.
+   */
+  const listState = useCarriedListState(
+    useSearch({ from: "/_dashboard/{{kebabCase plural}}" }),
+  );
+  const { openState } = useRecordNavigation();
+  const [action, setAction] = useState<{{pascalCase name}}Action | null>(null);
+  /*
+   * **Ungated, and that is a placeholder rather than a decision** (ADR-0042).
+   *
+   * The generator cannot write this resource's policy row: `RESOURCE_POLICY` is
+   * a *transcription* of the `authorize(` calls that mount the endpoint, and
+   * inventing one would be the transcription lying. So the config's own block
+   * is passed straight through, which means every operator who can reach this
+   * screen is offered every affordance it declares — and the API's guards are
+   * what actually refuse them.
+   *
+   * Add the row to `shared/auth/policy.ts` and its fixture, then replace this
+   * line with:
+   *
+   *     const capabilities = useAllowedCapabilities(
+   *       {{camelCase name}}ResourceConfig.grid,
+   *       "{{camelCase plural}}",
+   *     );
+   */
+  const capabilities = {{camelCase name}}ResourceConfig.grid;
+
+  const {{camelCase plural}} = use{{pascalCase plural}}List(toListQuery(listState));
+
+  const onListStateChange = useCallback(
+    (next: ListQuerySearch) => {
+      void navigate({ to: "/{{kebabCase plural}}", search: next });
+    },
+    [navigate],
+  );
+
+  const onAction = useCallback((next: {{pascalCase name}}Action | null) => {
+    setAction(next);
+  }, []);
+
+  const closeAction = useCallback(() => {
+    setAction(null);
+  }, []);
+
+  const rowActions = use{{pascalCase name}}RowActions(onAction, capabilities);
+  const meta = useMemo(() => ({ rowActions }), [rowActions]);
+
+  return (
+    <>
+      <AppGrid
+        columns={ {{camelCase name}}ResourceConfig.columns}
+        page={ {{camelCase plural}}.data}
+        // The error panel ADR-0034 premises silent queries on. Without it a
+        // refused or failed list is five skeleton rows that never resolve.
+        error={ {{camelCase plural}}.error}
+        onRetry={() => {
+          void {{camelCase plural}}.refetch();
+        }}
+        listState={listState}
+        onListStateChange={onListStateChange}
+        meta={meta}
+        // Whether this endpoint has a `q` at all is the resource's claim, not
+        // the page's (ADR-0063 §2).
+        searchable={ {{camelCase name}}ResourceConfig.grid.searchable}
+        // The stances this resource declares (ADR-0039). Not part of the
+        // capability block on purpose: ADR-0042 narrows capabilities by role,
+        // and nobody's role decides whether a list may be filtered.
+        hotFilters={ {{camelCase name}}ResourceConfig.grid.hotFilters}
+        // Which arrangement this operator's is (ADR-0041). The resource's own
+        // name, so two grids keep separate entries.
+        gridId={ {{camelCase name}}ResourceConfig.name}
+        isFetching={ {{camelCase plural}}.isFetching}
+        emptyMessage="{{camelCase plural}}:empty"
+        capabilities={capabilities}
+        createAction={
+          /*
+           * A link, not a handler (ADR-0040): composing a record is addressable
+           * state, so the entry point is a navigation and the surface it opens
+           * survives a reload. The view the operator was reading travels as
+           * history state rather than on the URL (ADR-0044).
+           */
+          <Button asChild size="sm" className="h-[34px]">
+            <Link to="/{{kebabCase plural}}/new" state={openState}>
+              <PlusIcon aria-hidden />
+              {t("actions.create")}
+            </Link>
+          </Button>
+        }
+        onBulkDelete={(ids, { clearSelection }) => {
+          /*
+           * The rows the grid holds travel with the action so refusals can be
+           * reported by address; `clearSelection` travels with it because the
+           * selection has to end when the fan-out does and the state that holds
+           * it lives inside `AppGrid`.
+           */
+          setAction({
+            kind: "bulk-delete",
+            ids,
+            rows: {{camelCase plural}}.data?.items ?? [],
+            onSettled: clearSelection,
+          });
+        }}
+      />
+
+      <{{pascalCase name}}Dialogs action={action} onClose={closeAction} />
+    </>
+  );
+};

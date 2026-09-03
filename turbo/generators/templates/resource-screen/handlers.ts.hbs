@@ -1,0 +1,201 @@
+import {
+  create{{pascalCase name}}Body,
+  filtersToRecord,
+  list{{pascalCase plural}}Query,
+  update{{pascalCase name}}Body,
+  type Create{{pascalCase name}}Body,
+  type List{{pascalCase plural}}Query,
+  type Update{{pascalCase name}}Body,
+  type {{pascalCase name}}Resource,
+} from "@repo/contracts";
+import { http } from "msw";
+
+import { API } from "./auth.handlers";
+import { fail, listOk, ok } from "./envelope";
+import { parseListSearch } from "./list-query";
+
+/**
+ * The {{plural}} endpoints, as MSW answers them (ADR-0036 §The load-bearing
+ * rule).
+ *
+ * Every request is parsed with the schema the API validates with and every
+ * response is built by the envelope helpers, so a contract change stops this
+ * compiling or starts it throwing rather than letting the suite certify against
+ * an API the frontend wishes it had.
+ *
+ * The endpoint's own semantics are implemented only as far as the UI can
+ * observe them — `q`, an `eq` filter, `sort` and the page window — because those
+ * are what the grid drives and what `meta.pagination.total` has to be honest
+ * about. Anything deeper would be re-implementing the API, which is the mock
+ * fidelity ADR-0036 warns against buying.
+ *
+ * `create...Handlers(state)` with no shared module state: a test that needs a
+ * scripted refusal builds its own handler and `server.use()`es it.
+ */
+
+export const {{constantCase plural}}_ROWS: readonly {{pascalCase name}}Resource[] = [
+  {
+    id: "0198c1f0-0000-7000-8000-000000000001",
+{{#if organizationScoped}}
+    organizationId: "0198c1f0-0000-7000-8000-0000000000a1",
+{{/if}}
+    name: "First",
+    description: "The first one.",
+    createdAt: "2026-01-04T10:00:00.000Z",
+    updatedAt: "2026-01-04T10:00:00.000Z",
+  },
+  {
+    id: "0198c1f0-0000-7000-8000-000000000002",
+{{#if organizationScoped}}
+    organizationId: "0198c1f0-0000-7000-8000-0000000000a1",
+{{/if}}
+    name: "Second",
+    description: null,
+    createdAt: "2026-02-11T10:00:00.000Z",
+    updatedAt: "2026-02-11T10:00:00.000Z",
+  },
+];
+
+export interface {{pascalCase name}}MockState {
+  rows: {{pascalCase name}}Resource[];
+  /** What the client actually asked for, for assertions that need the wire. */
+  readonly seen: {
+    list: List{{pascalCase plural}}Query[];
+    created: Create{{pascalCase name}}Body[];
+    updated: { id: string; body: Update{{pascalCase name}}Body }[];
+    deleted: string[];
+  };
+}
+
+export const create{{pascalCase name}}MockState = (
+  rows: readonly {{pascalCase name}}Resource[] = {{constantCase plural}}_ROWS,
+): {{pascalCase name}}MockState => ({
+  rows: [...rows],
+  seen: { list: [], created: [], updated: [], deleted: [] },
+});
+
+const valueOf = (row: {{pascalCase name}}Resource, field: string): string =>
+  String((row as unknown as Record<string, unknown>)[field] ?? "");
+
+const applyQuery = (
+  rows: readonly {{pascalCase name}}Resource[],
+  query: List{{pascalCase plural}}Query,
+): readonly {{pascalCase name}}Resource[] => {
+  let result = [...rows];
+
+  if (query.q !== undefined)
+    result = result.filter((row) =>
+      row.name.toLowerCase().includes((query.q ?? "").toLowerCase()),
+    );
+
+  for (const filter of query.filters) {
+    if (filter.op === "eq")
+      result = result.filter(
+        (row) => valueOf(row, filter.field) === String(filter.value),
+      );
+  }
+
+  for (const { field, direction } of [...query.sort].reverse()) {
+    result.sort((left, right) =>
+      direction === "desc"
+        ? valueOf(right, field).localeCompare(valueOf(left, field))
+        : valueOf(left, field).localeCompare(valueOf(right, field)),
+    );
+  }
+
+  return result;
+};
+
+export const create{{pascalCase plural}}Handlers = ({{camelCase name}}State: {{pascalCase name}}MockState) =>
+  [
+    http.get(`${API}/{{kebabCase plural}}`, ({ request }): Response => {
+      // The endpoint's own schema. A `sort` field or an operator the contract
+      // does not allow-list throws here, in the test, rather than reaching an
+      // operator as a `VALIDATION_ERROR`.
+      const query = parseListSearch(request.url, list{{pascalCase plural}}Query);
+
+      {{camelCase name}}State.seen.list.push(query);
+
+      const matched = applyQuery({{camelCase name}}State.rows, query);
+
+      return listOk({
+        items: matched.slice(query.offset, query.offset + query.limit),
+        total: query.count ? matched.length : null,
+        offset: query.offset,
+        limit: query.limit,
+        sort: query.sort,
+        filters: filtersToRecord(query.filters),
+      });
+    }),
+
+    http.get(`${API}/{{kebabCase plural}}/:id`, ({ params }): Response => {
+      const row = {{camelCase name}}State.rows.find(
+        (candidate) => candidate.id === params["id"],
+      );
+
+      return row === undefined ? fail(404, "NOT_FOUND") : ok(row);
+    }),
+
+    http.post(`${API}/{{kebabCase plural}}`, async ({ request }): Promise<Response> => {
+      const body = create{{pascalCase name}}Body.parse(await request.json());
+
+      {{camelCase name}}State.seen.created.push(body);
+
+      const created: {{pascalCase name}}Resource = {
+        id: `0198c1f0-0000-7000-8000-${String({{camelCase name}}State.rows.length + 1).padStart(12, "0")}`,
+{{#if organizationScoped}}
+        organizationId: "0198c1f0-0000-7000-8000-0000000000a1",
+{{/if}}
+        name: body.name,
+        description: body.description ?? null,
+        createdAt: "2026-03-01T10:00:00.000Z",
+        updatedAt: "2026-03-01T10:00:00.000Z",
+      };
+
+      {{camelCase name}}State.rows = [...{{camelCase name}}State.rows, created];
+
+      return ok(created, 201);
+    }),
+
+    http.patch(
+      `${API}/{{kebabCase plural}}/:id`,
+      async ({ params, request }): Promise<Response> => {
+        const body = update{{pascalCase name}}Body.parse(await request.json());
+        const id = String(params["id"]);
+        const current = {{camelCase name}}State.rows.find((row) => row.id === id);
+
+        if (current === undefined) return fail(404, "NOT_FOUND");
+
+        {{camelCase name}}State.seen.updated.push({ id, body });
+
+        const next: {{pascalCase name}}Resource = {
+          ...current,
+          ...(body.name === undefined ? {} : { name: body.name }),
+          ...(body.description === undefined
+            ? {}
+            : { description: body.description }),
+          updatedAt: "2026-03-02T10:00:00.000Z",
+        };
+
+        {{camelCase name}}State.rows = {{camelCase name}}State.rows.map((row) =>
+          row.id === id ? next : row,
+        );
+
+        return ok(next);
+      },
+    ),
+
+    http.delete(`${API}/{{kebabCase plural}}/:id`, ({ params }): Response => {
+      const id = String(params["id"]);
+
+      if (!{{camelCase name}}State.rows.some((row) => row.id === id))
+        return fail(404, "NOT_FOUND");
+
+      {{camelCase name}}State.seen.deleted.push(id);
+      {{camelCase name}}State.rows = {{camelCase name}}State.rows.filter(
+        (row) => row.id !== id,
+      );
+
+      return new Response(null, { status: 204 });
+    }),
+  ];

@@ -1,0 +1,13 @@
+export { create{{pascalCase plural}}Api, type {{pascalCase plural}}Api } from "./{{kebabCase name}}.api";
+export {
+  {{pascalCase name}}FormInput,
+  {{camelCase name}}ResourceConfig,
+} from "./{{kebabCase name}}.config";
+export { {{camelCase plural}}Keys } from "./{{kebabCase name}}.keys";
+export {
+  useCreate{{pascalCase name}},
+  useDelete{{pascalCase name}},
+  useUpdate{{pascalCase name}},
+  use{{pascalCase name}},
+  use{{pascalCase plural}}List,
+} from "./{{kebabCase name}}.queries";
