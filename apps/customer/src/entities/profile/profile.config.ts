@@ -1,3 +1,5 @@
+import type { UpdateProfileBody } from "@repo/contracts";
+
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import type { FieldConfigMap } from "@/shared/resource/types";
 
@@ -12,6 +14,11 @@ import type { FieldConfigMap } from "@/shared/resource/types";
  * here would not be a resource declaring itself, it would be a config claiming
  * an empty table exists. `AppFormProvider` is keyed on a field map rather than
  * on a `ResourceConfig`, so the machinery needs nothing else.
+ *
+ * **Typed over `UpdateProfileBody` since `D14.10`** (ADR-0063 §1), which is the
+ * half of ADR-0035's promise a singleton can keep: there are no columns to
+ * agree with a row, but there is still a body, and a field the endpoint dropped
+ * is now a compile error rather than a control the API refuses.
  *
  * Two fields, because `updateProfileBody` has two. Everything else a customer
  * can see about their account — email, when they joined, when they last signed
@@ -33,7 +40,7 @@ import type { FieldConfigMap } from "@/shared/resource/types";
 export const profileFields = {
   firstName: { label: "profile:fields.firstName.label", component: "input" },
   lastName: { label: "profile:fields.lastName.label", component: "input" },
-} as const satisfies FieldConfigMap;
+} as const satisfies FieldConfigMap<UpdateProfileBody>;
 
 /**
  * The typed input for the profile's fields (ADR-0035).

@@ -54,7 +54,7 @@ const passwordFields = {
     props: { type: "password", autoComplete: "current-password" },
     description: "users:resetPassword.fields.currentPassword.description",
   },
-} as const satisfies FieldConfigMap;
+} as const satisfies FieldConfigMap<SetPasswordBody>;
 
 const PasswordFormInput = createAppFormInput(passwordFields);
 

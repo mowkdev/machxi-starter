@@ -239,13 +239,52 @@ export interface ColumnConfig {
 }
 
 /**
- * A resource's columns, in render order.
+ * A row, or a request body, as the machinery reads one when it does not know
+ * the resource (ADR-0063 §Consequences).
+ *
+ * It is the default type argument of every map below, so a consumer that
+ * genuinely has no row type — `@repo/grid`'s internals, a per-usage override,
+ * the customer app's fields-only maps — writes `ColumnConfigMap` exactly as it
+ * did before this record and gets the old, string-keyed shape. The type
+ * travels at the *door*, which is the same rule the `shared/` slices follow.
+ */
+export type UnknownShape = Readonly<Record<string, unknown>>;
+
+/**
+ * The one column key that is not a field of the row (ADR-0063 §1, amended).
+ *
+ * A column renders `accessorKey: name` against the row, so a column key that
+ * is not a key of the row can only ever render an empty cell — which is the
+ * defect ADR-0063 exists to make a compile error. The exception is the grid's
+ * own chrome: the row-actions column reads the row rather than a value of it,
+ * so it belongs to no field and every resource declares it under this name.
+ *
+ * **The runtime discriminator is still {@link ColumnConfig.cellRenderer}**, not
+ * this name — `isStructuralColumn` in `@repo/grid` asks which renderer a column
+ * declares, and it keeps answering for a per-usage override that adds one. What
+ * this reserves is the *key*, because a mapped type cannot ask a question about
+ * a property's value.
+ */
+export type StructuralColumnKey = "actions";
+
+/**
+ * A resource's columns, in render order, **keyed by the row** (ADR-0063 §1).
  *
  * Declaration order is the column order: `Object.entries` walks string keys in
  * insertion order, so the config reads top-to-bottom the way the table reads
  * left-to-right, and reordering columns is reordering lines.
+ *
+ * Every key is a key of `TRow` — the resource type in `@repo/contracts` — or
+ * the reserved {@link StructuralColumnKey}. That is ADR-0035's promise moved
+ * from a test into the compiler: a misspelt column used to compile, render a
+ * header and an empty cell, and now it is an error on the line that wrote it.
+ * The keys stay optional, because a resource shows the columns it chooses.
  */
-export type ColumnConfigMap = Readonly<Record<string, ColumnConfig>>;
+export type ColumnConfigMap<TRow = UnknownShape> = {
+  readonly [
+    K in Extract<keyof TRow, string> | StructuralColumnKey
+  ]?: ColumnConfig;
+};
 
 /** One field of a resource's forms. */
 export interface FieldConfig {
@@ -272,8 +311,21 @@ export interface FieldConfig {
   readonly props?: ComponentProps;
 }
 
-/** A resource's form fields. */
-export type FieldConfigMap = Readonly<Record<string, FieldConfig>>;
+/**
+ * A resource's form fields, **keyed by the request bodies** (ADR-0063 §1).
+ *
+ * `TBodies` is the *intersection* of the create and update bodies, because
+ * `keyof (A & B)` is `keyof A | keyof B` — a field belongs to the form if
+ * either body has a place for it, and which of the two is the `variants`
+ * question rather than this one. A field the endpoint dropped is now a compile
+ * error rather than a control the API answers with a `VALIDATION_ERROR`.
+ */
+export type FieldConfigMap<TBodies = UnknownShape> = {
+  readonly [K in Extract<keyof TBodies, string>]?: FieldConfig;
+};
+
+/** The names a resource's forms may declare — one body's keys, or both. */
+export type FieldName<TBodies> = Extract<keyof TBodies, string>;
 
 /**
  * Which shell a resource's record form is composed in (ADR-0040).
@@ -358,6 +410,22 @@ export interface GridConfig extends GridCapabilities {
    * beside `columns`, which is what it is — declared filter surface.
    */
   readonly hotFilters?: readonly HotFilterConfig[];
+  /**
+   * Whether the endpoint implements ADR-0014's `q` search (ADR-0063 §2).
+   *
+   * It was a bare `searchable` prop on `AppGrid` at each of the two call sites
+   * until `D14.10`, with a comment naming the endpoint it was a claim about —
+   * which is the shape of every other claim this block holds, and the one shape
+   * {@link assertConfigMatchesContract} could not check, because a prop in JSX
+   * is not something a config test can read. Declared here it is checked in
+   * both directions: a resource that offers the search box has an endpoint that
+   * accepts `q`, and one that does not is one whose endpoint refuses it.
+   *
+   * Not a {@link GridCapabilities} flag, deliberately: ADR-0042 narrows
+   * capabilities by the operator's role, and nobody's role decides whether a
+   * list may be searched — the same reasoning `hotFilters` sits here under.
+   */
+  readonly searchable?: boolean;
 }
 
 /**
@@ -365,15 +433,32 @@ export interface GridConfig extends GridCapabilities {
  *
  * Columns and fields together, so the staff table and the staff form cannot
  * disagree about what a staff member is. Configs are written `as const satisfies
- * ResourceConfig`, which keeps the literal key types for
+ * ResourceConfig<…>`, which keeps the literal key types for
  * {@link createAppFormInput} while still checking the shape.
+ *
+ * **The three type arguments are the contract** (ADR-0063 §1, `D14.10`): the
+ * resource type the endpoint returns and the two request bodies, taken straight
+ * from `@repo/contracts`. So the config's vocabulary *is* the contract's
+ * vocabulary by construction rather than by a per-resource test, and the two
+ * halves ADR-0035 could only check at runtime — a column that is not a field of
+ * the row, a field neither body has room for — are compile errors. What no type
+ * can check is which of those the *endpoint* allow-lists for sorting and
+ * filtering; that is {@link assertConfigMatchesContract}'s half.
+ *
+ * They default to {@link UnknownShape} so that a reader which genuinely does
+ * not know the resource — `editSurfaceOf`, a grid rendering somebody else's
+ * columns — still names the type without arguments.
  */
-export interface ResourceConfig {
+export interface ResourceConfig<
+  TRow = UnknownShape,
+  TCreate = UnknownShape,
+  TUpdate = UnknownShape,
+> {
   readonly name: string;
   /** How the grid behaves (ADR-0040 opens it; ADR-0038 fills it out). */
   readonly grid?: GridConfig;
-  readonly columns: ColumnConfigMap;
-  readonly fields: FieldConfigMap;
+  readonly columns: ColumnConfigMap<TRow>;
+  readonly fields: FieldConfigMap<TCreate & TUpdate>;
   /**
    * Domain error codes that mean "this field", for the failures the API
    * reports without a path (**amended D3.7**).
@@ -387,8 +472,13 @@ export interface ResourceConfig {
    *
    * Data, like everything else here — a `Partial` map of code to field name,
    * never a callback. {@link applyServerErrors} consumes it.
+   *
+   * The name is one of the bodies' since `D14.10`: an entry pointing at a box
+   * neither form draws would put the API's sentence nowhere.
    */
-  readonly errorFields?: Readonly<Partial<Record<ErrorCode, string>>>;
+  readonly errorFields?: Readonly<
+    Partial<Record<ErrorCode, FieldName<TCreate & TUpdate>>>
+  >;
 }
 
 /**
@@ -397,5 +487,13 @@ export interface ResourceConfig {
  * One level deep is enough — a usage overrides a column's own keys, never the
  * inside of a `filter` — and stopping there keeps the merge a rule anyone can
  * predict rather than a deep-merge whose behaviour has to be looked up.
+ *
+ * Keyed by the row like {@link ColumnConfigMap} since `D14.10`, and for the
+ * same reason: an override naming a column the resource does not declare is
+ * ignored at runtime, which is the failure that used to be silent.
  */
-export type ColumnOverrides = Readonly<Record<string, Partial<ColumnConfig>>>;
+export type ColumnOverrides<TRow = UnknownShape> = {
+  readonly [
+    K in Extract<keyof TRow, string> | StructuralColumnKey
+  ]?: Partial<ColumnConfig>;
+};

@@ -10,6 +10,7 @@ import type {
   FieldVariant,
   OptionConfig,
   ResourceConfig,
+  UnknownShape,
 } from "./types";
 
 /**
@@ -110,17 +111,30 @@ export const resolveOptions = (
  * than added: overrides adjust a resource's columns, they do not invent them,
  * and an invented one would have no field to read.
  */
-export const mergeColumns = (
-  columns: ColumnConfigMap,
-  overrides: ColumnOverrides = {},
+export const mergeColumns = <TRow = UnknownShape>(
+  columns: ColumnConfigMap<TRow>,
+  overrides: ColumnOverrides<TRow> = {},
 ): readonly (readonly [string, ColumnConfig])[] =>
-  Object.entries(columns)
+  /*
+   * Both maps are read through their string-keyed view, which is the one cast
+   * this file makes and the reason it makes it: since `D14.10` the argument
+   * types are keyed by `TRow` (ADR-0063 §1), and a mapped type over an
+   * unresolved type parameter is not an index signature, so `Object.entries`
+   * cannot walk one. The keys *are* strings either way — the widening loses no
+   * information, and it happens here rather than at every call site.
+   */
+  Object.entries(columns as Readonly<Record<string, ColumnConfig>>)
     .map(
       ([name, column]) =>
-        [name, { ...column, ...overrides[name] }] as readonly [
-          string,
-          ColumnConfig,
-        ],
+        [
+          name,
+          {
+            ...column,
+            ...(overrides as Readonly<Record<string, Partial<ColumnConfig>>>)[
+              name
+            ],
+          },
+        ] as readonly [string, ColumnConfig],
     )
     .filter(([, column]) => column.hidden !== true);
 
@@ -145,7 +159,18 @@ export const fieldsForVariant = (
   fields: FieldConfigMap,
   variant: FieldVariant,
 ): readonly (readonly [string, FieldConfig])[] =>
-  Object.entries(fields).filter(([, field]) => isInVariant(field, variant));
+  /*
+   * `flatMap` rather than `filter`, because the map's values are optional since
+   * `D14.10`: it is keyed by the bodies now (ADR-0063 §1) and every key is `?`,
+   * so a declared field reads as `FieldConfig | undefined`. Nothing at runtime
+   * changed — an absent key was never enumerated — and this is the narrowing
+   * that says so.
+   */
+  Object.entries(fields).flatMap(([name, field]) =>
+    field !== undefined && isInVariant(field, variant)
+      ? [[name, field] as const]
+      : [],
+  );
 
 /**
  * `defaultValues` for a create form, from the config's `initialValue`s.

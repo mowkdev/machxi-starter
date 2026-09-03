@@ -13,6 +13,7 @@ import {
   optionValues,
   resolveOptions,
 } from "../config";
+import type { ColumnConfigMap } from "../types";
 
 /**
  * The config vocabulary's runtime half (ADR-0035).
@@ -191,5 +192,31 @@ describe("dirtyValuesOf", () => {
 
   it("drops an array whose members are all untouched", () => {
     expect(dirtyValuesOf({ roles: ["admin"] }, { roles: [false] })).toEqual({});
+  });
+});
+
+describe("a config's copy is keys, and a misspelt one does not compile", () => {
+  /*
+   * The compiler owns this claim — `header`, `label`, `description`,
+   * `placeholder` and a hot filter's `label` are `TranslationKey`s since `D7.4`
+   * (ADR-0046 §7) — so `pnpm check-types` is what runs the case below, and the
+   * `expect` is only here to give it a name in the report.
+   *
+   * It lives in this slice rather than in a resource's `__tests__` since
+   * `D14.10`: the two per-resource suites are one call of
+   * `assertConfigMatchesContract` now (ADR-0063 §2), and this is a claim about
+   * the *vocabulary* rather than about staff or users — which is what this file
+   * is, and what the demo fixture beside it is for.
+   */
+  it("makes a misspelt key a compile error rather than a blank header", () => {
+    const typo = {
+      name: {
+        // @ts-expect-error `colums` — the property `TranslationKey` exists to
+        // buy, asserted the way this repository asserts every other one.
+        header: "demo:colums.name",
+      },
+    } satisfies ColumnConfigMap;
+
+    expect(Object.keys(typo)).toEqual(["name"]);
   });
 });

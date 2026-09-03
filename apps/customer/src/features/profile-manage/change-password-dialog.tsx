@@ -53,7 +53,7 @@ export const changePasswordFields = {
     props: { type: "password", autoComplete: "new-password" },
     description: "profile:password.fields.newPassword.description",
   },
-} as const satisfies FieldConfigMap;
+} as const satisfies FieldConfigMap<ChangePasswordBody>;
 
 const PasswordFormInput = createAppFormInput(changePasswordFields);
 

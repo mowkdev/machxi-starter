@@ -54,7 +54,7 @@ export const deleteAccountFields = {
     props: { type: "password", autoComplete: "current-password" },
     description: "profile:delete.fields.currentPassword.description",
   },
-} as const satisfies FieldConfigMap;
+} as const satisfies FieldConfigMap<DeleteProfileBody>;
 
 const DeleteFormInput = createAppFormInput(deleteAccountFields);
 

@@ -1,9 +1,10 @@
 # ADR-0063: Typed resource configs and generators (supersedes ADR-0035 in part — a delta)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-02
+- Supersedes: [ADR-0035](0035-config-driven-resource-ui.md) (delta: `ResourceConfig` carries its types, and the per-resource claims suites become one shared assertion)
 
-> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; accepted at the head of the step that builds it.
+> Written 2026-09-02 by `/scope` for D14 ([`docs/plan/0014-starter-hardening.md`](../plan/0014-starter-hardening.md)). `proposed` at writing; **accepted 2026-09-03 at `D14.10`'s head**, where [ADR-0035](0035-config-driven-resource-ui.md) moves to `superseded by` — a delta under [ADR-0050](0050-adr-lifecycle-and-verification.md) rule 1: every decision 0035 makes about *what* a config is (data, never functions; one declaration for the table and both forms; registry keys; validation from the contracts schemas) stands as written and is in force as part of this record. What changes is that the config's keys are now checked against the contract by the compiler, and that the agreement no type can reach is asserted once rather than per resource. §3 (the generators) builds at `D14.11`, in the same window.
 
 ## Context
 
@@ -33,6 +34,14 @@ Columns are keyed by `keyof TRow`, fields by the union of the two bodies' keys. 
 
 `createAppFormInput` and `AppGrid` carry the row type through: a cell renderer receives `TRow`, and `<StaffFormInput fieldName="…" />` accepts exactly the body's keys. Both shipped configs — staff and user — migrate. **`as const satisfies ResourceConfig<…>` remains the authoring form**, which is what keeps the literal key types ADR-0035 relies on.
 
+**Amended 2026-09-03 (`D14.10`) — five corrections the build made to the sketch above.** The decision is unchanged; what follows is what it actually compiles to.
+
+1. **`ColumnConfig` and `GridConfig` take no type parameters.** The sketch writes `ColumnConfig<TRow, K>` and `GridConfig<TRow>`, and neither has anything to do with them: every member of both is a translation key, a registry key, an operator or a flag — nothing in either mentions the *value* of a cell, which is the only thing `K` could have named. Type parameters no member uses are noise the next reader has to disprove. The keying happens where it means something, in the two maps.
+2. **One reserved column key, `actions`.** A column resolves against the row by `accessorKey`, so a key that is not a key of the row can only render an empty cell — with one exception, the row-actions column, which reads the row rather than a value of it (ADR-0041 calls it structural). A mapped type cannot ask a question about a property's *value*, so the key is reserved instead: `keyof TRow | "actions"`. `isStructuralColumn` keeps discriminating on the renderer at runtime, which is what a per-usage override still needs.
+3. **Every parameter defaults to `UnknownShape`** (`Readonly<Record<string, unknown>>`), so a reader that genuinely has no row — `editSurfaceOf`, `@repo/grid`'s internals, `mergeColumns`, the customer app's fields-only maps — names the type with no arguments and gets exactly the string-keyed shape it had before. This is §Consequences' "the type travels at the door" made mechanical rather than a convention.
+4. **`AppGrid` takes its columns as `ColumnConfigMap<NoInfer<TRow>>`.** The row is what the *data* says it is: without `NoInfer` a config and a page that disagreed would infer a union and typecheck, which is the disagreement the parameter exists to catch.
+5. **A cell renderer does not receive `TRow`, and must not.** The renderers are `gridRegistry` components — `rowActions`, `statusBadge`, `rolesList` — shared by every resource, and ADR-0049 forbids `@repo/grid` holding domain knowledge; a registry keyed by a resource's row type would be a different design (a per-resource renderer map) and a worse one. They keep taking `GridRow`. The half of that sentence which is true is the form's: `<StaffFormInput fieldName="…" />` now accepts exactly the body's keys, and it needed no change to do it — the keys it reads are the config's, and the config's are the contract's.
+
 ### 2. One shared claims assertion, not one per resource
 
 `@repo/resource` exports
@@ -44,6 +53,20 @@ assertConfigMatchesContract(config, { listQuery, createBody, updateBody }): void
 which checks what the hand-written suite checks and the type system cannot: that every `sortable` column is sortable in the endpoint's `listQuery`, that every declared filter is spelled the way that endpoint's filter spec accepts, that `q` is only offered where the endpoint is searchable, and that every field belongs to a body — with the negative controls, because a column that claims a sort it does not have costs an operator a broken feature.
 
 A resource's config test becomes a few lines calling it. The 367-line suite is deleted, not moved: its claims are the assertion's, and the ones the generic type now makes are nobody's.
+
+**Amended 2026-09-03 (`D14.10`) — the signature, and where `q` had to move.** The bag takes two more entries, and both are the same shape of concession: what a package cannot know about an app.
+
+- **`samples`** — values the contract has an opinion about, per field. A body cannot be assembled at all without values that parse, and `email` and `password` are policies rather than words. Fixture data, not a claim: what is under test is the *set* of fields.
+- **`optionLabelled`** — whether the app's catalogue labels an option value. `common:options.<value>` is composed at runtime so that a config never restates an enum ADR-0023 declares once, and a missing entry degrades to `humanize`: a plausible English word in grey, which is the kind of gap a review reads straight past. The dictionary belongs to an app (ADR-0046 §13), so the app answers the question and the assertion asks it.
+
+**`searchable` moved into `grid`.** This section's `q` claim was uncheckable as written: `q` was a bare `searchable` prop on `AppGrid` at each of the two call sites, and a prop in JSX is not something a config test can read. It is a claim about the endpoint like every other line in that block, so it is declared there and both pages read it — and the claim is now checked in **both** directions, because a search box over an endpoint with no `q` returns an unfiltered page and looks like a working one. It is not a `GridCapabilities` flag: ADR-0042 narrows capabilities by role, and nobody's role decides whether a list may be searched. (That is the delta on ADR-0035's `grid` block; ADR-0038's capability flags are untouched.)
+
+**What this deliberately stops checking, and where those claims went.** Two of the deleted suites' assertions are not in the shared one and are not anybody's now, which is a decision rather than an oversight:
+
+- **The `grid` block's exact key set.** Each suite asserted `Object.keys(grid).sort()` against a literal list, to catch "a capability added here without a decision about who may use it" (ADR-0038/0042). Half of it is the type's: `as const satisfies ResourceConfig<…>` is an object literal, so a key outside `GridConfig` — a smuggled `role`, a `permission` — is an excess-property error. The other half was never a test's to make: whether a *new* `GridConfig` key is a capability that ADR-0042 must narrow is a decision, and the place it is taken is a record like this one. `searchable` is the first key added since, and the paragraph above is where that decision is written.
+- **The `presence`/`deletedAt` reasoning and the "no roles control" note.** Both are properties of one resource, stated where they belong — in that config's own comments — and both are now enforced by the type: `deletedAt` is a column and not a field because `UserResource` has it and neither body does, and `roles` likewise.
+
+**And it throws rather than asserting.** `assertConfigMatchesContract` collects every violation and raises one `Error` naming the resource. That keeps it in `@repo/resource`'s ordinary source — the package has no test framework among its dependencies and this buys it none — and reporting all of them at once matters: failing on the first hides the second, and a config being brought up to a changed contract usually has more than one. The assertion's own negative controls live in `packages/resource/src/__tests__/contract.test.ts`, against a fake endpoint, because a real contract cannot be made to refuse things.
 
 ### 3. Generators with `turbo gen`
 

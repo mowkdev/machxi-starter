@@ -1,11 +1,13 @@
 # ADR-0035: Config-driven resource UI — AppGrid on TanStack Table, and config-driven forms on React Hook Form
 
-- Status: accepted
+- Status: superseded by [ADR-0063](0063-typed-resource-configs-and-generators.md) (delta: the config carries its types, and one shared claims assertion replaces the per-resource suites)
 - Date: 2026-08-19
 
 > Written at the opening of D3, alongside ADR-0030–0034 and ADR-0036. [ADR-0025](0025-deliverables.md) rule 3 keeps "agreed" and "built" as separate facts: `D3.6` implements the machinery this ADR describes, and `D3.7`–`D3.9` (staff, users, profile pages) are the proof it is worth having. It stays amendable in place while D3 is `in progress` ([`docs/plan/README.md`](../plan/README.md)).
 >
 > The first draft of this ADR put the grid half on AG Grid Community; the decision was reversed before acceptance, and §Alternatives carries the full account. The forms half is unchanged.
+>
+> **Superseded in part 2026-09-03 by [ADR-0063](0063-typed-resource-configs-and-generators.md)**, accepted at the head of `D14.10`: a delta on **how the agreement is checked**, not on what a config is. This record's §Consequences says the config-versus-contract agreement is "testable rather than trusted", and the test was a hand-written suite per resource; 0063 makes half of it the compiler's (`ResourceConfig<TRow, TCreate, TUpdate>` — columns keyed by the row, fields by the two bodies) and the other half one shared `assertConfigMatchesContract`. **Everything else here stands**: a config is data and never functions, a resource declares its table and its forms once, the vocabulary resolves through named registries, and forms validate against the contracts' own zod schemas. `searchable` joined the `grid` block in the same step, for the reason 0063 §2 gives.
 
 ## Context
 

@@ -109,7 +109,7 @@ export const demoResourceConfig = {
       initialValue: false,
     },
   },
-} as const satisfies ResourceConfig;
+} as const satisfies ResourceConfig<DemoRow, DemoCreateBody, DemoUpdateBody>;
 
 /**
  * The demo's request schema, standing in for a `@repo/contracts` body.
@@ -130,6 +130,20 @@ export const demoCreateBody = z.object({
 });
 
 export type DemoCreateBody = z.infer<typeof demoCreateBody>;
+
+/**
+ * The demo's update body — the edit half of the pair `ResourceConfig` is typed
+ * over since `D14.10` (ADR-0063 §1).
+ *
+ * Every attribute optional, plus the `status` the create form does not offer:
+ * the fixture is deliberately wider than either real resource, and the pair of
+ * bodies is what makes `variants` a checkable claim rather than a convention.
+ */
+export const demoUpdateBody = demoCreateBody
+  .partial()
+  .extend({ status: z.enum(["active", "disabled"]).optional() });
+
+export type DemoUpdateBody = z.infer<typeof demoUpdateBody>;
 
 /** One row of the demo grid. */
 export interface DemoRow {

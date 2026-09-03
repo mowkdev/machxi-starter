@@ -1,4 +1,9 @@
-import { USER_STATUSES } from "@repo/contracts";
+import {
+  USER_STATUSES,
+  type CreateUserBody,
+  type UpdateUserBody,
+  type UserResource,
+} from "@repo/contracts";
 
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import type { ResourceConfig } from "@/shared/resource/types";
@@ -62,6 +67,9 @@ export const userResourceConfig = {
     canEdit: true,
     canDelete: true,
     canBulkDelete: true,
+    // `q` searches email and name on this endpoint (`listUsersQuery`); the
+    // staff config records why it is declared here rather than on the page.
+    searchable: true,
     /*
      * Two stances, and the second is the one ADR-0039 anticipated (`D4.4`).
      *
@@ -250,7 +258,11 @@ export const userResourceConfig = {
    * the honest place for "this cannot be done at all".
    */
   errorFields: { USER_EMAIL_TAKEN: "email" },
-} as const satisfies ResourceConfig;
+} as const satisfies ResourceConfig<
+  UserResource,
+  CreateUserBody,
+  UpdateUserBody
+>;
 
 /** The typed input for this resource's fields (ADR-0035). */
 export const UserFormInput = createAppFormInput(userResourceConfig.fields);

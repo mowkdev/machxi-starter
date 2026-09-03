@@ -15,6 +15,13 @@
  */
 
 export {
+  assertConfigMatchesContract,
+  type BodySchemaLike,
+  type ResourceContract,
+  type SchemaLike,
+} from "./contract";
+
+export {
   dirtyValuesOf,
   editSurfaceOf,
   fieldsForVariant,
@@ -39,6 +46,7 @@ export type {
   FieldComponentKey,
   FieldConfig,
   FieldConfigMap,
+  FieldName,
   FieldVariant,
   FilterControlConfig,
   FormatterKey,
@@ -47,4 +55,6 @@ export type {
   HotFilterConfig,
   OptionConfig,
   ResourceConfig,
+  StructuralColumnKey,
+  UnknownShape,
 } from "./types";

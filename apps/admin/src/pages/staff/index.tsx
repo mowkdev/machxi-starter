@@ -115,11 +115,14 @@ export const StaffPage = () => {
         listState={listState}
         onListStateChange={onListStateChange}
         meta={meta}
-        // `q` searches email and name on this endpoint (`listStaffQuery`),
-        // which is a property of the API rather than of any column — so it is
-        // the toolbar's and not any header's (ADR-0035, amended D3.6). That
-        // is also why it is the one control ADR-0039 left live-committing.
-        searchable
+        /*
+         * Whether this endpoint has a `q` at all is the resource's claim, not
+         * the page's, and since `D14.10` it is read from the config like the
+         * columns and the stances beside it (ADR-0063 §2) — which is what lets
+         * `assertConfigMatchesContract` check it against `listStaffQuery`. It
+         * remains the one control ADR-0039 left live-committing.
+         */
+        searchable={staffResourceConfig.grid.searchable}
         /*
          * The stances this resource declares (ADR-0039). Not part of the
          * capability block on purpose: ADR-0042 narrows capabilities by

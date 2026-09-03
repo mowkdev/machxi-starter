@@ -78,6 +78,12 @@ export const AppFormInput = ({ fieldName, overrides }: AppFormInputProps) => {
  * The map is a type-level argument — the component still reads its config from
  * the provider at runtime, so there is exactly one source of field config and
  * this cannot disagree with it.
+ *
+ * **Since `D14.10` that union is the request body's** (ADR-0063 §1) and nothing
+ * here had to change to make it so: a `FieldConfigMap` is keyed by the bodies
+ * now, so the literal keys this reads *are* the contract's keys, and the check
+ * `fieldName` has always made is now a check against the endpoint rather than
+ * against the config's own spelling.
  */
 export const createAppFormInput = <TFields extends FieldConfigMap>(
   fields: TFields,

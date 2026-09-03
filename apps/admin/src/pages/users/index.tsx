@@ -94,8 +94,10 @@ export const UsersPage = () => {
         listState={listState}
         onListStateChange={onListStateChange}
         meta={meta}
-        // `q` searches email and name on this endpoint (`listUsersQuery`).
-        searchable
+        // Read from the config since `D14.10`, for the reason the staff page
+        // records: it is a claim about `listUsersQuery`, so the resource makes
+        // it and `assertConfigMatchesContract` checks it.
+        searchable={userResourceConfig.grid.searchable}
         /*
          * The stances this resource declares (ADR-0039). Not part of the
          * capability block on purpose: ADR-0042 narrows capabilities by

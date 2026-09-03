@@ -33,6 +33,7 @@ import type {
   ColumnOverrides,
   GridCapabilities,
   HotFilterConfig,
+  UnknownShape,
 } from "@repo/resource";
 import { Button } from "@repo/ui/components/button";
 import { Skeleton } from "@repo/ui/components/skeleton";
@@ -125,11 +126,27 @@ import { useGridPreferences } from "./use-grid-preferences";
  * conditionally, which is ceremony in the layer this machinery exists to keep
  * thin.
  */
-export interface AppGridProps<TRow> {
-  /** The resource's columns (ADR-0035). */
-  readonly columns: ColumnConfigMap;
+export interface AppGridProps<TRow = UnknownShape> {
+  /**
+   * The resource's columns (ADR-0035), keyed by the row (ADR-0063 §1).
+   *
+   * `TRow` is inferred from `page` and travels here since `D14.10`: a column
+   * this grid could only ever render empty is a compile error at the call site
+   * rather than a blank cell in front of an operator. The machinery below keeps
+   * reading rows as {@link GridRow}, because it genuinely does not know the
+   * resource — the type travels at the door, which is the rule the `shared/`
+   * slices already follow.
+   *
+   * **`NoInfer`, and it matters**: the row is what the *data* says it is, and
+   * these are checked against it. Without it a config and a page that disagreed
+   * would infer a union and typecheck, which is precisely the disagreement this
+   * exists to catch. A usage with no `page` at all — a harness rendering the
+   * loading state — falls back to the parameter's default, where the map is
+   * string-keyed exactly as it was before this step.
+   */
+  readonly columns: ColumnConfigMap<NoInfer<TRow>>;
   /** Per-usage adjustments — headers, hidden columns — merged over the above. */
-  readonly overrides?: ColumnOverrides | undefined;
+  readonly overrides?: ColumnOverrides<NoInfer<TRow>> | undefined;
   /** The page in hand. `undefined` while the first one is loading. */
   readonly page?: Page<TRow> | undefined;
   /**
@@ -378,7 +395,7 @@ const STICKY_HEADER_TABLE = [
 const HEADER_LABEL =
   "text-[11px] leading-4 font-semibold tracking-[0.07em] uppercase";
 
-export const AppGrid = <TRow,>({
+export const AppGrid = <TRow = UnknownShape,>({
   density = DEFAULT_GRID_DENSITY,
   columns,
   overrides,

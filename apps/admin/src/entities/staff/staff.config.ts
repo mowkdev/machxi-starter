@@ -1,4 +1,10 @@
-import { STAFF_ROLES, STAFF_STATUSES } from "@repo/contracts";
+import {
+  STAFF_ROLES,
+  STAFF_STATUSES,
+  type CreateStaffBody,
+  type StaffResource,
+  type UpdateStaffBody,
+} from "@repo/contracts";
 
 import { createAppFormInput } from "@/shared/form/app-form-input";
 import type { ResourceConfig } from "@/shared/resource/types";
@@ -56,6 +62,15 @@ export const staffResourceConfig = {
     canEdit: true,
     canDelete: true,
     canBulkDelete: true,
+    /*
+     * `q` searches email and name on this endpoint (`listStaffQuery`), which is
+     * a property of the API rather than of any column — so the search box is
+     * the toolbar's and not any header's (ADR-0035, amended D3.6). Declared here
+     * since `D14.10` rather than passed as a bare prop on the page, because it
+     * is a claim about the contract like every other line in this block, and
+     * `assertConfigMatchesContract` can only check a claim it can read.
+     */
+    searchable: true,
     /*
      * The one stance this resource has (ADR-0039, `D4.4`).
      *
@@ -208,7 +223,11 @@ export const staffResourceConfig = {
    * the form level there.
    */
   errorFields: { STAFF_EMAIL_TAKEN: "email" },
-} as const satisfies ResourceConfig;
+} as const satisfies ResourceConfig<
+  StaffResource,
+  CreateStaffBody,
+  UpdateStaffBody
+>;
 
 /**
  * The typed input for this resource's fields (ADR-0035).

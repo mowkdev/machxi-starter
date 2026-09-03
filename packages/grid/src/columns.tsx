@@ -6,6 +6,7 @@ import type {
   ColumnConfig,
   ColumnConfigMap,
   ColumnOverrides,
+  UnknownShape,
 } from "@repo/resource";
 import { Checkbox } from "@repo/ui/components/checkbox";
 
@@ -170,9 +171,9 @@ export const buildSelectionColumn = (): ColumnDef<GridFeatures, GridRow> => ({
  * also what keeps every downstream reader (`FlexRender`, the columns menu, the
  * filter dialog's title, the resize handle's label) working on plain strings.
  */
-export const buildColumns = (
-  columns: ColumnConfigMap,
-  overrides: ColumnOverrides | undefined,
+export const buildColumns = <TRow = UnknownShape,>(
+  columns: ColumnConfigMap<TRow>,
+  overrides: ColumnOverrides<TRow> | undefined,
   t: TranslateKey,
 ): ColumnDef<GridFeatures, GridRow>[] =>
   mergeColumns(columns, overrides).map(([name, column]) => {
