@@ -17,7 +17,7 @@
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc -b",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest"

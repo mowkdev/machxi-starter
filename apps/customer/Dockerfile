@@ -40,9 +40,25 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm turbo run build --filter=customer
 
+# **The web root is a copy of `dist/` with the sourcemaps taken out, and it is
+# made here rather than in the runtime stage** (ADR-0062 §4, `D14.9`).
+#
+# `build.sourcemap: "hidden"` emits a `.map` beside every chunk and references
+# none of them from the bundle. The maps are for whoever holds the build — the
+# error reporter of ADR-0066 §3 — and serving them from a public web root would
+# hand the app's whole source to anyone who guesses a file name.
+#
+# Deleting them *after* a `COPY` into the final image would not do it: layers
+# are additive, so the `COPY` layer still carries every map and a `RUN rm` only
+# writes a whiteout over it — anyone who can pull the image reads them out of
+# the lower layer with `docker save`. Pruning in a discarded stage is what
+# keeps them out of a published layer, and `dist/` itself is untouched, so a
+# release pipeline can still take the maps from there.
+RUN cp -r apps/customer/dist /web && find /web -name '*.map' -delete
+
 FROM nginx:1.29-alpine AS runtime
 
 COPY apps/customer/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /repo/apps/customer/dist /usr/share/nginx/html
+COPY --from=build /web /usr/share/nginx/html
 
 EXPOSE 80

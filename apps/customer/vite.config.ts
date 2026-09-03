@@ -8,9 +8,83 @@ import { defineConfig } from "vite";
 import { versionDefine } from "./app-version";
 
 /**
+ * The vendor groups this app actually has (ADR-0062 §4, `D14.9`).
+ *
+ * Three, not the admin's four: this app draws no grid, so `@tanstack/table-*`
+ * is not in its dependency tree and a fourth group would name packages that
+ * are never resolved — a ceiling in `size-budget.json` measuring nothing.
+ *
+ * Without a `manualChunks`, `autoCodeSplitting` gives every *route* its own
+ * chunk and leaves everything a route imports in the entry — so React, the
+ * router, the query client and the table core were 76% of all JavaScript, paid
+ * before anything renders and re-downloaded whole on every deploy of the app's
+ * own code. Splitting them out moves bytes rather than removing them (the `js`
+ * total barely changes), and what it buys is the two things a total cannot
+ * see: a smaller first paint, and three chunks whose content-hash only changes
+ * when the dependency does.
+ *
+ * **Grouped, not one chunk per package.** `react` and `react-dom` initialise
+ * in a fixed order and `@tanstack/react-router` is meaningless without
+ * `router-core`, `history` and the store it reads; splitting a group across
+ * chunks buys nothing and risks an initialisation order Rollup has to guess.
+ *
+ * The names are the chunk names, so `dist/assets/vendor/react-<hash>.js` is
+ * what the per-chunk ceilings in `size-budget.json` are written against — see
+ * `chunkFileNames` below for why that directory exists.
+ */
+const VENDOR_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  react: ["react", "react-dom", "scheduler"],
+  router: [
+    "@tanstack/react-router",
+    "@tanstack/router-core",
+    "@tanstack/history",
+    "@tanstack/react-store",
+    "@tanstack/store",
+  ],
+  query: ["@tanstack/react-query", "@tanstack/query-core"],
+};
+
+/**
+ * The npm package a module id belongs to, or `undefined` for our own source.
+ *
+ * The **last** `node_modules` segment, because pnpm's store nests them:
+ * `node_modules/.pnpm/react-dom@19.2.0_react@19.2.0/node_modules/react-dom/…`
+ * has two, and only the last one names the package. A `id.includes("react")`
+ * test would put `react-i18next`, `react-hook-form` and `@types/react` in the
+ * React chunk, which is how a vendor split quietly becomes a second entry.
+ */
+const packageOf = (id: string): string | undefined => {
+  const parts = id.split(/[\\/]node_modules[\\/]/);
+
+  if (parts.length < 2) return undefined;
+
+  const segments = parts[parts.length - 1]?.split(/[\\/]/) ?? [];
+  const [first, second] = segments;
+
+  if (first === undefined) return undefined;
+
+  return first.startsWith("@") && second !== undefined
+    ? `${first}/${second}`
+    : first;
+};
+
+const manualChunks = (id: string): string | undefined => {
+  const pkg = packageOf(id);
+
+  if (pkg === undefined) return undefined;
+
+  for (const [chunk, packages] of Object.entries(VENDOR_GROUPS)) {
+    if (packages.includes(pkg)) return chunk;
+  }
+
+  return undefined;
+};
+
+/**
  * The customer app's build (ADR-0055 §2: the admin's records applied to a
- * second app, so this file is that one with two lines changed — the port and
- * the warmup globs' tree).
+ * second app, so this file is that one with the port, the warmup globs' tree
+ * and — since `D14.9` — one vendor group's worth of difference, this app
+ * having no grid to bring `@tanstack/table-*` with it).
  */
 export default defineConfig({
   plugins: [
@@ -33,6 +107,35 @@ export default defineConfig({
   ],
   /* The version constant (ADR-0054 §5). See `app-version.ts`. */
   define: versionDefine,
+  build: {
+    /*
+     * **Emitted, and not referenced from the bundle** (ADR-0062 §4). A minified
+     * production stack trace is unreadable without a map, and `"hidden"` is the
+     * setting that gives one to whoever holds the build — the error reporter of
+     * ADR-0066 §3 — without appending a `sourceMappingURL` comment that invites
+     * every visitor's devtools to fetch it.
+     */
+    sourcemap: "hidden",
+    rollupOptions: {
+      output: {
+        manualChunks,
+        /*
+         * Vendor chunks go in their own directory, and that is what makes the
+         * per-chunk ceilings in `size-budget.json` checkable. A hashed file
+         * name is `<name>-<hash>.js` and Vite's hash alphabet includes `-`, so
+         * a `query-*.js` glob over `assets/` matches the vendor chunk *and*
+         * this app's own `query-error-<hash>.js` — a check that measures two
+         * files, or the wrong one, depending on the day's hash. A directory is
+         * a boundary a glob cannot get wrong.
+         */
+        chunkFileNames: (chunk) =>
+          chunk.name !== undefined && Object.hasOwn(VENDOR_GROUPS, chunk.name)
+            ? "assets/vendor/[name]-[hash].js"
+            : "assets/[name]-[hash].js",
+      },
+    },
+  },
+
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

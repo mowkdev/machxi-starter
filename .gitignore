@@ -4,6 +4,9 @@ node_modules
 *.log
 .next
 dist
+# The declarations-only emit `tsc -b` writes (D14.9, ADR-0062 §3). Nothing at
+# runtime resolves to it: Vite and tsdown still read each package's `src`.
+dist-types
 dist-ssr
 *.local
 .env

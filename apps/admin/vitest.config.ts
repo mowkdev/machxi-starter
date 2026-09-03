@@ -44,16 +44,34 @@ export default mergeConfig(
        * the query's, or the diagnostic is the first thing lost.
        */
       /*
-       * **Raised from fifteen to thirty at `D9.4`**, for the reason `D4.4`
-       * raised the query ceiling: the load the whole suite is under, not any
-       * one screen's cost. From D9 this app's machinery arrives as workspace
-       * packages whose `exports` point at TypeScript source, so every worker
-       * transforms them, and under `pnpm test` — where the other packages'
-       * suites run alongside — the heaviest routing files crossed fifteen
-       * seconds while passing comfortably when the app's suite runs alone.
-       * The gap over `asyncUtilTimeout` is preserved, or a genuinely failing
-       * `findBy*` races this and reports "Test timed out" instead of naming
-       * the element it could not find.
+       * **Thirty, and `D14.9` is where that was measured rather than assumed.**
+       *
+       * `D9.4` raised it from fifteen for the load the whole suite is under
+       * rather than any one screen's cost: from D9 this app's machinery arrives
+       * as workspace packages whose `exports` point at TypeScript source, every
+       * worker transforms them, and under `pnpm test` the heaviest routing
+       * files crossed fifteen seconds. ADR-0062 §Consequences said project
+       * references would let that be revisited "on measurement rather than on
+       * hope", and `D14.9` measured it: **the answer was no.**
+       *
+       * Two full `pnpm test` runs at fifteen were green, and the numbers are
+       * why green was not enough. The slowest single test came out at 4.3s in
+       * one run and 9.6s in the other — a 2.2× spread on one idle machine,
+       * leaving about 1.6× of headroom under a fifteen-second ceiling on a
+       * developer's laptop, and CI's two-core runner is slower than that. A
+       * ceiling that close turns a slow morning into a red gate, which is a
+       * far worse failure than fifteen extra seconds spent proving a hang.
+       *
+       * **The premise did not survive the measurement either.** Project
+       * references make `check-types` incremental; they change nothing about
+       * what Vitest transforms, and the transform is what `D9.4` was paying
+       * for. Faster type-checking was never going to make this number smaller.
+       *
+       * It does not go lower for a second reason that is independent of load:
+       * the gap over Testing Library's five-second `asyncUtilTimeout` in
+       * `@repo/app-kit/testing/setup` is what keeps a genuinely failing
+       * `findBy*` naming the element it could not find instead of reporting
+       * "Test timed out".
        */
       testTimeout: 30_000,
       env: {

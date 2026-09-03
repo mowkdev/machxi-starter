@@ -9,7 +9,13 @@ import onlyWarn from "eslint-plugin-only-warn";
  * A shared ESLint configuration for the repository.
  */
 export const config = defineConfig(
-  globalIgnores(["dist/**"]),
+  /*
+   * `dist/` is a build; `dist-types/` is the declarations-only emit project
+   * references write (`D14.9`, ADR-0062 §3). Both are generated and both are
+   * gitignored, and linting a `.d.ts` nobody wrote is noise at best — at
+   * worst it is the rule set arguing with the compiler about its own output.
+   */
+  globalIgnores(["dist/**", "dist-types/**"]),
   js.configs.recommended,
   eslintConfigPrettier,
   tseslint.configs.recommended,

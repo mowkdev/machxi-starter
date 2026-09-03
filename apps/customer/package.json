@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite --host 0.0.0.0 --port 3002 --clearScreen false",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc -b",
     "i18n:check": "node scripts/i18n.mjs",
     "i18n:extract": "node scripts/i18n.mjs --write",
     "lint": "eslint . --max-warnings 0",

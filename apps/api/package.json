@@ -7,7 +7,7 @@
     "start": "node dist/main.js",
     "dev": "tsx watch --env-file=../../.env src/main.ts",
     "build": "tsdown",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc -b",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run && vitest run --config vitest.int.config.ts --passWithNoTests",
     "test:unit": "vitest run",

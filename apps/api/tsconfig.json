@@ -1,10 +1,31 @@
 {
   "extends": "@repo/typescript-config/node.json",
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "dist-types/tsconfig.tsbuildinfo"
+  },
   "include": [
     "src",
     "test",
     "tsdown.config.ts",
     "vitest.config.ts",
     "vitest.int.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/crypto"
+    },
+    {
+      "path": "../../packages/db"
+    },
+    {
+      "path": "../../packages/logger"
+    },
+    {
+      "path": "../../packages/config-vitest"
+    }
   ]
 }

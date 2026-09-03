@@ -1,4 +1,10 @@
 {
-  "extends": "@repo/typescript-config/node.json",
+  "extends": [
+    "@repo/typescript-config/node.json",
+    "@repo/typescript-config/composite.json"
+  ],
+  "compilerOptions": {
+    "outDir": "dist-types"
+  },
   "include": ["*.ts"]
 }

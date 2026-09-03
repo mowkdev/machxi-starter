@@ -72,7 +72,8 @@
       "dependsOn": ["^lint"]
     },
     "check-types": {
-      "dependsOn": ["^check-types"]
+      "dependsOn": ["^check-types"],
+      "outputs": ["dist-types/**"]
     },
     "i18n:check": {
       "dependsOn": []

@@ -19,11 +19,13 @@ import { fileURLToPath } from "node:url";
  * the cost of exactly the kind of code this app is mostly made of — long
  * repetitive class strings and JSON catalogues compress to almost nothing.
  *
- * **Three measurements, not one per chunk.** A per-file budget would need
- * editing on every hash change and would say nothing about the total; a single
- * total would let the entry chunk double while lazy routes shrink. So: every
- * JavaScript byte the build emits, every CSS byte, and the **entry chunk**,
- * which is the one every operator pays before anything renders.
+ * **Three totals and a ceiling per vendor chunk.** Three totals alone (`D10.5`)
+ * left the *shape* of the bundle unpriced: a dependency can move from a lazy
+ * route into the entry and `js` will not blink. A ceiling per *file* is the
+ * opposite mistake — it needs editing on every hash change. So `D14.9`
+ * (ADR-0062 §4) prices the four things that are stable enough to review: every
+ * JavaScript byte, every CSS byte, the **entry chunk** every operator pays
+ * before anything renders, and each **vendor chunk** `vite.config.ts` names.
  *
  * **Every silent-pass path is closed, because this is a cached gate link.** A
  * check that can quietly measure nothing is worse than no check: it reports
@@ -45,6 +47,8 @@ import { fileURLToPath } from "node:url";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DIST = join(HERE, "..", "dist");
 const INDEX_HTML = join(DIST, "index.html");
+/** Where `vite.config.ts` routes the manual vendor chunks (`D14.9`). */
+const VENDOR_DIR = join(DIST, "assets", "vendor");
 const BUDGET_FILE = join(HERE, "..", "size-budget.json");
 
 /** The module script `dist/index.html` loads — the entry, by definition. */
@@ -150,6 +154,48 @@ const missingUtilities = (css) =>
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} kB`;
 
+/**
+ * The per-chunk ceilings (ADR-0062 §4, `D14.9`), beside the three totals.
+ *
+ * The totals cannot see the shape of a bundle. `js` stays flat while the entry
+ * doubles and the lazy routes shrink; `entry` stays flat while a dependency
+ * quietly moves from one vendor group to another. So each vendor chunk
+ * `vite.config.ts` declares gets its own number in the budget file, under the
+ * rule ADR-0052 wrote for the totals: a committed byte count, raised only in a
+ * diff someone reviewed.
+ *
+ * **Both directions are closed.** A budgeted chunk that no file matches is an
+ * error rather than a pass — that is the silent-pass class this script exists
+ * to refuse — and a vendor chunk *nothing* budgets is an error too, so adding
+ * a group to `VENDOR_GROUPS` cannot ship unpriced.
+ */
+const vendorChunkSizes = () => {
+  if (!existsSync(VENDOR_DIR)) {
+    fail(
+      "size: dist/assets/vendor/ is missing. vite.config.ts routes every manual vendor chunk there, so an absent directory means the build emitted none of them.",
+    );
+  }
+
+  const sizes = new Map();
+
+  for (const name of readdirSync(VENDOR_DIR)) {
+    if (name.endsWith(".js"))
+      sizes.set(name, gzipBytes(join(VENDOR_DIR, name)));
+  }
+
+  return sizes;
+};
+
+/**
+ * The entry may not be budgeted above 60% of all JavaScript (ADR-0062 §4).
+ *
+ * A ceiling is only a ceiling if nobody can quietly raise it to the sky. Before
+ * `D14.9` the entry was about 76% of `js`; the vendor split is what brought it
+ * down, and this is the line that stops a later step handing that back by
+ * editing one number.
+ */
+const ENTRY_SHARE_OF_JS = 0.6;
+
 const main = () => {
   let budget;
 
@@ -213,6 +259,69 @@ const main = () => {
     );
 
     if (headroom < 0) breaches.push({ key, actual, limit });
+  }
+
+  const chunkBudgets = Object.entries(budget.chunks ?? {});
+
+  if (chunkBudgets.length === 0) {
+    fail(
+      "size: the budget file names no chunks. Per-chunk ceilings are not optional (ADR-0062 §4) — an empty table prices nothing and passes forever.",
+    );
+  }
+
+  const measuredChunks = vendorChunkSizes();
+  const claimed = new Set();
+
+  for (const [name, limit] of chunkBudgets) {
+    const matches = [...measuredChunks.keys()].filter((file) =>
+      file.startsWith(`${name}-`),
+    );
+
+    if (matches.length !== 1) {
+      fail(
+        `size: budget names chunk "${name}", which matches ${matches.length} files in dist/assets/vendor/. Either vite.config.ts no longer emits that group, or two chunks share a prefix — and a budget that measures nothing would pass forever.`,
+      );
+    }
+
+    const file = matches[0];
+    const actual = measuredChunks.get(file);
+    const headroom = limit - actual;
+
+    claimed.add(file);
+
+    lines.push(
+      `  ${name.padEnd(6)} ${kb(actual).padStart(10)} / ${kb(limit).padStart(10)}  ${headroom < 0 ? "OVER" : "ok"}`,
+    );
+
+    if (headroom < 0) breaches.push({ key: name, actual, limit });
+  }
+
+  for (const file of measuredChunks.keys()) {
+    if (!claimed.has(file)) {
+      fail(
+        `size: dist/assets/vendor/${file} is a vendor chunk nothing budgets. Give it a ceiling in the "chunks" table (ADR-0062 §4) rather than letting it grow unpriced.`,
+      );
+    }
+  }
+
+  /*
+   * Both rows have to exist for the rule below to mean anything: with either
+   * missing the comparison is against `undefined`, which is `false`, and the
+   * cap would report "ok" for a budget file that had deleted it.
+   */
+  if (
+    typeof budget.budgets.entry !== "number" ||
+    typeof budget.budgets.js !== "number"
+  ) {
+    fail(
+      'size: the budget file must name both "js" and "entry" totals — ADR-0062 §4 caps one against the other, and a missing row would make that cap silently vacuous.',
+    );
+  }
+
+  if (budget.budgets.entry > budget.budgets.js * ENTRY_SHARE_OF_JS) {
+    fail(
+      `size: the entry budget (${kb(budget.budgets.entry)}) is more than ${ENTRY_SHARE_OF_JS * 100}% of the js budget (${kb(budget.budgets.js)}). ADR-0062 §4 caps it there: the vendor split is what made the entry small, and a ceiling raised past this line gives that back without anyone having to say so.`,
+    );
   }
 
   process.stdout.write(`${lines.join("\n")}\n`);

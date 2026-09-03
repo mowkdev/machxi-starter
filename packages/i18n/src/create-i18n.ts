@@ -1,5 +1,9 @@
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "@repo/contracts";
-import i18next, { type Resource, type ResourceKey } from "i18next";
+import i18next, {
+  type i18n as I18nextInstance,
+  type Resource,
+  type ResourceKey,
+} from "i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
 import { initReactI18next } from "react-i18next";
 
@@ -177,6 +181,23 @@ export interface CreateI18nOptions {
   readonly pseudo?: boolean;
 }
 
+/**
+ * What the factory hands back.
+ *
+ * **Written out rather than inferred** (`D14.9`, ADR-0062 §3). It was
+ * `ReturnType<typeof createI18n>`, which a declaration emit cannot name: the
+ * inferred shape reaches into `i18next`'s own types through a relative path
+ * into `node_modules`, and `tsc -b` refuses to write that into a `.d.ts`
+ * (TS2742) because the path is not portable. An interface at the seam is the
+ * fix the compiler asks for, and it is the honest one — this is the package's
+ * public surface, so it belongs in the source rather than in an inference.
+ */
+export interface I18n {
+  readonly instance: I18nextInstance;
+  readonly changeLocale: (next: Locale) => Promise<void>;
+  readonly t: I18nextInstance["t"];
+}
+
 export const createI18n = ({
   resources,
   storageKeyPrefix,
@@ -187,7 +208,7 @@ export const createI18n = ({
   onLocaleApplied,
   localeSideEffectsReady,
   pseudo = false,
-}: CreateI18nOptions) => {
+}: CreateI18nOptions): I18n => {
   const instance = i18next.createInstance();
 
   /*
@@ -323,8 +344,6 @@ export const createI18n = ({
     t: instance.t,
   } as const;
 };
-
-export type I18n = ReturnType<typeof createI18n>;
 
 /**
  * The precedence of ADR-0046 §4 with its two impure sources read.

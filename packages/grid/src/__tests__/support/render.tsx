@@ -1,5 +1,5 @@
 import { createI18n, type TranslateKey } from "@repo/i18n";
-import { render } from "@testing-library/react";
+import { render, type RenderResult } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 
@@ -47,5 +47,5 @@ export const gridI18n = () =>
 
 export const translator = (): TranslateKey => gridI18n().t as TranslateKey;
 
-export const renderWithI18n = (ui: ReactElement) =>
+export const renderWithI18n = (ui: ReactElement): RenderResult =>
   render(<I18nextProvider i18n={gridI18n().instance}>{ui}</I18nextProvider>);

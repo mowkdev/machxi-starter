@@ -1,5 +1,5 @@
 import { listQuerySearchSchema, type ListQuerySearch } from "@repo/contracts";
-import { useRouterState } from "@tanstack/react-router";
+import { useRouterState, type HistoryState } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 /**
@@ -80,6 +80,45 @@ export const useCarriedListState = (
 };
 
 /**
+ * What {@link useRecordNavigation} hands back.
+ *
+ * **Written out rather than inferred** (`D14.9`, ADR-0062 §3), and the reason
+ * is not tidiness. Under project references a consumer reads this package's
+ * emitted `.d.ts` rather than its source, and a declaration emit writes an
+ * **expanded** copy of an inferred type in place of the alias the source
+ * named. The expansion of `{ list: normalize(search) }` stopped satisfying the
+ * router's own `state` option, so four call sites in `apps/admin` went red
+ * against a package whose source had not changed a character. `HistoryState`
+ * is the type that option takes, so naming it here is what keeps the emitted
+ * surface assignable — intersected with the `list` this hook always sets,
+ * because `HistoryState` itself declares it *optional* and an `openState`
+ * without one is not a thing this hook can hand back.
+ */
+export interface RecordNavigation {
+  /**
+   * What an entry point spreads into its `navigate` or `<Link>`: the list
+   * state as history state, and **no `search`**, so the record's URL is the
+   * record's alone.
+   *
+   * Read from `location.search` rather than from a `useSearch({ from })`,
+   * because a shared helper cannot name a route — and **validated on the way
+   * in**, which is the difference between the two. `useSearch` yields the
+   * route's validated object; `location.search` is what the URL literally
+   * carried, so on a bare `/staff` it is `{}`. Carrying that forward hands the
+   * grid a state with no `sort` and no `filters` and crashes it on the first
+   * `.map`. The schema is the one that owns what an absent param means, so the
+   * carrier asks it.
+   */
+  readonly openState: HistoryState & { readonly list: ListQuerySearch };
+  /**
+   * What a close navigation passes as its `search`: the view the operator
+   * left, or nothing at all when this record was reached by a link and there
+   * is no view to return to.
+   */
+  readonly closeSearch: ListQuerySearch | Record<string, never>;
+}
+
+/**
  * The two halves of the round trip, for the entry points and the surfaces.
  *
  * One helper rather than a rule each resource restates, and it never learns a
@@ -87,7 +126,7 @@ export const useCarriedListState = (
  * so both halves take the destination from their caller and only the *carrying*
  * is decided here.
  */
-export const useRecordNavigation = () => {
+export const useRecordNavigation = (): RecordNavigation => {
   const search = useRouterState({ select: (state) => state.location.search });
   const carried = useRouterState({
     select: (state) => state.location.state.list,
@@ -105,26 +144,7 @@ export const useRecordNavigation = () => {
    */
   return useMemo(
     () => ({
-      /**
-       * What an entry point spreads into its `navigate` or `<Link>`: the list
-       * state as history state, and **no `search`**, so the record's URL is the
-       * record's alone.
-       *
-       * Read from `location.search` rather than from a `useSearch({ from })`,
-       * because a shared helper cannot name a route — and **validated on the
-       * way in**, which is the difference between the two. `useSearch` yields
-       * the route's validated object; `location.search` is what the URL
-       * literally carried, so on a bare `/staff` it is `{}`. Carrying that
-       * forward hands the grid a state with no `sort` and no `filters` and
-       * crashes it on the first `.map`. The schema is the one that owns what
-       * an absent param means, so the carrier asks it.
-       */
       openState: { list: normalize(search) },
-      /**
-       * What a close navigation passes as its `search`: the view the operator
-       * left, or nothing at all when this record was reached by a link and there
-       * is no view to return to.
-       */
       closeSearch: carried ?? {},
     }),
     [search, carried],

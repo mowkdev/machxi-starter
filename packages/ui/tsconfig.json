@@ -1,4 +1,15 @@
 {
-  "extends": "@repo/typescript-config/react-library.json",
-  "include": ["src", "test", "vitest.config.ts"]
+  "extends": [
+    "@repo/typescript-config/react-library.json",
+    "@repo/typescript-config/composite.json"
+  ],
+  "compilerOptions": {
+    "outDir": "dist-types"
+  },
+  "include": ["src", "test", "vitest.config.ts"],
+  "references": [
+    {
+      "path": "../config-vitest"
+    }
+  ]
 }

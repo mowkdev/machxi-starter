@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsdown",
     "lint": "eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc -b",
     "test": "vitest run && vitest run --config vitest.int.config.ts",
     "test:unit": "vitest run",
     "test:int": "vitest run --config vitest.int.config.ts",

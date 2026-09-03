@@ -3,7 +3,9 @@
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "incremental": true,
+    "tsBuildInfoFile": "dist-types/tsconfig.tsbuildinfo"
   },
   "include": [
     "src",
@@ -12,5 +14,34 @@
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/api-client"
+    },
+    {
+      "path": "../../packages/app-kit"
+    },
+    {
+      "path": "../../packages/app-services"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/form"
+    },
+    {
+      "path": "../../packages/i18n"
+    },
+    {
+      "path": "../../packages/resource"
+    },
+    {
+      "path": "../../packages/ui"
+    },
+    {
+      "path": "../../packages/config-vitest"
+    }
   ]
 }

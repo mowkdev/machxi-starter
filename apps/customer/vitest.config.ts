@@ -33,13 +33,15 @@ export default mergeConfig(
     test: {
       setupFiles: ["@repo/app-kit/testing/setup"],
       /*
-       * Thirty, matching the admin's, and for the reason that file writes
-       * down rather than by imitation: the suite's ceiling has to sit above
-       * Testing Library's `asyncUtilTimeout` in `@repo/app-kit/testing/setup`, or a
+       * Thirty, matching the admin's, and left there at `D14.9` on the
+       * measurement that file writes down: fifteen is green but with only
+       * ~1.6× of headroom over the slowest test on an idle machine, and
+       * project references do not make Vitest transform less. The reason the
+       * two agree at all is the one that file also writes down rather than
+       * imitation — the ceiling has to sit above Testing Library's
+       * five-second `asyncUtilTimeout` in `@repo/app-kit/testing/setup`, or a
        * genuinely failing `findBy*` races the test timeout and reports "Test
-       * timed out" instead of naming the element it could not find. The
-       * extracted packages are transformed per worker, and under `pnpm test`
-       * this app's suites run alongside every other package's.
+       * timed out" instead of naming the element it could not find.
        */
       testTimeout: 30_000,
       env: {
