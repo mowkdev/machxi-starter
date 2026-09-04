@@ -45,6 +45,8 @@ The API's HTTP behaviour is covered first, because it is the surface with a cont
 
 The split applies from this record's acceptance forward. Shipped plans stay as they are — they are the journal — and the deliverable in progress moves nothing already written; its notes file begins with the step that accepts this record.
 
+**Amended 2026-09-04 (`D15.2`, at the step's head): "already written" means written before this record's acceptance.** The two sentences above point opposite ways for a note authored after acceptance but into a plan file on a branch that did not yet hold this record, and the reading is that a note's home is decided by **when it was authored** and not by which branch carried the record at the time — so such a note belongs in the notes file, which is where [D15's](../plan/0015-organizations.notes.md) token-column entry already sits, and nothing already in a plan moves.
+
 ### 3. What travels into a fork
 
 `docs/specs/` is carried, and — unlike a record — **edited in place on both sides**. It conflicts on a merge from `starter/main` exactly where `apps/` does, because it documents the code and diverges where the code diverges. The reason [ADR-0065](0065-starter-lifecycle.md) §1 forbids editing an inherited record — the edit erases which decision was deliberately dropped — does not reach a document that decides nothing. [`docs/forking.md`](../forking.md)'s table gains the row. Notes files are journal, like the plans beside them, and `docs/plan/**` is already `merge=ours`.
