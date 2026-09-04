@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D14 — Starter hardening · 2026-09-04
+
+A very good two-app reference implementation made into a starter a project can clone, deploy and build on: a production edge (CI, images, a reference deployment, database roles, observability and mail seams), scale defaults that hold past ten thousand rows, one shared composition for both SPAs instead of two drifting copies, resource configs the compiler checks against the contracts, generators for the two shapes every feature repeats, and a mechanical way to fork the starter and bring generic features back. The first deliverable to carry a `starter-D<n>` tag.
+
 ## D13 — Customer impersonation · 2026-09-02
 
 Staff open the customer app as a chosen customer: a minted `user` session, an audit event on every request, a banner and an exit, and credential operations refused throughout.
