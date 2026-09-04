@@ -1,6 +1,14 @@
 import type { OrganizationKind } from "@repo/contracts";
+import type { ListQuery } from "@repo/contracts";
 import { organizations, type DbExecutor } from "@repo/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
+
+import {
+  applyListQuery,
+  toSearchCondition,
+  type ColumnMap,
+  type ListResult,
+} from "../../core/http/index.js";
 
 /**
  * Every query against `organizations` (ADR-0009).
@@ -31,6 +39,12 @@ export interface OrganizationRecord {
   readonly deletedAt: Date | null;
 }
 
+/** The columns `PATCH` may move (ADR-0067 §7) — the whole of them. */
+export interface OrganizationPatch {
+  readonly name?: string | undefined;
+  readonly slug?: string | undefined;
+}
+
 /** What every path that creates an organization inserts. */
 export interface NewOrganizationInput {
   readonly slug: string;
@@ -49,6 +63,34 @@ const recordColumns = {
   updatedAt: true,
   deletedAt: true,
 } as const;
+
+/**
+ * What `GET /api/v1/admin/organizations` may sort and filter by (ADR-0060 §3).
+ *
+ * Exported with {@link searchColumns} so `organizations.list-indexes.test.ts`
+ * can compare the allow-lists the endpoint enforces against the indexes the
+ * schema declares — a copy of either side would pass while the endpoint was
+ * broken.
+ *
+ * The **bare** `(column, id)` pairs of ADR-0060 §3 rather than tenant-led
+ * composites, because this table is the tenant and carries no
+ * `organization_id` (ADR-0067 §1 says so in the same clause that drops them
+ * everywhere else).
+ */
+export const listColumns: ColumnMap = {
+  createdAt: organizations.createdAt,
+  updatedAt: organizations.updatedAt,
+  slug: organizations.slug,
+  name: organizations.name,
+  kind: organizations.kind,
+  deletedAt: organizations.deletedAt,
+};
+
+/** The columns `q` reaches — both of them trigram-indexed. */
+export const searchColumns = [organizations.name, organizations.slug];
+
+/** The field whose presence in a query means "the client is asking about deletion". */
+const DELETED_AT_FIELD = "deletedAt";
 
 const returnedColumns = {
   id: organizations.id,
@@ -106,6 +148,106 @@ export const createOrganizationsRepository = (db: DbExecutor) =>
           isNull(organizations.deletedAt),
         ),
       }),
+
+    /**
+     * `GET /api/v1/admin/organizations` (ADR-0014 as carried by ADR-0060).
+     *
+     * The `users` reading of the soft-delete default, carried exactly: live
+     * rows only **unless the query mentions `deletedAt`**, because
+     * `filter[deletedAt][null]=false` is an allow-listed filter and a default
+     * scope that always excluded deleted rows would make it return nothing
+     * forever. The default steps aside rather than combining.
+     */
+    list: async (
+      query: ListQuery,
+      tx: DbExecutor = db,
+    ): Promise<ListResult<OrganizationRecord>> => {
+      const asksAboutDeletion = query.filters.some(
+        (filter) => filter.field === DELETED_AT_FIELD,
+      );
+
+      const plan = applyListQuery(query, {
+        columns: listColumns,
+        tiebreaker: organizations.id,
+        extraWhere: [
+          toSearchCondition(searchColumns, query.q),
+          asksAboutDeletion ? undefined : isNull(organizations.deletedAt),
+        ],
+      });
+
+      const rows = await tx.query.organizations.findMany({
+        columns: recordColumns,
+        where: plan.where,
+        orderBy: [...plan.orderBy],
+        limit: plan.limit,
+        offset: plan.offset,
+      });
+
+      // Skipped, not made cheaper, when the caller declines it (ADR-0060 §2).
+      if (!query.count) return { rows, total: null };
+
+      const [counted] = await tx
+        .select({ total: count() })
+        .from(organizations)
+        .where(plan.where);
+
+      return { rows, total: counted?.total ?? 0 };
+    },
+
+    /**
+     * Any organization by id, soft-deleted ones included — the admin view.
+     *
+     * The `users.findAnyById` reading: staff may list deleted rows, so staff
+     * must be able to open one. The user segment never uses this; it reaches
+     * organizations through `requireMembership`, which resolves live ones only.
+     */
+    findAnyById: async (
+      id: string,
+      tx: DbExecutor = db,
+    ): Promise<OrganizationRecord | undefined> =>
+      tx.query.organizations.findFirst({
+        columns: recordColumns,
+        where: eq(organizations.id, id),
+      }),
+
+    /**
+     * Updates the two editable columns (ADR-0067 §7).
+     *
+     * @returns the row, `undefined` when a **live** organization already holds
+     *   the slug, and `null` when no live row has that id — three outcomes
+     *   because the caller owes a different answer to each, and a boolean
+     *   could not tell "the slug is taken" from "it is gone".
+     */
+    update: async (
+      id: string,
+      patch: OrganizationPatch,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<OrganizationRecord | undefined | null> => {
+      if (patch.slug !== undefined) {
+        // The partial unique index is not a constraint an `update` can name a
+        // conflict target for, so the collision is checked here — inside the
+        // caller's transaction, which is what makes the check and the write
+        // one decision rather than two.
+        const holder = await tx.query.organizations.findFirst({
+          columns: { id: true },
+          where: and(
+            eq(organizations.slug, patch.slug),
+            isNull(organizations.deletedAt),
+          ),
+        });
+
+        if (holder !== undefined && holder.id !== id) return undefined;
+      }
+
+      const [updated] = await tx
+        .update(organizations)
+        .set({ ...patch, updatedAt: at })
+        .where(and(eq(organizations.id, id), isNull(organizations.deletedAt)))
+        .returning(returnedColumns);
+
+      return updated ?? null;
+    },
 
     /** The caller's live `personal` organization (ADR-0067 §2). */
     findPersonalFor: async (

@@ -1,7 +1,9 @@
 # ADR-0015: Route segments (`public` / `user` / `admin`) and API versioning
 
-- Status: accepted
+- Status: superseded by [ADR-0067](0067-organizations.md) (delta: the `/user` segment gains an `/orgs/:orgId` prefix for the requests that address an organization; the three segments, their guards and the version stand)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-05 by [ADR-0067](0067-organizations.md)**, at the head of `D15.3`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and a narrow one: this record decides that there are three segments, that authentication is structural because a whole segment is guarded, that the version is a path prefix and that a segment's policies are its own — **all of that stands and is in force**. What 0067 §4 adds is a *prefix within* the `user` segment: a request that addresses an organization names it in the path, `/api/v1/user/orgs/:orgId/...`, because a URL is linkable, bookmarkable, loggable and impossible to forget. It adds no segment and changes no guard. Self-scoped paths — `/user/profile`, `/user/settings`, `/user/orgs` itself and `/user/invitations` — stay outside the prefix, because they are about the principal rather than a tenant. Read 0067 §4 for the prefix; read this record for the segments.
 
 ## Context
 

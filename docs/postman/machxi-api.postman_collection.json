@@ -4079,6 +4079,1860 @@
       ]
     },
     {
+      "name": "User › Organizations",
+      "description": "The tenant surface a customer drives (ADR-0067 §2, §4). Signed in as the seeded customer, who owns the `acme` fixture organization. The order matters: the switcher's list finds `acme`, a team organization is created and edited, a member is invited and the invitation is accepted by the second fixture customer, and the run leaves the invitation revoked and the organization deleted.",
+      "item": [
+        {
+          "name": "List my organizations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with my organizations, each carrying my role\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const rows = pm.response.json().data;",
+                  "",
+                  "  pm.expect(rows, \"a live account always has at least its personal organization\").to.be.an(\"array\").that.is.not.empty;",
+                  "  pm.expect(rows.some((row) => row.kind === \"personal\"), \"the personal organization\").to.be.true;",
+                  "",
+                  "  const acme = rows.find((row) => row.slug === \"acme\");",
+                  "",
+                  "  pm.expect(acme, \"the acme fixture\").to.exist;",
+                  "  pm.expect(acme.role, \"the seeded customer owns it\").to.eql(\"owner\");",
+                  "});",
+                  "",
+                  "const rows = pm.response.json().data;",
+                  "pm.environment.set(\"acmeOrgId\", rows.find((row) => row.slug === \"acme\").id);",
+                  "pm.environment.set(\"personalOrgId\", rows.find((row) => row.kind === \"personal\").id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs"]
+            },
+            "description": "The switcher's query — scoped by the principal rather than by a tenant (ADR-0067 §5), so it names no organization and takes no list language. Every live account has at least its personal organization, which is why this can never be empty."
+          }
+        },
+        {
+          "name": "Create a team organization",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"newOrgSlug\", \"qa-team-\" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 with the caller as owner\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const org = pm.response.json().data;",
+                  "",
+                  "  pm.expect(org.kind).to.eql(\"team\");",
+                  "  pm.expect(org.role, \"the creator is the owner\").to.eql(\"owner\");",
+                  "  pm.expect(org.slug).to.eql(pm.environment.get(\"newOrgSlug\"));",
+                  "  pm.expect(org.deletedAt).to.eql(null);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"newOrgId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Team\",\n  \"slug\": \"{{newOrgSlug}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs"]
+            },
+            "description": "Any user may create a `team` organization and is its owner (ADR-0067 §2). `kind` is not a field: a personal organization is the system's to create, exactly one per account."
+          }
+        },
+        {
+          "name": "A non-member is answered 404, not 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND, the same answer a stranger's organization gets\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/00000000-0000-4000-8000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "00000000-0000-4000-8000-000000000000"
+              ]
+            },
+            "description": "ADR-0067 §4's central refusal, and the reason it is a `404`: organization existence is no more disclosable than route existence (ADR-0019). The same answer covers an organization that does not exist, one that is soft-deleted, and one the caller simply is not in."
+          }
+        },
+        {
+          "name": "A malformed organization id is 404 too, never 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/not-a-uuid",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs", "not-a-uuid"]
+            },
+            "description": "The guard parses its own parameter above every route, and answers a malformed one the way it answers a stranger's — which also keeps a non-uuid out of a `where id = $1` that would escape as a 500."
+          }
+        },
+        {
+          "name": "Rename the organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the new name\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.name).to.eql(\"QA Team, renamed\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Team, renamed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs", "{{newOrgId}}"]
+            },
+            "description": "Name and slug are the whole of what an organization has in v1 (ADR-0067 §7). This route is deliberately **not** in the impersonation exclusion list: a rename is what support opens the app to do, and it lands in the mutation trail with both identities (ADR-0067 §8)."
+          }
+        },
+        {
+          "name": "A personal organization refuses a slug edit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORGANIZATION_PERSONAL_UNDELETABLE\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ORGANIZATION_PERSONAL_UNDELETABLE\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"my-own-things\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{personalOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs", "{{personalOrgId}}"]
+            },
+            "description": "A personal organization's slug is derived from the account's id, and that derivation is what proves 'exactly one personal organization per live account' without a journal. Its **name** is freely editable — it is what the switcher renders and it proves nothing."
+          }
+        },
+        {
+          "name": "A personal organization refuses its own deletion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORGANIZATION_PERSONAL_UNDELETABLE\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ORGANIZATION_PERSONAL_UNDELETABLE\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{personalOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs", "{{personalOrgId}}"]
+            },
+            "description": "It goes with the account that owns it and never on its own (ADR-0067 §2): a user with no organization is a state no query in this repository has a branch for."
+          }
+        },
+        {
+          "name": "List the members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the owner alone\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const rows = pm.response.json().data;",
+                  "",
+                  "  pm.expect(rows).to.have.lengthOf(1);",
+                  "  pm.expect(rows[0].role).to.eql(\"owner\");",
+                  "  pm.expect(rows[0].email).to.eql(pm.environment.get(\"customerEmail\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs", "{{newOrgId}}", "members"]
+            },
+            "description": "Any member may read the members list. It is a list endpoint on ADR-0014's language, tenant-scoped at the repository so no query string can widen it."
+          }
+        },
+        {
+          "name": "The last owner may not be demoted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORGANIZATION_LAST_OWNER\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ORGANIZATION_LAST_OWNER\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/members/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "members",
+                "{{userId}}"
+              ]
+            },
+            "description": "An organization always has at least one owner (ADR-0067 §2). `409` rather than `403`: the caller holds exactly the role the route requires, and what the request conflicts with is the organization's state."
+          }
+        },
+        {
+          "name": "The last owner may not leave either",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORGANIZATION_LAST_OWNER\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ORGANIZATION_LAST_OWNER\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/members/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "members",
+                "{{userId}}"
+              ]
+            },
+            "description": "The same invariant and the same write: removing somebody and leaving differ only in who was allowed to ask."
+          }
+        },
+        {
+          "name": "Invite an address that has no account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201, and the shape says nothing about whether the address exists\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const invitation = pm.response.json().data;",
+                  "",
+                  "  pm.expect(invitation.status).to.eql(\"pending\");",
+                  "  pm.expect(invitation.email).to.eql(pm.environment.get(\"unknownEmail\"));",
+                  "});",
+                  "",
+                  "pm.environment.set(\"unknownInviteKeys\", Object.keys(pm.response.json().data).sort().join(\",\"));",
+                  "pm.environment.set(\"unknownInviteId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownEmail}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ]
+            },
+            "description": "An invitation names an **address, not an account** (ADR-0067 §2), which is what makes the flow enumeration-safe by construction: creating one never looks a user up, so it cannot answer differently for an address that has one. Compare this response with the next request's."
+          }
+        },
+        {
+          "name": "Invite the account this run registered",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201, identical in status and shape to the unknown address\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const invitation = pm.response.json().data;",
+                  "",
+                  "  pm.expect(Object.keys(invitation).sort().join(\",\"), \"the same fields either way\").to.eql(pm.environment.get(\"unknownInviteKeys\"));",
+                  "  pm.expect(invitation.status).to.eql(\"pending\");",
+                  "});",
+                  "",
+                  "pm.test(\"no credential reaches the wire\", function () {",
+                  "  pm.expect(pm.response.text(), \"the token hash is never mapped\").to.not.include(\"tokenHash\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"pendingInviteId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ]
+            },
+            "description": "The same request for an address that **does** have an account. The status and the body's shape are identical to the one above — that identity is the enumeration property, asserted here rather than described."
+          }
+        },
+        {
+          "name": "Sorting by the credential digest is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations?sort=tokenHash",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "tokenHash"
+                }
+              ]
+            },
+            "description": "`token_hash` is unique, and the index checker reports a unique column as covered — so the allow-list is the only thing keeping a credential digest out of `sort=` and out of an ordered page (ADR-0067 §2, amended)."
+          }
+        },
+        {
+          "name": "Inviting an owner is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR naming the role\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "  pm.expect(pm.response.json().error.details.map((d) => d.path)).to.include(\"role\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownEmail}}\",\n  \"role\": \"owner\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ]
+            },
+            "description": "`owner` is not an invitable role: ownership is granted by an owner to an existing member (ADR-0067 §2). One rule, said in the zod schema and again in the database as `organization_invitations_role_not_owner`."
+          }
+        },
+        {
+          "name": "List the pending invitations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with both invitations pending, and no token hash\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const rows = pm.response.json().data;",
+                  "",
+                  "  pm.expect(rows).to.have.lengthOf(2);",
+                  "  pm.expect(rows.every((row) => row.status === \"pending\")).to.be.true;",
+                  "  pm.expect(pm.response.text()).to.not.include(\"tokenHash\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ]
+            },
+            "description": "Pending is a property of the endpoint rather than a filter a client may drop: the ended ones are history no surface renders. The row's state is derived from its timestamps — there is no `status` column, because `expired` becomes true as a clock passes."
+          }
+        },
+        {
+          "name": "Revoke the invitation to nobody",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations/{{unknownInviteId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations",
+                "{{unknownInviteId}}"
+              ]
+            },
+            "description": "The atomic consume over the row's terminal stamps, so a revoke racing an accept has exactly one winner and single use needs no column of its own (ADR-0067 §2)."
+          }
+        },
+        {
+          "name": "Revoking it twice is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 CONFLICT\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"CONFLICT\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations/{{unknownInviteId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations",
+                "{{unknownInviteId}}"
+              ]
+            },
+            "description": "One answer for five refusals — accepted, declined, revoked, expired, or its organization deleted — because splitting them would let an invitee learn that an organization they were never in has gone."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User › Invitations",
+      "description": "The invitee's own surface — self-scoped and outside the `/orgs/:orgId` prefix, because the caller is not a member of anything yet (ADR-0067 §4). It runs as the second fixture customer, who was invited by the folder above.",
+      "item": [
+        {
+          "name": "Sign in as the invited account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a session\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"inviteeAccessToken\", pm.response.json().data.accessToken);",
+                  "pm.environment.set(\"inviteeId\", pm.response.json().data.principal.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            },
+            "description": "The account the `Public` folder registered a moment ago, and the address the folder above invited. It is used rather than a `--dev` fixture because the only two customer fixtures are the seeded owner and `pending@machxi.local`, which is `pending_verification` and therefore cannot sign in at all — a state the seeds put a row in on purpose (ADR-0017)."
+          }
+        },
+        {
+          "name": "List the invitations addressed to me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the invitation the owner just sent\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const rows = pm.response.json().data;",
+                  "  const invitation = rows.find((row) => row.id === pm.environment.get(\"pendingInviteId\"));",
+                  "",
+                  "  pm.expect(invitation, \"the invitation from the organizations folder\").to.exist;",
+                  "  pm.expect(invitation.status).to.eql(\"pending\");",
+                  "  pm.expect(invitation.organizationName, \"so the list renders without a second request\").to.eql(\"QA Team, renamed\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "invitations"]
+            },
+            "description": "Scoped by the caller's **address**, read from their account rather than from the request — no principal carries an address (ADR-0018) — so there is nothing here for a caller to name but themselves. It carries the organization's name so the list renders without a second request."
+          }
+        },
+        {
+          "name": "Another invitee's invitation is not mine to accept",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations/{{unknownInviteId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "invitations",
+                "{{unknownInviteId}}",
+                "accept"
+              ]
+            },
+            "description": "The address comparison happens in SQL against the caller's own account, so an id somebody else was shown reaches nothing."
+          }
+        },
+        {
+          "name": "Accept the invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the organization joined, and the role invited\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const org = pm.response.json().data;",
+                  "",
+                  "  pm.expect(org.id).to.eql(pm.environment.get(\"newOrgId\"));",
+                  "  pm.expect(org.role).to.eql(\"member\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations/{{pendingInviteId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "invitations",
+                "{{pendingInviteId}}",
+                "accept"
+              ]
+            },
+            "description": "`200` with the organization joined rather than `204`: the client's next act is to switch into it. **Which account joins is decided from the authenticated caller**, never from the row — the invitation names an address, and the membership names the account that answered to it."
+          }
+        },
+        {
+          "name": "Accepting it again is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 CONFLICT\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"CONFLICT\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations/{{pendingInviteId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "invitations",
+                "{{pendingInviteId}}",
+                "accept"
+              ]
+            },
+            "description": "Single use is the row's terminal stamps, checked inside the `where` clause of the statement that writes one — so two concurrent accepts cannot both create a membership."
+          }
+        },
+        {
+          "name": "The organization is now in my switcher",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, and the joined organization is listed as member\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const rows = pm.response.json().data;",
+                  "  const joined = rows.find((row) => row.id === pm.environment.get(\"newOrgId\"));",
+                  "",
+                  "  pm.expect(joined).to.exist;",
+                  "  pm.expect(joined.role).to.eql(\"member\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs"]
+            },
+            "description": "The membership the accept created, seen from the principal-scoped read the switcher uses."
+          }
+        },
+        {
+          "name": "A member may not invite",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN, unlike the non-member 404\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownEmail}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ]
+            },
+            "description": "`403`, not `404`: the caller **is** inside the organization and may know it exists, which is what lets a client render 'you are not an owner here' rather than a dead end (ADR-0067 §4)."
+          }
+        },
+        {
+          "name": "A member may not remove somebody else",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/members/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "members",
+                "{{userId}}"
+              ]
+            },
+            "description": "Removing somebody else needs `owner` or `admin`; leaving needs only that it is you. A route guard cannot express 'or it is you', so the comparison is made in the service against `ctx.principal` (ADR-0019 §3)."
+          }
+        },
+        {
+          "name": "Leave the organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/members/{{inviteeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "members",
+                "{{inviteeId}}"
+              ]
+            },
+            "description": "The same write as a removal, allowed because the member named is the caller."
+          }
+        },
+        {
+          "name": "And the organization is gone from my switcher",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 without it\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const rows = pm.response.json().data;",
+                  "",
+                  "  pm.expect(rows.some((row) => row.id === pm.environment.get(\"newOrgId\"))).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs"]
+            },
+            "description": "A membership is the one relation here that is hard-deleted: 'was a member and is not any more' is the row's absence."
+          }
+        },
+        {
+          "name": "Delete the organization this run created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "orgs", "{{newOrgId}}"]
+            },
+            "description": "Soft, the `users` semantics (ADR-0067 §3) — and an owner's alone, never an admin's: deleting the tenant is not delegated. The run leaves nothing behind."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin › Organizations",
+      "description": "The tenant base as staff see it (ADR-0067 §3). The users resource's guard shape exactly: `admin` or `manager` to read, every write narrowed back to `admin`. Staff are never members, so nothing here resolves a membership and every organization is visible, soft-deleted ones included.",
+      "item": [
+        {
+          "name": "List organizations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the list envelope and no roles\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.expect(body.data).to.be.an(\"array\");",
+                  "  pm.expect(body.meta.pagination.total).to.be.a(\"number\");",
+                  "  pm.expect(body.data.every((row) => row.role === null), \"staff are never members\").to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations?sort=-createdAt&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations"],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "-createdAt"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "ADR-0014's list language as ADR-0060 carries it. Every row's `role` is `null`: staff hold no membership, and the field says so rather than being absent on one segment and present on the other (ADR-0012)."
+          }
+        },
+        {
+          "name": "List organizations — search by name and slug",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, finding the fixture\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.some((row) => row.slug === \"acme\")).to.be.true;",
+                  "});",
+                  "",
+                  "pm.environment.set(\"adminAcmeId\", pm.response.json().data.find((row) => row.slug === \"acme\").id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations?q=acme",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "acme"
+                }
+              ]
+            },
+            "description": "`q` reaches `name` and `slug`, both trigram-indexed — a column enters a searchable allow-list only with its index in the same step (ADR-0060 §3)."
+          }
+        },
+        {
+          "name": "Create an organization for a customer",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"staffOrgSlug\", \"qa-staff-\" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201, owned by the named account\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const org = pm.response.json().data;",
+                  "",
+                  "  pm.expect(org.kind).to.eql(\"team\");",
+                  "  pm.expect(org.createdBy).to.eql(pm.environment.get(\"userId\"));",
+                  "  pm.expect(org.role, \"staff hold no membership\").to.eql(null);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"staffOrgId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Staff-Made\",\n  \"slug\": \"{{staffOrgSlug}}\",\n  \"ownerId\": \"{{userId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations"]
+            },
+            "description": "It names an owner and the user-segment create does not, because staff are never members (ADR-0067 §3): somebody has to own an organization staff bring into existence, and it cannot be the operator."
+          }
+        },
+        {
+          "name": "An owner id nothing holds is refused, not a 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ownerless\",\n  \"slug\": \"qa-ownerless\",\n  \"ownerId\": \"00000000-0000-4000-8000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations"]
+            },
+            "description": "The account is checked inside the transaction rather than left to the foreign key: a `500` is not the answer an admin naming a wrong id is owed."
+          }
+        },
+        {
+          "name": "Add a member by user id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{lastUserId}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}/memberships",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "organizations",
+                "{{staffOrgId}}",
+                "memberships"
+              ]
+            },
+            "description": "The one path that grants membership without an invitation (ADR-0067 §3), and it takes a **user id** rather than an address because staff already list accounts — there is nothing here to enumerate."
+          }
+        },
+        {
+          "name": "List the memberships",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the owner and the added member\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data).to.have.lengthOf(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}/memberships",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "organizations",
+                "{{staffOrgId}}",
+                "memberships"
+              ]
+            },
+            "description": "The sub-resource's read, open to a manager like every other read on this resource."
+          }
+        },
+        {
+          "name": "Change the member's role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}/memberships/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "organizations",
+                "{{staffOrgId}}",
+                "memberships",
+                "{{lastUserId}}"
+              ]
+            },
+            "description": "The invariant is the organization's rather than the caller's: staff are above the tenants and still may not leave one without an owner."
+          }
+        },
+        {
+          "name": "Removing the last owner is refused, staff or not",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORGANIZATION_LAST_OWNER\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ORGANIZATION_LAST_OWNER\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}/memberships/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "organizations",
+                "{{staffOrgId}}",
+                "memberships",
+                "{{userId}}"
+              ]
+            },
+            "description": "`409 ORGANIZATION_LAST_OWNER`. Being staff does not exempt a request from an invariant of the data."
+          }
+        },
+        {
+          "name": "Remove the member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}/memberships/{{lastUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "organizations",
+                "{{staffOrgId}}",
+                "memberships",
+                "{{lastUserId}}"
+              ]
+            },
+            "description": "A membership is hard-deleted: its absence is what says it ended."
+          }
+        },
+        {
+          "name": "A manager may read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations"]
+            },
+            "description": "The mount is `authorize(\"admin\", \"manager\")` — a manager reads the tenant base."
+          }
+        },
+        {
+          "name": "A manager may not write",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Renamed by a manager\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations", "{{staffOrgId}}"]
+            },
+            "description": "Every writing route narrows the mount back to `admin`. Refinement composes in that direction only — both guards run, so a route may narrow and can never widen (ADR-0019 §2)."
+          }
+        },
+        {
+          "name": "Delete the organization this run created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations", "{{staffOrgId}}"]
+            },
+            "description": "Soft (ADR-0067 §3), the `users` semantics — the row survives."
+          }
+        },
+        {
+          "name": "The deleted organization is still readable by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with deletedAt set\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.deletedAt).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{staffOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations", "{{staffOrgId}}"]
+            },
+            "description": "The `users` reading: an admin who can list deleted rows must be able to open one, and a `404` for a row they were just shown is the worse lie."
+          }
+        },
+        {
+          "name": "And it is listed only when the query asks about deletedAt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, and the deleted organization is in it\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.some((row) => row.id === pm.environment.get(\"staffOrgId\"))).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations?filter[deletedAt][null]=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "organizations"],
+              "query": [
+                {
+                  "key": "filter[deletedAt][null]",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "The default scope steps aside rather than combining, or an allow-listed filter would return nothing forever (ADR-0028's reading)."
+          }
+        },
+        {
+          "name": "A personal organization refuses deletion here too",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORGANIZATION_PERSONAL_UNDELETABLE\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"ORGANIZATION_PERSONAL_UNDELETABLE\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/organizations/{{personalOrgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "organizations",
+                "{{personalOrgId}}"
+              ]
+            },
+            "description": "The same `409` the user segment gives: a personal organization goes with the account that owns it and never on its own."
+          }
+        }
+      ]
+    },
+    {
       "name": "Errors & routing",
       "description": "The failure branch of the envelope (ADR-0012, ADR-0013) and what the segment guards disclose about paths (ADR-0015, ADR-0019).",
       "item": [

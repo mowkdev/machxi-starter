@@ -35,12 +35,23 @@ import {
  *   choose: a staff member revoked for cause loses the sessions they are
  *   impersonating through, which every revocation path in the API missed
  *   until `D13.5` because an impersonated row is a *customer's*.
+ *
+ * **The list grew with the organizations** (ADR-0067 §8, a delta on §5). An
+ * organization is a second thing to take over, and the failure it guards
+ * against is worse than the account one: a support operator could otherwise
+ * grant a third party `owner` of a customer's tenant, which outlives the
+ * impersonated session and the account alike. The cases below are the same
+ * shape as the three above — refused impersonated, allowed to the account's
+ * real owner — because "refused" is only meaningful beside "and this is what
+ * the owner gets".
  */
 
 const PROFILE = "/api/v1/user/profile";
 const SETTINGS = "/api/v1/user/settings";
 const LOGOUT_ALL = "/api/v1/user/auth/logout-all";
 const LOGOUT = "/api/v1/user/auth/logout";
+const ORGS = "/api/v1/user/orgs";
+const INVITATIONS = "/api/v1/user/invitations";
 
 let harness: TestApp;
 let adminToken: string;
@@ -254,6 +265,195 @@ describe("the exclusion list", () => {
       .set("Authorization", bearer(tokens.accessToken))
       .send({ firstName: "Repaired" })
       .expect(200);
+  });
+
+  /* ── the organization writes (ADR-0067 §8) ─────────────────────────────── */
+
+  /**
+   * A customer with a team organization of their own, impersonated — and their
+   * real session beside it, because every case here asserts both halves.
+   */
+  const impersonatedOwner = async (email: string, slug: string) => {
+    const { userId, tokens } = await impersonate(email);
+    const owner = await signIn(email);
+
+    const org = await supertest(harness.app)
+      .post(ORGS)
+      .set("Authorization", bearer(owner.accessToken))
+      .send({ name: "Tenant", slug })
+      .expect(201);
+
+    return {
+      userId,
+      organizationId: org.body.data.id as string,
+      impersonated: tokens,
+      owner,
+    };
+  };
+
+  it("refuses granting a role, which is how a tenant is handed over", async () => {
+    const target = await impersonatedOwner(
+      "exclusions-role@machxi.local",
+      "exclusions-role",
+    );
+
+    // A real second member, brought in by the owner's own session: the owner
+    // invites, the joiner accepts. Granting against the *owner's* membership
+    // would be refused by the last-owner invariant even without the guard, so
+    // the case would prove nothing about the exclusion.
+    const joinerEmail = "exclusions-role-joiner@machxi.local";
+    const joiner = await impersonate(joinerEmail);
+    const joinerOwn = await signIn(joinerEmail);
+
+    const invitation = await supertest(harness.app)
+      .post(`${ORGS}/${target.organizationId}/invitations`)
+      .set("Authorization", bearer(target.owner.accessToken))
+      .send({ email: joinerEmail, role: "member" })
+      .expect(201);
+
+    await supertest(harness.app)
+      .post(`${INVITATIONS}/${invitation.body.data.id}/accept`)
+      .set("Authorization", bearer(joinerOwn.accessToken))
+      .expect(200);
+
+    // Promoting that member to `owner` is precisely the takeover ADR-0067 §8
+    // exists to stop: it would survive the impersonated session and the
+    // account alike.
+    const refused = await supertest(harness.app)
+      .patch(`${ORGS}/${target.organizationId}/members/${joiner.userId}`)
+      .set("Authorization", bearer(target.impersonated.accessToken))
+      .send({ role: "owner" })
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+
+    // And the account's own owner may do it, which is what makes the refusal
+    // about impersonation rather than about the operation.
+    await supertest(harness.app)
+      .patch(`${ORGS}/${target.organizationId}/members/${joiner.userId}`)
+      .set("Authorization", bearer(target.owner.accessToken))
+      .send({ role: "owner" })
+      .expect(204);
+  });
+
+  it("refuses removing a member and leaving", async () => {
+    const target = await impersonatedOwner(
+      "exclusions-remove@machxi.local",
+      "exclusions-remove",
+    );
+
+    const refused = await supertest(harness.app)
+      .delete(`${ORGS}/${target.organizationId}/members/${target.userId}`)
+      .set("Authorization", bearer(target.impersonated.accessToken))
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+  });
+
+  it("refuses deleting an organization, and lets the owner through", async () => {
+    const target = await impersonatedOwner(
+      "exclusions-delete-org@machxi.local",
+      "exclusions-delete-org",
+    );
+
+    const refused = await supertest(harness.app)
+      .delete(`${ORGS}/${target.organizationId}`)
+      .set("Authorization", bearer(target.impersonated.accessToken))
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+
+    await supertest(harness.app)
+      .delete(`${ORGS}/${target.organizationId}`)
+      .set("Authorization", bearer(target.owner.accessToken))
+      .expect(204);
+  });
+
+  it("refuses creating an invitation, and lets the owner through", async () => {
+    const target = await impersonatedOwner(
+      "exclusions-invite@machxi.local",
+      "exclusions-invite",
+    );
+
+    const refused = await supertest(harness.app)
+      .post(`${ORGS}/${target.organizationId}/invitations`)
+      .set("Authorization", bearer(target.impersonated.accessToken))
+      .send({ email: "invited.by.support@machxi.local", role: "member" })
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+
+    await supertest(harness.app)
+      .post(`${ORGS}/${target.organizationId}/invitations`)
+      .set("Authorization", bearer(target.owner.accessToken))
+      .send({ email: "invited.by.owner@machxi.local", role: "member" })
+      .expect(201);
+  });
+
+  it("refuses accepting an invitation, and lets the invitee through", async () => {
+    // The sharpest of them: accepting walks a customer's account into somebody
+    // else's tenant, which is a membership the customer never asked for and
+    // which outlives the impersonated session.
+    const host = await impersonatedOwner(
+      "exclusions-host@machxi.local",
+      "exclusions-host",
+    );
+    const email = "exclusions-accept@machxi.local";
+    const { tokens: impersonated } = await impersonate(email);
+    const invitee = await signIn(email);
+
+    const invitation = await supertest(harness.app)
+      .post(`${ORGS}/${host.organizationId}/invitations`)
+      .set("Authorization", bearer(host.owner.accessToken))
+      .send({ email, role: "member" })
+      .expect(201);
+
+    const refused = await supertest(harness.app)
+      .post(`${INVITATIONS}/${invitation.body.data.id}/accept`)
+      .set("Authorization", bearer(impersonated.accessToken))
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+
+    await supertest(harness.app)
+      .post(`${INVITATIONS}/${invitation.body.data.id}/accept`)
+      .set("Authorization", bearer(invitee.accessToken))
+      .expect(200);
+  });
+
+  it("leaves a name edit alone, and it lands in the trail with both identities", async () => {
+    // ADR-0067 §8's other half, and the same rule ADR-0057 §5 makes about a
+    // profile edit: renaming an organization is what support opens the app to
+    // do, and it hands nobody the tenant.
+    const target = await impersonatedOwner(
+      "exclusions-rename@machxi.local",
+      "exclusions-rename",
+    );
+
+    await supertest(harness.app)
+      .patch(`${ORGS}/${target.organizationId}`)
+      .set("Authorization", bearer(target.impersonated.accessToken))
+      .send({ name: "Renamed by support" })
+      .expect(200);
+
+    const row = await eventually(async () =>
+      (await auditRows()).find(
+        (candidate) =>
+          candidate.event === "impersonation.mutation" &&
+          candidate.actingAsId === target.userId &&
+          (candidate.data as { path?: string }).path ===
+            `${ORGS}/${target.organizationId}`,
+      ),
+    );
+
+    // Both identities, which is what makes an allowed impersonated write
+    // answerable for later (ADR-0058, ADR-0057 §6).
+    expect(row).toMatchObject({
+      actorType: "staff",
+      actingAsType: "user",
+      actingAsId: target.userId,
+      data: { method: "PATCH", statusCode: 200 },
+    });
   });
 
   it("does not refuse the same operations on an ordinary session", async () => {

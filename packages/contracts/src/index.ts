@@ -138,6 +138,7 @@ export {
 } from "./health.js";
 
 export * from "./auth/index.js";
+export * from "./organizations/index.js";
 export * from "./settings/index.js";
 export * from "./staff/index.js";
 export * from "./users/index.js";

@@ -1,10 +1,12 @@
 # ADR-0057: Impersonation sessions — the mint, the handoff, the exclusions
 
-- Status: accepted
+- Status: superseded by [ADR-0067](0067-organizations.md) (delta: §5's exclusion list grows the organization writes 0067 §8 names; the mint, the handoff, the actor column, the fixed session life, the attribution and every other exclusion decision stand)
 - Date: 2026-09-01
 - Supersedes: [ADR-0018](0018-authentication-sessions-and-tokens.md) (delta: impersonated sessions — a second mint path beside login, an actor column on `sessions`, and rotation without the sliding extension; every decision about ordinary sessions stands); [ADR-0052](0052-grid-and-admin-followups.md) (delta: the documented gate grows a fifth link, `pnpm format:check` — D12's close-out loose end 2, taken at scoping as that record prescribed)
 
 > Written 2026-09-01 by `/scope` for D13 ([`docs/plan/0013-impersonation.md`](../plan/0013-impersonation.md)) — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-01 at the head of `D13.1`**, where ADR-0018 moved to `superseded by` and ADR-0052 — already carrying 0054's partial supersession — gained its second successor delta, the 0048 shape; amendable in place while D13 is `in progress` (ADR-0025 rule 2). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): everything either parent decided that is not named above stands. The scope file's design sketch (2026-08-20) is this record's input; where this record decides differently it says so. Its sibling is [ADR-0058](0058-append-only-audit-log.md) (the audit mechanism this record writes into), accepted at `D13.2`'s head.
+
+> **Superseded in part 2026-09-05 by [ADR-0067](0067-organizations.md)**, at the head of `D15.3`. A delta on §5 alone: this record's list names the operations that would let an impersonator take the *account* over, and an organization is a second thing to take over. 0067 §8 adds the tenant writes — changing a member's role, removing a member, leaving, granting ownership, deleting an organization, creating an invitation and accepting one — under this record's own `AUTH_IMPERSONATION_REFUSED` and this record's own mechanism, `refuseImpersonated` named in the router files. Name and slug edits stay allowed and audited, which is §5's own rule for what support opens the app to do. **Everything else here stands**: the mint, the handoff, the actor claim checked against the session row, the fixed session life without extension, the exit control and the attribution. Read 0067 §8 for the tenant writes; read this record for impersonation.
 
 ## Context
 

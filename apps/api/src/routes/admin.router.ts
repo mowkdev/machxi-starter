@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Container } from "../core/container.js";
 import { authorize } from "../core/middleware/index.js";
 import { createAuthRouter } from "../modules/auth/index.js";
+import { createOrganizationsRouter } from "../modules/organizations/index.js";
 import { createSettingsRouter } from "../modules/settings/index.js";
 import {
   createStaffProfileRouter,
@@ -35,6 +36,12 @@ import { createUsersRouter } from "../modules/users/index.js";
  * - `/users` is `admin` **or** `manager` to read, and the router narrows its
  *   writing routes back to `admin` — six of them since `D13.4`, the sixth
  *   being the impersonation mint (ADR-0057 §1).
+ *
+ * - `/organizations` is the users resource's shape exactly (ADR-0067 §3):
+ *   `admin` **or** `manager` to read the tenant base, every writing route
+ *   narrowed back to `admin` by its own router. Staff are never members, so
+ *   nothing here mounts `requireMembership` and every organization is visible,
+ *   soft-deleted ones included.
  *
  * `super_admin` bypasses both, on the single line in `authorize` that says so.
  */
@@ -94,6 +101,12 @@ export const createAdminRouter = (container: Container): Router => {
         rateLimiter: container.rateLimiters.impersonation,
       },
     }),
+  );
+
+  router.use(
+    "/organizations",
+    authorize("admin", "manager"),
+    createOrganizationsRouter(container.controllers.organizations),
   );
 
   return router;

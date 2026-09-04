@@ -123,6 +123,8 @@ const AUTH_ERROR_CODES = [
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
  * | `ORGANIZATION_LAST_OWNER` | 409 | removing, demoting or leaving as the only remaining `owner` (ADR-0067 §2 invariant) |
  * | `ORGANIZATION_PERSONAL_UNDELETABLE` | 409 | `DELETE` aimed at a `personal` organization, which goes with its account and never on its own (ADR-0067 §2) |
+ * | `ORGANIZATION_PERSONAL_CLOSED` | 409 | a second member aimed at a `personal` organization, which has exactly one (ADR-0067 §2) |
+ * | `ORGANIZATION_INVITATION_PENDING` | 409 | inviting an address that already has a pending invitation to the same organization |
  *
  * Both organization codes are `409` rather than `403` for the reason
  * `STAFF_LAST_SUPER_ADMIN` is: the caller may hold exactly the role the route
@@ -158,6 +160,8 @@ const DOMAIN_ERROR_CODES = [
   "STAFF_LAST_SUPER_ADMIN",
   "ORGANIZATION_LAST_OWNER",
   "ORGANIZATION_PERSONAL_UNDELETABLE",
+  "ORGANIZATION_PERSONAL_CLOSED",
+  "ORGANIZATION_INVITATION_PENDING",
 ] as const;
 
 /**

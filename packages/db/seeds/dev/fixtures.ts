@@ -68,4 +68,18 @@ export const DEV_TEAM_ORGANIZATION = {
   slug: "acme",
   name: "Acme Inc.",
   ownerEmail: DEV_USERS[0].email,
+  /**
+   * A pending invitation addressed to the second `--dev` customer, so the
+   * invitee's own surface — `GET /user/invitations`, accept, decline — has
+   * something to run against on a fresh clone (ADR-0067 §2).
+   *
+   * The **token is minted per run and never written here.** A literal hash in
+   * a committed fixture would be one shared credential across every clone of
+   * this repository the day the mail deliverable makes the token acceptable,
+   * and a fixture is exactly where such a thing goes unnoticed. The seeder
+   * mints `sha256Base64url(randomToken())` instead, so the row is shaped like
+   * a real one and its secret exists nowhere.
+   */
+  invitee: DEV_USERS[1].email,
+  inviteeRole: "member",
 } as const;

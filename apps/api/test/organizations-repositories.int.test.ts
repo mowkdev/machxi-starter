@@ -1,4 +1,5 @@
 import {
+  organizationInvitations,
   organizationMemberships,
   organizations,
   personalOrganizationSlug,
@@ -7,6 +8,8 @@ import {
 import { randomToken, sha256Base64url } from "@repo/crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type { ListQuery } from "@repo/contracts";
 
 import {
   createInvitationsRepository,
@@ -41,6 +44,15 @@ describe("the organizations repositories", () => {
   let orgId: string;
 
   const at = () => new Date();
+
+  /** The default page a list endpoint's schema would produce (ADR-0014). */
+  const page = (): ListQuery => ({
+    offset: 0,
+    limit: 20,
+    sort: [{ field: "createdAt", direction: "desc" }],
+    filters: [],
+    count: true,
+  });
 
   /**
    * A distinct slug or address per case. A counter rather than
@@ -187,7 +199,7 @@ describe("the organizations repositories", () => {
     expect(await memberships.resolveFor(id, ownerId)).toBeUndefined();
     expect(
       (await memberships.listForUser(ownerId)).some(
-        (row) => row.organizationId === id,
+        (row) => row.organization.id === id,
       ),
     ).toBe(false);
   });
@@ -328,12 +340,15 @@ describe("the organizations repositories", () => {
       new Date(Date.now() - 1_000),
     );
 
-    const forOrg = await repo.listPendingFor(orgId, at());
+    const forOrg = await repo.listPendingFor(orgId, page(), at());
 
-    expect(forOrg.map((row) => row.id)).toContain(pending.id);
+    expect(forOrg.rows.map((row) => row.id)).toContain(pending.id);
     // The row's state is its timestamps — `expired` is a fact no column holds,
     // so it is a predicate on `expires_at` and nothing else.
-    expect(forOrg.map((row) => row.id)).not.toContain(expired.id);
+    expect(forOrg.rows.map((row) => row.id)).not.toContain(expired.id);
+    // The join carries the organization's name, which is what the invitee's
+    // own list renders without a second request.
+    expect(forOrg.rows[0]?.organizationName).toBe("Acme Inc.");
 
     const forEmail = await repo.listPendingForEmail(email, at());
 
@@ -379,9 +394,20 @@ describe("the organizations repositories", () => {
 
     await repo.softDelete(id, at());
 
-    // The invitation outlives its organization's soft delete, and the `exists`
-    // clause is what stops an accept granting membership in a deleted tenant.
-    expect(await invitations.findById(id, orphan.id)).toBeDefined();
+    // The row itself outlives its organization's soft delete — nothing
+    // cascades on one — which is the fact every read here is defending
+    // against.
+    const [survivor] = await harness.db.db
+      .select({ id: organizationInvitations.id })
+      .from(organizationInvitations)
+      .where(eq(organizationInvitations.id, orphan.id));
+
+    expect(survivor).toBeDefined();
+
+    // And no read returns it, because every one of them joins `organizations`
+    // and filters `deleted_at` — so an invitation into a deleted tenant is not
+    // pending, it is void.
+    expect(await invitations.findById(id, orphan.id)).toBeUndefined();
     expect(
       await invitations.consume(id, orphan.id, "acceptedAt", at()),
     ).toBeUndefined();

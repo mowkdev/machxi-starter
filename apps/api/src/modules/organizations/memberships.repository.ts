@@ -1,11 +1,18 @@
-import type { OrganizationRole } from "@repo/contracts";
+import type { ListQuery, OrganizationRole } from "@repo/contracts";
 import {
   organizationMemberships,
   organizations,
   users,
   type DbExecutor,
 } from "@repo/db";
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
+
+import {
+  applyListQuery,
+  type ColumnMap,
+  type ListResult,
+} from "../../core/http/index.js";
+import type { OrganizationRecord } from "./organizations.repository.js";
 
 /**
  * Every query against `organization_memberships` (ADR-0009).
@@ -43,6 +50,43 @@ export interface ResolvedMembership {
   readonly slug: string;
   readonly role: OrganizationRole;
 }
+
+/** An organization the caller belongs to, with the role that got them there. */
+export interface MyOrganizationRecord {
+  readonly organization: OrganizationRecord;
+  readonly role: OrganizationRole;
+}
+
+/** The account behind a membership — its id and address, and nothing else. */
+export interface AccountRef {
+  readonly id: string;
+  readonly email: string;
+}
+
+/** A membership joined to the account that holds it — what a members list is. */
+export interface MemberRecord {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly email: string;
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly role: OrganizationRole;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * What a members list may sort and filter by (ADR-0060 §3).
+ *
+ * Both are columns of `organization_memberships`, never of the joined `users`:
+ * an order by a joined column would need an index spanning two tables, which
+ * Postgres has no such thing as, and the members list is one organization's
+ * rows rather than a page of the account base.
+ */
+export const listColumns: ColumnMap = {
+  createdAt: organizationMemberships.createdAt,
+  role: organizationMemberships.role,
+};
 
 /**
  * The lock class for the owner invariant.
@@ -118,21 +162,33 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     },
 
     /**
-     * The organizations this account belongs to, live ones only.
+     * The organizations this account belongs to, live ones only — whole rows,
+     * because this is what `GET /api/v1/user/orgs` renders.
      *
      * The sanctioned principal-scoped read (ADR-0067 §5, amended): it carries
      * no tenant because the caller is asking which tenants they have, which is
      * the switcher's question. Served by
      * `organization_memberships_user_id_idx`.
+     *
+     * Unpaged, and ordered here rather than by a query string (ADR-0060's
+     * altitude): a person belongs to a handful of organizations, the personal
+     * one always among them, and a switcher wants that one first and the rest
+     * by name. That is a property of the endpoint, not a client's choice.
      */
     listForUser: async (
       userId: string,
       tx: DbExecutor = db,
-    ): Promise<readonly ResolvedMembership[]> =>
-      tx
+    ): Promise<readonly MyOrganizationRecord[]> => {
+      const rows = await tx
         .select({
-          organizationId: organizationMemberships.organizationId,
+          id: organizations.id,
           slug: organizations.slug,
+          name: organizations.name,
+          kind: organizations.kind,
+          createdBy: organizations.createdBy,
+          createdAt: organizations.createdAt,
+          updatedAt: organizations.updatedAt,
+          deletedAt: organizations.deletedAt,
           role: organizationMemberships.role,
         })
         .from(organizationMemberships)
@@ -145,7 +201,159 @@ export const createMembershipsRepository = (db: DbExecutor) =>
             eq(organizationMemberships.userId, userId),
             isNull(organizations.deletedAt),
           ),
-        ),
+        )
+        .orderBy(
+          // `personal` before `team`, which is what these two labels do
+          // alphabetically — stated as the order wanted rather than left to be
+          // noticed, since a third kind would break the coincidence.
+          asc(organizations.kind),
+          asc(organizations.name),
+          asc(organizations.id),
+        );
+
+      return rows.map(({ role, ...organization }) => ({ organization, role }));
+    },
+
+    /**
+     * One member of one organization, addressed by their **email**.
+     *
+     * The one thing an invitation may ask about an address: whether it is
+     * already inside *this* organization (ADR-0067 §2). It is the flow's one
+     * distinguishable refusal and it is safe for the record's own reason — it
+     * tells the inviter only what the members list they can already read would
+     * tell them. It answers nothing about accounts outside the organization,
+     * which is what keeps the create path enumeration-safe.
+     *
+     * **Live accounts only**, the same filter `countOwnersExcept` carries and
+     * for a sharper reason. A member who closes their account keeps their team
+     * memberships — only the personal organization goes with them — while
+     * `users_email_active_unique` releases the address, so the same person can
+     * register it again. Without this filter the dead membership row would
+     * match forever: the returning account could never be invited back, and
+     * the owner would be told "already a member" about somebody who is not.
+     */
+    findByEmail: async (
+      organizationId: string,
+      email: string,
+      tx: DbExecutor = db,
+    ): Promise<MembershipRecord | undefined> => {
+      const [row] = await tx
+        .select({
+          organizationId: organizationMemberships.organizationId,
+          userId: organizationMemberships.userId,
+          role: organizationMemberships.role,
+          createdAt: organizationMemberships.createdAt,
+          updatedAt: organizationMemberships.updatedAt,
+        })
+        .from(organizationMemberships)
+        .innerJoin(users, eq(users.id, organizationMemberships.userId))
+        .where(
+          and(
+            eq(organizationMemberships.organizationId, organizationId),
+            eq(users.email, email),
+            isNull(users.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      return row;
+    },
+
+    /**
+     * A live account, by id — its address and nothing else.
+     *
+     * It reads `users`, another module's table, and it is here rather than
+     * behind the users *service* because the alternative is a dependency
+     * cycle: the users service already calls this module for the personal
+     * organization on every path that creates or deletes an account
+     * (ADR-0067 §2), and a service edge back would close the loop. This
+     * repository already joins `users` for the members list and for the owner
+     * count — the same table at the same layer, which is where ADR-0009 draws
+     * the line it draws.
+     *
+     * Two callers, both needing exactly this. The invitee's own list needs the
+     * caller's **address**, which no principal carries (ADR-0018 puts an id
+     * and roles in the token and no more); and the admin paths that name an
+     * account by id — creating an organization for one, adding one as a
+     * member — need to know it is there, because the alternative is a foreign
+     * key violation surfacing as a `500`.
+     */
+    findAccount: async (
+      userId: string,
+      tx: DbExecutor = db,
+    ): Promise<AccountRef | undefined> => {
+      const [row] = await tx
+        .select({ id: users.id, email: users.email })
+        .from(users)
+        .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+        .limit(1);
+
+      return row;
+    },
+
+    /**
+     * `GET /api/v1/user/orgs/:orgId/members` and its admin twin (ADR-0014 as
+     * carried by ADR-0060).
+     *
+     * Tenant-scoped, so `organizationId` is the required first parameter and
+     * it is `and`-ed into the plan rather than left to a caller's filter —
+     * the scope is not something a query string can widen.
+     *
+     * The pagination tiebreaker is `user_id`, there being no `id` column on
+     * this table, and the indexes are `(organization_id, column, user_id)` to
+     * match. The **default** sort does not read them: `-createdAt` with an
+     * ascending tiebreaker is a mixed-direction order no single btree scan
+     * serves, so Postgres sorts. That is the repository-wide convention rather
+     * than this table's problem — `users`, `staff` and `organizations` all
+     * pair a descending default with an ascending tiebreaker — and it is
+     * stated here rather than left to be discovered, because a members list is
+     * one organization's rows and the sort is therefore cheap.
+     */
+    list: async (
+      organizationId: string,
+      query: ListQuery,
+      tx: DbExecutor = db,
+    ): Promise<ListResult<MemberRecord>> => {
+      const plan = applyListQuery(query, {
+        columns: listColumns,
+        tiebreaker: organizationMemberships.userId,
+        extraWhere: [
+          eq(organizationMemberships.organizationId, organizationId),
+        ],
+      });
+
+      const rows = await tx
+        .select({
+          organizationId: organizationMemberships.organizationId,
+          userId: organizationMemberships.userId,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: organizationMemberships.role,
+          createdAt: organizationMemberships.createdAt,
+          updatedAt: organizationMemberships.updatedAt,
+        })
+        .from(organizationMemberships)
+        .innerJoin(users, eq(users.id, organizationMemberships.userId))
+        .where(plan.where)
+        .orderBy(...plan.orderBy)
+        .limit(plan.limit)
+        .offset(plan.offset);
+
+      // A closed account's membership is still a membership and is listed as
+      // one — the members list is what an owner reads to decide who to remove,
+      // and hiding a row nobody can act on would be the worse answer. The
+      // invariant count is where a closed account is *not* an owner.
+      if (!query.count) return { rows, total: null };
+
+      const [counted] = await tx
+        .select({ total: count() })
+        .from(organizationMemberships)
+        .innerJoin(users, eq(users.id, organizationMemberships.userId))
+        .where(plan.where);
+
+      return { rows, total: counted?.total ?? 0 };
+    },
 
     /**
      * Inserts a membership.

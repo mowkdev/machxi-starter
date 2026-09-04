@@ -4,10 +4,11 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 122 requests in 15 folders: `Health`, `Metrics`,
+- `machxi-api.postman_collection.json` — 165 requests in 18 folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
-  `User › Settings`, `Public`, `Errors & routing`, `Impersonation`,
+  `User › Settings`, `Public`, `User › Organizations`, `User › Invitations`,
+  `Admin › Organizations`, `Errors & routing`, `Impersonation`,
   `Teardown`.
 - `local.postman_environment.json` — `baseUrl` and the dev fixture addresses.
   `superAdminEmail` / `superAdminPassword` are **empty on purpose**: they come
@@ -61,8 +62,22 @@ row belongs to a principal and only a hard delete removes one — so each folder
 opens by clearing the two grid ids it uses and closes by clearing them again.
 That is what makes a second run start where the first did.
 
-**It deletes what it creates.** One staff account, one user and one
-self-registered user per run, all removed by the teardown. That is a security
+**The three organizations folders are one flow across two segments** (ADR-0067).
+`User › Organizations` runs as the seeded customer, who owns the `acme` fixture:
+it reads the switcher's list, creates a team organization, proves the guard's
+two refusals — `404` for a non-member, `403` for a member whose role is too low
+— and sends two invitations, one to an address with an account and one to an
+address without, whose **responses are compared field for field**. That
+comparison is the enumeration property of ADR-0067 §2 asserted rather than
+described. `User › Invitations` then signs in as the invited account, accepts,
+leaves, and deletes the organization the run made. `Admin › Organizations` is
+the same tenant base as staff, where the guard is a role again and every
+organization is visible, soft-deleted ones included.
+
+**It deletes what it creates.** One staff account, one user, one
+self-registered user and two organizations per run, all removed by the
+teardown (the organizations by their own folders, which is where the `DELETE`
+belongs since it is also the request being exercised). That is a security
 step, not housekeeping: one of them holds `manager`, and all of them have a
 password committed in this repository. `pnpm test:postman` can only be aimed at
 `localhost`; the Postman app can be aimed anywhere.
@@ -87,11 +102,18 @@ registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Ea
 of those requests carries a description saying which ADR decided it.
 
 **Rate limits bound how often it runs** (ADR-0020). One pass spends 1 of the 5
-failed refreshes per 15 minutes per IP, and 65 of the 300 global requests (the
-three health probes sit outside every limiter) —
-roughly four consecutive runs per window against one API process (the global
-limiter binds first). A `429
-RATE_LIMITED` in the middle of a run means the window, not a regression.
+failed refreshes per 15 minutes per IP, and — since the three organizations
+folders landed — about 160 of the 300 global requests per 15 minutes (the three
+health probes and the metrics scrape sit outside every limiter). That is now
+**one consecutive run per window** against a single API process, where it used
+to be several: the second pass trips the global limiter partway through. A `429
+RATE_LIMITED` in the middle of a run means the window, not a regression —
+restart `pnpm dev --filter api` to reset the in-memory counters, or wait it out.
+
+That is the cost of covering the tenant surface here rather than only in the
+integration suite, and it is worth naming rather than discovering: a collection
+that has to be run twice in ten minutes now needs the API restarted between
+passes.
 
 ## Changing it
 

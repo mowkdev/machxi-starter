@@ -394,6 +394,31 @@ export const envSchema = z
     IMPERSONATION_HANDOFF_TTL: durationSchema
       .pipe(z.number().int().max(300))
       .default(60),
+    // ─── Organizations (ADR-0067 §2) ──────────────────────────────────────
+    /**
+     * How long an invitation stays acceptable, in seconds.
+     *
+     * Days rather than the minutes and hours above, and that is the shape of
+     * the thing rather than a looser standard: an invitation is a message to a
+     * person who has to read it, find a moment, and sign in — a window
+     * measured against a human's inbox rather than against an onlooker's
+     * shoulder. It is not a credential in D15 at all: acceptance matches by
+     * address, and the token the row carries is written and read by nothing
+     * until the mail deliverable (ADR-0067 §2, amended).
+     *
+     * Ceilinged at thirty days, because an invitation nobody acted on in a
+     * month is an invitation somebody should send again — and because
+     * `expired` is a state no sweeper writes, so an unbounded TTL would leave
+     * an address sitting acceptable indefinitely with nothing to notice it.
+     */
+    ORGANIZATION_INVITATION_TTL: durationSchema
+      .pipe(
+        z
+          .number()
+          .int()
+          .max(30 * 24 * 60 * 60),
+      )
+      .default(7 * 24 * 60 * 60),
     CORS_ORIGINS: csvSchema,
 
     // `z.stringbool()`, never `z.coerce.boolean()`: the latter is

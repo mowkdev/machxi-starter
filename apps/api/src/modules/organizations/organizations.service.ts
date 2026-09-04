@@ -1,4 +1,16 @@
-import type { OrganizationRole } from "@repo/contracts";
+import type {
+  CreateInvitationBody,
+  CreateOrganizationAdminBody,
+  CreateOrganizationBody,
+  InvitationResource,
+  ListQuery,
+  MembershipResource,
+  Page,
+  OrganizationResource,
+  OrganizationRole,
+  UpdateOrganizationBody,
+} from "@repo/contracts";
+import { randomToken, sha256Base64url } from "@repo/crypto";
 import {
   personalOrganizationName,
   personalOrganizationSlug,
@@ -6,14 +18,31 @@ import {
   type PersonalOrganizationOwner,
 } from "@repo/db";
 
+import { requirePopulation } from "../../core/auth/index.js";
+import { toPage } from "../../core/http/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { internal } from "../../core/errors/index.js";
+import type { InvitationsRepository } from "./invitations.repository.js";
 import {
+  alreadyAMember,
+  callerAccountGone,
+  invitationAlreadyPending,
+  invitationNotFound,
+  invitationNotPending,
   lastOrganizationOwner,
   membershipNotFound,
   organizationNotFound,
+  organizationRoleInsufficient,
+  organizationSlugTaken,
+  personalOrganizationClosed,
+  personalOrganizationSlugFixed,
   personalOrganizationUndeletable,
 } from "./organizations.errors.js";
+import {
+  toInvitationResource,
+  toMembershipResource,
+  toOrganizationResource,
+} from "./organizations.mapper.js";
 import type { MembershipsRepository } from "./memberships.repository.js";
 import type { OrganizationsRepository } from "./organizations.repository.js";
 
@@ -42,16 +71,33 @@ import type { OrganizationsRepository } from "./organizations.repository.js";
 export interface OrganizationsServiceDeps {
   readonly repository: OrganizationsRepository;
   readonly memberships: MembershipsRepository;
+  readonly invitations: InvitationsRepository;
+  /** `ORGANIZATION_INVITATION_TTL` (ADR-0004, ADR-0067 §2). */
+  readonly invitationTtlSec: number;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
+  /**
+   * The invitation's opaque token, minted per row.
+   *
+   * Injectable for the reason `newRefreshToken` is on the auth service: a test
+   * that wants to know which token was minted should not have to read one out
+   * of a mock of the crypto package. The default is `randomToken()` at its own
+   * default of 32 bytes — 256 bits, which ADR-0067 §2 fixes here rather than
+   * leaving to the create path, because this is the one credential in the
+   * schema whose lookup is scoped by nothing else.
+   */
+  readonly newInvitationToken?: () => string;
 }
 
 export const createOrganizationsService = ({
   repository,
   memberships,
+  invitations,
+  invitationTtlSec,
   transaction,
   now = () => new Date(),
+  newInvitationToken = () => randomToken(),
 }: OrganizationsServiceDeps) => {
   /** A live organization, or the refusal every read of a missing one gives. */
   const read = async (id: string, tx?: DbExecutor) => {
@@ -87,6 +133,30 @@ export const createOrganizationsService = ({
     );
 
     if (remaining === 0) throw lastOrganizationOwner();
+  };
+
+  /**
+   * The calling account's id and **address**.
+   *
+   * The address is what the invitee's own surface is scoped by (ADR-0067 §5),
+   * and no principal carries one: ADR-0018 puts an id, a population and roles
+   * in the token and nothing else, deliberately, so that a token is not a
+   * place personal data travels. One read per request that needs it.
+   *
+   * A live account, so a session that outlived its account by a moment cannot
+   * accept an invitation — `authenticate` would already have refused it, and
+   * this is the second half of the same fact rather than a duplicate check.
+   */
+  const callerAccount = async (ctx: RequestContext, tx?: DbExecutor) => {
+    const principal = requirePopulation(ctx, "user");
+    const account = await memberships.findAccount(principal.id, tx);
+
+    // A live session for an account that is gone. `authenticate` reads the
+    // session row rather than the account, so this is reachable in the window
+    // between a soft delete and its session revocation committing.
+    if (account === undefined) throw callerAccountGone();
+
+    return account;
   };
 
   /**
@@ -314,15 +384,40 @@ export const createOrganizationsService = ({
      * Removes a member (ADR-0067 §2) — somebody else, or the caller leaving.
      *
      * One function for both, because they are the same write with the same
-     * invariant: the last owner cannot be removed and cannot leave, and which
-     * of the two it is only changes who was allowed to ask. That difference
-     * belongs to the route's guard (`D15.3`), not here.
+     * invariant: the last owner cannot be removed and cannot leave.
+     *
+     * What differs is **who was allowed to ask**, and that is a resource rule
+     * rather than a role guard (ADR-0019 §3): removing somebody else needs
+     * `owner` or `admin`, and leaving needs only that the caller is the member
+     * being removed. A route guard cannot express it — it would have to admit
+     * any member and then the actual rule would live nowhere — so the route
+     * admits any member and the comparison happens here, against the caller's
+     * own id.
+     *
+     * @param actor the caller's membership when the request came from the user
+     *   segment, `null` when it came from the admin one. Staff are never
+     *   members (ADR-0067 §3), so there is no role to compare and nothing they
+     *   could be leaving; `null` is "this rule does not apply", never "skip
+     *   the check".
      */
     removeMember: async (
       ctx: RequestContext,
       organizationId: string,
       userId: string,
+      actor: {
+        readonly userId: string;
+        readonly role: OrganizationRole;
+      } | null,
     ): Promise<void> => {
+      if (
+        actor !== null &&
+        actor.userId !== userId &&
+        actor.role !== "owner" &&
+        actor.role !== "admin"
+      ) {
+        throw organizationRoleInsufficient();
+      }
+
       await lockedMembershipWrite(organizationId, async (tx) => {
         const organization = await read(organizationId, tx);
         const membership = await memberships.findFor(
@@ -347,6 +442,570 @@ export const createOrganizationsService = ({
       ctx.logger.info(
         { organizationId, userId },
         "organization membership removed",
+      );
+    },
+
+    /* ── the user segment (ADR-0067 §4) ─────────────────────────────────── */
+
+    /**
+     * `GET /api/v1/user/orgs` — the caller's own organizations, each with the
+     * role that got them there.
+     *
+     * The switcher's query, and the principal-scoped read ADR-0067 §5
+     * sanctions: it names no tenant because the caller is asking which tenants
+     * they have. Every account has at least one — its personal organization —
+     * so this list is never empty for a live account, which is the invariant
+     * that lets the client render a switcher with no empty state.
+     */
+    listMine: async (
+      ctx: RequestContext,
+    ): Promise<readonly OrganizationResource[]> => {
+      const principal = requirePopulation(ctx, "user");
+      const rows = await memberships.listForUser(principal.id);
+
+      return rows.map((row) =>
+        toOrganizationResource(row.organization, row.role),
+      );
+    },
+
+    /**
+     * `POST /api/v1/user/orgs` — a `team` organization with the caller as its
+     * owner (ADR-0067 §2).
+     *
+     * One transaction: an organization with no owner is a state the last-owner
+     * invariant cannot repair, so the row and the membership commit together
+     * or neither does.
+     */
+    createTeam: async (
+      ctx: RequestContext,
+      body: CreateOrganizationBody,
+    ): Promise<OrganizationResource> => {
+      const principal = requirePopulation(ctx, "user");
+
+      const created = await transaction(async (tx) => {
+        const organization = await repository.create(
+          {
+            slug: body.slug,
+            name: body.name,
+            kind: "team",
+            createdBy: principal.id,
+          },
+          tx,
+        );
+
+        if (organization === undefined) return undefined;
+
+        await memberships.create(organization.id, principal.id, "owner", tx);
+
+        return organization;
+      });
+
+      if (created === undefined) throw organizationSlugTaken();
+
+      ctx.logger.info(
+        { organizationId: created.id, slug: created.slug },
+        "team organization created",
+      );
+
+      return toOrganizationResource(created, "owner");
+    },
+
+    /**
+     * `GET /api/v1/user/orgs/:orgId` — one organization, as a member sees it.
+     *
+     * The read cannot fail with `404` in practice: `requireMembership` has
+     * already resolved a live organization for this request. It reads the row
+     * again rather than rendering the guard's three fields, because the
+     * resource is the whole row and the guard deliberately carries only what a
+     * guard needs.
+     */
+    getForMember: async (
+      _ctx: RequestContext,
+      organizationId: string,
+      role: OrganizationRole,
+    ): Promise<OrganizationResource> =>
+      toOrganizationResource(await read(organizationId), role),
+
+    /**
+     * `PATCH` on either segment — name and slug, and nothing else
+     * (ADR-0067 §7).
+     *
+     * A slug edit on a `personal` organization is refused with `409`
+     * (`D15.2`'s review): the slug is derived from the account's id, and that
+     * derivation is what proves "exactly one personal organization per live
+     * account" without a journal. The name is freely editable — it is what the
+     * switcher renders and it proves nothing.
+     */
+    update: async (
+      ctx: RequestContext,
+      organizationId: string,
+      body: UpdateOrganizationBody,
+      role: OrganizationRole | null,
+    ): Promise<OrganizationResource> => {
+      const at = now();
+
+      const updated = await transaction(async (tx) => {
+        const current = await read(organizationId, tx);
+
+        if (body.slug !== undefined && current.kind === "personal") {
+          throw personalOrganizationSlugFixed();
+        }
+
+        return repository.update(organizationId, body, at, tx);
+      });
+
+      // Three outcomes, because the caller is owed a different answer to each:
+      // `undefined` is a live organization already holding the slug, `null` is
+      // no live row with that id — which only a delete concurrent with this
+      // request can produce, the read above having just found one.
+      if (updated === undefined) throw organizationSlugTaken();
+      if (updated === null) throw organizationNotFound();
+
+      ctx.logger.info(
+        { organizationId, slug: updated.slug },
+        "organization updated",
+      );
+
+      return toOrganizationResource(updated, role);
+    },
+
+    /**
+     * `GET .../members` on either segment (ADR-0014 as carried by ADR-0060).
+     *
+     * Tenant-scoped at the repository, so the organization is a parameter and
+     * not something a filter could widen.
+     */
+    listMembers: async (
+      _ctx: RequestContext,
+      organizationId: string,
+      query: ListQuery,
+    ): Promise<Page<MembershipResource>> => {
+      const { rows, total } = await memberships.list(organizationId, query);
+
+      return toPage(query, rows.map(toMembershipResource), total);
+    },
+
+    /* ── invitations (ADR-0067 §2) ──────────────────────────────────────── */
+
+    /**
+     * `POST /api/v1/user/orgs/:orgId/invitations` — an invitation by address.
+     *
+     * **It never looks an account up**, which is what makes the flow
+     * enumeration-safe by construction rather than by care (ADR-0020
+     * §Enumeration): the row names an address, so the response is the same
+     * status and the same shape whether or not that address has an account.
+     * The one distinguishable refusal is "already a member", and it tells the
+     * inviter only what the members list they can already read would.
+     *
+     * **The token is minted here and returned to nobody.** Only its SHA-256
+     * reaches the database (ADR-0067 §2, amended), no response body carries
+     * either, and no query in D15 reads the column: acceptance matches by
+     * address, because this deliverable sends no mail. The mail deliverable
+     * adds its send at the marked call below and can then require the token
+     * without a migration, every row created since carrying one.
+     */
+    invite: async (
+      ctx: RequestContext,
+      organizationId: string,
+      body: CreateInvitationBody,
+    ): Promise<InvitationResource> => {
+      const principal = requirePopulation(ctx, "user");
+      const at = now();
+
+      const created = await transaction(async (tx) => {
+        const organization = await read(organizationId, tx);
+
+        // A personal organization has exactly one member, and the record leans
+        // on that in more places than it looks (the error factory says which).
+        // The caller holds `owner` on their own, so the route's guard admits
+        // them and this is the only thing that does not.
+        if (organization.kind === "personal") {
+          throw personalOrganizationClosed();
+        }
+
+        if (
+          (await memberships.findByEmail(organizationId, body.email, tx)) !==
+          undefined
+        ) {
+          throw alreadyAMember();
+        }
+
+        // One outstanding offer per address per organization. An invitation
+        // has no natural key — the same address may be invited again once an
+        // offer has ended — so this is the check rather than a constraint, and
+        // it is inside the transaction that inserts, which is what makes it a
+        // check rather than a race.
+        if (
+          (await invitations.listPendingForEmail(body.email, at, tx)).some(
+            (row) => row.organizationId === organizationId,
+          )
+        ) {
+          throw invitationAlreadyPending();
+        }
+
+        const invitation = await invitations.create(
+          organizationId,
+          {
+            email: body.email,
+            role: body.role,
+            invitedBy: principal.id,
+            tokenHash: sha256Base64url(newInvitationToken()),
+            expiresAt: new Date(at.getTime() + invitationTtlSec * 1000),
+          },
+          tx,
+        );
+
+        return { invitation, organizationName: organization.name };
+      });
+
+      // The marked call (ADR-0067 §2). **D15 sends nothing**: the mail
+      // deliverable puts its send here, with the token this function minted —
+      // which is why the token is minted rather than the hash, and why that
+      // deliverable needs no migration and no backfill.
+
+      ctx.logger.info(
+        { organizationId, invitationId: created.invitation.id },
+        "organization invitation created",
+      );
+
+      return toInvitationResource(
+        { ...created.invitation, organizationName: created.organizationName },
+        at,
+      );
+    },
+
+    /** `GET /api/v1/user/orgs/:orgId/invitations` — the pending ones. */
+    listInvitations: async (
+      _ctx: RequestContext,
+      organizationId: string,
+      query: ListQuery,
+    ): Promise<Page<InvitationResource>> => {
+      const at = now();
+      const { rows, total } = await invitations.listPendingFor(
+        organizationId,
+        query,
+        at,
+      );
+
+      return toPage(
+        query,
+        rows.map((row) => toInvitationResource(row, at)),
+        total,
+      );
+    },
+
+    /**
+     * `DELETE /api/v1/user/orgs/:orgId/invitations/:id` — revoke.
+     *
+     * The atomic consume, so a revoke racing an accept has one winner and the
+     * loser is told the invitation is no longer pending rather than reporting
+     * a success that changed nothing.
+     */
+    revokeInvitation: async (
+      ctx: RequestContext,
+      organizationId: string,
+      id: string,
+    ): Promise<void> => {
+      const at = now();
+
+      if ((await invitations.findById(organizationId, id)) === undefined) {
+        throw invitationNotFound();
+      }
+
+      if (
+        (await invitations.consume(organizationId, id, "revokedAt", at)) ===
+        undefined
+      ) {
+        throw invitationNotPending();
+      }
+
+      ctx.logger.info(
+        { organizationId, invitationId: id },
+        "organization invitation revoked",
+      );
+    },
+
+    /* ── the invitee's own surface, self-scoped (ADR-0067 §4) ───────────── */
+
+    /**
+     * `GET /api/v1/user/invitations` — the pending invitations addressed to
+     * the caller's own address.
+     *
+     * Outside the `/orgs/:orgId` prefix, and that is ADR-0067 §4's rule rather
+     * than a convenience: the caller is asking about their address, and they
+     * do not yet know which organizations are involved. The address comes from
+     * the account rather than from the request — no principal carries one
+     * (ADR-0018) — so there is nothing here for a caller to name but
+     * themselves.
+     */
+    listMyInvitations: async (
+      ctx: RequestContext,
+    ): Promise<readonly InvitationResource[]> => {
+      const at = now();
+      const account = await callerAccount(ctx);
+      const rows = await invitations.listPendingForEmail(account.email, at);
+
+      return rows.map((row) => toInvitationResource(row, at));
+    },
+
+    /**
+     * `POST /api/v1/user/invitations/:id/accept` (ADR-0067 §2).
+     *
+     * One transaction, and the consume is what decides: the stamp is written
+     * by a statement whose `where` clause carries every condition that would
+     * refuse it — the three terminal stamps, the expiry and the organization
+     * still being live — so two concurrent accepts cannot both write a
+     * membership, and single use needs no column of its own.
+     *
+     * **Which account joins is decided here, from the authenticated caller**,
+     * never from the row: the invitation names an address, and the membership
+     * names the account that answered to it. The row keeps both facts.
+     *
+     * For the life of D15 an invitation is claimed by **address match alone**,
+     * and nothing here verifies an address — the exposure ADR-0067
+     * §Consequences records as accepted rather than fixed. The row's token is
+     * what lets the deliverable that ships the send close it cheaply.
+     */
+    acceptInvitation: async (
+      ctx: RequestContext,
+      id: string,
+    ): Promise<OrganizationResource> => {
+      const at = now();
+      const account = await callerAccount(ctx);
+
+      const joined = await transaction(async (tx) => {
+        const invitation = await invitations.findForEmail(
+          account.email,
+          id,
+          tx,
+        );
+
+        if (invitation === undefined) throw invitationNotFound();
+
+        const consumed = await invitations.consume(
+          invitation.organizationId,
+          id,
+          "acceptedAt",
+          at,
+          tx,
+        );
+
+        if (consumed === undefined) throw invitationNotPending();
+
+        // Already a member — of an organization that just invited them, which
+        // an owner can produce by inviting an address and adding it before it
+        // is accepted. The membership already there wins: this must not demote
+        // an owner to the `member` the invitation named, which is why the role
+        // is read back below rather than assumed to be the invitation's.
+        await memberships.create(
+          invitation.organizationId,
+          account.id,
+          invitation.role,
+          tx,
+        );
+
+        // Both reads inside the transaction that wrote the membership. Outside
+        // it they would see a world a concurrent removal could already have
+        // changed, and the answer would be a `200` reporting `role: null` for a
+        // membership this very request had just created (`D15.3`'s review).
+        const organization = await read(invitation.organizationId, tx);
+        const membership = await memberships.findFor(
+          invitation.organizationId,
+          account.id,
+          tx,
+        );
+
+        return { organization, role: membership?.role ?? invitation.role };
+      });
+
+      ctx.logger.info(
+        { organizationId: joined.organization.id, invitationId: id },
+        "organization invitation accepted",
+      );
+
+      return toOrganizationResource(joined.organization, joined.role);
+    },
+
+    /** `POST /api/v1/user/invitations/:id/decline` — the same consume. */
+    declineInvitation: async (
+      ctx: RequestContext,
+      id: string,
+    ): Promise<void> => {
+      const at = now();
+      const account = await callerAccount(ctx);
+      const invitation = await invitations.findForEmail(account.email, id);
+
+      if (invitation === undefined) throw invitationNotFound();
+
+      if (
+        (await invitations.consume(
+          invitation.organizationId,
+          id,
+          "declinedAt",
+          at,
+        )) === undefined
+      ) {
+        throw invitationNotPending();
+      }
+
+      ctx.logger.info(
+        { organizationId: invitation.organizationId, invitationId: id },
+        "organization invitation declined",
+      );
+    },
+
+    /* ── the admin segment (ADR-0067 §3) ────────────────────────────────── */
+
+    /** `GET /api/v1/admin/organizations` (ADR-0014 as carried by ADR-0060). */
+    list: async (
+      _ctx: RequestContext,
+      query: ListQuery,
+    ): Promise<Page<OrganizationResource>> => {
+      const { rows, total } = await repository.list(query);
+
+      return toPage(
+        query,
+        // `null` throughout: staff are never members (ADR-0067 §3), so there
+        // is no role to report and the field says so rather than being absent
+        // on one segment and present on the other.
+        rows.map((row) => toOrganizationResource(row, null)),
+        total,
+      );
+    },
+
+    /**
+     * `GET /api/v1/admin/organizations/:id/memberships`.
+     *
+     * The existence read is what separates this from the user segment's twin:
+     * there `requireMembership` has already proved the organization is live and
+     * the caller is in it, and here nothing has. Without it a mistyped or stale
+     * id would answer `200` with an empty page while `GET /:id` on the same
+     * prefix answers `404`, and a screen would render an empty members table
+     * instead of not-found (`D15.3`'s review).
+     *
+     * `findAnyById`, so a soft-deleted organization lists its members the way
+     * it answers `GET /:id`: staff who can open one must be able to see who was
+     * in it.
+     */
+    listMembersForStaff: async (
+      _ctx: RequestContext,
+      organizationId: string,
+      query: ListQuery,
+    ): Promise<Page<MembershipResource>> => {
+      if ((await repository.findAnyById(organizationId)) === undefined) {
+        throw organizationNotFound();
+      }
+
+      const { rows, total } = await memberships.list(organizationId, query);
+
+      return toPage(query, rows.map(toMembershipResource), total);
+    },
+
+    /**
+     * `GET /api/v1/admin/organizations/:id` — soft-deleted rows included.
+     *
+     * The `users` reading: staff may list deleted organizations, so staff must
+     * be able to open one, and a `404` for a row they were just shown is the
+     * worse lie.
+     */
+    getAnyById: async (
+      _ctx: RequestContext,
+      id: string,
+    ): Promise<OrganizationResource> => {
+      const record = await repository.findAnyById(id);
+
+      if (record === undefined) throw organizationNotFound();
+
+      return toOrganizationResource(record, null);
+    },
+
+    /**
+     * `POST /api/v1/admin/organizations` — staff create one for an account.
+     *
+     * It names an owner and the user-segment create does not, because staff
+     * are never members (ADR-0067 §3): somebody has to be the owner of an
+     * organization staff bring into existence, and it cannot be the operator.
+     * `kind` is not a field — a `personal` organization is the system's to
+     * create, exactly one per account.
+     *
+     * The account is checked inside the transaction rather than left to the
+     * foreign key: a `500` is not the answer an admin naming a wrong id is
+     * owed. Accounts are soft-deleted and never hard-deleted, so the check and
+     * the insert cannot disagree.
+     */
+    createForOwner: async (
+      ctx: RequestContext,
+      body: CreateOrganizationAdminBody,
+    ): Promise<OrganizationResource> => {
+      const created = await transaction(async (tx) => {
+        const owner = await memberships.findAccount(body.ownerId, tx);
+
+        if (owner === undefined) throw membershipNotFound();
+
+        const organization = await repository.create(
+          {
+            slug: body.slug,
+            name: body.name,
+            kind: "team",
+            createdBy: owner.id,
+          },
+          tx,
+        );
+
+        if (organization === undefined) return undefined;
+
+        await memberships.create(organization.id, owner.id, "owner", tx);
+
+        return organization;
+      });
+
+      if (created === undefined) throw organizationSlugTaken();
+
+      ctx.logger.info(
+        { organizationId: created.id, slug: created.slug },
+        "organization created by staff",
+      );
+
+      return toOrganizationResource(created, null);
+    },
+
+    /**
+     * `POST /api/v1/admin/organizations/:id/memberships` — by **user id**
+     * (ADR-0067 §3).
+     *
+     * The one path that grants membership without an invitation, and it takes
+     * an id rather than an address for the reason the record gives: staff
+     * already list accounts, so there is nothing here to enumerate.
+     */
+    addMember: async (
+      ctx: RequestContext,
+      organizationId: string,
+      userId: string,
+      role: OrganizationRole,
+    ): Promise<void> => {
+      await transaction(async (tx) => {
+        const organization = await read(organizationId, tx);
+
+        // The admin twin of the refusal in `invite`: staff are above the
+        // tenants and still may not put a second person into an organization
+        // whose whole shape is one member (ADR-0067 §2).
+        if (organization.kind === "personal") {
+          throw personalOrganizationClosed();
+        }
+
+        const account = await memberships.findAccount(userId, tx);
+
+        if (account === undefined) throw membershipNotFound();
+
+        // Idempotent by the composite primary key, and the existing row wins:
+        // adding somebody who is already an owner must not demote them to the
+        // role this request happened to name. A role *change* is `PATCH`.
+        await memberships.create(organizationId, userId, role, tx);
+      });
+
+      ctx.logger.info(
+        { organizationId, userId, role },
+        "organization membership added by staff",
       );
     },
   } as const;

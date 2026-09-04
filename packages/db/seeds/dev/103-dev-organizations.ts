@@ -1,6 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
+
+import { randomToken, sha256Base64url } from "@repo/crypto";
 
 import {
+  organizationInvitations,
   organizationMemberships,
   organizations,
   users,
@@ -20,7 +23,14 @@ import { DEV_TEAM_ORGANIZATION } from "./fixtures.js";
  * makes this a fixture rather than something a test creates for itself.
  *
  * Its owner is the first `--dev` customer, who is also the account Postman
- * signs in as.
+ * signs in as, and it carries one **pending invitation** to the second, so the
+ * invitee's own surface has something to answer on a fresh clone.
+ *
+ * That invitation's token is minted per run and stored only as its SHA-256
+ * (ADR-0067 §2, amended). A literal digest committed here would be one shared
+ * credential across every clone of this repository from the day the mail
+ * deliverable makes the token acceptable — the kind of thing a fixture is
+ * exactly the wrong place to hide.
  */
 export const devOrganizationsSeeder: Seeder = {
   name: "103-dev-organizations",
@@ -83,8 +93,56 @@ export const devOrganizationsSeeder: Seeder = {
       })
       .onConflictDoNothing();
 
+    const invitee = await db.query.users.findFirst({
+      where: and(
+        eq(users.email, DEV_TEAM_ORGANIZATION.invitee),
+        isNull(users.deletedAt),
+      ),
+      columns: { id: true },
+    });
+
+    /*
+     * Idempotent without a conflict target, because there is none to name: an
+     * invitation has no natural key — one address may be invited to one
+     * organization many times over its life, once each offer has ended. So the
+     * seeder asks whether a *pending* one is already there, which is the same
+     * question `listPendingFor` asks, and inserts only when it is not.
+     */
+    const alreadyPending = await db.query.organizationInvitations.findFirst({
+      where: and(
+        eq(organizationInvitations.organizationId, organization.id),
+        eq(organizationInvitations.email, DEV_TEAM_ORGANIZATION.invitee),
+        isNull(organizationInvitations.acceptedAt),
+        isNull(organizationInvitations.declinedAt),
+        isNull(organizationInvitations.revokedAt),
+        // The expiry belongs in the predicate, or the fixture quietly stops
+        // existing: an expired row carries no stamp, so without this clause a
+        // re-seed a month later would find it, skip the insert, and leave
+        // `GET /user/invitations` empty for the surface it exists to feed.
+        gt(organizationInvitations.expiresAt, new Date()),
+      ),
+      columns: { id: true },
+    });
+
+    if (invitee !== undefined && alreadyPending === undefined) {
+      await db.insert(organizationInvitations).values({
+        organizationId: organization.id,
+        email: DEV_TEAM_ORGANIZATION.invitee,
+        role: DEV_TEAM_ORGANIZATION.inviteeRole,
+        invitedBy: owner.id,
+        // Minted here, never a literal: see this file's header.
+        tokenHash: sha256Base64url(randomToken()),
+        // Thirty days, so a clone seeded a fortnight ago still has a pending
+        // invitation to look at. The API's own default is
+        // `ORGANIZATION_INVITATION_TTL`; a fixture picks the ceiling because
+        // its job is to be there, not to expire.
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+    }
+
     log(
-      `${DEV_TEAM_ORGANIZATION.slug} present, owned by ${DEV_TEAM_ORGANIZATION.ownerEmail}`,
+      `${DEV_TEAM_ORGANIZATION.slug} present, owned by ${DEV_TEAM_ORGANIZATION.ownerEmail}, ` +
+        `one invitation pending for ${DEV_TEAM_ORGANIZATION.invitee}`,
     );
   },
 };

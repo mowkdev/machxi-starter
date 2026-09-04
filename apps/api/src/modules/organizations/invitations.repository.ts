@@ -1,41 +1,50 @@
-import type { OrganizationRole } from "@repo/contracts";
+import type { ListQuery, OrganizationRole } from "@repo/contracts";
 import {
   organizationInvitations,
   organizations,
   type DbExecutor,
 } from "@repo/db";
-import { and, desc, eq, exists, gt, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, exists, gt, isNull, sql } from "drizzle-orm";
+
+import {
+  applyListQuery,
+  type ColumnMap,
+  type ListResult,
+} from "../../core/http/index.js";
 
 /**
  * Every query against `organization_invitations` (ADR-0009).
  *
  * Tenant-owned (ADR-0067 §1), so the organization id is the first, required
  * parameter of every function that reads or writes one organization's
- * invitations. {@link createInvitationsRepository.listPendingForEmail} is the
- * sanctioned exception and the second instance of the class ADR-0067 §5 names:
- * a read scoped by the **principal** — here their address — rather than by a
- * tenant, because an invitee asking "who has invited me?" does not yet know
- * which organizations are involved. It is served by
- * `organization_invitations_email_idx` and is named here for what it is.
+ * invitations. {@link createInvitationsRepository.listPendingForEmail} and its
+ * `findForEmail` sibling are the sanctioned exception and the second instance
+ * of the class ADR-0067 §5 names: a read scoped by the **principal** — here
+ * their address — rather than by a tenant, because an invitee asking "who has
+ * invited me?" does not yet know which organizations are involved. Both are
+ * served by `organization_invitations_email_idx` and are named here for what
+ * they are.
  *
  * **No function here returns `token_hash`, and none can.** The column is not
  * in {@link InvitationRecord} and is not selected by any read, which is a
  * stronger guarantee than a mapper that remembers to drop it: there is no
- * value for a mapper to leak (ADR-0067 §2, amended 2026-09-04). The one
- * function that touches it takes a hash and returns a row without one.
+ * value for a mapper to leak (ADR-0067 §2, amended). The one function that
+ * touches it takes a hash and returns a row without one.
  *
- * The invitations module core lands here at `D15.2`; its routes, schemas and
- * controller are `D15.3`'s, which is also where the create path starts minting
- * the token this table stores the digest of.
+ * **Every read joins `organizations` and filters `deleted_at is null`.** Not
+ * defensiveness: `organization_id` cascades on a **hard** delete only, so
+ * these rows outlive their organization's soft delete, and an invitation into
+ * a deleted tenant is not pending — it is void. The join also carries the
+ * organization's name, which is what the invitee's own list renders.
  */
 
 /**
  * An invitation row — every column except `token_hash`.
  *
  * There is no `status`: the row's state is its timestamps (ADR-0067 §2,
- * amended at `D15.1`), because `expired` becomes true as a clock passes and no
- * column can hold a fact nothing writes. The mapper folds these four into the
- * wire's `InvitationStatus`.
+ * amended), because `expired` becomes true as a clock passes and no column can
+ * hold a fact nothing writes. The mapper folds these four into the wire's
+ * `InvitationStatus`.
  */
 export interface InvitationRecord {
   readonly id: string;
@@ -49,6 +58,11 @@ export interface InvitationRecord {
   readonly revokedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+}
+
+/** An invitation with the name of the organization it belongs to. */
+export interface InvitationWithOrganization extends InvitationRecord {
+  readonly organizationName: string;
 }
 
 /** What creating an invitation writes, the tenant apart. */
@@ -66,22 +80,24 @@ export interface NewInvitationInput {
   readonly expiresAt: Date;
 }
 
+/**
+ * What the pending list may sort and filter by (ADR-0060 §3).
+ *
+ * **`tokenHash` is absent, and its absence is the control.** The column is
+ * unique, and `indexCoverage` reports a unique column as covered — so the
+ * index side of ADR-0060 §3 would accept `sort=tokenHash` without complaint.
+ * This map and the allow-list in `@repo/contracts` are together the only thing
+ * keeping a credential digest out of a query string and out of an ordered
+ * page.
+ */
+export const listColumns: ColumnMap = {
+  createdAt: organizationInvitations.createdAt,
+  updatedAt: organizationInvitations.updatedAt,
+  email: organizationInvitations.email,
+};
+
 /** Every column but the digest — see the note on {@link InvitationRecord}. */
 const recordColumns = {
-  id: true,
-  organizationId: true,
-  email: true,
-  role: true,
-  invitedBy: true,
-  expiresAt: true,
-  acceptedAt: true,
-  declinedAt: true,
-  revokedAt: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-const returnedColumns = {
   id: organizationInvitations.id,
   organizationId: organizationInvitations.organizationId,
   email: organizationInvitations.email,
@@ -95,12 +111,18 @@ const returnedColumns = {
   updatedAt: organizationInvitations.updatedAt,
 } as const;
 
+/** The same columns plus the organization's name, for the reads that join. */
+const joinedColumns = {
+  ...recordColumns,
+  organizationName: organizations.name,
+} as const;
+
 export const createInvitationsRepository = (db: DbExecutor) => {
   /**
    * "Still pending at `at`" — no terminal stamp and not yet expired.
    *
-   * One expression, used by every read and by the consume, so the four
-   * columns that define the state cannot be checked three different ways.
+   * One expression, used by every read and by the consume, so the four columns
+   * that define the state cannot be checked three different ways.
    */
   const pendingAt = (at: Date) =>
     and(
@@ -111,18 +133,13 @@ export const createInvitationsRepository = (db: DbExecutor) => {
     );
 
   /**
-   * The organization is still live.
+   * The organization is still live, as a **correlated** subquery.
    *
-   * Load-bearing rather than defensive: `organization_id` cascades on a
-   * **hard** delete only, so these rows outlive their organization's soft
-   * delete, and an accept without this clause grants membership in a deleted
-   * tenant (ADR-0067 §2 writes it into the consume statement for exactly this
-   * reason).
-   *
-   * **Correlated**, so it belongs only to builders that do not alias the table
-   * it names — the `update` below does not, the relational query builder does.
-   * The read that needs the same filter joins instead; see
-   * {@link createInvitationsRepository.listPendingForEmail}.
+   * Used by `consume` alone, which is a plain `update` builder and therefore
+   * does not alias the table this names. Every *read* joins instead: both
+   * select builders alias, and a correlated reference into an aliased scope
+   * resolves to nothing — Postgres refuses the statement with `42P01`, which
+   * is at least loud, but only once something calls it (`D15.2`'s review).
    */
   const organizationIsLive = exists(
     db
@@ -135,6 +152,16 @@ export const createInvitationsRepository = (db: DbExecutor) => {
         ),
       ),
   );
+
+  /** The join every read shares — invitations of live organizations only. */
+  const fromLiveOrganizations = (tx: DbExecutor) =>
+    tx
+      .select(joinedColumns)
+      .from(organizationInvitations)
+      .innerJoin(
+        organizations,
+        eq(organizations.id, organizationInvitations.organizationId),
+      );
 
   return {
     /** Inserts an invitation. The token is minted by the caller, not here. */
@@ -151,7 +178,7 @@ export const createInvitationsRepository = (db: DbExecutor) => {
         // parameter. On the one table where a wrong scope is a cross-tenant
         // invitation, the required argument wins by construction.
         .values({ ...input, organizationId })
-        .returning(returnedColumns);
+        .returning(recordColumns);
 
       // The insert has no conflict target and no nullable returning path: a
       // failure raises rather than resolving to `undefined`, so this cannot be
@@ -164,64 +191,110 @@ export const createInvitationsRepository = (db: DbExecutor) => {
       return created;
     },
 
-    /** One invitation of one organization, whatever its state. */
+    /** One invitation of one live organization, whatever its own state. */
     findById: async (
       organizationId: string,
       id: string,
       tx: DbExecutor = db,
-    ): Promise<InvitationRecord | undefined> =>
-      tx.query.organizationInvitations.findFirst({
-        columns: recordColumns,
-        where: and(
-          eq(organizationInvitations.organizationId, organizationId),
-          eq(organizationInvitations.id, id),
-        ),
-      }),
+    ): Promise<InvitationWithOrganization | undefined> => {
+      const [row] = await fromLiveOrganizations(tx)
+        .where(
+          and(
+            eq(organizationInvitations.organizationId, organizationId),
+            eq(organizationInvitations.id, id),
+            isNull(organizations.deletedAt),
+          ),
+        )
+        .limit(1);
 
-    /** The organization's pending invitations, newest first. */
-    listPendingFor: async (
-      organizationId: string,
-      at: Date,
-      tx: DbExecutor = db,
-    ): Promise<readonly InvitationRecord[]> =>
-      tx.query.organizationInvitations.findMany({
-        columns: recordColumns,
-        where: and(
-          eq(organizationInvitations.organizationId, organizationId),
-          pendingAt(at),
-        ),
-        orderBy: (row, { desc }) => [desc(row.createdAt), desc(row.id)],
-      }),
+      return row;
+    },
 
     /**
-     * The pending invitations addressed to one **address** — the invitee's own
-     * list, and the principal-scoped read this module's header names.
+     * One invitation addressed to an **address**, by id — the invitee's read.
      *
-     * Live organizations only, for the reason the consume filters them: an
-     * invitation into a deleted tenant is not pending, it is void, and showing
-     * it would offer an accept that must fail.
-     *
-     * Written as a core `select` with a join rather than as a relational
-     * `findMany` with {@link organizationIsLive}, and the difference is not a
-     * preference: the relational builder aliases the table it selects from, so
-     * a **correlated** subquery naming `organization_invitations` resolves to
-     * nothing and Postgres refuses the statement outright (`42P01`). The join
-     * needs no correlation and is the shape `memberships.listForUser` already
-     * uses. `organizations-repositories.int.test.ts` is what would have caught
-     * that before a route existed, and now does.
+     * The second half of the principal-scoped class: the caller names an
+     * invitation they were shown, and this is what checks it is theirs — which
+     * is what stops accept and decline reaching somebody else's row. The
+     * address comparison is in SQL against a `citext` column, so it matches
+     * however either side typed it.
      */
-    listPendingForEmail: async (
+    findForEmail: async (
       email: string,
+      id: string,
+      tx: DbExecutor = db,
+    ): Promise<InvitationWithOrganization | undefined> => {
+      const [row] = await fromLiveOrganizations(tx)
+        .where(
+          and(
+            eq(organizationInvitations.id, id),
+            eq(organizationInvitations.email, email),
+            isNull(organizations.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      return row;
+    },
+
+    /**
+     * `GET /api/v1/user/orgs/:orgId/invitations` — the pending ones, paged
+     * (ADR-0014 as carried by ADR-0060).
+     *
+     * Tenant-scoped, and "pending" is a predicate of the endpoint rather than
+     * a filter a client may drop: an owner asking for invitations means the
+     * outstanding ones, and the ended ones are history no surface renders.
+     */
+    listPendingFor: async (
+      organizationId: string,
+      query: ListQuery,
       at: Date,
       tx: DbExecutor = db,
-    ): Promise<readonly InvitationRecord[]> =>
-      tx
-        .select(returnedColumns)
+    ): Promise<ListResult<InvitationWithOrganization>> => {
+      const plan = applyListQuery(query, {
+        columns: listColumns,
+        tiebreaker: organizationInvitations.id,
+        extraWhere: [
+          eq(organizationInvitations.organizationId, organizationId),
+          pendingAt(at),
+          isNull(organizations.deletedAt),
+        ],
+      });
+
+      const rows = await fromLiveOrganizations(tx)
+        .where(plan.where)
+        .orderBy(...plan.orderBy)
+        .limit(plan.limit)
+        .offset(plan.offset);
+
+      if (!query.count) return { rows, total: null };
+
+      const [counted] = await tx
+        .select({ total: count() })
         .from(organizationInvitations)
         .innerJoin(
           organizations,
           eq(organizations.id, organizationInvitations.organizationId),
         )
+        .where(plan.where);
+
+      return { rows, total: counted?.total ?? 0 };
+    },
+
+    /**
+     * The pending invitations addressed to one **address** — the invitee's own
+     * list, and the principal-scoped read this module's header names.
+     *
+     * Unpaged, like `GET /user/orgs`: it is a person's own small list, and a
+     * pagination language over it would be a query string no client sends
+     * (ADR-0067 §5's class, ADR-0060's altitude).
+     */
+    listPendingForEmail: async (
+      email: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<readonly InvitationWithOrganization[]> =>
+      fromLiveOrganizations(tx)
         .where(
           and(
             eq(organizationInvitations.email, email),
@@ -239,9 +312,9 @@ export const createInvitationsRepository = (db: DbExecutor) => {
      *
      * The `impersonation_handoffs` consume applied to this table's stamps
      * (ADR-0067 §2): every condition that decides whether the invitation may
-     * still end is in the `where` clause of the statement that ends it, so
-     * two concurrent accepts cannot both succeed and single use needs no
-     * column of its own.
+     * still end is in the `where` clause of the statement that ends it, so two
+     * concurrent accepts cannot both succeed and single use needs no column of
+     * its own.
      *
      * @returns the row when this call is the one that ended it, `undefined`
      *   when it was already accepted, declined, revoked, expired, or its
@@ -266,7 +339,7 @@ export const createInvitationsRepository = (db: DbExecutor) => {
             organizationIsLive,
           ),
         )
-        .returning(returnedColumns);
+        .returning(recordColumns);
 
       return consumed;
     },

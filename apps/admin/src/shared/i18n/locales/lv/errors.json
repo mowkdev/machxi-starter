@@ -30,5 +30,7 @@
   "STAFF_LAST_SUPER_ADMIN": "Šis ir pēdējais galvenais administrators. Vispirms paaugstiniet kādu citu.",
 
   "ORGANIZATION_LAST_OWNER": "Organizācijai ir vajadzīgs vismaz viens īpašnieks. Vispirms ieceļiet citu īpašnieku.",
-  "ORGANIZATION_PERSONAL_UNDELETABLE": "Personīgo organizāciju dzēš kopā ar kontu, kuram tā pieder."
+  "ORGANIZATION_PERSONAL_UNDELETABLE": "Personīgo organizāciju dzēš kopā ar kontu, kuram tā pieder.",
+  "ORGANIZATION_PERSONAL_CLOSED": "Personīgajā organizācijā ir tikai viens dalībnieks — tās īpašnieks. Izveidojiet komandu, lai strādātu kopā ar citiem.",
+  "ORGANIZATION_INVITATION_PENDING": "Šai adresei jau ir nosūtīts uzaicinājums. Vispirms to atsauciet."
 }

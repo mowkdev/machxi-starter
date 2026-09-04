@@ -30,5 +30,7 @@
   "STAFF_LAST_SUPER_ADMIN": "That change is not allowed.",
 
   "ORGANIZATION_LAST_OWNER": "An organization needs at least one owner. Make someone else an owner first.",
-  "ORGANIZATION_PERSONAL_UNDELETABLE": "Your personal organization is removed with your account."
+  "ORGANIZATION_PERSONAL_UNDELETABLE": "Your personal organization is removed with your account.",
+  "ORGANIZATION_PERSONAL_CLOSED": "A personal organization has one member — its owner. Create a team to work with other people.",
+  "ORGANIZATION_INVITATION_PENDING": "That address already has an invitation waiting. Revoke it first to send another."
 }

@@ -208,6 +208,14 @@ const build = (
   const service = createOrganizationsService({
     repository: organizations.repository,
     memberships: memberships.repository,
+    // The invitation surface is exercised end to end against real Postgres
+    // (`apps/api/test/organizations.int.test.ts`), because what is worth
+    // asserting about it — the atomic consume, the enumeration-safe create,
+    // the `token_hash` no response carries — is a property of statements
+    // rather than of this service's branching. Here it is a stub that would
+    // throw if a case reached it.
+    invitations: undefined as never,
+    invitationTtlSec: 7 * 24 * 60 * 60,
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
   });
@@ -408,7 +416,7 @@ describe("the last owner", () => {
     const { service, memberships } = build([team()], soleOwner);
 
     const error = await failureOf(() =>
-      service.removeMember(ctx(), ORG_ID, OWNER_ID),
+      service.removeMember(ctx(), ORG_ID, OWNER_ID, null),
     );
 
     expect(error).toMatchObject({
@@ -445,7 +453,7 @@ describe("the last owner", () => {
       ],
     );
 
-    await service.removeMember(ctx(), ORG_ID, OWNER_ID);
+    await service.removeMember(ctx(), ORG_ID, OWNER_ID, null);
 
     expect([...memberships.rows.values()]).toEqual([
       { organizationId: ORG_ID, userId: OTHER_ID, role: "owner" },
@@ -463,7 +471,7 @@ describe("membership writes", () => {
       ],
     );
 
-    await service.removeMember(ctx(), ORG_ID, OTHER_ID);
+    await service.removeMember(ctx(), ORG_ID, OTHER_ID, null);
 
     expect(memberships.rows.has(`${ORG_ID}:${OTHER_ID}`)).toBe(false);
     // Taken even though the member being removed is not an owner — which is
@@ -492,7 +500,7 @@ describe("membership writes", () => {
     const { service } = build([team()], []);
 
     const error = await failureOf(() =>
-      service.removeMember(ctx(), ORG_ID, OTHER_ID),
+      service.removeMember(ctx(), ORG_ID, OTHER_ID, null),
     );
 
     expect(error).toMatchObject({ status: 404, code: "NOT_FOUND" });
@@ -511,7 +519,7 @@ describe("membership writes", () => {
     );
 
     const error = await failureOf(() =>
-      service.removeMember(ctx(), ORG_ID, OTHER_ID),
+      service.removeMember(ctx(), ORG_ID, OTHER_ID, null),
     );
 
     expect(error).toMatchObject({ status: 404, code: "NOT_FOUND" });

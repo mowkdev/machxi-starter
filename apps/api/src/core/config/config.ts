@@ -69,6 +69,14 @@ export interface AppConfig {
      */
     readonly impersonationHandoffTtlSec: number;
   };
+  /** Organizations and their invitations (ADR-0067). */
+  readonly organizations: {
+    /**
+     * How long an invitation stays acceptable, in seconds, parsed from
+     * `ORGANIZATION_INVITATION_TTL` (ADR-0067 §2).
+     */
+    readonly invitationTtlSec: number;
+  };
   readonly rateLimit: {
     readonly globalMax: number;
     readonly loginMax: number;
@@ -160,6 +168,9 @@ export const toAppConfig = (env: Env): AppConfig =>
       }),
       impersonationSessionTtlSec: env.IMPERSONATION_SESSION_TTL,
       impersonationHandoffTtlSec: env.IMPERSONATION_HANDOFF_TTL,
+    }),
+    organizations: Object.freeze({
+      invitationTtlSec: env.ORGANIZATION_INVITATION_TTL,
     }),
     rateLimit: Object.freeze({
       globalMax: env.RATE_LIMIT_GLOBAL_MAX,

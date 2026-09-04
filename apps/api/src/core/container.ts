@@ -33,9 +33,12 @@ import {
 import {
   createInvitationsRepository,
   createMembershipsRepository,
+  createOrganizationsController,
   createOrganizationsRepository,
   createOrganizationsService,
   createRequireMembership,
+  createUserInvitationsController,
+  createUserOrganizationsController,
 } from "../modules/organizations/index.js";
 import {
   createSettingsController,
@@ -172,6 +175,10 @@ export const buildContainer = ({
   const organizationsService = createOrganizationsService({
     repository: organizationsRepository,
     memberships,
+    invitations,
+    // `ORGANIZATION_INVITATION_TTL` (ADR-0004), threaded rather than read: a
+    // service reads no environment (ADR-0004's one-place rule).
+    invitationTtlSec: config.organizations.invitationTtlSec,
     transaction,
   });
 
@@ -405,6 +412,19 @@ export const buildContainer = ({
         cookies: authCookies,
         refreshTtlSec: config.auth.refreshTtlSec,
       }),
+      /*
+       * **Three** controllers over one organizations service, one per mount
+       * (ADR-0067 §3, §4) — the users module's pairing taken one further,
+       * and for its reason: a factory can only expose what its segment is
+       * allowed to reach. `createForOwner` names an owner by id and exists
+       * only on the admin controller; the invitee's accept and decline exist
+       * only on the self-scoped one; and neither of those two can reach a
+       * handler that takes an organization from the URL.
+       */
+      userOrganizations:
+        createUserOrganizationsController(organizationsService),
+      userInvitations: createUserInvitationsController(organizationsService),
+      organizations: createOrganizationsController(organizationsService),
     } as const,
 
     /**
