@@ -19,6 +19,8 @@ public/dist
 coverage
 *.tsbuildinfo
 .claude/settings.local.json
+# Worktrees Claude Code creates beside the checkout; each is its own branch.
+.claude/worktrees/
 
 # Scratch the TanStack Router plugin writes while `dev` is running (D4.2), one
 # per SPA (`apps/customer` joined at D12.1).

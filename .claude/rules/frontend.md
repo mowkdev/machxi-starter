@@ -19,6 +19,8 @@ paths:
 
 **Read [`docs/rules/frontend-and-platform.md`](../../docs/rules/frontend-and-platform.md) before writing code here.** It is the generated statement of the rules currently in force for the SPAs, `@repo/ui` and the platform packages, each line naming the record it comes from. Open a record when a line is not enough; the records in `docs/adr/` are the source of truth and the digest is derived from them.
 
+The behaviour specs in [`docs/specs/`](../../docs/specs/) cover the API's wire behaviour first (ADR-0068, behaviour specs); a screen that consumes an endpoint reads that endpoint's spec, and an SPA spec arrives only when a step names one.
+
 `/frontend-conventions` is the fuller working reference — the package roster, the doors, the file layout and the checklists.
 
 Which amendment window is open, and which records are in force, is stated in one place: [the ledger](../../docs/plan/README.md#the-window). Do not restate it here.

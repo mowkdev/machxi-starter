@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Checks the documents a fork inherits (ADR-0065 §5).
+// Checks the documents a fork inherits (ADR-0065 §5) and the behaviour specs
+// (ADR-0068 §1).
 //
 // `.claude/**` and `CLAUDE.md` travel into every fork. A fork renumbers nothing
 // and re-dates everything, so a step number, a ship date or a bare record range
@@ -7,9 +8,15 @@
 // supersession state has one home — the ledger — and everywhere else links to
 // it.
 //
+// `docs/specs/*.md` travel too, under the same rules, and carry a shape of
+// their own: every requirement cites records that exist and test files that
+// exist, and has at least one scenario with a WHEN and a THEN — so a deleted
+// test reddens every spec that claimed it.
+//
 // Usage:
 //   node scripts/docs-hygiene.mjs        report violations, exit 1 if any
 
+import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -109,11 +116,171 @@ export async function scan(root = repoRoot) {
   return violations;
 }
 
+/** Where the behaviour specs live (ADR-0068 §1). */
+export const SPECS_DIR = "docs/specs";
+
+const REQUIREMENT = /^## Requirement: (.+)$/;
+const SCENARIO = /^### Scenario: (.+)$/;
+/** `[ADR-0018](../adr/0018-….md)` — the relative link a spec writes. */
+const RECORD_LINK = /\]\(\.\.\/adr\/(\d{4}-[^)]+\.md)\)/g;
+/** `` `apps/api/test/auth.int.test.ts` `` — a backticked repo-relative path. */
+const TEST_PATH = /`([^`\s]+)`/g;
+
+/**
+ * Checks one spec's shape (ADR-0068 §1).
+ *
+ * `exists(relPath)` answers for a repo-relative path, injected so the negative
+ * cases can run against text alone. Violations name the requirement or the
+ * scenario, so the message reads as an instruction rather than a line number.
+ */
+export function checkSpec(file, text, exists) {
+  const violations = [];
+  const push = (line, rule, found, message) =>
+    violations.push({ file, line, rule, found, message });
+  const requirements = [];
+  let current = null;
+
+  text.split(/\r?\n/).forEach((raw, index) => {
+    const line = raw.trimEnd();
+    const n = index + 1;
+
+    const requirement = line.match(REQUIREMENT);
+    if (requirement) {
+      current = {
+        line: n,
+        name: requirement[1],
+        records: 0,
+        proved: 0,
+        scenarios: [],
+      };
+      requirements.push(current);
+      return;
+    }
+    if (current === null) return;
+
+    const scenario = line.match(SCENARIO);
+    if (scenario) {
+      current.scenarios.push({
+        line: n,
+        name: scenario[1],
+        when: false,
+        then: false,
+      });
+      return;
+    }
+
+    if (line.startsWith("Records:")) {
+      const links = [...line.matchAll(RECORD_LINK)].map((m) => m[1]);
+      current.records += links.length;
+      for (const rel of links) {
+        if (!exists(`docs/adr/${rel}`)) {
+          push(
+            n,
+            "spec-record-missing",
+            rel,
+            "cites a record that does not exist",
+          );
+        }
+      }
+      return;
+    }
+
+    if (line.startsWith("Proved by:")) {
+      const paths = [...line.matchAll(TEST_PATH)].map((m) => m[1]);
+      current.proved += paths.length;
+      for (const rel of paths) {
+        if (!exists(rel)) {
+          push(
+            n,
+            "spec-test-missing",
+            rel,
+            "names a test file that does not exist",
+          );
+        }
+      }
+      return;
+    }
+
+    const last = current.scenarios.at(-1);
+    if (last) {
+      if (line.includes("**WHEN**")) last.when = true;
+      if (line.includes("**THEN**")) last.then = true;
+    }
+  });
+
+  if (requirements.length === 0) {
+    push(1, "spec-empty", file, "a spec holds at least one `## Requirement:`");
+  }
+  for (const r of requirements) {
+    if (r.records === 0) {
+      push(
+        r.line,
+        "spec-record-missing",
+        r.name,
+        "a requirement carries a `Records:` line linking at least one record",
+      );
+    }
+    if (r.proved === 0) {
+      push(
+        r.line,
+        "spec-test-missing",
+        r.name,
+        "a requirement carries a `Proved by:` line naming at least one test file",
+      );
+    }
+    if (r.scenarios.length === 0) {
+      push(
+        r.line,
+        "spec-no-scenario",
+        r.name,
+        "a requirement has at least one `### Scenario:`",
+      );
+    }
+    for (const s of r.scenarios) {
+      if (!s.when || !s.then) {
+        push(
+          s.line,
+          "spec-scenario-shape",
+          s.name,
+          "a scenario has a **WHEN** and a **THEN**",
+        );
+      }
+    }
+  }
+  return violations.sort((a, b) => a.line - b.line);
+}
+
+/** Every spec — the capability files, not the directory's own README. */
+export async function specDocuments(root = repoRoot) {
+  const dir = path.join(root, SPECS_DIR);
+  return (await readdir(dir))
+    .filter((name) => name.endsWith(".md") && name !== "README.md")
+    .sort()
+    .map((name) => ({
+      full: path.join(dir, name),
+      rel: path.posix.join(SPECS_DIR, name),
+    }));
+}
+
+export async function scanSpecs(root = repoRoot) {
+  const exists = (rel) => existsSync(path.join(root, ...rel.split("/")));
+  const violations = [];
+  for (const { full, rel } of await specDocuments(root)) {
+    const text = await readFile(full, "utf8");
+    // The inherited-document rules first — a spec travels into a fork too —
+    // then its own shape.
+    violations.push(...checkText(rel, text), ...checkSpec(rel, text, exists));
+  }
+  return violations;
+}
+
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  const violations = await scan();
+  const inherited = await scan();
+  const specs = await scanSpecs();
+  const violations = [...inherited, ...specs];
   for (const v of violations) {
     console.error(
       `${v.file}:${v.line}  [${v.rule}] ${JSON.stringify(v.found)} — ${v.message}`,
@@ -124,4 +291,7 @@ if (
     process.exit(1);
   }
   console.log("inherited documents: clean");
+  console.log(
+    `behaviour specs: clean (${(await specDocuments()).length} files)`,
+  );
 }

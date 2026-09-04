@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 
 import {
   LEDGER_WINDOW,
+  checkSpec,
   checkText,
   inheritedDocuments,
   scan,
+  scanSpecs,
+  specDocuments,
 } from "./docs-hygiene.mjs";
 
 const repoRoot = path.resolve(
@@ -40,6 +43,87 @@ test("the scan covers .claude/** and the always-loaded summary", async () => {
   assert.ok(files.some((f) => f.startsWith(".claude/rules/")));
   assert.ok(files.some((f) => f.startsWith(".claude/agents/")));
   assert.ok(files.some((f) => f.startsWith(".claude/skills/")));
+});
+
+// The behaviour specs (ADR-0068 §1): the real ones are clean, the scan
+// reaches them, and each shape rule fires on the text it exists for.
+test("the behaviour specs are clean", async () => {
+  const violations = await scanSpecs();
+  assert.deepEqual(
+    violations.map((v) => `${v.file}:${v.line} [${v.rule}] ${v.found}`),
+    [],
+  );
+});
+
+test("the spec scan covers docs/specs and skips its README", async () => {
+  const files = (await specDocuments()).map((f) => f.rel);
+  assert.ok(files.length > 0);
+  assert.ok(files.every((f) => f.startsWith("docs/specs/")));
+  assert.ok(!files.includes("docs/specs/README.md"));
+});
+
+const always = () => true;
+const never = () => false;
+
+const SPEC = `# X
+
+## Requirement: A thing
+It answers.
+Records: [ADR-0012](../adr/0012-response-envelope.md)
+Proved by: \`apps/api/test/envelope.int.test.ts\`
+
+### Scenario: The case
+- **WHEN** a client asks
+- **THEN** it answers
+`;
+
+test("a well-formed spec passes", () => {
+  assert.deepEqual(rules(checkSpec("s.md", SPEC, always)), []);
+});
+
+test("a requirement without a scenario is caught", () => {
+  const text = SPEC.replace(/### Scenario:[\s\S]*$/, "");
+  assert.deepEqual(rules(checkSpec("s.md", text, always)), [
+    "spec-no-scenario",
+  ]);
+});
+
+test("a scenario without a THEN is caught", () => {
+  const text = SPEC.replace("- **THEN** it answers\n", "");
+  assert.deepEqual(rules(checkSpec("s.md", text, always)), [
+    "spec-scenario-shape",
+  ]);
+});
+
+test("a scenario without a WHEN is caught", () => {
+  const text = SPEC.replace("- **WHEN** a client asks\n", "");
+  assert.deepEqual(rules(checkSpec("s.md", text, always)), [
+    "spec-scenario-shape",
+  ]);
+});
+
+test("a record or a test that does not exist is caught", () => {
+  assert.deepEqual(rules(checkSpec("s.md", SPEC, never)), [
+    "spec-record-missing",
+    "spec-test-missing",
+  ]);
+});
+
+test("a requirement with no Records: or Proved by: line is caught", () => {
+  const text = SPEC.replace(/^Records:.*\n/m, "").replace(
+    /^Proved by:.*\n/m,
+    "",
+  );
+  assert.deepEqual(rules(checkSpec("s.md", text, always)), [
+    "spec-record-missing",
+    "spec-test-missing",
+  ]);
+});
+
+test("a file with no requirement is caught", () => {
+  assert.deepEqual(rules(checkSpec("s.md", "# Empty\n", always)), [
+    "spec-empty",
+  ]);
 });
 
 // The negative cases: each rule must actually fire on the text it exists for,

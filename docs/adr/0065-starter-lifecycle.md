@@ -1,6 +1,6 @@
 # ADR-0065: The starter lifecycle — forking, upstreaming and the documents that travel (supersedes ADR-0025 and ADR-0050 in part — deltas)
 
-- Status: accepted
+- Status: superseded by [ADR-0068](0068-behaviour-specs-and-plan-notes.md) (delta: §3's carried documents gain `docs/specs/`, edited in place; §5's governing documents gain a behaviour spec per capability and the plan file splits from its build notes — every other decision stands)
 - Date: 2026-09-02
 - Supersedes: [ADR-0025](0025-deliverables.md) (delta: window, supersession and date history is written in exactly one section of the ledger and linked from everywhere else); [ADR-0050](0050-adr-lifecycle-and-verification.md) (delta: rule 5 regains its parent's reason, and a fork's deviation is a new record in the fork's own corpus)
 

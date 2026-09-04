@@ -122,6 +122,11 @@ export const AREAS = [
         records: ["0002", "0062"],
         text: "`packages/config-eslint/api.js` already fails the build on classes, raw responses, `process.env` and layer-crossing imports. A rule a reviewer keeps repeating belongs there instead.",
       },
+      {
+        topic: "Behaviour specs",
+        records: ["0068"],
+        text: "`docs/specs/<capability>.md` states what a client observes on the wire — requirements with WHEN/THEN scenarios, each citing its record and the test file that proves it — and is edited in place by the step that changes the behaviour, in the same diff as the code and the test. `pnpm docs:check` refuses a requirement without a scenario, a record that does not exist or a test that does not.",
+      },
     ],
   },
   {
@@ -282,6 +287,11 @@ export const AREAS = [
         topic: "The digests",
         records: ["0065"],
         text: "`docs/rules/<area>.md` states the rules currently in force, each line naming its record; the rule files and the skills load the digest for their area. The records remain the source of truth, and the digest is generated at ship rather than edited.",
+      },
+      {
+        topic: "Specs and notes",
+        records: ["0068"],
+        text: "A behaviour spec per capability in `docs/specs/` is current truth, edited in place with the behaviour and carried into forks like code. A plan file holds only what `/step` executes; the build notes go to its `.notes.md` sibling, so a builder opens the plan and one spec rather than the journal.",
       },
     ],
   },
