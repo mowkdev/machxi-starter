@@ -5,6 +5,7 @@
 - Status: **in progress** — opened 2026-09-04, the day D14 shipped, on the operator's decision; scoped the same sitting by `/scope` (ledger §How D15 opened). The plan below is what `/step` executes.
 - Records: [ADR-0067](../adr/0067-organizations.md) (organizations — multi-tenancy), written `proposed` 2026-09-02 while D14 was scoped so that D14's indexes, count flag, generators and typed configs were built tenant-aware, and **revised 2026-09-04 while `proposed`** with the four decisions taken at scoping (below). Accepted at the head of `D15.1`; its four parents move at the step that makes each delta true — the `D10.5`/0059 precedent — and the plan names which.
 - Ledger: [`docs/plan/README.md`](README.md)
+- Notes: [`0015-organizations.notes.md`](0015-organizations.notes.md) — the build record from `D15.7` on ([ADR-0068](../adr/0068-behaviour-specs-and-plan-notes.md) §2, which that step accepted); the steps built before it keep their notes inline below, where they were written.
 
 ## Goal
 
@@ -69,13 +70,18 @@ Each PR-sized; each ends green on the gate; each takes one bounded diff review *
   - **ADRs:** 0067 (§6), 0055 §5 (the deferral this closes), 0018 (registration answers as login does), 0004 (the variable), 0033 as carried by 0051 (the session store's writers), 0046 (copy and the client-side error map).
   - **Done when:** `pnpm check` green; `apps/customer/src/features/auth/__tests__/register-form.test.tsx` asserts a successful registration lands home signed in with the personal organization in the switcher, a duplicate renders the catalogue copy for `CONFLICT`, and field rules come from the client-side error map; `app/__tests__/routing.test.tsx` asserts the route and the link are absent with the flag off; the pseudo-locale walk grows `/register`.
 
-- [ ] **D15.7 — The browser tier, and close-out.** `apps/customer/e2e/organizations.spec.ts` on the dev stack: a fresh account registers and lands with its personal organization in the switcher, creates a team organization, invites the seeded customer by email; the seeded customer signs in, accepts from the account area, and switches into it; the last-owner refusal renders. Then the definition of done, top to bottom.
+- [x] **D15.7 — Behaviour specs, and the plan apart from its notes.** Accept [ADR-0068](../adr/0068-behaviour-specs-and-plan-notes.md) at the head, where [ADR-0065](../adr/0065-starter-lifecycle.md) and [ADR-0025](../adr/0025-deliverables.md) move to `superseded by` (deltas). `docs/specs/` with its conventions and one spec per API capability, every requirement citing its records and the test files that prove it; the spec scan in `scripts/docs-hygiene.mjs` with its negative cases; `docs/plan/0015-organizations.notes.md` begun; `/scope`, `/step` and `/ship` carrying the record's §4; the rule files, `.claude/README.md`, `CLAUDE.md`, `docs/README.md` and `docs/forking.md` pointing at the artifact; the process and API digests each gaining a line. A process step, built out of build order — nothing in `D15.2`–`D15.6` depends on it — and inserted at the operator's decision after the OpenSpec assessment.
+  - **ADRs:** 0068, 0065 and 0025 (as parents), 0050 (altitude — a spec states the wire, not the internals).
+  - **Done when:** `pnpm test:scripts` green with the spec scan's negative cases among them; `pnpm docs:check` reports the inherited documents and the behaviour specs clean; `pnpm rules:digest` writes both new lines and a second run writes nothing; every `Proved by:` path in `docs/specs/` exists — which is the check, not a reading; `CLAUDE.md` stays under its size test.
+  - Built 2026-09-04 — the note is the first entry of [`0015-organizations.notes.md`](0015-organizations.notes.md).
+
+- [ ] **D15.8 — The browser tier, and close-out.** `apps/customer/e2e/organizations.spec.ts` on the dev stack: a fresh account registers and lands with its personal organization in the switcher, creates a team organization, invites the seeded customer by email; the seeded customer signs in, accepts from the account area, and switches into it; the last-owner refusal renders. Then the definition of done, top to bottom.
   - **ADRs:** 0052 (e2e conventions, as carried), 0067, 0020 (the request window the suite measures).
   - **Done when:** `pnpm test:e2e` green in both apps including the named spec; every definition-of-done item below run and recorded.
 
 ## Definition of done
 
-Run at `D15.7` and again by `/ship` on the committed tree.
+Run at `D15.8` and again by `/ship` on the committed tree.
 
 1. The gate green, every task cold: `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`.
 2. `pnpm test:unit` twice, the second `FULL TURBO` (ADR-0026 as carried).

@@ -21,6 +21,7 @@ Run `/bootstrap`. It resets the journal and leaves the process skills working:
 - **`docs/plan/` resets.** The plans and the ledger narrative are the blueprint's journal — how _this_ repository got here. A fork writes its own from row one, and `.gitattributes` marks `docs/plan/ merge=ours` so the journal never travels in either direction.
 - **`docs/adr/` is carried.** The records are the decisions the code stands on; they come with the code. The fork's own records continue the numbering after the highest inherited one.
 - **`.claude/` is carried.** The rules, agents and skills are the machinery that applies the records. They are written to survive the trip: every citation carries a topic gloss, and no step number or date appears in them (`pnpm docs:check` enforces it).
+- **`docs/specs/` is carried, and — unlike a record — edited in place.** A spec documents the code's current behaviour and diverges where the code diverges, so both sides edit it and a merge conflicts on it exactly where it conflicts on `apps/` ([ADR-0068](adr/0068-behaviour-specs-and-plan-notes.md), behaviour specs). The same hygiene rules apply to it as to `.claude/`.
 
 ## 3. Rename
 
@@ -60,5 +61,6 @@ The same rule applies to `.claude/` and the digests: change them by writing the 
 | `docs/plan/`         | never — `merge=ours` keeps the fork's journal                            |
 | `docs/adr/`          | only where the fork edited an inherited record, which is why it must not |
 | `docs/rules/`        | generated; regenerate with `pnpm rules:digest` after the merge           |
+| `docs/specs/`        | like code: where both sides changed one capability's behaviour           |
 | `.claude/`           | where both sides changed the same skill; the fork's additions sit beside |
 | `apps/`, `packages/` | ordinary code conflicts, proportional to how long since the last merge   |

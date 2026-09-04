@@ -1,0 +1,15 @@
+# D15 — Organizations: build notes
+
+The per-step build record of [D15](0015-organizations.md) — what was built, the amendments, the review findings and their fates, the gate's output, and what is pending the operator — kept apart from the executable plan so a builder opens the plan and not the journal ([ADR-0068](../adr/0068-behaviour-specs-and-plan-notes.md) §2, the plan apart from its notes). Steps built before that record was accepted keep their notes inline in the plan, where they were written; from `D15.7` on, every step appends here.
+
+## D15.7 — Behaviour specs, and the plan apart from its notes
+
+**Built 2026-09-04.** [ADR-0068](../adr/0068-behaviour-specs-and-plan-notes.md) written and accepted at the head, where [ADR-0065](../adr/0065-starter-lifecycle.md) and [ADR-0025](../adr/0025-deliverables.md) moved to `superseded by` — both deltas, 0025 for the second time. A process step riding in the open deliverable (the `D13.1` precedent), built out of build order because nothing in `D15.2`–`D15.6` depends on it, and on a branch rather than on `main`, because the main working tree held another session's uncommitted work in three of the files this step edits.
+
+Built: `docs/specs/` — the conventions in its README and eleven capability specs over the API's HTTP behaviour, every requirement citing its records and the test files that prove it; `scripts/docs-hygiene.mjs` gains the spec scan (requirement shape, scenario shape, record links that exist, test paths that exist, and the inherited-document rules) with its negative cases in `docs-hygiene.test.mjs`; this notes file; `/scope`, `/step` and `/ship` carrying §4; `.claude/rules/*`, `.claude/README.md`, `CLAUDE.md`, `docs/README.md` and `docs/forking.md` pointing at the new artifact; `scripts/rules-digest.mjs` gains one line in the process digest and one in the API digest; the ADR index row and topic rows; the ledger's window paragraph; `.claude/worktrees/` ignored.
+
+**What the specs deliberately do not claim.** Each `Proved by:` names a test _file_ and the check verifies the file exists — not that the file holds the scenario. The scenarios were written from the code and the records read for them, and a test-by-test audit of the eleven files against the suites is the natural follow-up for whichever step next touches each capability. The organizations spec covers the data invariants shipped at `D15.1` and nothing on the wire, because nothing on the wire exists yet.
+
+**Machine checks run on the branch** — `pnpm test:scripts` (the hygiene and digest suites), `node scripts/docs-hygiene.mjs`, `node scripts/rules-digest.mjs --check` and prettier over every changed file. The five-link gate was not run here: the diff holds no TypeScript and no test the gate executes, and the branch's CI run is the gate's own word on the commit.
+
+**Review** — one bounded `adr-reviewer` pass over the diff; its findings and their fates are recorded in the pull request.

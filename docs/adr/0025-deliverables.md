@@ -1,6 +1,6 @@
 # ADR-0025: Deliverables: the unit of staged work and how it binds the ADR lifecycle
 
-- Status: superseded by [ADR-0065](0065-starter-lifecycle.md) (delta: window, supersession and date history is written in exactly one section of the ledger and linked from everywhere else)
+- Status: superseded by [ADR-0065](0065-starter-lifecycle.md) (delta: window, supersession and date history is written in exactly one section of the ledger and linked from everywhere else) and by [ADR-0068](0068-behaviour-specs-and-plan-notes.md) (delta: the plan file's shape — the executable plan in one file, its build notes in a `.notes.md` sibling; every decision here about deliverables, windows and acceptance stands)
 - Date: 2026-08-18
 
 > **Superseded in part 2026-09-04 by [ADR-0065](0065-starter-lifecycle.md)**, accepted at the head of `D14.12`: a delta on **where** window state is written, and nothing else. Every decision here stands and is in force — what a deliverable is, one in progress at a time, the amendment window scoped to a deliverable rather than to a date, acceptance at the head of the building step, and the executable checklist that closes one.

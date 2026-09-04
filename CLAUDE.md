@@ -45,7 +45,7 @@ pnpm test:scripts              # the repo-level script tests
 - `apps/admin` — staff SPA (Vite + React, 3001) over `/admin`; `apps/customer` — user SPA (3002) over `/user`. Both are `src/{app,pages,widgets,features,entities,shared}`; a resource is an entity slice, a feature slice and a thin page, and every platform package is reached through a `shared/` door
 - `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
 - The **platform packages** both SPAs are built from: `api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`, `app-kit`. Each app keeps its dictionary, policy data, config, route tree and size budget
-- `docker/` — local compose and the reference production compose; `docs/` — records, plans, rules, Postman; `scripts/` — repo-level tooling outside the workspaces; `turbo/generators` — the two scaffolds
+- `docker/` — local compose and the reference production compose; `docs/` — records, plans, specs, rules, Postman; `scripts/` — repo-level tooling outside the workspaces; `turbo/generators` — the two scaffolds
 
 ## Search
 
@@ -56,7 +56,7 @@ Search with the Grep/Glob tools — including inside a single known file. Throug
 1. Before implementing: load your area's digest, then open the records it names for what you are changing. If the change conflicts with a record, check whether its deliverable is in progress — in progress means amend in place, labelled; shipped means propose a superseding record instead of diverging.
 2. Use the skills — they encode the checklists. API and data: `/api-conventions`, `/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/postman-sync`. SPAs: `/frontend-conventions`, `/new-resource-ui`, `/ui-component`. Process — the loop is **scope → step → ship** — `/scope`, `/step`, `/steps`, `/ship`, plus `/new-adr`, `/bootstrap` and `/local-dev`.
 3. Every change ends green on the gate above. New endpoints get integration tests and Postman requests; a new decision gets a record.
-4. Keep the derived documents in sync: a new env var means a record entry, `.env.example` and `turbo.json` `env`; a new endpoint means Postman; a new record means an index row and a topic-table row.
+4. Keep the derived documents in sync: a new env var means a record entry, `.env.example` and `turbo.json` `env`; a new endpoint means Postman; a new record means an index row and a topic-table row; a behaviour change means its `docs/specs/` file.
 5. Conventional commits, by explicit path when another session may share the tree.
 6. Ask before: deleting migrations, changing the envelope or error shape, adding a runtime dependency to `@repo/contracts`, or introducing any auth library.
 

@@ -1,6 +1,6 @@
 # ADR-0065: The starter lifecycle — forking, upstreaming and the documents that travel (supersedes ADR-0025 and ADR-0050 in part — deltas)
 
-- Status: accepted
+- Status: superseded by [ADR-0068](0068-behaviour-specs-and-plan-notes.md) (delta: §3's carried documents gain `docs/specs/`, edited in place; §5's governing documents gain a behaviour spec per capability and the plan file splits from its build notes — every other decision stands)
 - Date: 2026-09-02
 - Supersedes: [ADR-0025](0025-deliverables.md) (delta: window, supersession and date history is written in exactly one section of the ledger and linked from everywhere else); [ADR-0050](0050-adr-lifecycle-and-verification.md) (delta: rule 5 regains its parent's reason, and a fork's deviation is a new record in the fork's own corpus)
 
@@ -39,7 +39,7 @@ Platform packages stay **source-only inside the monorepo** as ADR-0002 decided. 
 ### 3. Carried versus journal
 
 - **Carried into forks**: `docs/adr/` and `.claude/`. These are the decisions and the machinery that applies them.
-- **This blueprint's journal**: `docs/plan/` and the ledger narrative. They record how *this* repository got here.
+- **This blueprint's journal**: `docs/plan/` and the ledger narrative. They record how _this_ repository got here.
 
 A fork **resets `docs/plan/` to its own empty ledger** and marks the directory `merge=ours` in `.gitattributes`, so starter merges never pull journal prose down and a fork's journal never travels up. `docs/forking.md` records the recipe end to end: clone, add the `starter` remote, rename per [ADR-0064](0064-brand-seams.md) (_brand seams_), reset the ledger via `/bootstrap`, add the licence.
 
