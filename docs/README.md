@@ -1,12 +1,15 @@
 # Documentation
 
-| Path                                  | Contents                                                                                                                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`adr/`](adr/README.md)               | Architecture Decision Records — the _why_ behind the repo structure. Start with the index: it lists every decision, its status, and the build step that implemented it.                                       |
-| [`plan/`](plan/README.md)             | Deliverables — the staged units of work (ADR-0025), one plan file each. The ledger says which is in progress; a plan says how that deliverable is built, step by step, and why each step decided what it did. |
-| [`postman/`](postman/README.md)       | The Postman collection and environment — the manual/smoke tier of ADR-0021, and the API's living documentation until OpenAPI exists. Runs headless with `pnpm test:postman`.                                  |
-| [`../docker/`](../docker/README.md)   | Container setups — local Postgres for dev and the integration tests (ADR-0007).                                                                                                                               |
-| [`../.claude/`](../.claude/README.md) | Claude Code project setup: `CLAUDE.md` summary, subagents (`agents/`), slash-command skills (`skills/`), shared permissions.                                                                                  |
+| Path                                                           | Contents                                                                                                                                                                                                                            |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`adr/`](adr/README.md)                                        | Architecture Decision Records — the _why_ behind the repo structure. Start with the index: it lists every decision, its status, and the build step that implemented it.                                                             |
+| [`plan/`](plan/README.md)                                      | Deliverables — the staged units of work (ADR-0025), one plan file each. The ledger says which is in progress; a plan says how that deliverable is built, step by step, and why each step decided what it did.                       |
+| [`postman/`](postman/README.md)                                | The Postman collection and environment — the manual/smoke tier of ADR-0021, and the API's living documentation until OpenAPI exists. Runs headless with `pnpm test:postman`.                                                        |
+| [`../docker/`](../docker/README.md)                            | Container setups — local Postgres for dev and the integration tests (ADR-0007).                                                                                                                                                     |
+| [`../.claude/`](../.claude/README.md)                          | Claude Code project setup: `CLAUDE.md` summary, subagents (`agents/`), slash-command skills (`skills/`), shared permissions.                                                                                                        |
+| [`rules/`](rules/)                                             | The current-rules digests — one per area, generated from the records by `pnpm rules:digest` and regenerated at ship. Each line names the record it comes from; a session loads the digest for its area rather than the whole chain. |
+| [`forking.md`](forking.md), [`upstreaming.md`](upstreaming.md) | How this repository becomes a project, and how a generic feature comes back (ADR-0065).                                                                                                                                             |
+| [`CHANGELOG.md`](CHANGELOG.md)                                 | One entry per shipped deliverable, with its `starter-D<n>` tag.                                                                                                                                                                     |
 
 ## Where to look for what
 
@@ -19,57 +22,17 @@
 
 ## Conventions
 
-ADRs are the source of truth for decisions; the plans and the Postman collection
-are derived from them.
+ADRs are the source of truth for decisions; the plans, the digests and the
+Postman collection are derived from them.
 
-The in-place amendment window is scoped to a deliverable ([ADR-0025](adr/0025-deliverables.md)
-rule 2), not to a date. An ADR is amendable only while its deliverable is
-`in progress` in the ledger; once that deliverable ships, code and ADR that
-disagree are reconciled by a superseding ADR, never by editing the record. D1
-shipped 2026-08-18, D2 2026-08-19, D3 2026-08-20, D4 2026-08-21, D5 2026-08-22,
-D6 2026-08-22, D7 2026-08-22, D8 2026-08-27 and D9 2026-08-28, so **ADRs
-0001–0051 are closed** — including every frontend decision the admin panel was
-built on, every grid decision the data-grid rebuild made, D5's pair of
-supersessions, D6's user-settings record, D7's localization one, D8's four and
-D9's platform extraction. D10 shipped 2026-08-29 and the window on
-[0052](adr/0052-grid-and-admin-followups.md) shut with it.
-**ADRs 0001–0058 are closed and the D14 window is open** — D13 (customer
-impersonation) shipped 2026-09-02; it went `in progress` 2026-09-01, the day D12 shipped, covering
-[0057](adr/0057-impersonation-sessions.md) and
-[0058](adr/0058-append-only-audit-log.md), both written `proposed` by `/scope`
-that day: **0057 was accepted 2026-09-01 at `D13.1`'s head**, where
-[0018](adr/0018-authentication-sessions-and-tokens.md) and
-[0052](adr/0052-grid-and-admin-followups.md) took deltas (impersonated
-sessions; the gate's fifth link, `pnpm format:check`, which is why the gate
-now reads
-`pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`
-everywhere it is stated), and **0058 was accepted 2026-09-01 at `D13.2`'s
-head**, additive — the `audit_events` table, migration `0006_audit_events` and
-the container-wired writer. Both records are `accepted`; the window shut when D13 shipped 2026-09-02. **D14 (starter hardening) opened 2026-09-02**, the same day, covering [0059](adr/0059-ci-containers-and-deployment.md) to [0066](adr/0066-infrastructure-seams.md), all `proposed` at opening and each accepted at the head of the step that builds it; [0067](adr/0067-organizations.md) is D15's and waits for that row. **The D12 window shut
-when D12 shipped 2026-09-01**; it covered [0055](adr/0055-customer-app.md) — `accepted` at `D12.1`'s head,
-where [0022](adr/0022-frontend-apps.md) took the roster delta — and, since
-2026-09-01, [0056](adr/0056-per-population-csrf-cookie.md) — `proposed`,
-accepted at `D12.12`'s head, where
-[0029](adr/0029-browser-token-transport.md) takes a one-name delta: the CSRF
-cookie becomes per-population. D11 shipped
-2026-08-31 and its window on [0053](adr/0053-account-area.md) and
-[0054](adr/0054-design-language-instrument.md) shut with it, both `accepted`
-in the window (0054 at `D11.1`'s head, 0053 at `D11.6`'s), each flipping its
-parents as it was accepted. Under ADR-0052 four parents moved to
-`superseded by`, all deltas — [0039](adr/0039-grid-filter-ux.md) and
-[0048](adr/0048-app-shell-and-record-surfaces.md) at `D10.1`, and
-[0026](adr/0026-task-graph-caching-and-serialisation.md) and
-[0036](adr/0036-admin-testing-strategy.md) at `D10.5`, when the gate grew the
-fourth link each of them had decided it would not grow.
-[0051](adr/0051-platform-extraction.md) delta-supersedes
-[0033](adr/0033-browser-api-client-and-session.md) and
-[0049](adr/0049-admin-app-architecture.md), which keep every decision they made
-and lose only where the code lives.
-**[0031](adr/0031-ui-design-system.md) is superseded by
-[0047](adr/0047-ui-package-scope.md),
-[0032](adr/0032-admin-app-architecture.md) by
-[0049](adr/0049-admin-app-architecture.md) and
-[0024](adr/0024-adr-lifecycle.md) by
-[0050](adr/0050-adr-lifecycle-and-verification.md)**. An ADR
-is accepted at the head of the step that builds it, so a step whose ADR is still
-`proposed` is gated and must not be started.
+**Window, supersession and date history lives in exactly one place** — [the
+ledger's window section](plan/README.md#the-window) ([ADR-0065](adr/0065-starter-lifecycle.md)
+§5, the starter lifecycle, a delta on [ADR-0025](adr/0025-deliverables.md) for
+where that state is written). Which deliverable may amend its records in place,
+which records are frozen, and which supersession is a delta are all stated
+there and linked from everywhere else, including this file. When another
+document disagrees with that section, that section is right and the other is
+the defect.
+
+An ADR is accepted at the head of the step that builds it, so a step whose
+record is still `proposed` is gated and must not be started.

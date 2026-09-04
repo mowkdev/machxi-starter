@@ -1,6 +1,6 @@
 ---
 name: scope
-description: Scope a deliverable into a one-page buildable plan — goal, constraints, ADR deltas, and steps whose done-whens are commands and test names (ADR-0050). Use as "/scope D9"; a bare call means the first `planned` ledger row.
+description: Scope a deliverable into a one-page buildable plan — goal, constraints, ADR deltas, and steps whose done-whens are commands and test names (ADR-0050). Use as "/scope D<n>"; a bare call means the first `planned` ledger row.
 ---
 
 # Scope deliverable $ARGUMENTS

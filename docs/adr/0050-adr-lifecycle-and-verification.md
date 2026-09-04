@@ -1,10 +1,12 @@
 # ADR-0050: ADR lifecycle v2 — delta supersessions, altitude, and verification by machines
 
-- Status: accepted
+- Status: superseded by [ADR-0065](0065-starter-lifecycle.md) (delta: rule 5 regains the reason ADR-0024 gave it, and a fork's deviation is a new record in the fork's own corpus)
 - Date: 2026-08-26
 - Supersedes: [ADR-0024](0024-adr-lifecycle.md)
 
 > Written 2026-08-26 ahead of D8 opening, beside its siblings [0047](0047-ui-package-scope.md)–[0049](0049-admin-app-architecture.md); **D8 opened 2026-08-26** and this record was **accepted 2026-08-26 at the head of `D8.1`** with them, where [ADR-0024](0024-adr-lifecycle.md) moved to `superseded by ADR-0050`. It supersedes [ADR-0024](0024-adr-lifecycle.md) and carries it whole — deliberately the **last** supersession required to do so, because its own §Lifecycle changes that rule.
+>
+> **Superseded in part 2026-09-04 by [ADR-0065](0065-starter-lifecycle.md)**, accepted at the head of `D14.12`: a delta on rule 5 alone. Rule 5 keeps its decision — a downstream project supersedes and never amends — and regains the reason [ADR-0024](0024-adr-lifecycle.md) gave for it: an edit turns the next merge from the blueprint into a conflict and erases the record of which decision was deliberately dropped. Everything else here stands and is in force: the statuses, the delta rule, the altitude rule, and verification by the deterministic gate plus one bounded review pass per step.
 
 ## Context
 

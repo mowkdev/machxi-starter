@@ -11,9 +11,19 @@ same platform packages, localized, themed, and able to run an impersonated
 session end to end.
 
 Architecture is decided in [`docs/adr/`](docs/adr/README.md) — read the relevant
-ADR before changing anything it covers. Work is staged into numbered deliverables
-(ADR-0025); the ledger is [`docs/plan/README.md`](docs/plan/README.md), which
-says which deliverable is in progress and links the build order of each.
+ADR before changing anything it covers; the index opens with a topic →
+record-in-force table, and [`docs/rules/`](docs/rules/) holds the generated
+digest of what is in force per area, which is what a session loads. Work is
+staged into numbered deliverables (ADR-0025); the ledger is
+[`docs/plan/README.md`](docs/plan/README.md), which says which deliverable is in
+progress, links the build order of each, and is the one place that states which
+records may still be amended in place.
+
+**This repository is meant to be cloned into a project and merged from
+afterwards.** [`docs/forking.md`](docs/forking.md) is the recipe,
+[`docs/upstreaming.md`](docs/upstreaming.md) is how a generic feature comes back,
+and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) plus the `starter-D<n>` tags say
+which starter a fork is on.
 
 ## Requirements
 
@@ -257,6 +267,9 @@ Full detail is in the ADRs; these are the ones that bite.
   secret store.
 - **Migrations are generated and committed**, never pushed (ADR-0008).
 - **New endpoints need integration tests and a Postman request** (ADR-0021).
+- **Load your area's digest first** ([`docs/rules/`](docs/rules/)) — it is
+  generated from the records and regenerated at ship, never hand-edited, and it
+  names the record behind every line so you know what to open next.
 
 ## Tooling
 

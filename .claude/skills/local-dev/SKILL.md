@@ -19,7 +19,7 @@ pnpm dev --filter api           # :4000  → GET http://localhost:4000/health/re
 ## Daily
 
 - `pnpm dev` (all) or `pnpm dev --filter api`
-- `pnpm check` (fast loop, cached) · `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` (the gate, needs docker; `size` builds each SPA and weighs it against its committed budget, `format:check` is prettier over the tree) · `pnpm test:int --filter api` · `pnpm test:postman`
+- `pnpm check` (fast loop, cached) · the gate (`CLAUDE.md` §Commands — needs docker; `size` builds each SPA and weighs it against its committed budget, `format:check` is prettier over the tree) · `pnpm test:int --filter api` · `pnpm test:postman`
 - Schema changed? `/db-schema-change`. Logs: `pnpm docker:logs`.
 
 ## Troubleshooting

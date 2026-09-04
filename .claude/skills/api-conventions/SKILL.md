@@ -35,7 +35,7 @@ Types: `export type XService = ReturnType<typeof createXService>`. Wire in `core
 
 - `listQuerySchema({ sortable, filterable, defaultSort, maxLimit? })` → `ListQuery`; repo uses `applyListQuery(qb, query, columnMap)`; service returns `Page<T>`; always tiebreak `id asc`; hard cap limit 100.
 
-## Routes (ADR-0015) & auth (ADR-0017–0019)
+## Routes (ADR-0015, route segments) and auth (ADR-0017, identity model; ADR-0019, authorization guards)
 
 - `/health/{live,ready}`, `/api/v1/public/*`, `/api/v1/user/*` (`authenticate('user')` at router), `/api/v1/admin/*` (`authenticate('staff')`), auth endpoints under `/{user|admin}/auth/{login,refresh,logout,logout-all,me}`; `/public/auth/register`.
 - `authorize(...roles)` at mount for admin resources; `super_admin` bypass; UUID-validate `:id`; PATCH for partial updates.
