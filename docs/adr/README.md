@@ -231,7 +231,7 @@ These will get their own ADRs when the corresponding features are implemented:
 - Mobile app.
 - **Multi-tenancy** — [ADR-0067](0067-organizations.md), written `proposed` 2026-09-02 and **accepted 2026-09-04 at the head of `D15.1`** ([`docs/plan/0015-organizations.md`](../plan/0015-organizations.md)): shared schema, organizations and memberships, a personal organization on every path that creates a user, resolution by URL, row-level security designed in and deferred. What remains open is that last clause — **enabling RLS** is a migration and a middleware once these tables exist, and its precondition, the application role, shipped at `D14.4`.
 - ~~CI pipeline and deployment (Dockerfiles for `api`, `web`, `admin`).~~ **Scoped 2026-09-02** as [ADR-0059](0059-ci-containers-and-deployment.md) (D14): a GitHub Actions gate, images for `api`, `admin` and `customer`, a bundled migrate entry and a compose reference deployment for Coolify. `apps/web` has no image: `D14.1` deletes the placeholder and D16 scaffolds the marketing site fresh.
-- **The starter as a starter** — forking, tagging, upstreaming, and the shape of the governing documents: [ADR-0065](0065-starter-lifecycle.md) (D14, `proposed` 2026-09-02). The brand seams it needs: [ADR-0064](0064-brand-seams.md).
+- **The starter as a starter** — forking, tagging, upstreaming, and the shape of the governing documents: [ADR-0065](0065-starter-lifecycle.md) (accepted at `D14.12`'s head, superseded in part by [ADR-0068](0068-behaviour-specs-and-plan-notes.md)). The brand seams it needs: [ADR-0064](0064-brand-seams.md).
 
 ## Deliverables
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -57,8 +58,23 @@ test("the scan skips a git worktree parked under .claude", async () => {
   assert.ok(!isExcluded(".claude/worktrees-and-why.md"));
   assert.ok(!isExcluded(".claude/README.md"));
 
-  const files = (await inheritedDocuments()).map((f) => f.rel);
-  assert.ok(!files.some((f) => f.startsWith(".claude/worktrees/")));
+  // Over a fixture rather than this tree: the directory is gitignored, so on
+  // CI and in a fresh clone it does not exist and an assertion about the real
+  // walk would pass by finding nothing.
+  const root = await mkdtemp(path.join(tmpdir(), "docs-hygiene-"));
+  await mkdir(path.join(root, ".claude", "worktrees", "specs"), {
+    recursive: true,
+  });
+  await writeFile(path.join(root, "CLAUDE.md"), "# fixture\n");
+  await writeFile(path.join(root, ".claude", "README.md"), "# fixture\n");
+  await writeFile(
+    path.join(root, ".claude", "worktrees", "specs", "CLAUDE.md"),
+    "Accepted at `D14.12`'s head on 2026-09-02.\n",
+  );
+
+  const files = (await inheritedDocuments(root)).map((f) => f.rel);
+  assert.deepEqual(files, [".claude/README.md", "CLAUDE.md"]);
+  await rm(root, { recursive: true, force: true });
 });
 
 // The behaviour specs (ADR-0068 §1): the real ones are clean, the scan

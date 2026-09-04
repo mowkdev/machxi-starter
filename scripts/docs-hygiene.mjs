@@ -272,14 +272,20 @@ export function checkSpec(file, text, exists) {
 /** Every spec — the capability files, not the directory's own README. */
 export async function specDocuments(root = repoRoot) {
   const dir = path.join(root, SPECS_DIR);
-  return (await readdir(dir))
-    .filter((name) => name.endsWith(".md") && name !== "README.md")
-    .sort()
-    .map((name) => ({
-      full: path.join(dir, name),
-      rel: path.posix.join(SPECS_DIR, name),
-    }))
-    .filter(({ rel }) => !isExcluded(rel));
+  return (
+    (await readdir(dir))
+      .filter((name) => name.endsWith(".md") && name !== "README.md")
+      .sort()
+      .map((name) => ({
+        full: path.join(dir, name),
+        rel: path.posix.join(SPECS_DIR, name),
+      }))
+      // No path under `docs/specs/` can match an `EXCLUDED_PATHS` entry today.
+      // The filter is here so the two scans stay one rule rather than two: an
+      // entry added under `docs/` later is honoured by both without a second
+      // edit.
+      .filter(({ rel }) => !isExcluded(rel))
+  );
 }
 
 export async function scanSpecs(root = repoRoot) {

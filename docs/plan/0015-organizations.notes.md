@@ -1,6 +1,6 @@
 # D15 — Organizations: build notes
 
-The per-step build record of [D15](0015-organizations.md) — what was built, the amendments, the review findings and their fates, the gate's output, and what is pending the operator — kept apart from the executable plan so a builder opens the plan and not the journal ([ADR-0068](../adr/0068-behaviour-specs-and-plan-notes.md) §2, the plan apart from its notes). Steps built before that record was accepted keep their notes inline in the plan, where they were written; from `D15.7` on, every step appends here.
+The per-step build record of [D15](0015-organizations.md) — what was built, the amendments, the review findings and their fates, the gate's output, and what is pending the operator — kept apart from the executable plan so a builder opens the plan and not the journal ([ADR-0068](../adr/0068-behaviour-specs-and-plan-notes.md) §2, the plan apart from its notes). Steps built before that record was accepted keep their notes inline in the plan, where they were written; from `D15.7` on, every step appends here. One entry below is not a step's: the operator's answer to `D15.1`'s escalation was written after this record was accepted, so its note is here rather than inline with the step it belongs to.
 
 ## D15.7 — Behaviour specs, and the plan apart from its notes
 
