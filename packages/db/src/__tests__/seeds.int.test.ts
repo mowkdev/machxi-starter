@@ -1,4 +1,4 @@
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { SUPER_ADMIN_ROLE } from "@repo/contracts";
@@ -8,10 +8,18 @@ import { baseSeeders, devSeeders, runSeeders } from "../../seeds/run.js";
 import {
   DEV_PASSWORD,
   DEV_STAFF,
+  DEV_TEAM_ORGANIZATION,
   DEV_USERS,
 } from "../../seeds/dev/fixtures.js";
 import type { DbClient } from "../client.js";
-import { staff, staffRoles, userRoles, users } from "../index.js";
+import {
+  organizationMemberships,
+  organizations,
+  staff,
+  staffRoles,
+  userRoles,
+  users,
+} from "../index.js";
 import { migrateFreshTestDatabase, testHasher } from "./helpers.int.js";
 
 /**
@@ -51,7 +59,13 @@ const seedDev = () =>
   });
 
 const countOf = async (
-  table: typeof staff | typeof users | typeof staffRoles | typeof userRoles,
+  table:
+    | typeof staff
+    | typeof users
+    | typeof staffRoles
+    | typeof userRoles
+    | typeof organizations
+    | typeof organizationMemberships,
 ) => {
   const [row] = await client.db.select({ value: count() }).from(table);
 
@@ -212,6 +226,8 @@ describe("dev fixtures", () => {
       await countOf(staffRoles),
       await countOf(users),
       await countOf(userRoles),
+      await countOf(organizations),
+      await countOf(organizationMemberships),
     ];
 
     await seedDev();
@@ -221,6 +237,87 @@ describe("dev fixtures", () => {
       await countOf(staffRoles),
       await countOf(users),
       await countOf(userRoles),
+      await countOf(organizations),
+      await countOf(organizationMemberships),
     ]).toEqual(before);
+  });
+});
+
+/**
+ * The invariant ADR-0067 §2 rests everything on: **every live user has exactly
+ * one personal organization**, on every path that creates a user. The seeders
+ * are one of the three paths, so the fixtures are not exempt from it — and
+ * "exactly one" is a claim only a count can keep.
+ */
+describe("dev organizations (ADR-0067 §2)", () => {
+  it("gives every live user exactly one personal organization, owned by them", async () => {
+    const live = await client.db
+      .select({ id: users.id })
+      .from(users)
+      .where(isNull(users.deletedAt));
+
+    expect(live.length).toBe(DEV_USERS.length);
+
+    for (const user of live) {
+      const personal = await client.db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(
+          and(
+            eq(organizations.createdBy, user.id),
+            eq(organizations.kind, "personal"),
+            isNull(organizations.deletedAt),
+          ),
+        );
+
+      expect(personal).toHaveLength(1);
+
+      const membership = await client.db
+        .select({ role: organizationMemberships.role })
+        .from(organizationMemberships)
+        .where(
+          and(
+            eq(organizationMemberships.organizationId, personal[0]?.id ?? ""),
+            eq(organizationMemberships.userId, user.id),
+          ),
+        );
+
+      expect(membership.map((row) => row.role)).toEqual(["owner"]);
+    }
+  });
+
+  it("creates the one team organization Postman addresses by slug", async () => {
+    const organization = await client.db.query.organizations.findFirst({
+      where: eq(organizations.slug, DEV_TEAM_ORGANIZATION.slug),
+    });
+
+    expect(organization?.kind).toBe("team");
+    expect(organization?.name).toBe(DEV_TEAM_ORGANIZATION.name);
+
+    const owner = await client.db.query.users.findFirst({
+      where: eq(users.email, DEV_TEAM_ORGANIZATION.ownerEmail),
+    });
+
+    expect(organization?.createdBy).toBe(owner?.id);
+
+    const membership = await client.db
+      .select({ role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, organization?.id ?? ""),
+          eq(organizationMemberships.userId, owner?.id ?? ""),
+        ),
+      );
+
+    expect(membership.map((row) => row.role)).toEqual(["owner"]);
+  });
+
+  it("counts one organization per user plus the team one", async () => {
+    // Stated as a total as well as per user: a seeder that created two for
+    // somebody would still pass the per-user loop above if it also lost one
+    // elsewhere.
+    expect(await countOf(organizations)).toBe(DEV_USERS.length + 1);
+    expect(await countOf(organizationMemberships)).toBe(DEV_USERS.length + 1);
   });
 });

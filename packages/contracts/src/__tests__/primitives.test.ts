@@ -4,12 +4,15 @@ import {
   MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
+  MAX_SLUG_LENGTH,
   MIN_PASSWORD_LENGTH,
+  MIN_SLUG_LENGTH,
   emailSchema,
   idSchema,
   nameSchema,
   passwordSchema,
   presentedPasswordSchema,
+  slugSchema,
 } from "../index.js";
 
 describe("emailSchema", () => {
@@ -136,5 +139,65 @@ describe("idSchema", () => {
     for (const invalid of ["1", "", "0199a1f4-4c2e-7c53-9c62", "not-a-uuid"]) {
       expect(idSchema.safeParse(invalid).success).toBe(false);
     }
+  });
+});
+
+describe("slugSchema (ADR-0067 §2)", () => {
+  it("trims and lower-cases before validating, so a stored slug is canonical", () => {
+    expect(slugSchema.parse("  ACME-Labs  ")).toBe("acme-labs");
+  });
+
+  it("accepts letters, digits and single inner hyphens", () => {
+    for (const valid of ["acme", "acme-labs", "a1", "team-42-north"]) {
+      expect(slugSchema.safeParse(valid).success).toBe(true);
+    }
+  });
+
+  it("rejects the shapes that would not survive an address bar", () => {
+    // Each of these needs percent-encoding, reads differently in a URL than in
+    // the database, or is a hyphen doing something a reader cannot see.
+    for (const invalid of [
+      "-acme",
+      "acme-",
+      "acme--labs",
+      "acme labs",
+      "acme_labs",
+      "acme.labs",
+      "acme/labs",
+      "acmé",
+      "",
+    ]) {
+      expect(slugSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("refuses the prefix the system derives personal slugs with", () => {
+    // A squatted `personal-<uuid>` would not fail loudly: the create path
+    // conflicts on the partial unique index and then reads back filtering
+    // `kind = 'personal'`, so the personal organization would silently not
+    // exist (ADR-0067 §2).
+    expect(
+      slugSchema.safeParse("personal-0199a1f4-4c2e-7c53-9c62-3e0f9d0f7f11")
+        .success,
+    ).toBe(false);
+    expect(slugSchema.safeParse("personal-team").success).toBe(false);
+    // Only the prefix is reserved, not the word.
+    expect(slugSchema.safeParse("personal").success).toBe(true);
+    expect(slugSchema.safeParse("personalised").success).toBe(true);
+  });
+
+  it("is bounded at both ends", () => {
+    expect(slugSchema.safeParse("a".repeat(MIN_SLUG_LENGTH - 1)).success).toBe(
+      false,
+    );
+    expect(slugSchema.safeParse("a".repeat(MIN_SLUG_LENGTH)).success).toBe(
+      true,
+    );
+    expect(slugSchema.safeParse("a".repeat(MAX_SLUG_LENGTH)).success).toBe(
+      true,
+    );
+    expect(slugSchema.safeParse("a".repeat(MAX_SLUG_LENGTH + 1)).success).toBe(
+      false,
+    );
   });
 });

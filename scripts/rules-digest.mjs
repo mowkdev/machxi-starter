@@ -93,6 +93,11 @@ export const AREAS = [
         text: "One list-query language, its codec in `@repo/contracts`. `offset` has a ceiling and `count` is an optional flag: with `count=false` a repository skips the aggregate and returns `total: null`. Every sortable and searched column carries a covering index declaration, trigram indexes for search and btree for sorts.",
       },
       {
+        topic: "Tenancy",
+        records: ["0067"],
+        text: "One database, one schema: every tenant-owned table carries `organization_id not null` and is indexed tenant-led, with no bare `(column, id)` pairs beside those composites. A repository over such a table takes the organization id as a required parameter; the sanctioned exception is a read scoped by the **principal** rather than by a tenant, named in its repository for what it is, and the hand-maintained `TENANT_OWNED_TABLES` list is what the enumeration test checks the roster against. Every path that creates a user creates their personal organization in the same transaction; staff are never members, and a non-member is answered `404` rather than `403`.",
+      },
+      {
         topic: "Infrastructure seams",
         records: ["0066"],
         text: "Mail goes through the `MailSender` port in `core/mail` and never through a client a service imports; `GET /metrics` lives in `core/metrics` beside `/health`, above every limiter, labelled by route pattern and behind a token; the reporter in `core/reporting` fires on 5xx only and is given the request id, route, status and principal — never the body; the four limiters share one store, Redis when configured and memory otherwise, failing closed. All four are inert in a default clone.",

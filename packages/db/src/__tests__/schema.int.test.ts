@@ -166,6 +166,10 @@ describe("migration 0001", () => {
     expect(rows.map((row) => row.table_name)).toEqual([
       "audit_events",
       "impersonation_handoffs",
+      // The tenant and what it owns came with `0011` (`D15.1`, ADR-0067 §2).
+      "organization_invitations",
+      "organization_memberships",
+      "organizations",
       "sessions",
       "staff",
       "staff_roles",
@@ -235,6 +239,10 @@ describe("migration 0001", () => {
     );
 
     expect(rows).toEqual([
+      // An invitation names an address, not an account (ADR-0067 §2), and it
+      // must match the invitee's however either was typed — the same reason
+      // the two account tables use the type.
+      { table_name: "organization_invitations", udt_name: "citext" },
       { table_name: "staff", udt_name: "citext" },
       { table_name: "users", udt_name: "citext" },
     ]);
@@ -266,6 +274,12 @@ describe("migration 0001", () => {
       // (`0004_locale_lv`, ADR-0046) — this list is what says so, because a
       // value inserted rather than appended would reorder every sort by it.
       locale: ["en", "lv"],
+      // The organization enums came with `0011` (`D15.1`, ADR-0067 §2).
+      // `organization_role` is deliberately not `user_role`: an account role
+      // and a membership role have different lifetimes, and the day one grows
+      // a label the other must not.
+      organization_kind: ["personal", "team"],
+      organization_role: ["owner", "admin", "member"],
       principal_type: ["staff", "user"],
       staff_role: ["super_admin", "admin", "manager", "editor"],
       staff_status: ["active", "invited", "disabled"],

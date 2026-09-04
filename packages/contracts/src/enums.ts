@@ -76,3 +76,65 @@ export type UserStatus = (typeof USER_STATUSES)[number];
 /** Sort direction of a single `sort` entry (ADR-0014). */
 export const SORT_DIRECTIONS = ["asc", "desc"] as const;
 export type SortDirection = (typeof SORT_DIRECTIONS)[number];
+
+/**
+ * What an organization is (ADR-0067 §2). `personal` is the one every account
+ * gets on the path that creates it and cannot delete on its own; `team` is
+ * what a user creates through `POST /user/orgs`.
+ *
+ * `kind` never changes after insert: promoting a personal organization to a
+ * team one is explicitly out of D15's scope, and the invariant "exactly one
+ * personal organization per live user" is what the seeds and the backfill
+ * assert.
+ */
+export const ORGANIZATION_KINDS = ["personal", "team"] as const;
+export type OrganizationKind = (typeof ORGANIZATION_KINDS)[number];
+
+/**
+ * A membership's role inside one organization (ADR-0067 §2), ordered most- to
+ * least-privileged for display only — nothing derives privilege from the
+ * position, exactly as {@link STAFF_ROLES} does not.
+ *
+ * These are **not** {@link USER_ROLES}: a user role is a property of the
+ * account across the whole system, a membership role is a property of one
+ * (account, organization) pair. Sharing one type would tie two lifetimes that
+ * have nothing to do with each other.
+ *
+ * `owner` is not invitable — ownership is granted by an owner to an existing
+ * member (ADR-0067 §2) — which is a rule about invitations, not a second
+ * enum: the invitations table carries a `role <> 'owner'` check and the
+ * invitation schema narrows this tuple.
+ */
+export const ORGANIZATION_ROLES = ["owner", "admin", "member"] as const;
+export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+
+/**
+ * The role an organization's membership must always have at least one of
+ * (ADR-0067 §2). Named so the "last owner" invariant is greppable from the
+ * service, the guard and the schema, the way {@link SUPER_ADMIN_ROLE} is.
+ */
+export const ORGANIZATION_OWNER_ROLE = "owner" satisfies OrganizationRole;
+
+/**
+ * What an invitation looks like from the outside (ADR-0067 §2).
+ *
+ * **Derived, not stored** — and deliberately not a `pgEnum`, unlike every
+ * other tuple in this file. The row's facts are its timestamps (`expiresAt`,
+ * `acceptedAt`, `declinedAt`, `revokedAt`), and `expired` is the one state no
+ * column can hold: it becomes true as the clock passes `expires_at`, with no
+ * row written and no sweeper to write one (D15 has none by decision). A stored
+ * status would therefore say `pending` about an expired row, which is the
+ * class of bug a second source of truth exists to create.
+ *
+ * The mapper folds the timestamps into one of these for the wire, and the
+ * order is the lifecycle: `pending` first, then the three ways it ends, then
+ * the one that just happens.
+ */
+export const INVITATION_STATUSES = [
+  "pending",
+  "accepted",
+  "declined",
+  "revoked",
+  "expired",
+] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];

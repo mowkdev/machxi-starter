@@ -15,6 +15,7 @@ import {
 } from "../src/tooling/report.js";
 import { devStaffSeeder } from "./dev/101-dev-staff.js";
 import { devUsersSeeder } from "./dev/102-dev-users.js";
+import { devOrganizationsSeeder } from "./dev/103-dev-organizations.js";
 import { superAdminSeeder } from "./seeders/001-super-admin.js";
 import type { SeedContext, Seeder } from "./types.js";
 
@@ -34,7 +35,14 @@ import type { SeedContext, Seeder } from "./types.js";
 export const baseSeeders: readonly Seeder[] = [superAdminSeeder];
 
 /** `--dev` only; refused when `NODE_ENV=production`. */
-export const devSeeders: readonly Seeder[] = [devStaffSeeder, devUsersSeeder];
+export const devSeeders: readonly Seeder[] = [
+  devStaffSeeder,
+  devUsersSeeder,
+  // After `102`, which creates the account this one makes an owner: the
+  // filename prefix is the order, and the order is what lets a later seeder
+  // rely on an earlier one.
+  devOrganizationsSeeder,
+];
 
 export interface SeedArgs {
   readonly dev: boolean;

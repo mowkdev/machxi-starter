@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  INVITATION_STATUSES,
+  ORGANIZATION_KINDS,
+  ORGANIZATION_OWNER_ROLE,
+  ORGANIZATION_ROLES,
   POPULATIONS,
   SORT_DIRECTIONS,
   STAFF_ROLES,
@@ -9,6 +13,9 @@ import {
   SUPER_ADMIN_ROLE,
   USER_ROLES,
   USER_STATUSES,
+  type InvitationStatus,
+  type OrganizationKind,
+  type OrganizationRole,
   type Population,
   type Role,
   type StaffRole,
@@ -62,6 +69,9 @@ describe("enums", () => {
       USER_ROLES,
       USER_STATUSES,
       SORT_DIRECTIONS,
+      ORGANIZATION_KINDS,
+      ORGANIZATION_ROLES,
+      INVITATION_STATUSES,
     ]) {
       expect(new Set(values).size).toBe(values.length);
     }
@@ -74,6 +84,48 @@ describe("enums", () => {
     expect(schema.safeParse("customer").success).toBe(false);
   });
 
+  it("declares the organization kinds and membership roles (ADR-0067 §2)", () => {
+    expect(ORGANIZATION_KINDS).toEqual(["personal", "team"]);
+    expect(ORGANIZATION_ROLES).toEqual(["owner", "admin", "member"]);
+  });
+
+  it("names the role an organization must always keep one of (ADR-0067 §2)", () => {
+    expect(ORGANIZATION_OWNER_ROLE).toBe("owner");
+    expect(ORGANIZATION_ROLES).toContain(ORGANIZATION_OWNER_ROLE);
+  });
+
+  it("keeps membership roles apart from the account's own roles (ADR-0067 §2)", () => {
+    // A user role is a property of the account; a membership role is a
+    // property of one (account, organization) pair. Any overlap here would
+    // invite a guard to read one where it meant the other.
+    for (const role of ORGANIZATION_ROLES) {
+      expect(USER_ROLES).not.toContain(role);
+    }
+  });
+
+  it("declares the derived invitation statuses, `expired` among them", () => {
+    expect(INVITATION_STATUSES).toEqual([
+      "pending",
+      "accepted",
+      "declined",
+      "revoked",
+      "expired",
+    ]);
+    // The reason this tuple is not a `pgEnum`: no column can hold `expired`,
+    // which becomes true as the clock passes `expires_at` with no row written.
+    expect(INVITATION_STATUSES).toContain("expired");
+  });
+
+  it("narrows to the invitable roles, which exclude owner (ADR-0067 §2)", () => {
+    const invitable = z
+      .enum(ORGANIZATION_ROLES)
+      .exclude([ORGANIZATION_OWNER_ROLE]);
+
+    expect(invitable.parse("admin")).toBe("admin");
+    expect(invitable.parse("member")).toBe("member");
+    expect(invitable.safeParse("owner").success).toBe(false);
+  });
+
   it("derives the unions from the arrays rather than restating them", () => {
     const population: Population = "staff";
     const staffRole: StaffRole = "manager";
@@ -81,6 +133,9 @@ describe("enums", () => {
     const staffStatus: StaffStatus = "invited";
     const userStatus: UserStatus = "pending_verification";
     const anyRole: Role = staffRole;
+    const organizationKind: OrganizationKind = "personal";
+    const organizationRole: OrganizationRole = "owner";
+    const invitationStatus: InvitationStatus = "pending";
 
     expect([
       population,
@@ -89,6 +144,9 @@ describe("enums", () => {
       staffStatus,
       userStatus,
       anyRole,
-    ]).toHaveLength(6);
+      organizationKind,
+      organizationRole,
+      invitationStatus,
+    ]).toHaveLength(9);
   });
 });

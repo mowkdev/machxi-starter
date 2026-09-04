@@ -247,6 +247,13 @@ export const RESTRICTED_SCHEMA_TABLE_IMPORTS = [
   // enforces the same thing twice over since ADR-0061 §2.
   "auditEvents",
   "impersonationHandoffs",
+  // The tenant and what it owns (ADR-0067). Nothing above a repository reaches
+  // a table, and these three least of all: an organization query without its
+  // scope is a cross-tenant read, and the only file that can forget the scope
+  // is the one file allowed to write the query.
+  "organizationInvitations",
+  "organizationMemberships",
+  "organizations",
   "sessions",
   "staff",
   "staffRoles",
@@ -268,6 +275,8 @@ const noSchemaTables = [
       "schema",
       ...RESTRICTED_SCHEMA_TABLE_IMPORTS,
       "auditActorTypeEnum",
+      "organizationKindEnum",
+      "organizationRoleEnum",
       "principalTypeEnum",
       "staffRoleEnum",
       "staffStatusEnum",

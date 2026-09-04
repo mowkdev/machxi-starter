@@ -4,6 +4,8 @@ import { uuidv7 } from "uuidv7";
 import {
   GRID_DENSITIES,
   LOCALES,
+  ORGANIZATION_KINDS,
+  ORGANIZATION_ROLES,
   POPULATIONS,
   STAFF_ROLES,
   STAFF_STATUSES,
@@ -113,3 +115,27 @@ export const localeEnum = pgEnum("locale", LOCALES);
  * two values by decision, and a third rung would be a different control.
  */
 export const gridDensityEnum = pgEnum("grid_density", GRID_DENSITIES);
+
+/**
+ * The organization enums (ADR-0067 §2), built from the `@repo/contracts`
+ * tuples like every other one here.
+ *
+ * `organization_role` is deliberately **not** `user_role`, although both name
+ * what somebody is allowed to do. A user role is a property of the account
+ * across the whole system; a membership role is a property of one (account,
+ * organization) pair, and the day `user_role` grows `premium` that value must
+ * not become something a membership can hold. Two types, two tuples.
+ *
+ * There is no `invitation_status` type: an invitation's state is read from its
+ * timestamps, and `expired` is the state no column can hold — it becomes true
+ * as the clock passes `expires_at`, with no row written (ADR-0067 §2, and
+ * `INVITATION_STATUSES` in `@repo/contracts` says the same in place).
+ */
+export const organizationKindEnum = pgEnum(
+  "organization_kind",
+  ORGANIZATION_KINDS,
+);
+export const organizationRoleEnum = pgEnum(
+  "organization_role",
+  ORGANIZATION_ROLES,
+);

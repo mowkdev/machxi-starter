@@ -54,3 +54,18 @@ export const DEV_USERS = [
     status: "disabled",
   },
 ] as const;
+
+/**
+ * The one `team` organization the fixtures create (ADR-0067 §2).
+ *
+ * A known slug, because the Postman collection addresses it by name and a
+ * generated one would have to be discovered by a request that exists only to
+ * find it. Owned by the first `--dev` customer, who is also the account
+ * Postman signs in as, so the collection can run the owner-only paths
+ * top-to-bottom without inventing a membership.
+ */
+export const DEV_TEAM_ORGANIZATION = {
+  slug: "acme",
+  name: "Acme Inc.",
+  ownerEmail: DEV_USERS[0].email,
+} as const;

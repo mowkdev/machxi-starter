@@ -3,7 +3,7 @@ import {
   LIST_{{constantCase plural}}_SORTABLE,
 } from "@repo/contracts";
 import { {{camelCase plural}} } from "@repo/db";
-import { uncoveredListColumns } from "@repo/db/testing";
+import { {{#if organizationScoped}}TENANT_SCOPE_COLUMN, {{/if}}uncoveredListColumns } from "@repo/db/testing";
 import { describe, expect, it } from "vitest";
 
 import { listColumns, searchColumns } from "../{{kebabCase plural}}.repository.js";
@@ -21,7 +21,20 @@ import type { PgColumn } from "drizzle-orm/pg-core";
  *
  * The map is imported rather than restated, so what is checked is what the
  * repository actually builds requests from.
+{{#if organizationScoped}}
+ *
+ * This table is tenant-owned, so every claim below carries `scopedBy`: its
+ * indexes are led by `organization_id` and an index led by the scope covers
+ * its **second** column (ADR-0067 §1). Drop the option and every sortable
+ * column reads as uncovered, which is the tension ADR-0063 §3 recorded before
+ * ADR-0067 settled it.
+{{/if}}
  */
+
+{{#if organizationScoped}}
+/** Passed with every claim, so the scope is stated once rather than four times. */
+const scopedBy = TENANT_SCOPE_COLUMN;
+{{/if}}
 
 const columnFor = (field: string): PgColumn => {
   const column = listColumns[field];
@@ -41,32 +54,39 @@ const filterableColumns = Object.keys(LIST_{{constantCase plural}}_FILTERABLE).m
 describe("the {{plural}} list allow-lists and the {{plural}} indexes (ADR-0060 §3)", () => {
   it("gives every sortable column a complete btree index", () => {
     expect(
-      uncoveredListColumns({{camelCase plural}}, { ordered: sortableColumns }).ordered,
+      uncoveredListColumns({{camelCase plural}}, { {{#if organizationScoped}}scopedBy, {{/if}}ordered: sortableColumns })
+        .ordered,
     ).toEqual([]);
   });
 
   it("gives every filterable column an index, partial ones counting", () => {
     expect(
-      uncoveredListColumns({{camelCase plural}}, { filtered: filterableColumns }).filtered,
+      uncoveredListColumns({{camelCase plural}}, { {{#if organizationScoped}}scopedBy, {{/if}}filtered: filterableColumns })
+        .filtered,
     ).toEqual([]);
   });
 
   it("gives every column q searches a GIN index", () => {
     expect(
-      uncoveredListColumns({{camelCase plural}}, { searched: [...searchColumns] }).searched,
+      uncoveredListColumns({{camelCase plural}}, { {{#if organizationScoped}}scopedBy, {{/if}}searched: [...searchColumns] })
+        .searched,
     ).toEqual([]);
   });
 
   /** The negative case: without it the three above could pass vacuously. */
   it("reports a column that claims an order nothing serves", () => {
     expect(
-      uncoveredListColumns({{camelCase plural}}, { ordered: [{{camelCase plural}}.description] })
-        .ordered,
+      uncoveredListColumns({{camelCase plural}}, {
+        {{#if organizationScoped}}scopedBy,
+        {{/if}}ordered: [{{camelCase plural}}.description],
+      }).ordered,
     ).toEqual(["description"]);
 
     expect(
-      uncoveredListColumns({{camelCase plural}}, { searched: [{{camelCase plural}}.description] })
-        .searched,
+      uncoveredListColumns({{camelCase plural}}, {
+        {{#if organizationScoped}}scopedBy,
+        {{/if}}searched: [{{camelCase plural}}.description],
+      }).searched,
     ).toEqual(["description"]);
   });
 });

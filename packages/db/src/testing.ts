@@ -82,6 +82,14 @@ export const migrateFreshDatabase = async (url: string): Promise<void> => {
  */
 export const TRUNCATED_TABLES = [
   "sessions",
+  // The tenant and what it owns (ADR-0067 §2). `organizations` alone would be
+  // enough by cascade, and all three are named for the reason the settings
+  // tables below are: this list is read as "every application table", and a
+  // table cleaned only as a side effect of somebody else's constraint is a
+  // leak waiting for the day that constraint changes.
+  "organization_invitations",
+  "organization_memberships",
+  "organizations",
   // Foreign-key-free too (ADR-0057 §2), so `cascade` never reaches it either:
   // a handoff row minted by one integration file would otherwise still be
   // consumable in the next.
@@ -171,6 +179,46 @@ export const truncateAllWithOwner = async (ownerUrl: string): Promise<void> => {
 };
 
 /**
+ * Every table that carries an `organization_id` (ADR-0067 §5), in one list.
+ *
+ * The third hand-maintained enumeration, beside `TRUNCATED_TABLES` above and
+ * `RESTRICTED_SCHEMA_TABLE_IMPORTS` in `packages/config-eslint/api.js`, and
+ * checked by the same test (ADR-0061 §4): every table with the column is in
+ * here, negative case included.
+ *
+ * It exists because the property it names is one no lint rule can see. ESLint
+ * can stop a table being imported outside its repository — it does — but it
+ * cannot tell whether the query inside that repository carries the tenant. So
+ * the list is what "unscoped is a compile error" is checked against: a
+ * repository over a listed table takes the organization id as its first,
+ * required parameter, and the one sanctioned exception is a read scoped by the
+ * **principal** rather than by the tenant (the switcher's "which organizations
+ * do I belong to", which reads `organization_memberships` by `user_id`).
+ *
+ * `organizations` itself is **not** here: it is the tenant, not something a
+ * tenant owns, which is also why it keeps ADR-0060 §3's bare index pairs while
+ * everything in this list is indexed tenant-led (ADR-0067 §1).
+ */
+export const TENANT_OWNED_TABLES = [
+  "organization_invitations",
+  "organization_memberships",
+] as const;
+
+/**
+ * The tenant column, said once — as the schema **declares** it.
+ *
+ * `organizationId`, not `organization_id`: `getTableConfig` reports the key a
+ * table was declared with, and the physical `organization_id` is produced by
+ * the client's `casing: 'snake_case'` setting at query time (ADR-0006). Every
+ * name {@link indexCoverage} deals in is on that side of the line, which is
+ * also why a `ColumnMap` compares cleanly against it.
+ *
+ * What a scoped table's indexes lead with, and what a `scopedBy` claim passes
+ * to {@link indexCoverage} (ADR-0067 §1).
+ */
+export const TENANT_SCOPE_COLUMN = "organizationId";
+
+/**
  * What an allow-list needs on the other side: which columns the table declares
  * an index for, and of which kind (ADR-0060 §3).
  *
@@ -213,8 +261,32 @@ export interface IndexCoverage {
  * ADR-0060 §3 asked for a set comparison naming the columns that claim an
  * order nothing serves, and deliberately not for a query planner in a test.
  */
-export const indexCoverage = (table: PgTable): IndexCoverage => {
+export interface IndexCoverageOptions {
+  /**
+   * The tenant column as the schema declares it — `"organizationId"` on every
+   * table ADR-0067 §1 calls tenant-owned, `organization_id` once the client's
+   * snake_case casing has been applied.
+   *
+   * Naming it changes **which column an index is attributed to**: on a scoped
+   * table an index led by the scope covers its *second* column, because every
+   * query on such a table filters by the scope first and the composite
+   * `(organization_id, column, id)` is the pagination key itself. Without the
+   * option a tenant-led index reads as coverage of `organizationId` and every
+   * sortable column reads as uncovered — the tension ADR-0063 §3 recorded and
+   * ADR-0067 §1 settles by dropping the bare pairs and teaching this reader
+   * the scope.
+   *
+   * The scope column itself stays covered either way: an index leads with it.
+   */
+  readonly scopedBy?: string | undefined;
+}
+
+export const indexCoverage = (
+  table: PgTable,
+  options: IndexCoverageOptions = {},
+): IndexCoverage => {
   const config = getTableConfig(table);
+  const { scopedBy } = options;
   const ordered = new Set<string>();
   const filtered = new Set<string>();
   const searched = new Set<string>();
@@ -224,35 +296,78 @@ export const indexCoverage = (table: PgTable): IndexCoverage => {
     filtered.add(name);
   };
 
+  /**
+   * Which columns a btree index over `columns` is coverage *of*.
+   *
+   * The leading one — and, on a scoped table whose leading column is the
+   * scope, the **second** one as well. Both, not the second instead of the
+   * first: `(organization_id, name, id)` orders `name` inside an organization
+   * *and* still serves a filter on `organization_id`, which is what the
+   * `requireMembership` lookup reads.
+   */
+  const attributionsOf = (names: readonly string[]): string[] => {
+    const [first, second] = names;
+
+    if (first === undefined) return [];
+    if (scopedBy !== undefined && first === scopedBy && second !== undefined) {
+      return [first, second];
+    }
+
+    return [first];
+  };
+
+  /**
+   * The declared column names of an index or key entry, in order.
+   *
+   * An expression entry (a bare `SQL`) has no single column to attribute, and
+   * nothing in this schema declares one; if that changes, the column it stands
+   * for is named explicitly rather than guessed at here.
+   */
+  const namesOf = (columns: readonly unknown[]): string[] =>
+    columns.flatMap((column) => {
+      if (column === null || typeof column !== "object") return [];
+      if (!("name" in column)) return [];
+
+      const { name } = column as { name: unknown };
+
+      return typeof name === "string" ? [name] : [];
+    });
+
   for (const column of config.columns) {
     if (column.isUnique || column.primary) addComplete(column.name);
   }
 
-  for (const constraint of config.uniqueConstraints) {
-    const [first] = constraint.columns;
+  // A composite primary key is a btree index like any other, which is what
+  // `organization_memberships` is ordered by: it has no surrogate id, so its
+  // `(organization_id, user_id)` key is the pagination key of its members list
+  // (ADR-0067 §2).
+  for (const key of config.primaryKeys) {
+    for (const name of attributionsOf(namesOf(key.columns))) addComplete(name);
+  }
 
-    if (first !== undefined) addComplete(first.name);
+  for (const constraint of config.uniqueConstraints) {
+    for (const name of attributionsOf(namesOf(constraint.columns))) {
+      addComplete(name);
+    }
   }
 
   for (const index of config.indexes) {
-    const [first] = index.config.columns;
-
-    // An expression index (a bare `SQL`) has no single column to attribute,
-    // and nothing in this schema declares one; if that changes, the column it
-    // stands for is named explicitly rather than guessed at here.
-    if (first === undefined || !("name" in first)) continue;
-
-    const name = first.name;
-
-    if (typeof name !== "string") continue;
+    const names = namesOf(index.config.columns);
 
     if (index.config.method === "gin") {
-      searched.add(name);
+      // A GIN index is never composite here — `ilike '%term%'` reads one
+      // column — so the scope never leads one and the attribution is the
+      // leading name, scoped table or not.
+      const [first] = names;
+
+      if (first !== undefined) searched.add(first);
       continue;
     }
 
-    if (index.config.where === undefined) addComplete(name);
-    else filtered.add(name);
+    for (const name of attributionsOf(names)) {
+      if (index.config.where === undefined) addComplete(name);
+      else filtered.add(name);
+    }
   }
 
   return { ordered, filtered, searched };
@@ -279,13 +394,13 @@ export const uncoveredListColumns = (
     readonly ordered?: readonly PgColumn[];
     readonly filtered?: readonly PgColumn[];
     readonly searched?: readonly PgColumn[];
-  },
+  } & IndexCoverageOptions,
 ): {
   readonly ordered: readonly string[];
   readonly filtered: readonly string[];
   readonly searched: readonly string[];
 } => {
-  const coverage = indexCoverage(table);
+  const coverage = indexCoverage(table, { scopedBy: claims.scopedBy });
   const missing = (
     columns: readonly PgColumn[] | undefined,
     covered: ReadonlySet<string>,

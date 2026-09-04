@@ -10,6 +10,8 @@ export {
   citext,
   gridDensityEnum,
   localeEnum,
+  organizationKindEnum,
+  organizationRoleEnum,
   primaryId,
   principalTypeEnum,
   staffRoleEnum,
@@ -31,6 +33,14 @@ export {
   users,
   usersRelations,
 } from "./users.js";
+export {
+  organizationInvitations,
+  organizationInvitationsRelations,
+  organizationMemberships,
+  organizationMembershipsRelations,
+  organizations,
+  organizationsRelations,
+} from "./organizations.js";
 export { sessions } from "./sessions.js";
 export { impersonationHandoffs } from "./impersonation.js";
 export { auditEvents } from "./audit.js";

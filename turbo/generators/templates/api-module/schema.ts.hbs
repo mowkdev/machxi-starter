@@ -1,6 +1,9 @@
 import { index, pgTable, text{{#if organizationScoped}}, uuid{{/if}} } from "drizzle-orm/pg-core";
 
 import { primaryId, timestamps } from "./_shared.js";
+{{#if organizationScoped}}
+import { organizations } from "./organizations.js";
+{{/if}}
 
 /**
  * `{{snakeCase plural}}` (ADR-0006).
@@ -20,11 +23,13 @@ export const {{camelCase plural}} = pgTable(
      * `not null` and never nullable: a nullable tenant column grows a null
      * branch in every query, and the null branch is where the leaks live.
      *
-     * **The foreign key lands with `organizations` itself**, which ADR-0067
-     * builds at D15 — add `.references(() => organizations.id)` in the same
-     * migration that creates that table.
+     * `cascade`, as every tenant-owned table does: deleting an organization for
+     * real takes what it owned with it. The application soft-deletes instead
+     * (ADR-0067 §3), so this fires only where a hard delete is deliberate.
      */
-    organizationId: uuid().notNull(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
 {{/if}}
     name: text().notNull(),
     /** `null` is "none given", which is a different fact from `''`. */
@@ -34,22 +39,23 @@ export const {{camelCase plural}} = pgTable(
   (table) => [
 {{#if organizationScoped}}
     /*
-     * Led by the tenant column (ADR-0067 §1): every query on this table filters
-     * by `organization_id` first, so it is the leading column of the index that
-     * serves the list rather than an afterthought appended to it — and there is
-     * one per order the endpoint offers, because a tenant-led index on
-     * `created_at` does nothing for `ORDER BY updated_at` inside the same
-     * organization.
+     * Led by the tenant column, one per order the endpoint offers, and **no
+     * bare `(column, id)` pairs beside them** (ADR-0067 §1).
      *
-     * **These do not replace the bare pairs below, and that is a tension worth
-     * knowing about.** `indexCoverage` in `@repo/db/testing` attributes an index
-     * to its *leading* column only (ADR-0060 §3 asked for a set comparison, not
-     * a planner), so under a tenant-led index alone every `sortable` column
-     * reads as uncovered and the generated `list-indexes.test.ts` reddens. Both
-     * sets are therefore declared: the tenant-led ones are what a tenant query
-     * actually reads, the bare ones are what the rule can see. Which of the two
-     * gives way is ADR-0067's to decide when D15 builds it; a generator must not
-     * settle it by dropping whichever set is inconvenient.
+     * Every query on this table filters by `organization_id` first, so the
+     * tenant column is the leading column of the index that serves the list
+     * rather than an afterthought appended to it — and there is one composite
+     * per order, because a tenant-led index on `created_at` does nothing for
+     * `ORDER BY updated_at` inside the same organization.
+     *
+     * The bare pairs `organizations` itself declares are absent here on
+     * purpose. ADR-0063 §3 recorded the tension: `indexCoverage` in
+     * `@repo/db/testing` attributed an index to its *leading* column, so under
+     * tenant-led indexes alone every `sortable` column read as uncovered and
+     * both sets had to be declared. ADR-0067 §1 settled it the other way —
+     * a query on a tenant table never orders unscoped, so a bare index would
+     * never be read — and taught the checker the scope through `scopedBy`,
+     * which the generated `list-indexes.test.ts` passes.
      */
     index("{{snakeCase plural}}_organization_id_created_at_idx").on(
       table.organizationId,
@@ -66,7 +72,7 @@ export const {{camelCase plural}} = pgTable(
       table.name,
       table.id,
     ),
-{{/if}}
+{{else}}
     /*
      * One btree index per sortable column, composite with `id` (ADR-0060 §3):
      * `applyListQuery` appends `asc(id)` to every `ORDER BY`, so `(column, id)`
@@ -76,10 +82,12 @@ export const {{camelCase plural}} = pgTable(
     index("{{snakeCase plural}}_created_at_idx").on(table.createdAt, table.id),
     index("{{snakeCase plural}}_updated_at_idx").on(table.updatedAt, table.id),
     index("{{snakeCase plural}}_name_idx").on(table.name, table.id),
+{{/if}}
     /*
      * What `q` searches (ADR-0060 §3). `ilike '%term%'` reads no btree index,
      * so each searched column gets a `pg_trgm` GIN one — the extension arrives
-     * by migration and is already in the tree.
+     * by migration and is already in the tree. A GIN index is never composite,
+     * so it is the same declaration scoped or not.
      */
     index("{{snakeCase plural}}_name_trgm_idx").using(
       "gin",

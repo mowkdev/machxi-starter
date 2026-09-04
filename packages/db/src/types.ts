@@ -3,6 +3,9 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type {
   auditEvents,
   impersonationHandoffs,
+  organizationInvitations,
+  organizationMemberships,
+  organizations,
   sessions,
   staff,
   staffRoles,
@@ -72,3 +75,27 @@ export type NewStaffSettings = InferInsertModel<typeof staffSettings>;
 
 export type UserSettings = InferSelectModel<typeof userSettings>;
 export type NewUserSettings = InferInsertModel<typeof userSettings>;
+
+/**
+ * The tenant and what it owns (ADR-0067 §2).
+ *
+ * `OrganizationInvitation` has no `status`: the row's state is read from its
+ * timestamps, and `expired` is the one state no column can hold. The wire form
+ * is `INVITATION_STATUSES` in `@repo/contracts`, which the mapper derives.
+ */
+export type Organization = InferSelectModel<typeof organizations>;
+export type NewOrganization = InferInsertModel<typeof organizations>;
+
+export type OrganizationMembership = InferSelectModel<
+  typeof organizationMemberships
+>;
+export type NewOrganizationMembership = InferInsertModel<
+  typeof organizationMemberships
+>;
+
+export type OrganizationInvitation = InferSelectModel<
+  typeof organizationInvitations
+>;
+export type NewOrganizationInvitation = InferInsertModel<
+  typeof organizationInvitations
+>;

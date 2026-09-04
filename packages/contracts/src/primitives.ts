@@ -85,3 +85,78 @@ export const MAX_NAME_LENGTH = 100;
 
 /** A first or last name: trimmed, non-empty, bounded. */
 export const nameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH);
+
+/**
+ * Slug bounds (ADR-0067 §2). The lower bound keeps a slug typeable and
+ * memorable rather than a single letter; the upper is a DNS label, which is
+ * the shape a slug is most likely to end up in one day (`acme.example.com`)
+ * and costs nothing to respect now.
+ */
+export const MIN_SLUG_LENGTH = 2;
+export const MAX_SLUG_LENGTH = 63;
+
+/**
+ * The pattern a slug must match: lower-case letters, digits and single inner
+ * hyphens.
+ *
+ * Anchored, and written as one expression rather than a chain of `.refine`s so
+ * the failure is one message rather than three. A leading or trailing hyphen
+ * and a doubled hyphen are all excluded by construction: the body is
+ * `[a-z0-9]` groups joined by exactly one `-`.
+ */
+export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Prefixes a user may not choose, because the system derives slugs with them.
+ *
+ * `personal-` is the derivation every personal organization's slug uses
+ * (ADR-0067 §2), and the collision would not fail loudly: a create takes the
+ * partial unique index as its `onConflictDoNothing` target and then reads the
+ * row back filtering `kind = 'personal'`, so a squatted slug would make a
+ * personal organization **silently not exist** — the one invariant the whole
+ * record rests on, broken with no error and no log line. Guessing a victim's
+ * UUIDv7 is not feasible, so this is robustness rather than a live attack; it
+ * costs one rule, and it also stops a `team` organization from posing as
+ * somebody's personal one in a pasted link.
+ */
+export const RESERVED_SLUG_PREFIXES = ["personal-"] as const;
+
+/**
+ * An organization's URL name (ADR-0067 §2, §6).
+ *
+ * Trimmed and lower-cased before validation, the way {@link emailSchema} is:
+ * the column is `citext` so uniqueness is already case-insensitive, and
+ * normalising here keeps the *stored* value canonical so a link built from a
+ * row is the same link every time.
+ *
+ * It is the customer app's URL segment — `/orgs/$orgSlug` — which is why the
+ * pattern is this narrow: anything that needs percent-encoding to appear in a
+ * path is a slug that reads differently in the address bar than in the
+ * database.
+ */
+export const slugSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(
+    z
+      .string()
+      .min(MIN_SLUG_LENGTH)
+      .max(MAX_SLUG_LENGTH)
+      /*
+       * No message of its own, on purpose (ADR-0046 §6). A schema-level
+       * `error` wins over every map a client can install, so a sentence here
+       * would be the one field rule in this package an operator cannot read
+       * in their own language. The bare `.regex()` raises a generic
+       * `invalid_format` issue, which zod's own locale map already speaks.
+       */
+      .regex(SLUG_PATTERN)
+      /*
+       * Keyless like the rule above, and for the same reason (ADR-0046 §6): a
+       * schema-level `error` beats every locale map a client can install.
+       */
+      .refine(
+        (value) =>
+          !RESERVED_SLUG_PREFIXES.some((prefix) => value.startsWith(prefix)),
+      ),
+  );

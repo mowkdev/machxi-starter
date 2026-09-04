@@ -1,6 +1,7 @@
 import { and, inArray, isNull } from "drizzle-orm";
 
 import { userRoles, users } from "../../src/index.js";
+import { ensurePersonalOrganizations } from "../organizations.js";
 import type { Seeder } from "../types.js";
 import { DEV_PASSWORD, DEV_USERS } from "./fixtures.js";
 
@@ -40,7 +41,12 @@ export const devUsersSeeder: Seeder = {
     // rows — one deleted, one live — and granting `customer` to the dead one
     // is both pointless and an over-count in the line this seeder logs.
     const rows = await db
-      .select({ id: users.id, email: users.email })
+      .select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
       .from(users)
       .where(
         and(
@@ -61,8 +67,14 @@ export const devUsersSeeder: Seeder = {
         .onConflictDoNothing();
     }
 
+    // Every path that creates a user creates their personal organization
+    // (ADR-0067 §2). The seeders are one of the three, so the fixtures carry
+    // the same invariant the API does rather than being the one population in
+    // the database that breaks it.
+    const organizations = await ensurePersonalOrganizations(db, rows);
+
     log(
-      `${String(rows.length)} user fixture(s) present, password ${DEV_PASSWORD}`,
+      `${String(rows.length)} user fixture(s) present with ${String(organizations)} personal organization(s), password ${DEV_PASSWORD}`,
     );
   },
 };

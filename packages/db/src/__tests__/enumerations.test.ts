@@ -1,14 +1,18 @@
 import { RESTRICTED_SCHEMA_TABLE_IMPORTS } from "@repo/eslint-config/api";
 import { getTableName, is } from "drizzle-orm";
-import { PgTable } from "drizzle-orm/pg-core";
+import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import * as schema from "../schema/index.js";
-import { TRUNCATED_TABLES } from "../testing.js";
+import {
+  TENANT_OWNED_TABLES,
+  TENANT_SCOPE_COLUMN,
+  TRUNCATED_TABLES,
+} from "../testing.js";
 
 /**
- * The two hand-maintained table enumerations, checked against the schema
- * (ADR-0061 §4).
+ * The three hand-maintained table enumerations, checked against the schema
+ * (ADR-0061 §4, ADR-0067 §5).
  *
  * Neither list has a compiler behind it, and both fail **silently** when a
  * table escapes them:
@@ -21,6 +25,10 @@ import { TRUNCATED_TABLES } from "../testing.js";
  *     between integration files (ADR-0021). A table missing from it leaks rows
  *     from one file into the next, and the suite stays green until the day two
  *     files disagree about a count.
+ *   * `TENANT_OWNED_TABLES` in `src/testing.ts` is what "unscoped is a compile
+ *     error" is checked against (ADR-0067 §5). A tenant table missing from it
+ *     is a table nothing asks the scope of, and the leak it hides is a
+ *     cross-tenant read that every test passes.
  *
  * This is exactly the machine-checkable minutia [ADR-0050] says belongs in a
  * test rather than in a record — so the record says "a test does this" and
@@ -56,6 +64,43 @@ const missingFrom = (
   expected: readonly string[],
 ): string[] => expected.filter((name) => !actual.includes(name));
 
+/**
+ * The physical names of every table carrying the tenant column (ADR-0067 §5).
+ *
+ * Read from the schema rather than from a list, which is the point: the list
+ * is what this is compared against.
+ *
+ * **Two ways of recognising one, and the foreign key is the load-bearing
+ * half.** A name check alone reads the column key, which is `organizationId`
+ * only because nothing in this schema spells a column name explicitly
+ * (`_shared.ts`); the day somebody writes `uuid("organization_id")` or calls
+ * the property something else, a name check would let the table out of
+ * `TENANT_OWNED_TABLES` **silently** — the exact failure this file exists to
+ * make loud. A foreign key to `organizations` cannot be spelled around, so it
+ * is what the union really rests on; the name check stays beside it for a
+ * table that scopes without declaring a constraint.
+ */
+const referencesOrganizations = (table: PgTable): boolean =>
+  getTableConfig(table).foreignKeys.some(
+    (key) => key.reference().foreignTable === schema.organizations,
+  );
+
+const declaresScopeColumn = (table: PgTable): boolean =>
+  getTableConfig(table).columns.some(
+    (column) => column.name === TENANT_SCOPE_COLUMN,
+  );
+
+const scopedTableNames = tableExports
+  .filter(
+    ([, table]) =>
+      // `organizations` references `users`, not itself, so the tenant is not
+      // caught by its own rule (ADR-0067 §1: it is the tenant, not a thing a
+      // tenant owns).
+      table !== schema.organizations &&
+      (declaresScopeColumn(table) || referencesOrganizations(table)),
+  )
+  .map(([, table]) => getTableName(table));
+
 describe("the schema's tables", () => {
   it("are what this test compares against — a non-empty, named set", () => {
     // The guard that keeps the two assertions below from passing vacuously if
@@ -63,6 +108,9 @@ describe("the schema's tables", () => {
     // missing from nothing.
     expect(tableExports.length).toBeGreaterThan(0);
     expect(tableExports.map(([name]) => name)).toContain("auditEvents");
+    // The same guard for the scoped subset: an empty one is missing from
+    // nothing, and the tenancy assertions below would pass vacuously.
+    expect(scopedTableNames.length).toBeGreaterThan(0);
   });
 
   it("are every one of them banned from services and controllers (ADR-0009, ADR-0058)", () => {
@@ -89,6 +137,29 @@ describe("the schema's tables", () => {
     ).toEqual([]);
   });
 
+  it("are every one of the scoped ones in TENANT_OWNED_TABLES (ADR-0067 §5)", () => {
+    const missing = missingFrom(TENANT_OWNED_TABLES, scopedTableNames);
+
+    expect(
+      missing,
+      `add these to TENANT_OWNED_TABLES in packages/db/src/testing.ts: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("carry the scope column TENANT_OWNED_TABLES claims for them", () => {
+    // The other direction, which `missingFrom` deliberately does not cover.
+    // For the two lists above an entry the schema does not hold fails
+    // elsewhere — ESLint rejects an unknown import name, a truncate of a
+    // missing table errors. This one has no such second line of defence: a
+    // table listed here that carries no `organization_id` would silently make
+    // every reviewer look for a scope that cannot exist.
+    expect([...TENANT_OWNED_TABLES].sort()).toEqual(
+      TENANT_OWNED_TABLES.filter((name) =>
+        scopedTableNames.includes(name),
+      ).sort(),
+    );
+  });
+
   it("would be reported by name if a list lost one — the negative case", () => {
     // The assertions above are only worth their runtime if they fail when the
     // thing they check is false. Proved here rather than by commenting a line
@@ -110,5 +181,9 @@ describe("the schema's tables", () => {
         tableExports.map(([, table]) => getTableName(table)),
       ),
     ).toEqual([firstTruncated]);
+
+    const [firstScoped, ...restScoped] = TENANT_OWNED_TABLES;
+
+    expect(missingFrom(restScoped, scopedTableNames)).toEqual([firstScoped]);
   });
 });

@@ -1,7 +1,9 @@
 # ADR-0017: Identity model — two populations (staff, users) with roles
 
-- Status: accepted
+- Status: superseded by [ADR-0067](0067-organizations.md) (delta: the identity model gains an owning entity and a membership relation; both populations, their tables, their roles and every invariant here stand)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-04 by [ADR-0067](0067-organizations.md)**, at the head of `D15.1`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and a narrow one: this record decided that staff and users are separate tables with separate roles and separate segments, that an account may hold several roles, that `citext` is what makes an address one account, and that the last super admin cannot be removed — **all of that stands and is in force**. What 0067 adds is what a user's data *belongs to*, which this record decides nothing about because in its model nothing owns anything: an `organizations` table, an `organization_memberships` relation with its own role tuple, and the rule that every path creating a user creates a personal organization in the same transaction. The membership role is deliberately **not** a user role — 0067 §2 says why — so `USER_ROLES` is untouched. Read 0067 §1–§5 for the tenant; read this record for the two populations.
 
 ## Context
 
