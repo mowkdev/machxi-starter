@@ -70,6 +70,23 @@ jobs:
       - name: Install Chromium
         run: pnpm --filter admin exec playwright install --with-deps chromium
 
+      # The same SQL `docker/local` mounts into `docker-entrypoint-initdb.d`,
+      # run against the service container, exactly as `gate.yml` does it: the
+      # two roles and the test database (ADR-0007 as carried by ADR-0061 §1).
+      # Without it `db:setup` cannot connect — every tooling connection is
+      # `DATABASE_URL_OWNER` with no fallback (ADR-0008 as carried by
+      # ADR-0061 §1), and `machxi_owner` does not exist until this runs.
+      - name: Create the roles and the test database
+        # `PGPASSWORD` rather than the password in the URI alone: `01-test-db.sql`
+        # ends with a `c machxi_test`, and a reconnect that had to re-prompt
+        # would hang the job rather than fail it.
+        env:
+          PGPASSWORD: machxi
+        run: |
+          for f in docker/local/postgres/init/*.sql; do
+            psql "postgres://machxi@localhost:5432/machxi" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
       # The documented setup: migrate, seed the super admin from `.env`, then
       # the dev fixtures the customer specs sign in as (`--dev`).
       - name: Migrate and seed
