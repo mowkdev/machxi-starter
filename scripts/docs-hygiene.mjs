@@ -90,11 +90,30 @@ export function checkText(file, text) {
   return violations;
 }
 
+/**
+ * Paths this scan never walks, repo-relative and POSIX-separated.
+ *
+ * `.claude/worktrees/` is where a session parks a git worktree of this same
+ * repository: a whole second checkout, untracked, sitting inside a directory
+ * the inherited-document scan otherwise reads in full. Left in, every
+ * document in it is scanned twice — once as itself and once as somebody
+ * else's biography — and a worktree on a branch mid-step reddens this check
+ * for every session in the tree over files git does not track.
+ * `.git/info/exclude` and `.prettierignore` skip the same path.
+ */
+export const EXCLUDED_PATHS = [".claude/worktrees"];
+
+/** True for a path inside one of `EXCLUDED_PATHS` (or naming one). */
+export function isExcluded(rel) {
+  return EXCLUDED_PATHS.some((p) => rel === p || rel.startsWith(`${p}/`));
+}
+
 async function markdownUnder(dir, base) {
   const out = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     const rel = path.posix.join(base, entry.name);
+    if (isExcluded(rel)) continue;
     if (entry.isDirectory()) out.push(...(await markdownUnder(full, rel)));
     else if (entry.name.endsWith(".md")) out.push({ full, rel });
   }
@@ -259,7 +278,8 @@ export async function specDocuments(root = repoRoot) {
     .map((name) => ({
       full: path.join(dir, name),
       rel: path.posix.join(SPECS_DIR, name),
-    }));
+    }))
+    .filter(({ rel }) => !isExcluded(rel));
 }
 
 export async function scanSpecs(root = repoRoot) {

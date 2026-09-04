@@ -11,6 +11,14 @@ dist/
 dist-types/
 .next/
 
+# A session parks a git worktree of this same repository here: a whole second
+# checkout, untracked, on a branch that is usually mid-step. Formatting it is
+# formatting somebody else's working tree — `format:check` fails in every
+# session over files git does not track, and `format` would write into a branch
+# nobody in this tree is on. `.git/info/exclude` and `scripts/docs-hygiene.mjs`
+# skip the same path.
+.claude/worktrees/
+
 # shadcn/ui primitives are generated code that this repository owns rather than
 # depends on (ADR-0031). Upgrading one is "regenerate and diff", so the local
 # copy stays byte-identical to what the CLI emits — reformatting it would put

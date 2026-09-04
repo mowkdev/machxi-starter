@@ -9,6 +9,7 @@ import {
   checkSpec,
   checkText,
   inheritedDocuments,
+  isExcluded,
   scan,
   scanSpecs,
   specDocuments,
@@ -43,6 +44,21 @@ test("the scan covers .claude/** and the always-loaded summary", async () => {
   assert.ok(files.some((f) => f.startsWith(".claude/rules/")));
   assert.ok(files.some((f) => f.startsWith(".claude/agents/")));
   assert.ok(files.some((f) => f.startsWith(".claude/skills/")));
+});
+
+test("the scan skips a git worktree parked under .claude", async () => {
+  // `.claude/worktrees/` holds a second checkout of this repository, untracked
+  // and often mid-step on another branch. Scanned, its documents are read as
+  // somebody else's biography and redden this check for every session in the
+  // tree over files git does not track. The prefix must be a path segment: a
+  // file whose name merely starts with the same letters is still scanned.
+  assert.ok(isExcluded(".claude/worktrees"));
+  assert.ok(isExcluded(".claude/worktrees/specs/CLAUDE.md"));
+  assert.ok(!isExcluded(".claude/worktrees-and-why.md"));
+  assert.ok(!isExcluded(".claude/README.md"));
+
+  const files = (await inheritedDocuments()).map((f) => f.rel);
+  assert.ok(!files.some((f) => f.startsWith(".claude/worktrees/")));
 });
 
 // The behaviour specs (ADR-0068 §1): the real ones are clean, the scan
