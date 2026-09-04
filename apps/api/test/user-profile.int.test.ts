@@ -1,6 +1,6 @@
 import { successEnvelopeSchema } from "@repo/contracts";
-import { users } from "@repo/db";
-import { eq } from "drizzle-orm";
+import { organizationMemberships, organizations, users } from "@repo/db";
+import { and, eq } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -439,6 +439,58 @@ describe("user profile", () => {
       // `filter[status][eq]=active` is an allow-listed filter, and an
       // active-and-deleted account would satisfy it (ADR-0028).
       expect(after.body.data.status).toBe("disabled");
+    });
+
+    it("soft-deletes the account's personal organization in the same transaction", async () => {
+      // The admin path's twin (ADR-0067 §2): which actor closed the account
+      // does not change what happens to the organization that exists only for
+      // it.
+      const email = "closes.with.org@machxi.local";
+      const { id, tokens } = await freshUser(email);
+
+      const [before] = await harness.db.db
+        .select({ id: organizations.id, deletedAt: organizations.deletedAt })
+        .from(organizations)
+        .where(
+          and(
+            eq(organizations.createdBy, id),
+            eq(organizations.kind, "personal"),
+          ),
+        );
+
+      expect(before?.deletedAt).toBeNull();
+
+      await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      const [after] = await harness.db.db
+        .select({ deletedAt: organizations.deletedAt })
+        .from(organizations)
+        .where(eq(organizations.id, before?.id ?? ""));
+
+      expect(after?.deletedAt).toBeInstanceOf(Date);
+
+      const [account] = await harness.db.db
+        .select({ deletedAt: users.deletedAt })
+        .from(users)
+        .where(eq(users.id, id));
+
+      // One commit, so one timestamp: no window in which a closed account
+      // still has a live organization.
+      expect(after?.deletedAt?.toISOString()).toBe(
+        account?.deletedAt?.toISOString(),
+      );
+
+      // The membership survives — nothing cascades on a soft delete — which
+      // is why every read of it joins `organizations` and filters
+      // `deleted_at`.
+      const memberships = await harness.db.db
+        .select({ userId: organizationMemberships.userId })
+        .from(organizationMemberships)
+        .where(eq(organizationMemberships.organizationId, before?.id ?? ""));
+
+      expect(memberships).toEqual([{ userId: id }]);
     });
 
     it("ends every session, the caller's included", async () => {

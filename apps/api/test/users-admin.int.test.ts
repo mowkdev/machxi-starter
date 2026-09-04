@@ -3,8 +3,13 @@ import {
   listEnvelopeSchema,
   successEnvelopeSchema,
 } from "@repo/contracts";
-import { users } from "@repo/db";
-import { eq } from "drizzle-orm";
+import {
+  organizationMemberships,
+  organizations,
+  personalOrganizationSlug,
+  users,
+} from "@repo/db";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -106,6 +111,33 @@ describe("admin user administration", () => {
 
   const asAdmin = (path: string) =>
     request().get(path).set("Authorization", bearer(adminTokens.accessToken));
+
+  /* ── the tenant side of the account (ADR-0067 §2) ─────────────────────────── */
+
+  /** Every live organization, however many. */
+  const liveOrganizationCount = async (): Promise<number> => {
+    const [row] = await harness.db.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(organizations)
+      .where(isNull(organizations.deletedAt));
+
+    return row?.total ?? 0;
+  };
+
+  /** The account's personal organization, live or not. */
+  const personalOrganizationOf = async (userId: string) => {
+    const [row] = await harness.db.db
+      .select({ id: organizations.id, deletedAt: organizations.deletedAt })
+      .from(organizations)
+      .where(
+        and(
+          eq(organizations.createdBy, userId),
+          eq(organizations.kind, "personal"),
+        ),
+      );
+
+    return row;
+  };
 
   describe("the guard on every route (ADR-0019)", () => {
     const READ_ROUTES = [
@@ -279,6 +311,67 @@ describe("admin user administration", () => {
         .expect(200);
 
       expect(me.body.data.id).toBe(created.id);
+    });
+
+    it("creates a personal organization owned by the new account", async () => {
+      // The second of the three paths ADR-0067 §2 names, and it must produce
+      // exactly what registration's does — the same derivation, the same
+      // `owner` membership, in the same transaction as the account.
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "org.by.admin@machxi.local", firstName: "Ozzy" },
+      );
+
+      const [organization] = await harness.db.db
+        .select({
+          id: organizations.id,
+          slug: organizations.slug,
+          kind: organizations.kind,
+        })
+        .from(organizations)
+        .where(
+          and(
+            eq(organizations.createdBy, created.id),
+            isNull(organizations.deletedAt),
+          ),
+        );
+
+      expect(organization).toMatchObject({
+        kind: "personal",
+        slug: personalOrganizationSlug(created.id),
+      });
+
+      const memberships = await harness.db.db
+        .select({
+          userId: organizationMemberships.userId,
+          role: organizationMemberships.role,
+        })
+        .from(organizationMemberships)
+        .where(
+          eq(organizationMemberships.organizationId, organization?.id ?? ""),
+        );
+
+      expect(memberships).toEqual([{ userId: created.id, role: "owner" }]);
+    });
+
+    it("leaves the organization count unchanged when a duplicate is refused", async () => {
+      // The register path's twin, and true today for the same simpler reason:
+      // the insert conflicts and the transaction returns before the
+      // organization is created. Asserted so that a reordering cannot leave an
+      // orphan organization behind a `409`.
+      const before = await liveOrganizationCount();
+
+      await request()
+        .post(USERS_BASE)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({
+          email: FIXTURE_USERS.active,
+          password: NEW_ACCOUNT_PASSWORD,
+        })
+        .expect(409);
+
+      expect(await liveOrganizationCount()).toBe(before);
     });
 
     it("accepts an explicit status", async () => {
@@ -577,6 +670,51 @@ describe("admin user administration", () => {
       // `status` is written too, so it stays truthful on its own: an
       // active-and-deleted account would satisfy `filter[status][eq]=active`.
       expect(after.body.data.status).toBe("disabled");
+    });
+
+    it("soft-deletes the account's personal organization in the same transaction", async () => {
+      const target = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "delete.with.org@machxi.local" },
+      );
+
+      const before = await personalOrganizationOf(target.id);
+
+      expect(before?.deletedAt).toBeNull();
+
+      await remove(adminTokens.accessToken, target.id).expect(204);
+
+      const [row] = await harness.db.db
+        .select({
+          deletedAt: organizations.deletedAt,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, before?.id ?? ""));
+
+      // Stamped, and with the account's own timestamp: the two writes are one
+      // commit (ADR-0067 §2), so there is no window in which a closed account
+      // still has a live organization.
+      expect(row?.deletedAt).toBeInstanceOf(Date);
+
+      const [account] = await harness.db.db
+        .select({ deletedAt: users.deletedAt })
+        .from(users)
+        .where(eq(users.id, target.id));
+
+      expect(row?.deletedAt?.toISOString()).toBe(
+        account?.deletedAt?.toISOString(),
+      );
+
+      // The membership survives the soft delete — nothing cascades on it —
+      // which is why every read of it joins `organizations` and filters
+      // `deleted_at` rather than trusting the row's absence.
+      const memberships = await harness.db.db
+        .select({ userId: organizationMemberships.userId })
+        .from(organizationMemberships)
+        .where(eq(organizationMemberships.organizationId, before?.id ?? ""));
+
+      expect(memberships).toHaveLength(1);
     });
 
     it("ends every session and refuses the credential afterwards", async () => {

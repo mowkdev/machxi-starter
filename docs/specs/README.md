@@ -33,6 +33,6 @@ Proved by: `apps/api/test/….int.test.ts`, …          at least one, existing
 | [`impersonation.md`](impersonation.md)             | The mint, the handoff, the impersonated session, its exclusions and its exit           |
 | [`audit-log.md`](audit-log.md)                     | The append-only audit table and its two write disciplines                              |
 | [`health-and-metrics.md`](health-and-metrics.md)   | `/health/*` and `/metrics`, outside the limiters                                       |
-| [`organizations.md`](organizations.md)             | Organizations and memberships — the data invariants shipped so far; the routes follow  |
+| [`organizations.md`](organizations.md)             | Organizations and memberships: the personal organization's lifecycle and the guard     |
 
 A capability with a route and no row here is the finding, and the step that touches it next writes the file.

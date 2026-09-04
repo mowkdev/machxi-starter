@@ -29,6 +29,7 @@ import {
   withImpersonator,
   type IssuedAuthResource,
 } from "./auth.mapper.js";
+import type { OrganizationsService } from "../organizations/organizations.service.js";
 import type { SessionsRepository } from "./auth.repository.js";
 import type { TokenService } from "./auth.tokens.js";
 import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
@@ -188,8 +189,24 @@ export interface AuthServiceDeps {
    */
   readonly impersonators?: Pick<PrincipalAdapter, "findById"> | undefined;
   /**
+   * The organizations service narrowed to one function, wired on the **user**
+   * service only — a service-to-service edge of the kind ADR-0009 permits.
+   *
+   * `register` is one of the three paths that bring a user into existence, and
+   * ADR-0067 §2 requires all three to create the account's personal
+   * organization *in the same transaction*: that is what makes "no query
+   * anywhere has a no-organization branch" a property of the database rather
+   * than a habit. Absent on the staff service, because staff cannot
+   * self-register and are never members of an organization (§3) — a service
+   * that could not create one is a service that cannot accidentally create one
+   * for an operator.
+   */
+  readonly organizations?:
+    Pick<OrganizationsService, "ensurePersonalOrganizationFor"> | undefined;
+  /**
    * Runs `fn` inside one database transaction. Registration inserts an
-   * account, a role grant and a session; either all three land or none does.
+   * account, a role grant, its personal organization with an `owner`
+   * membership, and a session; either all of them land or none does.
    */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
@@ -208,6 +225,7 @@ export const createAuthService = ({
   rotationGraceSec,
   impersonationSessionTtlSec,
   impersonators,
+  organizations,
   transaction,
   now = () => new Date(),
   newRefreshToken = () => randomToken(32),
@@ -963,6 +981,18 @@ export const createAuthService = ({
         );
       }
 
+      if (organizations === undefined) {
+        // The same class of wiring mistake, and refused as loudly: a
+        // population that can self-register must be able to create the
+        // personal organization in the same transaction (ADR-0067 §2). Serving
+        // the request without one would leave an account that every
+        // organization-scoped query has no branch for — the failure this
+        // check exists to make impossible rather than rare.
+        throw internal(
+          new Error(`population "${population}" has no organizations service`),
+        );
+      }
+
       const at = now();
       const passwordHash = await hashLimiter.run(() =>
         hasher.hash(body.password),
@@ -980,6 +1010,24 @@ export const createAuthService = ({
         );
 
         if (created === undefined) return undefined;
+
+        // In the transaction that inserted the account, before the session is
+        // issued: the new principal's first request must already find its
+        // organization there (ADR-0067 §2). The name columns come from the
+        // body rather than from `created.resource`, which is the union of both
+        // populations' resources here — same two values, no narrowing, and
+        // the derivation itself lives in `@repo/db` beside the one the
+        // backfill migration wrote in SQL.
+        await organizations.ensurePersonalOrganizationFor(
+          ctx,
+          {
+            id: created.id,
+            email: created.email,
+            firstName: body.firstName ?? null,
+            lastName: body.lastName ?? null,
+          },
+          tx,
+        );
 
         return issueSession(ctx, created, at, tx);
       });

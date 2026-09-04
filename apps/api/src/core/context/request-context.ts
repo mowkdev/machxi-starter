@@ -1,4 +1,4 @@
-import type { StaffRole, UserRole } from "@repo/contracts";
+import type { OrganizationRole, StaffRole, UserRole } from "@repo/contracts";
 import type { Logger } from "@repo/logger";
 
 /**
@@ -50,6 +50,24 @@ export type Principal =
       readonly impersonatedBy?: string | undefined;
     };
 
+/**
+ * The organization this request is addressed to (ADR-0067 §4).
+ *
+ * Placed by `requireMembership`, the third guard, and by nothing else: it is
+ * the caller's **resolved membership** rather than a route parameter, so a
+ * service reading it knows the caller is a member and knows as what. There is
+ * no "the organization is in the path but the membership was not checked"
+ * state, because only the guard that checks writes the field.
+ *
+ * `slug` rides along because the customer app's URLs are slugs (ADR-0067 §6)
+ * and a service answering a slug-addressed screen should not look it up twice.
+ */
+export interface OrganizationContext {
+  readonly id: string;
+  readonly slug: string;
+  readonly role: OrganizationRole;
+}
+
 export interface RequestContext {
   readonly requestId: string;
   /** `performance.now()` at the start of the request, for durations. */
@@ -58,6 +76,14 @@ export interface RequestContext {
   logger: Logger;
   /** `null` until the authentication middleware sets it (ADR-0018). */
   principal: Principal | null;
+  /**
+   * `null` unless `requireMembership` resolved one for this request
+   * (ADR-0067 §4). Self-scoped routes — `/user/profile`, `/user/settings`,
+   * `/user/orgs`, `/user/invitations` — leave it `null` on purpose: they are
+   * about the principal, and an organization on them would be a lie about what
+   * they read.
+   */
+  organization: OrganizationContext | null;
   /** `'en'` until the i18n ADR lands. */
   readonly locale: string;
   readonly ip: string | undefined;
@@ -89,6 +115,7 @@ export const createRequestContext = ({
   startedAt,
   logger,
   principal: null,
+  organization: null,
   locale,
   ip,
   userAgent,

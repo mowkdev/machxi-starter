@@ -52,6 +52,16 @@ export {
   userStatusEnum,
 } from "./schema/index.js";
 
+/**
+ * The personal organization's derived name and slug (ADR-0067 §2), shared by
+ * the seeders and by the API's organizations service so the two cannot drift.
+ */
+export {
+  personalOrganizationName,
+  personalOrganizationSlug,
+  type PersonalOrganizationOwner,
+} from "./organizations.js";
+
 export type {
   AuditEvent,
   ImpersonationHandoff,

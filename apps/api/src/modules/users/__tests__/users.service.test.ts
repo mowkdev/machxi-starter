@@ -263,6 +263,47 @@ const createFakeActors = () => {
   } as const;
 };
 
+/**
+ * The organizations service, narrowed to the two functions this module calls
+ * (ADR-0067 §2).
+ *
+ * A plain object recording its calls, because what this suite can assert about
+ * the edge is that it is taken — that `create` ensures a personal organization
+ * and that both deletion paths delete one, each with the account's own `at`.
+ * That the writes actually land *in the same transaction* is not a claim a
+ * unit test with a fake `transaction` can make; the integration suites in
+ * `apps/api/test` are where that is proved.
+ */
+const createFakeOrganizations = () => {
+  const calls = {
+    ensured: [] as string[],
+    deleted: [] as { userId: string; at: Date }[],
+  };
+
+  return {
+    calls,
+    organizations: {
+      ensurePersonalOrganizationFor: (
+        _ctx: RequestContext,
+        owner: { readonly id: string },
+      ) => {
+        calls.ensured.push(owner.id);
+
+        return Promise.resolve(`org-${owner.id}`);
+      },
+      deletePersonalOrganizationFor: (
+        _ctx: RequestContext,
+        userId: string,
+        at: Date,
+      ) => {
+        calls.deleted.push({ userId, at });
+
+        return Promise.resolve();
+      },
+    },
+  } as const;
+};
+
 /* ── harness ──────────────────────────────────────────────────────────────── */
 
 const userPrincipal = (id: string): Principal => ({
@@ -307,17 +348,19 @@ const build = (seed: FakeUserRow[]) => {
   const hasher = createFakeHasher();
   const sessions = createFakeSessions();
   const actors = createFakeActors();
+  const organizations = createFakeOrganizations();
 
   const service = createUsersService({
     repository: repo.repository,
     hasher: hasher.hasher,
     sessions: sessions.sessions,
     actors: actors.actors,
+    organizations: organizations.organizations,
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
   });
 
-  return { service, repo, hasher, sessions, actors } as const;
+  return { service, repo, hasher, sessions, actors, organizations } as const;
 };
 
 /** The admin segment: a staff principal acting on somebody else's account. */
@@ -409,6 +452,20 @@ describe("createUsersService — the admin segment", () => {
       });
 
       expect(created.roles).toEqual(["customer"]);
+    });
+
+    it("ensures the account's personal organization (ADR-0067 §2)", async () => {
+      const { service, organizations } = build([]);
+
+      const created = await service.create(adminCtx(), {
+        email: "new@machxi.local",
+        password: "InitialPassword!1",
+      });
+
+      // One of the three paths that bring a user into existence, so it must
+      // create the organization; that the two writes are one *commit* is the
+      // integration suite's claim, not this one's.
+      expect(organizations.calls.ensured).toEqual([created.id]);
     });
 
     it("honours an explicit status", async () => {
@@ -742,12 +799,17 @@ describe("createUsersService — the user segment", () => {
       // ADR-0028's user semantics, unchanged by the actor: the row survives
       // because future order history references it, and `status` is written
       // beside the timestamp so it stays truthful on its own.
-      const { service, repo } = build([userRow()]);
+      const { service, repo, organizations } = build([userRow()]);
 
       await service.deleteProfile(selfCtx(), body);
 
       expect(repo.rows.get(USER_ID)?.deleted).toBe(true);
       expect(repo.rows.get(USER_ID)?.status).toBe("disabled");
+      // The admin path's twin: which actor closed the account does not change
+      // what happens to the organization that exists only for it.
+      expect(organizations.calls.deleted).toEqual([
+        { userId: USER_ID, at: NOW },
+      ]);
     });
 
     it("revokes every session, sparing none — unlike a password change", async () => {
@@ -868,12 +930,17 @@ describe("createUsersService — the user segment", () => {
 
   describe("remove", () => {
     it("marks the row deleted, disables it, and ends every session", async () => {
-      const { service, repo, sessions } = build([userRow()]);
+      const { service, repo, sessions, organizations } = build([userRow()]);
 
       await service.remove(adminCtx(), USER_ID);
 
       expect(repo.rows.get(USER_ID)?.deleted).toBe(true);
       expect(repo.rows.get(USER_ID)?.status).toBe("disabled");
+      // And the personal organization with it, stamped with the account's own
+      // `at` (ADR-0067 §2).
+      expect(organizations.calls.deleted).toEqual([
+        { userId: USER_ID, at: NOW },
+      ]);
       // Twice: once inside the transaction, and once after it commits, for a
       // login that read the account before the delete and inserts its session
       // after the first sweep has run (`login` verifies argon2 outside any

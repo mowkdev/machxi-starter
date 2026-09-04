@@ -27,5 +27,8 @@
   "USER_EMAIL_TAKEN": "Another user already uses that email address.",
   "USER_DELETED": "That user is deleted and cannot be changed.",
   "STAFF_EMAIL_TAKEN": "Another staff member already uses that email address.",
-  "STAFF_LAST_SUPER_ADMIN": "This is the last super admin. Promote someone else first."
+  "STAFF_LAST_SUPER_ADMIN": "This is the last super admin. Promote someone else first.",
+
+  "ORGANIZATION_LAST_OWNER": "An organization needs at least one owner. Make someone else an owner first.",
+  "ORGANIZATION_PERSONAL_UNDELETABLE": "A personal organization is removed with the account that owns it."
 }

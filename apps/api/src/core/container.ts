@@ -31,6 +31,13 @@ import {
   createHealthService,
 } from "../modules/health/index.js";
 import {
+  createInvitationsRepository,
+  createMembershipsRepository,
+  createOrganizationsRepository,
+  createOrganizationsService,
+  createRequireMembership,
+} from "../modules/organizations/index.js";
+import {
   createSettingsController,
   createSettingsRepository,
   createSettingsService,
@@ -139,6 +146,9 @@ export const buildContainer = ({
   const sessions = createSessionsRepository(db.db);
   const handoffs = createHandoffsRepository(db.db);
   const settingsRepository = createSettingsRepository(db.db);
+  const organizationsRepository = createOrganizationsRepository(db.db);
+  const memberships = createMembershipsRepository(db.db);
+  const invitations = createInvitationsRepository(db.db);
 
   // The one place that knows how to open a transaction. Repositories take a
   // `DbExecutor` (ADR-0006), so a service composes them without ever importing
@@ -154,6 +164,21 @@ export const buildContainer = ({
   // cannot be audited does not happen" a property of the database rather than
   // of a convention.
   const audit = createAudit({ repository: createAuditRepository(db.db) });
+
+  // Built before the auth and users services, because both depend on it and
+  // it depends on neither: it owns the personal organization's lifecycle, and
+  // every path that creates or deletes a user runs it inside that path's own
+  // transaction (ADR-0067 §2, ADR-0009's service-to-service edge).
+  const organizationsService = createOrganizationsService({
+    repository: organizationsRepository,
+    memberships,
+    transaction,
+  });
+
+  // The third guard (ADR-0067 §4, a delta on ADR-0019). A factory over the
+  // memberships repository, so it is built here rather than in a router file
+  // for the reason `authenticate` is.
+  const requireMembership = createRequireMembership({ memberships });
 
   const authDeps = {
     sessions,
@@ -190,6 +215,10 @@ export const buildContainer = ({
     // is what turns `sessions.impersonated_by_staff_id` into the
     // `impersonatedBy: { id, email }` the banner renders from (ADR-0057 §4).
     impersonators: staffPrincipals,
+    // Wired on this service alone: `register` is the user segment's, and staff
+    // cannot self-register (ADR-0017). Narrowed to the one function, so the
+    // auth module cannot reach the rest of the organizations service.
+    organizations: organizationsService,
   });
 
   const authenticate = createAuthenticate({ tokens, sessions });
@@ -226,6 +255,10 @@ export const buildContainer = ({
     // *staff* member acting, so the actor's own password is verified by the
     // module that owns the staff aggregate (ADR-0027 rule 1, ADR-0009).
     actors: staffService,
+    // The three writes ADR-0067 §2 requires to be transactional with the
+    // account they are about: `POST /admin/users` creates the personal
+    // organization, and both deletion paths soft-delete it.
+    organizations: organizationsService,
     transaction,
   });
 
@@ -298,6 +331,8 @@ export const buildContainer = ({
     audit,
     authenticate,
     refuseImpersonated,
+    /** ADR-0067 §4's third guard, mounted by the `/user/orgs` routers. */
+    requireMembership,
     rateLimiters,
     mail,
     metrics,
@@ -309,6 +344,9 @@ export const buildContainer = ({
       sessions,
       handoffs,
       settings: settingsRepository,
+      organizations: organizationsRepository,
+      memberships,
+      invitations,
     } as const,
     services: {
       health,
@@ -318,6 +356,7 @@ export const buildContainer = ({
       users: usersService,
       settings: settingsService,
       impersonation: impersonationService,
+      organizations: organizationsService,
     } as const,
     controllers: {
       health: createHealthController(health),

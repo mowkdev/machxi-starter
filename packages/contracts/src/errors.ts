@@ -121,6 +121,15 @@ const AUTH_ERROR_CODES = [
  * | `USER_DELETED` | 409 | a write aimed at a soft-deleted user account (ADR-0028) |
  * | `STAFF_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/staff` with an email already in the `staff` table |
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
+ * | `ORGANIZATION_LAST_OWNER` | 409 | removing, demoting or leaving as the only remaining `owner` (ADR-0067 §2 invariant) |
+ * | `ORGANIZATION_PERSONAL_UNDELETABLE` | 409 | `DELETE` aimed at a `personal` organization, which goes with its account and never on its own (ADR-0067 §2) |
+ *
+ * Both organization codes are `409` rather than `403` for the reason
+ * `STAFF_LAST_SUPER_ADMIN` is: the caller may hold exactly the role the route
+ * requires, and what the request conflicts with is the organization's state.
+ * There is deliberately **no** code for "you are not a member" — that is a
+ * plain `404 NOT_FOUND`, because a distinct code would disclose in the
+ * envelope the existence the status was careful not to (ADR-0067 §4).
  *
  * `USER_DELETED` is `409` and not `404`: the account exists and the caller may
  * still *read* it — `GET /:id` answers `200` for a deleted account on purpose,
@@ -147,6 +156,8 @@ const DOMAIN_ERROR_CODES = [
   "USER_DELETED",
   "STAFF_EMAIL_TAKEN",
   "STAFF_LAST_SUPER_ADMIN",
+  "ORGANIZATION_LAST_OWNER",
+  "ORGANIZATION_PERSONAL_UNDELETABLE",
 ] as const;
 
 /**

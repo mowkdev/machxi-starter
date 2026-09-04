@@ -21,6 +21,7 @@ import {
   REVOKE_REASONS,
   type AuthService,
 } from "../auth/index.js";
+import type { OrganizationsService } from "../organizations/index.js";
 import type { StaffService } from "../staff/index.js";
 import { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
 import { toUserResource } from "./users.mapper.js";
@@ -75,6 +76,21 @@ export interface UsersServiceDeps {
    * ADR-0009 requires.
    */
   readonly actors: Pick<StaffService, "verifyActorPassword">;
+  /**
+   * The organizations service, narrowed to the two functions this module's
+   * writes must run inside their own transactions (ADR-0067 §2) — the third
+   * service-to-service edge in this file, and the same shape as the two above.
+   *
+   * `POST /admin/users` is one of the three paths that create a user, so it
+   * creates the personal organization in the same commit; both deletion paths
+   * soft-delete it in the same commit as the account. A module reaches another
+   * module's *service*, never its repository (ADR-0009), which is what keeps
+   * "how an organization is created" in one place rather than in three.
+   */
+  readonly organizations: Pick<
+    OrganizationsService,
+    "ensurePersonalOrganizationFor" | "deletePersonalOrganizationFor"
+  >;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
@@ -85,6 +101,7 @@ export const createUsersService = ({
   hasher,
   sessions,
   actors,
+  organizations,
   transaction,
   now = () => new Date(),
 }: UsersServiceDeps) => {
@@ -194,6 +211,26 @@ export const createUsersService = ({
         if (record === undefined) return undefined;
 
         await repository.replaceRoles(record.id, roles, tx);
+
+        // The second of the three paths that bring a user into existence, and
+        // the personal organization lands in the same commit as the account
+        // for the reason registration's does (ADR-0067 §2): a user with no
+        // organization is a state no query in this repository has a branch
+        // for, and one commit is what makes it unreachable rather than rare.
+        // The four fields, not the whole `UserRecord`: `passwordHash` is on
+        // that row and the organizations module has no business holding one,
+        // even a module that never reads it. The auth service builds the same
+        // object by hand at its own call site.
+        await organizations.ensurePersonalOrganizationFor(
+          ctx,
+          {
+            id: record.id,
+            email: record.email,
+            firstName: record.firstName,
+            lastName: record.lastName,
+          },
+          tx,
+        );
 
         return { ...record, roles };
       });
@@ -345,6 +382,18 @@ export const createUsersService = ({
         if (!(await repository.softDelete(record.id, at, tx))) {
           throw userDeleted();
         }
+
+        // The account's personal organization goes with it, in this
+        // transaction and stamped with the same `at` (ADR-0067 §2). It is the
+        // only path by which one is deleted at all — on its own it refuses
+        // with `409` — and the team organizations this account owns are
+        // deliberately untouched, because other people are in them.
+        await organizations.deletePersonalOrganizationFor(
+          ctx,
+          record.id,
+          at,
+          tx,
+        );
 
         return sessions.revokeSessionsFor(ctx, {
           principalId: record.id,
@@ -567,6 +616,16 @@ export const createUsersService = ({
         if (!(await repository.softDelete(record.id, at, tx))) {
           throw userNotFound();
         }
+
+        // The admin path's twin (ADR-0067 §2): the same write in the same
+        // transaction, because which actor closed the account does not change
+        // what happens to the organization that exists only for it.
+        await organizations.deletePersonalOrganizationFor(
+          ctx,
+          record.id,
+          at,
+          tx,
+        );
 
         return sessions.revokeSessionsFor(ctx, {
           principalId: record.id,

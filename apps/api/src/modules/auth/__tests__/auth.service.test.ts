@@ -397,11 +397,37 @@ const build = (
           canCreate: false,
         });
 
+  /**
+   * The organizations service narrowed to the one function `register` calls
+   * (ADR-0067 §2), as a plain object that records who it was asked about.
+   *
+   * Wired whenever the adapter can create — the container's own pairing, where
+   * the population that self-registers is the one that gets an organizations
+   * service — so that `build({ canCreate: false })` still exercises the
+   * refusal it was written for.
+   */
+  const organizations = {
+    ensured: [] as string[],
+    service: {
+      ensurePersonalOrganizationFor: (
+        _ctx: RequestContext,
+        owner: { readonly id: string },
+      ) => {
+        organizations.ensured.push(owner.id);
+
+        return Promise.resolve(`org-${owner.id}`);
+      },
+    },
+  };
+
   let tokenSequence = 0;
 
   const service = createAuthService({
     population,
     principals: principals.adapter,
+    ...(options.canCreate === true
+      ? { organizations: organizations.service }
+      : {}),
     ...(impersonators === undefined
       ? {}
       : { impersonators: impersonators.adapter }),
@@ -437,6 +463,7 @@ const build = (
     hasher,
     principals,
     impersonators,
+    organizations,
   } as const;
 };
 
@@ -937,6 +964,10 @@ describe("register", () => {
     });
     expect(auth.accessToken).toBeTruthy();
     expect(harness.sessions.rows.size).toBe(1);
+    // The first of the three paths that bring a user into existence, so it
+    // creates the personal organization too (ADR-0067 §2). That the two are
+    // one *commit* is `auth-register.int.test.ts`'s claim, not this one's.
+    expect(harness.organizations.ensured).toEqual([auth.principal.id]);
   });
 
   it("answers a taken address with a generic conflict", async () => {

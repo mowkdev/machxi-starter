@@ -3,54 +3,16 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   organizationMemberships,
   organizations,
+  personalOrganizationName,
+  personalOrganizationSlug,
   type Db,
+  type PersonalOrganizationOwner,
 } from "../src/index.js";
 
-/**
- * The personal organization, for the one caller that is not a service
- * (ADR-0067 §2).
- *
- * Every path that creates a user creates a personal organization in the same
- * transaction — `POST /public/auth/register`, `POST /admin/users` and the
- * seeders. The first two are the organizations service's from `D15.2`; this is
- * the third, and it lives here rather than in the API because a seeder runs
- * with no container, no request and no context to hand a service.
- *
- * The slug is the same derivation the backfill migration
- * (`0012_backfill_personal_organizations.sql`) uses, and for the same three
- * reasons: deterministic, so this is idempotent without a journal;
- * collision-free, so there is no retry loop against the partial unique index;
- * and it leaks nothing, because a slug is a URL segment and a slug derived
- * from an address would put that address in every pasted link.
- */
-export const personalOrganizationSlug = (userId: string): string =>
-  `personal-${userId}`;
-
-/** What a personal organization needs to know about the account that owns it. */
-export interface PersonalOrganizationOwner {
-  readonly id: string;
-  readonly email: string;
-  readonly firstName: string | null;
-  readonly lastName: string | null;
-}
-
-/**
- * The organization's display name: the account's own name when it has one,
- * its address when it does not (both name columns are nullable, ADR-0017).
- *
- * The same `coalesce` the backfill migration writes in SQL. Two expressions
- * for one rule is a drift risk worth naming: they are kept together on purpose,
- * and the seed integration test asserts the result rather than the expression.
- */
-export const personalOrganizationName = (
-  owner: PersonalOrganizationOwner,
-): string => {
-  const full = [owner.firstName, owner.lastName]
-    .filter((part): part is string => part !== null && part.trim() !== "")
-    .join(" ")
-    .trim();
-
-  return full === "" ? owner.email : full;
+export {
+  personalOrganizationName,
+  personalOrganizationSlug,
+  type PersonalOrganizationOwner,
 };
 
 /**

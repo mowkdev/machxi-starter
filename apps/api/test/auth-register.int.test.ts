@@ -1,4 +1,11 @@
 import { declaredErrorEnvelopeSchema } from "@repo/contracts";
+import {
+  organizationMemberships,
+  organizations,
+  personalOrganizationSlug,
+  users,
+} from "@repo/db";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -128,6 +135,98 @@ describe("user self-registration", () => {
         (detail: { path: string }) => detail.path,
       ),
     ).toContain("password");
+  });
+
+  /* ── the personal organization (ADR-0067 §2) ────────────────────────────── */
+
+  /** Every live organization, however many. */
+  const liveOrganizationCount = async (): Promise<number> => {
+    const [row] = await harness.db.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(organizations)
+      .where(isNull(organizations.deletedAt));
+
+    return row?.total ?? 0;
+  };
+
+  it("creates a personal organization owned by the new account", async () => {
+    const email = "org-newcomer@machxi.local";
+
+    await request()
+      .post(REGISTER)
+      .send({
+        email,
+        password: "a-perfectly-fine-password",
+        firstName: "Orla",
+        lastName: "Newcomer",
+      })
+      .expect(201);
+
+    const [account] = await harness.db.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+
+    expect(account).toBeDefined();
+    const userId = account?.id ?? "";
+
+    const [organization] = await harness.db.db
+      .select({
+        id: organizations.id,
+        slug: organizations.slug,
+        name: organizations.name,
+        kind: organizations.kind,
+        createdBy: organizations.createdBy,
+      })
+      .from(organizations)
+      .where(
+        and(
+          eq(organizations.createdBy, userId),
+          isNull(organizations.deletedAt),
+        ),
+      );
+
+    expect(organization).toMatchObject({
+      kind: "personal",
+      createdBy: userId,
+      name: "Orla Newcomer",
+      // Derived from the account's id, so no pasted URL carries an address
+      // (ADR-0067 §2). The same derivation the backfill migration wrote in SQL.
+      slug: personalOrganizationSlug(userId),
+    });
+
+    const memberships = await harness.db.db
+      .select({
+        userId: organizationMemberships.userId,
+        role: organizationMemberships.role,
+      })
+      .from(organizationMemberships)
+      .where(
+        eq(organizationMemberships.organizationId, organization?.id ?? ""),
+      );
+
+    expect(memberships).toEqual([{ userId, role: "owner" }]);
+  });
+
+  it("leaves the organization count unchanged when a duplicate registration is refused", async () => {
+    // Today this holds for a reason simpler than a rollback: the insert
+    // returns `undefined` for a taken address and the transaction returns
+    // before the organization is ever created. It is asserted anyway, and
+    // that is the point — the day somebody reorders those two statements, or
+    // moves the organization write ahead of the conflict check, this is what
+    // catches the orphan organization a taken address would otherwise leave
+    // behind on every attempt.
+    const before = await liveOrganizationCount();
+
+    await request()
+      .post(REGISTER)
+      .send({
+        email: FIXTURE_USERS.active,
+        password: "a-perfectly-fine-password",
+      })
+      .expect(409);
+
+    expect(await liveOrganizationCount()).toBe(before);
   });
 
   it("forbids caching the response that carries the tokens", async () => {

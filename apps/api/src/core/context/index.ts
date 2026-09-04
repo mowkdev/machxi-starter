@@ -3,6 +3,7 @@ export {
   createRequestContext,
   createSystemContext,
   type CreateRequestContextInput,
+  type OrganizationContext,
   type Principal,
   type RequestContext,
 } from "./request-context.js";

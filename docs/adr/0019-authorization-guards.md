@@ -1,7 +1,9 @@
 # ADR-0019: Authorization guards (population + role)
 
-- Status: accepted
+- Status: superseded by [ADR-0067](0067-organizations.md) (delta: a third guard, `requireMembership`, joins the two below; `authenticate`, `authorize`, the three levels and every rule here stand)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-04 by [ADR-0067](0067-organizations.md)**, at the head of `D15.2`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md), and a narrow one: this record decides that authorization has three levels — population at the segment, role at the mount, resource rules inside services — that guards throw `AppError`s and never write a status inline, that refinement composes by narrowing and never by widening, and that a wrong-population or anonymous caller is answered `401` so route existence is not disclosed. **All of that stands and is in force.** What 0067 §4 adds is a **third** guard beside the two here, `requireMembership(...roles)`: it answers a question neither of these can, because it reads the database rather than the token — the caller's membership of the organization named in the path — and it lives in the organizations module rather than in `core/middleware` for the reason `authenticate` lives in the auth module. Its refusals follow this record's own reasoning one step further: a non-member is `404`, not `403`, because organization existence is no more disclosable than route existence. Read 0067 §4 for the third guard; read this record for the other two.
 
 ## Context
 

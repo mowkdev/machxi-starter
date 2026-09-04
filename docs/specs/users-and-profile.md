@@ -36,7 +36,7 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 ## Requirement: Creating and updating an account
 
-`POST /admin/users` answers `201` with the resource; the address must be free among live accounts (`409 USER_EMAIL_TAKEN`), the role defaults to `customer` and the status to `active`. `PATCH /admin/users/:id` changes names, status and roles in one transaction; a status leaving `active`, or a change to the role set, revokes every session of the account in the same commit.
+`POST /admin/users` answers `201` with the resource; the address must be free among live accounts (`409 USER_EMAIL_TAKEN`), the role defaults to `customer`, the status to `active`, and the account's personal organization is created in the same transaction ([`organizations.md`](organizations.md)). `PATCH /admin/users/:id` changes names, status and roles in one transaction; a status leaving `active`, or a change to the role set, revokes every session of the account in the same commit.
 Records: [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0028](../adr/0028-account-deletion.md)
 Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`
 
@@ -78,7 +78,7 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 ## Requirement: An admin delete is soft, and ends every session
 
-`DELETE /admin/users/:id` sets `deletedAt` and `status: "disabled"`, revokes every session of the account in the same transaction, and answers `204`. A second delete answers `409 USER_DELETED`. The row survives; the address becomes registrable again.
+`DELETE /admin/users/:id` sets `deletedAt` and `status: "disabled"`, revokes every session of the account and soft-deletes its personal organization in the same transaction, and answers `204`. A second delete answers `409 USER_DELETED`. The row survives; the address becomes registrable again. The organization half is stated in full by [`organizations.md`](organizations.md).
 Records: [ADR-0028](../adr/0028-account-deletion.md)
 Proved by: `apps/api/test/users-admin.int.test.ts`
 
@@ -116,7 +116,7 @@ Proved by: `apps/api/test/user-profile.int.test.ts`
 
 ## Requirement: An account may close itself, with its password
 
-`DELETE /user/profile` takes `{ currentPassword }`, verifies it before writing, then soft-deletes the account, revokes every session — the caller's included — clears the user population's cookies, and answers `204`. A second attempt answers `404 NOT_FOUND`: the self view no longer sees the account.
+`DELETE /user/profile` takes `{ currentPassword }`, verifies it before writing, then soft-deletes the account and its personal organization, revokes every session — the caller's included — clears the user population's cookies, and answers `204`. A second attempt answers `404 NOT_FOUND`: the self view no longer sees the account.
 Records: [ADR-0055](../adr/0055-customer-app.md), [ADR-0028](../adr/0028-account-deletion.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md)
 Proved by: `apps/api/test/user-profile.int.test.ts`
 

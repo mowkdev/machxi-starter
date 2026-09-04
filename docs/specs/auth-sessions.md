@@ -119,7 +119,7 @@ Proved by: `apps/api/test/auth.int.test.ts`
 
 ## Requirement: Self-registration is public, optional, and never an oracle
 
-`POST /api/v1/public/auth/register` exists only when `FEATURE_USER_REGISTRATION` is on; with it off the path does not exist. It creates a user account with the `customer` role, `active`, and answers `201` with login's body so the new account is signed in. A taken address answers the same generic `409 CONFLICT` a client would get for any constraint, never a code that confirms the address. Staff have no such endpoint.
+`POST /api/v1/public/auth/register` exists only when `FEATURE_USER_REGISTRATION` is on; with it off the path does not exist. It creates a user account with the `customer` role, `active`, and its personal organization in the same transaction ([`organizations.md`](organizations.md)), and answers `201` with login's body so the new account is signed in. A taken address answers the same generic `409 CONFLICT` a client would get for any constraint, never a code that confirms the address. Staff have no such endpoint.
 Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0004](../adr/0004-configuration-and-environment.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md)
 Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/src/core/config/__tests__/config.test.ts`
 
