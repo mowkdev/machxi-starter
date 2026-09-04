@@ -2,7 +2,7 @@
 
 > **Inserted 2026-09-02 together with [D14](0014-starter-hardening.md)**, ahead of the marketing site (now D16) — a ledger decision; see `docs/plan/README.md` §How D14 and D15 were inserted.
 
-- Status: **planned** — scoped 2026-09-04 by `/scope`, the day D14 shipped. Opening (this row to `in progress`) is the operator's decision; the plan below is what `/step` executes once it is.
+- Status: **in progress** — opened 2026-09-04, the day D14 shipped, on the operator's decision; scoped the same sitting by `/scope` (ledger §How D15 opened). The plan below is what `/step` executes.
 - Records: [ADR-0067](../adr/0067-organizations.md) (organizations — multi-tenancy), written `proposed` 2026-09-02 while D14 was scoped so that D14's indexes, count flag, generators and typed configs were built tenant-aware, and **revised 2026-09-04 while `proposed`** with the four decisions taken at scoping (below). Accepted at the head of `D15.1`; its four parents move at the step that makes each delta true — the `D10.5`/0059 precedent — and the plan names which.
 - Ledger: [`docs/plan/README.md`](README.md)
 
