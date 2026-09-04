@@ -1,8 +1,10 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, exists, gt, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DbClient } from "../client.js";
 import {
+  organizationInvitations,
+  organizations,
   sessions,
   staff,
   staffRoles,
@@ -296,6 +298,10 @@ describe("migration 0001", () => {
 
     expect(rows.map((row) => row.indexname)).toEqual(
       expect.arrayContaining([
+        // The credential index of `0013` (ADR-0067 §2, amended 2026-09-04),
+        // beside the two the same shape already produced. Nothing reads it in
+        // D15; the constraint is what makes it a lookup when something does.
+        "organization_invitations_token_hash_unique",
         "sessions_principal_idx",
         "sessions_previous_refresh_token_hash_idx",
         "sessions_refresh_token_expires_at_idx",
@@ -693,6 +699,183 @@ describe("migration 0003 — settings", () => {
         .insert(staffSettings)
         .values({ staffId: "00000000-0000-7000-8000-00000000dead" }),
     ).rejects.toThrow();
+  });
+});
+
+describe("migration 0013 — the invitation's single-use token", () => {
+  /**
+   * The column added 2026-09-04 while the D15 window was open (ADR-0067 §2,
+   * the operator's answer to the finding `D15.1` escalated). **Nothing in D15
+   * reads it** — acceptance matches by address — so what is asserted here is
+   * the shape the mail deliverable will require: every row carries a hash, no
+   * two rows carry the same one, and "used once" is the row's own timestamps
+   * rather than a second column.
+   */
+  const invitation = async (email: string, tokenHash: string) => {
+    const [owner] = await client.db
+      .insert(users)
+      .values({ email: `owner-${email}` })
+      .returning({ id: users.id });
+
+    const [organization] = await client.db
+      .insert(organizations)
+      .values({
+        slug: `token-${email.replace(/[^a-z0-9]/g, "-")}`,
+        name: "Token Team",
+        kind: "team",
+        createdBy: owner?.id ?? "",
+      })
+      .returning({ id: organizations.id });
+
+    return client.db
+      .insert(organizationInvitations)
+      .values({
+        organizationId: organization?.id ?? "",
+        email,
+        role: "member",
+        invitedBy: owner?.id ?? "",
+        tokenHash,
+        expiresAt: new Date(Date.now() + 60_000),
+      })
+      .returning();
+  };
+
+  it("stores a hash on every row and refuses a second row carrying the same one", async () => {
+    const [row] = await invitation("invitee-one@machxi.test", "token-hash-one");
+
+    expect(row?.tokenHash).toBe("token-hash-one");
+    // The four terminal columns are what the consume below reads; a fresh row
+    // is `pending` because all of them are null (ADR-0067 §2 — no `status`).
+    expect(row?.acceptedAt).toBeNull();
+    expect(row?.declinedAt).toBeNull();
+    expect(row?.revokedAt).toBeNull();
+
+    // The uniqueness that makes "look the invitation up by token hash" a
+    // lookup rather than a scan, exactly as `sessions.refresh_token_hash` is.
+    await expectUniqueViolation(
+      invitation("invitee-two@machxi.test", "token-hash-one"),
+    );
+  });
+
+  it("refuses a row with no token at all", async () => {
+    // `not null`, so the accept path never grows a "this row has no token"
+    // branch. Written as raw SQL because the drizzle types already refuse the
+    // omission — this asserts that Postgres does too, which is what a fork
+    // hand-loading rows meets.
+    const [row] = await invitation(
+      "invitee-four@machxi.test",
+      "token-hash-four",
+    );
+
+    const insertWithoutToken = async () =>
+      client.db.execute(
+        sql`insert into organization_invitations
+              (id, organization_id, email, role, invited_by, expires_at)
+            values (gen_random_uuid(), ${row?.organizationId ?? ""},
+                    'no-token@machxi.test', 'member', ${row?.invitedBy ?? ""}, now())`,
+      );
+
+    await expect(insertWithoutToken()).rejects.toThrow();
+
+    const error = await insertWithoutToken().catch((caught: unknown) => caught);
+
+    expect((error as { cause?: { code?: string } }).cause?.code).toBe("23502");
+  });
+
+  /**
+   * The atomic consume the accept path will take, verbatim from ADR-0067 §2 —
+   * `impersonation_handoffs`' `update … where consumed_at is null returning`
+   * (ADR-0057 §2) over the terminal stamps this table already carries, plus
+   * the `exists` on a **live** organization.
+   *
+   * That last clause is not decoration. `organization_id` cascades on a hard
+   * delete only, so an invitation outlives its organization's soft delete
+   * (`D15.1` logged exactly this for the accept path), and a consume without
+   * it grants membership in a deleted tenant.
+   */
+  const consume = (tokenHash: string, { guarded = true } = {}) =>
+    client.db
+      .update(organizationInvitations)
+      .set({ acceptedAt: new Date() })
+      .where(
+        and(
+          eq(organizationInvitations.tokenHash, tokenHash),
+          isNull(organizationInvitations.acceptedAt),
+          isNull(organizationInvitations.declinedAt),
+          isNull(organizationInvitations.revokedAt),
+          gt(organizationInvitations.expiresAt, new Date()),
+          guarded
+            ? exists(
+                client.db
+                  .select({ live: sql`1` })
+                  .from(organizations)
+                  .where(
+                    and(
+                      eq(
+                        organizations.id,
+                        organizationInvitations.organizationId,
+                      ),
+                      isNull(organizations.deletedAt),
+                    ),
+                  ),
+              )
+            : undefined,
+        ),
+      )
+      .returning({ id: organizationInvitations.id });
+
+  it("is single-use through the row's own timestamps, with no column for it", async () => {
+    const [row] = await invitation(
+      "invitee-three@machxi.test",
+      "token-hash-three",
+    );
+
+    // A second column for "used" would be a second source of truth for "this
+    // invitation is over", which is what the missing `status` column was
+    // refused for.
+    const first = await consume("token-hash-three");
+    const replay = await consume("token-hash-three");
+
+    expect(first.map((consumed) => consumed.id)).toEqual([row?.id]);
+    expect(replay).toEqual([]);
+  });
+
+  it("is consumed exactly once when two consumes race", async () => {
+    // The property the sequential replay above does not prove: a guarded
+    // `UPDATE … RETURNING` is atomic, so under READ COMMITTED the loser blocks
+    // on the row lock, re-evaluates its predicate against the updated row and
+    // matches nothing. A read-then-write accept path would pass the test above
+    // and fail this one. (`migrateFreshTestDatabase` opens the pool with
+    // `max: 2`, so both statements really are in flight.)
+    await invitation("invitee-five@machxi.test", "token-hash-five");
+
+    const results = await Promise.all([
+      consume("token-hash-five"),
+      consume("token-hash-five"),
+    ]);
+
+    expect(results.flat()).toHaveLength(1);
+  });
+
+  it("refuses a token whose organization has been soft-deleted", async () => {
+    const [row] = await invitation("invitee-six@machxi.test", "token-hash-six");
+
+    await client.db
+      .update(organizations)
+      .set({ deletedAt: new Date() })
+      .where(eq(organizations.id, row?.organizationId ?? ""));
+
+    expect(await consume("token-hash-six")).toEqual([]);
+
+    // And the clause is what refused it, rather than the row being spent or
+    // stale: the same statement without the `exists` still matches. This is
+    // the assertion that fails the day somebody copies the consume out of the
+    // record and drops its last line.
+    expect(
+      (await consume("token-hash-six", { guarded: false })).map(
+        (consumed) => consumed.id,
+      ),
+    ).toEqual([row?.id]);
   });
 });
 

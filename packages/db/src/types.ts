@@ -82,6 +82,11 @@ export type NewUserSettings = InferInsertModel<typeof userSettings>;
  * `OrganizationInvitation` has no `status`: the row's state is read from its
  * timestamps, and `expired` is the one state no column can hold. The wire form
  * is `INVITATION_STATUSES` in `@repo/contracts`, which the mapper derives.
+ *
+ * It does carry a `tokenHash`, and that one is **never mapped onto the wire**:
+ * it is the stored form of a credential (ADR-0067 §2, amended 2026-09-04), so
+ * the mapper drops it exactly as the auth mapper drops
+ * `sessions.refreshTokenHash`. Nothing in D15 reads it at all.
  */
 export type Organization = InferSelectModel<typeof organizations>;
 export type NewOrganization = InferInsertModel<typeof organizations>;

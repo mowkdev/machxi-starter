@@ -207,6 +207,61 @@ export const organizationInvitations = pgTable(
     invitedBy: uuid()
       .notNull()
       .references(() => users.id),
+    /**
+     * SHA-256 of the invitation's opaque single-use token, base64url — the
+     * `sessions.refresh_token_hash` and `impersonation_handoffs.token_hash`
+     * shape (ADR-0018 as carried by ADR-0057 §2), so a database read never
+     * yields a usable credential. The mint is `randomToken()` from
+     * `@repo/crypto` at its default 32 bytes, which ADR-0067 §2 fixes rather
+     * than leaves to the create path: this is the one credential here whose
+     * lookup is scoped by nothing else. It is never mapped onto the wire.
+     *
+     * **Nothing reads this column in D15** (ADR-0067 §2, amended 2026-09-04).
+     * Acceptance matches by address, because no deliverable here can put a
+     * token in front of an invitee: D15 sends no mail. The column exists now
+     * because the row it belongs to is created by `D15.3` and the day the mail
+     * deliverable requires the token must not be the day a table with a live
+     * accept path takes a migration.
+     *
+     * `not null`: every invitation is created with one, so the accept path
+     * never grows a "this row has no token" branch — the reasoning ADR-0067
+     * gives for refusing a nullable `organization_id`, applied to a
+     * credential.
+     *
+     * **Single use needs no column of its own.** An invitation ends exactly
+     * once, and the timestamps beside this already say so; the atomic consume
+     * is `impersonation_handoffs`' shape over the terminal stamps this table
+     * already carries, guarded on all four and on the organization still being
+     * live (ADR-0067 §2 writes it out in full):
+     *
+     * ```sql
+     * update organization_invitations i set accepted_at = now()
+     *  where i.token_hash = $1 and i.accepted_at is null
+     *    and i.declined_at is null and i.revoked_at is null
+     *    and i.expires_at > now()
+     *    and exists (select 1 from organizations o
+     *                 where o.id = i.organization_id and o.deleted_at is null)
+     * returning i.*
+     * ```
+     *
+     * The `exists` clause is load-bearing: `organization_id` cascades on a
+     * **hard** delete only, so these rows outlive their organization's soft
+     * delete, and an accept without it grants membership in a deleted tenant.
+     * A `token_used_at` beside the stamps would be a second source of truth
+     * for "this invitation is over" — the bug the missing `status` column was
+     * refused for.
+     *
+     * Unique, and named explicitly for the reason `sessions` names its own: an
+     * unnamed `.unique()` takes the TS property name and would put one
+     * camelCase identifier in an otherwise snake_case database. It is a
+     * credential constraint and not a list index, so ADR-0067 §1's "no bare
+     * pairs on a tenant-owned table" does not reach it — nothing orders or
+     * paginates by a hash, and this column enters no `sortable`, `filterable`
+     * or searchable allow-list, whatever `indexCoverage` reports about it.
+     */
+    tokenHash: text()
+      .notNull()
+      .unique("organization_invitations_token_hash_unique"),
     /** Bounded by `ORGANIZATION_INVITATION_TTL` at creation (ADR-0067 §2). */
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     acceptedAt: timestamp({ withTimezone: true }),

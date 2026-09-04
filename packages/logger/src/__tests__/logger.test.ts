@@ -178,6 +178,36 @@ describe("redaction", () => {
     });
   });
 
+  it("redacts the `tokenHash` column both handoffs and invitations carry", () => {
+    // The same exact-key fact one column further: neither `refreshTokenHash`
+    // nor `token` covers `tokenHash`, which is the credential column on
+    // `impersonation_handoffs` (ADR-0057 §2) and, since 2026-09-04, on
+    // `organization_invitations` (ADR-0067 §2). A service that logged either
+    // row wholesale would otherwise print the digest.
+    const [logger, capture] = capturing({ level: "info" });
+
+    logger.info(
+      {
+        tokenHash: "sha-of-handoff",
+        invitation: {
+          id: "01930000-0000-7000-8000-000000000001",
+          tokenHash: "nested-invitation-sha",
+        },
+      },
+      "invitation created",
+    );
+
+    expect(capture.raw()).not.toContain("sha-of-handoff");
+    expect(capture.raw()).not.toContain("nested-invitation-sha");
+    expect(capture.lines()[0]).toMatchObject({
+      tokenHash: "[Redacted]",
+      invitation: {
+        id: "01930000-0000-7000-8000-000000000001",
+        tokenHash: "[Redacted]",
+      },
+    });
+  });
+
   it("redacts the authorization and cookie request headers", () => {
     const [logger, capture] = capturing({ level: "info" });
 

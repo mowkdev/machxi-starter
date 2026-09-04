@@ -92,6 +92,13 @@
       "when": 1788522030706,
       "tag": "0012_backfill_personal_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788525302673,
+      "tag": "0013_invitation_token_hash",
+      "breakpoints": true
     }
   ]
 }

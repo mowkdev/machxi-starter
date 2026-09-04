@@ -95,7 +95,7 @@ export const AREAS = [
       {
         topic: "Tenancy",
         records: ["0067"],
-        text: "One database, one schema: every tenant-owned table carries `organization_id not null` and is indexed tenant-led, with no bare `(column, id)` pairs beside those composites. A repository over such a table takes the organization id as a required parameter; the sanctioned exception is a read scoped by the **principal** rather than by a tenant, named in its repository for what it is, and the hand-maintained `TENANT_OWNED_TABLES` list is what the enumeration test checks the roster against. Every path that creates a user creates their personal organization in the same transaction; staff are never members, and a non-member is answered `404` rather than `403`.",
+        text: "One database, one schema: every tenant-owned table carries `organization_id not null` and is indexed tenant-led, with no bare `(column, id)` pairs beside those composites. A repository over such a table takes the organization id as a required parameter; the sanctioned exception is a read scoped by the **principal** rather than by a tenant, named in its repository for what it is, and the hand-maintained `TENANT_OWNED_TABLES` list is what the enumeration test checks the roster against. Every path that creates a user creates their personal organization in the same transaction; staff are never members, and a non-member is answered `404` rather than `403`. An invitation names an address, not an account: its create path mints a single-use token and stores only the SHA-256 in `token_hash`, which nothing returns and nothing reads until the mail deliverable — acceptance in D15 matches by address.",
       },
       {
         topic: "Infrastructure seams",

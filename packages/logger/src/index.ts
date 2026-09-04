@@ -17,9 +17,13 @@ export type LogLevel =
  *
  * `refreshTokenHash` / `previousRefreshTokenHash` are the `sessions` column
  * names (ADR-0018) and need their own entries: pino matches redact paths by
- * exact key, so `refreshToken` does not cover them. Note that redaction does
- * not reach pino's `err` serialiser — never build an error message containing
- * a credential or digest.
+ * exact key, so `refreshToken` does not cover them. `tokenHash` is the same
+ * fact for the two other credential columns in the schema —
+ * `impersonation_handoffs.token_hash` (ADR-0057 §2) and
+ * `organization_invitations.token_hash` (ADR-0067 §2) — and neither
+ * `refreshTokenHash` nor `token` covers it. Note that redaction does not reach
+ * pino's `err` serialiser — never build an error message containing a
+ * credential or digest.
  */
 export const defaultRedactPaths: readonly string[] = [
   "req.headers.authorization",
@@ -36,6 +40,7 @@ export const defaultRedactPaths: readonly string[] = [
   "token",
   "refreshTokenHash",
   "previousRefreshTokenHash",
+  "tokenHash",
   "*.password",
   "*.currentPassword",
   "*.newPassword",
@@ -45,6 +50,7 @@ export const defaultRedactPaths: readonly string[] = [
   "*.token",
   "*.refreshTokenHash",
   "*.previousRefreshTokenHash",
+  "*.tokenHash",
 ];
 
 export interface CreateLoggerOptions {
