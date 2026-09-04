@@ -4,7 +4,7 @@ Every response of the API has one of three shapes, every failure carries a stabl
 
 ## Requirement: A success carries `data` and `meta.requestId`
 
-A `2xx` response with a body is `{ data, meta }`, where `meta.requestId` is the id the request was logged under, and the same id is echoed in the `X-Request-Id` header. A `204` carries no body and still carries the header.
+A `2xx` response with a body is `{ data, meta }`, where `meta.requestId` is the id the request was logged under, and the same id is echoed in the `X-Request-Id` header.
 Records: [ADR-0012](../adr/0012-response-envelope.md), [ADR-0010](../adr/0010-request-context.md)
 Proved by: `apps/api/test/envelope.int.test.ts`, `apps/api/src/core/http/__tests__/envelope.test.ts`
 

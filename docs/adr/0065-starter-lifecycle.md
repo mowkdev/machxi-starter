@@ -39,7 +39,7 @@ Platform packages stay **source-only inside the monorepo** as ADR-0002 decided. 
 ### 3. Carried versus journal
 
 - **Carried into forks**: `docs/adr/` and `.claude/`. These are the decisions and the machinery that applies them.
-- **This blueprint's journal**: `docs/plan/` and the ledger narrative. They record how _this_ repository got here.
+- **This blueprint's journal**: `docs/plan/` and the ledger narrative. They record how *this* repository got here.
 
 A fork **resets `docs/plan/` to its own empty ledger** and marks the directory `merge=ours` in `.gitattributes`, so starter merges never pull journal prose down and a fork's journal never travels up. `docs/forking.md` records the recipe end to end: clone, add the `starter` remote, rename per [ADR-0064](0064-brand-seams.md) (_brand seams_), reset the ledger via `/bootstrap`, add the licence.
 

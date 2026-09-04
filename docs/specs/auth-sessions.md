@@ -140,7 +140,7 @@ Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/src/core/config/
 
 ## Requirement: Credential endpoints are rate limited per address and per account
 
-Login and registration share one budget of `RATE_LIMIT_LOGIN_MAX` per fifteen minutes keyed on the client address **and** the presented email; failed refreshes spend `RATE_LIMIT_REFRESH_MAX` per fifteen minutes per address, successful ones spend nothing; every `/api` request counts against a global `RATE_LIMIT_GLOBAL_MAX` per address. A tripped limit answers `429 RATE_LIMITED` with a `Retry-After` header and a `retryAfter` detail. A request the schema rejects still counts.
+Login and registration share one budget of `RATE_LIMIT_LOGIN_MAX` per fifteen minutes keyed on the client address **and** the presented email; a refresh answered `401` spends `RATE_LIMIT_REFRESH_MAX` per fifteen minutes per address, and any other answer — a successful rotation, a `403` CSRF refusal, a `400` — spends nothing; every `/api` request counts against a global `RATE_LIMIT_GLOBAL_MAX` per address. A tripped limit answers `429 RATE_LIMITED` with a `Retry-After` header and a `retryAfter` detail. A request the schema rejects still counts.
 Records: [ADR-0020](../adr/0020-security-baseline.md), [ADR-0066](../adr/0066-infrastructure-seams.md)
 Proved by: `apps/api/test/rate-limit.int.test.ts`
 

@@ -25,7 +25,7 @@ Two additions to the governing documents, both deltas on [ADR-0065](0065-starter
 ```
 ## Requirement: <name>
 <One or two sentences in the indicative: what the API answers, what it refuses.>
-Records: [ADR-NNNN](../adr/NNNN-….md) …          ← at least one, in force
+Records: [ADR-NNNN](../adr/NNNN-….md) …          ← at least one, existing
 Proved by: `apps/api/test/….int.test.ts` …          ← at least one, existing
 
 ### Scenario: <name>
@@ -35,7 +35,7 @@ Proved by: `apps/api/test/….int.test.ts` …          ← at least one, existi
 
 A spec is **current truth, edited in place** by the step that changes the behaviour, in the same diff as the code and the test that proves it. It has no history and no status; git is its history. It is not a decision — the record says why — and not a rule — the digest says what is in force — and not a test — the test proves it. Its altitude is the wire: a requirement is something a client can observe, and an internal that a client cannot stays out.
 
-`pnpm docs:check` enforces the shape: every requirement carries a `Records:` line whose records exist and a `Proved by:` line whose files exist, and at least one scenario with a **WHEN** and a **THEN**. A test that is deleted reddens every spec that cited it, which is the cheap form of "a scenario without a test is a claim". The specs travel into forks, so the inherited-document rules apply to them as to `.claude/**`: no step numbers, no dates, no bare ranges.
+`pnpm docs:check` enforces the shape: every requirement carries a `Records:` line whose records exist and a `Proved by:` line whose files exist, and at least one scenario with a **WHEN** and a **THEN**. Existence, not force — the sketch above said "in force" until this step's review, and the scan checks what a scan can: whether a cited record is still in force is the digests' question, and a spec citing a superseded record for a behaviour that stands is not wrong. A test that is deleted reddens every spec that cited it, which is the cheap form of "a scenario without a test is a claim". The specs travel into forks, so the inherited-document rules apply to them as to `.claude/**`: no step numbers, no dates, no bare ranges.
 
 The API's HTTP behaviour is covered first, because it is the surface with a contract. An SPA spec arrives when a step names one; a screen's behaviour is proved by its own suites and is not made to fit a WHEN/THEN it would strain against.
 

@@ -95,6 +95,13 @@ test("a scenario without a THEN is caught", () => {
   ]);
 });
 
+test("a scenario without a WHEN is caught", () => {
+  const text = SPEC.replace("- **WHEN** a client asks\n", "");
+  assert.deepEqual(rules(checkSpec("s.md", text, always)), [
+    "spec-scenario-shape",
+  ]);
+});
+
 test("a record or a test that does not exist is caught", () => {
   assert.deepEqual(rules(checkSpec("s.md", SPEC, never)), [
     "spec-record-missing",
