@@ -1,4 +1,4 @@
-import type { BrowserContext, Locator, Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./support/fixtures";
 
@@ -13,6 +13,7 @@ import {
   chosen,
   labelFor,
   signInAsOperator,
+  userRefreshToken,
 } from "./support/app";
 
 /**
@@ -56,31 +57,12 @@ import {
  * opening a customer's account is not a customer.
  */
 
-/**
- * The customer app's refresh cookie, by the name and the per-segment
- * `authCookiePath` ADR-0029 gives it — the decision ADR-0056 explicitly leaves
- * standing when it splits the *CSRF* cookie per population.
- *
- * The path is part of the match and not decoration: `__Secure-machxi.refresh`
- * is the one name the two populations still share, so a lookup by name alone
- * would answer with the operator's staff cookie as readily as with this
- * session's — which is exactly the confusion `dual-session.spec.ts` had to
- * clean up by path as well as by name.
+/*
+ * `USER_REFRESH_COOKIE` and `userRefreshToken` were written out here at `D13.9`
+ * and moved into `support/app.ts` at `D15.8`, when `organizations.spec.ts`
+ * became the second spec in this suite that reads the user population's refresh
+ * cookie out of the jar. The reasoning is now in that file, beside the values.
  */
-const USER_REFRESH_COOKIE = {
-  name: "__Secure-machxi.refresh",
-  path: "/api/v1/user/auth",
-} as const;
-
-/** The impersonated session's current refresh token, out of the context's jar. */
-const userRefreshToken = async (
-  context: BrowserContext,
-): Promise<string | undefined> =>
-  (await context.cookies()).find(
-    (cookie) =>
-      cookie.name === USER_REFRESH_COOKIE.name &&
-      cookie.path === USER_REFRESH_COOKIE.path,
-  )?.value;
 
 /**
  * The impersonation banner, by the design system's own slot and variant.

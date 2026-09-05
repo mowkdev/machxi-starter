@@ -1,8 +1,12 @@
-import type { BrowserContext } from "@playwright/test";
-
 import { expect, test } from "./support/fixtures";
 
-import { API_URL, leadCard, signInAsOperator } from "./support/app";
+import {
+  ADMIN_REFRESH_COOKIE,
+  API_URL,
+  csrfCookie,
+  leadCard,
+  signInAsOperator,
+} from "./support/app";
 
 /**
  * Two apps, one browser (`D12.12`; [ADR-0056](../../../docs/adr/0056-per-population-csrf-cookie.md)).
@@ -33,25 +37,13 @@ import { API_URL, leadCard, signInAsOperator } from "./support/app";
  * here at `D12.12` and moved into `support/app.ts` at `D13.9`, when
  * `impersonation.spec.ts` became the second spec in this suite that reaches the
  * admin panel. The reasoning for each is now in that file, beside the values.
- */
-
-/**
- * One population's CSRF cookie, out of the context's jar.
  *
- * Read from Playwright rather than from `document.cookie`: both names are at
- * `Path=/` and both are `Secure`, and the jar is the one place that holds them
- * for every origin in the context at once — which is the thing under test.
- * Neither app ever reads a cookie itself (ADR-0033).
+ * `csrfCookie` followed at `D15.8`, when `organizations.spec.ts` needed a
+ * cookie-transport write of its own, and `ADMIN_REFRESH_COOKIE` with it — the
+ * clear below filters on a path, and a path that stops matching removes nothing
+ * and says nothing, so it is the last value in this file that should have been
+ * an inline literal.
  */
-const csrfCookie = async (
-  context: BrowserContext,
-  population: "admin" | "user",
-): Promise<string | undefined> => {
-  const name = `__Host-machxi.csrf.${population}`;
-
-  return (await context.cookies()).find((cookie) => cookie.name === name)
-    ?.value;
-};
 
 test("an admin session's traffic leaves the customer app's alone", async ({
   app,
@@ -136,13 +128,34 @@ test("an admin session's traffic leaves the customer app's alone", async ({
      * one thing the two populations still share: `__Secure-machxi.refresh` is
      * scoped by `authCookiePath` (ADR-0029), so a filter on the name alone
      * would take the customer app's session out with the operator's.
+     *
+     * The pair is `support/app.ts`' since `D15.8`: a filter whose path has
+     * drifted removes nothing and throws nothing, so the failure of this clear
+     * is silent and the value it filters on is the wrong thing to keep a second
+     * copy of.
      */
-    await context.clearCookies({
-      name: "__Secure-machxi.refresh",
-      path: "/api/v1/admin/auth",
-    });
+    await context.clearCookies({ ...ADMIN_REFRESH_COOKIE });
     await admin.close();
   }
+
+  /*
+   * And the clear is asserted, because it is the one cleanup in this tier whose
+   * failure mode is a live staff credential sitting in a worker-scoped jar for
+   * every later spec (`D15.8`'s security review).
+   *
+   * **After the `finally` rather than inside it**, which is the discipline
+   * `impersonation.spec.ts` states for the same shape: an assertion that threw
+   * from a `finally` would replace the failure worth reading with a report
+   * about the cleanup.
+   */
+  expect(
+    (await context.cookies()).filter(
+      (cookie) =>
+        cookie.name === ADMIN_REFRESH_COOKIE.name &&
+        cookie.path === ADMIN_REFRESH_COOKIE.path,
+    ),
+    "the operator's refresh cookie left the worker's jar",
+  ).toHaveLength(0);
 
   /*
    * **The claim, and the only assertion here that fails on a revert.**

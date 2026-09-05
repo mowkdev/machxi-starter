@@ -39,16 +39,25 @@ import {
  */
 
 /**
- * The three sections, by what the nav calls them and what they open with.
+ * The sections, by what the nav calls them and what they open with.
  *
  * The lead card is what proves the *right* section rendered: the nav's active
  * marking is drawn from the same router state the URL is, so a section that
  * mounted the wrong pane would still light the right link.
+ *
+ * **The fourth arrived at `D15.5` and this list did not, which is what `D15.8`
+ * found.** `pages/account/index.tsx`' own `SECTIONS` gained `/account/invitations`
+ * with the invitation inbox; here the count assertion below is `SECTIONS.length`,
+ * so a section added there and not here fails all three parameterised cases at
+ * once — and the customer tier has been red on `main` ever since. The count is
+ * the point of the list rather than an accident of it: a section that appears in
+ * the nav without a case here is a screen nothing opens from a cold URL.
  */
 const SECTIONS = [
   { path: "/account/profile", nav: "Profile", card: "Your details" },
   { path: "/account/security", nav: "Security", card: "Password" },
   { path: "/account/preferences", nav: "Preferences", card: "Appearance" },
+  { path: "/account/invitations", nav: "Invitations", card: "Invitations" },
 ] as const;
 
 /*

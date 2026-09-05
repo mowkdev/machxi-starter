@@ -1,4 +1,9 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 /**
  * What every customer spec needs and no spec should re-derive (`D12.10`).
@@ -117,6 +122,93 @@ export const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
 export const ADMIN_URL = process.env["E2E_BASE_URL"] ?? "http://localhost:3001";
 
 /**
+ * The customer app's refresh cookie, by the name and the per-segment
+ * `authCookiePath` ADR-0029 gives it — the decision ADR-0056 explicitly leaves
+ * standing when it splits the *CSRF* cookie per population.
+ *
+ * The path is part of the match and not decoration: `__Secure-machxi.refresh`
+ * is the one name the two populations still share, so a lookup by name alone
+ * would answer with a staff cookie as readily as with this session's — which is
+ * exactly the confusion `dual-session.spec.ts` has to clean up by path as well
+ * as by name.
+ *
+ * **Written out here at `D13.9` and moved into this file at `D15.8`**, when
+ * `organizations.spec.ts` became the second spec that reads it — and it reads
+ * it for the opposite reason, which is what makes the shared lookup worth
+ * having: one spec wants the *value*, to replay a token the exit revoked, and
+ * the other only wants to know the cookie **landed at this path at all**, since
+ * registration answers on the `public` segment and a cookie written anywhere
+ * else would leave a new account signed in only until its first reload.
+ */
+export const USER_REFRESH_COOKIE = {
+  name: "__Secure-machxi.refresh",
+  path: "/api/v1/user/auth",
+} as const;
+
+/**
+ * The same cookie for the **staff** population, which is the other half of the
+ * point above (`D15.8`, the `D15.8` security review's asymmetry finding).
+ *
+ * Only `dual-session.spec.ts` uses it, and it uses it in a `finally` to clear a
+ * live staff refresh cookie out of a **worker-scoped** context. That clear
+ * fails silently — `clearCookies` with a path that no longer matches removes
+ * nothing and throws nothing — so the path it filters on is the one value in
+ * this tier that must not be an inline literal drifting from its twin.
+ */
+export const ADMIN_REFRESH_COOKIE = {
+  name: "__Secure-machxi.refresh",
+  path: "/api/v1/admin/auth",
+} as const;
+
+/** The user population's current refresh token, out of a context's jar. */
+export const userRefreshToken = async (
+  context: BrowserContext,
+): Promise<string | undefined> =>
+  (await context.cookies()).find(
+    (cookie) =>
+      cookie.name === USER_REFRESH_COOKIE.name &&
+      cookie.path === USER_REFRESH_COOKIE.path,
+  )?.value;
+
+/**
+ * Every path the refresh cookie's shared name is written at, in this jar.
+ *
+ * {@link userRefreshToken} answers the first match and therefore only ever says
+ * "a cookie landed **here**"; this says where the API put them **all**, which is
+ * the assertion that fails when one is written host-wide. That is the failure
+ * that matters: `__Secure-machxi.refresh` is the one name the two populations
+ * share (ADR-0029's `authCookiePath`, left standing by ADR-0056), so a cookie at
+ * `Path=/` would be sent to the admin segment as readily as to this one.
+ */
+export const refreshCookiePaths = async (
+  context: BrowserContext,
+): Promise<readonly string[]> =>
+  (await context.cookies())
+    .filter((cookie) => cookie.name === USER_REFRESH_COOKIE.name)
+    .map((cookie) => cookie.path)
+    .sort();
+
+/**
+ * One population's CSRF cookie, out of a context's jar (`D12.12`, moved here at
+ * `D15.8` when a second spec needed it).
+ *
+ * Read from Playwright rather than from `document.cookie`: both names are at
+ * `Path=/` and both are `Secure`, and the jar is the one place that holds them
+ * for every origin in the context at once — which is what `dual-session.spec.ts`
+ * puts under test. Neither app ever reads a cookie itself (ADR-0033), so a spec
+ * that needs the token for a cookie-transport write reads it here.
+ */
+export const csrfCookie = async (
+  context: BrowserContext,
+  population: "admin" | "user",
+): Promise<string | undefined> => {
+  const name = `__Host-machxi.csrf.${population}`;
+
+  return (await context.cookies()).find((cookie) => cookie.name === name)
+    ?.value;
+};
+
+/**
  * The operator the admin half of a spec signs in as (`D12.12`, moved here at
  * `D13.9`).
  *
@@ -175,12 +267,27 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * covers this walk. Both floors together are what makes the enlarged run
  * legible when it cannot finish.
  *
- * **The admin's floor of 180 was not raised, and that is a decision.** It
- * would have to be, if the two suites' costs together crossed 300 — they do
- * not, at about 251 since `D13.9` — and raising it means a diff under
- * `apps/admin`, which D12 spent nothing on by design and D13 has no reason to.
- * The headroom is thinner than it was; the arithmetic is in the body, beside
- * the floor it justifies, so there is one copy of it rather than two.
+ * **The two suites together no longer fit one window, and `D15.8` is where
+ * that stopped being a projection.** Measured that day, each suite alone in a
+ * clear window: the admin's 37 specs take it from 299 to 124, so **174**; this
+ * suite's 12 take it from 299 to 164, so **134**. That is **308** against
+ * ADR-0020's 300, and `pnpm test:e2e` runs them back to back through one
+ * limiter (`--concurrency=1`), so the command cannot be green on a stock
+ * profile however healthy every spec in it is.
+ *
+ * **Neither floor is fudged to hide that, and neither number is the culprit.**
+ * The admin's 168 was measured at `D11.11` and its suite has not changed since
+ * `D11.12`; the app underneath it has, which is where its growth came from. The
+ * fix — a larger `RATE_LIMIT_GLOBAL_MAX` for the dev profile — is the one
+ * `D11.6` recorded and `D11.11` left untaken, both times for the same reason:
+ * the limit is ADR-0020's, and a frozen record's number is not a build step's
+ * to move. So it is escalated rather than applied, and the two suites are run
+ * one per window until it is answered ([`docs/plan/0015-organizations.notes.md`](../../../../docs/plan/0015-organizations.notes.md)).
+ *
+ * What a machine can do today without touching anything committed: restart
+ * `pnpm dev --filter api` between the two, which clears an in-memory counter,
+ * or set `RATE_LIMIT_GLOBAL_MAX` in its own git-ignored `.env` — the message
+ * below says both.
  *
  * **`needed` is a parameter since `D13.9`, and that is the whole point of it.**
  * The default is the suite's own cost, which is the right number for the
@@ -193,7 +300,7 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  */
 export const assertApiWindowClear = async (
   page: Page,
-  needed = 90,
+  needed = 147,
 ): Promise<void> => {
   /*
    * Throttled and absent are different failures, and this is the function that
@@ -229,8 +336,11 @@ export const assertApiWindowClear = async (
   const because =
     "This is not a defect in the app: `pnpm test:e2e` runs both apps' suites " +
     "through one window, so a second run inside the same quarter hour — or a " +
-    "run beside `pnpm test:postman`, which is another hundred — is what " +
-    "spends it.";
+    "run beside `pnpm test:postman`, which is 165 of its own — is what " +
+    "spends it. Restarting `pnpm dev --filter api` clears the counters, which " +
+    "are in memory; a machine that runs the tier often can also raise " +
+    "RATE_LIMIT_GLOBAL_MAX in its own (git-ignored) .env, which changes no " +
+    "committed default — ADR-0020's 300 is the schema's and stays.";
 
   if (probe.status() === 429) {
     throw new Error(
@@ -264,14 +374,23 @@ export const assertApiWindowClear = async (
    * **77**. The margin over the measurement is the dozen `D12.10` chose, rounded
    * up to the next ten.
    *
-   * Together with the admin's 168 and its own probe, `pnpm test:e2e` now spends
-   * **251** of ADR-0020's 300 — measured on the run that closed `D13.9`, which
-   * took a fresh window from 299 to 47 — still a whole run in a clear window,
-   * and now
-   * emphatically not two runs, and still not a run beside `pnpm test:postman`.
-   * The next spec that crosses an origin is the one that has to ask whether
-   * `RATE_LIMIT_GLOBAL_MAX` should differ in the dev profile, which is the fix
-   * `D11.6` left available and nobody has needed yet.
+   * **Moved a third time for `D15.8`, and this time the whole suite was
+   * re-measured rather than added to.** Two things had grown since `D13.9`
+   * without the number moving: `organizations.spec.ts` arrived — it registers an
+   * account, boots it twice, makes a team organization, invites the fixture
+   * customer, is refused as the last owner, has the offer accepted in the
+   * worker's own signed-in context, and then closes both — and `D15.5` put a
+   * `GET /user/orgs` behind every protected screen, which every cold-URL case in
+   * `account.spec.ts` pays. So the figure is taken from the suite and not from
+   * arithmetic over its parts: a green run of all twelve specs took a clear
+   * window from 299 to 164, its own probe included, so the suite costs **134**.
+   * The margin over the measurement is the dozen `D12.10` chose.
+   *
+   * The admin's is **174** on the same day and by the same method (299 to 124,
+   * 37 specs), against the 168 its own floor still states — its suite has not
+   * changed since `D11.12`, so what grew is the app. **308 together**, which is
+   * over ADR-0020's 300: see the header above for why that is escalated rather
+   * than fixed here, and why neither floor was trimmed to make the sum work.
    */
   if (Number.isFinite(remaining) && remaining < needed) {
     throw new Error(

@@ -65,6 +65,16 @@ try {
  * is ceilinged in minutes, and `apps/customer/test-results/` is gitignored — so
  * a trace is a local artefact with a short-lived credential in it, and one to
  * delete rather than to attach to anything.
+ *
+ * **`D15.8` broke that bound and then restored it, which is worth keeping
+ * beside the paragraph that states it.** `organizations.spec.ts` registers a
+ * real account and deliberately leaves its rows behind when it fails, so a
+ * retained trace of a failed run held a `__Secure-machxi.refresh` cookie for a
+ * live session — `REFRESH_TOKEN_TTL`, thirty days by default, which is neither
+ * a committed constant nor a credential that expires in minutes. That spec's
+ * `afterEach` now revokes the session on every path, so what a trace can hold
+ * is once again exactly what this paragraph says: committed fixture passwords,
+ * and a handoff token whose life is ceilinged in minutes.
  */
 export default defineConfig({
   testDir: "./e2e",

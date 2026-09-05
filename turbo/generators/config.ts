@@ -20,8 +20,9 @@ import type { PlopTypes } from "@turbo/gen";
  *   catalogues, the MSW handlers and the tests.
  *
  * **What they apply and what they print.** Everything a compiler or a test
- * would redden is applied — the contract barrel, the schema namespace, the two
- * hand-maintained table enumerations of ADR-0061 §4, the namespace list and the
+ * would redden is applied — the contract barrel, the schema namespace, the
+ * hand-maintained table enumerations of ADR-0061 §4 (three of them since
+ * `D15.1`, the third only for a tenant-scoped table), the namespace list and the
  * bundled catalogue. Everything that is a *decision* is printed: the guard a
  * router mounts under, the composition-root wiring, the migration, the policy
  * row of ADR-0042 (which `policy.ts` requires be transcribed from an
@@ -285,6 +286,30 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
           pattern: /(export const TRUNCATED_TABLES = \[\r?\n)/,
           template: '$1  "{{snakeCase plural}}",\n',
         },
+        /*
+         * And the **third** enumeration, when the table carries the tenant
+         * column (ADR-0067 §5). Conditional and not unconditional: the list is
+         * "every table with an `organization_id`", and putting an unscoped
+         * table in it would fail the same enumeration test from the other side.
+         *
+         * Applied rather than printed, like the two above it and for the same
+         * reason — a test would redden without it, so it is not a decision
+         * anybody is being asked to take (ADR-0063 §3). It was missing until
+         * `D15.8`, which is what §Definition-of-done item 7 exists to find: the
+         * list was born at `D15.1` with two of its three writers taught about
+         * it, and a generated tenant-scoped module was red on `pnpm check` from
+         * then until here.
+         */
+        ...(answers.organizationScoped
+          ? [
+              {
+                type: "modify",
+                path: "packages/db/src/testing.ts",
+                pattern: /(export const TENANT_OWNED_TABLES = \[\r?\n)/,
+                template: '$1  "{{snakeCase plural}}",\n',
+              } satisfies PlopTypes.ActionType,
+            ]
+          : []),
 
         // The module (ADR-0009), in dependency order.
         add(
