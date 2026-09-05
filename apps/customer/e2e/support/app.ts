@@ -252,8 +252,8 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * arriving in the second app it was always going to be needed in.
  *
  * The diagnosis and the mechanism are `apps/admin/e2e/support/app.ts`'s: the
- * limiter is in-memory and **global** — 300 requests in fifteen minutes for the
- * whole API — and it sits above routing, so a clear window answers `404` on a
+ * limiter is in-memory and **global** — `RATE_LIMIT_GLOBAL_MAX` requests in
+ * fifteen minutes for the whole API — and it sits above routing, so a clear window answers `404` on a
  * path that does not exist and a spent one answers `429`. A failure here is a
  * failure of every spec, which is correct: none of them can run, and one honest
  * error at second zero is worth more than a dozen timeouts.
@@ -271,23 +271,27 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * that stopped being a projection.** Measured that day, each suite alone in a
  * clear window: the admin's 37 specs take it from 299 to 124, so **174**; this
  * suite's 12 take it from 299 to 164, so **134**. That is **308** against
- * ADR-0020's 300, and `pnpm test:e2e` runs them back to back through one
- * limiter (`--concurrency=1`), so the command cannot be green on a stock
- * profile however healthy every spec in it is.
+ * ADR-0020's 300 — and `pnpm test:e2e` runs them back to back through one
+ * limiter (`--concurrency=1`), so on a 300 profile the command cannot be green
+ * however healthy every spec in it is.
  *
  * **Neither floor is fudged to hide that, and neither number is the culprit.**
- * The admin's 168 was measured at `D11.11` and its suite has not changed since
- * `D11.12`; the app underneath it has, which is where its growth came from. The
- * fix — a larger `RATE_LIMIT_GLOBAL_MAX` for the dev profile — is the one
- * `D11.6` recorded and `D11.11` left untaken, both times for the same reason:
- * the limit is ADR-0020's, and a frozen record's number is not a build step's
- * to move. So it is escalated rather than applied, and the two suites are run
- * one per window until it is answered ([`docs/plan/0015-organizations.notes.md`](../../../../docs/plan/0015-organizations.notes.md)).
+ * The admin's was measured at `D11.11` and re-measured at `D15.8`, and its
+ * suite has not changed since `D11.12`; the app underneath it has, which is
+ * where its growth came from. The fix — a larger `RATE_LIMIT_GLOBAL_MAX` for
+ * the development profile — is the one `D11.6` recorded and `D11.11` left
+ * untaken, both times for the same reason: the limit is ADR-0020's, and a
+ * frozen record's number is not a build step's to move. **It moved by
+ * supersession at `D15.8`** — ADR-0069, accepted at that step's head — so the
+ * committed `.env.example` carries a window that holds both suites, their
+ * retry and the Postman collection, and the combined command is green on a
+ * stock clone.
  *
- * What a machine can do today without touching anything committed: restart
- * `pnpm dev --filter api` between the two, which clears an in-memory counter,
- * or set `RATE_LIMIT_GLOBAL_MAX` in its own git-ignored `.env` — the message
- * below says both.
+ * What still throttles a run is a **stale `.env`**: a copy taken before that
+ * record carries 300 and meets exactly the wall above. Refreshing that one line
+ * from `.env.example` and restarting `pnpm dev --filter api` — which also
+ * clears the in-memory counters — is the fix, and the message below reads the
+ * quota off the response so it can say which of the two profiles answered.
  *
  * **`needed` is a parameter since `D13.9`, and that is the whole point of it.**
  * The default is the suite's own cost, which is the right number for the
@@ -326,6 +330,23 @@ export const assertApiWindowClear = async (
    */
   const headers = probe.headers()["ratelimit"] ?? "";
   const remaining = Number(/r=(\d+)/.exec(headers)?.[1] ?? Number.NaN);
+  /*
+   * **The quota, off the response rather than compiled in.** ADR-0069 made it
+   * worth reporting: a window of 300 is an `.env` copied before that record,
+   * so the failure is the stale line rather than the run, and a message that
+   * states 300 as a fact would now be wrong on the committed profile.
+   *
+   * `q=` on `RateLimit-Policy` is the draft-8 field that carries it —
+   * `"1000-in-15min"; q=1000; w=900`. The policy *name* spells the same number,
+   * but that is `express-rate-limit`'s default identifier rather than a field,
+   * so a library default or a custom identifier would take it away silently.
+   */
+  const policy = probe.headers()["ratelimit-policy"] ?? "";
+  const quotaValue = Number(/q=([0-9]+)/.exec(policy)?.[1] ?? Number.NaN);
+  const quota = Number.isFinite(quotaValue)
+    ? `${quotaValue} requests`
+    : "an unreported number of requests";
+  const ofQuota = Number.isFinite(quotaValue) ? ` of ${quotaValue}` : "";
   const resets = /t=(\d+)/.exec(headers)?.[1];
 
   const wait =
@@ -333,18 +354,29 @@ export const assertApiWindowClear = async (
       ? "Wait for the window to clear and run the tier again."
       : `The window clears in ${resets}s; run the tier again after that.`;
 
+  /*
+   * Only when the window really is the pre-ADR-0069 one. Appending this to
+   * every refusal would point a correctly configured machine at a line that
+   * is not stale — the same misdiagnosis the probe exists to end.
+   */
+  const stale =
+    quotaValue === 300
+      ? " That window is 300, which is an .env copied before ADR-0069: refresh " +
+        "RATE_LIMIT_GLOBAL_MAX from .env.example, where the development " +
+        "profile's number lives. The schema's own default is still 300, and " +
+        "that is what a deployment inherits rather than this."
+      : "";
   const because =
     "This is not a defect in the app: `pnpm test:e2e` runs both apps' suites " +
     "through one window, so a second run inside the same quarter hour — or a " +
     "run beside `pnpm test:postman`, which is 165 of its own — is what " +
     "spends it. Restarting `pnpm dev --filter api` clears the counters, which " +
-    "are in memory; a machine that runs the tier often can also raise " +
-    "RATE_LIMIT_GLOBAL_MAX in its own (git-ignored) .env, which changes no " +
-    "committed default — ADR-0020's 300 is the schema's and stays.";
+    "are in memory." +
+    stale;
 
   if (probe.status() === 429) {
     throw new Error(
-      `The API is refusing this run: it answered 429, so ADR-0020's global rate limit (300 requests / 15 minutes, in memory) is spent. ${wait} ${because}`,
+      `The API is refusing this run: it answered 429, so the global rate limit (${quota} per 15 minutes, in memory) is spent. ${wait} ${because}`,
     );
   }
 
@@ -387,14 +419,14 @@ export const assertApiWindowClear = async (
    * The margin over the measurement is the dozen `D12.10` chose.
    *
    * The admin's is **174** on the same day and by the same method (299 to 124,
-   * 37 specs), against the 168 its own floor still states — its suite has not
-   * changed since `D11.12`, so what grew is the app. **308 together**, which is
-   * over ADR-0020's 300: see the header above for why that is escalated rather
-   * than fixed here, and why neither floor was trimmed to make the sum work.
+   * 37 specs) — its suite has not changed since `D11.12`, so what grew is the
+   * app, and its own floor was corrected to that measurement in the same step.
+   * **308 together**, which was over ADR-0020's 300: the header above has what
+   * was done about it, and why neither floor was trimmed to make the sum work.
    */
   if (Number.isFinite(remaining) && remaining < needed) {
     throw new Error(
-      `The API has ${remaining} requests left in ADR-0020's 15-minute window and what is about to run costs about ${needed - 13}, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
+      `The API has ${remaining}${ofQuota} requests left in the 15-minute window and what is about to run costs about ${needed - 13}, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
     );
   }
 };

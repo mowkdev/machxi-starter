@@ -328,6 +328,17 @@ export const envSchema = z
       .min(minArgon2Params.parallelism)
       .default(defaultArgon2Params.parallelism),
 
+    /**
+     * ADR-0020's 300, and it stays the default: a deployment that states
+     * nothing is exactly as that record decided, and `docker/prod/.env.example`
+     * states nothing.
+     *
+     * The committed **development** profile in the root `.env.example` states a
+     * larger one (ADR-0069). That is a fact about this repository rather than
+     * about the API — `pnpm test:e2e` and `pnpm test:postman` spend more than
+     * one window between them, so the default would refuse a stock clone its
+     * own verification.
+     */
     RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().positive().default(300),
     RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(10),
     // Counts **failed** refreshes only (ADR-0020): a client whose access token

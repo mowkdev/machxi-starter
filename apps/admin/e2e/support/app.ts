@@ -89,8 +89,8 @@ const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
  * **The flake `D11.1`–`D11.5` each logged as "the API is not reachable",
  * diagnosed at `D11.6` and answered here.** This tier deliberately owns no
  * `webServer`: it runs against a long-lived dev API whose rate limiter is
- * in-memory and global — 300 requests in fifteen minutes — so a full run
- * plus a second one, or a run beside `pnpm test:postman`, exhausts the
+ * in-memory and global — `RATE_LIMIT_GLOBAL_MAX` requests in fifteen
+ * minutes — so a full run plus a second one, or a run beside `pnpm test:postman`, exhausts the
  * window. Every spec after that point fails in the fixture, waiting thirty
  * seconds for a login form the API will not let the app boot, and the
  * report blames the app for a limit doing its job.
@@ -100,9 +100,11 @@ const API_URL = process.env["E2E_API_URL"] ?? "http://localhost:4000";
  * answers `404` and a spent one answers `429` — which is the `curl` the
  * `D11.6` diagnosis turned on, promoted into the suite. It is the second of
  * the two fixes that step recorded and left for this one; the first — a
- * larger `RATE_LIMIT_GLOBAL_MAX` for the dev profile — is still available
- * and still ADR-0020's to give, and is not needed to make a throttled run
- * *legible*, which is what was actually costing time.
+ * larger `RATE_LIMIT_GLOBAL_MAX` for the development profile — was ADR-0020's
+ * to give and was given at `D15.8`, by supersession, when this suite and the
+ * customer's crossed 300 between them (ADR-0069). It was never what makes a
+ * throttled run *legible*, which is what was actually costing time, so this
+ * probe stays and a spent window still fails here rather than mid-suite.
  *
  * A failure here is a failure of every spec, which is correct: none of them
  * can run, and one honest error at second zero is worth more than
@@ -137,6 +139,23 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
    */
   const headers = probe.headers()["ratelimit"] ?? "";
   const remaining = Number(/r=(\d+)/.exec(headers)?.[1] ?? Number.NaN);
+  /*
+   * **The quota, off the response rather than compiled in.** ADR-0069 made it
+   * worth reporting: a window of 300 is an `.env` copied before that record,
+   * so the failure is the stale line rather than the run, and a message that
+   * states 300 as a fact would now be wrong on the committed profile.
+   *
+   * `q=` on `RateLimit-Policy` is the draft-8 field that carries it —
+   * `"1000-in-15min"; q=1000; w=900`. The policy *name* spells the same number,
+   * but that is `express-rate-limit`'s default identifier rather than a field,
+   * so a library default or a custom identifier would take it away silently.
+   */
+  const policy = probe.headers()["ratelimit-policy"] ?? "";
+  const quotaValue = Number(/q=([0-9]+)/.exec(policy)?.[1] ?? Number.NaN);
+  const quota = Number.isFinite(quotaValue)
+    ? `${quotaValue} requests`
+    : "an unreported number of requests";
+  const ofQuota = Number.isFinite(quotaValue) ? ` of ${quotaValue}` : "";
   const resets = /t=(\d+)/.exec(headers)?.[1];
 
   const wait =
@@ -144,14 +163,28 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
       ? "Wait for the window to clear and run the tier again."
       : `The window clears in ${resets}s; run the tier again after that.`;
 
+  /*
+   * Only when the window really is the pre-ADR-0069 one. Appending this to
+   * every refusal would point a correctly configured machine at a line that
+   * is not stale — the same misdiagnosis the probe exists to end.
+   */
+  const stale =
+    quotaValue === 300
+      ? " That window is 300, which is an .env copied before ADR-0069: refresh " +
+        "RATE_LIMIT_GLOBAL_MAX from .env.example, where the development " +
+        "profile's number lives. The schema's own default is still 300, and " +
+        "that is what a deployment inherits rather than this."
+      : "";
   const because =
     "This is not a defect in the app: running the tier twice inside one " +
     "window — or beside `pnpm test:postman`, which is another hundred — " +
-    "is what spends it.";
+    "is what spends it. Restarting `pnpm dev --filter api` clears the " +
+    "counters, which are in memory." +
+    stale;
 
   if (probe.status() === 429) {
     throw new Error(
-      `The API is refusing this run: it answered 429, so ADR-0020's global rate limit (300 requests / 15 minutes, in memory) is spent. ${wait} ${because}`,
+      `The API is refusing this run: it answered 429, so the global rate limit (${quota} per 15 minutes, in memory) is spent. ${wait} ${because}`,
     );
   }
 
@@ -163,15 +196,24 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
    * whichever spec happened to be crossing the line. So the budget is
    * checked rather than only the refusal.
    *
-   * **168 is measured, not guessed** (`D11.11`): a full green run took the
+   * **168 was measured, not guessed** (`D11.11`): a full green run took the
    * window from 295 to 127. The floor is set above that, so the tier
    * declines a run it cannot finish instead of half-running it.
+   *
+   * **Re-measured at `D15.8`, by the same method: 174** — a green run took a
+   * clear window from 299 to 124, this probe included. This suite has not
+   * changed since `D11.12`; the app under it has, which is where the six came
+   * from. The floor moves with the measurement and keeps the dozen of margin
+   * its twin in `apps/customer` uses, rather than the six a stale number had
+   * left it with — six is inside the noise of one screen's boot, which is the
+   * slack that produces exactly the mid-run collapse this check exists to
+   * prevent.
    */
-  const NEEDED = 180;
+  const NEEDED = 186;
 
   if (Number.isFinite(remaining) && remaining < NEEDED) {
     throw new Error(
-      `The API has ${remaining} requests left in ADR-0020's 15-minute window and a full run of this tier costs about 168, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
+      `The API has ${remaining}${ofQuota} requests left in the 15-minute window and a full run of this tier costs about 174, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
     );
   }
 };

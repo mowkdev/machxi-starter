@@ -370,9 +370,10 @@ test("the density choice is written, and both its surfaces agree", async ({
     /*
      * Clicked, not `goto`. A document navigation re-boots the app —
      * `GET /auth/csrf`, a refresh, the settings and the profile — and this
-     * walk crosses to a grid and back four times. Against ADR-0020's
-     * 300-request window (see `support/app.ts`) that is a tier paying for
-     * its own throttling; a click is one list request, and it is also what
+     * walk crosses to a grid and back four times. Against the global request
+     * window (see `support/app.ts`, which reads its size off the response
+     * rather than stating one) that is a tier paying for its own throttling;
+     * a click is one list request, and it is also what
      * an operator actually does.
      */
     await page

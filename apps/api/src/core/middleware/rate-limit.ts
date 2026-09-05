@@ -105,7 +105,10 @@ const baseOptions = (windowMs: number, store: RateLimitStore) =>
   }) as const;
 
 /**
- * `300 / 15 min / IP` across `/api` (ADR-0020).
+ * `RATE_LIMIT_GLOBAL_MAX / 15 min / IP` across `/api` — 300 by default
+ * (ADR-0020), and more in the committed development profile, where this
+ * repository's own browser tier and Postman collection are legitimate
+ * consumers of a whole window (ADR-0069).
  *
  * A backstop against a client hammering any endpoint, not a substitute for the
  * strict limits below: 300 requests of *login* would already be far too many.

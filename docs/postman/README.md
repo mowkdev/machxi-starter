@@ -101,19 +101,21 @@ possible.
 registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Each
 of those requests carries a description saying which ADR decided it.
 
-**Rate limits bound how often it runs** (ADR-0020). One pass spends 1 of the 5
-failed refreshes per 15 minutes per IP, and — since the three organizations
-folders landed — about 160 of the 300 global requests per 15 minutes (the three
-health probes and the metrics scrape sit outside every limiter). That is now
-**one consecutive run per window** against a single API process, where it used
-to be several: the second pass trips the global limiter partway through. A `429
-RATE_LIMITED` in the middle of a run means the window, not a regression —
-restart `pnpm dev --filter api` to reset the in-memory counters, or wait it out.
+**Rate limits bound how often it runs** (ADR-0020, as carried by ADR-0069). One
+pass spends 1 of the 5 failed refreshes per 15 minutes per IP, and — since the
+three organizations folders landed — 165 of the global `RATE_LIMIT_GLOBAL_MAX`
+per 15 minutes (the three health probes and the metrics scrape sit outside every
+limiter). On the committed development profile that is a small share of the
+window, which is the point of ADR-0069: one window holds this collection, the
+whole browser tier and a retry of both. On a stock 300 it was one consecutive
+run per window, and an `.env` copied before that record still behaves that way —
+refresh `RATE_LIMIT_GLOBAL_MAX` from `.env.example`. A `429 RATE_LIMITED` in the
+middle of a run means the window, not a regression: restart `pnpm dev --filter
+api` to reset the in-memory counters, or wait it out.
 
-That is the cost of covering the tenant surface here rather than only in the
-integration suite, and it is worth naming rather than discovering: a collection
-that has to be run twice in ten minutes now needs the API restarted between
-passes.
+That the tenant surface is covered here rather than only in the integration suite
+is what put the count where it is, and it is worth naming rather than
+discovering.
 
 ## Changing it
 

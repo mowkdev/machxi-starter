@@ -133,21 +133,40 @@ describe("ready", () => {
   });
 
   it("runs indicators in parallel, not one after another", async () => {
+    /*
+     * **Concurrency, not wall clock** (`D15.8`, the close-out). This asserted
+     * that three 40 ms indicators finished inside 120 ms — the serial time
+     * exactly, so the whole margin was the difference between parallel and
+     * serial, and any machine that adds scheduling delay to a timer closes it.
+     * It failed on the forced parallel loop (fifteen packages' unit suites at
+     * once, beside a dev stack) reporting 229 ms for 40 ms of timers, which is
+     * a fact about the machine rather than about the service, and it would
+     * have gone on failing on whichever suite happened to be running beside it.
+     *
+     * So the requirement is asserted directly: how many checks were in flight
+     * at once. Serial gives a peak of one whatever the clock says.
+     */
+    let inFlight = 0;
+    let peak = 0;
+
     const slow = (name: string): HealthIndicator => ({
       name,
-      check: () =>
-        new Promise((resolve) =>
-          setTimeout(() => {
-            resolve({ status: "ok" });
-          }, 40),
-        ),
-    });
+      check: () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
 
-    const startedAt = performance.now();
+        return new Promise((resolve) =>
+          setTimeout(() => {
+            inFlight -= 1;
+            resolve({ status: "ok" });
+          }, 5),
+        );
+      },
+    });
 
     await service([slow("a"), slow("b"), slow("c")]).ready(ctx);
 
-    expect(performance.now() - startedAt).toBeLessThan(120);
+    expect(peak).toBe(3);
   });
 
   it("answers ok with no indicators registered at all", async () => {
