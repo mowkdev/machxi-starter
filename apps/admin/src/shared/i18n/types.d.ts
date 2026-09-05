@@ -7,6 +7,7 @@ import type profile from "./locales/en/profile.json";
 import type settings from "./locales/en/settings.json";
 import type staff from "./locales/en/staff.json";
 import type users from "./locales/en/users.json";
+import type organizations from "./locales/en/organizations.json";
 
 /**
  * Typed keys (ADR-0046 §2): a missing key or a missing namespace is a type
@@ -37,6 +38,7 @@ declare module "i18next" {
       users: typeof users;
       settings: typeof settings;
       account: typeof account;
+      organizations: typeof organizations;
     };
   }
 }

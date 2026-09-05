@@ -33,7 +33,7 @@ import type { ResourcePolicy as ResourcePolicyShape } from "@repo/app-services";
  */
 
 /** A resource this app draws affordances for. Keyed by the router's own path. */
-export type ResourceName = "staff" | "users";
+export type ResourceName = "staff" | "users" | "organizations";
 
 /**
  * What an operator may be asked to do to one.
@@ -123,6 +123,28 @@ export const RESOURCE_POLICY = {
      * bounds the operators who *can* mint.
      */
     impersonate: ["admin"],
+  },
+  /*
+   * Mounted `authorize("admin", "manager")` — a manager may *read* the tenant
+   * base, the users resource's shape exactly (ADR-0067 §3) — and
+   * `organizations.routes.ts` narrows six writing routes back to
+   * `authorize("admin")`: `POST /`, `PATCH /:id` and `DELETE /:id` on the
+   * resource, and `POST`, `PATCH /:userId` and `DELETE /:userId` on the
+   * memberships sub-resource. Six, counted from the call sites — a `grep -c`
+   * over that file says seven, and the seventh is its own header prose.
+   *
+   * **The sub-resource shares this row rather than having one of its own.**
+   * Its four routes carry the same guard as the resource's writes, so a
+   * `memberships` entry would be four more lines saying `["admin"]` a second
+   * time — and a second place for the transcription to drift from the router
+   * it is transcribed from. The members section reads `update` for its three
+   * writes, which is what the router says about them.
+   */
+  organizations: {
+    read: ["admin", "manager"],
+    create: ["admin"],
+    update: ["admin"],
+    delete: ["admin"],
   },
   /*
    * **`/profile` is deliberately absent.** It mounts with no `authorize` at

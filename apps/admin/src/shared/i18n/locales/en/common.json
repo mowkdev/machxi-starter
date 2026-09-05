@@ -17,7 +17,8 @@
     "group": "Manage",
     "dashboard": "Dashboard",
     "staff": "Staff",
-    "users": "Users"
+    "users": "Users",
+    "organizations": "Organizations"
   },
   "account": {
     "menu": "Account",
@@ -36,7 +37,9 @@
     "admin": "Admin",
     "manager": "Manager",
     "editor": "Editor",
-    "customer": "Customer"
+    "customer": "Customer",
+    "personal": "Personal",
+    "team": "Team"
   },
   "record": {
     "errorTitle": "That record could not be opened",

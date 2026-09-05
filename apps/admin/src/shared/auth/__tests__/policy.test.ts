@@ -43,6 +43,22 @@ import { RESOURCE_POLICY, type ResourcePolicy } from "../policy";
  * `authorize("admin")` in that router is the row below, and the `impersonate`
  * grep finds nothing in `staff.routes.ts` — which is the fixture's answer to
  * why `staff` has no such key.
+ *
+ * **Re-read 2026-09-05 (`D15.4`)**, when the tenant base arrived:
+ *
+ * - `apps/api/src/routes/admin.router.ts`
+ *   - `router.use("/organizations", authorize("admin", "manager"), …)`
+ * - `apps/api/src/modules/organizations/organizations.routes.ts` — **six**
+ *   `authorize("admin")` calls: `POST /`, `PATCH /:id`, `DELETE /:id` on the
+ *   resource, and `POST`, `PATCH /:userId`, `DELETE /:userId` on the
+ *   memberships sub-resource. A seventh occurrence of the string is in that
+ *   file's own header prose, which is exactly the kind of copy this fixture
+ *   exists not to trust — a bare `grep -c` says seven and the **call sites**
+ *   say six.
+ *
+ * The memberships sub-resource gets no key of its own: its three writes carry
+ * the same guard as the resource's, so a second key would be the same value
+ * written twice and a second place to drift from the router.
  */
 const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
   staff: {
@@ -61,6 +77,12 @@ const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
     setPassword: ["admin"],
     revokeSessions: ["admin"],
     impersonate: ["admin"],
+  },
+  organizations: {
+    read: ["admin", "manager"],
+    create: ["admin"],
+    update: ["admin"],
+    delete: ["admin"],
   },
 };
 
@@ -101,7 +123,11 @@ describe("RESOURCE_POLICY", () => {
      * entry claiming otherwise would break the config-declares-what-exists rule
      * in the direction that costs an operator their own profile page.
      */
-    expect(Object.keys(RESOURCE_POLICY)).toEqual(["staff", "users"]);
+    expect(Object.keys(RESOURCE_POLICY)).toEqual([
+      "staff",
+      "users",
+      "organizations",
+    ]);
   });
 });
 
@@ -111,6 +137,13 @@ describe("can(principal, action, resource)", () => {
     expect(can(staff("manager"), "read", "users")).toBe(true);
     expect(can(staff("manager"), "create", "users")).toBe(false);
     expect(can(staff("manager"), "delete", "users")).toBe(false);
+
+    // And the organizations row is the same shape for the same reason: a
+    // manager reads the tenant base and does not reshape it (ADR-0067 §3).
+    expect(can(staff("manager"), "read", "organizations")).toBe(true);
+    expect(can(staff("manager"), "create", "organizations")).toBe(false);
+    expect(can(staff("manager"), "update", "organizations")).toBe(false);
+    expect(can(staff("manager"), "delete", "organizations")).toBe(false);
 
     // …and staff is uniformly `admin`, so a manager is offered nothing here.
     expect(can(staff("manager"), "read", "staff")).toBe(false);

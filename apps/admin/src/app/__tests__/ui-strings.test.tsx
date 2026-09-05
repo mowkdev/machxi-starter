@@ -57,6 +57,7 @@ const withLatvian = (): I18n =>
        * the state this test is about.
        */
       lv: {
+        organizations: {},
         common: { ui: LV_UI },
         errors: {},
         auth: {},

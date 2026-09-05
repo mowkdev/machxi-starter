@@ -17,7 +17,8 @@
     "group": "Pārvaldība",
     "dashboard": "Vadības panelis",
     "staff": "Darbinieki",
-    "users": "Lietotāji"
+    "users": "Lietotāji",
+    "organizations": "Organizācijas"
   },
   "account": {
     "menu": "Konts",
@@ -36,7 +37,9 @@
     "admin": "Administrators",
     "manager": "Vadītājs",
     "editor": "Redaktors",
-    "customer": "Klients"
+    "customer": "Klients",
+    "personal": "Personīgā",
+    "team": "Komandas"
   },
   "record": {
     "errorTitle": "Šo ierakstu neizdevās atvērt",

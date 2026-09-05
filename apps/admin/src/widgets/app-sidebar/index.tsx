@@ -4,6 +4,7 @@ import {
   LayoutDashboardIcon,
   ShieldIcon,
   UserIcon,
+  Building2Icon,
   UsersIcon,
 } from "lucide-react";
 
@@ -113,7 +114,7 @@ import {
  * where it is looked up.
  */
 interface NavItem {
-  readonly to: "/" | "/staff" | "/users";
+  readonly to: "/" | "/staff" | "/users" | "/organizations";
   /**
    * A key in `common:nav`, not a sentence (`D7.2`).
    *
@@ -128,7 +129,7 @@ interface NavItem {
   readonly resource?: ResourceName;
 }
 
-type NavKey = "nav.dashboard" | "nav.staff" | "nav.users";
+type NavKey = "nav.dashboard" | "nav.staff" | "nav.users" | "nav.organizations";
 
 /*
  * Annotated rather than `as const satisfies`, which is the shape the rest of
@@ -141,6 +142,22 @@ const NAVIGATION: readonly NavItem[] = [
   { to: "/", label: "nav.dashboard", icon: LayoutDashboardIcon },
   { to: "/staff", label: "nav.staff", icon: ShieldIcon, resource: "staff" },
   { to: "/users", label: "nav.users", icon: UsersIcon, resource: "users" },
+  /*
+   * Below `/users` rather than above it: an operator reaches for an account
+   * far more often than for the tenant it belongs to, and the order of a
+   * sidebar is a claim about frequency.
+   *
+   * `resource: "organizations"` is what hides the entry from a role with no
+   * `read` on it — the same gate the other two carry. Every staff role that
+   * can open `/users` can open this, so today it hides the entry from
+   * `editor` alone.
+   */
+  {
+    to: "/organizations",
+    label: "nav.organizations",
+    icon: Building2Icon,
+    resource: "organizations",
+  },
 ];
 
 /**

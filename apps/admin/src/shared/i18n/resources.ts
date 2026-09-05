@@ -9,6 +9,7 @@ import enProfile from "./locales/en/profile.json";
 import enSettings from "./locales/en/settings.json";
 import enStaff from "./locales/en/staff.json";
 import enUsers from "./locales/en/users.json";
+import enOrganizations from "./locales/en/organizations.json";
 import type { Namespace } from "./namespaces";
 
 /**
@@ -34,6 +35,7 @@ export const EN_RESOURCES = {
   users: enUsers,
   settings: enSettings,
   account: enAccount,
+  organizations: enOrganizations,
 } as const;
 
 /**

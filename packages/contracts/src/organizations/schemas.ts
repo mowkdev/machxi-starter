@@ -188,6 +188,14 @@ export const LIST_ORGANIZATIONS_SORTABLE = [
 ] as const;
 
 export const LIST_ORGANIZATIONS_FILTERABLE = {
+  /*
+   * `like` and not `eq`, the `users.email` reading: an operator types a
+   * partial term, and ADR-0014 exempts `like` from the field's value schema
+   * because a pattern is not a value of the column's type. Both columns `q`
+   * searches are also filterable on their own, so a caller can ask "name
+   * contains" without also matching the slug.
+   */
+  name: { ops: ["eq", "like"], value: organizationNameSchema },
   kind: { ops: ["eq", "in"], value: z.enum(ORGANIZATION_KINDS) },
   slug: { ops: ["eq", "like"], value: slugSchema },
   createdAt: { ops: ["gt", "gte", "lt", "lte"], value: z.coerce.date() },

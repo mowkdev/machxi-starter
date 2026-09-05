@@ -1,0 +1,101 @@
+{
+  "title": "Organizācijas",
+  "description": "Visas sistēmas organizācijas — personīgās un komandu. Personāls nekad nav to dalībnieks.",
+  "empty": "Neviena organizācija neatbilst šim skatam.",
+  "backToList": "Atpakaļ uz organizācijām",
+  "noun_zero": "organizāciju",
+  "noun_one": "organizācija",
+  "noun_other": "organizācijas",
+  "filters": {
+    "deletedOnly": "Tikai dzēstās"
+  },
+  "columns": {
+    "name": "Nosaukums",
+    "slug": "Adrese",
+    "kind": "Veids",
+    "createdAt": "Izveidota",
+    "deletedAt": "Dzēsta",
+    "actions": "Darbības"
+  },
+  "fields": {
+    "name": { "label": "Nosaukums" },
+    "slug": {
+      "label": "Adrese",
+      "description": "Mazie burti, cipari un atsevišķas defises. Tā parādās klienta lietotnes saitēs."
+    },
+    "ownerId": {
+      "label": "Īpašnieks",
+      "description": "Konts, kas to pārvaldīs. Personāls nekad nav dalībnieks, tāpēc šeit izveidotai organizācijai jānorāda īpašnieks."
+    }
+  },
+  "actions": {
+    "create": "Jauna organizācija",
+    "edit": "Rediģēt",
+    "delete": "Dzēst"
+  },
+  "create": {
+    "routeTitle": "Jauna organizācija",
+    "title": "Jauna organizācija",
+    "description": "Izveido komandas organizāciju, kas pieder norādītajam kontam. Personīgā organizācija tiek izveidota kopā ar kontu, un to šeit izveidot nevar.",
+    "submit": "Izveidot"
+  },
+  "edit": {
+    "routeTitle": "Rediģēt organizāciju",
+    "title": "Rediģēt {{name}}",
+    "description": "Nosaukums un adrese ir viss, kas organizācijai ir. Tās veids nemainās, un personīgā organizācija saglabā no konta atvasināto adresi.",
+    "submit": "Saglabāt izmaiņas"
+  },
+  "delete": {
+    "title": "Dzēst {{name}}?",
+    "description": "Organizācija tiek paslēpta, un tās adrese kļūst pieejama atkārtoti. Dalībnieki un uzaicinājumi saglabājas, bet vairs nekur nenoved. Personīgo organizāciju atsevišķi dzēst nevar.",
+    "confirm": "Dzēst"
+  },
+  "bulkDelete": {
+    "title_zero": "Dzēst {{count}} organizāciju?",
+    "title_one": "Dzēst {{count}} organizāciju?",
+    "title_other": "Dzēst {{count}} organizācijas?",
+    "description": "Katra tiek paslēpta un atbrīvo savu adresi. Personīgās organizācijas tiek atteiktas un uzskaitītas atsevišķi.",
+    "confirm": "Dzēst"
+  },
+  "outcomes": {
+    "created": "Organizācija ir izveidota.",
+    "updated": "Organizācija ir atjaunināta.",
+    "deleted": "Organizācija ir dzēsta."
+  },
+  "members": {
+    "title": "Dalībnieki",
+    "description": "Kas pieder šai organizācijai un kādā lomā. Pievienošana šeit ir vienīgais ceļš organizācijā, kas neiet caur uzaicinājumu.",
+    "empty": "Šai organizācijai nav dalībnieku.",
+    "columns": {
+      "email": "E-pasts",
+      "name": "Vārds",
+      "role": "Loma"
+    },
+    "role": {
+      "owner": "Īpašnieks",
+      "admin": "Administrators",
+      "member": "Dalībnieks"
+    },
+    "add": {
+      "action": "Pievienot dalībnieku",
+      "title": "Pievienot dalībnieku",
+      "description": "Pēc konta id, jo personālam kontu saraksts jau ir pieejams.",
+      "userId": "Konta id",
+      "userIdDescription": "Pievienojamā konta id.",
+      "role": "Loma",
+      "submit": "Pievienot"
+    },
+    "changeRole": { "action": "Mainīt lomu" },
+    "remove": {
+      "action": "Noņemt",
+      "title": "Noņemt {{name}}?",
+      "description": "Piekļuve šai organizācijai tiek zaudēta nekavējoties. Pēdējo īpašnieku noņemt nevar.",
+      "confirm": "Noņemt"
+    },
+    "outcomes": {
+      "added": "Dalībnieks ir pievienots.",
+      "roleChanged": "Loma ir nomainīta.",
+      "removed": "Dalībnieks ir noņemts."
+    }
+  }
+}

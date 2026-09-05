@@ -45,6 +45,7 @@ export const NAMESPACES = [
    * `settings:` — because a section is an address, not an owner of copy.
    */
   "account",
+  "organizations",
 ] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];

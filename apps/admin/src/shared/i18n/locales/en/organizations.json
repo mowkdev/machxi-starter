@@ -1,0 +1,99 @@
+{
+  "title": "Organizations",
+  "description": "Every tenant in the system, personal and team. Staff are never members of one.",
+  "empty": "No organizations match this view.",
+  "backToList": "Back to organizations",
+  "noun_one": "organization",
+  "noun_other": "organizations",
+  "filters": {
+    "deletedOnly": "Deleted only"
+  },
+  "columns": {
+    "name": "Name",
+    "slug": "Address",
+    "kind": "Kind",
+    "createdAt": "Created",
+    "deletedAt": "Deleted",
+    "actions": "Actions"
+  },
+  "fields": {
+    "name": { "label": "Name" },
+    "slug": {
+      "label": "Address",
+      "description": "Lower-case letters, digits and single hyphens. It appears in the customer app's URLs."
+    },
+    "ownerId": {
+      "label": "Owner",
+      "description": "The account that will own it. Staff are never members, so an organization created here needs an owner named."
+    }
+  },
+  "actions": {
+    "create": "New organization",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "create": {
+    "routeTitle": "New organization",
+    "title": "New organization",
+    "description": "Creates a team organization owned by the account you name. A personal organization is created with its account and cannot be made here.",
+    "submit": "Create"
+  },
+  "edit": {
+    "routeTitle": "Edit organization",
+    "title": "Edit {{name}}",
+    "description": "Name and address are all an organization has. Its kind never changes, and a personal organization keeps the address derived from its account.",
+    "submit": "Save changes"
+  },
+  "delete": {
+    "title": "Delete {{name}}?",
+    "description": "The organization is hidden and its address is released for reuse. Its members and invitations survive but reach nothing. A personal organization cannot be deleted on its own.",
+    "confirm": "Delete"
+  },
+  "bulkDelete": {
+    "title_one": "Delete {{count}} organization?",
+    "title_other": "Delete {{count}} organizations?",
+    "description": "Each is hidden and releases its address. Personal organizations are refused and reported individually.",
+    "confirm": "Delete"
+  },
+  "outcomes": {
+    "created": "The organization was created.",
+    "updated": "The organization was updated.",
+    "deleted": "The organization was deleted."
+  },
+  "members": {
+    "title": "Members",
+    "description": "Who belongs to this organization, and as what. Adding somebody here is the one way into an organization that does not go through an invitation.",
+    "empty": "This organization has no members.",
+    "columns": {
+      "email": "Email",
+      "name": "Name",
+      "role": "Role"
+    },
+    "role": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member"
+    },
+    "add": {
+      "action": "Add member",
+      "title": "Add a member",
+      "description": "By account id, because staff already have the list of accounts to find one in.",
+      "userId": "Account id",
+      "userIdDescription": "The id of the account to add.",
+      "role": "Role",
+      "submit": "Add"
+    },
+    "changeRole": { "action": "Change role" },
+    "remove": {
+      "action": "Remove",
+      "title": "Remove {{name}}?",
+      "description": "They lose access to this organization immediately. The last owner cannot be removed.",
+      "confirm": "Remove"
+    },
+    "outcomes": {
+      "added": "The member was added.",
+      "roleChanged": "The role was changed.",
+      "removed": "The member was removed."
+    }
+  }
+}

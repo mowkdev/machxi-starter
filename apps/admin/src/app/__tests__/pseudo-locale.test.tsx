@@ -25,6 +25,12 @@ import {
 } from "@/test/msw/handlers/settings.handlers";
 import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
+import {
+  ORGANIZATIONS_ROWS,
+  ORGANIZATION_MEMBER_ROWS,
+  createOrganizationMockState,
+  createOrganizationsHandlers,
+} from "@/test/msw/handlers/organizations.handlers";
 import { staffPrincipal } from "@/test/principals";
 
 /**
@@ -49,18 +55,25 @@ import { staffPrincipal } from "@/test/principals";
 /** The seeded records the record routes open. */
 const [staffRow] = STAFF_ROWS;
 const [userRow] = USER_ROWS;
+const [organizationRow] = ORGANIZATIONS_ROWS;
 
-if (staffRow === undefined || userRow === undefined)
+if (
+  staffRow === undefined ||
+  userRow === undefined ||
+  organizationRow === undefined
+)
   throw new Error("the fixtures are empty");
 
 const PARAMS: Readonly<Record<string, string>> = {
   $staffId: staffRow.id,
   $userId: userRow.id,
+  $organizationId: organizationRow.id,
 };
 
 /** The fixtures these screens read, built once so the allow-list can be derived. */
 const STAFF_STATE = createStaffMockState();
 const USERS_STATE = createUsersMockState();
+const ORGANIZATIONS_STATE = createOrganizationMockState();
 const PROFILE_STATE = createProfileMockState();
 const SETTINGS_STATE = createSettingsMockState();
 const PRINCIPAL = staffPrincipal(["super_admin"]);
@@ -89,6 +102,23 @@ const MONTHS = Array.from({ length: 12 }, (_, month) =>
 );
 
 const DATA: readonly string[] = [
+  /*
+   * A tenant's own name and address are fixture data, exactly as a person's
+   * are — and the members section renders both, so a screen that showed them
+   * unaccented would otherwise read as a hardcoded English sentence.
+   */
+  ...ORGANIZATIONS_STATE.rows.flatMap((organization) => [
+    organization.id,
+    organization.name,
+    organization.slug,
+  ]),
+  ...ORGANIZATION_MEMBER_ROWS.flatMap((member) => [
+    member.userId,
+    member.email,
+    member.firstName ?? "",
+    member.lastName ?? "",
+    `${member.firstName ?? ""} ${member.lastName ?? ""}`,
+  ]),
   ...people.flatMap((person) => [
     person.id,
     person.email,
@@ -166,6 +196,7 @@ beforeEach(() => {
   server.use(
     ...createStaffHandlers(STAFF_STATE),
     ...createUsersHandlers(USERS_STATE),
+    ...createOrganizationsHandlers(ORGANIZATIONS_STATE),
     ...createProfileHandlers(PROFILE_STATE),
     ...createSettingsHandlers(SETTINGS_STATE),
   );

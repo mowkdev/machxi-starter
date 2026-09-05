@@ -65,6 +65,7 @@ const build = (): I18n =>
        * `@repo/contracts`'.
        */
       lv: {
+        organizations: {},
         common: {},
         errors: {},
         auth: {},
