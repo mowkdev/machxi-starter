@@ -31,9 +31,15 @@ ARG VITE_API_URL
 # built without it agrees with an API deployed without it.
 ARG VITE_APP_ID=machxi
 ARG VITE_I18N_PSEUDO=false
+# Self-service registration (ADR-0067 §6). Defaulted on for the reason the
+# API's own FEATURE_USER_REGISTRATION is: an image built without it agrees with
+# an API deployed without it. The API's flag is still the control — this one
+# only decides whether the screen is in the bundle.
+ARG VITE_FEATURE_USER_REGISTRATION=true
 ENV VITE_API_URL=$VITE_API_URL \
     VITE_APP_ID=$VITE_APP_ID \
-    VITE_I18N_PSEUDO=$VITE_I18N_PSEUDO
+    VITE_I18N_PSEUDO=$VITE_I18N_PSEUDO \
+    VITE_FEATURE_USER_REGISTRATION=$VITE_FEATURE_USER_REGISTRATION
 
 COPY . .
 

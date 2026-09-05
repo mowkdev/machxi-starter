@@ -1,6 +1,7 @@
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 
 import type { SessionStore } from "@/shared/api/session-store";
+import type { AppFeatures } from "@/shared/config";
 import { Toaster } from "@/shared/ui";
 
 /**
@@ -11,9 +12,16 @@ import { Toaster } from "@/shared/ui";
  * `beforeLoad` rather than an `any` the next author has to guess at. The
  * context is *declared* here and *supplied* in `app/providers/router.tsx`.
  *
- * **One field, and the omission is deliberate.** The admin's context is
- * `{ session, queryClient, client }`, because its route loaders call
+ * **Two fields, and what is still missing is deliberate.** The admin's context
+ * is `{ session, queryClient, client }`, because its route loaders call
  * `ensureQueryData` and a loader is not a component and has no hooks.
+ *
+ * **`features` joined at `D15.6`** for the same reason `session` is here:
+ * `/register`'s `beforeLoad` answers `notFound()` when registration is off,
+ * and a `beforeLoad` is not a component, so a provider cannot reach it. Its
+ * second reader is the sign-in screen's link, which reads it through
+ * `useRouteContext` rather than from `shared/config` — one value with two
+ * readers, so a route and the link into it cannot disagree.
  *
  * **`D12.6` brought the query client and did *not* bring a loader**, which is
  * the honest outcome of the rule rather than an exception to it. The account
@@ -26,6 +34,7 @@ import { Toaster } from "@/shared/ui";
 
 export interface RouterContext {
   readonly session: SessionStore;
+  readonly features: AppFeatures;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({

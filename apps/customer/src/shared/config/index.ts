@@ -72,6 +72,23 @@ const envSchema = z.object({
   VITE_ERROR_REPORTING_DSN: z
     .url({ protocol: z.regexes.httpProtocol })
     .optional(),
+  /**
+   * Whether this build offers self-service registration (ADR-0067 §6).
+   *
+   * `z.stringbool()` and `default(true)` mirror the API's own
+   * `FEATURE_USER_REGISTRATION` exactly, because the two are one decision
+   * spelled in two places — and **the API's is the control**. This one decides
+   * whether `/register` and the link to it exist in the bundle; the endpoint
+   * exists or does not regardless, and a build with this flag on against an
+   * API with its own off reaches a `404 ROUTE_NOT_FOUND` and renders the
+   * catalogue's sentence for it. A client flag that could *enable* the feature
+   * would be a control in the one place a customer can edit.
+   *
+   * Defaulted on rather than off, like the API's: a deployment that sets
+   * neither gets the behaviour ADR-0018 decided, and turning registration off
+   * is the deliberate act.
+   */
+  VITE_FEATURE_USER_REGISTRATION: z.stringbool().default(true),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;
@@ -104,6 +121,31 @@ export const API_SEGMENT = "user" as const;
  * theme, a locale and every grid arrangement.
  */
 export const DEVICE_KEY_PREFIX = `${config.VITE_APP_ID}.${API_SEGMENT}`;
+
+/**
+ * Which optional surfaces this build offers (`D15.6`, ADR-0067 §6).
+ *
+ * A named object rather than a bare read of `config`, because its consumer is
+ * the **router context**: a route's `beforeLoad` is not a React component and
+ * cannot reach a provider, so the one seam a flag can travel through to a
+ * guard is the context `createAppRouter` builds. Passing the whole `config`
+ * there would put every variable in reach of every route; this names exactly
+ * what a route may ask about, which today is one thing.
+ *
+ * The shape is what makes it testable at all, and it is `PseudoNoticeProvider`'s
+ * lesson one layer down: `vitest.config.ts` pins the environment for the whole
+ * suite, so a guard reading `import.meta.env` directly would have exactly one
+ * value in every test in this repository. `createAppRouter` takes an override;
+ * this is its default.
+ */
+export interface AppFeatures {
+  /** `/register` and the sign-in screen's link to it (ADR-0067 §6). */
+  readonly userRegistration: boolean;
+}
+
+export const FEATURES: AppFeatures = Object.freeze({
+  userRegistration: config.VITE_FEATURE_USER_REGISTRATION,
+});
 
 /**
  * The build's version, substituted at compile time (ADR-0054 §5).

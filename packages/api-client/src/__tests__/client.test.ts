@@ -1,7 +1,9 @@
 import {
   impersonateBody,
+  registerBody,
   type AuthResource,
   type Page,
+  type RegisterBody,
   type UserPrincipalResource,
 } from "@repo/contracts";
 import { HttpResponse, http } from "msw";
@@ -508,6 +510,167 @@ describe("the impersonation exchange", () => {
     expect(store.getAccessToken()).toBe("already-signed-in");
     expect(store.getCsrfToken()).toBe("csrf-a");
     expect(store.getPrincipal()).toEqual(resident);
+  });
+});
+
+describe("registration", () => {
+  /**
+   * `/api/v1/public`, which is the whole reason this block exists (`D15.6`,
+   * ADR-0015, ADR-0067 §6).
+   *
+   * Registration is the one call in this package that leaves its client's
+   * segment — it is the endpoint for somebody who has no population yet — and
+   * a per-request `baseURL` is what takes it there. The handler is mounted on
+   * the public address and nowhere else, so a client that sent it to
+   * `/api/v1/admin` fails against `onUnhandledRequest: "error"` rather than
+   * against an assertion somebody has to remember to write.
+   */
+  const PUBLIC_API = "http://api.test/api/v1/public";
+
+  /** Where this block's client's *other* requests go, refresh among them. */
+  const USER_API = "http://api.test/api/v1/user";
+
+  const NEW_ACCOUNT: RegisterBody = {
+    email: "new@machxi.local",
+    password: "DevPassword!123",
+    firstName: "Nina",
+    lastName: "Newcomer",
+  };
+
+  /**
+   * A `user`-segment client, because registration is one (`D15.6`).
+   *
+   * The file's own `setup` builds an `admin` client — the segment
+   * `support/auth.handlers` answers on — and `register` refuses that outright,
+   * which is the last case in this block.
+   */
+  const setupUser = () => {
+    const store = createSessionStore();
+
+    return {
+      store,
+      client: createApiClient({
+        store,
+        baseUrl: "http://api.test",
+        segment: "user",
+      }),
+    };
+  };
+
+  it("posts to the public segment, asks for cookie transport, and hydrates the store", async () => {
+    const { client, store } = setupUser();
+    const seen: {
+      body?: RegisterBody;
+      transport?: string | null;
+      authorization?: string | null;
+    } = {};
+
+    // A live session in the store, so the `Authorization` assertion below is
+    // about the interceptor's rule rather than about an empty store.
+    store.setSession({ accessToken: "a-session-already-here" });
+
+    server.use(
+      http.post(`${PUBLIC_API}/auth/register`, async ({ request }) => {
+        seen.transport = request.headers.get("x-auth-transport");
+        seen.authorization = request.headers.get("authorization");
+        // The API's own schema, so a body this client builds wrongly throws
+        // here rather than being quietly accepted (ADR-0036).
+        seen.body = registerBody.parse(await request.json());
+
+        return ok(authResource("access-registered"), 201);
+      }),
+    );
+
+    await expect(client.register(NEW_ACCOUNT)).resolves.toMatchObject({
+      accessToken: "access-registered",
+    });
+
+    expect(seen.body).toEqual(NEW_ACCOUNT);
+    /*
+     * Without this header the API answers with the refresh token in the body
+     * and sets no cookie (ADR-0029 §Opt-in), so the account someone has just
+     * created is signed in until the first reload. It is invisible in the
+     * response, which is why it is asserted at the wire.
+     */
+    expect(seen.transport).toBe("cookie");
+    // The credential is the password in the body; the bearer has no business
+    // on a route that reads no principal.
+    expect(seen.authorization).toBeNull();
+
+    expect(store.getAccessToken()).toBe("access-registered");
+    expect(store.getCsrfToken()).toBe("csrf-for-access-registered");
+  });
+
+  it("leaves the store alone when the address is taken", async () => {
+    const { client, store } = setupUser();
+
+    server.use(
+      http.post(`${PUBLIC_API}/auth/register`, () => fail(409, "CONFLICT")),
+    );
+
+    await expect(client.register(NEW_ACCOUNT)).rejects.toSatisfy(
+      isApiClientError,
+    );
+
+    // Half-writing a session over a refusal is the failure `redeemHandoff`
+    // records for its own path; the rule is the same one endpoint along.
+    expect(store.isAuthenticated()).toBe(false);
+  });
+
+  it("does not retry a 401 through a refresh nobody asked for", async () => {
+    const { client, store } = setupUser();
+    let refreshCalls = 0;
+
+    server.use(
+      /*
+       * On the **user** segment, which is where this client's refresh would
+       * actually go: the file's shared handlers answer `admin`, so counting
+       * there would have left the assertion below true whether the refresh
+       * happened or not.
+       */
+      http.post(`${USER_API}/auth/refresh`, () => {
+        refreshCalls += 1;
+        return fail(401, "AUTH_INVALID_REFRESH_TOKEN");
+      }),
+      /*
+       * Not something this API can answer — the public router mounts no guard
+       * — but edge auth, a WAF or a staging reverse proxy in front of it can,
+       * which is the same justification `/auth/csrf` is on the exclusion list
+       * for. Left off it, an anonymous visitor on the sign-up screen would
+       * have fired a refresh with no credential, been "signed out" of a
+       * session they never had, and read the refresh's sentence over their
+       * registration.
+       */
+      http.post(`${PUBLIC_API}/auth/register`, () =>
+        fail(401, "UNAUTHENTICATED"),
+      ),
+    );
+
+    await expect(client.register(NEW_ACCOUNT)).rejects.toMatchObject({
+      // The registration's own failure, not the refresh's.
+      code: "UNAUTHENTICATED",
+    });
+
+    expect(refreshCalls).toBe(0);
+    expect(store.isAuthenticated()).toBe(false);
+  });
+
+  it("refuses to register from a client pinned to the admin segment", async () => {
+    // No handler: a request that escaped would fail loudly against
+    // `onUnhandledRequest: "error"` rather than being answered by accident.
+    const { client, store } = setup();
+
+    await expect(client.register(NEW_ACCOUNT)).rejects.toSatisfy(
+      isApiClientError,
+    );
+
+    /*
+     * The point is the *write*, not the request. The endpoint is public and
+     * would answer anybody, so nothing on the server stops a `user` principal
+     * being hydrated into the store an admin app's guards read — which makes
+     * this the one place in the client that reads its own segment.
+     */
+    expect(store.isAuthenticated()).toBe(false);
   });
 });
 

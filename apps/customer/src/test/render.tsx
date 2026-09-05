@@ -21,6 +21,7 @@ import {
   type I18n,
   type TranslateKey,
 } from "@/shared/i18n";
+import type { AppFeatures } from "@/shared/config";
 import { GridDensityProvider } from "@/shared/density";
 import { createMessageForError } from "@/shared/notifications/messages";
 import { ThemeProvider } from "@/shared/theme";
@@ -248,6 +249,19 @@ export interface RenderAppOptions extends ProviderOptions {
    * rendered in isolation has nowhere to put one.
    */
   readonly pseudoNotice?: boolean;
+  /**
+   * Which optional surfaces this build offers (`D15.6`, ADR-0067 §6).
+   *
+   * `pseudoNotice`'s sibling and for its reason: `vitest.config.ts` pins the
+   * environment for the whole suite, so a flag read straight from
+   * `import.meta.env` would have one value in every test here — and the
+   * behaviour worth proving is the *off* one, which no build under test
+   * produces. Left absent it defaults to `shared/config`, which is the app.
+   *
+   * On `renderApp` only, and not on `ProviderOptions`: it travels on the
+   * router's context, and a component rendered in isolation has no router.
+   */
+  readonly features?: AppFeatures;
 }
 
 /**
@@ -270,12 +284,17 @@ export interface RenderAppResult extends RenderResult {
 export const renderApp = ({
   initialPath = "/",
   pseudoNotice = false,
+  features,
   ...options
 }: RenderAppOptions = {}): RenderAppResult => {
   const value = providers(options);
   const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [initialPath] }),
     session: value.store,
+    // Spread rather than passed as `undefined`: `exactOptionalPropertyTypes`
+    // (ADR-0002) distinguishes "absent" from "explicitly undefined", and the
+    // absent case is what "use the app's own flags" means.
+    ...(features ? { features } : {}),
     // The production wiring, per render rather than per module: the client this
     // harness built announces a dead session, and this router is what hears it.
     registerSessionEnded: (handler) => {

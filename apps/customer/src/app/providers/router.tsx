@@ -9,6 +9,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
+import { FEATURES, type AppFeatures } from "@/shared/config";
 import { AppError, AppNotFound } from "@/shared/ui";
 
 import { routeTree } from "../routeTree.gen";
@@ -66,11 +67,27 @@ export interface AppRouterOptions {
    * them, and it now travels the same road every other dependency does.
    */
   readonly registerSessionEnded?: (handler: () => void) => void;
+  /**
+   * Which optional surfaces this build offers (`D15.6`, ADR-0067 §6).
+   *
+   * It travels on the router's context because its first reader is a guard:
+   * `/register`'s `beforeLoad` answers `notFound()` when registration is off,
+   * and a `beforeLoad` is not a component, so no provider can reach it. The
+   * sign-in screen's link then reads the same value through
+   * `useRouteContext`, which is what keeps the route and the link from
+   * disagreeing — two readers of one fact rather than two facts.
+   *
+   * Defaulted from `shared/config`, overridden in tests: `vitest.config.ts`
+   * pins the environment for the whole suite, so a flag with no seam would
+   * have one value in every test here.
+   */
+  readonly features?: AppFeatures;
 }
 
 export const createAppRouter = ({
   session,
   history,
+  features = FEATURES,
   registerSessionEnded = onSessionEnded,
 }: AppRouterOptions = {}) => {
   const store = session ?? createSessionStore();
@@ -78,14 +95,14 @@ export const createAppRouter = ({
   const router = createRouter({
     routeTree,
     /*
-     * `{ session }` and nothing else, which is what this app's routes can
-     * truthfully read today. The admin's context also carries `queryClient` and
-     * `client`, because its loaders prime the cache (ADR-0043) — this app has
-     * no loader until `D12.6` gives it something to fetch, and a context field
-     * with no reader is a claim the compiler cannot check. The two join it in
-     * the step that needs them.
+     * `{ session }` and, since `D15.6`, `{ features }` — which is what this
+     * app's routes can truthfully read. The admin's context also carries
+     * `queryClient` and `client`, because its loaders prime the cache
+     * (ADR-0043) — this app has no loader, and a context field with no reader
+     * is a claim the compiler cannot check. `features` has two: `/register`'s
+     * guard and the sign-in screen's link.
      */
-    context: { session: store },
+    context: { session: store, features },
     defaultPreload: "intent",
     /*
      * What a customer meets when a route throws or an address matches nothing

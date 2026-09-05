@@ -1,9 +1,11 @@
 import {
   impersonateBody,
   loginBody,
+  registerBody,
   type AuthResource,
   type ErrorCode,
   type ImpersonatorResource,
+  type RegisterBody,
   type UserPrincipalResource,
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
@@ -58,6 +60,17 @@ const authenticated = (request: Request): Response | null =>
 export const API = "http://api.test/api/v1/user";
 
 /**
+ * The one segment this app talks to that is not its own (`D15.6`, ADR-0015).
+ *
+ * Registration is mounted on `/api/v1/public` because it is the endpoint for
+ * somebody who has no population yet, so a handler on `API` would answer a
+ * request this app never makes and let the real one fall through to
+ * `onUnhandledRequest: "error"` — the loud failure worth having, and the
+ * reason the base URL is spelled out rather than derived.
+ */
+export const PUBLIC_API = "http://api.test/api/v1/public";
+
+/**
  * A customer, not an operator.
  *
  * `kind: "user"` and `roles: ["customer"]` — the only user role in v1
@@ -97,6 +110,15 @@ export const IMPERSONATED_PRINCIPAL: UserPrincipalResource = {
 
 /** The handoff the admin panel would have put in the URL fragment. */
 export const HANDOFF_TOKEN = "handoff-token-from-the-fragment";
+
+/**
+ * The id a freshly registered account gets (`D15.6`).
+ *
+ * Its own value rather than {@link PRINCIPAL}'s, because the two are different
+ * accounts: a test that registered and then asserted on the fixture's id would
+ * pass whether or not the response's principal had been written to the store.
+ */
+export const REGISTERED_USER_ID = "0198c1f0-0000-7000-8000-0000000000c2";
 
 export const CREDENTIALS = {
   email: "customer@machxi.local",
@@ -141,6 +163,34 @@ export interface AuthMockState {
   /** How many times `POST /auth/logout` has been called. */
   logoutCalls: number;
   /**
+   * The bodies `POST /public/auth/register` has been offered, in order
+   * (`D15.6`).
+   *
+   * Bodies rather than a count, for the reason `impersonateCalls` holds
+   * tokens: what a test has to be able to see is *what left the form* — the
+   * two optional names in particular, which have to be absent rather than
+   * empty (ADR-0017's nullable columns, `registerBody`'s `min(1)`).
+   */
+  registerCalls: RegisterBody[];
+  /**
+   * Whether registration asked for cookie transport (ADR-0029 §Opt-in).
+   *
+   * Recorded rather than enforced, exactly as the exchange's twin is: a
+   * request without the header is valid and answers with a body-borne refresh
+   * token and no cookie, which is invisible in the response and would leave a
+   * newly created account signed in only until the first reload.
+   */
+  registerAskedForCookies: boolean;
+  /**
+   * Addresses that already belong to an account.
+   *
+   * The refusal is the generic `409 CONFLICT` ADR-0020 §Enumeration requires —
+   * never `USER_EMAIL_TAKEN`, which would confirm the address. A mock that
+   * answered the sharper code would let this app grow a branch the API can
+   * never take.
+   */
+  takenEmails: string[];
+  /**
    * Whether a refresh cookie exists at all.
    *
    * `true` by default because most tests are about a returning visitor. Set
@@ -162,6 +212,9 @@ export const createAuthMockState = (): AuthMockState => ({
   logoutCalls: 0,
   impersonateCalls: [],
   impersonateAskedForCookies: false,
+  registerCalls: [],
+  registerAskedForCookies: false,
+  takenEmails: [CREDENTIALS.email],
   hasRefreshCookie: true,
 });
 
@@ -209,6 +262,56 @@ export const createAuthHandlers = (state: AuthMockState) =>
 
       return ok(authResource("access-login"));
     }),
+
+    /*
+     * Self-registration (`D15.6`, ADR-0067 §6, ADR-0018 §Staff onboarding).
+     *
+     * **On `PUBLIC_API`, and that is the assertion the mount makes**: a client
+     * that sent this to its own segment would find no handler and fail loudly
+     * rather than being quietly answered.
+     *
+     * The response is login's — `201` with the same `AuthResource`, so the new
+     * account is signed in without a second round trip — with the *submitted*
+     * identity rather than the fixture's, because what the switcher and the
+     * account control then render has to belong to the person who just
+     * registered.
+     */
+    http.post(
+      `${PUBLIC_API}/auth/register`,
+      async ({ request }): Promise<Response> => {
+        state.registerAskedForCookies =
+          request.headers.get(TRANSPORT_HEADER) === "cookie";
+
+        // The API's own schema: a body this app builds wrongly throws here.
+        const body = registerBody.parse(await request.json());
+
+        state.registerCalls.push(body);
+
+        if (state.takenEmails.includes(body.email))
+          return fail(409, "CONFLICT");
+
+        state.takenEmails.push(body.email);
+
+        return ok(
+          {
+            ...authResource("access-registered"),
+            principal: {
+              ...PRINCIPAL,
+              id: REGISTERED_USER_ID,
+              email: body.email,
+              // `null` rather than the fixture's names: the columns are nullable
+              // (ADR-0017) and an omitted name is stored as nothing, which is
+              // what an account created without one actually looks like.
+              firstName: body.firstName ?? null,
+              lastName: body.lastName ?? null,
+            },
+            // `201`, which is what the endpoint answers: a mock that said `200`
+            // would let a client grow a check the API would fail.
+          },
+          201,
+        );
+      },
+    ),
 
     /*
      * The exchange (`D13.7`, ADR-0057 §3).

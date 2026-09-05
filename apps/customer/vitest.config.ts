@@ -62,6 +62,17 @@ export default mergeConfig(
          * the lens asks `renderApp` for it, which needs no environment.
          */
         VITE_I18N_PSEUDO: "false",
+        /*
+         * Pinned on, for the reason the two above are pinned at all
+         * (`D15.6`, ADR-0067 §6): a variable read from outside the repository
+         * is invisible to Turbo's hash, and this one decides whether
+         * `/register` and the sign-in screen's link exist — so a developer
+         * with it set to `false` in their shell would watch this suite fail on
+         * addresses that are perfectly fine. `true` is the schema's own
+         * default, so nothing about the pin changes behaviour, and the one
+         * suite that wants it off asks `renderApp` for it.
+         */
+        VITE_FEATURE_USER_REGISTRATION: "true",
       },
     },
   }),

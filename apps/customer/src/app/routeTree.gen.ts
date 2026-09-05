@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DashboardRouteImport } from './routes/_dashboard'
 import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as AuthLoginRouteImport } from './routes/_auth.login'
+import { Route as AuthRegisterRouteImport } from './routes/_auth.register'
 import { Route as DashboardIndexRouteImport } from './routes/_dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/_dashboard.account'
 import { Route as DashboardAccountIndexRouteImport } from './routes/_dashboard.account.index'
@@ -39,6 +40,11 @@ const ImpersonateRoute = ImpersonateRouteImport.update({
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthRegisterRoute = AuthRegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
   getParentRoute: () => AuthRoute,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/': typeof DashboardIndexRoute
   '/impersonate': typeof ImpersonateRoute
   '/login': typeof AuthLoginRoute
+  '/register': typeof AuthRegisterRoute
   '/account': typeof DashboardAccountRouteWithChildren
   '/account/invitations': typeof DashboardAccountInvitationsRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/': typeof DashboardIndexRoute
   '/impersonate': typeof ImpersonateRoute
   '/login': typeof AuthLoginRoute
+  '/register': typeof AuthRegisterRoute
   '/account/invitations': typeof DashboardAccountInvitationsRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
   '/account/profile': typeof DashboardAccountProfileRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/_dashboard': typeof DashboardRouteWithChildren
   '/impersonate': typeof ImpersonateRoute
   '/_auth/login': typeof AuthLoginRoute
+  '/_auth/register': typeof AuthRegisterRoute
   '/_dashboard/account': typeof DashboardAccountRouteWithChildren
   '/_dashboard/': typeof DashboardIndexRoute
   '/_dashboard/account/invitations': typeof DashboardAccountInvitationsRoute
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/'
     | '/impersonate'
     | '/login'
+    | '/register'
     | '/account'
     | '/account/invitations'
     | '/account/preferences'
@@ -152,6 +162,7 @@ export interface FileRouteTypes {
     | '/'
     | '/impersonate'
     | '/login'
+    | '/register'
     | '/account/invitations'
     | '/account/preferences'
     | '/account/profile'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/_dashboard'
     | '/impersonate'
     | '/_auth/login'
+    | '/_auth/register'
     | '/_dashboard/account'
     | '/_dashboard/'
     | '/_dashboard/account/invitations'
@@ -210,6 +222,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof AuthLoginRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/register': {
+      id: '/_auth/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof AuthRegisterRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_dashboard/': {
@@ -280,10 +299,12 @@ declare module '@tanstack/react-router' {
 
 interface AuthRouteChildren {
   AuthLoginRoute: typeof AuthLoginRoute
+  AuthRegisterRoute: typeof AuthRegisterRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthLoginRoute: AuthLoginRoute,
+  AuthRegisterRoute: AuthRegisterRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

@@ -108,6 +108,14 @@ services:
       - METRICS_TOKEN=${METRICS_TOKEN}
       # Optional (ADR-0066 §3). Absent means no reporter is built.
       - ERROR_REPORTING_DSN
+      # Self-service registration (ADR-0004, ADR-0067 §6). A bare key: unset
+      # means the schema's own `true`, which is what ADR-0018 decided, and
+      # turning it off is the deliberate act — one this file offered no way to
+      # take until `D15.6`'s reviewers pointed at it. **The API's is the
+      # control**, and the customer image's VITE_ twin below reads the same
+      # variable so a deployment cannot end up with a sign-up screen in front
+      # of an endpoint that is not mounted.
+      - FEATURE_USER_REGISTRATION
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
       # The exact browser origins the two SPAs answer on. `*` is refused here
       # (ADR-0020), and an origin that never matches is a startup failure
@@ -151,6 +159,14 @@ services:
       args:
         VITE_API_URL: ${VITE_CUSTOMER_API_URL}
         VITE_APP_ID: ${APP_ID:-machxi}
+        # The API's own variable, read a second time (ADR-0067 §6). Not a
+        # `VITE_`-named twin an operator has to remember to set in step with
+        # it: the two halves are one decision, and the failure worth designing
+        # out is a build that advertises sign-up in front of an API that does
+        # not mount it. A build argument rather than an environment entry,
+        # because Vite inlines it — see this app's Dockerfile on why that makes
+        # the image environment-specific.
+        VITE_FEATURE_USER_REGISTRATION: ${FEATURE_USER_REGISTRATION:-true}
     container_name: machxi-customer
     restart: unless-stopped
     # Loopback, for the reason the API's is.

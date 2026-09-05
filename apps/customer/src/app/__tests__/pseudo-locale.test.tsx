@@ -207,14 +207,16 @@ const ROUTE_PATHS: readonly string[] = [
 /**
  * The session each address has to be visited **in** to see the page it names.
  *
- * `/login` is the one route a signed-in customer cannot reach: `_auth`'s mirror
- * guard redirects them home, so visiting it with a session would have walked
- * the home screen twice under the name of the sign-in screen — a page silently
- * uncovered while the suite reported two green. Every other address is behind
- * the `_dashboard` guard and needs the opposite.
+ * `/login` and `/register` are the routes a signed-in customer cannot reach:
+ * `_auth`'s mirror guard redirects them home, so visiting either with a session
+ * would have walked the home screen twice under the name of an auth screen — a
+ * page silently uncovered while the suite reported two green. Every other
+ * address is behind the `_dashboard` guard and needs the opposite.
  */
+const ANONYMOUS_PATHS = ["/login", "/register"];
+
 const storeFor = (path: string) =>
-  path === "/login" ? createSessionStore() : authenticated();
+  ANONYMOUS_PATHS.includes(path) ? createSessionStore() : authenticated();
 
 /**
  * The endpoints these screens read (`D12.6`).
@@ -250,6 +252,15 @@ describe("the route tree under the pseudo-locale", () => {
     expect(ROUTE_PATHS.length).toBeGreaterThanOrEqual(2);
     expect(ROUTE_PATHS).toContain("/login");
     expect(ROUTE_PATHS).toContain("/");
+    /*
+     * `/register` is named rather than left to the sweep (`D15.6`), because it
+     * is the one address in this tree whose *existence* is a build flag: with
+     * `VITE_FEATURE_USER_REGISTRATION` off its guard answers not-found, and a
+     * walk that silently skipped it would report green over a screen nobody
+     * had looked at. The route is in the tree either way — the flag gates the
+     * guard, not the file — so this line is true in both builds.
+     */
+    expect(ROUTE_PATHS).toContain("/register");
   });
 
   it.each(ROUTE_PATHS)("leaves nothing unaccented at %s", async (path) => {

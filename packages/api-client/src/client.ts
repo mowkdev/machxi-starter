@@ -8,6 +8,7 @@ import {
   type ErrorDetail,
   type ImpersonateBody,
   type LoginBody,
+  type RegisterBody,
 } from "@repo/contracts";
 import axios, {
   type AxiosInstance,
@@ -67,11 +68,20 @@ const CSRF_GUARDED_PATHS = [
  * reload, at which point the boot sequence has nothing to refresh from and the
  * operator lands on the sign-in screen. It is a header, not a fix — the
  * omission is invisible in every response.
+ *
+ * **`/auth/register` joined at `D15.6`, and for login's reason exactly**
+ * (ADR-0067 §6): registration answers with login's body and creates a session
+ * (`AuthResource`, ADR-0018), and the API decides where the refresh token
+ * travels from this header alone (`auth.transport.ts`). Without it a newly
+ * registered customer is handed an access token and no refresh cookie — signed
+ * in until the first reload, and then back on the sign-in screen with an
+ * account they have just created.
  */
 const COOKIE_TRANSPORT_PATHS = [
   "/auth/login",
   "/auth/refresh",
   "/auth/impersonate",
+  "/auth/register",
 ];
 
 /**
@@ -93,8 +103,18 @@ const COOKIE_TRANSPORT_PATHS = [
  * system whose whole design is about not touching the session already in the
  * browser — and `redeemHandoff`'s own comment claims "nothing in the store is
  * read on the way out", which was false by one line.
+ *
+ * `/auth/register` is the third (`D15.6`): it is mounted on the `public`
+ * segment behind no guard at all, its credential is the password in the body,
+ * and the one screen that calls it sits behind the `_auth` layout — so a store
+ * holding a token there would mean a session is already live, and posting it
+ * on a request that reads no principal is the same needless send.
  */
-const UNAUTHENTICATED_PATHS = ["/auth/login", "/auth/impersonate"];
+const UNAUTHENTICATED_PATHS = [
+  "/auth/login",
+  "/auth/impersonate",
+  "/auth/register",
+];
 
 /**
  * The codes that end a session and are never retried (ADR-0033 §Boot, amended
@@ -306,6 +326,30 @@ export const createApiClient = ({
       });
     }
 
+    /*
+     * The same fence, on the key the same value can arrive by (`D15.6`, out of
+     * `security-reviewer`).
+     *
+     * `register` establishes a per-request `baseURL` override as a supported
+     * pattern — it is how the one call that leaves its segment reaches
+     * `/api/v1/public` — and a `baseURL` *is* an absolute URL, entering by a
+     * field the test above never reads. Everything the check above is written
+     * to prevent would come back through it: the cookies and, off
+     * {@link UNAUTHENTICATED_PATHS}, the bearer, sent to an origin this app has
+     * no business talking to. Nothing builds one from server data today; this
+     * keeps that true as the override gets a second caller.
+     */
+    if (
+      requestConfig.baseURL !== undefined &&
+      !requestConfig.baseURL.startsWith(`${baseUrl}/api/v1/`)
+    ) {
+      throw apiClientError({
+        status: 0,
+        code: TRANSPORT_ERROR_CODE,
+        message: "A request may not leave this API client's own base URL",
+      });
+    }
+
     const accessToken = store.getAccessToken();
     const csrfToken = store.getCsrfToken();
 
@@ -398,6 +442,64 @@ export const createApiClient = ({
     const { data } = await instance.post<{ data: AuthResource }>(
       "/auth/login",
       credentials,
+    );
+    const resource = data.data;
+
+    store.setSession({
+      accessToken: resource.accessToken,
+      principal: resource.principal,
+      ...(resource.csrfToken ? { csrfToken: resource.csrfToken } : {}),
+    });
+
+    return resource;
+  };
+
+  /**
+   * Registers an account and hydrates the store (`D15.6`, ADR-0067 §6).
+   *
+   * It lives here, beside `login`, for `login`'s reason: this response's whole
+   * purpose is to start a session — `201` with login's own body (ADR-0018) —
+   * and the module that owns the session's memory is the one that writes it.
+   *
+   * **The one call in this package that leaves its segment, and it says so in
+   * one place.** Registration is mounted on `/api/v1/public` (ADR-0015): it is
+   * the endpoint for somebody who has no population yet, so it cannot live
+   * under `/user`, and the base URL this client is pinned to would send it to
+   * a path that does not exist. The override is per request and the path stays
+   * relative, so the path-keyed rules still apply — the CSRF list and
+   * {@link COOKIE_TRANSPORT_PATHS} match on the request's own `url` rather
+   * than on the resolved address — and the override itself is fenced to this
+   * client's own host by the interceptor, which grew that check for this call
+   * (`D15.6`, `security-reviewer`).
+   *
+   * **A `user`-segment call, refused on any other client, and this is the one
+   * place in this file that reads its own segment.** Unlike `redeemHandoff`,
+   * which is a `404` by construction because the API registers that route on
+   * one segment only, this endpoint is public by design and would answer
+   * anybody. What would be wrong is not the request but the write — a `user`
+   * principal hydrated into the store an admin app's guards read — and the
+   * server has nothing to say about it, so the check has to be here. It is a
+   * guard on **this client's own population**, which this factory was handed,
+   * rather than a second opinion about the API's.
+   *
+   * The endpoint exists only when `FEATURE_USER_REGISTRATION` is on; with it
+   * off the path answers `404 ROUTE_NOT_FOUND` rather than a `403` that would
+   * confirm the feature (ADR-0004), and that code reaches the caller as any
+   * other refusal does.
+   */
+  const register = async (body: RegisterBody): Promise<AuthResource> => {
+    if (segment !== "user") {
+      throw apiClientError({
+        status: 0,
+        code: TRANSPORT_ERROR_CODE,
+        message: "Registration is a user-segment call",
+      });
+    }
+
+    const { data } = await instance.post<{ data: AuthResource }>(
+      "/auth/register",
+      body,
+      { baseURL: `${baseUrl}/api/v1/public` },
     );
     const resource = data.data;
 
@@ -537,8 +639,28 @@ export const createApiClient = ({
        * `endSession` fires over a session that never existed. A dead handoff
        * is not staleness, and there is nothing to retry it with.
        */
-      const isImpersonate =
-        pathOf(requestConfig).startsWith("/auth/impersonate");
+      /**
+       * The whole of {@link UNAUTHENTICATED_PATHS}, read rather than
+       * re-enumerated (`D15.6`, out of both reviewers finding the same thing).
+       *
+       * `isLogin` and `isImpersonate` used to be spelled out here and happened
+       * to be that list; `/auth/register` joined the list and did **not** join
+       * this test, which is the divergence a second enumeration always
+       * eventually has. The property is one property — a route whose
+       * credential is in the body has no access token to have expired — so it
+       * is asked once, of the list that states it.
+       *
+       * Not reachable from this API for registration, exactly as `isCsrf`'s
+       * comment says of its own path: the public router mounts no guard, so
+       * the API cannot answer `401` there. A proxy, a WAF or edge auth in
+       * front of it can, and then an anonymous visitor on `/register` would
+       * fire a refresh nobody asked for, be signed out of a session they never
+       * had, and read the refresh's sentence over their sign-up.
+       */
+      const isUnauthenticatedRoute = matches(
+        UNAUTHENTICATED_PATHS,
+        requestConfig,
+      );
 
       /*
        * A terminal code ends the session wherever it appears. These are the
@@ -587,20 +709,20 @@ export const createApiClient = ({
        * `401` means the access token died — fifteen minutes is the design — and
        * the client's job is to make that invisible.
        *
-       * Refresh, login and the exchange never enter here: a `401` from refresh
-       * *is* the terminal answer, a `401` from login is a wrong password, and
-       * a `401` from the exchange is a spent or expired handoff — none of the
-       * three is an expired access token, so recursing on any of them is a
-       * loop with no exit or a refresh with nothing behind it. Each request
-       * retries at most once; a second `401` after a fresh token is not
-       * staleness.
+       * Refresh, the bootstrap and every route whose credential is in the body
+       * never enter here: a `401` from refresh *is* the terminal answer, a
+       * `401` from login is a wrong password, one from the exchange is a spent
+       * or expired handoff, and one from registration is something in front of
+       * the API rather than the API — none of them is an expired access token,
+       * so recursing on any of them is a loop with no exit or a refresh with
+       * nothing behind it. Each request retries at most once; a second `401`
+       * after a fresh token is not staleness.
        */
       if (
         failure.status === 401 &&
         !isRefresh &&
-        !isLogin &&
         !isCsrf &&
-        !isImpersonate
+        !isUnauthenticatedRoute
       ) {
         if (requestConfig.retriedAfterRefresh) {
           // A `401` carrying a token the refresh just minted is not staleness.
@@ -633,6 +755,7 @@ export const createApiClient = ({
   return {
     instance,
     login,
+    register,
     redeemHandoff,
     logout,
     refreshSession,

@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createSessionStore } from "@/shared/api/session-store";
@@ -150,6 +151,58 @@ describe("route guards", () => {
       await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeInTheDocument();
     expect(store.isAuthenticated()).toBe(false);
+  });
+
+  it("offers the way to /register when the build has registration on", async () => {
+    const { user } = {
+      user: userEvent.setup(),
+      ...renderApp({ initialPath: "/login", store: createSessionStore() }),
+    };
+
+    /*
+     * The positive control the next case needs: without it a link that stopped
+     * rendering for *everybody* — a renamed key, a deleted element — would
+     * leave the flag-off assertion green while proving nothing.
+     */
+    await user.click(
+      await screen.findByRole("link", { name: "Create an account" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Create an account" }),
+    ).toBeInTheDocument();
+  });
+
+  it("makes /register and its link absent when the build has registration off", async () => {
+    const { router } = renderApp({
+      initialPath: "/login",
+      store: createSessionStore(),
+      features: { userRegistration: false },
+    });
+
+    await screen.findByRole("heading", { name: "Sign in" });
+
+    // The link first: a screen that offered a way into an address answering
+    // not-found would be the two halves of the flag disagreeing.
+    expect(
+      screen.queryByRole("link", { name: "Create an account" }),
+    ).not.toBeInTheDocument();
+
+    /*
+     * And the address itself. `notFound()` from the route's `beforeLoad`
+     * renders the same sentence an unknown path gets — the client's echo of
+     * the API's own choice, which is `404 ROUTE_NOT_FOUND` rather than a `403`
+     * that would confirm the feature is there and merely switched off
+     * (ADR-0004). The location is asserted beside the copy because a redirect
+     * to `/login` would also have produced a screen with no sign-up on it, and
+     * that is the behaviour this route deliberately does not have.
+     */
+    await router.navigate({ to: "/register" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That address does not exist.",
+    );
+    expect(router.state.location.pathname).toBe("/register");
   });
 
   it("shows a written sentence, not a stack, for an address that matches nothing", async () => {
