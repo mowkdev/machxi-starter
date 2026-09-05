@@ -19,6 +19,10 @@ import {
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
+import {
+  createOrganizationsHandlers,
+  createOrganizationsMockState,
+} from "@/test/msw/handlers/organizations.handlers";
 import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp, renderWithProviders } from "@/test/render";
@@ -525,7 +529,17 @@ describe("deleting the account", () => {
     // The tree renders the shell and, after the redirect, the login screen.
     // Neither fetches today; a handler set missing the segment's auth routes
     // would fail loudly rather than quietly if that ever changes.
-    server.use(...createAuthHandlers(createAuthMockState()));
+    server.use(
+      ...createAuthHandlers(createAuthMockState()),
+      /*
+       * The switcher reads `GET /user/orgs` from the shell's header (`D15.5`,
+       * ADR-0067 §6), so every screen behind the guard makes this request —
+       * including the ones this file is about, which never mention an
+       * organization. Answered rather than left unhandled, because a suite whose
+       * shell is half-failed is a suite certifying a screen nobody ships.
+       */
+      ...createOrganizationsHandlers(createOrganizationsMockState()),
+    );
   });
 
   const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {

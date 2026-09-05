@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { AccountMenu, AppSidebar } from "@/widgets/app-sidebar";
 import { DashboardLayout } from "@/widgets/dashboard-layout";
 import { useImpersonationBanner } from "@/widgets/impersonation-banner";
+import { OrganizationSwitcher } from "@/widgets/organization-switcher";
 
 import { usePseudoNotice, useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
@@ -172,7 +173,23 @@ function DashboardShell() {
   return (
     <DashboardLayout
       banner={banner}
-      headerEnd={<AccountMenu />}
+      headerEnd={
+        /*
+         * Two controls in one slot (`D15.5`, ADR-0067 §6). `AppShell` gives
+         * `headerEnd` a single `ml-auto` box, so the row that arranges them is
+         * this file's — the layer that already composes the shell out of two
+         * sibling widgets neither of which may import the other. Four lines of
+         * flex here is cheaper than a third widget whose only job is to stand
+         * between them.
+         *
+         * The switcher first, reading left to right: where you are, then who
+         * you are.
+         */
+        <div className="flex items-center gap-2">
+          <OrganizationSwitcher />
+          <AccountMenu />
+        </div>
+      }
       navigating={navigating}
       sidebar={<AppSidebar />}
       title={title}

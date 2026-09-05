@@ -6,6 +6,7 @@
   "sections": {
     "profile": "Profile",
     "security": "Security",
-    "preferences": "Preferences"
+    "preferences": "Preferences",
+    "invitations": "Invitations"
   }
 }

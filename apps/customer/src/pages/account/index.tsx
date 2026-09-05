@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { LockIcon, SettingsIcon, UserIcon } from "lucide-react";
+import { LockIcon, MailIcon, SettingsIcon, UserIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useProfile } from "@/entities/profile";
 import { GridDensityCards } from "@/features/density";
+import { InvitationInbox } from "@/features/invitation-inbox";
 import { LocaleRows } from "@/features/locale";
 import {
   ChangePasswordDialog,
@@ -66,6 +67,17 @@ const SECTIONS = [
     to: "/account/preferences",
     label: "sections.preferences",
     icon: SettingsIcon,
+  },
+  /*
+   * `D15.5`'s, and the second time the list shape has paid for itself: an
+   * invitation is addressed to the *account*, not to an organization, so
+   * ADR-0053 §1's rule for sections puts it here rather than on a tenant's
+   * screen — and it arrived as one line.
+   */
+  {
+    to: "/account/invitations",
+    label: "sections.invitations",
+    icon: MailIcon,
   },
 ] as const;
 
@@ -428,5 +440,34 @@ export const AccountPreferencesSection = () => {
         </CardContent>
       </Card>
     </>
+  );
+};
+
+/**
+ * `/account/invitations` — the organizations that have invited you (`D15.5`;
+ * ADR-0053 §1, ADR-0067 §4).
+ *
+ * **A section of the account area rather than a screen of an organization**,
+ * and the endpoint says why: `/user/invitations` sits outside the
+ * `/orgs/:orgId` prefix because what selects its rows is the caller's address
+ * and the caller is not a member of anything yet. A surface hung off an
+ * organization would have had to name one to ask about the offers of others.
+ *
+ * The card is this page's and the list is the feature's, which is ADR-0053 §5's
+ * line: this composes, and knows nothing about how an invitation is answered.
+ */
+export const AccountInvitationsSection = () => {
+  const { t } = useT("organizations");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("inbox.title")}</CardTitle>
+        <CardDescription>{t("inbox.description")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <InvitationInbox />
+      </CardContent>
+    </Card>
   );
 };

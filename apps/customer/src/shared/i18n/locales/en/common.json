@@ -6,6 +6,7 @@
     "unnamed": "Account"
   },
   "actions": {
+    "cancel": "Cancel",
     "retry": "Try again"
   },
   "brand": {

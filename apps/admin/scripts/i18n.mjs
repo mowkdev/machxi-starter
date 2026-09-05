@@ -87,6 +87,18 @@ const DYNAMIC = [
     pattern: /^common:(loading\.starting|brand\.authTagline)$/,
     reason: "read inside @repo/app-kit (ADR-0062 §1)",
   },
+  {
+    /*
+     * `organizations:members.role.<role>` — composed from `ORGANIZATION_ROLES`
+     * in the members section's role select and its read-only badge
+     * (`features/organization-manage`). The key is a contracts enum member
+     * chosen at runtime, so no scan can see it, and the tuple is declared once
+     * in `@repo/contracts` (ADR-0023) rather than copied into a key list here
+     * that could then disagree with it. The same shape as the entry above.
+     */
+    pattern: /^organizations:members\.role\./,
+    reason: "composed from a contracts role tuple (ADR-0046 §7, ADR-0067 §2)",
+  },
 ];
 
 /** `Intl` through `shared/i18n` or not at all (ADR-0046 §5). */

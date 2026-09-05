@@ -1,11 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createSessionStore } from "@/shared/api/session-store";
 import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
+import {
+  createOrganizationsHandlers,
+  createOrganizationsMockState,
+} from "@/test/msw/handlers/organizations.handlers";
 import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
@@ -26,6 +30,17 @@ import { renderApp } from "@/test/render";
  * (ADR-0033), so a fake that answered the predicate directly would stop testing
  * the derivation the moment it changed.
  */
+/*
+ * The one request every protected screen now makes (`D15.5`, ADR-0067 §6): the
+ * switcher reads `GET /user/orgs` from the shell's header. This file is about
+ * where the router lands rather than about what a screen shows, and it lands on
+ * protected screens — so the endpoint is answered here rather than left to fail
+ * behind assertions that would not notice.
+ */
+beforeEach(() => {
+  server.use(...createOrganizationsHandlers(createOrganizationsMockState()));
+});
+
 describe("route guards", () => {
   it("sends an unauthenticated visitor from a protected page to /login", async () => {
     const { router } = renderApp({

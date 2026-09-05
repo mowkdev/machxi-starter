@@ -1,0 +1,143 @@
+{
+  "switcher": {
+    "label": "Switch organization",
+    "heading": "Your organizations",
+    "empty": "You are not in any organization yet.",
+    "error": "Your organizations could not be loaded.",
+    "trigger": "Organizations"
+  },
+  "kind": {
+    "personal": "Personal",
+    "team": "Team"
+  },
+  "overview": {
+    "routeTitle": "Organization",
+    "description": "What this organization is, and who can change it.",
+    "address": "Address",
+    "kind": "Kind",
+    "role": "Your role",
+    "settings": "Organization settings"
+  },
+  "settings": {
+    "routeTitle": "Organization settings",
+    "back": "Back to the organization"
+  },
+  "fields": {
+    "name": {
+      "label": "Name"
+    },
+    "slug": {
+      "label": "Address",
+      "description": "Lower-case letters, digits and single hyphens. It is what this organization's pages are addressed by."
+    }
+  },
+  "details": {
+    "title": "Name and address",
+    "description": "Name and address are all an organization has. Changing the address changes every link into it.",
+    "personalNote": "This is your personal organization. Its address comes from your account and cannot be changed.",
+    "save": "Save changes"
+  },
+  "create": {
+    "action": "New organization",
+    "title": "New organization",
+    "description": "You will be its owner. A personal organization already exists for your account and is created with it.",
+    "submit": "Create"
+  },
+  "danger": {
+    "title": "Delete this organization",
+    "description": "The organization is hidden and its address is released. Its members lose access to it.",
+    "action": "Delete",
+    "personalNote": "Your personal organization is removed with your account and cannot be deleted on its own.",
+    "confirmTitle": "Delete {{name}}?",
+    "confirmDescription": "Everyone in it loses access and the address becomes available again. This cannot be undone from here.",
+    "confirm": "Delete"
+  },
+  "members": {
+    "title": "Members",
+    "description": "Who belongs to this organization, and as what. A second member arrives by invitation.",
+    "empty": "This organization has no other members yet.",
+    "error": "The members could not be loaded.",
+    "columns": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "actions": "Actions"
+    },
+    "role": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member"
+    },
+    "you": "You",
+    "changeRole": {
+      "action": "Change role"
+    },
+    "remove": {
+      "action": "Remove",
+      "title": "Remove {{name}}?",
+      "description": "They lose access to this organization. They can be invited back.",
+      "confirm": "Remove"
+    },
+    "leave": {
+      "action": "Leave",
+      "title": "Leave {{name}}?",
+      "description": "You lose access to this organization. Only an invitation can bring you back.",
+      "confirm": "Leave"
+    }
+  },
+  "invitations": {
+    "title": "Pending invitations",
+    "description": "Invitations waiting to be accepted. Nothing is emailed yet, so the person has to be told another way.",
+    "empty": "No invitations are waiting.",
+    "error": "The invitations could not be loaded.",
+    "columns": {
+      "email": "Email",
+      "role": "Role",
+      "expires": "Expires",
+      "actions": "Actions"
+    },
+    "fields": {
+      "email": {
+        "label": "Email address",
+        "description": "The address of the person to invite. It does not have to have an account yet."
+      },
+      "role": {
+        "label": "Role"
+      }
+    },
+    "invite": {
+      "action": "Invite somebody",
+      "title": "Invite somebody",
+      "description": "They join as soon as they accept, with the role you choose here. An owner can only be made from a member.",
+      "submit": "Send invitation"
+    },
+    "revoke": {
+      "action": "Revoke",
+      "title": "Revoke the invitation to {{email}}?",
+      "description": "The offer ends. The same address can be invited again afterwards.",
+      "confirm": "Revoke"
+    }
+  },
+  "inbox": {
+    "title": "Invitations",
+    "description": "Organizations that have invited you. Accepting one puts it in your organization switcher.",
+    "empty": "Nobody has invited you to an organization.",
+    "error": "Your invitations could not be loaded.",
+    "invitedAs": "Invited as {{role}}",
+    "expires": "Expires {{date}}",
+    "accept": "Accept",
+    "decline": "Decline"
+  },
+  "outcomes": {
+    "created": "The organization was created.",
+    "updated": "The organization was updated.",
+    "deleted": "The organization was deleted.",
+    "roleChanged": "The role was changed.",
+    "memberRemoved": "The member was removed.",
+    "left": "You left the organization.",
+    "invited": "The invitation was created.",
+    "invitationRevoked": "The invitation was revoked.",
+    "invitationAccepted": "You joined the organization.",
+    "invitationDeclined": "The invitation was declined."
+  }
+}

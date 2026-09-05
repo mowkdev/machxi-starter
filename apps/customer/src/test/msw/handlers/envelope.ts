@@ -2,6 +2,8 @@ import type {
   ErrorCode,
   ErrorDetail,
   ErrorEnvelope,
+  ListEnvelope,
+  Page,
   SuccessEnvelope,
 } from "@repo/contracts";
 import { HttpResponse } from "msw";
@@ -19,10 +21,13 @@ import { HttpResponse } from "msw";
  * `meta.requestId` is a fixed value rather than a random one: ADR-0026 wants
  * the suite to be a pure function of the tree, and nothing asserts on it.
  *
- * **`listOk` is absent**, unlike the admin's copy: ADR-0055 §3 mounts no grid
- * until a domain entity arrives, so nothing in this app reads a list envelope
- * and a builder for one would be inventory without a consumer. It comes back
- * with the first list.
+ * **`listOk` came back at `D15.5`**, which is the line above being spent
+ * rather than revised: it said a list-envelope builder would be inventory
+ * without a consumer and would return with the first list. The first list is
+ * not the grid ADR-0055 §3 was talking about — it is an organization's members
+ * and its pending invitations, two `respond.list` endpoints read by two plain
+ * tables (ADR-0067 §6). The envelope is the same one either way, which is the
+ * point of there being one.
  *
  * That this file is otherwise the admin's twin is recorded as a finding in
  * `docs/plan/0012-customer-app.md` §Findings: it holds no app knowledge at all,
@@ -60,6 +65,34 @@ export const fail = (
         ...(details === undefined ? {} : { details }),
       },
       meta: { requestId: REQUEST_ID },
+    },
+    { status },
+  );
+
+/**
+ * A list response, the way `respond.list` builds one (ADR-0012, ADR-0014).
+ *
+ * All three `meta` members and not only `pagination`: the API fills `sort` and
+ * `filters` on every list response and the client reads them back rather than
+ * recomputing them, so a handler that emitted one of the three would describe
+ * an API that does not exist — the load-bearing rule of ADR-0036 applied to the
+ * envelope rather than to the body.
+ */
+export const listOk = <T>(page: Page<T>, status = 200) =>
+  HttpResponse.json<ListEnvelope<T>>(
+    {
+      success: true,
+      data: [...page.items],
+      meta: {
+        requestId: REQUEST_ID,
+        pagination: {
+          offset: page.offset,
+          limit: page.limit,
+          total: page.total,
+        },
+        sort: [...page.sort],
+        filters: page.filters,
+      },
     },
     { status },
   );

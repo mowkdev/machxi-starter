@@ -1,0 +1,143 @@
+{
+  "switcher": {
+    "label": "Mainīt organizāciju",
+    "heading": "Tavas organizācijas",
+    "empty": "Tu vēl neesi nevienā organizācijā.",
+    "error": "Neizdevās ielādēt tavas organizācijas.",
+    "trigger": "Organizācijas"
+  },
+  "kind": {
+    "personal": "Personīgā",
+    "team": "Komandas"
+  },
+  "overview": {
+    "routeTitle": "Organizācija",
+    "description": "Kas ir šī organizācija un kurš to var mainīt.",
+    "address": "Adrese",
+    "kind": "Veids",
+    "role": "Tava loma",
+    "settings": "Organizācijas iestatījumi"
+  },
+  "settings": {
+    "routeTitle": "Organizācijas iestatījumi",
+    "back": "Atpakaļ uz organizāciju"
+  },
+  "fields": {
+    "name": {
+      "label": "Nosaukums"
+    },
+    "slug": {
+      "label": "Adrese",
+      "description": "Mazie burti, cipari un atsevišķas defises. Ar to tiek adresētas šīs organizācijas lapas."
+    }
+  },
+  "details": {
+    "title": "Nosaukums un adrese",
+    "description": "Nosaukums un adrese ir viss, kas organizācijai ir. Adreses maiņa maina visas saites uz to.",
+    "personalNote": "Šī ir tava personīgā organizācija. Tās adrese nāk no tava konta, un to nevar mainīt.",
+    "save": "Saglabāt izmaiņas"
+  },
+  "create": {
+    "action": "Jauna organizācija",
+    "title": "Jauna organizācija",
+    "description": "Tu būsi tās īpašnieks. Personīgā organizācija tavam kontam jau pastāv un tiek izveidota kopā ar to.",
+    "submit": "Izveidot"
+  },
+  "danger": {
+    "title": "Dzēst šo organizāciju",
+    "description": "Organizācija tiek paslēpta un tās adrese atbrīvota. Tās dalībnieki zaudē piekļuvi.",
+    "action": "Dzēst",
+    "personalNote": "Personīgā organizācija tiek noņemta kopā ar tavu kontu, un to nevar dzēst atsevišķi.",
+    "confirmTitle": "Dzēst {{name}}?",
+    "confirmDescription": "Visi tajā zaudē piekļuvi, un adrese kļūst atkal pieejama. No šejienes to nevar atsaukt.",
+    "confirm": "Dzēst"
+  },
+  "members": {
+    "title": "Dalībnieki",
+    "description": "Kas pieder šai organizācijai un kādā lomā. Otrs dalībnieks ienāk ar ielūgumu.",
+    "empty": "Šajā organizācijā pagaidām nav citu dalībnieku.",
+    "error": "Neizdevās ielādēt dalībniekus.",
+    "columns": {
+      "name": "Vārds",
+      "email": "E-pasts",
+      "role": "Loma",
+      "actions": "Darbības"
+    },
+    "role": {
+      "owner": "Īpašnieks",
+      "admin": "Administrators",
+      "member": "Dalībnieks"
+    },
+    "you": "Tu",
+    "changeRole": {
+      "action": "Mainīt lomu"
+    },
+    "remove": {
+      "action": "Noņemt",
+      "title": "Noņemt {{name}}?",
+      "description": "Viņš zaudē piekļuvi šai organizācijai. Viņu var uzaicināt atpakaļ.",
+      "confirm": "Noņemt"
+    },
+    "leave": {
+      "action": "Pamest",
+      "title": "Pamest {{name}}?",
+      "description": "Tu zaudē piekļuvi šai organizācijai. Atgriezties var tikai ar ielūgumu.",
+      "confirm": "Pamest"
+    }
+  },
+  "invitations": {
+    "title": "Neapstiprinātie ielūgumi",
+    "description": "Ielūgumi, kas gaida apstiprinājumu. E-pasts pagaidām netiek sūtīts, tāpēc cilvēkam jāpaziņo citādi.",
+    "empty": "Neviens ielūgums negaida.",
+    "error": "Neizdevās ielādēt ielūgumus.",
+    "columns": {
+      "email": "E-pasts",
+      "role": "Loma",
+      "expires": "Derīgs līdz",
+      "actions": "Darbības"
+    },
+    "fields": {
+      "email": {
+        "label": "E-pasta adrese",
+        "description": "Uzaicināmā cilvēka adrese. Kontam vēl nav jāpastāv."
+      },
+      "role": {
+        "label": "Loma"
+      }
+    },
+    "invite": {
+      "action": "Uzaicināt",
+      "title": "Uzaicināt cilvēku",
+      "description": "Viņš pievienojas, tiklīdz apstiprina, ar šeit izvēlēto lomu. Par īpašnieku var kļūt tikai esošs dalībnieks.",
+      "submit": "Nosūtīt ielūgumu"
+    },
+    "revoke": {
+      "action": "Atsaukt",
+      "title": "Atsaukt ielūgumu adresei {{email}}?",
+      "description": "Piedāvājums beidzas. To pašu adresi pēc tam var uzaicināt vēlreiz.",
+      "confirm": "Atsaukt"
+    }
+  },
+  "inbox": {
+    "title": "Ielūgumi",
+    "description": "Organizācijas, kas tevi uzaicinājušas. Apstiprinot ielūgumu, tā parādās organizāciju pārslēdzējā.",
+    "empty": "Neviens tevi nav uzaicinājis organizācijā.",
+    "error": "Neizdevās ielādēt tavus ielūgumus.",
+    "invitedAs": "Uzaicināts kā {{role}}",
+    "expires": "Derīgs līdz {{date}}",
+    "accept": "Apstiprināt",
+    "decline": "Noraidīt"
+  },
+  "outcomes": {
+    "created": "Organizācija ir izveidota.",
+    "updated": "Organizācija ir atjaunināta.",
+    "deleted": "Organizācija ir dzēsta.",
+    "roleChanged": "Loma ir mainīta.",
+    "memberRemoved": "Dalībnieks ir noņemts.",
+    "left": "Tu pameti organizāciju.",
+    "invited": "Ielūgums ir izveidots.",
+    "invitationRevoked": "Ielūgums ir atsaukts.",
+    "invitationAccepted": "Tu pievienojies organizācijai.",
+    "invitationDeclined": "Ielūgums ir noraidīts."
+  }
+}

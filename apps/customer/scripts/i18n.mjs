@@ -96,6 +96,21 @@ const DYNAMIC = [
     pattern: /^common:(loading\.starting|brand\.authTagline)$/,
     reason: "read inside @repo/app-kit (ADR-0062 §1)",
   },
+  {
+    /*
+     * `organizations:members.role.<role>` — composed from `ORGANIZATION_ROLES`
+     * and `INVITABLE_ROLES` at three call sites: the members table's role
+     * select and its read-only badge (`features/organization-manage`), and the
+     * invitation form's options (`entities/organization/organization.config`).
+     *
+     * The key is a contracts enum member chosen at runtime, so no scan can see
+     * it — and the tuple is declared once in `@repo/contracts` (ADR-0023) and
+     * must not be copied into a list of keys here that could then disagree
+     * with it. `dynamicKey` is the cast that says so at the config's call site.
+     */
+    pattern: /^organizations:members\.role\./,
+    reason: "composed from a contracts role tuple (ADR-0046 §7, ADR-0067 §2)",
+  },
 ];
 
 /** `Intl` through `shared/i18n` or not at all (ADR-0046 §5). */

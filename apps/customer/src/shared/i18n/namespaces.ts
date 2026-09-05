@@ -7,7 +7,7 @@
  * finding rather than a failed build — ADR-0049's import lint cannot see a
  * string prefix, and ADR-0046 says so rather than pretending it can.
  *
- * Nine since `D13.7`, and the list is meant to be read as the app's own rather
+ * Ten since `D15.5`, and the list is meant to be read as the app's own rather
  * than as a subset of the admin's: `common` is chrome, `auth` is the sign-in
  * screen, `errors` is keyed by `ErrorCode` (ADR-0046 §2, and completeness is
  * checked by the compiler in `__checks__/errors.ts`), and `home` is the signed-in
@@ -42,6 +42,18 @@
  * `impersonation:` key rendered from anywhere but those three is a review
  * finding.
  *
+ * **`D15.5` added `organizations`, the third name here that is not a single
+ * slice's** — and it is the `settings` exception's shape again rather than a new
+ * one. The words belong to four surfaces that are four views of one aggregate:
+ * the switcher in the shell, the organization's own screens, the members and
+ * invitations sections inside them, and the received-invitations section of the
+ * account area. The API is one module over the same three tables for the same
+ * reason (ADR-0067 §2), and splitting the copy would leave a reviewer checking
+ * that the switcher and the settings screen call a role the same word reading
+ * four files. The rule the exception proves is still the rule: an
+ * `organizations:` key rendered from anywhere but those surfaces is a review
+ * finding.
+ *
  * There is deliberately **no `grid`** — ADR-0055 §3 keeps `@repo/grid` out of
  * this app until a domain entity arrives, and a namespace declared for a package
  * the app does not depend on is one `init` would fail to load.
@@ -59,6 +71,7 @@ export const NAMESPACES = [
   "profile",
   "settings",
   "impersonation",
+  "organizations",
   "form",
 ] as const;
 

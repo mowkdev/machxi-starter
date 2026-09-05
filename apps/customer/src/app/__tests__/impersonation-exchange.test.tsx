@@ -12,6 +12,10 @@ import {
   createProfileHandlers,
   createProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
+import {
+  createOrganizationsHandlers,
+  createOrganizationsMockState,
+} from "@/test/msw/handlers/organizations.handlers";
 import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
@@ -40,6 +44,14 @@ beforeEach(() => {
   server.use(
     ...createAuthHandlers(auth),
     ...createProfileHandlers(createProfileMockState()),
+    /*
+     * The switcher reads `GET /user/orgs` from the shell's header (`D15.5`,
+     * ADR-0067 §6), so every screen behind the guard makes this request —
+     * including the ones this file is about, which never mention an
+     * organization. Answered rather than left unhandled, because a suite whose
+     * shell is half-failed is a suite certifying a screen nobody ships.
+     */
+    ...createOrganizationsHandlers(createOrganizationsMockState()),
   );
 });
 

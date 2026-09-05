@@ -13,6 +13,15 @@ import {
   createProfileHandlers,
   createProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
+import {
+  INVITATION_ROWS,
+  MEMBERSHIP_ROWS,
+  ORGANIZATION_ROWS,
+  RECEIVED_INVITATION,
+  TEAM_ORGANIZATION,
+  createOrganizationsHandlers,
+  createOrganizationsMockState,
+} from "@/test/msw/handlers/organizations.handlers";
 import { server } from "@repo/app-kit/testing";
 import { authenticated, userPrincipal } from "@/test/principals";
 import { renderApp } from "@/test/render";
@@ -65,6 +74,18 @@ const isPseudo = (text: string): boolean =>
  */
 const PRINCIPAL = userPrincipal();
 
+/**
+ * An expiry date as the invitation surfaces render it (`D15.5`).
+ *
+ * `en-GB` and `dateStyle: "medium"` are what `dateTimeFormat` resolves to under
+ * this suite's locale, so this produces the same string the DOM holds rather
+ * than a second opinion about it.
+ */
+const dayFormat = (value: string): string =>
+  new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(
+    new Date(value),
+  );
+
 const DATA: readonly string[] = [
   PRINCIPAL.id,
   PRINCIPAL.email,
@@ -91,6 +112,29 @@ const DATA: readonly string[] = [
       }).format(new Date(value)),
     ),
   PROFILE.email,
+  /*
+   * What the organization screens and the switcher render off `GET /user/orgs`
+   * and its two sub-lists (`D15.5`). Names, addresses and email addresses are
+   * data by the same argument the profile's are — and so are the **formatted**
+   * expiry dates, which reach the DOM as `Intl`'s output rather than as the ISO
+   * strings the fixtures hold: a month name a locale spells in letters is
+   * exactly what this walk would otherwise report as untranslated English.
+   */
+  ...ORGANIZATION_ROWS.flatMap((row) => [row.name, row.slug]),
+  ...MEMBERSHIP_ROWS.flatMap((row) => [
+    row.email,
+    row.firstName ?? "",
+    row.lastName ?? "",
+    `${row.firstName ?? ""} ${row.lastName ?? ""}`,
+  ]),
+  ...INVITATION_ROWS.flatMap((row) => [
+    row.email,
+    row.organizationName,
+    dayFormat(row.expiresAt),
+  ]),
+  RECEIVED_INVITATION.email,
+  RECEIVED_INVITATION.organizationName,
+  dayFormat(RECEIVED_INVITATION.expiresAt),
 ].filter((value) => value.trim() !== "");
 
 /** Data, once every fixture string and every digit and mark is taken out of it. */
@@ -137,8 +181,25 @@ const unaccented = (root: HTMLElement): readonly string[] => {
  * a data structure until something mounts it, so asking one for its own routes
  * costs nothing and touches no DOM.
  */
+/**
+ * The fixture each route parameter is filled with (`D15.5`).
+ *
+ * The organization screens are the first addresses in this app that carry one,
+ * and a walk that filtered them out would have reported green over two pages
+ * nobody had looked at. The slug rather than the id, because the slug is what
+ * this app's URLs carry (ADR-0067 §6) — and the *team* organization, since it
+ * is the one whose settings screen renders every card the personal one hides.
+ */
+const PARAMS: Readonly<Record<string, string>> = {
+  $orgSlug: TEAM_ORGANIZATION.slug,
+};
+
 const ROUTE_PATHS: readonly string[] = [
-  ...new Set(Object.keys(createAppRouter().routesByPath)),
+  ...new Set(
+    Object.keys(createAppRouter().routesByPath).map((path) =>
+      path.replace(/\$[A-Za-z0-9_]+/g, (param) => PARAMS[param] ?? param),
+    ),
+  ),
 ]
   .filter((path) => !path.includes("$"))
   .sort();
@@ -168,6 +229,13 @@ beforeEach(() => {
   server.use(
     ...createAuthHandlers(createAuthMockState()),
     ...createProfileHandlers(createProfileMockState()),
+    /*
+     * `D15.5`: the switcher reads `GET /user/orgs` in the shell's header, so
+     * **every** screen behind the guard now makes a request — which is the
+     * sentence above paying out. Without these the walk failed on eight
+     * addresses at once, each with the same unaccented failure toast.
+     */
+    ...createOrganizationsHandlers(createOrganizationsMockState()),
   );
 });
 

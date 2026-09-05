@@ -25,22 +25,26 @@
     "NOT RAISED at D14.8, and the css row is the one worth reading: this step put @repo/form's utilities into this app's CSS for the first time (the @source lines D12.6 never added) and the number did not move \u2014 js 265.6 / css 13.6 / entry 199.1 kB against 279.3 / 14.7 / 206.1. The entry's +1.9 kB is the error boundary and its crash surface, which pulls @repo/ui's Button above the router. Almost every class @repo/form uses was already in the sheet through @repo/ui or this app's own source; `gap-5` was the one that was not, and one utility is bytes rather than kilobytes. That is the shape of the defect ADR-0062 \u00a71 describes: invisible in a total, and visible on screen as a 20px field stack that was not there.",
     "SHAPE CHANGED at D14.9 (ADR-0062 \u00a74): `chunks` joins `budgets` and `baseline.chunks` joins `baseline`, one ceiling per vendor chunk `vite.config.ts` names, and `scripts/size.mjs` fails on any of them. Three chunks here against the admin's four \u2014 this app draws no grid, so @tanstack/table-* is not in its tree.",
     "The entry fell 199.1 -> 103.2 kB on that step and js moved +672 bytes: `manualChunks` moved React, the router and the query client out of the entry into three cacheable chunks. Nothing was removed; the same bytes now live in files whose content-hash changes when the dependency does rather than when this app does.",
-    "entry's budget is 111.3 kB and may not be raised past 60% of the js budget \u2014 `size.mjs` enforces that arithmetic rather than trusting this note."
+    "entry's budget is 111.3 kB and may not be raised past 60% of the js budget \u2014 `size.mjs` enforces that arithmetic rather than trusting this note.",
+    "RAISED at D15.5, the fourth time the mechanism has stopped a step and asked for a number, and it stopped it by 90 bytes: js 286090 against a 286000 budget (286047 after the review pass, re-measured and recorded below). The raise is js 286000 -> 301000 and nothing else. Measured in the bytes this file stores: js 272646 -> 286047 (+13.1 kB), css 13973 -> 14001 (+28 bytes), entry 105712 -> 107950 (+2.2 kB); the three vendor chunks are unmoved to the byte except router 27349 -> 27351, which is the route tree gaining two entries.",
+    "What the +13.4 kB bought, since a raise has to say: the organizations area in full \u2014 the entity slice and its four APIs, the switcher in the shell, three feature surfaces (details form, members table, invitations table with its invite dialog), the new-organization and deletion cards, two pages and three routes \u2014 plus three @repo/ui primitives this app had never drawn (select, table, alert-dialog) and their Radix trees. Almost all of it lands behind the guard, in the _dashboard chunk and the two organization route chunks.",
+    "The entry's +2.2 kB is the part worth naming, because nothing about an organization renders before the guard: it is the eager `en` organizations catalogue, which ADR-0046 \u00a73 bundles so the app has a language before any lazy import resolves \u2014 the same trade D12.8's note records for the profile catalogue, and the reason copy is the one thing this app can add to the entry from behind the guard. Entry headroom after it is ~5% (6.1 kB) against an unchanged 114000, and the 60%-of-js rule `size.mjs` enforces is nowhere near binding.",
+    "301000 rather than a rounder number: it is ~5% over the new baseline, which is the headroom this file has actually run at since D12.6 rather than the ~8% the note above inherited from the admin. A new dependency still trips it."
   ],
   "baseline": {
-    "measuredAt": "2026-09-03",
-    "step": "D14.9",
-    "js": 272646,
-    "css": 13973,
-    "entry": 105712,
+    "measuredAt": "2026-09-05",
+    "step": "D15.5",
+    "js": 286047,
+    "css": 14001,
+    "entry": 107950,
     "chunks": {
       "query": 10591,
       "react": 60419,
-      "router": 27349
+      "router": 27351
     }
   },
   "budgets": {
-    "js": 286000,
+    "js": 301000,
     "css": 15100,
     "entry": 114000
   },

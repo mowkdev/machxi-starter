@@ -6,6 +6,7 @@
   "sections": {
     "profile": "Profils",
     "security": "Drošība",
-    "preferences": "Iestatījumi"
+    "preferences": "Iestatījumi",
+    "invitations": "Ielūgumi"
   }
 }

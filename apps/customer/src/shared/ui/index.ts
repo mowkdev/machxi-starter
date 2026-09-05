@@ -20,6 +20,30 @@
  * time as a screen needs one.
  */
 
+/*
+ * The confirmations `D15.5` brought: leaving an organization, removing somebody
+ * from one, revoking an invitation, deleting a tenant. Five names and not the
+ * primitive's twelve — no `AlertDialogTrigger`, because every one of these is
+ * opened from state rather than from a control inside the dialog's own tree,
+ * and no `AlertDialogMedia`/`Portal`/`Overlay`, which `AlertDialogContent`
+ * mounts for itself.
+ */
+export {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@repo/ui/components/alert-dialog";
+/*
+ * The role a member holds and the state an invitation is in, as a chip
+ * (`D15.5`). `badgeVariants` stays out: nothing here builds a badge-looking
+ * thing out of something that is not a `<Badge>`.
+ */
+export { Badge } from "@repo/ui/components/badge";
 export { Button, buttonVariants } from "@repo/ui/components/button";
 /*
  * The card's parts (`D12.6`). `Card` alone was enough while a card held one
@@ -64,6 +88,20 @@ export {
   FieldSet,
 } from "@repo/ui/components/field";
 export { Input } from "@repo/ui/components/input";
+/*
+ * The role control on the members table (`D15.5`). Five names and not the
+ * primitive's ten: this app has one select, over three flat values, so
+ * `SelectGroup`, `SelectLabel`, `SelectSeparator` and the two scroll buttons
+ * would be inventory with no consumer. `@repo/form`'s `select` adapter reaches
+ * the primitive through its own package and not through this door.
+ */
+export {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select";
 export { Separator } from "@repo/ui/components/separator";
 /*
  * The drawer (`D12.5`). `SidebarProvider`, `SidebarInset` and `SidebarTrigger`
@@ -84,6 +122,22 @@ export {
   SidebarRail,
 } from "@repo/ui/components/sidebar";
 export { Skeleton } from "@repo/ui/components/skeleton";
+/*
+ * The members and invitations lists (`D15.5`, ADR-0067 §6). A table and not
+ * `@repo/grid`: ADR-0055 §5 keeps the grid for the first domain entity, and a
+ * grid over one organization's handful of people would put a second set of list
+ * params in a URL that carries only the record. `TableFooter` and
+ * `TableCaption` are unused — these lists have a card header above them and no
+ * totals row.
+ */
+export {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@repo/ui/components/table";
 export { Spinner } from "@repo/ui/components/spinner";
 /*
  * ADR-0034's one delivery surface for mutation outcomes (`D12.6`). `toast` is
