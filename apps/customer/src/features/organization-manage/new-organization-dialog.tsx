@@ -4,7 +4,6 @@ import {
   type CreateOrganizationBody,
 } from "@repo/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import {
@@ -19,26 +18,24 @@ import {
 } from "@/shared/form/server-errors";
 import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
-import {
-  Button,
-  Card,
-  CardAction,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/ui";
 
 /**
  * `POST /user/orgs` — a `team` organization with the caller as its owner
- * (ADR-0067 §2, §6).
+ * (ADR-0067 §2, §6 as amended 2026-09-07).
  *
- * **A card on the settings screen rather than an entry in the switcher**, which
- * is where ADR-0067 §6 puts it: the switcher is navigation and this is a write,
- * and a menu that both moves you and creates things is a menu whose entries
- * mean two different kinds of thing. The path in is the switcher all the same —
- * any organization's settings screen carries this card, including the personal
- * one every account starts with, so a customer with no team yet has one click
- * to it.
+ * **A dialog opened from the switcher's menu, and it was a card on a settings
+ * screen until `D15.9`.** The amendment moved it for the reason it moved the
+ * settings themselves: "new organization" is not about the organization whose
+ * screen you happen to be standing on, and a card on another tenant's settings
+ * page is an action filed under the wrong subject. The switcher's menu is where
+ * a customer already goes to change which organization they are in, so it is
+ * where they go to make one — the account menu's own shape (ADR-0053 §2), which
+ * carries the way into the account area beside the way out of the session.
+ *
+ * **It is a dialog and not a menu entry that writes.** The menu decides where
+ * you stand; this asks for two fields and posts them. Opening a dialog *from* a
+ * menu keeps that division intact — the entry navigates nowhere and the write
+ * happens on a surface of its own.
  *
  * `kind` is absent from the body by construction: exactly one `personal`
  * organization exists per account and the system creates it, so there is no
@@ -50,7 +47,7 @@ import {
  * customer stands next — the ADR-0049 boundary that keeps routing out of the
  * entity layer.
  */
-const NewOrganizationDialog = ({
+export const NewOrganizationDialog = ({
   onClose,
 }: {
   readonly onClose: () => void;
@@ -106,43 +103,5 @@ const NewOrganizationDialog = ({
       <OrganizationFormInput fieldName="name" />
       <OrganizationFormInput fieldName="slug" />
     </AppFormDialog>
-  );
-};
-
-export const NewOrganizationCard = () => {
-  const { t } = useT("organizations");
-  const [creating, setCreating] = useState(false);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("create.title")}</CardTitle>
-        <CardDescription>{t("create.description")}</CardDescription>
-        <CardAction>
-          <Button
-            onClick={() => {
-              setCreating(true);
-            }}
-            variant="outline"
-          >
-            {t("create.action")}
-          </Button>
-        </CardAction>
-      </CardHeader>
-      {/*
-       * No `CardContent`, deliberately: the header already carries the title,
-       * the sentence and the control, and an empty content region would draw
-       * the card's padding under nothing. `ADR-0048 §3`'s rule for a slot with
-       * no consumer, one component down.
-       */}
-
-      {creating ? (
-        <NewOrganizationDialog
-          onClose={() => {
-            setCreating(false);
-          }}
-        />
-      ) : null}
-    </Card>
   );
 };

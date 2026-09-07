@@ -207,33 +207,50 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
   /*
    * ADR-0067 §2: every path that creates a user creates a personal
    * organization, so the switcher is never empty and no screen has a "no
-   * organization" branch. Registered with no names, so the organization's
-   * display name is the address (`personalOrganizationName`'s coalesce) —
-   * which is also the cheapest thing here that could only have come from *this*
-   * account.
+   * organization" branch. **What a browser sees of it since `D15.9` is the
+   * word "Private" and nothing else** (§6 as amended 2026-09-07): the
+   * organization's name is unmanaged, its slug is derived, and the context
+   * lives at the root — so the address bar of the screen a private person
+   * spends most of their time in carries no uuid at all.
+   *
+   * This is the assertion the amendment came from. The operator's `D15.8`
+   * browser walk found `/orgs/personal-<uuid>/…` in every URL of the private
+   * context and a switcher whose entries opened settings; the old spec asserted
+   * that URL as if it were the design.
    */
-  await page.getByRole("button", { name: "Switch organization" }).click();
+  await expect(page).toHaveURL("/");
 
-  const personal = page
-    .getByRole("menuitem")
-    .filter({ hasText: NEWCOMER.email });
+  const switcher = page.getByRole("button", { name: "Switch organization" });
 
-  await expect(personal).toHaveText(/Personal/);
+  await expect(switcher).toHaveText(/Private/);
 
-  await personal.click();
+  await switcher.click();
+
+  const privateEntry = page.getByRole("menuitem", { name: /Private/ });
+
+  await expect(privateEntry).toBeVisible();
 
   /*
-   * The slug is derived from the account's id (ADR-0067 §2 as amended at
-   * `D15.1`) — so the address carries a uuid and never the email that named the
-   * organization, which is the half of that decision a browser can see.
+   * The account's own email is not an entry: the personal organization is the
+   * private context rather than a tenant in the list, so it is neither named
+   * nor addressable.
    */
-  await expect(page).toHaveURL(/\/orgs\/personal-[0-9a-f-]{36}$/);
+  await expect(
+    page.getByRole("menuitem").filter({ hasText: NEWCOMER.email }),
+  ).toHaveCount(0);
 
-  // ---- A team organization, from the personal one's settings (§6) ----
+  /*
+   * And there is no way into settings from here — a personal organization has
+   * no settings surface at all (§6), so the entry is absent rather than
+   * present-and-refused.
+   */
+  await expect(
+    page.getByRole("menuitem", { name: "Organization settings" }),
+  ).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Organization settings" }).click();
+  // ---- A team organization, from the switcher's own menu (§6 as amended) ----
 
-  await page.getByRole("button", { name: "New organization" }).click();
+  await page.getByRole("menuitem", { name: "New organization" }).click();
 
   const create = page.getByRole("dialog");
 
@@ -244,9 +261,24 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
   // The create surface navigates into what it made (`D15.5`).
   await expect(page).toHaveURL(`/orgs/${TEAM.slug}`);
 
-  await page.getByRole("link", { name: "Organization settings" }).click();
+  // And the trigger now names the context the caller is acting in.
+  await expect(switcher).toHaveText(new RegExp(TEAM.name));
+
+  /*
+   * The way into a team's settings is the switcher's menu since `D15.9` — not a
+   * button on a summary card, which is the surface the amendment retired. It
+   * lands on the area's first section (§6, ADR-0053 §1's arrangement).
+   */
+  await switcher.click();
+  await page.getByRole("menuitem", { name: "Organization settings" }).click();
+
+  await expect(page).toHaveURL(`/orgs/${TEAM.slug}/settings/general`);
 
   // ---- The invitation, addressed to the seeded customer (§2, §4) ----
+
+  await settingsNav(page).getByRole("link", { name: "Invitations" }).click();
+
+  await expect(page).toHaveURL(`/orgs/${TEAM.slug}/settings/invitations`);
 
   await page.getByRole("button", { name: "Invite somebody" }).click();
 
@@ -272,6 +304,10 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * either way — a `member` is not an owner — and asserting it here means the
    * team has exactly one member, so the row's own control is unambiguous.
    */
+  await settingsNav(page).getByRole("link", { name: "Members" }).click();
+
+  await expect(page).toHaveURL(`/orgs/${TEAM.slug}/settings/members`);
+
   await page.getByRole("button", { name: "Leave", exact: true }).click();
 
   const leaving = page.getByRole("alertdialog");
@@ -314,7 +350,9 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * the entity hook invalidates both lists, which is the thing MSW can only
    * pretend to do.
    */
-  await app.getByRole("button", { name: "Switch organization" }).click();
+  const appSwitcher = app.getByRole("button", { name: "Switch organization" });
+
+  await appSwitcher.click();
 
   await app.getByRole("menuitem", { name: TEAM.name }).click();
 
@@ -322,16 +360,47 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
 
   /*
    * **And the screen resolved, which the address does not say** (`D15.8`'s
-   * review). The slug is matched client-side against the switcher's list, so an
-   * organization this account is not in renders `AppNotFound` at exactly this
-   * URL — the overview card is what says the membership the acceptance created
-   * is really there. `role="region"` labelled by the organization's name is the
-   * card's own contract.
+   * review, carried onto the shape `D15.9` replaced it with). The slug is
+   * matched client-side against the switcher's list, so an organization this
+   * account is not in renders `AppNotFound` at exactly this URL — the home
+   * screen naming the context is what says the membership the acceptance
+   * created is really there.
    */
-  await expect(app.getByRole("region", { name: TEAM.name })).toBeVisible();
-  await expect(app.getByRole("region", { name: TEAM.name })).toContainText(
-    "Member",
-  );
+  await expect(app.getByText(`You are in ${TEAM.name}.`)).toBeVisible();
+
+  // ---- The switch itself: the screen is kept, the prefix moves (§6) ----
+
+  /*
+   * **The claim `D15.9` exists for, and the one only a browser proves end to
+   * end.** The switcher keeps the screen a customer is on and swaps the
+   * prefix — so a member standing on their own profile stays on their own
+   * profile, and the context they come back to is the one they left.
+   *
+   * `/account/*` is self-scoped, so the trigger goes on naming the team while
+   * the caller stands there — the remembered context, read on this device under
+   * this principal's key, which is what stops a trip to one's profile from
+   * ejecting somebody into the private context on the way back.
+   */
+  await app.goto("/account/profile");
+
+  await expect(appSwitcher).toHaveText(new RegExp(TEAM.name));
+
+  await appSwitcher.click();
+  await app.getByRole("menuitem", { name: /Private/ }).click();
+
+  /*
+   * A self-scoped screen has no per-tenant twin, so choosing a context from one
+   * lands in that context rather than pretending a profile has two addresses.
+   */
+  await expect(app).toHaveURL("/");
+  await expect(app.getByText("You are in your private space.")).toBeVisible();
+
+  // And back, which is the round trip rather than a one-way navigation.
+  await appSwitcher.click();
+  await app.getByRole("menuitem", { name: TEAM.name }).click();
+
+  await expect(app).toHaveURL(`/orgs/${TEAM.slug}`);
+  await expect(app.getByText(`You are in ${TEAM.name}.`)).toBeVisible();
 
   // ---- Cleanup, which is also the last two claims (§2) ----
 
@@ -340,6 +409,8 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * address released — and the card navigates out of the organization it just
    * removed rather than leaving the browser on a slug that no longer resolves.
    */
+  await settingsNav(page).getByRole("link", { name: "General" }).click();
+
   await page.getByRole("button", { name: "Delete", exact: true }).click();
 
   const deleting = page.getByRole("alertdialog");
@@ -397,12 +468,10 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * review). `toHaveCount(0)` is satisfied by its first evaluation, which
    * happens before Radix has mounted the portal — so on its own it would pass
    * against a switcher that still listed the deleted tenant. Every account has
-   * exactly one personal organization and it is the one entry badged `Personal`,
-   * so a positive control is available without asserting a list length.
+   * a private context and it is always the first entry, so a positive control
+   * is available without asserting a list length.
    */
-  await expect(
-    app.getByRole("menuitem").filter({ hasText: "Personal" }),
-  ).toBeVisible();
+  await expect(app.getByRole("menuitem", { name: /Private/ })).toBeVisible();
 
   await expect(app.getByRole("menuitem", { name: TEAM.name })).toHaveCount(0);
 

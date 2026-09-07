@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type {
   CreateInvitationBody,
   CreateOrganizationBody,
@@ -8,9 +10,17 @@ import type {
   UpdateOrganizationBody,
 } from "@repo/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams, useRouterState } from "@tanstack/react-router";
 
-import { useApiClient } from "@/shared/api/context";
+import { useApiClient, useSession } from "@/shared/api/context";
 
+import {
+  readRememberedSlug,
+  resolveActiveOrganization,
+  resolveRememberedSlug,
+  writeRememberedSlug,
+  type ActiveOrganization,
+} from "./active-organization";
 import { createOrganizationApi } from "./organization.api";
 import {
   createMyInvitationsApi,
@@ -65,42 +75,216 @@ export const useMyOrganizations = () => {
 };
 
 /**
- * One organization, by the slug in the URL (ADR-0067 §6).
+ * Which organization the caller is acting as (`D15.9`, ADR-0067 §6 as amended
+ * 2026-09-07) — the resolver bound to the router and to the query above.
  *
- * **It makes no request of its own**, which is the whole point: the list above
- * is already in the cache because the switcher renders on every screen, so a
- * slug outside the caller's memberships is a not-found the client can answer
- * without asking — the URL rule of ADR-0067 §4 read from the browser.
+ * Every decision it makes is `resolveActiveOrganization`'s; this is the two
+ * lines that hand it the URL's slug and the list's rows. Every tenant page, the
+ * switcher and the sidebar's links read this and nothing else, which is what
+ * makes "which organization am I in" a question with one answer.
  *
- * `found` is deliberately three-valued rather than a nullable organization: a
- * caller has to be able to tell "no such membership" from "the list has not
- * arrived yet", because only the first of those is a not-found and rendering
- * one for the second would flash a dead end on every cold load.
+ * `strict: false` because this reads on every screen and only some of them are
+ * addressed by an organization. It is the router's own answer to "where am I",
+ * which is the only truthful one — a component tracking the active organization
+ * in state would have to be told about every navigation, and two tabs would
+ * disagree.
  */
-export const useMyOrganizationBySlug = (slug: string) => {
+export const useActiveOrganization = (): ActiveOrganization & {
+  readonly isError: boolean;
+} => {
   const query = useMyOrganizations();
-  const organization = query.data?.find((row) => row.slug === slug);
+  const { orgSlug } = useParams({ strict: false });
+
+  const resolved = resolveActiveOrganization(
+    query.isSuccess ? query.data : undefined,
+    orgSlug,
+  );
+
+  /*
+   * **`isFetching` narrows the not-found and nothing else**, which is a review
+   * finding and the second time this clause has been got wrong in one
+   * deliverable.
+   *
+   * The property it has to keep is `D15.5`'s: during a background refetch React
+   * Query holds `status: "success"` with the *old* rows, and every write in this
+   * slice invalidates this list and then navigates — so creating a team or
+   * changing its address lands on a slug the cached list has never seen, and a
+   * resolver that trusted those rows would answer "missing" on the screen a
+   * customer reaches immediately after "The organization was updated."
+   *
+   * The first version bought that by treating **any** refetch as pending, which
+   * is far too wide: `mine()` is invalidated by every membership write, and
+   * `refetchOnWindowFocus` is on with a 30-second `staleTime` — so changing a
+   * member's role, or simply tabbing away and back, unmounted whatever tenant
+   * screen was open into skeletons and made the switcher read "Private" while it
+   * did. Every suite passed anyway, because every assertion sits inside a
+   * `waitFor`.
+   *
+   * So a resolution that already *found* something is returned as it stands, and
+   * only the answer that would be a dead end waits for the refetch to settle.
+   */
+  if (resolved.state === "missing" && query.isFetching)
+    return {
+      organization: undefined,
+      state: "pending",
+      slug: orgSlug,
+      isError: query.isError,
+    };
+
+  return { ...resolved, isError: query.isError };
+};
+
+/**
+ * Whether the caller is standing on a **self-scoped** screen (ADR-0067 §6).
+ *
+ * `/account/*` belongs to the person rather than to a tenant, which is what
+ * makes it the one place the shell shows a context the URL does not carry.
+ */
+const useSelfScoped = (): boolean =>
+  useRouterState({
+    /*
+     * A **segment** match rather than a prefix one, on the security pass's note:
+     * `startsWith("/account")` also claims a future `/accounts`, and the switcher
+     * would quietly stop remembering context on it. Cheap to get right now and
+     * invisible to find later.
+     */
+    select: (state) =>
+      state.location.pathname === "/account" ||
+      state.location.pathname.startsWith("/account/"),
+  });
+
+/**
+ * **What the shell shows** — the context the switcher names and the drawer's
+ * links point into (`D15.9`, ADR-0067 §6 as amended 2026-09-07).
+ *
+ * On a tenant screen this is `useActiveOrganization`'s answer, unchanged: the
+ * URL is the context. On a self-scoped screen it is the **remembered** team,
+ * filtered through the memberships — the second of the remembered key's exactly
+ * two consumers, and the reason opening one's profile from a team does not eject
+ * the customer into the private context on the way back.
+ *
+ * **It lives here rather than in the switcher, which was a review finding.** The
+ * record names two shell consumers — "the shell's switcher **and links**" — and
+ * the first version had this hook private to the widget, so `AppSidebar` read
+ * the URL's slug directly and its Home link sent a customer standing in Acme's
+ * profile to `/`. That is precisely the eject the amendment exists to prevent,
+ * arriving through the other half of the same sentence.
+ */
+export const useDisplayedOrganization = (): {
+  readonly organization: OrganizationResource | undefined;
+  readonly slug: string | undefined;
+} => {
+  const active = useActiveOrganization();
+  const query = useMyOrganizations();
+  const principalId = usePrincipalId();
+  const selfScoped = useSelfScoped();
+
+  if (!selfScoped)
+    return { organization: active.organization, slug: active.slug };
+
+  const remembered =
+    principalId === null
+      ? undefined
+      : resolveRememberedSlug(query.data, readRememberedSlug(principalId));
 
   return {
-    organization,
-    /** The list is still arriving; nothing can be concluded from its absence. */
-    isPending: query.isPending,
-    isError: query.isError,
-    /**
-     * The list arrived, is not being replaced, and holds no such slug — a
-     * not-found, decided here.
-     *
-     * **`!isFetching` is load-bearing and was a review finding.** During a
-     * background refetch React Query keeps `status: "success"` with the *old*
-     * rows, and every write in this slice invalidates this list and then
-     * navigates: creating an organization and renaming an address both land on
-     * a slug the cached list has never seen, so without this clause the screen
-     * a customer reaches after "The organization was created." is a not-found
-     * that clears a moment later.
-     */
-    isMissing:
-      query.isSuccess && !query.isFetching && organization === undefined,
-  } as const;
+    organization: query.data?.find((row) => row.slug === remembered),
+    slug: remembered,
+  };
+};
+
+/**
+ * Remember the context the caller is standing in, per device and per principal.
+ *
+ * **Written from the URL rather than from a click**, which is what makes it true
+ * after a reload, a pasted link or a browser back: the URL *is* the context
+ * (ADR-0067 §4), so what is worth remembering is where the customer ended up.
+ *
+ * **Only a `resolved` context is written, and that was a review finding.** The
+ * first version stored `slug` whatever the resolution said, so opening a
+ * colleague's link to a tenant you are not in — a not-found on screen — quietly
+ * overwrote the team you actually work in, and every later sign-in landed on the
+ * private home. The read side filters the junk value, so the loss was silent.
+ *
+ * `null` on the private context, so "never chose" and "chose private" stay one
+ * state. Nothing is written from a self-scoped screen: `/account/profile` carries
+ * no slug, and clearing there would erase the very value it is reading back.
+ */
+export const useRememberOrganization = (): void => {
+  const { slug, state } = useActiveOrganization();
+  const principalId = usePrincipalId();
+  const selfScoped = useSelfScoped();
+
+  useEffect(() => {
+    if (principalId === null || selfScoped || state !== "resolved") return;
+
+    writeRememberedSlug(principalId, slug ?? null);
+  }, [principalId, selfScoped, slug, state]);
+};
+
+/**
+ * The principal's id, for the two consumers that need a device key.
+ *
+ * `null` while no session is hydrated, which a caller must handle rather than
+ * default: writing somebody's last tenant under a made-up key would be a
+ * preference nobody can ever read back.
+ */
+export const usePrincipalId = (): string | null => {
+  const { principal } = useSession();
+
+  return principal?.id ?? null;
+};
+
+/**
+ * Where sign-in lands (`D15.9`, ADR-0067 §6 as amended 2026-09-07).
+ *
+ * The **first** of the remembered key's exactly two consumers — the other is
+ * what the shell's switcher names on a self-scoped screen. A tenant screen never
+ * reads it: its context is its URL, which is the rule of §4 unchanged.
+ *
+ * **It fetches only when something is remembered**, which is what keeps the
+ * common path free: an account that has never been in a team pays nothing, and
+ * one that has pays a request the shell was about to make anyway — `fetchQuery`
+ * on the switcher's own key, so what it costs is a cache seed rather than a
+ * second copy of the list.
+ *
+ * **The membership check is the point.** A customer removed from a team, or one
+ * whose team was deleted, would otherwise sign in onto a not-found forever: the
+ * thing sending them there is on their own device and no server response can
+ * clear it. So the remembered slug is resolved against the list and falls back
+ * to the private context silently.
+ *
+ * It returns a slug rather than navigating, because deciding where to go is the
+ * *feature*'s (ADR-0049) — this layer may not know the route tree.
+ */
+export const useLandingSlug = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return async (principalId: string): Promise<string | undefined> => {
+    const remembered = readRememberedSlug(principalId);
+
+    if (remembered === undefined) return undefined;
+
+    const rows = await queryClient.fetchQuery({
+      queryKey: organizationKeys.mine(),
+      queryFn: () => api.listMine(),
+      /*
+       * **Defence in depth, on the security pass's note.** This runs in the
+       * continuation of `client.login`, before React has committed the principal
+       * change and therefore before `PrincipalCacheBoundary` clears the cache —
+       * so with the default 30-second `staleTime` it could in principle decide
+       * where a freshly authenticated principal lands from a list somebody else
+       * fetched. No reachable path was found (sign-out and `onSessionEnded` both
+       * clear it, and `_auth` bounces an authenticated caller off `/login`), and
+       * the answer is filtered against the memberships anyway — but the landing
+       * of a new session should read the wire, and saying so costs one line.
+       */
+      staleTime: 0,
+    });
+
+    return resolveRememberedSlug(rows, remembered);
+  };
 };
 
 export const useCreateOrganization = () => {

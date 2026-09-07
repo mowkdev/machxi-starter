@@ -261,6 +261,38 @@ describe("the route tree under the pseudo-locale", () => {
      * guard, not the file — so this line is true in both builds.
      */
     expect(ROUTE_PATHS).toContain("/register");
+    /*
+     * **The two homes** (`D15.9`, ADR-0067 §6 as amended): the one page a
+     * tenant screen is exists at `/` acting as the personal organization and at
+     * `/orgs/$orgSlug` acting as a team, so the walk has to visit both — a
+     * screen that read its context wrongly would be accented at one address and
+     * not at the other, which is exactly the class of defect this suite is for.
+     */
+    expect(ROUTE_PATHS).toContain("/");
+    expect(ROUTE_PATHS).toContain(`/orgs/${TEAM_ORGANIZATION.slug}`);
+    /*
+     * **The three settings sections**, named for the `/register` reason: they
+     * are the addresses a customer reaches through the switcher's menu rather
+     * than through a link on a screen the walk already visits, so a section
+     * quietly dropped from the tree would take its copy out of this suite's
+     * reach without failing anything.
+     */
+    for (const section of ["general", "members", "invitations"])
+      expect(ROUTE_PATHS).toContain(
+        `/orgs/${TEAM_ORGANIZATION.slug}/settings/${section}`,
+      );
+
+    /*
+     * **What `D15.9` retired is a composition rather than an address**, which is
+     * worth stating here because the obvious assertion is the wrong one: the
+     * summary card lived at the team's home and is replaced by the home page at
+     * that same path, and `/settings` is still in this list — as a layout route
+     * that redirects to its first section, exactly as `/account` is. So the
+     * retirement is checked by the screens' own suite, which asserts the
+     * redirect and the sections, and this walk checks that every address that
+     * remains has accented copy on it.
+     */
+    expect(ROUTE_PATHS).toContain(`/orgs/${TEAM_ORGANIZATION.slug}/settings`);
   });
 
   it.each(ROUTE_PATHS)("leaves nothing unaccented at %s", async (path) => {

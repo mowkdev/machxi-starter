@@ -1,19 +1,22 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   API,
   CREDENTIALS,
+  PRINCIPAL,
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
 import {
+  TEAM_ORGANIZATION,
   createOrganizationsHandlers,
   createOrganizationsMockState,
 } from "@/test/msw/handlers/organizations.handlers";
+import { organizationStorageKey } from "@/entities/organization";
 import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 
@@ -45,6 +48,20 @@ const setup = ({ path = "/login" }: { path?: string } = {}) => {
   };
 };
 
+afterEach(() => {
+  localStorage.clear();
+});
+
+/**
+ * The device key the landing rule reads.
+ *
+ * `PRINCIPAL`'s id and not `userPrincipal()`'s: the landing reads the id off the
+ * **response** rather than off a store fixture, and this file's two ids differ
+ * by construction (see `auth.handlers`) — so keying this on the wrong one would
+ * be a test that passed only if the rule ignored the principal entirely.
+ */
+const rememberedKey = organizationStorageKey(PRINCIPAL.id);
+
 const signIn = async (
   user: ReturnType<typeof userEvent.setup>,
   email: string = CREDENTIALS.email,
@@ -72,6 +89,77 @@ describe("sign in", () => {
     // (ADR-0055 §2), and a principal of the other kind arriving here would mean
     // it is not.
     expect(store.getPrincipal()?.kind).toBe("user");
+  });
+
+  it("lands in the team this device last had this principal in", async () => {
+    /*
+     * **Where sign-in lands when the guard recorded no `redirect`** (`D15.9`,
+     * ADR-0067 §6 as amended 2026-09-07) — the first of the remembered key's
+     * exactly two consumers. A customer who works in one team should not have
+     * to switch into it on every sign-in.
+     */
+    localStorage.setItem(rememberedKey, TEAM_ORGANIZATION.slug);
+
+    const { router, user } = setup();
+
+    await signIn(user);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        `/orgs/${TEAM_ORGANIZATION.slug}`,
+      );
+    });
+  });
+
+  it("lands on the private home when nothing is remembered", async () => {
+    const { router, user } = setup();
+
+    await signIn(user);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/");
+    });
+  });
+
+  it("lands on the private home when the remembered team is not a membership", async () => {
+    /*
+     * The case that cannot fix itself: the value is on the customer's own
+     * device, so a team they have been removed from would send them to a
+     * not-found on every sign-in forever. The landing rule checks the
+     * remembered slug against the list rather than trusting it.
+     */
+    localStorage.setItem(rememberedKey, "left-this-one");
+
+    const { router, user } = setup();
+
+    await signIn(user);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/");
+    });
+    expect(
+      screen.queryByText("That address does not exist."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("spends the guard's redirect ahead of anything remembered", async () => {
+    /*
+     * A session that expired mid-task returns somebody to the screen they were
+     * on, which is a stronger statement about where they wanted to be than
+     * anything a device remembers — so the `redirect` branch wins outright and
+     * the landing rule is never consulted.
+     */
+    localStorage.setItem(rememberedKey, TEAM_ORGANIZATION.slug);
+
+    const { router, user } = setup({
+      path: "/login?redirect=%2Faccount%2Fprofile",
+    });
+
+    await signIn(user);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/account/profile");
+    });
   });
 
   it("returns the customer to the page the guard turned away", async () => {

@@ -6,7 +6,9 @@ import {
   UserIcon,
 } from "lucide-react";
 
+import { useDisplayedOrganization } from "@/entities/organization";
 import { useSignOut } from "@/features/auth";
+import { TEAM_ROUTES } from "@/widgets/organization-switcher";
 
 import { useSession } from "@/shared/api/context";
 import { APP_VERSION } from "@/shared/config";
@@ -63,14 +65,26 @@ import {
  * `useLocation` comparison to keep in sync.
  */
 interface NavItem {
-  readonly to: "/";
+  /**
+   * The screen, in the vocabulary `TEAM_ROUTES` keys — resolved to one of a
+   * destination's **two** addresses at render time (`D15.9`, ADR-0067 §6 as
+   * amended 2026-09-07).
+   *
+   * Every tenant screen exists at `/<screen>` acting as the personal
+   * organization and at `/orgs/$orgSlug/<screen>` acting as a team, so a
+   * drawer item can no longer be a constant path: "Home" means `/` in the
+   * private context and `/orgs/acme` in Acme's. The item names the screen and
+   * this widget reads the active context, which is the same division the
+   * switcher makes — one resolver, every consumer.
+   */
+  readonly screen: "home";
   /** A key in `common:nav`, not a sentence (ADR-0046 §3: navigation is chrome). */
   readonly label: "nav.home";
   readonly icon: typeof HouseIcon;
 }
 
 const NAVIGATION: readonly NavItem[] = [
-  { to: "/", label: "nav.home", icon: HouseIcon },
+  { screen: "home", label: "nav.home", icon: HouseIcon },
 ];
 
 /**
@@ -256,6 +270,18 @@ export const AccountMenu = () => {
 
 export const AppSidebar = () => {
   const { t } = useT("common");
+  /*
+   * The context the drawer's links point into (ADR-0067 §6 as amended). The
+   * **displayed** one rather than the URL's, which was a review finding: the
+   * record names two shell consumers of the remembered context — "the shell's
+   * switcher and links" — and reading the URL here sent a customer standing in
+   * a team's own profile screen back to `/`, the eject the amendment exists to
+   * prevent, through the half of the sentence the first version skipped.
+   *
+   * A team's slug or `undefined`; `undefined` is the private context, whose
+   * screens are the unprefixed ones.
+   */
+  const { slug } = useDisplayedOrganization();
 
   return (
     <Sidebar collapsible="icon">
@@ -263,7 +289,16 @@ export const AppSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg">
-              <Link to="/">
+              {/*
+               * The brand block is a way home, so it goes to the *active*
+               * context's home rather than always to the private one — an
+               * unprefixed `/` here would have been a second control quietly
+               * switching the caller out of the team they were working in.
+               */}
+              <Link
+                params={slug === undefined ? {} : { orgSlug: slug }}
+                to={slug === undefined ? "/" : TEAM_ROUTES.home}
+              >
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   {/*
                    * The mark is a key too (ADR-0046 §8). One letter reads as
@@ -291,8 +326,8 @@ export const AppSidebar = () => {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAVIGATION.map(({ to, label, icon: Icon }) => (
-                <SidebarMenuItem key={to}>
+              {NAVIGATION.map(({ screen, label, icon: Icon }) => (
+                <SidebarMenuItem key={screen}>
                   <SidebarMenuButton
                     asChild
                     /*
@@ -317,9 +352,17 @@ export const AppSidebar = () => {
                     tooltip={t(label)}
                   >
                     <Link
-                      activeOptions={{ exact: to === "/" }}
+                      /*
+                       * `exact` because the home screen's path is a prefix of
+                       * every other in its context — `/` of everything, and
+                       * `/orgs/acme` of `/orgs/acme/settings/members` — so
+                       * without it the drawer would mark Home active while the
+                       * caller stands in that team's settings.
+                       */
+                      activeOptions={{ exact: true }}
                       activeProps={{ "data-active": true }}
-                      to={to}
+                      params={slug === undefined ? {} : { orgSlug: slug }}
+                      to={slug === undefined ? "/" : TEAM_ROUTES[screen]}
                     >
                       <Icon />
                       <span>{t(label)}</span>

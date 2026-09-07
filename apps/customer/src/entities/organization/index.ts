@@ -1,4 +1,13 @@
 export {
+  organizationStorageKey,
+  readRememberedSlug,
+  resolveActiveOrganization,
+  resolveRememberedSlug,
+  writeRememberedSlug,
+  type ActiveOrganization,
+  type ActiveOrganizationState,
+} from "./active-organization";
+export {
   createOrganizationApi,
   type OrganizationApi,
 } from "./organization.api";
@@ -21,16 +30,20 @@ export {
 } from "./organization.members.api";
 export {
   useAcceptInvitation,
+  useActiveOrganization,
   useCreateOrganization,
   useDeclineInvitation,
   useDeleteOrganization,
+  useDisplayedOrganization,
   useInviteToOrganization,
+  useLandingSlug,
   useLeaveOrganization,
   useMyInvitations,
-  useMyOrganizationBySlug,
   useMyOrganizations,
   useOrganizationInvitations,
   useOrganizationMembers,
+  useRememberOrganization,
+  usePrincipalId,
   useRemoveOrganizationMember,
   useRevokeInvitation,
   useSetOrganizationMemberRole,

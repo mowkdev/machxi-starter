@@ -1,4 +1,9 @@
 {
   "title": "Your account",
-  "body": "This is where you manage your own account. Your name, your password, your language and theme, and closing the account are all under Account."
+  "body": "This is where you manage your own account. Your name, your password, your language and theme, and closing the account are all under Account.",
+  "context": {
+    "private": "You are in your private space.",
+    "team": "You are in {{name}}.",
+    "error": "Your organizations could not be loaded."
+  }
 }

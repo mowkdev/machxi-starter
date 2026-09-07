@@ -270,10 +270,13 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * **The two suites together no longer fit one window, and `D15.8` is where
  * that stopped being a projection.** Measured that day, each suite alone in a
  * clear window: the admin's 37 specs take it from 299 to 124, so **174**; this
- * suite's 12 take it from 299 to 164, so **134**. That is **308** against
- * ADR-0020's 300 — and `pnpm test:e2e` runs them back to back through one
- * limiter (`--concurrency=1`), so on a 300 profile the command cannot be green
- * however healthy every spec in it is.
+ * suite's 12 took it from 299 to 164, so **134** — **308** against ADR-0020's
+ * 300, and `pnpm test:e2e` runs them back to back through one limiter
+ * (`--concurrency=1`), so on a 300 profile the command could not be green
+ * however healthy every spec in it was. `D15.9` re-measured this suite at
+ * **138**, so the pair is **312** today; both numbers sit inside the 1000
+ * ADR-0069 gives the committed development profile, which is what makes the
+ * combined command runnable at all.
  *
  * **Neither floor is fudged to hide that, and neither number is the culprit.**
  * The admin's was measured at `D11.11` and re-measured at `D15.8`, and its
@@ -304,7 +307,7 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  */
 export const assertApiWindowClear = async (
   page: Page,
-  needed = 147,
+  needed = 151,
 ): Promise<void> => {
   /*
    * Throttled and absent are different failures, and this is the function that
@@ -415,14 +418,25 @@ export const assertApiWindowClear = async (
    * `GET /user/orgs` behind every protected screen, which every cold-URL case in
    * `account.spec.ts` pays. So the figure is taken from the suite and not from
    * arithmetic over its parts: a green run of all twelve specs took a clear
-   * window from 299 to 164, its own probe included, so the suite costs **134**.
+   * window from 299 to 164, its own probe included, so the suite cost **134**.
    * The margin over the measurement is the dozen `D12.10` chose.
    *
-   * The admin's is **174** on the same day and by the same method (299 to 124,
-   * 37 specs) — its suite has not changed since `D11.12`, so what grew is the
-   * app, and its own floor was corrected to that measurement in the same step.
-   * **308 together**, which was over ADR-0020's 300: the header above has what
-   * was done about it, and why neither floor was trimmed to make the sum work.
+   * **Moved a fourth time for `D15.9`, re-measured the same way and for the same
+   * reason.** The organizations walk grew the part of itself that is the point
+   * of that step: it now switches out of the private context into the team and
+   * back, and reads a team's settings as three sections rather than as one
+   * screen — so it pays a handful more client-side navigations, each of which
+   * the switcher's list and the section's own query follow. Measured rather than
+   * added to: a green run of all twelve specs took the window from 741 to 602,
+   * its own probe included, so the suite costs **138**. The margin is unchanged
+   * at the dozen, so the floor is 151.
+   *
+   * The admin's is **174** by the same method (299 to 124, 37 specs) and has not
+   * moved here — nothing in `D15.9` is the admin's. **312 together**, against
+   * the 1000 [ADR-0069](../../../../docs/adr/0069-development-rate-limit-profile.md)
+   * gives the committed development profile, which is the record that made
+   * `pnpm test:e2e` runnable as one command at all; under the 300 it superseded
+   * this sum would have been over the wall by the same margin `D15.8` hit.
    */
   if (Number.isFinite(remaining) && remaining < needed) {
     throw new Error(

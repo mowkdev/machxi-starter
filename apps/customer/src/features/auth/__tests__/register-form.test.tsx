@@ -13,7 +13,6 @@ import {
 } from "@/test/msw/handlers/auth.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
 import {
-  PERSONAL_ORGANIZATION,
   createOrganizationsHandlers,
   createOrganizationsMockState,
 } from "@/test/msw/handlers/organizations.handlers";
@@ -109,6 +108,12 @@ describe("registration", () => {
      * the personal organization in the same transaction, so a newly registered
      * customer has a tenant before they have done anything. The switcher is
      * where they see it.
+     *
+     * **By the label rather than by the name, since `D15.9`.** §6's amendment
+     * makes a personal organization's name unmanaged and calls the context
+     * "Private", so asserting on the fixture's name would now be asserting on a
+     * value the interface deliberately never shows. What the claim needs is
+     * that a context exists at all, which the entry is.
      */
     await user.click(
       await screen.findByRole("button", { name: "Switch organization" }),
@@ -116,7 +121,7 @@ describe("registration", () => {
 
     expect(
       await within(await screen.findByRole("menu")).findByRole("menuitem", {
-        name: new RegExp(PERSONAL_ORGANIZATION.name),
+        name: /Private/,
       }),
     ).toBeInTheDocument();
   });

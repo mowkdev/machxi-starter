@@ -4,23 +4,20 @@
     "heading": "Your organizations",
     "empty": "You are not in any organization yet.",
     "error": "Your organizations could not be loaded.",
-    "trigger": "Organizations"
-  },
-  "kind": {
-    "personal": "Personal",
-    "team": "Team"
-  },
-  "overview": {
-    "routeTitle": "Organization",
-    "description": "What this organization is, and who can change it.",
-    "address": "Address",
-    "kind": "Kind",
-    "role": "Your role",
+    "private": "Private",
     "settings": "Organization settings"
   },
   "settings": {
     "routeTitle": "Organization settings",
-    "back": "Back to the organization"
+    "nav": {
+      "label": "Organization sections"
+    },
+    "sections": {
+      "general": "General",
+      "members": "Members",
+      "invitations": "Invitations"
+    },
+    "readOnly": "Only an owner or an admin can change this."
   },
   "fields": {
     "name": {

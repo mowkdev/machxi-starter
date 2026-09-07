@@ -8,9 +8,10 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { ok } from "@/test/msw/handlers/envelope";
+import { fail, ok } from "@/test/msw/handlers/envelope";
 import {
   PERSONAL_ORGANIZATION,
+  SECOND_TEAM_ORGANIZATION,
   TEAM_ORGANIZATION,
   createOrganizationsHandlers,
   createOrganizationsMockState,
@@ -25,12 +26,19 @@ import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
 
 /**
- * `/orgs/$orgSlug` and `/orgs/$orgSlug/settings` (`D15.5`; ADR-0067 §4, §6).
+ * A team's screens (`D15.5`; reshaped at `D15.9`, ADR-0067 §4, §6 as amended
+ * 2026-09-07).
  *
- * Through the real generated route tree, because two of the claims here are
- * about routing rather than about a component: that an unknown slug is a
- * not-found decided in the browser, and that renaming an organization's address
- * moves the page onto the new one.
+ * Through the real generated route tree, because most of the claims here are
+ * about routing rather than about a component: that the private context's slug
+ * is not an address at all, that an unknown one is a not-found decided in the
+ * browser, that the settings area lands on its first section, and that renaming
+ * an organization's address moves the page onto the new one.
+ *
+ * **The summary screen `D15.5` asserted is gone** and so are its tests: the
+ * amendment retires the card whose one action was its own settings, and the
+ * home screen it is replaced by is the same page `/` mounts — which is asserted
+ * where that page's other address is, in the route walk.
  */
 let state: OrganizationsMockState;
 
@@ -68,49 +76,36 @@ beforeEach(() => {
 
 const teamPath = `/orgs/${TEAM_ORGANIZATION.slug}`;
 
-describe("an organization's own screens", () => {
-  it("renders the organization the slug names", async () => {
-    renderApp({ initialPath: teamPath, store: authenticated() });
+/** Requests addressed *at* an organization, which is the set that must stay empty. */
+const organizationRequests = () =>
+  requested.filter((url) => /\/user\/orgs\/[^?]/.test(url));
 
-    expect(
-      await screen.findByRole("region", { name: TEAM_ORGANIZATION.name }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(TEAM_ORGANIZATION.slug)).toBeInTheDocument();
-  });
-
-  it("renders not-found for a slug outside the caller's memberships, without asking about it", async () => {
+describe("a team's settings area", () => {
+  it("lands on the first section", async () => {
     const { router } = renderApp({
-      initialPath: "/orgs/somebody-elses-tenant",
+      initialPath: `${teamPath}/settings`,
       store: authenticated(),
     });
 
     /*
-     * `errors:ROUTE_NOT_FOUND`, which is what an unmatched path renders too —
-     * because that is what this is: an address naming nothing this account can
-     * see. ADR-0067 §4 refuses a non-member with `404` rather than `403` so the
-     * existence of a tenant is not leaked, and the client says even less.
+     * The arrangement `/account` already has (ADR-0053 §1): the area has no
+     * landing screen of its own, so `beforeLoad` redirects rather than letting
+     * anybody see the frame with an empty content pane.
      */
-    expect(
-      await screen.findByText("That address does not exist."),
-    ).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/orgs/somebody-elses-tenant");
-
-    /*
-     * The claim the plan makes by name: **no organization request**. The
-     * switcher's own `GET /user/orgs` is the list the slug was resolved
-     * against and is expected; anything addressed *at* an organization would
-     * mean the client asked the API about a tenant it had no business naming,
-     * and the timing of that answer would say whether it exists.
-     */
-    expect(requested.filter((url) => /\/user\/orgs\/[^?]/.test(url))).toEqual(
-      [],
-    );
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        `${teamPath}/settings/general`,
+      );
+    });
   });
 
-  it("round-trips a name change from the settings screen", async () => {
+  it("round-trips a name change from the general section", async () => {
     const user = userEvent.setup();
 
-    renderApp({ initialPath: `${teamPath}/settings`, store: authenticated() });
+    renderApp({
+      initialPath: `${teamPath}/settings/general`,
+      store: authenticated(),
+    });
 
     const name = await screen.findByLabelText("Name");
 
@@ -144,11 +139,33 @@ describe("an organization's own screens", () => {
     });
   });
 
+  it("lists the members in the members section", async () => {
+    renderApp({
+      initialPath: `${teamPath}/settings/members`,
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByRole("cell", { name: "morgan@machxi.local" }),
+    ).toBeInTheDocument();
+  });
+
+  it("lists the pending invitations in the invitations section", async () => {
+    renderApp({
+      initialPath: `${teamPath}/settings/invitations`,
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "Invite somebody" }),
+    ).toBeInTheDocument();
+  });
+
   it("moves the page when the address changes", async () => {
     const user = userEvent.setup();
 
     const { router } = renderApp({
-      initialPath: `${teamPath}/settings`,
+      initialPath: `${teamPath}/settings/general`,
       store: authenticated(),
     });
 
@@ -185,7 +202,7 @@ describe("an organization's own screens", () => {
      */
     await waitFor(() => {
       expect(router.state.location.pathname).toBe(
-        "/orgs/acme-holdings/settings",
+        "/orgs/acme-holdings/settings/general",
       );
     });
 
@@ -225,7 +242,7 @@ describe("an organization's own screens", () => {
     );
 
     const { router } = renderApp({
-      initialPath: `${teamPath}/settings`,
+      initialPath: `${teamPath}/settings/members`,
       store: authenticated(),
     });
 
@@ -249,7 +266,10 @@ describe("an organization's own screens", () => {
   it("refuses the last owner's demotion, in the catalogue's words", async () => {
     const user = userEvent.setup();
 
-    renderApp({ initialPath: `${teamPath}/settings`, store: authenticated() });
+    renderApp({
+      initialPath: `${teamPath}/settings/members`,
+      store: authenticated(),
+    });
 
     // The second member has to be on screen before the row controls are asked
     // for, or the roles below could be a one-row table.
@@ -277,7 +297,10 @@ describe("an organization's own screens", () => {
   it("refuses the last owner's departure, in the same words", async () => {
     const user = userEvent.setup();
 
-    renderApp({ initialPath: `${teamPath}/settings`, store: authenticated() });
+    renderApp({
+      initialPath: `${teamPath}/settings/members`,
+      store: authenticated(),
+    });
 
     await user.click(await screen.findByRole("button", { name: "Leave" }));
 
@@ -298,40 +321,150 @@ describe("an organization's own screens", () => {
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
-  it("offers no address box and no deletion on a personal organization", async () => {
+  it("renders a refused membership write under impersonation in the catalogue's words", async () => {
+    const user = userEvent.setup();
+
+    /*
+     * ADR-0067 §8's grown exclusion list, carried onto a membership write from
+     * the received-invitation one it was first proved on (`D15.5`): an operator
+     * acting as a customer must not be able to reshape that account's tenants.
+     * Nothing on this screen hides the control — the refusal is the API's and
+     * arrives as a code — so what this asserts is the half the client owns: the
+     * code becomes the catalogue's sentence and never the API's `error.message`
+     * (ADR-0013).
+     */
+    server.use(
+      http.delete(`${API}/orgs/:organizationId/members/:userId`, () =>
+        fail(403, "AUTH_IMPERSONATION_REFUSED"),
+      ),
+    );
+
     renderApp({
-      initialPath: `/orgs/${PERSONAL_ORGANIZATION.slug}/settings`,
+      initialPath: `${teamPath}/settings/members`,
       store: authenticated(),
     });
 
-    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
+    await screen.findByRole("cell", { name: "morgan@machxi.local" });
 
-    /*
-     * Its address is derived from the account's id and is what proves there is
-     * exactly one personal organization (ADR-0067 §2 as amended); the service
-     * refuses both the re-address and the deletion, and the screen does not
-     * offer either rather than letting somebody discover them by being told no.
-     */
-    expect(screen.queryByLabelText("Address")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    const dialog = within(await screen.findByRole("alertdialog"));
+
+    await user.click(dialog.getByRole("button", { name: "Remove" }));
+
     expect(
-      screen.getByText(
-        "This is your personal organization. Its address comes from your account and cannot be changed.",
+      await screen.findByText(
+        "That cannot be done while impersonating this account. The account holder has to do it themselves.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("offers a member the sections but not the writes", async () => {
+    /*
+     * **Which cards render is the caller's role**, and the sections themselves
+     * are not: a nav item that appeared and disappeared with a role would make a
+     * shared link land on a not-found for one colleague and a screen for
+     * another, so a member sees three sections and is told, on two of them, that
+     * the writes are somebody else's. The API is still the authority — every one
+     * of these operations is a guard on its route (ADR-0055 §3).
+     */
+    state.organizations = state.organizations.map((row) =>
+      row.slug === TEAM_ORGANIZATION.slug ? { ...row, role: "member" } : row,
+    );
+
+    renderApp({
+      initialPath: `${teamPath}/settings/general`,
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByText("Only an owner or an admin can change this."),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Delete" }),
     ).not.toBeInTheDocument();
 
+    // The nav is still all three, which is the claim above.
+    for (const section of ["General", "Members", "Invitations"])
+      expect(screen.getByRole("link", { name: section })).toBeInTheDocument();
+  });
+
+  it("offers an admin no deletion", async () => {
     /*
-     * And no invitations section, which is the review finding this assertion
-     * exists for: the caller is the owner of their personal organization, so a
-     * gate on role alone offered an "Invite somebody" button above a table that
-     * can never fill — and the service refuses every invitation into a personal
-     * organization outright (ADR-0067 §2).
+     * Deletion is an owner's and is never delegated (ADR-0067 §2), which the
+     * second team's fixture exists to make assertable: the caller is an `admin`
+     * there, so the details form renders and the danger card does not.
+     */
+    renderApp({
+      initialPath: `/orgs/${SECOND_TEAM_ORGANIZATION.slug}/settings/general`,
+      store: authenticated(),
+    });
+
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("addresses that name nothing", () => {
+  it("renders not-found for a slug outside the caller's memberships, without asking about it", async () => {
+    const { router } = renderApp({
+      initialPath: "/orgs/somebody-elses-tenant",
+      store: authenticated(),
+    });
+
+    /*
+     * `errors:ROUTE_NOT_FOUND`, which is what an unmatched path renders too —
+     * because that is what this is: an address naming nothing this account can
+     * see. ADR-0067 §4 refuses a non-member with `404` rather than `403` so the
+     * existence of a tenant is not leaked, and the client says even less.
      */
     expect(
-      screen.queryByRole("button", { name: "Invite somebody" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Pending invitations")).not.toBeInTheDocument();
+      await screen.findByText("That address does not exist."),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/orgs/somebody-elses-tenant");
+
+    /*
+     * The claim the plan makes by name: **no organization request**. The
+     * switcher's own `GET /user/orgs` is the list the slug was resolved
+     * against and is expected; anything addressed *at* an organization would
+     * mean the client asked the API about a tenant it had no business naming,
+     * and the timing of that answer would say whether it exists.
+     */
+    expect(organizationRequests()).toEqual([]);
+  });
+
+  it("renders not-found at the personal organization's own address", async () => {
+    /*
+     * **Only a team is addressed** (ADR-0067 §6's third bullet). The row is in
+     * the caller's own list, so this is not the unknown-slug case above: the
+     * private context lives at the root, and a derived slug in the address bar
+     * is precisely what the amendment removes.
+     */
+    renderApp({
+      initialPath: `/orgs/${PERSONAL_ORGANIZATION.slug}`,
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByText("That address does not exist."),
+    ).toBeInTheDocument();
+    expect(organizationRequests()).toEqual([]);
+  });
+
+  it("renders not-found under the personal organization's settings too", async () => {
+    // "and anything under it" — a personal organization has no settings surface
+    // at all, so the area's sections are unreachable rather than empty.
+    renderApp({
+      initialPath: `/orgs/${PERSONAL_ORGANIZATION.slug}/settings/general`,
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByText("That address does not exist."),
+    ).toBeInTheDocument();
+    expect(organizationRequests()).toEqual([]);
   });
 });

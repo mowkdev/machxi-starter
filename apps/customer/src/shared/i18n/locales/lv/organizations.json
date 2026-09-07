@@ -4,23 +4,20 @@
     "heading": "Tavas organizācijas",
     "empty": "Tu vēl neesi nevienā organizācijā.",
     "error": "Neizdevās ielādēt tavas organizācijas.",
-    "trigger": "Organizācijas"
-  },
-  "kind": {
-    "personal": "Personīgā",
-    "team": "Komandas"
-  },
-  "overview": {
-    "routeTitle": "Organizācija",
-    "description": "Kas ir šī organizācija un kurš to var mainīt.",
-    "address": "Adrese",
-    "kind": "Veids",
-    "role": "Tava loma",
+    "private": "Privāti",
     "settings": "Organizācijas iestatījumi"
   },
   "settings": {
     "routeTitle": "Organizācijas iestatījumi",
-    "back": "Atpakaļ uz organizāciju"
+    "nav": {
+      "label": "Organizācijas sadaļas"
+    },
+    "sections": {
+      "general": "Vispārīgi",
+      "members": "Dalībnieki",
+      "invitations": "Uzaicinājumi"
+    },
+    "readOnly": "To var mainīt tikai īpašnieks vai administrators."
   },
   "fields": {
     "name": {

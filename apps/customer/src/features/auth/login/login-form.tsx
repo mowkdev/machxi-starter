@@ -2,6 +2,8 @@ import { loginBody } from "@repo/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
+import { useLandingSlug } from "@/entities/organization";
+
 import { useApiClient } from "@/shared/api/context";
 import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
@@ -57,6 +59,7 @@ export const LoginForm = () => {
   const client = useApiClient();
   const messageForError = useMessageForError();
   const navigate = useNavigate();
+  const landingSlug = useLandingSlug();
   const { redirect } = useSearch({ from: "/_auth/login" });
 
   const [email, setEmail] = useState("");
@@ -89,8 +92,11 @@ export const LoginForm = () => {
     try {
       /*
        * The client hydrates the store; this feature only decides where to go
-       * next. `redirect` is the location `_dashboard`'s guard turned away,
-       * already fenced to a same-origin path by the route's `validateSearch`.
+       * next — which is why the landing rule lives here and not in the entity
+       * layer, that layer being the one that may not know the route tree
+       * (ADR-0049). `redirect` is the location `_dashboard`'s guard turned
+       * away, already fenced to a same-origin path by the route's
+       * `validateSearch`.
        *
        * **`href`, not `to`, and the difference is not cosmetic.** The guard
        * records `location.href` — pathname *and* search *and* hash — and
@@ -105,10 +111,45 @@ export const LoginForm = () => {
        * failing test, and fixed now because the step that adds the first such
        * route would have inherited it.
        */
-      await client.login(parsed.data);
-      await (redirect === undefined
+      const { principal } = await client.login(parsed.data);
+
+      if (redirect !== undefined) {
+        await navigate({ href: redirect });
+        return;
+      }
+
+      /*
+       * **Where sign-in lands when the guard recorded no `redirect`** (`D15.9`,
+       * ADR-0067 §6 as amended 2026-09-07): the team this device last had this
+       * principal in, or `/` when there is none.
+       *
+       * This is one of the remembered key's exactly two consumers, and it is
+       * checked against the memberships rather than trusted — the value is on
+       * the customer's own device, so a team they have since left would
+       * otherwise send them to a not-found on every sign-in, forever, with
+       * nothing the server could do about it. `useLandingSlug` fetches only
+       * when something is remembered, so an account that has never been in a
+       * team pays nothing for this.
+       *
+       * The `redirect` branch still wins outright and is spent first: a session
+       * that expired mid-task returns somebody to the screen they were on,
+       * which is a stronger statement about where they wanted to be than
+       * anything a device remembers.
+       */
+      /*
+       * **Caught, because a convenience must not be able to fail a sign-in**
+       * (a review finding). `useLandingSlug` fetches the memberships when
+       * something is remembered, and `fetchQuery` *rejects* when that read
+       * fails — inside this `try` that rejection would land in the `catch`
+       * below and paint a refusal under the form of a customer who is, by
+       * then, already signed in and holding a live session. Landing on the
+       * private home is the right answer to "we could not find out".
+       */
+      const slug = await landingSlug(principal.id).catch(() => undefined);
+
+      await (slug === undefined
         ? navigate({ to: "/" })
-        : navigate({ href: redirect }));
+        : navigate({ params: { orgSlug: slug }, to: "/orgs/$orgSlug" }));
     } catch (error) {
       setFormError(messageForError(error));
     } finally {

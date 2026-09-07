@@ -58,6 +58,7 @@ const CALLER = userPrincipal();
 
 const PERSONAL_ID = "0198c1f0-0000-7000-8000-00000000e001";
 const TEAM_ID = "0198c1f0-0000-7000-8000-00000000e002";
+const SECOND_TEAM_ID = "0198c1f0-0000-7000-8000-00000000e003";
 const OTHER_MEMBER_ID = "0198c1f0-0000-7000-8000-00000000e0f1";
 
 /**
@@ -92,9 +93,32 @@ export const TEAM_ORGANIZATION: OrganizationResource = {
   deletedAt: null,
 };
 
+/**
+ * A second team, and the one thing only a second team can prove (`D15.9`).
+ *
+ * ADR-0067 §6's amendment says the switcher **keeps the screen and swaps the
+ * prefix**, and a fixture with one team cannot tell that apart from a switcher
+ * that navigates to a fixed screen: both land on the same place. So there are
+ * two, and the caller is an `admin` here rather than an owner — which is a
+ * second thing the row buys, since it is the only fixture on which the
+ * general section's owner-only deletion card is legitimately absent.
+ */
+export const SECOND_TEAM_ORGANIZATION: OrganizationResource = {
+  id: SECOND_TEAM_ID,
+  slug: "beacon",
+  name: "Beacon",
+  kind: "team",
+  role: "admin",
+  createdBy: OTHER_MEMBER_ID,
+  createdAt: "2026-03-04T10:00:00.000Z",
+  updatedAt: "2026-03-04T10:00:00.000Z",
+  deletedAt: null,
+};
+
 export const ORGANIZATION_ROWS: readonly OrganizationResource[] = [
   PERSONAL_ORGANIZATION,
   TEAM_ORGANIZATION,
+  SECOND_TEAM_ORGANIZATION,
 ];
 
 /**

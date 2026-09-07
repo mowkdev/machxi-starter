@@ -1,4 +1,9 @@
 {
   "title": "Jūsu konts",
-  "body": "Šeit jūs pārvaldāt savu kontu. Vārds, parole, valoda un noformējums, kā arī konta slēgšana atrodas sadaļā Konts."
+  "body": "Šeit jūs pārvaldāt savu kontu. Vārds, parole, valoda un noformējums, kā arī konta slēgšana atrodas sadaļā Konts.",
+  "context": {
+    "private": "Tu esi savā privātajā telpā.",
+    "team": "Tu esi organizācijā {{name}}.",
+    "error": "Neizdevās ielādēt tavas organizācijas."
+  }
 }
