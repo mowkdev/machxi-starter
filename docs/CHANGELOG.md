@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D17 — Impersonation in a new tab · 2026-09-09
+
+The admin panel stays on screen while an operator acts as a customer: the Impersonate confirm opens the customer app in a tab of its own — pre-opened on the click itself, so no pop-up blocker can refuse it, with its opener disowned client-side and by the production `Cross-Origin-Opener-Policy` — and falls back to the same tab only when the open is refused. Because the panel now sits one click from a second mint, the exchange ends the impersonated session it replaces in the same browser, on the audit trail, so a stale tab meets a signed-out screen on its next authenticated request rather than silently changing identity. Tag `starter-D17`.
+
 ## D15 — Organizations · 2026-09-09
 
 Multi-tenancy as a first-class model: organizations and memberships with a personal organization on every path, the membership guard and the scoped repositories, invitations without delivery, the admin resource built through the generator, the customer app's context switcher with the private context at the root and a team's settings area, self-service registration, and — riding in the same window — behaviour specs per capability with the plan kept apart from its build notes, and the development rate-limit profile. Tag `starter-D15`.
