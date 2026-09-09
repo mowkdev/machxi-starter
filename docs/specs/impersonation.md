@@ -25,8 +25,8 @@ Proved by: `apps/api/test/impersonation.int.test.ts`, `apps/api/test/audit-event
 
 ## Requirement: The exchange opens a session as login does, once
 
-`POST /user/auth/impersonate` with `{ token }` is unauthenticated — the token is the credential — and answers login's body with `principal.impersonatedBy: { id, email }` naming the operator, placing the user population's cookies on cookie transport exactly as login does. It exists on the user segment only. Every refusal — replayed, expired, unknown, target no longer active, operator gone or inactive — is one indistinguishable `401 UNAUTHENTICATED`, and a refused exchange does not spend the token.
-Records: [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0020](../adr/0020-security-baseline.md)
+`POST /user/auth/impersonate` with `{ token }` is unauthenticated — the token is the credential — and answers login's body with `principal.impersonatedBy: { id, email }` naming the operator, placing the user population's cookies on cookie transport exactly as login does. It exists on the user segment only. Every refusal — replayed, expired, unknown, target no longer active, operator gone or inactive — is one indistinguishable `401 UNAUTHENTICATED`, and a refused exchange does not spend the token. A refresh cookie arriving with the exchange is never a credential for it, and is read for one purpose: an **impersonated** session it resolves to is the one this exchange replaces, so it is revoked with reason `impersonation_ended` and given an `impersonation.ended` row saying it was replaced and naming the staff member and handoff that replaced it, in the exchange's own transaction and before the new session is minted. A **real** customer session, and a cookie that resolves to nothing, change nothing.
+Records: [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0070](../adr/0070-impersonation-in-a-new-tab.md), [ADR-0020](../adr/0020-security-baseline.md)
 Proved by: `apps/api/test/impersonation.int.test.ts`
 
 ### Scenario: Redeemed once
@@ -38,6 +38,16 @@ Proved by: `apps/api/test/impersonation.int.test.ts`
 
 - **WHEN** the customer is disabled after the mint and before the exchange
 - **THEN** the exchange answers `401 UNAUTHENTICATED`
+
+### Scenario: A second impersonation in the same browser
+
+- **WHEN** an exchange carries the refresh cookie of a live impersonated session
+- **THEN** that session's refresh token answers `401 AUTH_SESSION_REVOKED`, and an `impersonation.ended` row names it as replaced and names the exchange that replaced it
+
+### Scenario: A real customer session in the same browser
+
+- **WHEN** an exchange carries the refresh cookie of a real customer session, or one that resolves to nothing
+- **THEN** the exchange mints as it always did and that session goes on refreshing
 
 ### Scenario: The admin segment
 

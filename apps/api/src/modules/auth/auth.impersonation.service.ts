@@ -68,7 +68,10 @@ export interface ImpersonationServiceDeps {
    * as this customer" is a service call rather than a second write path
    * (ADR-0009).
    */
-  readonly sessions: Pick<AuthService, "issueImpersonatedSession">;
+  readonly sessions: Pick<
+    AuthService,
+    "issueImpersonatedSession" | "endReplacedImpersonation"
+  >;
   readonly audit: Audit;
   /** `IMPERSONATION_HANDOFF_TTL` (ADR-0004, ADR-0057 §2) — 60 seconds by default. */
   readonly handoffTtlSec: number;
@@ -195,54 +198,105 @@ export const createImpersonationService = ({
      * `impersonation.exchanged` row share the transaction, so there is no
      * ordering in which a token is spent without a session, or a session
      * exists without a trail.
+     *
+     * `presentedRefreshToken` is the user population's refresh cookie, when the
+     * browser sent one — the exchange is a route under that cookie's path. It
+     * is the whole of ADR-0070 §4 at this layer: an impersonated session it
+     * resolves to is **ended** before the new one is minted, so a second
+     * impersonation in the same browser signs the first tab out rather than
+     * silently changing its identity. A real customer session is left alive,
+     * which is ADR-0057 §3 unchanged, and the decision is one predicate in
+     * {@link AuthService.endReplacedImpersonation}.
      */
     exchange: async (
       ctx: RequestContext,
       { token }: ImpersonateBody,
-    ): Promise<IssuedAuthResource> =>
-      transaction(async (tx) => {
-        const handoff = await handoffs.consume(
-          { tokenHash: sha256Base64url(token), at: now() },
-          tx,
-        );
-
-        if (handoff === undefined) {
-          // No identifying detail in the line: this endpoint is anonymous, and
-          // a log full of rejected handoffs with their targets is a list of
-          // who support looked at. The request id correlates it.
-          ctx.logger.warn(
-            {},
-            "impersonation exchange refused: no redeemable handoff",
+      presentedRefreshToken?: string,
+    ): Promise<IssuedAuthResource> => {
+      const { auth, replaced, staffId, userId } = await transaction(
+        async (tx) => {
+          const handoff = await handoffs.consume(
+            { tokenHash: sha256Base64url(token), at: now() },
+            tx,
           );
 
-          throw impersonationHandoffInvalid();
-        }
+          if (handoff === undefined) {
+            // No identifying detail in the line: this endpoint is anonymous,
+            // and a log full of rejected handoffs with their targets is a list
+            // of who support looked at. The request id correlates it.
+            ctx.logger.warn(
+              {},
+              "impersonation exchange refused: no redeemable handoff",
+            );
 
-        const auth = await sessions.issueImpersonatedSession(ctx, {
-          principalId: handoff.userId,
-          staffId: handoff.staffId,
-          tx,
-        });
+            throw impersonationHandoffInvalid();
+          }
 
-        await audit.record(
-          ctx,
-          {
-            event: "impersonation.exchanged",
-            identities: identities(handoff.staffId, handoff.userId),
-            // The session's fixed end, which the mint could not know: it is
-            // anchored here, at the exchange (ADR-0057 §4). Recording it is
-            // what makes an un-exited trail complete by construction — expiry
-            // needs no event of its own (§6).
-            data: {
-              handoffId: handoff.id,
-              endsAt: auth.refreshTokenExpiresAt,
+          // Before the mint, inside the same transaction: the trail reads
+          // `ended` then `exchanged` with no instant in which both sessions
+          // were live, and a refusal below rolls the revoke back with
+          // everything else (ADR-0070 §4). The controller hands the cookie over
+          // as `refresh` reads it; a request without one — every exchange in a
+          // browser that holds no user session — skips this entirely.
+          const replaced =
+            presentedRefreshToken === undefined
+              ? false
+              : await sessions.endReplacedImpersonation(ctx, {
+                  refreshToken: presentedRefreshToken,
+                  // Who is doing the replacing, for a row whose actor is the
+                  // *previous* operator (ADR-0070 §4).
+                  replacedBy: {
+                    staffId: handoff.staffId,
+                    handoffId: handoff.id,
+                  },
+                  tx,
+                });
+
+          const auth = await sessions.issueImpersonatedSession(ctx, {
+            principalId: handoff.userId,
+            staffId: handoff.staffId,
+            tx,
+          });
+
+          await audit.record(
+            ctx,
+            {
+              event: "impersonation.exchanged",
+              identities: identities(handoff.staffId, handoff.userId),
+              // The session's fixed end, which the mint could not know: it is
+              // anchored here, at the exchange (ADR-0057 §4). Recording it is
+              // what makes an un-exited trail complete by construction —
+              // expiry needs no event of its own (§6).
+              data: {
+                handoffId: handoff.id,
+                endsAt: auth.refreshTokenExpiresAt,
+              },
             },
-          },
-          tx,
-        );
+            tx,
+          );
 
-        return auth;
-      }),
+          return {
+            auth,
+            replaced,
+            staffId: handoff.staffId,
+            userId: handoff.userId,
+          };
+        },
+      );
+
+      // After the commit, never inside it: a transaction that rolls back takes
+      // the revoke and its audit row with it, and a log line written inside
+      // would survive to describe an ending that never happened (ADR-0058 —
+      // the trail degrades to the logs, so the logs must not outrun it).
+      if (replaced) {
+        ctx.logger.info(
+          { staffId, targetUserId: userId },
+          "impersonation ended: replaced by a second exchange in the same browser",
+        );
+      }
+
+      return auth;
+    },
   } as const;
 };
 

@@ -74,12 +74,28 @@ export const createImpersonationController = ({
      * real customer session has those cookies **overwritten** while its
      * session row is left alive, which is the operator's call recorded in
      * ADR-0057 §3.
+     *
+     * What it also reads, and login does not, is the refresh cookie already in
+     * the jar (ADR-0070 §4). Reading it here rather than in the service is
+     * ADR-0009's own division — the service knows nothing about HTTP, and this
+     * is the same `cookies.readRefreshCookie` the auth controller's `refresh`
+     * goes through.
      */
     exchange: async (
       req: ValidatedRequest<typeof exchangeImpersonationSchema>,
       res: Response,
     ): Promise<void> => {
-      const resource = await service.exchange(req.ctx, req.valid.body);
+      // The user population's refresh cookie, read the way `refresh` reads it
+      // and for a reason only this endpoint has: an impersonated session it
+      // resolves to is the one this exchange replaces, and it is ended rather
+      // than left live with its tab's identity quietly swapped (ADR-0070 §4).
+      // It is never a credential *for* this request — the handoff is — so a
+      // browser that sends nothing, or something stale, is refused nothing.
+      const resource = await service.exchange(
+        req.ctx,
+        req.valid.body,
+        cookies.readRefreshCookie(req),
+      );
 
       respond.ok(
         res,

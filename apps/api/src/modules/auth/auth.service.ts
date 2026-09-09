@@ -149,6 +149,37 @@ export interface IssueImpersonatedSessionInput {
   readonly tx?: DbExecutor | undefined;
 }
 
+/** What {@link AuthService.endReplacedImpersonation} acts on (ADR-0070 §4). */
+export interface EndReplacedImpersonationInput {
+  /**
+   * The user population's refresh cookie as it arrived at the exchange — the
+   * raw token, hashed here exactly as `refresh` hashes the one it is given.
+   */
+  readonly refreshToken: string;
+  /**
+   * The exchange doing the replacing, off the handoff it has just consumed.
+   *
+   * The row's `actor` is the staff member whose impersonation is *ending*,
+   * because that is whose session it is — but the human who chose to end it is
+   * the operator behind the new handoff, and this route is unauthenticated, so
+   * `ctx.principal` cannot supply them. Naming them in `data` is what makes the
+   * row readable on a shared support workstation, where the jar's session may
+   * belong to somebody else's impersonation (ADR-0070 §4).
+   */
+  readonly replacedBy: {
+    readonly staffId: string;
+    readonly handoffId: string;
+  };
+  /**
+   * The exchange's own transaction. Required, unlike
+   * {@link IssueImpersonatedSessionInput.tx}: the revoke, its audit row and the
+   * session that replaces it commit together or not at all, so there is no
+   * ordering in which the old session ends and the new one is never minted
+   * (ADR-0070 §4).
+   */
+  readonly tx: DbExecutor;
+}
+
 export interface AuthServiceDeps {
   readonly population: Population;
   readonly principals: PrincipalAdapter;
@@ -156,7 +187,9 @@ export interface AuthServiceDeps {
   /**
    * The audit writer (ADR-0058), for the one lifecycle event this service
    * owns: `impersonation.ended`, written when the exit control ends a session
-   * minted by impersonation (ADR-0057 §6).
+   * minted by impersonation (ADR-0057 §6), when a staff revoke-all sweep ends
+   * what that operator was driving, and when a second exchange in the same
+   * browser replaces the session it finds there (ADR-0070 §4).
    *
    * Required rather than optional on both populations, even though only the
    * `user` instance can ever write a row: a dependency a caller may omit is a
@@ -776,6 +809,106 @@ export const createAuthService = ({
       );
 
       return auth;
+    },
+
+    /**
+     * Ends the impersonated session a second exchange in the same browser
+     * replaces (ADR-0070 §4).
+     *
+     * The user population's cookies are one jar, and since the admin panel now
+     * stays on screen a second Impersonate is one click away. Without this, the
+     * exchange would overwrite the first tab's cookies and leave its session
+     * live for the rest of `IMPERSONATION_SESSION_TTL`: the stale tab's next
+     * refresh would answer with the **second** customer's principal, the banner
+     * would swap names, and nothing would say so on the trail. The API is the
+     * only place that can see it — the refresh cookie is path-scoped to
+     * `/api/v1/user/auth` and the exchange is a route under that path.
+     *
+     * Three conditions, and every one of them is a decision rather than a
+     * defence:
+     *
+     * - **The row must be this population's.** Nothing else can reach the
+     *   cookie's path, but a session of the other population resolving here
+     *   would be a cross-segment revocation from an unauthenticated route.
+     * - **The row must be live.** A revoked or expired session is already over;
+     *   revoking it again would write a second `impersonation.ended` row for an
+     *   impersonation that had already ended, and the audit table is the one
+     *   nothing prunes.
+     * - **The row must carry an actor.** A cookie that resolves to a **real**
+     *   customer session is left exactly as ADR-0057 §3 decided — overwritten
+     *   in the jar, alive in the database, other devices untouched. Ending it
+     *   would end a session that was not the operator's to end.
+     *
+     * A cookie that resolves to nothing — expired, unknown, revoked — is
+     * ignored, as it is on any other request, and the exchange's own refusals
+     * are unchanged. Only the **current** hash is matched, and the gap that
+     * leaves is deliberate rather than overlooked: a token one rotation stale
+     * is still spendable at `refresh` inside `REFRESH_ROTATION_GRACE_SEC`
+     * (ADR-0018 §Refresh), so a browser whose rotation response was lost keeps
+     * its old impersonation alive until its fixed end. Reaching the previous
+     * hash from here would put a revoke behind reuse detection's own
+     * ambiguity, and the miss is bounded: the exchange overwrites the jar, so
+     * the session it failed to end is one no tab can reach.
+     *
+     * @returns whether a session was ended, for the caller's log line — which
+     * is the caller's rather than this function's because the transaction it
+     * runs in can still roll back underneath it, and a log line cannot.
+     */
+    endReplacedImpersonation: async (
+      ctx: RequestContext,
+      { refreshToken, replacedBy, tx }: EndReplacedImpersonationInput,
+    ): Promise<boolean> => {
+      const at = now();
+      const session = await sessions.findByRefreshTokenHash(
+        sha256Base64url(refreshToken),
+        tx,
+      );
+
+      if (
+        session === undefined ||
+        session.principalType !== population ||
+        session.revokedAt !== null ||
+        session.refreshTokenExpiresAt.getTime() <= at.getTime() ||
+        session.impersonatedByStaffId === null
+      ) {
+        return false;
+      }
+
+      await sessions.revoke(
+        {
+          id: session.id,
+          reason: REVOKE_REASONS.impersonationEnded,
+          at,
+        },
+        tx,
+      );
+
+      await audit.record(
+        ctx,
+        {
+          event: "impersonation.ended",
+          identities: {
+            actor: { type: "staff", id: session.impersonatedByStaffId },
+            actingAs: { type: "user", id: session.principalId },
+          },
+          // `replaced`, and that word is the point of the row: it separates a
+          // second impersonation in the same browser from the exit control's
+          // `logout` and from a revocation for cause, which is the distinction
+          // ADR-0057 §6 asks `data` to carry. The two ids beside it name the
+          // exchange that did the replacing, whose operator is not necessarily
+          // the actor above — a shared support workstation is one jar and two
+          // people (ADR-0070 §4).
+          data: {
+            sessionId: session.id,
+            reason: "replaced",
+            replacedByStaffId: replacedBy.staffId,
+            replacedByHandoffId: replacedBy.handoffId,
+          },
+        },
+        tx,
+      );
+
+      return true;
     },
 
     /**

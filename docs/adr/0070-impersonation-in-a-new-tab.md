@@ -1,10 +1,10 @@
 # ADR-0070: Impersonation opens the customer app in a new tab (supersedes ADR-0057 in part — a delta)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-09
 - Supersedes: [ADR-0057](0057-impersonation-sessions.md) (delta: §7's "means _this_ tab" bullet — the admin half opens the customer app in a tab of its own, pre-opened on the confirm click, with its opener disowned, and falls back to the same tab only when the open is refused; and §3's "its session row is not touched" is narrowed to a **real** customer session — the exchange ends an **impersonated** session whose refresh cookie accompanies it, on the trail. The mint, the handoff, the fragment, the fixed session life, the exclusions, the banner, the exit and every other decision stand — its third partial successor, after [0067](0067-organizations.md) and beside [0064](0064-brand-seams.md)'s delta on 0018)
 
-> Written 2026-09-09 by `/scope` for D17 ([`docs/plan/0017-impersonation-new-tab.md`](../plan/0017-impersonation-new-tab.md)) — writing is not opening, opening is not accepting. `proposed` at writing; **accepted at the head of `D17.1`**, where ADR-0057 gains its third successor delta. Amendable in place, labelled, while D17 is `in progress` ([the ledger](../plan/README.md#the-window)).
+> Written 2026-09-09 by `/scope` for D17 ([`docs/plan/0017-impersonation-new-tab.md`](../plan/0017-impersonation-new-tab.md)) — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-09 at the head of `D17.1`**, where ADR-0057 moved to its third successor delta. Amendable in place, labelled, while D17 is `in progress` ([the ledger](../plan/README.md#the-window)).
 
 ## Context
 

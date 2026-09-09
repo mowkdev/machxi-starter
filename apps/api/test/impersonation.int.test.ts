@@ -453,6 +453,139 @@ describe("the exchange", () => {
       .send({ refreshToken: customer.refreshToken })
       .expect(200);
   });
+
+  it("ends the impersonated session it replaces, on the trail", async () => {
+    // ADR-0070 §4. The admin panel now stays on screen, so a second
+    // Impersonate is one click away and the user population's cookies are one
+    // jar: without this the first tab's next refresh would answer with the
+    // *second* customer's principal and the first session would live out its
+    // fixed end with nothing on the trail to say so.
+    const victim = await createUserAccount(harness.app, adminToken, {
+      email: "impersonation-replaced@machxi.local",
+    });
+
+    const first = await exchange(
+      (await mint(victim.id).expect(200)).body.data.token as string,
+    ).expect(200);
+    const staleToken = first.body.data.refreshToken as string;
+    const firstHandoffId = (
+      (await auditRows()).find(
+        (row) =>
+          row.event === "impersonation.exchanged" &&
+          row.actingAsId === victim.id,
+      )?.data as { handoffId?: string } | null
+    )?.handoffId;
+
+    // What the browser does on the second confirm: the refresh cookie is
+    // scoped to `/api/v1/user/auth` and the exchange is a route under it, so
+    // it rides along — as a fact about the jar, never as this request's
+    // credential.
+    const replacement = (await mint(victim.id).expect(200)).body.data
+      .token as string;
+    const second = await supertest(harness.app)
+      .post(EXCHANGE)
+      .set("Cookie", [`${REFRESH_COOKIE}=${staleToken}`])
+      .send({ token: replacement })
+      .expect(200);
+
+    // The stale tab meets the signed-out path it already has, rather than a
+    // banner that quietly changed names.
+    const stale = await supertest(harness.app)
+      .post("/api/v1/user/auth/refresh")
+      .send({ refreshToken: staleToken })
+      .expect(401);
+
+    expect(stale.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+    // And the replacement is live: the two writes are one transaction, so
+    // there is no ordering in which the first ends and the second is missing.
+    await supertest(harness.app)
+      .post("/api/v1/user/auth/refresh")
+      .send({ refreshToken: second.body.data.refreshToken })
+      .expect(200);
+
+    const rows = await sessionRows(victim.id);
+    const ended = rows.find((row) => row.revokedAt !== null);
+
+    expect(ended?.revokedReason).toBe("impersonation_ended");
+    expect(rows.filter((row) => row.revokedAt === null).length).toBe(1);
+
+    // `replaced` is the point of the row: it separates a second impersonation
+    // in the same browser from the exit control's `logout` and from a
+    // revocation for cause (ADR-0057 §6, ADR-0070 §4).
+    const trail = (await auditRows()).find(
+      (row) =>
+        row.event === "impersonation.ended" &&
+        (row.data as { sessionId?: string } | null)?.sessionId === ended?.id,
+    );
+
+    expect(trail).toMatchObject({
+      actorType: "staff",
+      actingAsType: "user",
+      actingAsId: victim.id,
+    });
+
+    // And it names the exchange that replaced it: the row's actor is the
+    // operator whose impersonation ended, who on a shared workstation is not
+    // the one who ended it.
+    expect(trail?.data).toMatchObject({
+      reason: "replaced",
+      replacedByStaffId: trail?.actorId,
+      replacedByHandoffId: expect.any(String),
+    });
+    expect(
+      (trail?.data as { replacedByHandoffId?: string } | null)
+        ?.replacedByHandoffId,
+    ).not.toBe(firstHandoffId);
+  });
+
+  it("leaves a real customer session refreshing when its cookie rides along", async () => {
+    // The carve-out is one predicate on one column: ADR-0057 §3 stands for a
+    // session nobody is impersonating through, cookie in the jar or not.
+    const customer = await login(harness.app, "user", {
+      email: FIXTURE_USERS.active,
+      password: FIXTURE_PASSWORD,
+    });
+
+    const minted = await mint(targetUserId).expect(200);
+
+    await supertest(harness.app)
+      .post(EXCHANGE)
+      .set("Cookie", [`${REFRESH_COOKIE}=${customer.refreshToken}`])
+      .send({ token: minted.body.data.token })
+      .expect(200);
+
+    await supertest(harness.app)
+      .post("/api/v1/user/auth/refresh")
+      .send({ refreshToken: customer.refreshToken })
+      .expect(200);
+  });
+
+  it("mints as before when the cookie resolves to nothing", async () => {
+    // Expired, revoked, unknown, rotated out: ignored here as it is on any
+    // other request, and the exchange's own refusals are unchanged.
+    const victim = await createUserAccount(harness.app, adminToken, {
+      email: "impersonation-unknown-cookie@machxi.local",
+    });
+
+    const minted = await mint(victim.id).expect(200);
+
+    const response = await supertest(harness.app)
+      .post(EXCHANGE)
+      .set("Cookie", [`${REFRESH_COOKIE}=${"A".repeat(43)}`])
+      .send({ token: minted.body.data.token })
+      .expect(200);
+
+    expect(response.body.data.principal).toMatchObject({
+      kind: "user",
+      id: victim.id,
+      impersonatedBy: { email: superAdmin().email },
+    });
+    expect(
+      (await sessionRows(victim.id)).filter((row) => row.revokedAt === null)
+        .length,
+    ).toBe(1);
+  });
 });
 
 describe("an impersonated session", () => {
