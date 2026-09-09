@@ -151,12 +151,19 @@ export const useRevokeUserSessions = () => {
  * the mint writes `impersonation_handoffs` and an audit row, and touches no
  * field of the `users` row this app caches.
  *
- * **And it declares no `success` outcome.** The success path navigates this tab
- * to the customer app (`ImpersonateUserDialog`), so a toast raised here would
- * be raised onto a document that is being torn down — an outcome nobody can
- * read is worse than none, because it looks maintained. The failure keeps the
- * default toast: a refused mint leaves the operator exactly where they were,
- * looking at the confirm, which is where ADR-0034's message map can reach them.
+ * **And it declares no `success` outcome** — for a reason ADR-0070 changed
+ * (`D17.2`, security review). It used to be that the success path navigated
+ * *this* document to the customer app, so a toast raised here would be raised
+ * onto a page being torn down. That is now true only of the fallback: on the
+ * ordinary path the panel survives, the confirm closes and the operator stays
+ * where they were. The outcome is the tab itself — a second window carrying
+ * the customer's account, which is a louder answer than a line of text and the
+ * one thing a toast could not claim falsely. A toast would say a credential
+ * was minted; the tab is the credential having been spent.
+ *
+ * The failure keeps the default toast: a refused mint leaves the operator
+ * exactly where they were, looking at the confirm, which is where ADR-0034's
+ * message map can reach them.
  */
 export const useImpersonateUser = () => {
   const api = useApi();

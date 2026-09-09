@@ -1,5 +1,5 @@
 import { createUserBody, setPasswordBody } from "@repo/contracts";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -471,63 +471,177 @@ describe("the confirms", () => {
 });
 
 /**
- * The impersonation mint, from the confirm to the address bar (`D13.8`,
- * ADR-0057 §1/§2/§7).
+ * The impersonation mint, from the confirm to the tab it opens (`D13.8`,
+ * `D17.2`; ADR-0057 §1/§2, ADR-0070 §1–§3).
  *
  * **What this tier can and cannot see.** It drives the whole of this app's
- * half — the mint is requested for the right target, the token comes back, the
- * URL is built with the token in the *fragment*, and the credential is dropped
- * from memory the moment the mutation settles. What it cannot see is anything
- * on the other side of that navigation: jsdom does not follow it, MSW cannot
- * show a `Set-Cookie`, and the customer app is a different bundle. `D13.7`'s
- * suites drive the redemption from the fragment; `D13.9` walks the pair in a
+ * half — the tab is opened inside the click, the mint is requested for the
+ * right target, the token comes back, the tab is disowned and sent to a URL
+ * with the token in the *fragment*, and the credential is dropped from memory
+ * the moment the mutation settles. What it cannot see is anything on the other
+ * side of that navigation: jsdom opens no second document, MSW cannot show a
+ * `Set-Cookie`, and the customer app is a different bundle. `D13.7`'s suites
+ * drive the redemption from the fragment; `D17.3` walks the pair of tabs in a
  * browser.
  */
 describe("opening the customer app as a user", () => {
   /**
-   * The addresses this tab was sent to, and the targets it was sent with.
+   * The tab `window.open` hands back, instrumented.
    *
-   * A spy on the *real* method rather than a seam invented for the test — this
-   * harness has no `vi.mock` anywhere and is not about to start for a
-   * navigation. It is spyable at all because the dialog navigates through
-   * `window.open(…, "_self")`: `Location`'s own members are
-   * `[LegacyUnforgeable]`, so `window.location.assign` cannot be redefined in
-   * jsdom any more than it can in a browser.
+   * A stub rather than a second jsdom window, because jsdom's `window.open`
+   * answers `null` and cannot be made to answer anything else — and because
+   * what is worth asserting is not what a second document does but what this
+   * one *says* to the handle, and in **which order**. Writes are recorded
+   * through setters.
+   *
+   * **What it cannot catch, stated rather than implied** (`D17.2`, code
+   * review, correcting this comment's first draft): a set-only accessor reads
+   * back as `undefined`, and so does an absent property — only *calling* an
+   * absent member throws. So a member the dialog starts reading is answered
+   * falsy here until somebody adds it, which is why `closed` below is present
+   * with a value rather than left off.
    */
-  const navigations = (): { url: string; target: string }[] =>
+  const stubTab = (closed = false) => {
+    const order: string[] = [];
+    const openerWrites: unknown[] = [];
+    const hrefWrites: string[] = [];
+    const close = vi.fn(() => {
+      order.push("close");
+    });
+    const handle = {
+      /*
+       * A real `Window` answers this, and the dialog reads it: a handle whose
+       * context has been discarded is not `null`, and writing to it is a
+       * no-op. Defaulted rather than omitted so the stub cannot pass the
+       * dialog's test by being silently `undefined`.
+       */
+      closed,
+      set opener(value: unknown) {
+        openerWrites.push(value);
+        order.push("opener");
+      },
+      location: {
+        set href(value: string) {
+          hrefWrites.push(value);
+          order.push("href");
+        },
+      },
+      close,
+    };
+
+    return {
+      order,
+      openerWrites,
+      hrefWrites,
+      close,
+      // The one place this file lies to the compiler: a `Window` is not
+      // constructible here, and what the dialog touches of one is these four
+      // members.
+      handle: handle as unknown as Window,
+    };
+  };
+
+  let tab: ReturnType<typeof stubTab>;
+  /** Set by the one case that drives ADR-0070 §3's refused open. */
+  let openRefused: boolean;
+  /** How many mints the mock had seen when each `window.open` ran. */
+  let mintsWhenOpened: number[];
+
+  /** What this document asked to open, and with what target. */
+  const opens = (): { url: string; target: string }[] =>
     vi.mocked(window.open).mock.calls.map(([url, target]) => ({
       url: String(url),
       target: String(target),
     }));
 
   beforeEach(() => {
-    vi.spyOn(window, "open").mockReturnValue(null);
+    tab = stubTab();
+    openRefused = false;
+    mintsWhenOpened = [];
+
+    /*
+     * A spy on the *real* method rather than a seam invented for the test —
+     * this harness has no `vi.mock` anywhere and is not about to start for a
+     * navigation (ADR-0036). It is spyable at all because both paths go
+     * through `window.open`: `Location`'s own members are `[LegacyUnforgeable]`
+     * and cannot be redefined in jsdom any more than in a browser, so
+     * `window.location.assign` would have needed the indirection module this
+     * harness refuses.
+     *
+     * Each call records how many mints the mock had seen at the moment it ran,
+     * which is how ADR-0070 §1's order — open first, mint second — is asserted
+     * rather than assumed.
+     */
+    vi.spyOn(window, "open").mockImplementation(() => {
+      mintsWhenOpened.push(state.seen.minted.length);
+
+      return openRefused ? null : tab.handle;
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("mints for the chosen user and lands on the customer app with the token in the fragment", async () => {
+  it("opens the tab in the click's own call stack, carrying no URL", async () => {
+    open({ kind: "impersonate", user: CARA });
+
+    /*
+     * `fireEvent` rather than `userEvent`, and it is the assertion rather than
+     * a shortcut (`D17.2`, code review). `fireEvent.click` dispatches
+     * synchronously and returns, so everything asserted before the first
+     * `await` below is what ran **inside the click's own call stack** — which
+     * is the property ADR-0070 §1 decides and the one a popup blocker checks.
+     * `userEvent.click` is awaited, so by the time it resolves a `window.open`
+     * moved into a microtask, a `setTimeout` or the mint's `onSuccess` would
+     * have run too and every ordering assertion would still pass.
+     */
+    fireEvent.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    // One open, carrying no URL — the address does not exist yet.
+    expect(opens()).toEqual([{ url: "", target: "_blank" }]);
+    // And the mint has not even left: nothing awaited it into being.
+    expect(state.seen.minted).toEqual([]);
+
+    /*
+     * Opening after the awaited round trip is the case ADR-0057 §7 rejected:
+     * the activation may be spent by then and a blocked open is *silent*,
+     * leaving the operator with a success toast, no tab and a live credential
+     * they can neither spend nor see.
+     */
+    await waitFor(() => {
+      expect(tab.hrefWrites).toHaveLength(1);
+    });
+
+    // The mint that followed was asked for this row and no other.
+    expect(state.seen.minted).toEqual([CARA.id]);
+    expect(opens()).toHaveLength(1);
+  });
+
+  it("disowns the tab before sending it to the fragment", async () => {
     const user = userEvent.setup();
-    const { queryClient } = open({ kind: "impersonate", user: CARA });
+
+    open({ kind: "impersonate", user: CARA });
 
     await user.click(screen.getByRole("button", { name: "Impersonate" }));
 
     await waitFor(() => {
-      expect(navigations()).toHaveLength(1);
+      expect(tab.hrefWrites).toHaveLength(1);
     });
 
-    // The mint was asked for this row and no other.
-    expect(state.seen.minted).toEqual([CARA.id]);
+    /*
+     * `opener = null` **before** the location is assigned (ADR-0070 §2): the
+     * tab is `about:blank` and same-origin at that moment, so the write is
+     * permitted, and a disowned browsing context stays disowned across the
+     * navigation that follows. In the other order the customer origin would
+     * arrive holding a handle on the admin panel in every deployment whose
+     * static server does not send `Cross-Origin-Opener-Policy` — the dev
+     * server among them, which is why the write is not left to the header.
+     */
+    expect(tab.order).toEqual(["opener", "href"]);
+    expect(tab.openerWrites).toEqual([null]);
 
-    const [navigation] = navigations();
-
-    // `_self`, so this is the browsing context that already exists rather than
-    // a popup a blocker could refuse without saying so.
-    expect(navigation?.target).toBe("_self");
-
-    const url = new URL(String(navigation?.url));
+    const url = new URL(String(tab.hrefWrites[0]));
 
     /*
      * The origin is configuration (`VITE_CUSTOMER_APP_URL`, pinned by
@@ -543,28 +657,163 @@ describe("opening the customer app as a user", () => {
     expect(new URLSearchParams(url.hash.slice(1)).get("token")).toBe(
       HANDOFF_TOKEN,
     );
+  });
+
+  it("closes the confirm and keeps no handoff once the tab is on its way", async () => {
+    const user = userEvent.setup();
+    const { queryClient, onClose } = open({ kind: "impersonate", user: CARA });
+
+    await user.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    await waitFor(() => {
+      expect(tab.hrefWrites).toHaveLength(1);
+    });
 
     /*
-     * And the handoff is not left lying in memory. TanStack Query keeps a
+     * The panel stays on screen now, so the dialog has no reason to — which is
+     * the visible half of ADR-0070 §1 and the reason `D13.8`'s "no `onClose()`
+     * first" no longer applies. The confirm closing is also what makes a second
+     * press impossible on this path: there is nothing left to press.
+     */
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    /*
+     * And the tab it handed the credential to is **not** closed behind it,
+     * which is the one thing this path must not do and which no other case
+     * would notice (`D17.2`, code review).
+     */
+    expect(tab.close).not.toHaveBeenCalled();
+
+    /*
+     * The handoff is not left lying in memory either. TanStack Query keeps a
      * settled mutation's `data` for `gcTime`, so without `CREDENTIAL_MUTATION`
      * a one-time credential with a sixty-second life would be readable from
      * `getMutationCache()` for five minutes — four of them after it is dead,
      * one of them while it is not. This is the same assertion `D3.9` makes
      * about a submitted password, made about a returned token.
      *
-     * **`gcTime: 0` alone does not get there here, which is what this case
-     * caught.** Eviction waits for the last observer, and every other
-     * credential mutation in this app loses its observer by closing its dialog
-     * on success — this one deliberately stays mounted through the navigation,
-     * so the dialog resets the mutation itself once the token has been spent.
+     * Here the dialog's own `reset()` is what does it: this harness's
+     * `onClose` is a spy, so the observer never actually goes and `gcTime: 0`
+     * has nothing to evict on. In the app it would go — the fallback case
+     * below is where the reset is load-bearing in production too.
      */
     await waitFor(() => {
       expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
     });
   });
 
-  it("cannot be fired twice while the browser is on its way", async () => {
+  it("falls back to this tab when the open itself is refused", async () => {
     const user = userEvent.setup();
+
+    // An extension, a policy, a kiosk profile: `window.open` answers `null`
+    // even inside a click (ADR-0070 §3).
+    openRefused = true;
+
+    const { queryClient, onClose } = open({ kind: "impersonate", user: CARA });
+
+    await user.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    await waitFor(() => {
+      expect(opens()).toHaveLength(2);
+    });
+
+    /*
+     * The behaviour ADR-0070 replaces, kept as the fallback and named by a
+     * test rather than by a comment: the blank open still ran inside the click
+     * and still carried no URL, and the `_self` navigation followed the mint.
+     * `mintsWhenOpened` is what says "after": the second call saw the mint the
+     * first did not.
+     */
+    expect(opens()).toEqual([
+      { url: "", target: "_blank" },
+      { url: handoffUrl(HANDOFF_TOKEN), target: "_self" },
+    ]);
+    expect(mintsWhenOpened).toEqual([0, 1]);
+
+    // This document is the one leaving, so the dialog stays: closing it would
+    // flash the grid behind it for the duration of a navigation.
+    expect(onClose).not.toHaveBeenCalled();
+
+    /*
+     * **And this is the path where `reset()` is load-bearing in production**
+     * (`D17.2`, code review). `gcTime: 0` evicts a mutation when its last
+     * observer goes; here the dialog deliberately stays mounted through the
+     * navigation, so nothing evicts it, and in the browser where an extension
+     * refuses the `_self` navigation too, "for as long as the document
+     * survives" is indefinite. Drop the `reset()` from this branch and this
+     * assertion is the one that goes red.
+     */
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+    });
+  });
+
+  it("takes the credential itself when the tab it opened is already gone", async () => {
+    const user = userEvent.setup();
+
+    /*
+     * The operator shut the blank tab while the mint was in flight, or an
+     * extension opened it and closed it again. A discarded browsing context is
+     * **not** `null` — the handle is live and every write to it is a no-op —
+     * so a `tab === null` test alone would end here with the dialog closed, a
+     * spent budget entry, an `impersonation.minted` row and a live credential
+     * nobody can reach: the exact outcome ADR-0070 §3 exists to prevent
+     * (`D17.2`, security review).
+     */
+    tab = stubTab(true);
+
+    const { onClose } = open({ kind: "impersonate", user: CARA });
+
+    await user.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    await waitFor(() => {
+      expect(opens()).toHaveLength(2);
+    });
+
+    // The same fallback the refused open takes: this document leaves with it.
+    expect(opens()[1]).toEqual({
+      url: handoffUrl(HANDOFF_TOKEN),
+      target: "_self",
+    });
+    expect(tab.order).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("closes the tab it opened if it goes away before the mint answers", () => {
+    const { unmount } = open({ kind: "impersonate", user: CARA });
+
+    fireEvent.click(screen.getByRole("button", { name: "Impersonate" }));
+
+    /*
+     * The dialog leaves while the mint is in flight — Back, on a route change
+     * the modal backdrop does not block. TanStack Query runs no `mutate`-scoped
+     * callback for an observer that has gone, so neither `onSuccess` nor
+     * `onError` will ever fire: without the unmount cleanup the blank tab would
+     * outlive the panel that opened it, with nothing in it and no way back to
+     * it (`D17.2`, code review). Synchronous throughout — the mint has not
+     * answered, which is the whole case.
+     */
+    unmount();
+
+    expect(tab.close).toHaveBeenCalledTimes(1);
+    expect(tab.hrefWrites).toEqual([]);
+  });
+
+  it("cannot be fired twice while this tab is on its way", async () => {
+    const user = userEvent.setup();
+
+    /*
+     * The fallback path, because it is the only one where the dialog outlives
+     * the navigation — on the new-tab path the confirm has already closed. A
+     * navigation is not instant and a settled mutation re-enables its own
+     * button, so without the dialog holding itself busy this second press
+     * would mint again: a second request against ADR-0057 §1's per-actor
+     * budget, a second live credential, and a second `impersonation.minted`
+     * row against the operator's name for one intention.
+     */
+    openRefused = true;
 
     open({ kind: "impersonate", user: CARA });
 
@@ -573,21 +822,14 @@ describe("opening the customer app as a user", () => {
     await user.click(confirm);
 
     await waitFor(() => {
-      expect(navigations()).toHaveLength(1);
+      expect(opens()).toHaveLength(2);
     });
 
-    /*
-     * A navigation is not instant and a settled mutation re-enables its own
-     * button, so without the dialog holding itself busy this second press
-     * would mint again — a second request against ADR-0057 §1's per-actor
-     * budget, a second live credential, and a second `impersonation.minted`
-     * row against the operator's name for one intention.
-     */
     expect(confirm).toBeDisabled();
     await user.click(confirm);
 
     expect(state.seen.minted).toEqual([CARA.id]);
-    expect(navigations()).toHaveLength(1);
+    expect(opens()).toHaveLength(2);
   });
 
   it("builds the address the customer app parses, and only that", () => {
@@ -618,7 +860,21 @@ describe("opening the customer app as a user", () => {
       await screen.findByText("That user is deleted and cannot be changed."),
     ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
-    expect(navigations()).toEqual([]);
+    expect(tab.hrefWrites).toEqual([]);
+
+    /*
+     * And the tab the click opened is closed again (ADR-0070 §1). A blank tab
+     * left standing behind a refusal would be the operator's only evidence
+     * that anything happened, and the sentence above is the better one.
+     */
+    expect(tab.close).toHaveBeenCalledTimes(1);
+
+    /*
+     * The latch lifts with the refusal: nothing is leaving, so the operator can
+     * press again — pick the wrong row, be told, pick another. Leaving it
+     * latched would strand them in a modal whose only exit is Cancel.
+     */
+    expect(screen.getByRole("button", { name: "Impersonate" })).toBeEnabled();
   });
 
   it("refuses an account that is present but not active", async () => {
@@ -647,10 +903,11 @@ describe("opening the customer app as a user", () => {
         "That conflicts with something that already exists.",
       ),
     ).toBeInTheDocument();
-    expect(navigations()).toEqual([]);
+    expect(tab.hrefWrites).toEqual([]);
+    expect(tab.close).toHaveBeenCalledTimes(1);
   });
 
-  it("says the three things the button cannot", async () => {
+  it("says the four things the button cannot", async () => {
     open({ kind: "impersonate", user: CARA });
 
     const dialog = await screen.findByRole("alertdialog");
@@ -658,10 +915,17 @@ describe("opening the customer app as a user", () => {
     /*
      * The confirm is where an operator learns what impersonation does *not* do
      * to them and what it does to the record — none of it discoverable from a
-     * menu item. Asserted as three fragments rather than the whole sentence, so
-     * a rewrite of the copy is free while a silent deletion of any of the three
-     * facts is not.
+     * menu item. Asserted as fragments rather than the whole sentence, so a
+     * rewrite of the copy is free while a silent deletion of any of the facts
+     * is not.
+     *
+     * **Where it opens is the fourth**, and it is new with ADR-0070 §1: the
+     * copy this replaces began "This tab moves to the customer app", which the
+     * pre-opened tab made false. An operator who is told the panel goes away
+     * and then finds it still there has been told the wrong thing about a
+     * screen carrying somebody else's account.
      */
+    expect(within(dialog).getByText(/new tab/)).toBeInTheDocument();
     expect(within(dialog).getByText(/untouched/)).toBeInTheDocument();
     expect(
       within(dialog).getByText(/refused while you are there/),

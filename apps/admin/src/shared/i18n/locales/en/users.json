@@ -66,7 +66,7 @@
   },
   "impersonate": {
     "title": "Open the customer app as {{email}}?",
-    "description": "This tab moves to the customer app signed in as them, with a banner naming you both and a way out. Your own session here is untouched — come back and you are still signed in as yourself. Changing their password, deleting their account and signing them out everywhere are refused while you are there, and everything else you do is recorded against both of you.",
+    "description": "The customer app opens in a new tab signed in as them, with a banner naming you both and a way out. This panel stays where it is and your own session is untouched — come back to this tab and you are still signed in as yourself. Changing their password, deleting their account and signing them out everywhere are refused while you are there, and everything else you do is recorded against both of you.",
     "confirm": "Impersonate"
   },
   "revokeSessions": {
