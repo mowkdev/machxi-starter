@@ -75,6 +75,16 @@ try {
  * `afterEach` now revokes the session on every path, so what a trace can hold
  * is once again exactly what this paragraph says: committed fixture passwords,
  * and a handoff token whose life is ceilinged in minutes.
+ *
+ * **One thing that paragraph never named, and `D17.3` is where it had to be**
+ * (that step's `security-reviewer` pass). `impersonation.spec.ts` has no
+ * `afterEach`, so a run that fails *between* a mint and the exit leaves a live
+ * impersonated session and puts its `__Secure-machxi.refresh` cookie in the
+ * trace. Its life is `IMPERSONATION_SESSION_TTL` — thirty minutes by default and
+ * ceilinged at twelve hours by the config schema, so bounded like the handoff
+ * and unlike a real session's thirty days. `D17.3` doubled the mints inside that
+ * window without closing it; a trace of a failed impersonation run is a local
+ * artefact to delete rather than to attach to anything.
  */
 export default defineConfig({
   testDir: "./e2e",

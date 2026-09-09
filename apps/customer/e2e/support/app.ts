@@ -274,9 +274,15 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * 300, and `pnpm test:e2e` runs them back to back through one limiter
  * (`--concurrency=1`), so on a 300 profile the command could not be green
  * however healthy every spec in it was. `D15.9` re-measured this suite at
- * **138**, so the pair is **312** today; both numbers sit inside the 1000
- * ADR-0069 gives the committed development profile, which is what makes the
- * combined command runnable at all.
+ * **138** and `D17.3` at **156**, so the pair is **330** today; every one of
+ * those numbers sits inside the 1000 ADR-0069 gives the committed development
+ * profile, which is what makes the combined command runnable at all.
+ *
+ * **The figure that will run out first is not that one.** ADR-0069 §2 sized 1000
+ * on a tier run *and its retry* beside the Postman collection — 946 when it was
+ * written, and 330 + 165 doubled is **990** today. Ten requests of headroom,
+ * so the next growth of either suite is the one that crosses that record's own
+ * premise rather than the raw sum, and it is the record that has to move again.
  *
  * **Neither floor is fudged to hide that, and neither number is the culprit.**
  * The admin's was measured at `D11.11` and re-measured at `D15.8`, and its
@@ -307,7 +313,7 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  */
 export const assertApiWindowClear = async (
   page: Page,
-  needed = 151,
+  needed = 169,
 ): Promise<void> => {
   /*
    * Throttled and absent are different failures, and this is the function that
@@ -428,11 +434,19 @@ export const assertApiWindowClear = async (
    * screen — so it pays a handful more client-side navigations, each of which
    * the switcher's list and the section's own query follow. Measured rather than
    * added to: a green run of all twelve specs took the window from 741 to 602,
-   * its own probe included, so the suite costs **138**. The margin is unchanged
-   * at the dozen, so the floor is 151.
+   * its own probe included, so the suite costs **138**.
+   *
+   * **Moved a fifth time for `D17.3`**, and the growth is one spec's:
+   * `impersonation.spec.ts` walks two customer tabs now (ADR-0070), so it pays
+   * a second mint, a second exchange, a second app boot and the refetches a tab
+   * brought back to the front triggers behind it — 28 at `D13.9`, **50** now,
+   * measured alone. The suite was re-measured rather than added to, as ever: a
+   * green run of all twelve took a clear window from 999 to 843, its own probe
+   * included, so the suite costs **156**. The margin is unchanged at the dozen,
+   * so the floor is 169.
    *
    * The admin's is **174** by the same method (299 to 124, 37 specs) and has not
-   * moved here — nothing in `D15.9` is the admin's. **312 together**, against
+   * moved here — nothing in `D15.9` or `D17.3` is the admin's. **329 together**, against
    * the 1000 [ADR-0069](../../../../docs/adr/0069-development-rate-limit-profile.md)
    * gives the committed development profile, which is the record that made
    * `pnpm test:e2e` runnable as one command at all; under the 300 it superseded
