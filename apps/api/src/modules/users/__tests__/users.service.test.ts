@@ -46,6 +46,8 @@ interface FakeUserRow {
   status: UserStatus;
   roles: readonly UserRole[];
   deleted: boolean;
+  /** When the address was proven, or asserted by staff (ADR-0071 §3). */
+  emailVerifiedAt: Date | null;
 }
 
 const toRecord = (row: FakeUserRow): UserRecord => ({
@@ -125,6 +127,7 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
         status: input.status ?? "active",
         roles: [],
         deleted: false,
+        emailVerifiedAt: input.emailVerifiedAt ?? null,
       };
 
       rows.set(row.id, row);
@@ -132,7 +135,44 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
       return Promise.resolve(toRecord(row));
     },
 
-    updateColumns: (id: string, patch: UserColumnPatch) => {
+    markEmailVerified: (id: string, at: Date) => {
+      const row = rows.get(id);
+
+      // The real statement matches `status = 'pending_verification'` inside
+      // the update, so nothing else moves (ADR-0071 §3).
+      if (
+        row === undefined ||
+        row.deleted ||
+        row.status !== "pending_verification"
+      ) {
+        return Promise.resolve(undefined);
+      }
+
+      const verified: FakeUserRow = {
+        ...row,
+        status: "active",
+        emailVerifiedAt: at,
+      };
+
+      rows.set(id, verified);
+
+      return Promise.resolve(toRecord(verified));
+    },
+
+    findPendingVerificationByEmail: (email: string) => {
+      const row = [...rows.values()].find(
+        (candidate) =>
+          candidate.email === email &&
+          !candidate.deleted &&
+          candidate.status === "pending_verification",
+      );
+
+      return Promise.resolve(
+        row === undefined ? undefined : { id: row.id, email: row.email },
+      );
+    },
+
+    updateColumns: (id: string, patch: UserColumnPatch, at: Date) => {
       const row = rows.get(id);
 
       if (row === undefined) return Promise.resolve(false);
@@ -141,6 +181,12 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
       if (patch.firstName !== undefined) row.firstName = patch.firstName;
       if (patch.lastName !== undefined) row.lastName = patch.lastName;
       if (patch.status !== undefined) row.status = patch.status;
+      // The real statement writes `coalesce(email_verified_at, at)` whenever
+      // the status becomes `active` (ADR-0071 §3). Reproduced here so the fake
+      // cannot let a unit test believe in a row this repository can no longer
+      // produce; that the *database* does it is
+      // `users-admin.int.test.ts`'s claim.
+      if (patch.status === "active") row.emailVerifiedAt ??= at;
 
       return Promise.resolve(true);
     },
@@ -340,6 +386,9 @@ const userRow = (overrides: Partial<FakeUserRow> = {}): FakeUserRow => ({
   status: "active",
   roles: ["customer"],
   deleted: false,
+  // An existing account, so its address is proven: the backfill stamped every
+  // row that predates ADR-0071 §3 and every path since keeps it true.
+  emailVerifiedAt: NOW,
   ...overrides,
 });
 
@@ -452,6 +501,37 @@ describe("createUsersService — the admin segment", () => {
       });
 
       expect(created.roles).toEqual(["customer"]);
+    });
+
+    it("stamps the address as proven, because staff asserted it", async () => {
+      // ADR-0071 §3: the operator who typed the address is the authority a
+      // confirmation link would be asking, so no link is sent and the account
+      // is `active` with a proven address in one statement. That is what keeps
+      // "every `active` user has a proven address" true of this path too.
+      const { service, repo } = build([]);
+
+      const created = await service.create(adminCtx(), {
+        email: "new@machxi.local",
+        password: "InitialPassword!1",
+      });
+
+      expect(repo.rows.get(created.id)?.emailVerifiedAt).not.toBeNull();
+    });
+
+    it("leaves the stamp null when the admin asks for `pending_verification`", async () => {
+      // An admin deliberately creating an account that has proven nothing —
+      // the row the `--dev` fixtures carry and the backfill migration skipped.
+      // Stamping it would make the column disagree with the status on the one
+      // status the verification flow exists to move.
+      const { service, repo } = build([]);
+
+      const created = await service.create(adminCtx(), {
+        email: "new@machxi.local",
+        password: "InitialPassword!1",
+        status: "pending_verification",
+      });
+
+      expect(repo.rows.get(created.id)?.emailVerifiedAt).toBeNull();
     });
 
     it("ensures the account's personal organization (ADR-0067 §2)", async () => {

@@ -1,6 +1,6 @@
 import { userRoles, users, type DbExecutor } from "@repo/db";
 import type { ListQuery, UserRole, UserStatus } from "@repo/contracts";
-import { and, count, eq, isNull, notInArray } from "drizzle-orm";
+import { and, count, eq, isNull, notInArray, sql } from "drizzle-orm";
 
 import { internal } from "../../core/errors/index.js";
 import {
@@ -50,11 +50,20 @@ export interface NewUserInput {
   readonly firstName?: string | undefined;
   readonly lastName?: string | undefined;
   /**
-   * Defaults to `active`. Self-registration leaves it alone;
-   * `pending_verification` waits for the email-verification feature, and an
-   * admin may set any of the three (ADR-0017).
+   * Defaults to `active`. Self-registration writes `pending_verification`
+   * since ADR-0071 §3, and an admin may set any of the three (ADR-0017).
    */
   readonly status?: UserStatus | undefined;
+  /**
+   * When the address was proven, for a path that **asserts** it (ADR-0071 §3).
+   *
+   * `POST /api/v1/admin/users` passes the moment of creation: a staff member
+   * who types an address is the authority a confirmation link would be asking,
+   * so the account is `active` with a proven address in one statement.
+   * Registration passes nothing — the link is what proves it — and the column
+   * stays null until it is followed.
+   */
+  readonly emailVerifiedAt?: Date | undefined;
 }
 
 /**
@@ -283,6 +292,7 @@ export const createUsersRepository = (db: DbExecutor) =>
           firstName: input.firstName ?? null,
           lastName: input.lastName ?? null,
           status: input.status ?? "active",
+          emailVerifiedAt: input.emailVerifiedAt ?? null,
         })
         .onConflictDoNothing({
           target: users.email,
@@ -322,6 +332,23 @@ export const createUsersRepository = (db: DbExecutor) =>
      * to prevent. The predicate is what makes the refusal hold under
      * concurrency rather than only in sequence.
      *
+     * **A move to `active` stamps the address** (ADR-0071 §3). This is the
+     * third path that can make a user `active` — beside registration's link
+     * and `create` — and it is the one that would otherwise produce
+     * `status = 'active'` with an empty `email_verified_at`: an operator
+     * clearing a stuck `pending_verification` row from the grid. The invariant
+     * §3 buys is what ADR-0067 §5's address-match acceptance and D19's linking
+     * rule read `status` alone for, so a row that broke it would turn an
+     * address somebody merely typed into proof of a mailbox. The staff member
+     * making the change is the same authority `create` treats as an
+     * assertion.
+     *
+     * `coalesce` rather than a conditional in the service: an account that was
+     * *already* proven keeps the instant it was proven at, and the rule holds
+     * for every transition into `active` — including one this repository
+     * cannot see the previous status of, because the update matched it under
+     * concurrency rather than the read above.
+     *
      * @returns `false` when no **live** row has that id.
      */
     updateColumns: async (
@@ -338,6 +365,14 @@ export const createUsersRepository = (db: DbExecutor) =>
             : { firstName: patch.firstName }),
           ...(patch.lastName === undefined ? {} : { lastName: patch.lastName }),
           ...(patch.status === undefined ? {} : { status: patch.status }),
+          ...(patch.status === "active"
+            ? {
+                // The cast is not decoration: an untyped bind parameter
+                // inside `coalesce` gives Postgres nothing to infer from and
+                // the statement is refused outright.
+                emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, ${at.toISOString()}::timestamptz)`,
+              }
+            : {}),
           updatedAt: at,
         })
         .where(and(eq(users.id, id), isNull(users.deletedAt)))
@@ -386,6 +421,84 @@ export const createUsersRepository = (db: DbExecutor) =>
         .insert(userRoles)
         .values(roles.map((role) => ({ userId, role })))
         .onConflictDoNothing();
+    },
+
+    /**
+     * The verification link's write (ADR-0071 §3): `pending_verification` →
+     * `active`, with the address stamped proven, in one statement.
+     *
+     * **The `where` is the whole guard.** `status = 'pending_verification'`
+     * and `deleted_at is null` are matched inside the update rather than
+     * checked on a row read first, so a deleted or disabled account cannot be
+     * activated by a link, and two redemptions of one token cannot both find
+     * a movable row. No match returns `undefined`, which the caller answers by
+     * throwing — and because the consume shares the caller's transaction, a
+     * refused verification rolls the token's stamp back and spends nothing
+     * (ADR-0071 §1).
+     *
+     * `email_verified_at` is written unconditionally rather than only when
+     * null: the row it moves has never had one, and a coalesce would hide the
+     * case where it did.
+     */
+    markEmailVerified: async (
+      id: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<UserRecord | undefined> => {
+      const [updated] = await tx
+        .update(users)
+        .set({
+          status: "active",
+          emailVerifiedAt: at,
+          updatedAt: at,
+        })
+        .where(
+          and(
+            eq(users.id, id),
+            isNull(users.deletedAt),
+            eq(users.status, "pending_verification"),
+          ),
+        )
+        .returning({ id: users.id });
+
+      if (updated === undefined) return undefined;
+
+      // Read back through the aggregate read, so the caller gets the roles as
+      // well: `returning` cannot reach the join table, and the session this
+      // account is about to be issued is minted from `roles`.
+      const row = await tx.query.users.findFirst({
+        columns: recordColumns,
+        with: withRoles,
+        where: eq(users.id, id),
+      });
+
+      return row === undefined ? undefined : toRecord(row);
+    },
+
+    /**
+     * "Is there an account here waiting for its address to be proven?"
+     * (ADR-0071 §3).
+     *
+     * The only read `resend-verification` performs, and deliberately narrower
+     * than {@link UsersRepository.findByEmail}: that one returns the password
+     * hash, and this one is reached from an anonymous endpoint. It answers
+     * `undefined` for an unknown address, an active one, a disabled one and a
+     * deleted one alike — every case the endpoint answers `202` to.
+     */
+    findPendingVerificationByEmail: async (
+      email: string,
+      tx: DbExecutor = db,
+    ): Promise<{ readonly id: string; readonly email: string } | undefined> => {
+      const row = await tx.query.users.findFirst({
+        columns: { id: true, email: true },
+        where: and(
+          eq(users.email, email),
+          isNull(users.deletedAt),
+          eq(users.status, "pending_verification"),
+        ),
+      });
+
+      return row;
     },
 
     updateLastLoginAt: async (

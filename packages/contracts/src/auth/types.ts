@@ -13,6 +13,24 @@ import type { IsoDateTime } from "../primitives.js";
 export const TOKEN_TYPE = "Bearer";
 
 /**
+ * What a `202` carries on the endpoints whose answer must not depend on what
+ * happened (ADR-0071 §3, §4).
+ *
+ * Registration and `resend-verification` answer this. It is deliberately a
+ * constant rather than a description: an address that has an account and one
+ * that does not must be indistinguishable, and every field that could differ
+ * between them is a field that would. The envelope still carries
+ * `meta.requestId`, so a support conversation has something to name.
+ *
+ * The status code is the message — `202 Accepted`, "we have taken this and
+ * something will happen out of band" — and what a client does next is read a
+ * mailbox, not this body.
+ */
+export interface AcceptedResource {
+  readonly accepted: true;
+}
+
+/**
  * The pair issued by login and by every refresh.
  *
  * Both expiries are absolute ISO-8601 instants rather than a `expiresIn`

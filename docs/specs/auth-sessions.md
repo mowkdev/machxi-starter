@@ -1,6 +1,6 @@
 # Authentication and sessions
 
-Two populations sign in on two segments — `/api/v1/admin/auth` for staff, `/api/v1/user/auth` for users — with the same flows: a password login that issues a short-lived access token and an opaque refresh token, rotation with reuse detection, revocation that takes effect immediately, and one public self-registration endpoint. Where the refresh token travels is [`csrf-and-cookies.md`](csrf-and-cookies.md); the impersonated variant of a session is [`impersonation.md`](impersonation.md).
+Two populations sign in on two segments — `/api/v1/admin/auth` for staff, `/api/v1/user/auth` for users — with the same flows: a password login that issues a short-lived access token and an opaque refresh token, rotation with reuse detection, revocation that takes effect immediately, and one public self-registration endpoint. Where the refresh token travels is [`csrf-and-cookies.md`](csrf-and-cookies.md); the impersonated variant of a session is [`impersonation.md`](impersonation.md); what registration's link does, and every other flow that arrives by mail, is [`mail-flows.md`](mail-flows.md).
 
 ## Requirement: Login answers a session or one indistinguishable refusal
 
@@ -20,8 +20,13 @@ Proved by: `apps/api/test/auth.int.test.ts`, `apps/api/test/auth-segments.int.te
 
 ### Scenario: Correct password, inactive account
 
-- **WHEN** the password verifies but the account is `disabled` (or `invited` for staff, `pending_verification` for users)
+- **WHEN** the password verifies but the account is `disabled`, or `invited` for staff
 - **THEN** the answer is `403 AUTH_ACCOUNT_DISABLED`
+
+### Scenario: Correct password, address never proven
+
+- **WHEN** the password verifies and the user account is `pending_verification`
+- **THEN** the answer is `403 AUTH_EMAIL_UNVERIFIED` — distinguishable from a disabled account, because the caller has already proven they hold it ([`mail-flows.md`](mail-flows.md))
 
 ### Scenario: The other population's segment
 
@@ -119,24 +124,24 @@ Proved by: `apps/api/test/auth.int.test.ts`
 
 ## Requirement: Self-registration is public, optional, and never an oracle
 
-`POST /api/v1/public/auth/register` exists only when `FEATURE_USER_REGISTRATION` is on; with it off the path does not exist. It creates a user account with the `customer` role, `active`, and its personal organization in the same transaction ([`organizations.md`](organizations.md)), and answers `201` with login's body so the new account is signed in. A taken address answers the same generic `409 CONFLICT` a client would get for any constraint, never a code that confirms the address. Staff have no such endpoint.
-Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0004](../adr/0004-configuration-and-environment.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md)
-Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/src/core/config/__tests__/config.test.ts`
+`POST /api/v1/public/auth/register` exists only when `FEATURE_USER_REGISTRATION` is on; with it off the path does not exist. It creates a user account with the `customer` role, `pending_verification`, and its personal organization in the same transaction ([`organizations.md`](organizations.md)), mails a confirmation link, and answers `202 { accepted: true }` with **no session on either transport** — the link is what signs a device in ([`mail-flows.md`](mail-flows.md)). A taken address answers the same generic `409 CONFLICT` a client would get for any constraint, never a code that confirms the address. Staff have no such endpoint.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0004](../adr/0004-configuration-and-environment.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md)
+Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/test/mail-flows.int.test.ts`, `apps/api/src/core/config/__tests__/config.test.ts`
 
 ### Scenario: A fresh address
 
 - **WHEN** an anonymous client registers an unused address with a policy-conforming password
-- **THEN** the answer is `201` with both tokens and a `user` principal holding `["customer"]`
+- **THEN** the answer is `202 { accepted: true }`, the account is `pending_verification` with no `email_verified_at`, and no `Set-Cookie` and no token leave the endpoint
 
 ### Scenario: A taken address
 
 - **WHEN** the address belongs to a live account
-- **THEN** the answer is `409 CONFLICT` with a message that does not name the address
+- **THEN** the answer is `409 CONFLICT` with a message that does not name the address, and nothing is mailed
 
 ### Scenario: The feature is off
 
 - **WHEN** `FEATURE_USER_REGISTRATION=false`
-- **THEN** the path answers `404 ROUTE_NOT_FOUND`, not `403`
+- **THEN** the path answers `404 ROUTE_NOT_FOUND`, not `403` — while `verify-email` and `resend-verification` stay mounted
 
 ## Requirement: Credential endpoints are rate limited per address and per account
 

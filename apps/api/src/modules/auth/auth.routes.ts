@@ -11,7 +11,13 @@ import {
 import type { AuthController } from "./auth.controller.js";
 import type { ImpersonationController } from "./auth.impersonation.controller.js";
 import { exchangeImpersonationSchema } from "./auth.impersonation.schemas.js";
-import { loginSchema, refreshSchema, registerSchema } from "./auth.schemas.js";
+import {
+  loginSchema,
+  refreshSchema,
+  registerSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
+} from "./auth.schemas.js";
 
 /**
  * `/api/v1/{admin,user}/auth/*` and `/api/v1/public/auth/register`
@@ -199,6 +205,63 @@ export const createRegisterRouter = ({
     rateLimiter,
     validate(registerSchema),
     controller.register,
+  );
+
+  return router;
+};
+
+export interface VerificationRouterDeps {
+  readonly controller: AuthController;
+  /**
+   * ADR-0071 §4's budget in its own counter (`3 / hour / IP + email`), built
+   * at the composition root so one instance holds one count.
+   */
+  readonly rateLimiter: RequestHandler;
+}
+
+/**
+ * `POST /api/v1/public/auth/{verify-email,resend-verification}`
+ * (ADR-0071 §3).
+ *
+ * A router of its own rather than two more routes on {@link
+ * createRegisterRouter}, and the split is the decision: that one is mounted
+ * only when `FEATURE_USER_REGISTRATION` is on, and these two must not be. An
+ * address can reach `pending_verification` without self-registration — a staff
+ * member may create an account in that state — and a deployment that switches
+ * registration off after a person has signed up must not turn the link in
+ * their mailbox into a `404`. It is also where §6's `confirm-email` lands.
+ *
+ * **Neither route carries a CSRF guard**, for the reason `login` carries none
+ * (ADR-0029 §CSRF): the request leans on no cookie — nothing in the browser's
+ * jar authorises it — so there is no cross-site submission to prove intent
+ * for. The token *is* the credential.
+ *
+ * `verify-email` carries no limiter of its own either, exactly as
+ * `/impersonate` does not (ADR-0057 §3): the credential is 32 random bytes
+ * with a day to live, the mint is where a budget belongs, and the global
+ * limiter covers the endpoint. `resend-verification` does carry one, because
+ * what it spends is a stranger's inbox rather than an attacker's patience.
+ */
+export const createVerificationRouter = ({
+  controller,
+  rateLimiter,
+}: VerificationRouterDeps): Router => {
+  const router = Router();
+
+  // The verify response carries a session (ADR-0071 §3), so it is under the
+  // same directive every other credential-bearing response is (ADR-0020).
+  router.use(noStore);
+
+  router.post(
+    "/verify-email",
+    validate(verifyEmailSchema),
+    controller.verifyEmail,
+  );
+  router.post(
+    "/resend-verification",
+    rateLimiter,
+    validate(resendVerificationSchema),
+    controller.resendVerification,
   );
 
   return router;

@@ -20,6 +20,7 @@
   "AUTH_INVALID_REFRESH_TOKEN": "Your session could not be renewed. Sign in again.",
   "AUTH_REFRESH_REUSED": "Your session was ended for security reasons. Sign in again.",
   "AUTH_ACCOUNT_DISABLED": "This account is disabled. Ask an administrator.",
+  "AUTH_EMAIL_UNVERIFIED": "This address has not been confirmed yet.",
   "AUTH_CURRENT_PASSWORD_INVALID": "That is not your current password.",
   "AUTH_IMPERSONATION_REFUSED": "That is not allowed on an impersonated session.",
   "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",

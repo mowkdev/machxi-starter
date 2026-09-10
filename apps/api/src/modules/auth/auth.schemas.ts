@@ -1,4 +1,10 @@
-import { loginBody, refreshBody, registerBody } from "@repo/contracts";
+import {
+  loginBody,
+  refreshBody,
+  registerBody,
+  resendVerificationBody,
+  verifyEmailBody,
+} from "@repo/contracts";
 
 /**
  * The route schemas of the auth module (ADR-0011).
@@ -18,3 +24,7 @@ import { loginBody, refreshBody, registerBody } from "@repo/contracts";
 export const loginSchema = { body: loginBody } as const;
 export const refreshSchema = { body: refreshBody } as const;
 export const registerSchema = { body: registerBody } as const;
+export const verifyEmailSchema = { body: verifyEmailBody } as const;
+export const resendVerificationSchema = {
+  body: resendVerificationBody,
+} as const;

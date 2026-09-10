@@ -195,6 +195,7 @@ export const createUsersService = ({
     ): Promise<UserResource> => {
       const roles = body.roles ?? DEFAULT_USER_ROLES;
       const passwordHash = await hasher.hash(body.password);
+      const at = now();
 
       const created = await transaction(async (tx) => {
         const record = await repository.create(
@@ -204,6 +205,24 @@ export const createUsersService = ({
             firstName: body.firstName,
             lastName: body.lastName,
             status: body.status,
+            /*
+             * The staff member who types the address is the **assertion** that
+             * proves it (ADR-0071 §3): they are the authority a confirmation
+             * link would be asking, so no link is sent and the stamp is
+             * written with the row. That is what keeps "every `active` user
+             * has a proven address" true of this path as well as of
+             * registration's.
+             *
+             * Except when the caller asks for `pending_verification`, which is
+             * an admin deliberately creating an account that has proven
+             * nothing — the same row the `--dev` fixtures carry and the
+             * backfill migration skipped. Stamping it would make
+             * `email_verified_at` disagree with `status` on the one status the
+             * verification flow exists to move.
+             */
+            ...(body.status === "pending_verification"
+              ? {}
+              : { emailVerifiedAt: at }),
           },
           tx,
         );

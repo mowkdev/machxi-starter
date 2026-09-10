@@ -137,12 +137,32 @@ describe("registerBody", () => {
   });
 
   it("offers no way to ask for a role or a status", () => {
+    // `locale` joined the body at ADR-0071 §2 and is the exception that proves
+    // the rule: it decides which language the confirmation message is written
+    // in, and nothing about the account it creates.
     expect(Object.keys(registerBody.shape)).toEqual([
       "email",
       "password",
       "firstName",
       "lastName",
+      "locale",
     ]);
+  });
+
+  it("takes an optional locale, and refuses one it has no dictionary for", () => {
+    // The seam ADR-0071 §2 puts the language on: no account exists yet, so the
+    // SPA's current locale travels in the body, and omitting it is English.
+    expect(
+      registerBody.safeParse({ email: "anna@acme.com", password }).success,
+    ).toBe(true);
+    expect(
+      registerBody.safeParse({ email: "anna@acme.com", password, locale: "lv" })
+        .success,
+    ).toBe(true);
+    expect(
+      registerBody.safeParse({ email: "anna@acme.com", password, locale: "de" })
+        .success,
+    ).toBe(false);
   });
 });
 

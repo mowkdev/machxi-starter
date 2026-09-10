@@ -23,6 +23,7 @@ import {
   type Tokens,
 } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
+import { registerVerified } from "./support/mail.js";
 import { expectNoSecrets, userResourceSchema } from "./support/resources.js";
 import {
   FIXTURE_PASSWORD,
@@ -291,6 +292,22 @@ describe("admin user administration", () => {
       expect(response.body.data.status).toBe("active");
       expect(response.body.data.lastName).toBeNull();
       expectNoSecrets(response.body);
+
+      /*
+       * The address is **asserted** by the staff member who typed it
+       * (ADR-0071 §3): they are the authority a confirmation link would be
+       * asking, so the stamp lands with the row and nothing is mailed. It is
+       * checked against the column rather than the resource because the
+       * resource deliberately does not carry it — what the invariant needs is
+       * that no `active` user exists with an empty stamp.
+       */
+      const [account] = await harness.db.db
+        .select({ verifiedAt: users.emailVerifiedAt })
+        .from(users)
+        .where(eq(users.email, "created.by.admin@machxi.local"));
+
+      expect(account?.verifiedAt).not.toBeNull();
+      expect(harness.mail).toHaveLength(0);
     });
 
     it("hands over an account that can sign in on the user segment", async () => {
@@ -374,7 +391,7 @@ describe("admin user administration", () => {
       expect(await liveOrganizationCount()).toBe(before);
     });
 
-    it("accepts an explicit status", async () => {
+    it("accepts an explicit status, and leaves an unproven address unstamped", async () => {
       const response = await request()
         .post(USERS_BASE)
         .set("Authorization", bearer(adminTokens.accessToken))
@@ -386,6 +403,94 @@ describe("admin user administration", () => {
         .expect(201);
 
       expect(response.body.data.status).toBe("pending_verification");
+
+      // The one create that asserts nothing: an admin deliberately making an
+      // account that has proven nothing, which is the row the verification
+      // flow exists to move (ADR-0071 §3). A stamp here would make the column
+      // disagree with the status on exactly that row.
+      const [account] = await harness.db.db
+        .select({ verifiedAt: users.emailVerifiedAt })
+        .from(users)
+        .where(eq(users.email, "pending.by.admin@machxi.local"));
+
+      expect(account?.verifiedAt).toBeNull();
+    });
+
+    it("stamps the address when a patch moves an account to active", async () => {
+      /*
+       * The third path into `active`, beside the link and `create` — an
+       * operator clearing a stuck account from the grid — and the one that
+       * would otherwise produce `status = 'active'` with an empty
+       * `email_verified_at` (`D18.3`'s `security-reviewer`). ADR-0067 §5's
+       * address-match acceptance and D19's linking rule read `status` alone,
+       * so a row that broke the invariant would turn an address somebody
+       * merely typed into proof of a mailbox.
+       */
+      const email = "stuck.then.cleared@machxi.local";
+
+      await request()
+        .post(USERS_BASE)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({
+          email,
+          password: NEW_ACCOUNT_PASSWORD,
+          status: "pending_verification",
+        })
+        .expect(201);
+
+      const [before] = await harness.db.db
+        .select({ id: users.id, verifiedAt: users.emailVerifiedAt })
+        .from(users)
+        .where(eq(users.email, email));
+
+      expect(before?.verifiedAt).toBeNull();
+
+      await request()
+        .patch(`${USERS_BASE}/${before?.id ?? ""}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "active" })
+        .expect(200);
+
+      const [after] = await harness.db.db
+        .select({ verifiedAt: users.emailVerifiedAt })
+        .from(users)
+        .where(eq(users.email, email));
+
+      expect(after?.verifiedAt).not.toBeNull();
+    });
+
+    it("leaves an existing stamp alone when an account is re-enabled", async () => {
+      // `coalesce`, not an overwrite: the column records when the address was
+      // proven, not when the account was last switched back on.
+      const target = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "disabled.then.enabled@machxi.local" },
+      );
+
+      const [created] = await harness.db.db
+        .select({ verifiedAt: users.emailVerifiedAt })
+        .from(users)
+        .where(eq(users.id, target.id));
+
+      await request()
+        .patch(`${USERS_BASE}/${target.id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "disabled" })
+        .expect(200);
+
+      await request()
+        .patch(`${USERS_BASE}/${target.id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "active" })
+        .expect(200);
+
+      const [reenabled] = await harness.db.db
+        .select({ verifiedAt: users.emailVerifiedAt })
+        .from(users)
+        .where(eq(users.id, target.id));
+
+      expect(reenabled?.verifiedAt).toEqual(created?.verifiedAt);
     });
 
     it("names the conflict when the email is taken", async () => {
@@ -807,20 +912,20 @@ describe("admin user administration", () => {
       // for an address whose only holder is deleted.
       const email = "delete.reregister@machxi.local";
 
-      const registered = await request()
-        .post("/api/v1/public/auth/register")
-        .send({ email, password: NEW_ACCOUNT_PASSWORD })
-        .expect(201);
+      const registered = await registerVerified(
+        harness,
+        email,
+        NEW_ACCOUNT_PASSWORD,
+      );
 
-      await remove(
-        adminTokens.accessToken,
-        registered.body.data.principal.id as string,
-      ).expect(204);
+      await remove(adminTokens.accessToken, registered.id).expect(204);
 
+      // `202` rather than the `409 CONFLICT` a live holder would earn: the
+      // partial unique index released the address (ADR-0028).
       await request()
         .post("/api/v1/public/auth/register")
         .send({ email, password: NEW_ACCOUNT_PASSWORD })
-        .expect(201);
+        .expect(202);
     });
 
     it("refuses a second delete with 409 USER_DELETED", async () => {

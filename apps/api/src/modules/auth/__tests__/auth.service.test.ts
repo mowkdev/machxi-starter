@@ -1,3 +1,4 @@
+import type { Population, TokenPurpose } from "@repo/contracts";
 import type { PasswordHasher } from "@repo/crypto";
 import { sha256Base64url } from "@repo/crypto";
 import { createLogger } from "@repo/logger";
@@ -9,6 +10,12 @@ import {
   type Principal,
   type RequestContext,
 } from "../../../core/context/index.js";
+import {
+  createMailTemplates,
+  type MailMessage,
+  type MailSender,
+} from "../../../core/mail/index.js";
+import type { AccountTokens } from "../../../core/tokens/index.js";
 import { createHashLimiter } from "../auth.hash-limiter.js";
 import type {
   EndedImpersonation,
@@ -218,6 +225,15 @@ interface FakePrincipal {
   email: string;
   passwordHash: string | null;
   active: boolean;
+  /**
+   * `pending_verification`, as the adapter reports it (ADR-0071 §3).
+   *
+   * A separate flag rather than a status string for the reason the real
+   * adapter reports a boolean: which enum values mean what is the population's
+   * business, and the service only ever asks "is this account inactive
+   * *because its address is unproven*?".
+   */
+  pending?: boolean;
 }
 
 const createFakePrincipals = (
@@ -233,6 +249,7 @@ const createFakePrincipals = (
     email: row.email,
     passwordHash: row.passwordHash,
     active: row.active,
+    awaitingEmailVerification: row.pending === true,
     roles: population === "staff" ? ["admin"] : ["customer"],
     resource:
       population === "staff"
@@ -294,12 +311,47 @@ const createFakePrincipals = (
               id: `created-${String(rows.size + 1)}`,
               email: input.email,
               passwordHash: input.passwordHash,
-              active: true,
+              // Inactive and pending, exactly as the real user adapter writes
+              // it: registration proves nothing about the mailbox
+              // (ADR-0071 §3).
+              active: false,
+              pending: true,
             };
 
             rows.set(row.id, row);
 
             return Promise.resolve(toRecord(row));
+          },
+
+          activateVerified: (id) => {
+            const row = rows.get(id);
+
+            // The real statement matches `status = 'pending_verification'`
+            // inside the update, so anything else moves no row at all.
+            if (row === undefined || row.pending !== true) {
+              return Promise.resolve(undefined);
+            }
+
+            const activated: FakePrincipal = {
+              ...row,
+              active: true,
+              pending: false,
+            };
+
+            rows.set(id, activated);
+
+            return Promise.resolve(toRecord(activated));
+          },
+
+          findPendingVerificationByEmail: (email) => {
+            const row = [...rows.values()].find(
+              (candidate) =>
+                candidate.email === email && candidate.pending === true,
+            );
+
+            return Promise.resolve(
+              row === undefined ? undefined : { id: row.id, email: row.email },
+            );
           },
         }
       : {}),
@@ -336,6 +388,108 @@ const createFakeAudit = () => {
   return {
     audit,
     entries,
+    failWith: (error: Error) => {
+      fail = error;
+    },
+  } as const;
+};
+
+/**
+ * ADR-0071 §1's mechanism, as a plain object (ADR-0021).
+ *
+ * What a fake can prove here is what the *service* does with it — which
+ * purpose and which population it names, that a refused consume rolls nothing
+ * back because the service throws, and that the raw token reaches the template
+ * and nowhere else. Single use, supersession and the transaction's atomicity
+ * are properties of one SQL statement and are proved in
+ * `apps/api/test/account-tokens.int.test.ts` (`D18.2`).
+ */
+const createFakeAccountTokens = () => {
+  const minted: {
+    token: string;
+    purpose: TokenPurpose;
+    principalType: Population;
+    principalId: string;
+    consumed: boolean;
+  }[] = [];
+  let sequence = 0;
+
+  const tokens: AccountTokens = {
+    mint: (_ctx, { purpose, principal }) => {
+      sequence += 1;
+      const token = `account-token-${String(sequence)}`;
+
+      // The real mint supersedes the live row for the pair, so the fake does
+      // too: a test that pressed resend twice must not find two live links.
+      for (const row of minted) {
+        if (
+          row.purpose === purpose &&
+          row.principalType === principal.type &&
+          row.principalId === principal.id
+        ) {
+          row.consumed = true;
+        }
+      }
+
+      minted.push({
+        token,
+        purpose,
+        principalType: principal.type,
+        principalId: principal.id,
+        consumed: false,
+      });
+
+      return Promise.resolve({
+        token,
+        expiresAt: new Date(clock.getTime() + 86_400_000),
+      });
+    },
+    consume: (_ctx, { purpose, principalType, token }) => {
+      const row = minted.find(
+        (candidate) =>
+          candidate.token === token &&
+          candidate.purpose === purpose &&
+          candidate.principalType === principalType &&
+          !candidate.consumed,
+      );
+
+      if (row === undefined) return Promise.resolve(undefined);
+
+      row.consumed = true;
+
+      return Promise.resolve({
+        id: `token-row-${row.token}`,
+        purpose: row.purpose,
+        principalType: row.principalType,
+        principalId: row.principalId,
+        payload: null,
+        expiresAt: new Date(clock.getTime() + 86_400_000),
+        consumedAt: new Date(clock),
+      });
+    },
+  };
+
+  return { tokens, minted } as const;
+};
+
+/** The ADR-0066 §1 port, capturing rather than sending. */
+const createFakeMail = () => {
+  const sent: MailMessage[] = [];
+  let fail: Error | undefined;
+
+  const mail: MailSender = {
+    send: (_ctx, message) => {
+      if (fail !== undefined) return Promise.reject(fail);
+
+      sent.push(message);
+
+      return Promise.resolve();
+    },
+  };
+
+  return {
+    mail,
+    sent,
     failWith: (error: Error) => {
       fail = error;
     },
@@ -420,6 +574,15 @@ const build = (
     },
   };
 
+  const accountTokens = createFakeAccountTokens();
+  const mail = createFakeMail();
+  // The **real** templates, on two origins a test can recognise: the link is
+  // the thing worth asserting, and a fake template would assert itself.
+  const mailTemplates = createMailTemplates({
+    customerUrl: "https://app.example.test",
+    adminUrl: "https://admin.example.test",
+  });
+
   let tokenSequence = 0;
 
   const service = createAuthService({
@@ -445,6 +608,9 @@ const build = (
     refreshTtlSec: REFRESH_TTL_SEC,
     rotationGraceSec: GRACE_SEC,
     impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
+    accountTokens: accountTokens.tokens,
+    mail: mail.mail,
+    mailTemplates,
     // No real transaction: the fakes have no atomicity to lose, and what the
     // integration suite proves is that the real one commits together.
     transaction: (fn) => fn(undefined as never),
@@ -464,6 +630,8 @@ const build = (
     principals,
     impersonators,
     organizations,
+    accountTokens,
+    mail,
   } as const;
 };
 
@@ -738,6 +906,14 @@ describe("refresh", () => {
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
       impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
+      // Neither of the flows under test here mints or mails anything;
+      // the dependencies are required so a wiring mistake cannot be silent.
+      accountTokens: createFakeAccountTokens().tokens,
+      mail: createFakeMail().mail,
+      mailTemplates: createMailTemplates({
+        customerUrl: "https://app.example.test",
+        adminUrl: "https://admin.example.test",
+      }),
       transaction: (fn) => fn(undefined as never),
       now,
     });
@@ -816,6 +992,14 @@ describe("refresh", () => {
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
       impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
+      // Neither of the flows under test here mints or mails anything;
+      // the dependencies are required so a wiring mistake cannot be silent.
+      accountTokens: createFakeAccountTokens().tokens,
+      mail: createFakeMail().mail,
+      mailTemplates: createMailTemplates({
+        customerUrl: "https://app.example.test",
+        adminUrl: "https://admin.example.test",
+      }),
       transaction: (fn) => fn(undefined as never),
       now,
     });
@@ -948,26 +1132,78 @@ describe("register", () => {
     lastName: "Person",
   };
 
-  it("creates the account and signs it in", async () => {
+  it("creates a pending account, mails the link, and issues no session", async () => {
+    // ADR-0071 §3's whole delta on ADR-0018: the account exists and cannot be
+    // signed into, and the link is what changes that.
     const harness = build({
       population: "user",
       principals: [],
       canCreate: true,
     });
 
-    const auth = await harness.service.register(context(), body);
+    await expect(
+      harness.service.register(context(), body),
+    ).resolves.toBeUndefined();
 
-    expect(auth.principal).toMatchObject({
-      kind: "user",
-      email: "new@machxi.local",
-      roles: ["customer"],
-    });
-    expect(auth.accessToken).toBeTruthy();
-    expect(harness.sessions.rows.size).toBe(1);
+    const [created] = [...harness.principals.rows.values()];
+
+    expect(created?.active, "no session, and no active account").toBe(false);
+    expect(created?.pending).toBe(true);
+    expect(harness.sessions.rows.size).toBe(0);
     // The first of the three paths that bring a user into existence, so it
     // creates the personal organization too (ADR-0067 §2). That the two are
     // one *commit* is `auth-register.int.test.ts`'s claim, not this one's.
-    expect(harness.organizations.ensured).toEqual([auth.principal.id]);
+    expect(harness.organizations.ensured).toEqual([created?.id]);
+  });
+
+  it("mints one `verify_email` token and puts it in the link's fragment", async () => {
+    const harness = build({
+      population: "user",
+      principals: [],
+      canCreate: true,
+    });
+
+    await harness.service.register(context(), body);
+
+    expect(harness.accountTokens.minted).toHaveLength(1);
+    expect(harness.accountTokens.minted[0]).toMatchObject({
+      purpose: "verify_email",
+      principalType: "user",
+    });
+
+    const [message] = harness.mail.sent;
+    const token = harness.accountTokens.minted[0]?.token ?? "";
+
+    expect(message?.to).toBe("new@machxi.local");
+    // The credential travels in the fragment and nowhere else (ADR-0057 §2 as
+    // ADR-0071 §1 inherits it). `templates.test.ts` asserts the shape for
+    // every template; this asserts that *this* flow uses one.
+    expect(message?.text).toContain(
+      `https://app.example.test/verify-email#token=${token}`,
+    );
+    expect(message?.text.split("#token=")[0]).not.toContain(token);
+  });
+
+  it("answers even when the transport is broken, leaving the account behind", async () => {
+    // The account is already committed by the time the message goes out, so a
+    // rethrow would answer 500 for work that succeeded — and the retry would
+    // meet the 409 the first attempt created, with no way out. The remedy is
+    // `resend-verification`, which is a button, and it needs the account to
+    // still be there. The `error` line the failure writes is the operational
+    // half and is not asserted here: the harness logger is silent by design
+    // (`context()`), and what this case is about is that the request survives.
+    const harness = build({
+      population: "user",
+      principals: [],
+      canCreate: true,
+    });
+
+    harness.mail.failWith(new Error("smtp refused the connection"));
+
+    await expect(
+      harness.service.register(context(), body),
+    ).resolves.toBeUndefined();
+    expect(harness.principals.rows.size).toBe(1);
   });
 
   it("answers a taken address with a generic conflict", async () => {
@@ -993,6 +1229,10 @@ describe("register", () => {
     expect(failure).toMatchObject({ status: 409, code: "CONFLICT" });
     expect(JSON.stringify(failure)).not.toContain("new@machxi.local");
     expect(harness.sessions.rows.size).toBe(0);
+    // Nothing minted and nothing mailed: a message to an address that already
+    // has an account would tell whoever holds it that somebody tried.
+    expect(harness.accountTokens.minted).toHaveLength(0);
+    expect(harness.mail.sent).toHaveLength(0);
   });
 
   it("refuses outright for a population that cannot self-register", async () => {
@@ -1003,6 +1243,218 @@ describe("register", () => {
     await expect(
       harness.service.register(context(), body),
     ).rejects.toMatchObject({ status: 500, code: "INTERNAL_ERROR" });
+  });
+});
+
+/* ── address verification (ADR-0071 §3) ───────────────────────────────────── */
+
+const PENDING_ID = "22222222-2222-7222-8222-222222222222";
+
+/** A `user` service holding one account that has not proven its address. */
+const buildPending = () =>
+  build({
+    population: "user",
+    canCreate: true,
+    principals: [
+      {
+        id: PENDING_ID,
+        email: "pending@machxi.local",
+        passwordHash: "hashed:correct-horse-battery",
+        active: false,
+        pending: true,
+      },
+    ],
+  });
+
+describe("login on an account whose address is unproven", () => {
+  const attempt = (harness: ReturnType<typeof build>, password: string) =>
+    harness.service.login(context(), {
+      email: "pending@machxi.local",
+      password,
+    });
+
+  it("answers 403 AUTH_EMAIL_UNVERIFIED for the right password", async () => {
+    // Distinguishable from `AUTH_ACCOUNT_DISABLED` on purpose, and only
+    // reachable once the password has verified: the caller has already proven
+    // they hold the account, so ADR-0020 §Enumeration has nothing left to
+    // protect and the client can offer to send the link again.
+    await expect(
+      attempt(buildPending(), "correct-horse-battery"),
+    ).rejects.toMatchObject({ status: 403, code: "AUTH_EMAIL_UNVERIFIED" });
+  });
+
+  it("answers 401 AUTH_INVALID_CREDENTIALS for the wrong one", async () => {
+    // The status check never runs, so an unverified account is indistinguishable
+    // from an unknown address to anyone who does not hold the password.
+    await expect(
+      attempt(buildPending(), "not-the-password"),
+    ).rejects.toMatchObject({ status: 401, code: "AUTH_INVALID_CREDENTIALS" });
+  });
+
+  it("keeps AUTH_ACCOUNT_DISABLED for an account that is merely disabled", async () => {
+    const harness = build({
+      population: "user",
+      canCreate: true,
+      principals: [
+        {
+          id: PENDING_ID,
+          email: "pending@machxi.local",
+          passwordHash: "hashed:correct-horse-battery",
+          active: false,
+        },
+      ],
+    });
+
+    await expect(
+      attempt(harness, "correct-horse-battery"),
+    ).rejects.toMatchObject({ status: 403, code: "AUTH_ACCOUNT_DISABLED" });
+  });
+});
+
+describe("verifyEmail", () => {
+  const linkFor = async (harness: ReturnType<typeof build>) => {
+    await harness.service.resendVerification(context(), {
+      email: "pending@machxi.local",
+    });
+
+    return harness.accountTokens.minted.at(-1)?.token ?? "";
+  };
+
+  it("activates the account, stamps the audit row and signs the device in", async () => {
+    const harness = buildPending();
+    const token = await linkFor(harness);
+
+    const auth = await harness.service.verifyEmail(context(), { token });
+
+    expect(auth.principal).toMatchObject({
+      kind: "user",
+      id: PENDING_ID,
+      email: "pending@machxi.local",
+    });
+    expect(auth.accessToken).toBeTruthy();
+    expect(harness.principals.rows.get(PENDING_ID)?.active).toBe(true);
+    expect(harness.sessions.rows.size).toBe(1);
+    // Attributed from the claimed row, because the route is anonymous and the
+    // context carries no principal to derive from (ADR-0058).
+    expect(harness.audit.entries).toContainEqual(
+      expect.objectContaining({
+        event: "account.verified",
+        identities: { actor: { type: "user", id: PENDING_ID } },
+      }),
+    );
+  });
+
+  it("refuses a second redemption of the same link", async () => {
+    const harness = buildPending();
+    const token = await linkFor(harness);
+
+    await harness.service.verifyEmail(context(), { token });
+
+    await expect(
+      harness.service.verifyEmail(context(), { token }),
+    ).rejects.toMatchObject({ status: 401, code: "UNAUTHENTICATED" });
+    expect(harness.sessions.rows.size).toBe(1);
+  });
+
+  it("refuses an unknown token with the same answer", async () => {
+    // Unknown, consumed, expired, of another purpose or another population —
+    // one answer, because the caller is an anonymous holder of a URL fragment.
+    await expect(
+      buildPending().service.verifyEmail(context(), {
+        token: "nothing-minted",
+      }),
+    ).rejects.toMatchObject({ status: 401, code: "UNAUTHENTICATED" });
+  });
+
+  it("refuses a live token whose account can no longer be activated", async () => {
+    // The account was disabled between the mint and the click. The refusal is
+    // what rolls the claim back, so the link is spent only by a redemption
+    // that actually moved the row (ADR-0071 §1).
+    const harness = buildPending();
+    const token = await linkFor(harness);
+    const row = harness.principals.rows.get(PENDING_ID);
+
+    if (row !== undefined) row.pending = false;
+
+    await expect(
+      harness.service.verifyEmail(context(), { token }),
+    ).rejects.toMatchObject({ status: 401, code: "UNAUTHENTICATED" });
+    expect(harness.sessions.rows.size).toBe(0);
+  });
+});
+
+describe("resendVerification", () => {
+  it("mails the link to an account that is waiting", async () => {
+    const harness = buildPending();
+
+    await harness.service.resendVerification(context(), {
+      email: "pending@machxi.local",
+    });
+
+    expect(harness.mail.sent).toHaveLength(1);
+    expect(harness.mail.sent[0]?.to).toBe("pending@machxi.local");
+  });
+
+  it("resolves and mails nothing for an address nobody holds", async () => {
+    // The whole point: an unknown address and a pending one are one answer,
+    // and the only difference is a message in a mailbox the caller has to own.
+    const harness = buildPending();
+
+    await expect(
+      harness.service.resendVerification(context(), {
+        email: "stranger@machxi.local",
+      }),
+    ).resolves.toBeUndefined();
+    expect(harness.mail.sent).toHaveLength(0);
+    expect(harness.accountTokens.minted).toHaveLength(0);
+  });
+
+  it("resolves and mails nothing for an account that is already active", async () => {
+    const harness = build({
+      population: "user",
+      canCreate: true,
+      principals: [
+        {
+          id: PENDING_ID,
+          email: "pending@machxi.local",
+          passwordHash: "hashed:correct-horse-battery",
+          active: true,
+        },
+      ],
+    });
+
+    await expect(
+      harness.service.resendVerification(context(), {
+        email: "pending@machxi.local",
+      }),
+    ).resolves.toBeUndefined();
+    expect(harness.mail.sent).toHaveLength(0);
+  });
+
+  it("leaves one working link however many times it is pressed", async () => {
+    // The mint supersedes the live row for the pair (ADR-0071 §1), so the
+    // first link is dead by the time the second arrives.
+    const harness = buildPending();
+
+    await harness.service.resendVerification(context(), {
+      email: "pending@machxi.local",
+    });
+
+    const first = harness.accountTokens.minted.at(-1)?.token ?? "";
+
+    await harness.service.resendVerification(context(), {
+      email: "pending@machxi.local",
+    });
+
+    const second = harness.accountTokens.minted.at(-1)?.token ?? "";
+
+    expect(second).not.toBe(first);
+    await expect(
+      harness.service.verifyEmail(context(), { token: first }),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(
+      harness.service.verifyEmail(context(), { token: second }),
+    ).resolves.toMatchObject({ principal: { id: PENDING_ID } });
   });
 });
 
@@ -1296,6 +1748,14 @@ describe("revoking a staff member's sessions", () => {
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
       impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
+      // Neither of the flows under test here mints or mails anything;
+      // the dependencies are required so a wiring mistake cannot be silent.
+      accountTokens: createFakeAccountTokens().tokens,
+      mail: createFakeMail().mail,
+      mailTemplates: createMailTemplates({
+        customerUrl: "https://app.example.test",
+        adminUrl: "https://admin.example.test",
+      }),
       transaction: (fn) => fn(undefined as never),
       now,
     });

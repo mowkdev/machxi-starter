@@ -1,10 +1,13 @@
 import type {
   ImpersonatorResource,
+  Locale,
   LoginBody,
   Population,
   PrincipalResource,
   RegisterBody,
+  ResendVerificationBody,
   UserPrincipalResource,
+  VerifyEmailBody,
 } from "@repo/contracts";
 import type { PasswordHasher } from "@repo/crypto";
 import { randomToken, sha256Base64url } from "@repo/crypto";
@@ -16,12 +19,14 @@ import type { RequestContext } from "../../core/context/index.js";
 import { internal } from "../../core/errors/index.js";
 import {
   accountDisabled,
+  emailUnverified,
   impersonationHandoffInvalid,
   invalidCredentials,
   invalidRefreshToken,
   refreshReused,
   registrationConflict,
   sessionRevoked,
+  verificationLinkInvalid,
 } from "./auth.errors.js";
 import type { HashLimiter } from "./auth.hash-limiter.js";
 import {
@@ -30,6 +35,12 @@ import {
   type IssuedAuthResource,
 } from "./auth.mapper.js";
 import type { OrganizationsService } from "../organizations/organizations.service.js";
+import type { AccountTokens } from "../../core/tokens/index.js";
+import type {
+  MailSender,
+  MailTemplate,
+  MailTemplates,
+} from "../../core/mail/index.js";
 import type { SessionsRepository } from "./auth.repository.js";
 import type { TokenService } from "./auth.tokens.js";
 import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
@@ -47,6 +58,39 @@ import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
  * the rotation grace window and reuse detection can be unit-tested at whatever
  * instant the test chooses, without sleeping and without stubbing globals.
  */
+
+/**
+ * The language a message is written in, where the request may not have said
+ * (ADR-0071 §2, ADR-0046).
+ *
+ * The anonymous flows carry the SPA's current locale in the body and may omit
+ * it; every template ships English today and falls back to it for a locale it
+ * has no copy for, so this only has to turn "unstated" into the one language
+ * that always exists.
+ */
+const localeFor = (locale: Locale | undefined): Locale => locale ?? "en";
+
+/**
+ * What a failed delivery may be logged as (ADR-0005, ADR-0020 §Enumeration).
+ *
+ * The class and the transport's own `code` — `EENVELOPE`, `ECONNECTION`,
+ * `EAUTH` — and never the message: an SMTP rejection quotes the recipient it
+ * refused, and the flows that call this are the ones that must not say which
+ * addresses exist. `core/audit`'s `describeFailure` makes the same trade for
+ * the same reason on a driver error that carries the row it failed to write.
+ */
+const describeTransportFailure = (
+  error: unknown,
+): { readonly error: string; readonly code?: string } => {
+  if (!(error instanceof Error)) return { error: typeof error };
+
+  const { code } = error as Error & { code?: unknown };
+
+  return {
+    error: error.name,
+    ...(typeof code === "string" ? { code } : {}),
+  };
+};
 
 /** Values written into `sessions.revoked_reason`, for the audit trail. */
 export const REVOKE_REASONS = {
@@ -237,6 +281,20 @@ export interface AuthServiceDeps {
   readonly organizations?:
     Pick<OrganizationsService, "ensurePersonalOrganizationFor"> | undefined;
   /**
+   * ADR-0071 §1's mint and consume, wired on both populations.
+   *
+   * The `user` service uses it for verification (§3); the `staff` one has no
+   * caller until the reset (§4). It is required rather than optional for the
+   * reason {@link AuthServiceDeps.audit} is: a dependency a caller may omit is
+   * one a future wiring mistake omits silently, and the failure here is a flow
+   * that answers `202` and mails nothing.
+   */
+  readonly accountTokens: AccountTokens;
+  /** ADR-0066 §1's port. Never a mail client a service imports. */
+  readonly mail: MailSender;
+  /** ADR-0071 §2's messages, built from the two SPA origins at the root. */
+  readonly mailTemplates: MailTemplates;
+  /**
    * Runs `fn` inside one database transaction. Registration inserts an
    * account, a role grant, its personal organization with an `owner`
    * membership, and a session; either all of them land or none does.
@@ -259,6 +317,9 @@ export const createAuthService = ({
   impersonationSessionTtlSec,
   impersonators,
   organizations,
+  accountTokens,
+  mail,
+  mailTemplates,
   transaction,
   now = () => new Date(),
   newRefreshToken = () => randomToken(32),
@@ -481,6 +542,79 @@ export const createAuthService = ({
   const verifyPassword = (storedHash: string, password: string) =>
     hashLimiter.run(() => hasher.verify(storedHash, password));
 
+  /**
+   * Sends a message and **never fails the request** (ADR-0066 §1, ADR-0071
+   * §3).
+   *
+   * Every caller here has already committed: the account exists, or the token
+   * row does. Rethrowing would answer `500` for work that succeeded and, on
+   * registration, leave the caller permanently stuck — the retry meets the
+   * `409` their own first attempt created. The remedy is `resend-verification`,
+   * which is a button rather than a support ticket.
+   *
+   * It also has to be silent for the endpoints that answer `202` whatever they
+   * find (§3, §4): an error that escaped only when an account existed would be
+   * the account-existence oracle those endpoints are shaped to avoid.
+   *
+   * The failure is logged at `error` with the purpose and no address, so a
+   * deployment whose transport is broken is visible in the logs rather than in
+   * a user's silence.
+   *
+   * **The driver's message is deliberately not on the line** (`D18.3`'s
+   * `security-reviewer`). A relay rejects a recipient by quoting the envelope
+   * — `550 5.1.1 <someone@example.com> User unknown` — so logging
+   * `error.message` from an endpoint whose whole shape is "reveal nothing"
+   * would write the probed addresses into the logs anyway. The error's class
+   * and its `code` say which transport failed and how, which is what an
+   * operator acts on; the request id reaches the rest.
+   */
+  const deliver = async (
+    ctx: RequestContext,
+    to: string,
+    purpose: string,
+    template: MailTemplate,
+  ): Promise<void> => {
+    try {
+      await mail.send(ctx, { to, ...template });
+    } catch (error: unknown) {
+      ctx.logger.error(
+        { population, purpose, ...describeTransportFailure(error) },
+        "mail delivery failed",
+      );
+    }
+  };
+
+  /**
+   * Mints a `verify_email` token for an account and mails the link
+   * (ADR-0071 §3).
+   *
+   * Written once because registration and `resend-verification` are the same
+   * two statements in a different order, and the mint **supersedes** the live
+   * token for the pair — so however many times a person presses resend, one
+   * link works (ADR-0071 §1).
+   *
+   * `tx` is the caller's when there is one: registration mints inside the
+   * transaction that created the account, so an account with no link and a
+   * link with no account are both unreachable. The send is never inside it —
+   * see the ordering at the call site.
+   */
+  const mintVerificationLink = async (
+    ctx: RequestContext,
+    principalId: string,
+    tx?: DbExecutor,
+  ): Promise<string> => {
+    const { token } = await accountTokens.mint(
+      ctx,
+      {
+        purpose: "verify_email",
+        principal: { type: population, id: principalId },
+      },
+      tx,
+    );
+
+    return token;
+  };
+
   return {
     /**
      * `POST /auth/login` (ADR-0018 §Login).
@@ -515,6 +649,20 @@ export const createAuthService = ({
       }
 
       if (!principal.active) {
+        // Two refusals, and the split is ADR-0071 §3's: an address that was
+        // never proven is a thing the caller can fix from the sign-in page,
+        // and a disabled account is not. Both are raised only here, after the
+        // password verified, so neither tells an anonymous guesser anything
+        // (ADR-0020 §Enumeration).
+        if (principal.awaitingEmailVerification) {
+          ctx.logger.warn(
+            { population, principalId: principal.id },
+            "login refused: the address has not been confirmed",
+          );
+
+          throw emailUnverified();
+        }
+
         ctx.logger.warn(
           { population, principalId: principal.id },
           "login refused for an inactive account",
@@ -1094,16 +1242,24 @@ export const createAuthService = ({
     },
 
     /**
-     * `POST /api/v1/public/auth/register` (ADR-0018 §Staff onboarding).
+     * `POST /api/v1/public/auth/register` (ADR-0018 §Staff onboarding, as
+     * ADR-0071 §3 supersedes its answer).
      *
-     * Answers `201` with the same body as login, so a new account is signed in
-     * without a second round trip. Available on the user service only — the
-     * staff adapter has no `create`, because staff cannot self-register.
+     * **Creates a `pending_verification` account, mails the link, and issues
+     * no session.** The delta on ADR-0018 is exactly that: registration used
+     * to answer `201` with login's body, and a client held a session for an
+     * address nobody had proven. From here the link is what signs the device
+     * in, and the invariant it buys — every `active` user has a proven
+     * address — is what ADR-0067 §5's address-match acceptance and D19's
+     * linking rule are allowed to lean on.
+     *
+     * Available on the user service only — the staff adapter has no `create`,
+     * because staff cannot self-register.
      */
     register: async (
       ctx: RequestContext,
       body: RegisterBody,
-    ): Promise<IssuedAuthResource> => {
+    ): Promise<void> => {
       const create = principals.create;
 
       if (create === undefined) {
@@ -1126,13 +1282,12 @@ export const createAuthService = ({
         );
       }
 
-      const at = now();
       const passwordHash = await hashLimiter.run(() =>
         hasher.hash(body.password),
       );
 
-      const auth = await transaction(async (tx) => {
-        const created = await create(
+      const created = await transaction(async (tx) => {
+        const account = await create(
           {
             email: body.email,
             passwordHash,
@@ -1142,30 +1297,34 @@ export const createAuthService = ({
           tx,
         );
 
-        if (created === undefined) return undefined;
+        if (account === undefined) return undefined;
 
-        // In the transaction that inserted the account, before the session is
-        // issued: the new principal's first request must already find its
+        // In the transaction that inserted the account, before anything is
+        // mailed: the new principal's first request must already find its
         // organization there (ADR-0067 §2). The name columns come from the
-        // body rather than from `created.resource`, which is the union of both
+        // body rather than from `account.resource`, which is the union of both
         // populations' resources here — same two values, no narrowing, and
         // the derivation itself lives in `@repo/db` beside the one the
         // backfill migration wrote in SQL.
         await organizations.ensurePersonalOrganizationFor(
           ctx,
           {
-            id: created.id,
-            email: created.email,
+            id: account.id,
+            email: account.email,
             firstName: body.firstName ?? null,
             lastName: body.lastName ?? null,
           },
           tx,
         );
 
-        return issueSession(ctx, created, at, tx);
+        // The token joins the same commit, so there is no interval in which an
+        // account exists with no way to prove its address (ADR-0071 §1).
+        const token = await mintVerificationLink(ctx, account.id, tx);
+
+        return { id: account.id, email: account.email, token } as const;
       });
 
-      if (auth === undefined) {
+      if (created === undefined) {
         // Generic conflict, and logged without the address: naming it would
         // turn an anonymous endpoint into an account-existence oracle
         // (ADR-0020 §Enumeration).
@@ -1174,12 +1333,161 @@ export const createAuthService = ({
         throw registrationConflict();
       }
 
-      ctx.logger.info(
-        { population, principalId: auth.principal.id },
-        "account registered",
+      // **After the commit**, deliberately. A message sent from inside the
+      // transaction is a message that arrives for an account that was rolled
+      // back — and the link in it would name a token row that does not exist,
+      // which is the one failure a person cannot recover from on their own.
+      await deliver(
+        ctx,
+        created.email,
+        "verify_email",
+        mailTemplates.verifyEmail({
+          token: created.token,
+          locale: localeFor(body.locale),
+        }),
       );
 
-      return auth;
+      ctx.logger.info(
+        { population, principalId: created.id },
+        "account registered, awaiting address confirmation",
+      );
+    },
+
+    /**
+     * `POST /api/v1/public/auth/verify-email` (ADR-0071 §3).
+     *
+     * The link's whole effect, in one transaction: claim the token, move the
+     * account to `active` with its address stamped proven, write the audit
+     * row, and issue the session — the device that opened the mail is the
+     * device that has just proven the mailbox, so it is signed in exactly as
+     * the impersonation exchange signs one in.
+     *
+     * **Every refusal rolls the claim back.** The consume, the activation and
+     * the audit row share one transaction, so a token presented for an account
+     * that is deleted, disabled or already active is refused with nothing
+     * spent — the link still works if the account becomes eligible again — and
+     * a replay of a *successful* verification is refused because the row is
+     * stamped (ADR-0071 §1).
+     */
+    verifyEmail: async (
+      ctx: RequestContext,
+      { token }: VerifyEmailBody,
+    ): Promise<IssuedAuthResource> => {
+      const activate = principals.activateVerified;
+
+      if (activate === undefined) {
+        // The same wiring refusal `register` makes, and for its reason: the
+        // route is mounted from the user service, and a staff twin would be a
+        // way to activate an operator from a URL fragment.
+        throw internal(
+          new Error(`population "${population}" has no verification path`),
+        );
+      }
+
+      const at = now();
+
+      return transaction(async (tx) => {
+        const claimed = await accountTokens.consume(
+          ctx,
+          { purpose: "verify_email", principalType: population, token },
+          tx,
+        );
+
+        if (claimed === undefined) throw verificationLinkInvalid();
+
+        const principal = await activate(claimed.principalId, at, tx);
+
+        // The token was live but the account is not one a link may act on any
+        // more — deleted, disabled, or verified by another route meanwhile.
+        // One answer with the unknown-token case, and the throw is what undoes
+        // the claim.
+        if (principal === undefined) {
+          ctx.logger.warn(
+            { population, tokenId: claimed.id },
+            "verification refused: the account cannot be activated",
+          );
+
+          throw verificationLinkInvalid();
+        }
+
+        // `identities` rather than the context's principal: the route is
+        // anonymous — the token is the credential — so the actor comes off the
+        // row that was claimed (ADR-0058, the exchange's shape).
+        await audit.record(
+          ctx,
+          {
+            event: "account.verified",
+            identities: { actor: { type: population, id: principal.id } },
+          },
+          tx,
+        );
+
+        const auth = await issueSession(ctx, principal, at, tx);
+
+        await principals.touchLastLogin(principal.id, at, tx);
+
+        ctx.logger.info(
+          { population, principalId: principal.id },
+          "address confirmed and the device signed in",
+        );
+
+        return auth;
+      });
+    },
+
+    /**
+     * `POST /api/v1/public/auth/resend-verification` (ADR-0071 §3).
+     *
+     * **Always resolves.** An unknown address, a live account, a disabled one
+     * and a deleted one are one answer — `202` — because anything that
+     * differed between them would make an anonymous endpoint an
+     * account-existence oracle (ADR-0020 §Enumeration). The only observable
+     * difference is a message in a mailbox the caller has to already own.
+     *
+     * The mint supersedes the live token, so a person who presses the button
+     * five times holds one working link rather than five (ADR-0071 §1) — and
+     * the limiter on the route bounds how many messages the mailbox receives
+     * (§4's budget, in a counter of its own).
+     */
+    resendVerification: async (
+      ctx: RequestContext,
+      { email, locale }: ResendVerificationBody,
+    ): Promise<void> => {
+      const find = principals.findPendingVerificationByEmail;
+
+      if (find === undefined) {
+        throw internal(
+          new Error(`population "${population}" has no verification path`),
+        );
+      }
+
+      const pending = await find(email);
+
+      if (pending === undefined) {
+        // No address on the line, for the reason the failed-login line carries
+        // none: this endpoint is anonymous and a log full of addresses is a
+        // list of who was probed, with a timestamp.
+        ctx.logger.info(
+          { population },
+          "verification resend answered without a message",
+        );
+
+        return;
+      }
+
+      const token = await mintVerificationLink(ctx, pending.id);
+
+      await deliver(
+        ctx,
+        pending.email,
+        "verify_email",
+        mailTemplates.verifyEmail({ token, locale: localeFor(locale) }),
+      );
+
+      ctx.logger.info(
+        { population, principalId: pending.id },
+        "verification link re-sent",
+      );
     },
   } as const;
 };

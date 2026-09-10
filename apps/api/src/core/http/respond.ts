@@ -28,6 +28,18 @@ export const respond = {
     respond.ok(res, data, 201);
   },
 
+  /**
+   * `202` — taken, and the effect happens out of band (ADR-0071 §3, §4).
+   *
+   * The mail flows' answer where a `201` would be a lie and a `204` would
+   * throw away the envelope: registration has created nothing the caller may
+   * act on yet, and `resend-verification` may have done nothing at all. What
+   * the caller does next is read a mailbox.
+   */
+  accepted: <T>(res: Response, data: T): void => {
+    respond.ok(res, data, 202);
+  },
+
   /** `200` with a page; fills `meta.pagination`, `meta.sort`, `meta.filters`. */
   list: <T>(res: Response, page: Page<T>): void => {
     res.status(200).json(listEnvelope(requestIdOf(res), page));

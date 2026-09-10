@@ -557,7 +557,7 @@ describe("registration", () => {
     };
   };
 
-  it("posts to the public segment, asks for cookie transport, and hydrates the store", async () => {
+  it("posts to the public segment and leaves the store exactly as it found it", async () => {
     const { client, store } = setupUser();
     const seen: {
       body?: RegisterBody;
@@ -577,28 +577,34 @@ describe("registration", () => {
         // here rather than being quietly accepted (ADR-0036).
         seen.body = registerBody.parse(await request.json());
 
-        return ok(authResource("access-registered"), 201);
+        // What the endpoint answers since ADR-0071 §3: no token, no principal,
+        // nothing a client could mistake for a session.
+        return ok({ accepted: true }, 202);
       }),
     );
 
-    await expect(client.register(NEW_ACCOUNT)).resolves.toMatchObject({
-      accessToken: "access-registered",
-    });
+    await expect(client.register(NEW_ACCOUNT)).resolves.toBeUndefined();
 
     expect(seen.body).toEqual(NEW_ACCOUNT);
     /*
-     * Without this header the API answers with the refresh token in the body
-     * and sets no cookie (ADR-0029 §Opt-in), so the account someone has just
-     * created is signed in until the first reload. It is invisible in the
-     * response, which is why it is asserted at the wire.
+     * `X-Auth-Transport: cookie` moved off this call with the session
+     * (ADR-0029 §Opt-in): the header exists to put a refresh token in a cookie
+     * instead of in the body, and there is now no token in either. Asserted at
+     * the wire because nothing in the response can show it.
      */
-    expect(seen.transport).toBe("cookie");
+    expect(seen.transport).toBeNull();
     // The credential is the password in the body; the bearer has no business
     // on a route that reads no principal.
     expect(seen.authorization).toBeNull();
 
-    expect(store.getAccessToken()).toBe("access-registered");
-    expect(store.getCsrfToken()).toBe("csrf-for-access-registered");
+    /*
+     * **The session already in the store is untouched, and so is an empty
+     * one.** This is the assertion the step exists for: hydrating from a `202`
+     * would write `undefined` where the access token and the principal go —
+     * not "no session" but a broken one, on a client that would then believe
+     * it was signed in.
+     */
+    expect(store.getAccessToken()).toBe("a-session-already-here");
   });
 
   it("leaves the store alone when the address is taken", async () => {

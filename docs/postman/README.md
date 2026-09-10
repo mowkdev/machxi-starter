@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 165 requests in 18 folders: `Health`, `Metrics`,
+- `machxi-api.postman_collection.json` — 173 requests in 18 folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
   `User › Settings`, `Public`, `User › Organizations`, `User › Invitations`,
@@ -62,6 +62,22 @@ row belongs to a principal and only a hard delete removes one — so each folder
 opens by clearing the two grid ids it uses and closes by clearing them again.
 That is what makes a second run start where the first did.
 
+**The `Public` folder is the mail flows minus the mailbox** (ADR-0071 §3). A
+registration answers `202` with no session at all, and the link that would sign
+the new account in arrives somewhere newman cannot read — so this folder proves
+everything either side of it: that nothing resembling a credential leaves the
+endpoint, that the account is created `pending_verification`, that the right
+password on it answers `403 AUTH_EMAIL_UNVERIFIED` and the wrong one the usual
+`401`, that `resend-verification` answers **the same `202` body** for a pending
+address and for one nobody holds, and that a token nobody minted is one
+indistinguishable `401`. Walking an actual link is the browser tier's, which
+reads it out of Mailpit.
+
+That is also why the invitee below is a **staff-created** account rather than the
+self-registered one: a staff member who types an address asserts it, so that
+account is `active` and can sign in, while a self-registered one cannot until
+its link is followed.
+
 **The three organizations folders are one flow across two segments** (ADR-0067).
 `User › Organizations` runs as the seeded customer, who owns the `acme` fixture:
 it reads the switcher's list, creates a team organization, proves the guard's
@@ -88,13 +104,16 @@ disabled account is a row rather than a way in, but a deleted one is neither.
 ADR-0021 is frozen, so ADR-0028 §Consequences is where the change is recorded —
 the collection changes, the ADR does not.
 
-The teardown is also where both delete endpoints are documented, because it is
+The teardown is also where all three delete paths are documented, because it is
 where the run legitimately has accounts to destroy. It shows the asymmetry
-between the populations end to end: the staff row is gone and answers `404`,
-the user row is still readable at `200` with `deletedAt` set, a `PATCH` at it
-answers `409 USER_DELETED`, and the address it released is registered again by
-the next request — the support answer the partial unique index exists to make
-possible.
+between the populations end to end: the staff row is gone and answers `404`; the
+user row — closed by the account itself, with its own password, which is the
+self-service path — is still readable at `200` with `deletedAt` set, a `PATCH` at
+it answers `409 USER_DELETED`, and the address the _self-registered_ account
+released is registered again by the next request, the support answer the partial
+unique index exists to make possible. That second registration is then found by
+its address and removed administratively, because nobody can sign in as an
+account whose address has never been proven.
 
 **Negative paths are deliberate, not accidental.** `403` for a manager writing to
 `/admin/users`, `409 CONFLICT` (never `USER_EMAIL_TAKEN`) for a duplicate public
@@ -102,9 +121,13 @@ registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Ea
 of those requests carries a description saying which ADR decided it.
 
 **Rate limits bound how often it runs** (ADR-0020, as carried by ADR-0069). One
-pass spends 1 of the 5 failed refreshes per 15 minutes per IP, and — since the
-three organizations folders landed — 165 of the global `RATE_LIMIT_GLOBAL_MAX`
-per 15 minutes (the three health probes and the metrics scrape sit outside every
+pass spends 1 of the 5 failed refreshes per 15 minutes per IP, 2 of the
+verification limiter's `3 / hour / IP + email` — and only ever against
+**per-run** addresses, which is why both `resend-verification` requests generate
+one rather than using a fixture: a fixed address there would answer `429` on the
+fourth run of the hour and the assertion is that the two answers are identical —
+and, since the mail flows joined `Public`, 173 of the global
+`RATE_LIMIT_GLOBAL_MAX` per 15 minutes (the three health probes and the metrics scrape sit outside every
 limiter). On the committed development profile that is a small share of the
 window, which is the point of ADR-0069: one window holds this collection, the
 whole browser tier and a retry of both. On a stock 300 it was one consecutive

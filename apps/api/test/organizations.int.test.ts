@@ -10,6 +10,7 @@ import {
   type Tokens,
 } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
+import { registerVerified } from "./support/mail.js";
 import {
   FIXTURE_PASSWORD,
   FIXTURE_USERS,
@@ -40,24 +41,18 @@ describe("organizations on the user segment", () => {
 
   const request = () => supertest(harness.app);
 
-  /** Signs a fresh account in and returns its id and its tokens. */
-  const freshAccount = async (
+  /**
+   * Signs a fresh account in and returns its id and its tokens.
+   *
+   * Two steps since ADR-0071 §3 rather than one: registration issues no
+   * session, so the account is created and its mailed link walked — exactly
+   * what a person does. `registerVerified` reads the link out of the captured
+   * messages.
+   */
+  const freshAccount = (
     email: string,
-  ): Promise<{ id: string; tokens: Tokens; email: string }> => {
-    const created = await request()
-      .post("/api/v1/public/auth/register")
-      .send({ email, password: NEW_ACCOUNT_PASSWORD })
-      .expect(201);
-
-    return {
-      id: created.body.data.principal.id as string,
-      email,
-      tokens: {
-        accessToken: created.body.data.accessToken as string,
-        refreshToken: created.body.data.refreshToken as string,
-      },
-    };
-  };
+  ): Promise<{ id: string; tokens: Tokens; email: string }> =>
+    registerVerified(harness, email, NEW_ACCOUNT_PASSWORD);
 
   const createTeam = async (token: string, slug: string, name = "A Team") => {
     const response = await request()

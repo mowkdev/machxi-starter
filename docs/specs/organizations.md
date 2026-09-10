@@ -21,7 +21,7 @@ Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/test/users-admin
 
 ### Scenario: A registration succeeds
 
-- **WHEN** `POST /api/v1/public/auth/register` answers `201`
+- **WHEN** `POST /api/v1/public/auth/register` answers `202`
 - **THEN** the new account owns exactly one live `personal` organization whose slug is derived from its id, and holds the `owner` membership of it
 
 ### Scenario: A registration is refused as a duplicate

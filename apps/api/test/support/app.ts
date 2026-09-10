@@ -2,6 +2,7 @@ import { createLogger, type Logger } from "@repo/logger";
 import type { Express } from "express";
 
 import { createApp } from "../../src/app.js";
+import type { MailMessage, MailSender } from "../../src/core/mail/index.js";
 import { loadConfig, type AppConfig } from "../../src/core/config/index.js";
 import { buildContainer, type Container } from "../../src/core/container.js";
 import type { ErrorReporter } from "../../src/core/reporting/index.js";
@@ -22,6 +23,18 @@ export interface TestApp {
   readonly config: AppConfig;
   readonly db: DbClient;
   readonly logger: Logger;
+  /**
+   * Every message this app sent, newest last (ADR-0066 §1, ADR-0071 §3).
+   *
+   * The suite has to read the **link** a flow mailed, and neither shipped
+   * adapter is a place to read it from: the log transport deliberately writes
+   * the recipient and the subject and never the body, because that body holds
+   * a single-use bearer credential (ADR-0057 §2), and the SMTP one needs a
+   * server. So the container is handed a capturing sender — the port's own
+   * shape — and everything above it, the templates included, is the real
+   * wiring.
+   */
+  readonly mail: MailMessage[];
   readonly close: () => Promise<void>;
 }
 
@@ -46,6 +59,14 @@ export const createTestApp = ({
   const config = override ? override(loadConfig()) : loadConfig();
 
   const logger = createLogger({ level: "silent", name: "api-test" });
+  const mail: MailMessage[] = [];
+  const mailSender: MailSender = {
+    send: (_ctx, message) => {
+      mail.push(message);
+
+      return Promise.resolve();
+    },
+  };
   // Two connections and a short idle timeout: a test file opens a client per
   // app and must not hold the pool open past its own lifetime.
   const db = createDb(config.db.url, { max: 2, idleTimeout: 1 });
@@ -55,6 +76,7 @@ export const createTestApp = ({
     logger,
     // No `rateLimitStore`: the suite always uses the in-memory store, which is
     // what makes a limiter's count local to one app instance (ADR-0066 §4).
+    mail: mailSender,
     ...(reporter === undefined ? {} : { reporter }),
   });
 
@@ -64,6 +86,7 @@ export const createTestApp = ({
     config,
     db,
     logger,
+    mail,
     close: db.close,
   } as const;
 };

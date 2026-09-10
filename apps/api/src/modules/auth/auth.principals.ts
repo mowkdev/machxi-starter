@@ -26,14 +26,21 @@ const staffRecord = (
   email: row.email,
   passwordHash: row.passwordHash,
   active: row.status === "active",
+  // Never true for staff (ADR-0071 §8): an `invited` operator is waiting for a
+  // password, not for a mailbox to be proven, and login refuses that row as it
+  // refuses any inactive one.
+  awaitingEmailVerification: false,
   roles: row.roles,
   resource: toStaffPrincipalResource(row),
 });
 
 /**
- * `pending_verification` is deliberately *not* active: v1 self-registration
- * creates users as `active`, so a row in that state was put there on purpose
- * and must not be able to log in until the future verification flow clears it.
+ * `pending_verification` is not active, and since ADR-0071 §3 it is not the
+ * same refusal either: self-registration puts every new account in that state,
+ * the verification link is what clears it, and login answers a *correct*
+ * password on such a row with `403 AUTH_EMAIL_UNVERIFIED` rather than the
+ * `AUTH_ACCOUNT_DISABLED` a `disabled` row gets. The distinction is drawn
+ * here, where the status is, and travels to the service as a boolean.
  */
 const userRecord = (
   row: Parameters<typeof toUserPrincipalResource>[0],
@@ -42,6 +49,7 @@ const userRecord = (
   email: row.email,
   passwordHash: row.passwordHash,
   active: row.status === "active",
+  awaitingEmailVerification: row.status === "pending_verification",
   roles: row.roles,
   resource: toUserPrincipalResource(row),
 });
@@ -92,12 +100,23 @@ export const createUserPrincipalAdapter = (
 
   /**
    * Insert plus the `customer` grant. Both run on the executor the service
-   * passes, so registration's insert, grant and session row commit or fail
+   * passes, so registration's insert, grant and its token row commit or fail
    * together — a user with no role would pass every guard that only checks
    * authentication and fail every one that checks a role.
+   *
+   * **`pending_verification`, and the status is written here rather than
+   * passed in** (ADR-0071 §3). Self-registration is this function's only
+   * caller, and the account it creates has proven nothing: the address is a
+   * string somebody typed, and the link is what turns it into a fact. Leaving
+   * the status to a parameter would make "a registration can create an
+   * `active` account" a thing one call site could decide, which is exactly the
+   * invariant §3 buys — every `active` user has a proven address.
    */
   create: async (input, tx): Promise<PrincipalRecord | undefined> => {
-    const created = await repository.create(input, tx);
+    const created = await repository.create(
+      { ...input, status: "pending_verification" },
+      tx,
+    );
 
     if (created === undefined) return undefined;
 
@@ -105,4 +124,20 @@ export const createUserPrincipalAdapter = (
 
     return userRecord({ ...created, roles: ["customer"] });
   },
+
+  /**
+   * The verification link's effect (ADR-0071 §3), and the roles come back with
+   * it because the session minted a moment later is built from them.
+   */
+  activateVerified: async (
+    id,
+    at,
+    tx,
+  ): Promise<PrincipalRecord | undefined> => {
+    const updated = await repository.markEmailVerified(id, at, tx);
+
+    return updated === undefined ? undefined : userRecord(updated);
+  },
+
+  findPendingVerificationByEmail: repository.findPendingVerificationByEmail,
 });

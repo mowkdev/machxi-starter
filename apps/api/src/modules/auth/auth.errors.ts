@@ -31,6 +31,41 @@ export const invalidCredentials = (): AppError =>
 export const accountDisabled = (): AppError =>
   forbidden("This account is not active", "AUTH_ACCOUNT_DISABLED");
 
+/**
+ * The password verified, but the address behind it has never been proven
+ * (ADR-0071 §3).
+ *
+ * **Distinguishable from {@link accountDisabled}, and that is the decision.**
+ * ADR-0020 §Enumeration protects an anonymous caller from learning which
+ * addresses exist; this is raised only *after* the password verified, so the
+ * caller has already proven they hold the account and there is nothing left to
+ * protect. Answering "this account is disabled, contact support" to somebody
+ * who simply has not opened their mail would be a support ticket the API could
+ * have answered itself, and the client's next move — offer to send the link
+ * again — is one it can only make if it is told.
+ *
+ * `403` for the reason its neighbours are: the credential is fine, the
+ * operation is refused.
+ */
+export const emailUnverified = (): AppError =>
+  forbidden("This address has not been confirmed yet", "AUTH_EMAIL_UNVERIFIED");
+
+/**
+ * Every way `POST /public/auth/verify-email` can fail, answered as one
+ * indistinguishable `401` (ADR-0071 §3).
+ *
+ * Unknown token, already consumed, minted for the other purpose or population,
+ * past `VERIFICATION_TOKEN_TTL`, or naming an account that is no longer one a
+ * link may act on — one answer, because the caller is an anonymous holder of a
+ * URL fragment and every distinction between those cases is something for them
+ * to learn. The same posture {@link impersonationHandoffInvalid} takes, for
+ * the same reason and with the same **generic** `UNAUTHENTICATED` code: the
+ * only client is the SPA's `/verify-email` screen, which has one thing to say
+ * either way — ask for a new link.
+ */
+export const verificationLinkInvalid = (): AppError =>
+  unauthenticated("This confirmation link is no longer valid");
+
 /** Missing, malformed, wrongly signed, or carrying the other population's `aud`. */
 export const tokenInvalid = (): AppError =>
   unauthenticated("Invalid access token", "AUTH_TOKEN_INVALID");

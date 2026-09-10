@@ -65,6 +65,7 @@ const GENERIC_ERROR_CODES = [
  * | `AUTH_INVALID_REFRESH_TOKEN` | 401 | refresh token unknown or past `refresh_token_expires_at` | re-login |
  * | `AUTH_REFRESH_REUSED` | 401 | a rotated refresh token was replayed outside the grace window; the session is revoked | re-login and warn the user |
  * | `AUTH_ACCOUNT_DISABLED` | 403 | credentials are correct but `status != active` | show a support message |
+ * | `AUTH_EMAIL_UNVERIFIED` | 403 | credentials are correct but the address has never been proven (ADR-0071 §3) | offer to send the verification link again |
  * | `AUTH_CURRENT_PASSWORD_INVALID` | 403 | the caller re-presented their own password on a credential-setting endpoint and it did not verify | ask for the password again |
  * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching that population's `machxi.csrf.{admin,user}` cookie (ADR-0029; ADR-0056 for the per-population name) | re-read the cookie and retry; if it persists, re-login |
  * | `AUTH_IMPERSONATION_REFUSED` | 403 | the session is impersonated (ADR-0057) and the operation is one of the takeover-enabling ones it is not allowed | tell the operator the account's owner must do it |
@@ -73,6 +74,15 @@ const GENERIC_ERROR_CODES = [
  * *is* authenticated — their session is fine and stays fine — so a `401` would
  * be untrue about the request and would send every client interceptor that
  * treats `401` as "the session died" to the login screen over a typo.
+ *
+ * `AUTH_EMAIL_UNVERIFIED` is deliberately **distinguishable** from
+ * `AUTH_ACCOUNT_DISABLED`, which is the one place in the authentication flow
+ * where ADR-0020 §Enumeration permits a distinction: it is raised only after the
+ * password has verified, so the caller has already proven they hold the account
+ * and there is nothing left to protect. Telling them "this account is disabled,
+ * contact support" when the truth is "open the link we mailed you" is a support
+ * ticket the API could have answered itself. It is `403` for the reason its
+ * neighbours are — the request is refused, not the credential.
  *
  * `CSRF_TOKEN_INVALID` is listed here because the three endpoints it guards are
  * the auth ones, and it is deliberately **not** `AUTH_`-prefixed: the caller's
@@ -107,6 +117,7 @@ const AUTH_ERROR_CODES = [
   "AUTH_INVALID_REFRESH_TOKEN",
   "AUTH_REFRESH_REUSED",
   "AUTH_ACCOUNT_DISABLED",
+  "AUTH_EMAIL_UNVERIFIED",
   "AUTH_CURRENT_PASSWORD_INVALID",
   "AUTH_IMPERSONATION_REFUSED",
   "CSRF_TOKEN_INVALID",

@@ -2,6 +2,7 @@ import {
   TOKEN_TYPE,
   errorEnvelopeSchema,
   isErrorCode,
+  type AcceptedResource,
   type AuthResource,
   type CsrfResource,
   type ErrorCode,
@@ -81,7 +82,10 @@ const COOKIE_TRANSPORT_PATHS = [
   "/auth/login",
   "/auth/refresh",
   "/auth/impersonate",
-  "/auth/register",
+  // `/auth/register` was here until ADR-0071 §3 and is deliberately gone: the
+  // header exists to move a refresh token into a cookie, and registration now
+  // issues no token at all. It joins the confirmation call at the step that
+  // adds one, which is the request that really does start a session.
 ];
 
 /**
@@ -455,11 +459,23 @@ export const createApiClient = ({
   };
 
   /**
-   * Registers an account and hydrates the store (`D15.6`, ADR-0067 §6).
+   * Registers an account (`D15.6`, ADR-0067 §6; ADR-0071 §3 for the answer).
    *
-   * It lives here, beside `login`, for `login`'s reason: this response's whole
-   * purpose is to start a session — `201` with login's own body (ADR-0018) —
-   * and the module that owns the session's memory is the one that writes it.
+   * **It starts no session, and that is the point.** Registration answered
+   * `201` with login's body until ADR-0071 §3; it now answers `202` and issues
+   * nothing, because an address nobody has proven is not an account anybody
+   * may be signed into. What signs a device in is the confirmation link, which
+   * arrives in a mailbox and lands on the app's own confirmation route — whose
+   * client call belongs to the step that builds that screen.
+   *
+   * So this writes **nothing** to the store, and writing nothing is the whole
+   * of the change. Hydrating from a `202` would put `undefined` where the
+   * access token and the principal go, which is not "no session" but a broken
+   * one — a shape the boot sequence has no branch for, on a client that would
+   * then believe it was signed in.
+   *
+   * It still lives here, beside `login`, because the segment rule below is
+   * about this package's own memory and is unchanged by the answer.
    *
    * **The one call in this package that leaves its segment, and it says so in
    * one place.** Registration is mounted on `/api/v1/public` (ADR-0015): it is
@@ -487,7 +503,7 @@ export const createApiClient = ({
    * confirm the feature (ADR-0004), and that code reaches the caller as any
    * other refusal does.
    */
-  const register = async (body: RegisterBody): Promise<AuthResource> => {
+  const register = async (body: RegisterBody): Promise<void> => {
     if (segment !== "user") {
       throw apiClientError({
         status: 0,
@@ -496,20 +512,9 @@ export const createApiClient = ({
       });
     }
 
-    const { data } = await instance.post<{ data: AuthResource }>(
-      "/auth/register",
-      body,
-      { baseURL: `${baseUrl}/api/v1/public` },
-    );
-    const resource = data.data;
-
-    store.setSession({
-      accessToken: resource.accessToken,
-      principal: resource.principal,
-      ...(resource.csrfToken ? { csrfToken: resource.csrfToken } : {}),
+    await instance.post<{ data: AcceptedResource }>("/auth/register", body, {
+      baseURL: `${baseUrl}/api/v1/public`,
     });
-
-    return resource;
   };
 
   /**

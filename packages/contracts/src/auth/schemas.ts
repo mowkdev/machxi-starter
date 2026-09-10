@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { customRule } from "../locales/source.js";
+import { LOCALES } from "../settings/enums.js";
 import {
   emailSchema,
   nameSchema,
@@ -64,6 +65,19 @@ export const refreshBody = z.strictObject({
 export type RefreshBody = z.infer<typeof refreshBody>;
 
 /**
+ * The reader's language, on the one seam where the server cannot know it
+ * (ADR-0071 §2, ADR-0046).
+ *
+ * Optional, and optional is the decision rather than a convenience: these are
+ * the anonymous endpoints, where either no account exists yet (registration)
+ * or the answer must not depend on whether one does (resend). Where an account
+ * *is* acting, its stored locale is an account fact and no client is asked.
+ * Omitted, the templates fall back to English, which is the only language they
+ * ship in today.
+ */
+export const mailLocaleSchema = z.enum(LOCALES).optional();
+
+/**
  * `POST /api/v1/public/auth/register` — user self-registration, mounted only
  * when `FEATURE_USER_REGISTRATION` is on (ADR-0004). Names are optional
  * because the `users` table allows them to be null (ADR-0017); staff have no
@@ -74,8 +88,58 @@ export const registerBody = z.strictObject({
   password: passwordSchema,
   firstName: nameSchema.optional(),
   lastName: nameSchema.optional(),
+  locale: mailLocaleSchema,
 });
 export type RegisterBody = z.infer<typeof registerBody>;
+
+/**
+ * Upper bound on a submitted account token — a verification, reset, address
+ * change or onboarding link's `#token=…` (ADR-0071 §1).
+ *
+ * The same bound the other two opaque credentials carry, and it matters here
+ * for {@link MAX_HANDOFF_TOKEN_LENGTH}'s reason: the value arrives from a
+ * **URL fragment** an SPA read off `location.hash`, so its length is whatever
+ * a pasted link happened to contain.
+ */
+export const MAX_ACCOUNT_TOKEN_LENGTH = 512;
+
+/**
+ * The opaque single-use token as an SPA sends it back (ADR-0071 §1).
+ *
+ * Bounded and not format-checked, for the reason {@link refreshTokenSchema}
+ * gives: the encoding is the mint's business, and an unknown token is refused
+ * by the hash lookup either way.
+ */
+export const accountTokenSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ACCOUNT_TOKEN_LENGTH);
+
+/**
+ * `POST /api/v1/public/auth/verify-email` (ADR-0071 §3).
+ *
+ * Unauthenticated: the token *is* the credential, exactly as it is for the
+ * impersonation exchange. There is no `email` beside it — the row the token
+ * claims already names the account, and a second field a caller controls
+ * would be a second thing to disagree with it.
+ */
+export const verifyEmailBody = z.strictObject({
+  token: accountTokenSchema,
+});
+export type VerifyEmailBody = z.infer<typeof verifyEmailBody>;
+
+/**
+ * `POST /api/v1/public/auth/resend-verification` (ADR-0071 §3).
+ *
+ * Answers `202` whatever the address is, so nothing here distinguishes a
+ * known one from a stranger's.
+ */
+export const resendVerificationBody = z.strictObject({
+  email: emailSchema,
+  locale: mailLocaleSchema,
+});
+export type ResendVerificationBody = z.infer<typeof resendVerificationBody>;
 
 /**
  * `POST /api/v1/{admin,user}/profile/change-password` — an account changing

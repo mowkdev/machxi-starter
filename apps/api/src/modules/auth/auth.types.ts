@@ -31,8 +31,36 @@ export interface PrincipalRecord {
   /** `null` for an account with no password login (users only, ADR-0017). */
   readonly passwordHash: string | null;
   readonly active: boolean;
+  /**
+   * Why the account is not active, in the one case the answer differs on the
+   * wire (ADR-0071 §3).
+   *
+   * `true` only for a `user` row whose status is `pending_verification`;
+   * `false` on every staff row, `invited` included — an operator waiting for
+   * onboarding is refused as any inactive row is (ADR-0071 §8), because there
+   * the missing thing is a password rather than a proof of the mailbox.
+   *
+   * A boolean rather than the raw `status` for the reason {@link active} is
+   * one: which enum values mean what is the population's business, decided in
+   * the adapter, and the status itself never leaves the repository layer
+   * (ADR-0017 §Principal abstraction in code).
+   */
+  readonly awaitingEmailVerification: boolean;
   readonly roles: readonly Role[];
   readonly resource: PrincipalResource;
+}
+
+/**
+ * The minimum an anonymous flow may learn about an account it is about to mail
+ * (ADR-0071 §3).
+ *
+ * Not a {@link PrincipalRecord}: `resend-verification` answers `202` whatever
+ * it finds, so what it needs is an id to mint against and the address as the
+ * database holds it — never the password hash, the roles or the wire resource.
+ */
+export interface PendingPrincipal {
+  readonly id: string;
+  readonly email: string;
 }
 
 /** What registration inserts. Only the user adapter implements it. */
@@ -75,4 +103,32 @@ export interface PrincipalAdapter<P extends Population = Population> {
     input: CreatePrincipalInput,
     tx?: DbExecutor,
   ) => Promise<PrincipalRecord | undefined>;
+  /**
+   * The verification link's effect, and therefore **users only** (ADR-0071
+   * §3): the account becomes `active` and its address is stamped proven, in
+   * the transaction that consumed the token.
+   *
+   * Resolves to `undefined` when no row moved — the account is deleted, or
+   * already past `pending_verification` — which the caller answers by throwing
+   * so the consume rolls back with it. A refused verification spends nothing.
+   */
+  activateVerified?: (
+    id: string,
+    at: Date,
+    tx?: DbExecutor,
+  ) => Promise<PrincipalRecord | undefined>;
+  /**
+   * The one lookup `resend-verification` needs, and **users only** for the
+   * reason {@link create} is: `pending_verification` is a `user` status, and a
+   * staff row that has not onboarded is ADR-0071 §8's flow rather than this
+   * one.
+   *
+   * Narrower than `findByEmail` on purpose — it answers "is there an account
+   * here waiting for its address to be proven?" and nothing else, so no
+   * anonymous path can reach a password hash through it.
+   */
+  findPendingVerificationByEmail?: (
+    email: string,
+    tx?: DbExecutor,
+  ) => Promise<PendingPrincipal | undefined>;
 }

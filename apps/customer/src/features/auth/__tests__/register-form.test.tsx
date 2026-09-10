@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   CREDENTIALS,
   PUBLIC_API,
-  REGISTERED_USER_ID,
   createAuthHandlers,
   createAuthMockState,
   type AuthMockState,
@@ -84,63 +83,44 @@ const registerAs = async (
 };
 
 describe("registration", () => {
-  it("signs the new account in and lands home with its personal organization", async () => {
+  it("creates the account and issues no session", async () => {
+    /*
+     * ADR-0071 §3's whole delta on the client: registration answers `202` and
+     * starts nothing, because an address nobody has proven is not an account
+     * anybody may be signed into. What signs a device in is the confirmation
+     * link.
+     *
+     * **The store staying empty is the assertion.** The client used to hydrate
+     * it from registration's body; hydrating from a `202` would write
+     * `undefined` where the access token and the principal go, which is not
+     * "no session" but a broken one — a shape the boot sequence has no branch
+     * for, on a client that would then believe it was signed in.
+     *
+     * Where the form *lands* is not asserted here, and deliberately: today it
+     * navigates home and the dashboard guard turns it straight back to the
+     * sign-in screen, which is honest but not the screen a person should meet.
+     * The check-your-mail screen and its resend are the step that builds them.
+     */
     const { user, store } = setup();
 
     await registerAs(user, { firstName: "Nina", lastName: "Newcomer" });
 
-    expect(
-      await screen.findByRole("heading", { name: "Your account" }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(state.registerCalls).toHaveLength(1);
+    });
 
-    // The client hydrated the store, which is what the `_dashboard` guard
-    // reads — and with the account that was just created rather than with a
-    // fixture, which is the difference a separate id makes assertable.
-    expect(store.isAuthenticated()).toBe(true);
-    expect(store.getPrincipal()?.id).toBe(REGISTERED_USER_ID);
-    expect(store.getPrincipal()?.email).toBe(NEW_ADDRESS);
-    // A *customer*: the segment this app is pinned to is the whole of what
-    // makes it the customer app on the wire (ADR-0055 §2).
-    expect(store.getPrincipal()?.kind).toBe("user");
-
-    /*
-     * The reason this step exists at all (ADR-0067 §2): registration creates
-     * the personal organization in the same transaction, so a newly registered
-     * customer has a tenant before they have done anything. The switcher is
-     * where they see it.
-     *
-     * **By the label rather than by the name, since `D15.9`.** §6's amendment
-     * makes a personal organization's name unmanaged and calls the context
-     * "Private", so asserting on the fixture's name would now be asserting on a
-     * value the interface deliberately never shows. What the claim needs is
-     * that a context exists at all, which the entry is.
-     */
-    await user.click(
-      await screen.findByRole("button", { name: "Switch organization" }),
-    );
-
-    expect(
-      await within(await screen.findByRole("menu")).findByRole("menuitem", {
-        name: /Private/,
-      }),
-    ).toBeInTheDocument();
+    expect(store.isAuthenticated()).toBe(false);
+    expect(store.getPrincipal()).toBeNull();
   });
 
-  it("asks for cookie transport and omits the names it was not given", async () => {
+  it("omits the names it was not given, and asks for no transport", async () => {
     const { user } = setup();
 
     await registerAs(user);
 
-    await screen.findByRole("heading", { name: "Your account" });
-
-    /*
-     * Invisible in the response and fatal by the next reload: without the
-     * header the API answers with the refresh token in the body and sets no
-     * cookie (ADR-0029 §Opt-in), so the account someone has just created is
-     * signed in until they refresh the page and then back on the sign-in
-     * screen. Asserted at the wire because nothing on the screen can show it.
-     */
-    expect(state.registerAskedForCookies).toBe(true);
+    await waitFor(() => {
+      expect(state.registerCalls).toHaveLength(1);
+    });
 
     /*
      * `registerBody`'s names are `nameSchema.optional()` — `min(1)` when
@@ -151,6 +131,16 @@ describe("registration", () => {
     expect(state.registerCalls).toEqual([
       { email: NEW_ADDRESS, password: GOOD_PASSWORD },
     ]);
+
+    /*
+     * `X-Auth-Transport: cookie` moved off this call with the session
+     * (ADR-0071 §3, ADR-0029 §Opt-in). The header exists to put a refresh
+     * token in a cookie instead of in the body, and there is now no token in
+     * either — so sending it would be a header asking for something the
+     * endpoint cannot do, and one more preflight for an app served from a
+     * different host than the API.
+     */
+    expect(state.registerAskedForCookies).toBe(false);
   });
 
   it("renders the catalogue's conflict sentence for an address that is taken", async () => {

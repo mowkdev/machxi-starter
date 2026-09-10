@@ -14,11 +14,13 @@ import { FIXTURE_USERS, resetAndSeed } from "./support/seed.js";
 
 /**
  * `POST /api/v1/public/auth/register` (ADR-0018 §Staff onboarding, amended
- * step 4; ADR-0020 §Enumeration).
+ * step 4, as ADR-0071 §3 supersedes its answer; ADR-0020 §Enumeration).
  *
- * Two things are being checked: that a registration signs the new account in
- * without a second round trip, and that a *taken* address is answered in a way
- * that does not confirm it exists.
+ * Two things are being checked: that a registration creates an account nobody
+ * can sign into until its address is proven, and that a *taken* address is
+ * answered in a way that does not confirm it exists. What the mailed link
+ * then does is `mail-flows.int.test.ts`'s claim — this file is about the
+ * account and the conflict.
  */
 
 const REGISTER = "/api/v1/public/auth/register";
@@ -37,7 +39,7 @@ describe("user self-registration", () => {
 
   const request = () => supertest(harness.app);
 
-  it("creates the account, grants the customer role and signs it in", async () => {
+  it("creates a pending account with the customer role and no session", async () => {
     const response = await request()
       .post(REGISTER)
       .send({
@@ -46,51 +48,74 @@ describe("user self-registration", () => {
         firstName: "New",
         lastName: "Comer",
       })
-      .expect(201);
+      .expect(202);
 
-    expect(response.body.data.principal).toMatchObject({
-      kind: "user",
-      email: "newcomer@machxi.local",
-      firstName: "New",
-      roles: ["customer"],
+    expect(response.body.data).toEqual({ accepted: true });
+    // The delta ADR-0071 §3 makes to ADR-0018, on the wire: nothing that could
+    // authenticate anybody leaves this endpoint, on either transport.
+    expect(response.headers["set-cookie"]).toBeUndefined();
+    expect(JSON.stringify(response.body)).not.toContain("accessToken");
+
+    const [account] = await harness.db.db
+      .select({ status: users.status, verifiedAt: users.emailVerifiedAt })
+      .from(users)
+      .where(eq(users.email, "newcomer@machxi.local"));
+
+    expect(account).toMatchObject({
+      status: "pending_verification",
+      verifiedAt: null,
     });
-
-    // The returned pair works immediately — that is what the 201 body is for.
-    await request()
-      .get("/api/v1/user/auth/me")
-      .set("Authorization", `Bearer ${response.body.data.accessToken}`)
-      .expect(200);
   });
 
-  it("lets the new account log in with the password it chose", async () => {
+  it("places no cookie even for a client that asked for cookie transport", async () => {
+    const response = await request()
+      .post(REGISTER)
+      .set("X-Auth-Transport", "cookie")
+      .send({
+        email: "cookie-newcomer@machxi.local",
+        password: "a-perfectly-fine-password",
+      })
+      .expect(202);
+
+    expect(response.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("refuses the new account's login until the address is proven", async () => {
     await request()
       .post(REGISTER)
       .send({
         email: "second-newcomer@machxi.local",
         password: "another-fine-password",
       })
-      .expect(201);
+      .expect(202);
 
-    await request()
+    const response = await request()
       .post("/api/v1/user/auth/login")
       .send({
         email: "second-newcomer@machxi.local",
         password: "another-fine-password",
       })
-      .expect(200);
+      .expect(403);
+
+    expect(response.body.error.code).toBe("AUTH_EMAIL_UNVERIFIED");
   });
 
   it("accepts a registration without names", async () => {
     // `users.first_name` is nullable, unlike `staff` (ADR-0017).
-    const response = await request()
+    await request()
       .post(REGISTER)
       .send({
         email: "anonymous@machxi.local",
         password: "a-perfectly-fine-password",
       })
-      .expect(201);
+      .expect(202);
 
-    expect(response.body.data.principal.firstName).toBeNull();
+    const [account] = await harness.db.db
+      .select({ firstName: users.firstName })
+      .from(users)
+      .where(eq(users.email, "anonymous@machxi.local"));
+
+    expect(account?.firstName).toBeNull();
   });
 
   it("answers a taken address with a conflict that does not name it", async () => {
@@ -160,7 +185,7 @@ describe("user self-registration", () => {
         firstName: "Orla",
         lastName: "Newcomer",
       })
-      .expect(201);
+      .expect(202);
 
     const [account] = await harness.db.db
       .select({ id: users.id })
@@ -229,7 +254,7 @@ describe("user self-registration", () => {
     expect(await liveOrganizationCount()).toBe(before);
   });
 
-  it("forbids caching the response that carries the tokens", async () => {
+  it("forbids caching the response, which carries no tokens but names an account", async () => {
     await request()
       .post(REGISTER)
       .send({

@@ -1,4 +1,9 @@
-import type { AuthResource, CsrfResource, Population } from "@repo/contracts";
+import type {
+  AcceptedResource,
+  AuthResource,
+  CsrfResource,
+  Population,
+} from "@repo/contracts";
 import type { Request, Response } from "express";
 
 import { validation } from "../../core/errors/index.js";
@@ -12,6 +17,8 @@ import type {
   loginSchema,
   refreshSchema,
   registerSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
 } from "./auth.schemas.js";
 
 /**
@@ -145,14 +152,58 @@ export const createAuthController = ({
       respond.ok(res, applyTransport(req, res, resource, cookieDriven));
     },
 
-    /** `201`: registration creates an account and signs it in (ADR-0018). */
+    /**
+     * `202`: the account exists, the link is on its way, and **no session is
+     * placed** (ADR-0071 §3, the delta on ADR-0018's `201`).
+     *
+     * `applyTransport` is deliberately not called: there is nothing to
+     * transport. A browser that asked for cookie transport gets no `Set-Cookie`
+     * at all, which is what makes "registration issues no session" observable
+     * rather than merely intended.
+     */
     register: async (
       req: ValidatedRequest<typeof registerSchema>,
       res: Response,
     ): Promise<void> => {
-      const resource = await service.register(req.ctx, req.valid.body);
+      await service.register(req.ctx, req.valid.body);
 
-      respond.created(res, applyTransport(req, res, resource));
+      respond.accepted<AcceptedResource>(res, { accepted: true });
+    },
+
+    /**
+     * `200` with login's body, on whichever transport the caller asked for
+     * (ADR-0071 §3).
+     *
+     * The impersonation exchange's shape, and for its reason: the caller has
+     * just presented a single-use credential that proves the mailbox, so the
+     * device holding it is signed in exactly as `login` would sign it in —
+     * `X-Auth-Transport: cookie` included, since the SPA that lands here is a
+     * browser.
+     */
+    verifyEmail: async (
+      req: ValidatedRequest<typeof verifyEmailSchema>,
+      res: Response,
+    ): Promise<void> => {
+      const resource = await service.verifyEmail(req.ctx, req.valid.body);
+
+      respond.ok(res, applyTransport(req, res, resource));
+    },
+
+    /**
+     * `202`, always — for an address that has a pending account and for one
+     * that has never existed (ADR-0071 §3).
+     *
+     * The service decides whether a message goes out; this answers the same
+     * thing either way, because a status, a body or a timing that differed
+     * would be the account-existence oracle ADR-0020 §Enumeration refuses.
+     */
+    resendVerification: async (
+      req: ValidatedRequest<typeof resendVerificationSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.resendVerification(req.ctx, req.valid.body);
+
+      respond.accepted<AcceptedResource>(res, { accepted: true });
     },
 
     /**

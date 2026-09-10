@@ -3989,18 +3989,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"201 with a signed-in user\", function () {",
-                  "  pm.response.to.have.status(201);",
+                  "pm.test(\"202, and no session at all\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
                   "",
-                  "  const auth = pm.response.json().data;",
-                  "",
-                  "  pm.expect(auth.tokenType).to.eql(\"Bearer\");",
-                  "  pm.expect(auth.principal.kind).to.eql(\"user\");",
-                  "  pm.expect(auth.principal.roles).to.eql([\"customer\"]);",
-                  "  pm.expect(auth.principal.email).to.eql(pm.environment.get(\"newRegisteredEmail\"));",
-                  "});",
-                  "",
-                  "pm.environment.set(\"lastRegisteredId\", pm.response.json().data.principal.id);"
+                  "  pm.expect(pm.response.text(), \"no token leaves this endpoint\").to.not.include(\"accessToken\");",
+                  "  pm.expect(pm.response.headers.has(\"Set-Cookie\"), \"and no cookie either\").to.be.false;",
+                  "});"
                 ]
               }
             }
@@ -4027,7 +4022,272 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "public", "auth", "register"]
             },
-            "description": "`201` with a session, so a newly registered user is signed in without a second round trip. Registration hashes a password and creates a session exactly like login does, so it shares login's rate limiter."
+            "description": "`202` with no session (ADR-0071 §3). The account is created `pending_verification` and a confirmation link is mailed; following that link is what signs a device in, so nothing here is a credential. Registration still shares login's rate limiter, because the argon2 hash that limiter really rations is unchanged.\n\nThe link itself cannot be walked from Postman — it arrives in a mailbox — so the browser tier reads it from Mailpit and this folder proves everything either side of it."
+          }
+        },
+        {
+          "name": "Sign in before the address is proven",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_EMAIL_UNVERIFIED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_EMAIL_UNVERIFIED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            },
+            "description": "Distinguishable from `AUTH_ACCOUNT_DISABLED` on purpose, and only reachable once the password has verified: the caller has already proven they hold the account, so ADR-0020 §Enumeration has nothing left to protect and the client can offer to send the link again."
+          }
+        },
+        {
+          "name": "Sign in with the wrong password before it is proven",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_INVALID_CREDENTIALS, indistinguishable from an unknown address\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_INVALID_CREDENTIALS\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"not-the-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            },
+            "description": "The status is only consulted after the password verifies, so an account waiting for its address to be proven is indistinguishable from one that does not exist to anybody who does not already hold the password (ADR-0018 §Login step 3)."
+          }
+        },
+        {
+          "name": "Ask for the confirmation link again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "});",
+                  "",
+                  "// The shape every answer of this endpoint has to match, whatever it found.",
+                  "pm.environment.set(\"acceptedBody\", JSON.stringify(pm.response.json().data));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/resend-verification",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "resend-verification"]
+            },
+            "description": "A new link, and the old one stops working: a mint supersedes the live token for the account and purpose, so pressing resend leaves one working link rather than a growing set (ADR-0071 §1). Behind its own `3 / hour / IP + email` counter, separate from the password-reset budget so a person stuck here cannot spend the recovery budget for the same mailbox."
+          }
+        },
+        {
+          "name": "Ask for it for an address nobody holds",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh address per run. This request is behind the 3 / hour / IP + email",
+                  "// counter, so a fixed one would answer 429 on the fourth run of the hour —",
+                  "// and the assertion below is that it answers exactly what the pending",
+                  "// address did.",
+                  "pm.environment.set(\"unknownRegisteredEmail\", \"qa-nobody-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"the identical 202, byte for byte\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(JSON.stringify(pm.response.json().data)).to.eql(pm.environment.get(\"acceptedBody\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownRegisteredEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/resend-verification",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "resend-verification"]
+            },
+            "description": "The enumeration property, asserted rather than described: an address with a pending account and one that has never existed answer the same status and the same body, and the only difference is a message in a mailbox the caller has to already own (ADR-0020 §Enumeration, ADR-0071 §3)."
+          }
+        },
+        {
+          "name": "Confirm with a token nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED, one answer for every failure\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/verify-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "verify-email"]
+            },
+            "description": "Unknown, already consumed, expired, of another purpose or of the other population — one indistinguishable `401`, because the caller of this endpoint is an anonymous holder of a URL fragment and every distinction between those cases is something for them to learn (ADR-0071 §3). The generic code rather than one of its own: the only client is the app's confirmation screen, which has one thing to say either way."
+          }
+        },
+        {
+          "name": "Find the account this run registered",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, one pending account\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const items = pm.response.json().data;",
+                  "",
+                  "  pm.expect(items).to.have.lengthOf(1);",
+                  "  pm.expect(items[0].status, \"registration proves nothing about the mailbox\").to.eql(\"pending_verification\");",
+                  "",
+                  "  pm.environment.set(\"lastRegisteredId\", items[0].id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users?filter[email][eq]={{newRegisteredEmail}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "filter[email][eq]",
+                  "value": "{{newRegisteredEmail}}"
+                }
+              ]
+            },
+            "description": "Staff reading what registration produced — and the only way this collection can learn the new account's id, since the `202` deliberately names nothing. It doubles as the assertion that self-registration creates `pending_verification` rather than `active` (ADR-0071 §3)."
           }
         },
         {
@@ -4571,7 +4831,7 @@
           }
         },
         {
-          "name": "Invite the account this run registered",
+          "name": "Invite an address that already has an account",
           "event": [
             {
               "listen": "test",
@@ -4610,7 +4870,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"role\": \"member\"\n}",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"role\": \"member\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4629,7 +4889,7 @@
                 "invitations"
               ]
             },
-            "description": "The same request for an address that **does** have an account. The status and the body's shape are identical to the one above — that identity is the enumeration property, asserted here rather than described."
+            "description": "The same request for an address that **does** have an account. The status and the body's shape are identical to the one above — that identity is the enumeration property, asserted here rather than described.\n\nThe address is the one `Admin › Users` created rather than the one `Public` registered: since ADR-0071 §3 a self-registered account is `pending_verification` until its link is followed, and a link cannot be followed from Postman. A staff-created account's address is **asserted** by the operator who typed it, so it is `active` and can sign in to accept below."
           }
         },
         {
@@ -4887,7 +5147,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{newRegisteredEmail}}\",\n  \"password\": \"{{qaPassword}}\"\n}",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPasswordRotated}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4899,7 +5159,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "user", "auth", "login"]
             },
-            "description": "The account the `Public` folder registered a moment ago, and the address the folder above invited. It is used rather than a `--dev` fixture because the only two customer fixtures are the seeded owner and `pending@machxi.local`, which is `pending_verification` and therefore cannot sign in at all — a state the seeds put a row in on purpose (ADR-0017)."
+            "description": "The account `Admin › Users` created and `User › Profile` changed the password of, which is the address the folder above invited. It is used rather than a `--dev` fixture because the two customer fixtures are the seeded owner and `pending@machxi.local`, which is `pending_verification` and therefore cannot sign in at all — a state the seeds put a row in on purpose (ADR-0017, ADR-0071 §3)."
           }
         },
         {
@@ -6917,14 +7177,101 @@
           }
         },
         {
-          "name": "Delete the user account this run created",
+          "name": "Sign in again as the created account",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"204\", function () {",
+                  "pm.test(\"200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.environment.set(\"profileAccessToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "login"]
+            },
+            "description": "The account that closes itself has to be signed in as itself (D12.4), and the logout-all above ended every session it had."
+          }
+        },
+        {
+          "name": "Close my own account with the wrong password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "The current password is required wherever an account acts on its own credentials or existence (ADR-0027 rule 1), and a wrong one is `403` rather than `401`: the session is fine and stays fine."
+          }
+        },
+        {
+          "name": "Close my own account, so the run leaves nothing behind",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 with no body\", function () {",
                   "  pm.response.to.have.status(204);",
                   "});"
                 ]
@@ -6936,15 +7283,62 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{staffAccessToken}}"
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "Self-service closure — the same soft delete `DELETE /admin/users/:id` performs, so everything below about a deleted account holds whichever path closed it (ADR-0028)."
+          }
+        },
+        {
+          "name": "The closed account is signed out everywhere",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
+                  "});",
+                  "",
+                  "pm.environment.set(\"profileAccessToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}",
+              "raw": "{{baseUrl}}/api/v1/user/profile",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "admin", "users", "{{lastUserId}}"]
+              "path": ["api", "v1", "user", "profile"]
             },
-            "description": "A **soft** delete: `deleted_at` is set, `status` becomes `disabled`, and every session of the account is revoked with reason `account_deleted` — all in one transaction, because `sessions` has no foreign key to `users` and a gap between the writes is a window in which a deleted account still holds a valid access token (ADR-0028)."
+            "description": "Closing an account revokes its sessions in the same transaction, so the token it was holding a moment ago is already dead."
           }
         },
         {
@@ -7067,18 +7461,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"201, and it is a different account\", function () {",
-                  "  pm.response.to.have.status(201);",
-                  "",
-                  "  const principal = pm.response.json().data.principal;",
-                  "",
-                  "  pm.expect(principal.id).to.not.eql(pm.environment.get(\"lastRegisteredId\"));",
-                  "  pm.environment.set(\"lastRegisteredId\", principal.id);",
-                  "});",
-                  "",
-                  "// Handed to the self-service deletion below: the account that closes",
-                  "// itself has to be signed in as itself (D12.4).",
-                  "pm.environment.set(\"registeredAccessToken\", pm.response.json().data.accessToken);"
+                  "pm.test(\"202 — the address was released by the delete above\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "});"
                 ]
               }
             }
@@ -7109,59 +7495,63 @@
           }
         },
         {
-          "name": "Close my own account with the wrong password",
+          "name": "The second registration is a different, unverified account",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
-                  "  pm.response.to.have.status(403);",
-                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "pm.test(\"200, one pending account and not the first one\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const items = pm.response.json().data;",
+                  "",
+                  "  pm.expect(items).to.have.lengthOf(1);",
+                  "  pm.expect(items[0].id).to.not.eql(pm.environment.get(\"lastRegisteredId\"));",
+                  "  pm.expect(items[0].status).to.eql(\"pending_verification\");",
+                  "",
+                  "  pm.environment.set(\"lastRegisteredId\", items[0].id);",
                   "});"
                 ]
               }
             }
           ],
           "request": {
-            "method": "DELETE",
+            "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{registeredAccessToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "Bearer {{staffAccessToken}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "raw": "{{baseUrl}}/api/v1/admin/users?filter[email][eq]={{newRegisteredEmail}}&filter[deletedAt][null]=true",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "user", "profile"]
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "filter[email][eq]",
+                  "value": "{{newRegisteredEmail}}"
+                },
+                {
+                  "key": "filter[deletedAt][null]",
+                  "value": "true"
+                }
+              ]
             },
-            "description": "A session is not an identity proof for an irreversible act, so this endpoint re-authenticates the actor exactly as `change-password` does — with more force, because it is the one operation more destructive than a password change (ADR-0055 §4, on ADR-0027's principle).\n\n`403` and not `401`: the caller *is* authenticated and their session is fine and stays fine, so a `401` would send every client interceptor that reads it as 'the session died' to the login screen over a typo.\n\nThe refusal comes before any write. The account is still here for the request below to close."
+            "description": "Live rows only, so the soft-deleted first account is not in the answer — which is the whole of what the partial index buys. A new id, and a new account that has proven nothing about the mailbox."
           }
         },
         {
-          "name": "Close my own account, so the run leaves nothing behind",
+          "name": "Delete it too, so the run leaves nothing behind",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"204 with no body\", function () {",
+                  "pm.test(\"204\", function () {",
                   "  pm.response.to.have.status(204);",
                   "});"
                 ]
@@ -7173,62 +7563,15 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{registeredAccessToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"{{qaPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/user/profile",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "user", "profile"]
-            },
-            "description": "`DELETE /api/v1/user/profile` (D12.4) — self-service deletion on ADR-0028's user semantics: the row survives soft-deleted because future order history references it, `status` is written to `disabled` beside the timestamp so it stays truthful on its own, and the partial unique index releases the address.\n\nA `DELETE` with a body, which is unusual and deliberate: the current password is the re-authentication above. There is no `:id` anywhere in it, so the only account this can ever close is the caller's own (ADR-0019 §3).\n\nUntil D12.4 this request was a staff `DELETE /admin/users/:id` on the same account. The account is closed either way and the run still leaves nothing behind; what changed is that the last thing the collection does is now the customer's own door rather than the operator's, and the admin door is still walked twice above."
-          }
-        },
-        {
-          "name": "The closed account is signed out everywhere",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"401 AUTH_SESSION_REVOKED\", function () {",
-                  "  pm.response.to.have.status(401);",
-                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_SESSION_REVOKED\");",
-                  "});",
-                  "",
-                  "pm.environment.set(\"registeredAccessToken\", \"\");"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{registeredAccessToken}}"
+                "value": "Bearer {{staffAccessToken}}"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastRegisteredId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "user", "profile"]
+              "path": ["api", "v1", "admin", "users", "{{lastRegisteredId}}"]
             },
-            "description": "Where `change-password` spares the calling session, deletion spares none: there is no account left to be signed in to (ADR-0055 §4). The access token still verifies — it is signed and unexpired — but its session row is revoked, and `authenticate` checks the session on every request.\n\nThe same call is also how a repeat deletion is refused: the `404` the service would answer is unreachable from a real client, because the session that could ask is already gone."
+            "description": "Administratively, because nobody can sign in as an account whose address has never been proven (ADR-0071 §3) — the second registration is the one row this run cannot close from the inside."
           }
         },
         {

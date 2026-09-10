@@ -1,6 +1,7 @@
 export {
   accountDisabled,
   currentPasswordInvalid,
+  emailUnverified,
   impersonationHandoffInvalid,
   impersonationRefused,
   invalidCredentials,
@@ -10,6 +11,7 @@ export {
   sessionRevoked,
   tokenExpired,
   tokenInvalid,
+  verificationLinkInvalid,
 } from "./auth.errors.js";
 export {
   createImpersonationController,
@@ -78,10 +80,18 @@ export {
 export {
   createAuthRouter,
   createRegisterRouter,
+  createVerificationRouter,
   type AuthRouterDeps,
   type RegisterRouterDeps,
+  type VerificationRouterDeps,
 } from "./auth.routes.js";
-export { loginSchema, refreshSchema, registerSchema } from "./auth.schemas.js";
+export {
+  loginSchema,
+  refreshSchema,
+  registerSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
+} from "./auth.schemas.js";
 export {
   MAX_USER_AGENT_LENGTH,
   REVOKE_REASONS,
@@ -104,6 +114,7 @@ export {
 } from "./auth.controller.js";
 export type {
   CreatePrincipalInput,
+  PendingPrincipal,
   PrincipalAdapter,
   PrincipalRecord,
 } from "./auth.types.js";

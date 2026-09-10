@@ -62,7 +62,11 @@ import {
 import { createAudit, createAuditRepository } from "./audit/index.js";
 import { createCookieNames } from "./http/index.js";
 import { createLimitedHasher } from "./auth/index.js";
-import { createMailSender, createMailTemplates } from "./mail/index.js";
+import {
+  createMailSender,
+  createMailTemplates,
+  type MailSender,
+} from "./mail/index.js";
 import { createMetrics } from "./metrics/index.js";
 import {
   createAccountTokens,
@@ -108,6 +112,18 @@ export interface ContainerDeps {
    * handler and there is nothing to learn from a third party's SDK.
    */
   readonly reporter?: ErrorReporter | undefined;
+  /**
+   * The ADR-0066 §1 mail port, normally chosen from `MAIL_TRANSPORT`.
+   *
+   * Overridable for the reason {@link ContainerDeps.reporter} is: the
+   * integration suite has to read the **link** a flow sent, and neither
+   * adapter is a place to read it from — the log transport deliberately writes
+   * the recipient and the subject and never the body, because that body is a
+   * single-use bearer credential (ADR-0057 §2), and the SMTP one needs a
+   * server. A capturing sender is the seam's own shape, so what the suite
+   * exercises is the real wiring with the real templates.
+   */
+  readonly mail?: MailSender | undefined;
 }
 
 export const buildContainer = ({
@@ -116,6 +132,7 @@ export const buildContainer = ({
   logger,
   rateLimitStore = () => undefined,
   reporter,
+  mail: mailOverride,
 }: ContainerDeps) => {
   const health = createHealthService({
     // The database is the only registered indicator in the first deliverable
@@ -189,9 +206,27 @@ export const buildContainer = ({
    * an *account* token is the opposite kind of credential: opaque, stored as a
    * hash, single-use, and redeemed rather than presented.
    *
-   * It has no caller until `D18.3`; the flows that mint and consume are the
-   * steps that follow.
+   * Its first callers are ADR-0071 §3's registration and verification; the
+   * flows that follow mint and consume through the same two functions.
    */
+  /**
+   * ADR-0066 §1's port and ADR-0071 §2's messages, built here for the reason
+   * everything else stateful is — a transporter holds a connection pool — and
+   * built **before** the auth services because both are dependencies of them
+   * (ADR-0071 §3 mounts the first flow that sends).
+   *
+   * `createMailSender` returns the log transport in a default clone, so a
+   * fresh checkout runs with no mail server and every flow below still
+   * completes; the templates take the two SPA origins once, because a template
+   * that took an origin per call would let a caller choose where a single-use
+   * credential is delivered.
+   */
+  const mail = mailOverride ?? createMailSender(config);
+  const mailTemplates = createMailTemplates({
+    customerUrl: config.apps.customerUrl,
+    adminUrl: config.apps.adminUrl,
+  });
+
   const accountTokens = createAccountTokens({
     repository: createAccountTokensRepository(db.db),
     ttlSecByPurpose: {
@@ -231,6 +266,11 @@ export const buildContainer = ({
     refreshTtlSec: config.auth.refreshTtlSec,
     rotationGraceSec: config.auth.refreshRotationGraceSec,
     impersonationSessionTtlSec: config.auth.impersonationSessionTtlSec,
+    // ADR-0071 §1's mechanism and ADR-0066 §1's port, on both populations:
+    // verification is the user segment's (§3) and the reset is both (§4).
+    accountTokens,
+    mail,
+    mailTemplates,
     transaction,
   } as const;
 
@@ -367,24 +407,13 @@ export const buildContainer = ({
     ),
   } as const;
 
-  // The three ADR-0066 seams, all built here for the reason everything else
-  // is: they hold state (a transporter's connection pool, a metrics registry,
-  // a memoised adapter promise), and stateful components belong to the
-  // composition root.
+  // The remaining two ADR-0066 seams (the mail port is built above, where the
+  // auth services can take it), both here for the reason everything else
+  // stateful is: a metrics registry and a memoised adapter promise belong to
+  // the composition root.
   //
-  // Two of the three are inert in a default clone — `createMailSender` returns
-  // the log transport and `createErrorReporter` returns `undefined` — while
-  // the registry is always built, because the registry *is* the endpoint.
-  const mail = createMailSender(config);
-  /**
-   * The messages the flows send (ADR-0071 §2), built from the two SPA origins
-   * once: a template that took an origin per call would let a caller choose
-   * where a single-use credential is delivered.
-   */
-  const mailTemplates = createMailTemplates({
-    customerUrl: config.apps.customerUrl,
-    adminUrl: config.apps.adminUrl,
-  });
+  // `createErrorReporter` returns `undefined` in a default clone, while the
+  // registry is always built, because the registry *is* the endpoint.
   const metrics = createMetrics();
   const errorReporter =
     reporter ?? createErrorReporter({ dsn: config.reporting.dsn, logger });

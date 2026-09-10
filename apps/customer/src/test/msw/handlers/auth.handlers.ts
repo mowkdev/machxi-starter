@@ -111,15 +111,6 @@ export const IMPERSONATED_PRINCIPAL: UserPrincipalResource = {
 /** The handoff the admin panel would have put in the URL fragment. */
 export const HANDOFF_TOKEN = "handoff-token-from-the-fragment";
 
-/**
- * The id a freshly registered account gets (`D15.6`).
- *
- * Its own value rather than {@link PRINCIPAL}'s, because the two are different
- * accounts: a test that registered and then asserted on the fixture's id would
- * pass whether or not the response's principal had been written to the store.
- */
-export const REGISTERED_USER_ID = "0198c1f0-0000-7000-8000-0000000000c2";
-
 export const CREDENTIALS = {
   email: "customer@machxi.local",
   password: "DevPassword!123",
@@ -270,11 +261,15 @@ export const createAuthHandlers = (state: AuthMockState) =>
      * that sent this to its own segment would find no handler and fail loudly
      * rather than being quietly answered.
      *
-     * The response is login's — `201` with the same `AuthResource`, so the new
-     * account is signed in without a second round trip — with the *submitted*
-     * identity rather than the fixture's, because what the switcher and the
-     * account control then render has to belong to the person who just
-     * registered.
+     * The response is `202 { accepted: true }` and **no session** since
+     * ADR-0071 §3: the account is created `pending_verification` and the
+     * confirmation link is what signs a device in. A mock that still answered
+     * `201` with an `AuthResource` would be a mock that can only ever confirm
+     * behaviour the API no longer has — every test built on it would pass
+     * against a response nobody sends.
+     *
+     * A taken address still answers the generic `409 CONFLICT`, because that
+     * is unchanged (ADR-0020 §Enumeration).
      */
     http.post(
       `${PUBLIC_API}/auth/register`,
@@ -292,24 +287,9 @@ export const createAuthHandlers = (state: AuthMockState) =>
 
         state.takenEmails.push(body.email);
 
-        return ok(
-          {
-            ...authResource("access-registered"),
-            principal: {
-              ...PRINCIPAL,
-              id: REGISTERED_USER_ID,
-              email: body.email,
-              // `null` rather than the fixture's names: the columns are nullable
-              // (ADR-0017) and an omitted name is stored as nothing, which is
-              // what an account created without one actually looks like.
-              firstName: body.firstName ?? null,
-              lastName: body.lastName ?? null,
-            },
-            // `201`, which is what the endpoint answers: a mock that said `200`
-            // would let a client grow a check the API would fail.
-          },
-          201,
-        );
+        // `202` with a constant body, which is what the endpoint answers: no
+        // token, no principal, nothing a client could mistake for a session.
+        return ok({ accepted: true }, 202);
       },
     ),
 
