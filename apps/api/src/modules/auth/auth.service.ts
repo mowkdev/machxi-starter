@@ -1,7 +1,6 @@
 import type {
   ForgotPasswordBody,
   ImpersonatorResource,
-  Locale,
   LoginBody,
   Population,
   PrincipalResource,
@@ -39,11 +38,8 @@ import {
 } from "./auth.mapper.js";
 import type { OrganizationsService } from "../organizations/organizations.service.js";
 import type { AccountTokens } from "../../core/tokens/index.js";
-import type {
-  MailSender,
-  MailTemplate,
-  MailTemplates,
-} from "../../core/mail/index.js";
+import { createMailDelivery, localeFor } from "../../core/mail/index.js";
+import type { MailSender, MailTemplates } from "../../core/mail/index.js";
 import type { SessionsRepository } from "./auth.repository.js";
 import type { TokenService } from "./auth.tokens.js";
 import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
@@ -61,39 +57,6 @@ import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
  * the rotation grace window and reuse detection can be unit-tested at whatever
  * instant the test chooses, without sleeping and without stubbing globals.
  */
-
-/**
- * The language a message is written in, where the request may not have said
- * (ADR-0071 §2, ADR-0046).
- *
- * The anonymous flows carry the SPA's current locale in the body and may omit
- * it; every template ships English today and falls back to it for a locale it
- * has no copy for, so this only has to turn "unstated" into the one language
- * that always exists.
- */
-const localeFor = (locale: Locale | undefined): Locale => locale ?? "en";
-
-/**
- * What a failed delivery may be logged as (ADR-0005, ADR-0020 §Enumeration).
- *
- * The class and the transport's own `code` — `EENVELOPE`, `ECONNECTION`,
- * `EAUTH` — and never the message: an SMTP rejection quotes the recipient it
- * refused, and the flows that call this are the ones that must not say which
- * addresses exist. `core/audit`'s `describeFailure` makes the same trade for
- * the same reason on a driver error that carries the row it failed to write.
- */
-const describeTransportFailure = (
-  error: unknown,
-): { readonly error: string; readonly code?: string } => {
-  if (!(error instanceof Error)) return { error: typeof error };
-
-  const { code } = error as Error & { code?: unknown };
-
-  return {
-    error: error.name,
-    ...(typeof code === "string" ? { code } : {}),
-  };
-};
 
 /** Values written into `sessions.revoked_reason`, for the audit trail. */
 export const REVOKE_REASONS = {
@@ -546,82 +509,16 @@ export const createAuthService = ({
     hashLimiter.run(() => hasher.verify(storedHash, password));
 
   /**
-   * Sends a message and **never fails the request** (ADR-0066 §1, ADR-0071
-   * §3).
+   * The two sends, from `core/mail` (ADR-0066 §1).
    *
-   * Every caller here has already committed: the account exists, or the token
-   * row does. Rethrowing would answer `500` for work that succeeded and, on
-   * registration, leave the caller permanently stuck — the retry meets the
-   * `409` their own first attempt created. The remedy is `resend-verification`,
-   * which is a button rather than a support ticket.
-   *
-   * It also has to be silent for the endpoints that answer `202` whatever they
-   * find (§3, §4): an error that escaped only when an account existed would be
-   * the account-existence oracle those endpoints are shaped to avoid.
-   *
-   * The failure is logged at `error` with the purpose and no address, so a
-   * deployment whose transport is broken is visible in the logs rather than in
-   * a user's silence.
-   *
-   * **The driver's message is deliberately not on the line** (`D18.3`'s
-   * `security-reviewer`). A relay rejects a recipient by quoting the envelope
-   * — `550 5.1.1 <someone@example.com> User unknown` — so logging
-   * `error.message` from an endpoint whose whole shape is "reveal nothing"
-   * would write the probed addresses into the logs anyway. The error's class
-   * and its `code` say which transport failed and how, which is what an
-   * operator acts on; the request id reaches the rest.
+   * They were this service's own until `D18.7` made the invitation the third
+   * flow that sends; what they decide — a failed delivery never fails the
+   * request, the driver's message never reaches a log line, and the endpoints
+   * that answer the same thing whatever they find do not await a relay — is a
+   * property of sending mail here rather than of these flows, so it lives
+   * beside the port.
    */
-  const deliver = async (
-    ctx: RequestContext,
-    to: string,
-    purpose: string,
-    template: MailTemplate,
-  ): Promise<void> => {
-    try {
-      await mail.send(ctx, { to, ...template });
-    } catch (error: unknown) {
-      ctx.logger.error(
-        { population, purpose, ...describeTransportFailure(error) },
-        "mail delivery failed",
-      );
-    }
-  };
-
-  /**
-   * The same send, deliberately **not awaited** (ADR-0071 §3–§4, amended at
-   * `D18.5` on that step's `security-reviewer`).
-   *
-   * The two endpoints that answer `202` whatever they find must not differ
-   * between their branches in anything a caller can observe, and *time* is
-   * something a caller can observe: awaiting an SMTP round trip on the branch
-   * where an account exists, against a single indexed `SELECT` on the branch
-   * where none does, is an account-existence oracle measured in the tens or
-   * hundreds of milliseconds — larger than the difference ADR-0018 §Login goes
-   * to the trouble of erasing with `dummyHash()`, and reachable three times an
-   * hour per address, which is all a timing attack needs against a difference
-   * that size.
-   *
-   * `void` rather than a queue: {@link deliver} already swallows every failure
-   * and logs it, so this promise cannot reject and there is nothing to await
-   * for correctness. What it costs is a message lost if the process dies in
-   * the window between the response and the relay accepting it — invisible to
-   * the caller either way, because a `202` never promised delivery, and
-   * recoverable by asking again.
-   *
-   * The **residual** is the mint, which stays on the response path because the
-   * link cannot be built without it: one short transaction against a primary
-   * key, on the order of a millisecond against a sub-millisecond miss. It is
-   * written down in ADR-0071 §4 rather than claimed away, the posture
-   * ADR-0018 §Login takes with its own.
-   */
-  const deliverDetached = (
-    ctx: RequestContext,
-    to: string,
-    purpose: string,
-    template: MailTemplate,
-  ): void => {
-    void deliver(ctx, to, purpose, template);
-  };
+  const { deliver, deliverDetached } = createMailDelivery({ mail });
 
   /**
    * Mints a `verify_email` token for an account and mails the link
@@ -1379,7 +1276,7 @@ export const createAuthService = ({
       await deliver(
         ctx,
         created.email,
-        "verify_email",
+        { population, purpose: "verify_email" },
         mailTemplates.verifyEmail({
           token: created.token,
           locale: localeFor(body.locale),
@@ -1523,7 +1420,7 @@ export const createAuthService = ({
       deliverDetached(
         ctx,
         account.email,
-        "reset_password",
+        { population, purpose: "reset_password" },
         mailTemplates.passwordReset({
           token,
           locale: localeFor(locale),
@@ -1679,7 +1576,7 @@ export const createAuthService = ({
       deliverDetached(
         ctx,
         pending.email,
-        "verify_email",
+        { population, purpose: "verify_email" },
         mailTemplates.verifyEmail({ token, locale: localeFor(locale) }),
       );
 

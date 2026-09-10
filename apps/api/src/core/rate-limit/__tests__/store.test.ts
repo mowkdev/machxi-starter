@@ -97,6 +97,12 @@ describe("createRateLimitStore", () => {
         // The reset's own argon2 counter (`D18.5`): the login limiter's
         // numbers, and it must not share the login limiter's keys.
         "password-reset-submit",
+        // The two `D18.7` added beside it: the invitation lookup's budget,
+        // which is the same numbers on the same source-only key, and the
+        // invited mailbox's, which must not share the recovery budget for the
+        // same address (ADR-0067 §5, ADR-0071 §5).
+        "invitation-lookup",
+        "invitation-mailbox",
       ].map((name) => (handle.store(name) as { prefix: string }).prefix);
 
       expect(new Set(prefixes).size).toBe(prefixes.length);
@@ -110,6 +116,8 @@ describe("createRateLimitStore", () => {
         "rl:mailbox:",
         "rl:mail-source:",
         "rl:password-reset-submit:",
+        "rl:invitation-lookup:",
+        "rl:invitation-mailbox:",
       ]);
     });
   });

@@ -33,5 +33,6 @@
   "ORGANIZATION_LAST_OWNER": "Organizācijai ir vajadzīgs vismaz viens īpašnieks. Vispirms ieceļiet citu īpašnieku.",
   "ORGANIZATION_PERSONAL_UNDELETABLE": "Personīgā organizācija tiek dzēsta kopā ar jūsu kontu.",
   "ORGANIZATION_PERSONAL_CLOSED": "Personīgajā organizācijā ir tikai viens dalībnieks — tās īpašnieks. Izveidojiet komandu, lai strādātu kopā ar citiem.",
-  "ORGANIZATION_INVITATION_PENDING": "Šai adresei jau ir nosūtīts uzaicinājums. Vispirms to atsauciet."
+  "ORGANIZATION_INVITATION_PENDING": "Šai adresei jau ir nosūtīts uzaicinājums. Vispirms to atsauciet.",
+  "ORGANIZATION_INVITATION_ADDRESS_MISMATCH": "Šis uzaicinājums ir nosūtīts uz citu e-pasta adresi. Piesakieties ar to adresi, lai to pieņemtu."
 }

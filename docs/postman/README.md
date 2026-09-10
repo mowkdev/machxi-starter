@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 178 requests in 18 folders: `Health`, `Metrics`,
+- `machxi-api.postman_collection.json` — 181 requests in 18 folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
   `User › Settings`, `Public`, `User › Organizations`, `User › Invitations`,
@@ -97,7 +97,23 @@ two refusals — `404` for a non-member, `403` for a member whose role is too lo
 address without, whose **responses are compared field for field**. That
 comparison is the enumeration property of ADR-0067 §2 asserted rather than
 described. `User › Invitations` then signs in as the invited account, accepts,
-leaves, and deletes the organization the run made. `Admin › Organizations` is
+leaves, and deletes the organization the run made.
+
+**The invitation's link is the mailbox again** (ADR-0071 §5). Creating one now
+sends it, with a single-use token in the link's fragment, and newman can no more
+read that mailbox than it can read a verification link — so the two folders prove
+the refusals and the browser tier walks the link from Mailpit. `Public` asks the
+lookup for a token nobody minted and gets the one `404` that unknown, accepted,
+declined, revoked, expired and deleted all share, and an empty token gets a
+`400` from the schema above the service; `User › Invitations` asks
+`accept-by-token` for the same non-existent token and gets the same `404`. What
+needs a live link — the lookup's three fields, and the `403
+ORGANIZATION_INVITATION_ADDRESS_MISMATCH` a signed-in stranger gets — is proved
+in `apps/api/test/organizations.int.test.ts` and walked in the browser tier.
+
+Acceptance by **id**, in the requests above, is still the other path and still
+supported: the invitee's own list is where an account holder who never opened the
+mail finds the offer. `Admin › Organizations` is
 the same tenant base as staff, where the guard is a role again and every
 organization is visible, soft-deleted ones included.
 

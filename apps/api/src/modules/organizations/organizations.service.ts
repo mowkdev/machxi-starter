@@ -1,9 +1,12 @@
 import type {
+  AcceptInvitationByTokenBody,
   CreateInvitationBody,
   CreateOrganizationAdminBody,
   CreateOrganizationBody,
+  InvitationLookupResource,
   InvitationResource,
   ListQuery,
+  LookupInvitationBody,
   MembershipResource,
   Page,
   OrganizationResource,
@@ -19,6 +22,8 @@ import {
 } from "@repo/db";
 
 import { requirePopulation } from "../../core/auth/index.js";
+import { createMailDelivery, localeFor } from "../../core/mail/index.js";
+import type { MailSender, MailTemplates } from "../../core/mail/index.js";
 import { toPage } from "../../core/http/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { internal } from "../../core/errors/index.js";
@@ -26,6 +31,7 @@ import type { InvitationsRepository } from "./invitations.repository.js";
 import {
   alreadyAMember,
   callerAccountGone,
+  invitationAddressMismatch,
   invitationAlreadyPending,
   invitationNotFound,
   invitationNotPending,
@@ -39,6 +45,7 @@ import {
   personalOrganizationUndeletable,
 } from "./organizations.errors.js";
 import {
+  toInvitationLookupResource,
   toInvitationResource,
   toMembershipResource,
   toOrganizationResource,
@@ -88,6 +95,17 @@ export interface OrganizationsServiceDeps {
    * schema whose lookup is scoped by nothing else.
    */
   readonly newInvitationToken?: () => string;
+  /**
+   * ADR-0066 §1's port and ADR-0071 §2's messages, reached the way the auth
+   * service reaches them: through `core/mail`, never a client this module
+   * imports.
+   *
+   * They arrive at `D18.7`, when §2's marked call in {@link
+   * createOrganizationsService.invite} stopped being a comment. Nothing else
+   * in this service sends.
+   */
+  readonly mail: MailSender;
+  readonly mailTemplates: MailTemplates;
 }
 
 export const createOrganizationsService = ({
@@ -98,7 +116,22 @@ export const createOrganizationsService = ({
   transaction,
   now = () => new Date(),
   newInvitationToken = () => randomToken(),
+  mail,
+  mailTemplates,
 }: OrganizationsServiceDeps) => {
+  /**
+   * The invitation's send, through `core/mail` (ADR-0066 §1, ADR-0071 §5).
+   *
+   * Detached, like the two senders in the auth service and for a reason of its
+   * own rather than theirs: `invite` is not an endpoint whose branches must
+   * look alike — it answers `201` with the invitation and never reports
+   * delivery — so awaiting a relay would only make the inviter wait for a
+   * result they are not given, and a transport that is down would turn a
+   * created invitation into a request that appears to hang. A failure is
+   * logged and swallowed either way (`deliver`'s own docblock says why), so
+   * nothing observable changes.
+   */
+  const { deliverDetached } = createMailDelivery({ mail });
   /** A live organization, or the refusal every read of a missing one gives. */
   const read = async (id: string, tx?: DbExecutor) => {
     const record = await repository.findById(id, tx);
@@ -598,11 +631,11 @@ export const createOrganizationsService = ({
      * inviter only what the members list they can already read would.
      *
      * **The token is minted here and returned to nobody.** Only its SHA-256
-     * reaches the database (ADR-0067 §2, amended), no response body carries
-     * either, and no query in D15 reads the column: acceptance matches by
-     * address, because this deliverable sends no mail. The mail deliverable
-     * adds its send at the marked call below and can then require the token
-     * without a migration, every row created since carrying one.
+     * reaches the database (ADR-0067 §2, amended), and no response body
+     * carries either. Since `D18.7` it leaves this function in exactly one
+     * direction: into the link of the message below (ADR-0071 §5). That is
+     * what ADR-0067 §2 shaped the column for, and it needed no migration —
+     * every row created since D15 carries a hash.
      */
     invite: async (
       ctx: RequestContext,
@@ -612,6 +645,7 @@ export const createOrganizationsService = ({
       const principal = requirePopulation(ctx, "user");
       const at = now();
 
+      const token = newInvitationToken();
       const created = await transaction(async (tx) => {
         const organization = await read(organizationId, tx);
 
@@ -649,7 +683,7 @@ export const createOrganizationsService = ({
             email: body.email,
             role: body.role,
             invitedBy: principal.id,
-            tokenHash: sha256Base64url(newInvitationToken()),
+            tokenHash: sha256Base64url(token),
             expiresAt: new Date(at.getTime() + invitationTtlSec * 1000),
           },
           tx,
@@ -658,10 +692,30 @@ export const createOrganizationsService = ({
         return { invitation, organizationName: organization.name };
       });
 
-      // The marked call (ADR-0067 §2). **D15 sends nothing**: the mail
-      // deliverable puts its send here, with the token this function minted —
-      // which is why the token is minted rather than the hash, and why that
-      // deliverable needs no migration and no backfill.
+      /*
+       * The marked call (ADR-0067 §2), filled at `D18.7` (ADR-0071 §5).
+       *
+       * **After the commit**, for the reason registration's send is: a message
+       * sent from inside the transaction is a message that arrives for an
+       * invitation that was rolled back, and its link would name a row that
+       * does not exist — the one failure the recipient cannot recover from,
+       * since only the inviter can send another.
+       *
+       * The locale comes from the **body**, not from an account (ADR-0071 §2):
+       * an invitation goes to a stranger, so there may be no stored locale to
+       * read and, where there is one, it belongs to the inviter rather than to
+       * the reader.
+       */
+      deliverDetached(
+        ctx,
+        created.invitation.email,
+        { purpose: "organization_invitation" },
+        mailTemplates.organizationInvitation({
+          token,
+          locale: localeFor(body.locale),
+          organizationName: created.organizationName,
+        }),
+      );
 
       ctx.logger.info(
         { organizationId, invitationId: created.invitation.id },
@@ -821,6 +875,147 @@ export const createOrganizationsService = ({
       ctx.logger.info(
         { organizationId: joined.organization.id, invitationId: id },
         "organization invitation accepted",
+      );
+
+      return toOrganizationResource(joined.organization, joined.role);
+    },
+
+    /**
+     * `POST /api/v1/public/invitations/lookup` — what the link's holder is
+     * shown before they act (ADR-0071 §5, on ADR-0067 §5's two conditions).
+     *
+     * **Unauthenticated, and scoped by the token alone.** That is the read
+     * ADR-0067 §5's amendment sanctioned in advance, on terms this function
+     * keeps: the credential is 256 bits, it lands on one row through a unique
+     * index, and holding it authorises reading *this* invitation and nothing
+     * else — never deciding whose membership is created, which is the accept
+     * path's business below.
+     *
+     * **One `404` for every failure.** Unknown, consumed, declined, revoked,
+     * expired and "its organization was deleted" are the same `undefined` from
+     * the repository and the same answer here. Splitting them would tell an
+     * anonymous caller which tokens once existed, and the last of them would
+     * tell somebody about an organization they were never in.
+     *
+     * The route's limiter is the other condition (ADR-0071 §5), and it is
+     * mounted rather than checked here: guessing is the only attack on a
+     * lookup with no other scope.
+     */
+    lookupInvitation: async (
+      _ctx: RequestContext,
+      { token }: LookupInvitationBody,
+    ): Promise<InvitationLookupResource> => {
+      const invitation = await invitations.findPendingByTokenHash(
+        sha256Base64url(token),
+        now(),
+      );
+
+      if (invitation === undefined) throw invitationNotFound();
+
+      // Nothing is logged. A line naming the organization or the address would
+      // put the answer to an anonymous, unauthenticated probe into the logs,
+      // and the request id already says one arrived (ADR-0005, ADR-0020).
+      return toInvitationLookupResource(invitation);
+    },
+
+    /**
+     * `POST /api/v1/user/invitations/accept-by-token` (ADR-0071 §5).
+     *
+     * **The token proves the mailbox and the session proves the account, and
+     * the two must agree.** That agreement is what closes the exposure
+     * ADR-0067 §Consequences accepted and `D15.1` escalated: acceptance by
+     * address match alone was reachable by whoever registered an address,
+     * because nothing verified one. Both halves are now real — §3 makes every
+     * `active` account's address proven, and this path requires the link as
+     * well.
+     *
+     * The **mismatch is refused before the consume**, so a link opened in the
+     * wrong browser is not spent: the person forwards nothing, signs in as the
+     * invited address and follows the same link again. A refused consumption
+     * spends nothing is the rule every flow in ADR-0071 §1 keeps, and this is
+     * where it would be easiest to break.
+     *
+     * The consume itself is `acceptInvitation`'s, by id inside the same
+     * transaction the token read ran in: the guarded `update` is what decides,
+     * so two concurrent accepts still have one winner, and the token read
+     * above is a *read* — it grants no authority the statement below does not
+     * re-check.
+     */
+    acceptInvitationByToken: async (
+      ctx: RequestContext,
+      { token }: AcceptInvitationByTokenBody,
+    ): Promise<OrganizationResource> => {
+      const at = now();
+      const account = await callerAccount(ctx);
+
+      const joined = await transaction(async (tx) => {
+        const invitation = await invitations.findPendingByTokenHash(
+          sha256Base64url(token),
+          at,
+          tx,
+        );
+
+        if (invitation === undefined) throw invitationNotFound();
+
+        /*
+         * Exact, and **not** folded here (`D18.7`'s `security-reviewer`).
+         *
+         * Both sides were normalised on the way in — `emailSchema` trims and
+         * lower-cases before either value was ever stored — and the column is
+         * `citext` besides, so equality is the honest statement of that
+         * invariant. A `toLowerCase()` on top would not add safety: JavaScript
+         * folds and Postgres `lower()` under the server's locale disagree on
+         * non-ASCII (the Turkish dotted and dotless I among them), and the
+         * direction that disagreement runs matters — two addresses the unique
+         * index holds apart, folded together here, would grant a membership to
+         * a near-miss address. Comparing raw fails **closed** instead: the
+         * worst a disagreement can produce is a spurious `403` on a link its
+         * owner can ask to have sent again.
+         */
+        if (invitation.email !== account.email) {
+          throw invitationAddressMismatch();
+        }
+
+        const consumed = await invitations.consume(
+          invitation.organizationId,
+          invitation.id,
+          "acceptedAt",
+          at,
+          tx,
+        );
+
+        if (consumed === undefined) throw invitationNotPending();
+
+        // The membership the invitation named, unless one is already there —
+        // `acceptInvitation`'s reasoning, and the same read-back below for the
+        // same reason: an existing `owner` must not be demoted to `member`.
+        await memberships.create(
+          invitation.organizationId,
+          account.id,
+          invitation.role,
+          tx,
+        );
+
+        const organization = await read(invitation.organizationId, tx);
+        const membership = await memberships.findFor(
+          invitation.organizationId,
+          account.id,
+          tx,
+        );
+
+        return {
+          organization,
+          role: membership?.role ?? invitation.role,
+          invitationId: invitation.id,
+        };
+      });
+
+      ctx.logger.info(
+        {
+          organizationId: joined.organization.id,
+          invitationId: joined.invitationId,
+        },
+        "organization invitation accepted from its link",
       );
 
       return toOrganizationResource(joined.organization, joined.role);

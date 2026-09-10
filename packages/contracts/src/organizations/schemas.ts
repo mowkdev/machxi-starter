@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { MAX_ACCOUNT_TOKEN_LENGTH, mailLocaleSchema } from "../auth/schemas.js";
 import {
   ORGANIZATION_KINDS,
   ORGANIZATION_OWNER_ROLE,
@@ -167,8 +168,64 @@ export const INVITABLE_ROLES = [
 export const createInvitationBody = z.strictObject({
   email: emailSchema,
   role: z.enum(INVITABLE_ROLES),
+  /**
+   * The reader's language, on the seam where the server cannot know it
+   * (ADR-0071 §2).
+   *
+   * An invitation goes to a **stranger** — the address may hold no account at
+   * all, and where it does, the inviter's stored locale is not the invitee's.
+   * So the SPA's current locale travels in the body, exactly as it does for
+   * registration and `forgot`, and an omitted one falls back to English.
+   */
+  locale: mailLocaleSchema,
 });
 export type CreateInvitationBody = z.infer<typeof createInvitationBody>;
+
+/**
+ * The opaque invitation token as an SPA sends it back (ADR-0067 §2, ADR-0071
+ * §5).
+ *
+ * Bounded and not format-checked, for the reason every other opaque credential
+ * in this package is: the encoding is the mint's business, and an unknown
+ * token is refused by the hash lookup either way. The bound is the account
+ * token's and for its reason — the value arrives from a **URL fragment** an
+ * SPA read off `location.hash`, so its length is whatever a pasted link
+ * happened to contain.
+ */
+export const invitationTokenSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ACCOUNT_TOKEN_LENGTH);
+
+/**
+ * `POST /api/v1/public/invitations/lookup` (ADR-0071 §5).
+ *
+ * Unauthenticated: the token *is* the credential, and there is no address
+ * beside it for the reason `verify-email` has none — the row the token names
+ * carries the address already, and a second field a caller controls would be
+ * a second thing to disagree with it.
+ */
+export const lookupInvitationBody = z.strictObject({
+  token: invitationTokenSchema,
+});
+export type LookupInvitationBody = z.infer<typeof lookupInvitationBody>;
+
+/**
+ * `POST /api/v1/user/invitations/accept-by-token` (ADR-0071 §5).
+ *
+ * The same one field, **authenticated**: the token proves the mailbox and the
+ * session proves the account, and the two must agree. Which account joins is
+ * never in the body — it is `ctx.principal`, so holding the token is authority
+ * to accept *this* invitation and never authority to decide whose membership
+ * is created (ADR-0067 §5's second condition).
+ */
+export const acceptInvitationByTokenBody = z.strictObject({
+  token: invitationTokenSchema,
+});
+export type AcceptInvitationByTokenBody = z.infer<
+  typeof acceptInvitationByTokenBody
+>;
 
 /* ── list queries (ADR-0014 as carried by ADR-0060) ───────────────────────── */
 

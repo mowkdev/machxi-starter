@@ -4569,6 +4569,88 @@
             },
             "description": "Generic `CONFLICT`, never `USER_EMAIL_TAKEN`: telling an anonymous caller which addresses are taken turns this endpoint into an account-existence oracle (ADR-0020 §Enumeration). The admin create endpoint may name the conflict because its caller is authenticated staff."
           }
+        },
+        {
+          "name": "Look up an invitation nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404, and the same 404 every dead link gets\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/invitations/lookup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "invitations", "lookup"]
+            },
+            "description": "Unknown, accepted, declined, revoked, expired and \"its organization was deleted\" all answer this one `404` (ADR-0071 §5, on ADR-0067 §5's conditions). A lookup scoped by nothing but a secret must not tell an anonymous caller which tokens once existed — and the last of those cases must not tell them about an organization they were never in.\n\nA live link cannot be walked from Postman — it arrives in a mailbox — so the browser tier reads it from Mailpit and this folder proves the refusals."
+          }
+        },
+        {
+          "name": "The lookup refuses an empty token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 from the schema, above the service\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/invitations/lookup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "invitations", "lookup"]
+            },
+            "description": "The token is bounded and non-empty, and nothing else: the encoding is the mint’s business and an unknown value is refused by the hash lookup either way (ADR-0067 §2)."
+          }
         }
       ]
     },
@@ -5553,6 +5635,51 @@
               ]
             },
             "description": "Single use is the row's terminal stamps, checked inside the `where` clause of the statement that writes one — so two concurrent accepts cannot both create a membership."
+          }
+        },
+        {
+          "name": "Accepting by a token nobody minted is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404, and no organization joined\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations/accept-by-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "invitations", "accept-by-token"]
+            },
+            "description": "The authenticated half of the link flow (ADR-0071 §5): the token proves the mailbox and the session proves the account, and the two must agree. A token that names no pending invitation is the same `404` the lookup gives; a live one whose address is not the caller’s is `403 ORGANIZATION_INVITATION_ADDRESS_MISMATCH`, which needs a mailed link and is the browser tier’s."
           }
         },
         {

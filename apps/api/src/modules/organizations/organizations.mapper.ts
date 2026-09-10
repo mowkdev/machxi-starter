@@ -1,4 +1,5 @@
 import type {
+  InvitationLookupResource,
   InvitationResource,
   InvitationStatus,
   MembershipResource,
@@ -97,4 +98,22 @@ export const toInvitationResource = (
   status: toInvitationStatus(record, at),
   expiresAt: record.expiresAt.toISOString(),
   createdAt: record.createdAt.toISOString(),
+});
+
+/**
+ * The three fields the holder of a link is shown (ADR-0071 §5).
+ *
+ * A mapper of its own rather than a narrowed {@link toInvitationResource},
+ * because what it drops is the point: no `id`, so an unauthenticated caller is
+ * never handed the identifier the *other* accept path takes (ADR-0067 §5), and
+ * no `status`, because a lookup answers only for a pending invitation and
+ * every other state is one `404`. A `Pick<>` of the full resource would keep
+ * both fields one careless edit away.
+ */
+export const toInvitationLookupResource = (
+  record: InvitationWithOrganization,
+): InvitationLookupResource => ({
+  organizationName: record.organizationName,
+  email: record.email,
+  role: record.role,
 });

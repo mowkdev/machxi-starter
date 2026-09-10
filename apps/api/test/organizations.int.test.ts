@@ -10,7 +10,7 @@ import {
   type Tokens,
 } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
-import { registerVerified } from "./support/mail.js";
+import { lastMailTo, registerVerified, tokenFromMail } from "./support/mail.js";
 import {
   FIXTURE_PASSWORD,
   FIXTURE_USERS,
@@ -823,6 +823,202 @@ describe("organizations on the user segment", () => {
         .expect(404);
 
       expect(refused.body.error.code).toBe("NOT_FOUND");
+    });
+
+    /*
+     * The link (ADR-0071 §5) — the send, the lookup, and acceptance bound to
+     * the invited address.
+     *
+     * What this closes is the exposure ADR-0067 §Consequences accepted and
+     * `D15.1` escalated: an invitation used to be claimed by address match
+     * alone, and nothing verified an address. Both halves are real now — §3
+     * makes every `active` account's address proven, and these cases prove the
+     * second, that the link itself has to be presented.
+     */
+    describe("the mailed link", () => {
+      const LOOKUP = "/api/v1/public/invitations/lookup";
+      const ACCEPT_BY_TOKEN = `${INVITATIONS}/accept-by-token`;
+
+      /** Creates an invitation and reads the token out of the message sent. */
+      const invite = async (
+        organizationId: string,
+        email: string,
+        role: "admin" | "member" = "member",
+      ) => {
+        const created = await request()
+          .post(`${ORGS}/${organizationId}/invitations`)
+          .set("Authorization", bearer(owner.accessToken))
+          .send({ email, role })
+          .expect(201);
+
+        return {
+          id: created.body.data.id as string,
+          token: tokenFromMail(lastMailTo(harness, email)),
+        };
+      };
+
+      it("sends the invitation to the invited address with the token in the fragment", async () => {
+        const org = await createTeam(owner.accessToken, "delivered", "Deliver");
+        const email = "delivered.invitee@machxi.local";
+
+        const created = await request()
+          .post(`${ORGS}/${org.id}/invitations`)
+          .set("Authorization", bearer(owner.accessToken))
+          .send({ email, role: "member" })
+          .expect(201);
+
+        const message = lastMailTo(harness, email);
+
+        expect(message?.subject).toContain("Deliver");
+        // The fragment is the whole design (ADR-0057 §2 as ADR-0071 §1
+        // inherits it): a token in a path or a query would reach every access
+        // log and proxy between the reader and the API. `tokenFromMail` reads
+        // only after a `#`, so it throws if that ever changes.
+        const token = tokenFromMail(message);
+
+        expect(message?.text).toContain(`#token=${token}`);
+        expect(message?.text.split("#token=")[0]).not.toContain(token);
+
+        // And the database still holds only the hash, which nothing returns.
+        const [row] = await harness.db.db
+          .select({ tokenHash: organizationInvitations.tokenHash })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, created.body.data.id));
+
+        expect(row?.tokenHash).not.toBe(token);
+        expect(JSON.stringify(created.body)).not.toContain(token);
+      });
+
+      it("answers the lookup with the organization, the address and the role", async () => {
+        const org = await createTeam(owner.accessToken, "lookup-ok", "Lookup");
+        const { token } = await invite(
+          org.id,
+          "lookup.invitee@machxi.local",
+          "admin",
+        );
+
+        // Unauthenticated: whoever opened the mail can read the offer.
+        const response = await request()
+          .post(LOOKUP)
+          .send({ token })
+          .expect(200);
+
+        expect(response.body.data).toEqual({
+          organizationName: "Lookup",
+          email: "lookup.invitee@machxi.local",
+          role: "admin",
+        });
+        // No id, deliberately: that would be authority for the accept path
+        // scoped by address alone, which holding the token does not carry.
+        expect(response.body.data.id).toBeUndefined();
+      });
+
+      it("answers one 404 for unknown, declined, revoked and expired alike", async () => {
+        const org = await createTeam(owner.accessToken, "lookup-404");
+        const lookup = (token: string) =>
+          request().post(LOOKUP).send({ token });
+
+        const unknown = await lookup("A".repeat(43)).expect(404);
+
+        expect(unknown.body.error.code).toBe("NOT_FOUND");
+
+        const declined = await invite(org.id, "declines.link@machxi.local");
+        const decliner = await freshAccount("declines.link@machxi.local");
+
+        await request()
+          .post(`${INVITATIONS}/${declined.id}/decline`)
+          .set("Authorization", bearer(decliner.tokens.accessToken))
+          .expect(204);
+
+        await lookup(declined.token).expect(404);
+
+        const revoked = await invite(org.id, "revokes.link@machxi.local");
+
+        await request()
+          .delete(`${ORGS}/${org.id}/invitations/${revoked.id}`)
+          .set("Authorization", bearer(owner.accessToken))
+          .expect(204);
+
+        await lookup(revoked.token).expect(404);
+
+        const expired = await invite(org.id, "expires.link@machxi.local");
+
+        await harness.db.db
+          .update(organizationInvitations)
+          .set({ expiresAt: new Date(Date.now() - 1000) })
+          .where(eq(organizationInvitations.id, expired.id));
+
+        await lookup(expired.token).expect(404);
+      });
+
+      it("joins the caller whose address is the invited one", async () => {
+        const org = await createTeam(owner.accessToken, "join-by-link");
+        const invitee = await freshAccount("joins.by.link@machxi.local");
+        const { token } = await invite(org.id, invitee.email, "admin");
+
+        const joined = await request()
+          .post(ACCEPT_BY_TOKEN)
+          .set("Authorization", bearer(invitee.tokens.accessToken))
+          .send({ token })
+          .expect(200);
+
+        expect(joined.body.data).toMatchObject({ id: org.id, role: "admin" });
+
+        // Single use, through the same guarded statement `/:id/accept` takes.
+        const again = await request()
+          .post(ACCEPT_BY_TOKEN)
+          .set("Authorization", bearer(invitee.tokens.accessToken))
+          .send({ token })
+          .expect(404);
+
+        expect(again.body.error.code).toBe("NOT_FOUND");
+
+        // The row is accepted, so the lookup stops answering for it too.
+        await request().post(LOOKUP).send({ token }).expect(404);
+      });
+
+      it("refuses a caller whose address is not the invited one, and spends nothing", async () => {
+        const org = await createTeam(owner.accessToken, "wrong-address");
+        const invitee = await freshAccount("rightful.link@machxi.local");
+        const bystander = await freshAccount("bystander.link@machxi.local");
+        const { token } = await invite(org.id, invitee.email);
+
+        const refused = await request()
+          .post(ACCEPT_BY_TOKEN)
+          .set("Authorization", bearer(bystander.tokens.accessToken))
+          .send({ token })
+          .expect(403);
+
+        // Distinguishable on purpose: the screen can say "sign in with the
+        // address this was sent to" rather than "this link is not valid".
+        expect(refused.body.error.code).toBe(
+          "ORGANIZATION_INVITATION_ADDRESS_MISMATCH",
+        );
+
+        // A refused acceptance spends nothing (ADR-0071 §1): the link the
+        // invitee was actually sent still works, from the right account.
+        await request()
+          .post(ACCEPT_BY_TOKEN)
+          .set("Authorization", bearer(invitee.tokens.accessToken))
+          .send({ token })
+          .expect(200);
+
+        // …and the bystander joined nothing.
+        await request()
+          .get(`${ORGS}/${org.id}`)
+          .set("Authorization", bearer(bystander.tokens.accessToken))
+          .expect(404);
+      });
+
+      it("requires a session: the token alone joins nobody", async () => {
+        const org = await createTeam(owner.accessToken, "needs-session");
+        const { token } = await invite(org.id, "anonymous.link@machxi.local");
+
+        // The lookup is public and the accept is not: reading the offer is
+        // what holding the link buys, and joining needs an account to join.
+        await request().post(LOOKUP).send({ token }).expect(200);
+        await request().post(ACCEPT_BY_TOKEN).send({ token }).expect(401);
+      });
     });
 
     it("refuses a member listing or creating invitations", async () => {

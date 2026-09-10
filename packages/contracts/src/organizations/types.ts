@@ -88,3 +88,25 @@ export interface InvitationResource {
   readonly expiresAt: IsoDateTime;
   readonly createdAt: IsoDateTime;
 }
+
+/**
+ * What the holder of an invitation link is told before they act on it
+ * (ADR-0071 §5, on ADR-0067 §5's two conditions).
+ *
+ * Three fields and no `id`, deliberately. This is the answer to an
+ * **unauthenticated** request whose whole authority is the token: the screen
+ * needs the organization's name to say what is being offered, the invited
+ * address to prefill a locked register form and to tell a signed-in visitor
+ * whether it is theirs, and the role so the offer is not a surprise. An `id`
+ * would be an identifier the caller could take to the *other* accept path —
+ * the one scoped by address alone (ADR-0067 §5) — which is exactly the
+ * authority holding the token does not carry.
+ *
+ * There is no `status` either: a lookup answers only for an invitation that is
+ * still pending, and every other state is the same `404`.
+ */
+export interface InvitationLookupResource {
+  readonly organizationName: string;
+  readonly email: string;
+  readonly role: OrganizationRole;
+}

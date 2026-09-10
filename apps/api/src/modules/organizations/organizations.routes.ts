@@ -3,11 +3,13 @@ import { Router, type RequestHandler } from "express";
 import { authorize, noStore, validate } from "../../core/middleware/index.js";
 import type {
   OrganizationsController,
+  PublicInvitationsController,
   UserInvitationsController,
   UserOrganizationsController,
 } from "./organizations.controller.js";
 import type { RequireMembership } from "./organizations.middleware.js";
 import {
+  acceptMyInvitationByTokenSchema,
   actOnMyInvitationSchema,
   addOrganizationMemberSchema,
   createOrganizationSchema,
@@ -21,6 +23,7 @@ import {
   listOrganizationsSchema,
   listOrgInvitationsSchema,
   listOrgMembersSchema,
+  lookupInvitationSchema,
   removeOrganizationMemberSchema,
   removeOrgMemberSchema,
   revokeOrgInvitationSchema,
@@ -84,12 +87,23 @@ export interface UserOrganizationsRouterDeps {
   readonly requireMembership: RequireMembership;
   /** ADR-0057 §5's exclusion guard, as ADR-0067 §8 grows it. */
   readonly refuseImpersonated: RequestHandler;
+  /**
+   * The mailbox's own budget on `POST /:orgId/invitations` (ADR-0071 §5,
+   * amended at `D18.7`), keyed on the invited address alone and counted in an
+   * instance of its own.
+   *
+   * Since that step the create **sends a message**, and it is the one sender
+   * in this API an ordinary authenticated account drives. See the route below
+   * for where it sits in the chain and why that is not ADR-0011's default.
+   */
+  readonly mailboxRateLimiter: RequestHandler;
 }
 
 export const createUserOrganizationsRouter = ({
   controller,
   requireMembership,
   refuseImpersonated,
+  mailboxRateLimiter,
 }: UserOrganizationsRouterDeps): Router => {
   const router = Router();
 
@@ -156,10 +170,34 @@ export const createUserOrganizationsRouter = ({
     controller.removeMember,
   );
 
+  /*
+   * The one route in this file that **sends a message** (ADR-0071 §5), and
+   * therefore the one with a budget rationing somebody else's inbox.
+   *
+   * The limiter is keyed on the invited address alone, so onboarding a team is
+   * untouched — thirty invitations to thirty people are thirty budgets — and
+   * what it bounds is the same address being mailed over and over. §5 first
+   * argued no budget was needed because ADR-0067 §2 refuses a second
+   * outstanding offer to one address in one organization; that bound is worth
+   * two requests to an attacker (revoke, invite again) and nothing caps how
+   * many organizations one account may create, so the real ceiling was the
+   * global limiter (`D18.7`'s `security-reviewer`).
+   *
+   * **It sits after the guards, not first**, which is a stated refinement of
+   * ADR-0011's rate-limit-first order rather than an exception somebody
+   * invented here — ADR-0057 §1 makes the same kind of statement about the
+   * mint. What this rations is a *third party's* inbox, so a caller who is
+   * about to be refused anyway must not be able to spend it: first in the
+   * chain, any authenticated account could exhaust a chosen address's budget
+   * by posting to an organization they are not in, and the limiter would
+   * become the denial it exists to prevent. It stays above `validate`, for
+   * `keyEmail`'s reason: a body a schema will reject must still count.
+   */
   router.post(
     "/:orgId/invitations",
     requireMembership("owner", "admin"),
     refuseImpersonated,
+    mailboxRateLimiter,
     validate(createOrgInvitationSchema),
     controller.invite,
   );
@@ -219,11 +257,84 @@ export const createUserInvitationsRouter = ({
     controller.accept,
   );
 
+  /*
+   * The same acceptance, named by the **token** from a mailed link rather than
+   * by an id from the caller's own list (ADR-0071 §5).
+   *
+   * It has no id of its own, and it cannot be read as an invitation whose id
+   * happens to be that word whatever the registration order: `/:id/accept`
+   * matches two path segments and this matches one.
+   *
+   * It carries `refuseImpersonated` for the reason the route above does — this
+   * is the same join, and ADR-0067 §8 excludes joining, not one way of asking
+   * for it. A support operator who could follow a link found in a customer's
+   * mailbox would have exactly the affordance that list exists to remove.
+   *
+   * No limiter: the credential is 256 bits and the caller is already
+   * authenticated, so the budget belongs on the *lookup*, which is the
+   * unauthenticated half (ADR-0067 §5, ADR-0071 §5).
+   */
+  router.post(
+    "/accept-by-token",
+    refuseImpersonated,
+    validate(acceptMyInvitationByTokenSchema),
+    controller.acceptByToken,
+  );
+
   // Not excluded: declining ends an offer and creates no membership.
   router.post(
     "/:id/decline",
     validate(actOnMyInvitationSchema),
     controller.decline,
+  );
+
+  return router;
+};
+
+export interface PublicInvitationsRouterDeps {
+  readonly controller: PublicInvitationsController;
+  /**
+   * ADR-0067 §5's first condition, inherited by ADR-0071 §5: a lookup scoped
+   * by nothing but a secret is limited **as an authentication route is**,
+   * because guessing is the only attack on it.
+   *
+   * The container builds it with the login limiter's numbers in a counter of
+   * its own — this body carries a token and no address, so its key degrades to
+   * the caller's, which is the same key a malformed `login` produces, and one
+   * shared instance would let sign-in noise from an office refuse its own
+   * invitees their link (`D18.5`'s argument for `password/reset`).
+   */
+  readonly rateLimiter: RequestHandler;
+}
+
+/**
+ * `POST /api/v1/public/invitations/lookup` (ADR-0071 §5).
+ *
+ * The one endpoint of this module outside every guard, and it is outside them
+ * because the person holding the link **has no account yet** — that is the
+ * case the flow exists for. What stands in for a guard is the token: 256 bits,
+ * one row through a unique index, and one `404` for unknown, consumed,
+ * declined, expired and deleted alike.
+ *
+ * **No CSRF guard**, for the reason `login` carries none (ADR-0029 §CSRF): the
+ * request leans on nothing in the browser's jar, so there is no cross-site
+ * submission whose intent needs proving. It writes nothing either.
+ *
+ * `no-store` because the answer carries an address and the name of somebody
+ * else's organization (ADR-0020).
+ */
+export const createPublicInvitationsRouter = ({
+  controller,
+  rateLimiter,
+}: PublicInvitationsRouterDeps): Router => {
+  const router = Router();
+
+  router.use(noStore);
+  router.post(
+    "/lookup",
+    rateLimiter,
+    validate(lookupInvitationSchema),
+    controller.lookup,
   );
 
   return router;

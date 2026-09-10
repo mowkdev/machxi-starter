@@ -5,6 +5,7 @@ import {
   createRegisterRouter,
   createVerificationRouter,
 } from "../modules/auth/index.js";
+import { createPublicInvitationsRouter } from "../modules/organizations/index.js";
 
 /**
  * `/api/v1/public/*` (ADR-0015) — no authentication.
@@ -58,6 +59,25 @@ export const createPublicRouter = (container: Container): Router => {
       // the same mailbox.
       rateLimiter: container.rateLimiters.verification,
       mailSourceRateLimiter: container.rateLimiters.mailSource,
+    }),
+  );
+
+  /*
+   * `/invitations/lookup` (ADR-0071 §5).
+   *
+   * Public for the reason the two verification endpoints are: the person
+   * holding the link has no account yet, which is the case the flow exists
+   * for. Unconditional, too — an invitation can be created with
+   * `FEATURE_USER_REGISTRATION` off, and a deployment that closed sign-ups
+   * after one was sent must not turn the link in somebody's mailbox into a
+   * `404`. The token is what stands in for a guard, and the limiter is
+   * ADR-0067 §5's own condition on a read scoped by nothing else.
+   */
+  router.use(
+    "/invitations",
+    createPublicInvitationsRouter({
+      controller: container.controllers.publicInvitations,
+      rateLimiter: container.rateLimiters.invitationLookup,
     }),
   );
 

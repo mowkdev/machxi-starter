@@ -25,11 +25,22 @@ import {
  * served by `organization_invitations_email_idx` and are named here for what
  * they are.
  *
+ * {@link createInvitationsRepository.findPendingByTokenHash} is the **third**
+ * instance and the class ADR-0067 §5's 2026-09-04 amendment sanctioned in
+ * advance: a read scoped by the token's own 256 bits and by nothing else. It
+ * is named here for what it is, as that amendment requires, and it earns the
+ * exception on the terms it set — the mint is `randomToken()` at 32 bytes, the
+ * read lands on exactly one row through
+ * `organization_invitations_token_hash_unique`, and the two conditions that
+ * follow from it are the *service's*: the lookup is limited as an
+ * authentication route, and holding the token authorises reading and consuming
+ * that one invitation and never deciding whose membership is created.
+ *
  * **No function here returns `token_hash`, and none can.** The column is not
  * in {@link InvitationRecord} and is not selected by any read, which is a
  * stronger guarantee than a mapper that remembers to drop it: there is no
- * value for a mapper to leak (ADR-0067 §2, amended). The one function that
- * touches it takes a hash and returns a row without one.
+ * value for a mapper to leak (ADR-0067 §2, amended). The two functions that
+ * touch it take a hash and return a row without one.
  *
  * **Every read joins `organizations` and filters `deleted_at is null`.** Not
  * defensiveness: `organization_id` cascades on a **hard** delete only, so
@@ -229,6 +240,45 @@ export const createInvitationsRepository = (db: DbExecutor) => {
           and(
             eq(organizationInvitations.id, id),
             eq(organizationInvitations.email, email),
+            isNull(organizations.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      return row;
+    },
+
+    /**
+     * One **pending** invitation of a live organization, by the SHA-256 of the
+     * token its link carries (ADR-0067 §5 as amended, ADR-0071 §5).
+     *
+     * The read this table's `token_hash` was added for and that nothing
+     * performed until the send existed. It takes the *hash*, never the token:
+     * hashing is the service's, so no plaintext credential crosses this
+     * boundary and the column is compared against a value of the same shape it
+     * stores.
+     *
+     * **Pending-only, and that is the whole refusal**. Unknown, accepted,
+     * declined, revoked, expired and "its organization was soft-deleted" all
+     * produce the same `undefined`, so the service has one answer to give and
+     * no way to accidentally give six — which is the enumeration property a
+     * lookup scoped by nothing but a secret has to have.
+     *
+     * It does **not** consume: a lookup is a read, and the accept path takes
+     * the guarded statement that ends the row. The two are separate for the
+     * reason ADR-0067 §5 separates the authorities — reading the offer is what
+     * the link's holder may do; joining is what the *account* does.
+     */
+    findPendingByTokenHash: async (
+      tokenHash: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<InvitationWithOrganization | undefined> => {
+      const [row] = await fromLiveOrganizations(tx)
+        .where(
+          and(
+            eq(organizationInvitations.tokenHash, tokenHash),
+            pendingAt(at),
             isNull(organizations.deletedAt),
           ),
         )

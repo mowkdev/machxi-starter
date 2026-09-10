@@ -196,3 +196,28 @@ export const invitationNotPending = (): AppError =>
 /** No invitation by that id, or none addressed to the caller (ADR-0067 §2). */
 export const invitationNotFound = (): AppError =>
   notFound("Invitation not found");
+
+/**
+ * The link is live, and it was not sent to the account that is signed in
+ * (ADR-0071 §5).
+ *
+ * `403` rather than the `404` every other refusal of a token gives, and the
+ * difference is deliberate: this caller has proven both halves separately —
+ * they hold the token, so the offer exists, and they hold a session, so they
+ * have an account — and what has failed is that the two do not agree. Telling
+ * them so is what lets the screen say "sign in with the address this was sent
+ * to" instead of "this link is not valid", which is the difference between a
+ * person who can finish and a person who gives up.
+ *
+ * It discloses nothing the holder of the link could not already learn: the
+ * lookup on the same token answers with the invited address, by ADR-0067 §5's
+ * own decision, and this message names no address at all.
+ *
+ * A code of its own because the copy differs from every other `403` in the
+ * catalogue and ADR-0046 keys that catalogue by code.
+ */
+export const invitationAddressMismatch = (): AppError =>
+  forbidden(
+    "That invitation was sent to a different address",
+    "ORGANIZATION_INVITATION_ADDRESS_MISMATCH",
+  );

@@ -5,6 +5,7 @@ import { internal } from "../../core/errors/index.js";
 import { respond } from "../../core/http/index.js";
 import type { ValidatedRequest } from "../../core/middleware/index.js";
 import type {
+  acceptMyInvitationByTokenSchema,
   actOnMyInvitationSchema,
   addOrganizationMemberSchema,
   createOrganizationSchema,
@@ -18,6 +19,7 @@ import type {
   listOrganizationsSchema,
   listOrgInvitationsSchema,
   listOrgMembersSchema,
+  lookupInvitationSchema,
   removeOrganizationMemberSchema,
   removeOrgMemberSchema,
   revokeOrgInvitationSchema,
@@ -224,6 +226,22 @@ export const createUserInvitationsController = (
       );
     },
 
+    /**
+     * The same `200` and the same body as {@link accept} above, because the
+     * client's next act is the same: switch into the organization it just
+     * joined. What differs is only how the invitation was named — a token from
+     * a mailed link rather than an id from the caller's own list (ADR-0071 §5).
+     */
+    acceptByToken: async (
+      req: ValidatedRequest<typeof acceptMyInvitationByTokenSchema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.ok(
+        res,
+        await service.acceptInvitationByToken(req.ctx, req.valid.body),
+      );
+    },
+
     decline: async (
       req: ValidatedRequest<typeof actOnMyInvitationSchema>,
       res: Response,
@@ -235,6 +253,31 @@ export const createUserInvitationsController = (
 
 export type UserInvitationsController = ReturnType<
   typeof createUserInvitationsController
+>;
+
+/**
+ * `/api/v1/public/invitations` — the link, before there is a session
+ * (ADR-0071 §5).
+ *
+ * A controller of its own because it belongs to a different segment, exactly
+ * as `createRegisterRouter`'s does: everything else in this module is behind
+ * `authenticate("user")` or `authorize`, and this one endpoint is reached by
+ * whoever opened the mail — which is the whole point of it.
+ */
+export const createPublicInvitationsController = (
+  service: OrganizationsService,
+) =>
+  ({
+    lookup: async (
+      req: ValidatedRequest<typeof lookupInvitationSchema>,
+      res: Response,
+    ): Promise<void> => {
+      respond.ok(res, await service.lookupInvitation(req.ctx, req.valid.body));
+    },
+  }) as const;
+
+export type PublicInvitationsController = ReturnType<
+  typeof createPublicInvitationsController
 >;
 
 /** `/api/v1/admin/organizations` — staff above the tenants (ADR-0067 §3). */

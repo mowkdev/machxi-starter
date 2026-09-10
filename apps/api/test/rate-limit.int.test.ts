@@ -11,8 +11,14 @@ import {
   it,
 } from "vitest";
 
+import { login } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
-import { resetAndSeed, superAdmin } from "./support/seed.js";
+import {
+  FIXTURE_PASSWORD,
+  FIXTURE_USERS,
+  resetAndSeed,
+  superAdmin,
+} from "./support/seed.js";
 
 /**
  * ADR-0020 §Rate limiting, end to end.
@@ -306,6 +312,87 @@ describe("the mailbox forgot limit", () => {
 
     await forgot("busy@machxi.local").expect(429);
     await forgot("quiet@machxi.local").expect(202);
+  });
+});
+
+/**
+ * The invited mailbox's budget on the one sender an *authenticated* caller
+ * drives (ADR-0071 §5, amended at `D18.7` on that step's `security-reviewer`).
+ *
+ * §5 first said this send needed no budget, because ADR-0067 §2 refuses a
+ * second outstanding offer to one address in one organization. The case below
+ * is the reason that argument does not hold: revoking an offer and making it
+ * again is two requests, and nothing caps how many organizations one account
+ * may create — so without a limiter the ceiling on messages into a stranger's
+ * inbox was the global one.
+ */
+describe("the invitation mailbox limit", () => {
+  let harness: TestApp;
+  let ownerToken: string;
+  let orgId: string;
+
+  beforeAll(async () => {
+    harness = createTestApp(withLimits({ mailboxMax: 2 }));
+    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+
+    const owner = await login(harness.app, "user", {
+      email: FIXTURE_USERS.active,
+      password: FIXTURE_PASSWORD,
+    });
+
+    ownerToken = owner.accessToken;
+
+    const mine = await supertest(harness.app)
+      .get("/api/v1/user/orgs")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .expect(200);
+
+    orgId = (mine.body.data as { id: string; slug: string }[]).find(
+      (row) => row.slug === "acme",
+    )!.id;
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  const invite = (email: string) =>
+    supertest(harness.app)
+      .post(`/api/v1/user/orgs/${orgId}/invitations`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ email, role: "member" });
+
+  const revoke = (id: string) =>
+    supertest(harness.app)
+      .delete(`/api/v1/user/orgs/${orgId}/invitations/${id}`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .expect(204);
+
+  it("counts revoke-and-invite-again against the invited address", async () => {
+    const email = "flooded.invitee@machxi.local";
+
+    const first = await invite(email).expect(201);
+
+    await revoke(first.body.data.id);
+
+    const second = await invite(email).expect(201);
+
+    await revoke(second.body.data.id);
+
+    // The pending check would have allowed a third, and a fourth, and so on:
+    // it is the *limiter* refusing here, and its key is the mailbox.
+    const response = await invite(email).expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+  });
+
+  it("leaves onboarding a team alone, the key being the recipient", async () => {
+    // Thirty invitations to thirty people are thirty budgets. A limiter keyed
+    // on the caller would have refused the honest case this endpoint exists
+    // for, which is why this one is not.
+    await invite("first.colleague@machxi.local").expect(201);
+    await invite("second.colleague@machxi.local").expect(201);
+    await invite("third.colleague@machxi.local").expect(201);
   });
 });
 

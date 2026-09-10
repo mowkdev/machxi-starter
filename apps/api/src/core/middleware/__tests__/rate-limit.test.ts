@@ -14,6 +14,7 @@ import {
   createMailboxRateLimiter,
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
+  createTokenRouteRateLimiter,
   createVerificationRateLimiter,
 } from "../rate-limit.js";
 
@@ -266,9 +267,11 @@ describe("the source limiter", () => {
     const app = source();
 
     for (let sent = 0; sent < 4; sent += 1) {
-      await from(app, "203.0.113.7", `walk-${String(sent)}@machxi.local`).expect(
-        202,
-      );
+      await from(
+        app,
+        "203.0.113.7",
+        `walk-${String(sent)}@machxi.local`,
+      ).expect(202);
     }
 
     await from(app, "203.0.113.7", "walk-4@machxi.local").expect(429);
@@ -299,6 +302,53 @@ describe("the source limiter", () => {
     expect(config.rateLimit.mailSourceMax).toBeGreaterThan(
       config.rateLimit.mailboxMax,
     );
+  });
+});
+
+describe("the token-route limiter", () => {
+  const tokenRoute = () =>
+    appWith(
+      createTokenRouteRateLimiter(
+        { ...config, rateLimit: { ...config.rateLimit, loginMax: 2 } },
+        undefined,
+      ),
+    );
+
+  it("cannot be reset by a field the endpoint's schema does not have", async () => {
+    // The whole reason this factory exists (`D18.7`'s `security-reviewer`).
+    // `createLoginRateLimiter` keys on `IP + keyEmail(req)` read from the
+    // *unvalidated* body, which is right on `login`, where `email` is a field
+    // of the schema. On `password/reset` and `invitations/lookup` it is not —
+    // so a caller could invent one and open a fresh bucket per request, and
+    // the budget would exist in the docblock only.
+    const app = tokenRoute();
+    const attempt = (email: string) =>
+      supertest(app).post("/0").send({ token: "x", email });
+
+    await attempt("bucket-1@machxi.local").expect(202);
+    await attempt("bucket-2@machxi.local").expect(202);
+    await attempt("bucket-3@machxi.local").expect(429);
+  });
+
+  it("still counts per source, on the shared fifteen minutes", async () => {
+    const app = tokenRoute();
+    const from = (client: string) =>
+      supertest(app).post("/0").set("X-Test-Client", client).send({});
+
+    await from("203.0.113.50").expect(202);
+    await from("203.0.113.50").expect(202);
+
+    const refused = await from("203.0.113.50").expect(429);
+
+    // ADR-0020's window, not ADR-0071 §4's hour: what it rations is attempts,
+    // not somebody else's inbox.
+    const retryAfter = Number(refused.headers["retry-after"]);
+
+    expect(retryAfter).toBeGreaterThan(FIFTEEN_MINUTES - 60);
+    expect(retryAfter).toBeLessThanOrEqual(FIFTEEN_MINUTES);
+
+    // And one source's spent budget is not everybody's.
+    await from("198.51.100.9").expect(202);
   });
 });
 

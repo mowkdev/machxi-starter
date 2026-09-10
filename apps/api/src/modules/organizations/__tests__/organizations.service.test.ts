@@ -218,6 +218,13 @@ const build = (
     invitationTtlSec: 7 * 24 * 60 * 60,
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
+    // The port and the templates, for the same reason and on the same terms:
+    // the only path here that sends is `invite`, which no case in this file
+    // reaches, and the message it renders is asserted where the flow is
+    // (`core/mail/__tests__/templates.test.ts` for the link's shape, the
+    // integration file for the send itself).
+    mail: undefined as never,
+    mailTemplates: undefined as never,
   });
 
   return { service, organizations, memberships } as const;

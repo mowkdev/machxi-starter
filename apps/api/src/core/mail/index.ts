@@ -27,6 +27,13 @@ export const createMailSender = (config: AppConfig): MailSender =>
       })
     : createLogMailSender();
 
+export {
+  createMailDelivery,
+  localeFor,
+  type MailDelivery,
+  type MailDeliveryDeps,
+  type MailLogFields,
+} from "./delivery.js";
 export { createLogMailSender } from "./log-mail-sender.js";
 export {
   createSmtpMailSender,

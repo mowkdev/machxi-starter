@@ -7,13 +7,16 @@ export {
 } from "./invitations.repository.js";
 export {
   createOrganizationsController,
+  createPublicInvitationsController,
   createUserInvitationsController,
   createUserOrganizationsController,
   type OrganizationsController,
+  type PublicInvitationsController,
   type UserInvitationsController,
   type UserOrganizationsController,
 } from "./organizations.controller.js";
 export {
+  toInvitationLookupResource,
   toInvitationResource,
   toInvitationStatus,
   toMembershipResource,
@@ -21,8 +24,10 @@ export {
 } from "./organizations.mapper.js";
 export {
   createOrganizationsRouter,
+  createPublicInvitationsRouter,
   createUserInvitationsRouter,
   createUserOrganizationsRouter,
+  type PublicInvitationsRouterDeps,
   type UserInvitationsRouterDeps,
   type UserOrganizationsRouterDeps,
 } from "./organizations.routes.js";
@@ -37,6 +42,7 @@ export {
 } from "./memberships.repository.js";
 export {
   alreadyAMember,
+  invitationAddressMismatch,
   invitationNotFound,
   invitationNotPending,
   lastOrganizationOwner,

@@ -33,5 +33,6 @@
   "ORGANIZATION_LAST_OWNER": "An organization needs at least one owner. Make someone else an owner first.",
   "ORGANIZATION_PERSONAL_UNDELETABLE": "A personal organization is removed with the account that owns it.",
   "ORGANIZATION_PERSONAL_CLOSED": "A personal organization has one member — its owner. Create a team to work with other people.",
-  "ORGANIZATION_INVITATION_PENDING": "That address already has an invitation waiting. Revoke it first to send another."
+  "ORGANIZATION_INVITATION_PENDING": "That address already has an invitation waiting. Revoke it first to send another.",
+  "ORGANIZATION_INVITATION_ADDRESS_MISMATCH": "This invitation was sent to a different email address. Sign in with that address to accept it."
 }

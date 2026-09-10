@@ -136,6 +136,7 @@ const AUTH_ERROR_CODES = [
  * | `ORGANIZATION_PERSONAL_UNDELETABLE` | 409 | `DELETE` aimed at a `personal` organization, which goes with its account and never on its own (ADR-0067 §2) |
  * | `ORGANIZATION_PERSONAL_CLOSED` | 409 | a second member aimed at a `personal` organization, which has exactly one (ADR-0067 §2) |
  * | `ORGANIZATION_INVITATION_PENDING` | 409 | inviting an address that already has a pending invitation to the same organization |
+ * | `ORGANIZATION_INVITATION_ADDRESS_MISMATCH` | 403 | accepting an invitation from its link while signed in as an account whose address is not the invited one (ADR-0071 §5) |
  *
  * Both organization codes are `409` rather than `403` for the reason
  * `STAFF_LAST_SUPER_ADMIN` is: the caller may hold exactly the role the route
@@ -173,6 +174,7 @@ const DOMAIN_ERROR_CODES = [
   "ORGANIZATION_PERSONAL_UNDELETABLE",
   "ORGANIZATION_PERSONAL_CLOSED",
   "ORGANIZATION_INVITATION_PENDING",
+  "ORGANIZATION_INVITATION_ADDRESS_MISMATCH",
 ] as const;
 
 /**

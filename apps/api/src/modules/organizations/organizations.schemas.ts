@@ -1,4 +1,5 @@
 import {
+  acceptInvitationByTokenBody,
   addMembershipBody,
   createInvitationBody,
   createOrganizationAdminBody,
@@ -7,6 +8,7 @@ import {
   listInvitationsQuery,
   listMembershipsQuery,
   listOrganizationsQuery,
+  lookupInvitationBody,
   membershipParams,
   membershipRoleBody,
   organizationIdParams,
@@ -70,6 +72,20 @@ export const revokeOrgInvitationSchema = {
 /* ── /api/v1/user/invitations — self-scoped (ADR-0067 §4) ─────────────────── */
 
 export const actOnMyInvitationSchema = { params: invitationIdParams } as const;
+/**
+ * `POST /api/v1/user/invitations/accept-by-token` — the link, redeemed by the
+ * signed-in account (ADR-0071 §5).
+ *
+ * No params: the invitation is named by the token in the body, so there is no
+ * id in the path for a caller to swap.
+ */
+export const acceptMyInvitationByTokenSchema = {
+  body: acceptInvitationByTokenBody,
+} as const;
+
+/* ── /api/v1/public/invitations — the link, before a session (ADR-0071 §5) ── */
+
+export const lookupInvitationSchema = { body: lookupInvitationBody } as const;
 
 /* ── /api/v1/admin/organizations (ADR-0067 §3) ────────────────────────────── */
 

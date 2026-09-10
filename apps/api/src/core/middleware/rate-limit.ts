@@ -8,25 +8,28 @@ import type { RateLimitStore } from "../rate-limit/index.js";
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
  *
- * Eight limiters and one failure shape: the global one on `/api`, a strict one
+ * Nine limiters and one failure shape: the global one on `/api`, a strict one
  * on login and registration, one on *failed* refreshes, one on the
  * impersonation mint since `D13.4` — the only one keyed on a principal rather
  * than on an address (ADR-0057 §1) — and, since `D18.2`, one each on the two
  * endpoints that mail a link to an address a stranger typed (ADR-0071 §3, §4),
  * joined at `D18.5` by the one keyed on the **mailbox alone** and at `D18.7`
- * by the one keyed on the **source alone**. `/health` is deliberately outside
- * all of them — a probe that gets rate-limited takes a healthy instance out of
- * rotation (ADR-0016).
+ * by the one keyed on the **source alone** and by the one for routes whose
+ * credential is an opaque token. `/health` is deliberately outside all of them
+ * — a probe that gets rate-limited takes a healthy instance out of rotation
+ * (ADR-0016).
  *
- * The first four share {@link RATE_LIMIT_WINDOW_MS}; the last four take
- * `RATE_LIMIT_PASSWORD_RESET_WINDOW`, because what they ration is not an
- * attacker's attempts but a victim's inbox, and ADR-0071 §4 decides that
- * budget is per hour.
+ * **The window is decided by what is rationed, not by where a factory sits.**
+ * Everything that bounds an attacker's *attempts* takes
+ * {@link RATE_LIMIT_WINDOW_MS} — the global, login, refresh and impersonation
+ * limiters, and the token-route one below. The three that ration a victim's
+ * *inbox* take `RATE_LIMIT_PASSWORD_RESET_WINDOW`, because ADR-0071 §4 decides
+ * that budget is per hour.
  *
- * The last three are three **keys**, not three numbers to reconcile: the
- * address with the source, the address alone, and the source alone. Each
- * answers a question the others cannot, which is why they are mounted
- * together rather than the largest of them replacing the rest.
+ * Those three are three **keys**, not three numbers to reconcile: the address
+ * with the source, the address alone, and the source alone. Each answers a
+ * question the others cannot, which is why they are mounted together rather
+ * than the largest of them replacing the rest.
  *
  * The store is a **parameter** since `D14.6` (ADR-0066 §4, a delta on
  * ADR-0020): `undefined` selects `express-rate-limit`'s in-memory default,
@@ -326,8 +329,15 @@ export const createMailboxRateLimiter = (
  * source that spends it reaches no mail flow at all until the window turns,
  * which behind a shared egress is everybody there.
  *
- * No fallback key to write, and no body read: this limiter has only the one
- * key and every request carries it.
+ * No body is read, so there is no "the caller named no address" branch to
+ * write — but "no fallback" would be too strong (`D18.7`'s `code-reviewer`).
+ * {@link ipKey} answers `""` for a request whose client address the context
+ * middleware refused to accept as an address at all, and every such request
+ * then shares one bucket. That is a property of `ipKey` rather than of this
+ * limiter — the global and refresh limiters have carried it since ADR-0020 —
+ * and reaching it takes a `TRUST_PROXY` set one hop too many together with a
+ * client sending a forwarded header that is not an address. It is written down
+ * here rather than papered over in one of the nine limiters that share it.
  */
 export const createMailSourceRateLimiter = (
   config: AppConfig,
@@ -336,6 +346,46 @@ export const createMailSourceRateLimiter = (
   rateLimit({
     ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
     limit: config.rateLimit.mailSourceMax,
+  });
+
+/**
+ * ADR-0020's login numbers over the shared window, keyed on the **source
+ * alone** — for the routes whose credential is an opaque token in the body and
+ * which therefore carry no address to key on (`D18.7`'s `security-reviewer`).
+ *
+ * It exists because `createLoginRateLimiter` is the wrong instrument for them.
+ * That limiter keys on `IP + `{@link keyEmail}`, read from the **unvalidated**
+ * body — which is right on `login`, where `email` is a field of the schema and
+ * varying it buys an attacker nothing. On a route whose schema has no `email`
+ * the same key is attacker-controlled at no cost: `{ token, email: "1" }`,
+ * `{ token, email: "2" }` and so on each open a bucket of their own.
+ *
+ * **What that actually costs is worth stating precisely, because it is less
+ * than it first looks** (`D18.7`'s `code-reviewer` against `D18.7`'s
+ * `security-reviewer`). Both bodies are `z.strictObject`, so a request
+ * carrying an invented field is refused by `validate` and never reaches the
+ * argon2 hash or the token lookup the budget is really protecting — and every
+ * *well-formed* request keys identically, so the budget on the work itself was
+ * never escapable. What was escapable is the counting of the refused ones,
+ * which is exactly what {@link keyEmail}'s own docblock says must not happen,
+ * and what it leaves behind is an unbounded set of attacker-chosen keys in a
+ * memory store. Both are reasons enough; "the budget existed in the docblock
+ * only" was not true and is not claimed.
+ *
+ * So this reads no body. Two routes take it: `password/reset`, where the
+ * budget is ADR-0020 §Hashing cost's argon2 liveness control, and ADR-0067
+ * §5's `invitations/lookup`, where it is the "limited as an authentication
+ * route is" condition that record puts on a read scoped by nothing but a
+ * secret. Each takes its **own instance**, so the two counters are separate
+ * for the reason `D18.5` separated the reset's from `login`'s.
+ */
+export const createTokenRouteRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(RATE_LIMIT_WINDOW_MS, store),
+    limit: config.rateLimit.loginMax,
   });
 
 /**

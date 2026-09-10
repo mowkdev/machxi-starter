@@ -27,6 +27,7 @@ import {
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
   createRefreshRateLimiter,
+  createTokenRouteRateLimiter,
   createVerificationRateLimiter,
 } from "./middleware/index.js";
 import {
@@ -40,6 +41,7 @@ import {
   createOrganizationsController,
   createOrganizationsRepository,
   createOrganizationsService,
+  createPublicInvitationsController,
   createRequireMembership,
   createUserInvitationsController,
   createUserOrganizationsController,
@@ -252,6 +254,10 @@ export const buildContainer = ({
     // service reads no environment (ADR-0004's one-place rule).
     invitationTtlSec: config.organizations.invitationTtlSec,
     transaction,
+    // ADR-0066 §1's port and ADR-0071 §2's messages, the same two instances
+    // the auth services take: §2's marked call is a real send from `D18.7` on.
+    mail,
+    mailTemplates,
   });
 
   // The third guard (ADR-0067 §4, a delta on ADR-0019). A factory over the
@@ -443,16 +449,60 @@ export const buildContainer = ({
      * The route hashes a password before it can know whether the token is any
      * good, so it needs the liveness control ADR-0020 §Hashing cost describes
      * and `register` already shares. What it must not share is the count:
-     * `resetPasswordBody` carries no `email`, so its key degrades to the
-     * caller's address alone — and that is the *same* key `login` and
-     * `register` produce for a request whose body has no readable address.
-     * One instance would let ten malformed `POST /login` bodies from an IP
-     * block password-reset **completion** for everybody behind it, which is a
-     * denial of the one flow a person reaches when nothing else works.
+     * `resetPasswordBody` carries no `email`, so one instance would let ten
+     * malformed `POST /login` bodies from an IP block password-reset
+     * **completion** for everybody behind it, which is a denial of the one
+     * flow a person reaches when nothing else works.
+     *
+     * **`createTokenRouteRateLimiter`, not `createLoginRateLimiter`**
+     * (`D18.7`'s `security-reviewer`, correcting `D18.5`). This body has no
+     * `email` *field*, but the limiter runs above `validate` and would read
+     * one out of it anyway — so a caller could hand every request a fresh key
+     * by inventing the field, and the budget would exist in the docblock only.
+     * The replacement reads no body at all.
      */
-    passwordResetSubmit: createLoginRateLimiter(
+    passwordResetSubmit: createTokenRouteRateLimiter(
       config,
       rateLimitStore("password-reset-submit"),
+    ),
+    /**
+     * `POST /public/invitations/lookup` — ADR-0067 §5's first condition, which
+     * ADR-0071 §5 inherits: a read scoped by nothing but a secret is limited
+     * **as an authentication route is**, guessing being the only attack on it.
+     *
+     * The same factory and the same reason as `passwordResetSubmit` above: an
+     * opaque token in the body and no address to key on, so the key is the
+     * source and nothing a caller writes. Its own instance, so ten malformed
+     * sign-in attempts from an office cannot stop its invitees reading the
+     * link they were sent.
+     */
+    invitationLookup: createTokenRouteRateLimiter(
+      config,
+      rateLimitStore("invitation-lookup"),
+    ),
+    /**
+     * `POST /user/orgs/:orgId/invitations` — the mailbox's own budget on the
+     * one sender an *authenticated* caller drives (ADR-0071 §5, amended at
+     * `D18.7` on that step's `security-reviewer`).
+     *
+     * §5 first said this send needed no budget, on the ground that ADR-0067
+     * §2 refuses a second outstanding offer to one address in one
+     * organization. That bound does not hold: an offer is revoked and made
+     * again in two requests, and nothing caps how many organizations an
+     * account may create — so "one per organization" is a bound the same
+     * caller mints more of. The ceiling left was the global limiter, which is
+     * hundreds an hour into a stranger's inbox from an address they never
+     * gave anyone, carrying a subject line the sender chose.
+     *
+     * The mailbox key, because that is whose inbox it is, and a **counter of
+     * its own**, because being invited must not spend the recovery budget for
+     * the same address (`verification`'s reason exactly). Team onboarding is
+     * untouched: the key is the recipient, so thirty invitations to thirty
+     * people are thirty budgets.
+     */
+    invitationMailbox: createMailboxRateLimiter(
+      config,
+      rateLimitStore("invitation-mailbox"),
     ),
   } as const;
 
@@ -566,6 +616,11 @@ export const buildContainer = ({
       userOrganizations:
         createUserOrganizationsController(organizationsService),
       userInvitations: createUserInvitationsController(organizationsService),
+      // The fourth mount of the same service, and the only one outside every
+      // guard: the holder of an invitation link has no account yet
+      // (ADR-0071 §5).
+      publicInvitations:
+        createPublicInvitationsController(organizationsService),
       organizations: createOrganizationsController(organizationsService),
     } as const,
 

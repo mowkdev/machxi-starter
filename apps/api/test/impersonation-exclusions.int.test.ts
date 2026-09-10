@@ -12,6 +12,7 @@ import {
   type Tokens,
 } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
+import { lastMailTo, tokenFromMail } from "./support/mail.js";
 import {
   FIXTURE_PASSWORD,
   FIXTURE_USERS,
@@ -418,6 +419,44 @@ describe("the exclusion list", () => {
     await supertest(harness.app)
       .post(`${INVITATIONS}/${invitation.body.data.id}/accept`)
       .set("Authorization", bearer(invitee.accessToken))
+      .expect(200);
+  });
+
+  it("refuses accepting from the mailed link too, and lets the invitee through", async () => {
+    // The same join under a different name (ADR-0071 §5). ADR-0067 §8 excludes
+    // *joining*, not one way of asking for it — and this way is the sharper
+    // one, because a support operator looking at a customer's mailbox is
+    // exactly how the link would be found.
+    const host = await impersonatedOwner(
+      "exclusions-link-host@machxi.local",
+      "exclusions-link-host",
+    );
+    const email = "exclusions-link-invitee@machxi.local";
+    const { tokens: impersonated } = await impersonate(email);
+    const invitee = await signIn(email);
+
+    await supertest(harness.app)
+      .post(`${ORGS}/${host.organizationId}/invitations`)
+      .set("Authorization", bearer(host.owner.accessToken))
+      .send({ email, role: "member" })
+      .expect(201);
+
+    const token = tokenFromMail(lastMailTo(harness, email));
+
+    const refused = await supertest(harness.app)
+      .post(`${INVITATIONS}/accept-by-token`)
+      .set("Authorization", bearer(impersonated.accessToken))
+      .send({ token })
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+
+    // Refused above the service, so the link is unspent and the person whose
+    // mailbox it was sent to can still use it.
+    await supertest(harness.app)
+      .post(`${INVITATIONS}/accept-by-token`)
+      .set("Authorization", bearer(invitee.accessToken))
+      .send({ token })
       .expect(200);
   });
 

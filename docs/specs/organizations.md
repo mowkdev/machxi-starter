@@ -175,6 +175,47 @@ Proved by: `apps/api/test/organizations.int.test.ts`, `apps/api/test/organizatio
 - **WHEN** the clock has passed an invitation's expiry
 - **THEN** it is absent from the invitee's pending list and accepting it answers `409 CONFLICT`
 
+## Requirement: An invitation is delivered and accepted from its link
+
+Creating an invitation **sends it** to the invited address, with the single-use token in the link's **fragment** — the customer app's `/invitations/accept` — and never in its path or query; the database still holds only the SHA-256 and no response body carries either. `POST /api/v1/public/invitations/lookup { token }` is unauthenticated and answers `200` with the organization's name, the invited address and the role, and nothing else: no invitation id, no status. Unknown, accepted, declined, revoked, expired and "its organization was deleted" all answer the same `404 NOT_FOUND`, and the endpoint is limited as an authentication route is. `POST /api/v1/user/invitations/accept-by-token { token }` is authenticated and joins the caller **when the caller's address is the invited one** — the token proves the mailbox, the session proves the account, and the two must agree; a caller whose address differs answers `403 ORGANIZATION_INVITATION_ADDRESS_MISMATCH` and the link is left unspent. A second acceptance answers `404`, and an impersonated session is refused as it is on every other way of joining. Creating an invitation carries the mailbox's own hourly budget, keyed on the **invited address** and counted separately from password recovery's: inviting many different people is many budgets, and inviting one address over and over — by revoking and inviting again — answers `429 RATE_LIMITED`.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0066](../adr/0066-infrastructure-seams.md), [ADR-0020](../adr/0020-security-baseline.md)
+Proved by: `apps/api/test/organizations.int.test.ts`, `apps/api/test/impersonation-exclusions.int.test.ts`, `apps/api/src/core/mail/__tests__/templates.test.ts`
+
+### Scenario: Creating an invitation
+
+- **WHEN** an owner invites an address
+- **THEN** one message is sent to that address naming the organization, its link carries the token after `#` and nowhere else, and the response carries neither the token nor its digest
+
+### Scenario: Opening the link before signing in
+
+- **WHEN** the token from that message is posted to `lookup` by an anonymous caller
+- **THEN** the answer is `200` with the organization's name, the invited address and the role — and no invitation id
+
+### Scenario: A link that is no longer live
+
+- **WHEN** `lookup` is given an unknown token, or one whose invitation was accepted, declined, revoked or has expired
+- **THEN** the answer is the identical `404 NOT_FOUND` — one answer for every case, because the caller is an anonymous holder of a URL fragment
+
+### Scenario: Accepting from the link
+
+- **WHEN** the invited account posts the token to `accept-by-token`
+- **THEN** the answer is `200` with the organization joined and the role invited, and posting the same token again answers `404`
+
+### Scenario: The link opened by the wrong account
+
+- **WHEN** a signed-in account whose address is not the invited one posts the token
+- **THEN** the answer is `403 ORGANIZATION_INVITATION_ADDRESS_MISMATCH`, that account joins nothing, and the invited account can still accept with the same token
+
+### Scenario: One address invited over and over
+
+- **WHEN** an owner revokes an invitation and invites the same address again, past `RATE_LIMIT_MAILBOX_MAX` times inside the hour
+- **THEN** the answer is `429 RATE_LIMITED`, while an invitation to a different address is still `201` — the budget is the recipient's, so onboarding a team is untouched
+
+### Scenario: The link with no session at all
+
+- **WHEN** the token is posted to `accept-by-token` by an anonymous caller
+- **THEN** the answer is `401` — reading the offer is what holding the link buys, and joining needs an account to join
+
 ## Requirement: Staff manage the tenant base as a resource and are never members
 
 `/api/v1/admin/organizations` mounts for `admin` and `manager`; every writing route — create, update, delete, and the four on the memberships sub-resource — narrows to `admin`. Every row's `role` is `null`, staff holding no membership. The list speaks ADR-0014's language: `q` searches name and slug, and both are filterable on their own beside `kind` and `createdAt` — so a caller can ask "name contains" without also matching the slug. It omits soft-deleted rows unless the query mentions `deletedAt`, and `GET /:id` answers a soft-deleted organization `200` with its `deletedAt` set. Creating one names the owning account by id and answers `404 NOT_FOUND` for an id nothing holds. The memberships sub-resource adds a member **by user id**, and it is the one path that grants membership without an invitation; it answers `404` for an organization id nothing holds — on the list as well as the writes, nothing here having proved the organization exists. The last-owner and personal-organization refusals apply to staff exactly as to a member: adding a second member to a `personal` organization is `409 ORGANIZATION_PERSONAL_CLOSED` on this segment too.

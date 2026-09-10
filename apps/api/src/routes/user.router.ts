@@ -107,6 +107,11 @@ export const createUserRouter = (container: Container): Router => {
       requireMembership: container.requireMembership,
       // ADR-0067 §8's grown list, read in the router file beside each route.
       refuseImpersonated: container.refuseImpersonated,
+      // The invited mailbox's own budget on the create, which sends a message
+      // from `D18.7` on (ADR-0071 §5, amended at that step). A counter of its
+      // own, so being invited never spends the recovery budget for the same
+      // address.
+      mailboxRateLimiter: container.rateLimiters.invitationMailbox,
     }),
   );
 
