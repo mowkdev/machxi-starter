@@ -167,7 +167,12 @@ export const RolesList = ({ value }: ValueOnlyProps) => {
  */
 export const RowActions = ({ row, rowId, meta }: CellRendererProps) => {
   const { t } = useT("grid");
-  const actions = meta.rowActions ?? [];
+  // Per row, before anything else: an action `isHidden` refuses on this row
+  // does not exist here, and a row every action hides gets no trigger at all
+  // rather than a button opening onto a blank panel.
+  const actions = (meta.rowActions ?? []).filter(
+    (action) => action.isHidden?.(row) !== true,
+  );
 
   if (actions.length === 0) return null;
 

@@ -23,7 +23,7 @@
     "email": { "label": "E-pasts" },
     "password": {
       "label": "Sākotnējā parole",
-      "description": "Nododiet to ārpus sistēmas un palūdziet to nomainīt. Nekas neliek to mainīt pirmajā pieteikšanās reizē."
+      "description": "Atstājiet tukšu, lai nosūtītu uzaicinājumu pa e-pastu. Ja ievadīsiet paroli, nododiet to ārpus sistēmas — nekas neliek to mainīt pirmajā pieteikšanās reizē."
     },
     "firstName": { "label": "Vārds" },
     "lastName": { "label": "Uzvārds" },
@@ -38,12 +38,13 @@
     "edit": "Rediģēt",
     "resetPassword": "Atiestatīt paroli",
     "revokeSessions": "Atteikt visur",
+    "resendInvitation": "Nosūtīt uzaicinājumu vēlreiz",
     "delete": "Dzēst"
   },
   "create": {
     "routeTitle": "Jauns darbinieks",
     "title": "Jauns darbinieks",
-    "description": "Viņi varēs pieteikties, tiklīdz tas būs saglabāts.",
+    "description": "Atstājiet paroli tukšu, un viņiem tiks nosūtīts uzaicinājums izvēlēties savu; ievadiet paroli, un viņi varēs pieteikties, tiklīdz tas būs saglabāts.",
     "submit": "Izveidot"
   },
   "edit": {
@@ -63,6 +64,11 @@
     "title_other": "Dzēst {{count}} darbinieku kontus?",
     "description": "Konti un to lomu piešķīrumi tiek dzēsti pilnībā. To nevar atsaukt. Daži var tikt atteikti — pēdējais galvenais administrators, konts, kas ir augstāks par jūsējo, vai jūsu paša — un jums tiks pateikts, kuri.",
     "confirm": "Dzēst"
+  },
+  "resendInvitation": {
+    "title": "Nosūtīt uzaicinājumu vēlreiz adresei {{email}}?",
+    "description": "Uz šo adresi tiek nosūtīta jauna saite, un iepriekšējā pārstāj darboties. To var nosūtīt tikai operatoram, kurš vēl nav iestatījis paroli.",
+    "confirm": "Nosūtīt uzaicinājumu vēlreiz"
   },
   "revokeSessions": {
     "title": "Atteikt {{email}} visur?",
@@ -107,6 +113,7 @@
     "deleted": "Darbinieks tika dzēsts.",
     "passwordReset": "Parole tika atiestatīta, un visas šī konta sesijas tika atteiktas.",
     "sessionsRevoked": "Visas šī konta sesijas tika atteiktas.",
+    "invitationSent": "Uzaicinājums tika nosūtīts.",
     "emailChanged": "Adrese tika nomainīta."
   }
 }

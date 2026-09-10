@@ -26,6 +26,13 @@ import type { StaffResource } from "@repo/contracts";
  */
 export type StaffAction =
   | { readonly kind: "reset-password"; readonly staff: StaffResource }
+  /**
+   * The invitation resend (`D18.11`, ADR-0071 §8). Ephemeral like every other
+   * entry here, and for the ordinary reason: a URL that reopened it on load
+   * would be a bookmarked prompt to mail somebody, primed over a row nobody
+   * has looked at.
+   */
+  | { readonly kind: "resend-invitation"; readonly staff: StaffResource }
   | { readonly kind: "revoke-sessions"; readonly staff: StaffResource }
   | { readonly kind: "delete"; readonly staff: StaffResource }
   /**

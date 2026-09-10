@@ -73,6 +73,13 @@ import { RESOURCE_POLICY, type ResourcePolicy } from "../policy";
  * Both are `changeEmail` below. Written out rather than left absent — which
  * the type says means the same thing — because absence is how this table says
  * "no such route", and both routes exist.
+ *
+ * **Re-read 2026-09-10 (`D18.11`)**, when staff onboarding by invitation
+ * arrived: `staff.routes.ts` gains `POST /:id/onboarding/resend` with **no**
+ * `authorize(` of its own — the grep still finds exactly one, on `/:id/email`
+ * — so it inherits the mount's `admin` and is `resendOnboarding: ["admin"]`
+ * below. `users.routes.ts` is unchanged and has no twin, which is why that
+ * key is absent there rather than written as anything.
  */
 const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
   staff: {
@@ -83,6 +90,7 @@ const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
     setPassword: ["admin"],
     revokeSessions: ["admin"],
     changeEmail: ["super_admin"],
+    resendOnboarding: ["admin"],
   },
   users: {
     read: ["admin", "manager"],
@@ -114,9 +122,11 @@ const staff = (...roles: readonly StaffRole[]): StaffPrincipalResource => ({
 /**
  * The actions **every** resource's row must grant somebody.
  *
- * `impersonate` is deliberately absent: it is the one action with a route on a
- * single resource, so requiring it everywhere would ask `staff` to describe an
- * endpoint that does not exist. The completeness case below says the rest.
+ * `impersonate` and `resendOnboarding` are deliberately absent: each has a
+ * route on a single resource — `impersonate` on `users`, `resendOnboarding`
+ * on `staff` — so requiring either everywhere would ask the other resource to
+ * describe an endpoint that does not exist. The completeness case below says
+ * the rest.
  */
 const UNIVERSAL_ACTIONS = [
   "read",

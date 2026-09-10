@@ -291,6 +291,7 @@ export const createMailboxRateLimiter = (
   store: RateLimitStore,
   {
     recipientField = "email",
+    subjectParam,
     skipFailedRequests = false,
   }: MailboxRateLimiterOptions = {},
 ): RequestHandler =>
@@ -299,6 +300,11 @@ export const createMailboxRateLimiter = (
     limit: config.rateLimit.mailboxMax,
     skipFailedRequests,
     keyGenerator: (req) => {
+      const subject =
+        subjectParam === undefined ? "" : keyParam(req, subjectParam);
+
+      if (subject !== "") return `subject:${subject}`;
+
       const email = keyEmail(req, recipientField);
 
       return email === "" ? `anon:${ipKey(req)}` : email;
@@ -325,6 +331,24 @@ export interface MailboxRateLimiterOptions {
    * {@link createTokenRouteRateLimiter} exists.
    */
   readonly recipientField?: "email" | "newEmail";
+  /**
+   * Key on a **path parameter** naming the subject, rather than on a field of
+   * the body (`D18.11`, ADR-0071 §8).
+   *
+   * The one sender whose recipient is nowhere in the request:
+   * `POST /admin/staff/:id/onboarding/resend` mails the address **on the
+   * row**, which is what stops a caller redirecting it — and also what leaves
+   * this limiter with no address to read. The subject's id stands in for that
+   * mailbox one-for-one and, unlike a body field, it is matched by the route
+   * rather than supplied by the caller, so there is nothing here for an
+   * inventive body to vary. It is prefixed rather than used bare, so an id can
+   * never collide with an address in a shared store.
+   *
+   * It takes precedence over {@link recipientField} when both are set, which
+   * no mount does; a request whose parameter is missing falls back to the
+   * per-source key exactly as a missing address does.
+   */
+  readonly subjectParam?: string;
   /**
    * Whether a refused request keeps its share of the budget.
    *
@@ -468,6 +492,23 @@ export const createVerificationRateLimiter = (
  * lower-cased here because an unbounded value from an unvalidated body would
  * otherwise become a memory-store key.
  */
+/**
+ * A path parameter, bounded, for the one mailbox key that is not an address
+ * (`D18.11`).
+ *
+ * Bounded for {@link keyEmail}'s reason and then some: this runs above
+ * `validate`, so the value is whatever matched the route's pattern and has not
+ * yet been proven to be a uuid. An unbounded one would become a memory-store
+ * key.
+ */
+const keyParam = (req: Request, name: string): string => {
+  const value: unknown = req.params[name];
+
+  return typeof value === "string"
+    ? value.trim().toLowerCase().slice(0, MAX_KEY_EMAIL_LENGTH)
+    : "";
+};
+
 const keyEmail = (
   req: Request,
   field: "email" | "newEmail" = "email",

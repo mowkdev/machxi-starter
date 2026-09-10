@@ -14,6 +14,7 @@ import type { IssuedAuthResource } from "./auth.mapper.js";
 import type { AuthService } from "./auth.service.js";
 import { applyAuthTransport } from "./auth.transport.js";
 import type {
+  acceptOnboardingSchema,
   confirmEmailSchema,
   forgotPasswordSchema,
   loginSchema,
@@ -188,6 +189,25 @@ export const createAuthController = ({
       res: Response,
     ): Promise<void> => {
       const resource = await service.verifyEmail(req.ctx, req.valid.body);
+
+      respond.ok(res, applyTransport(req, res, resource));
+    },
+
+    /**
+     * `200` with login's body, on whichever transport the caller asked for
+     * (ADR-0071 §8).
+     *
+     * {@link verifyEmail}'s answer exactly, and the twin is the argument: the
+     * caller has presented a single-use credential and chosen the password it
+     * was mailed for, so the device holding it is signed in as `login` would
+     * sign it in — `X-Auth-Transport: cookie` included, since the SPA that
+     * lands here is a browser.
+     */
+    acceptOnboarding: async (
+      req: ValidatedRequest<typeof acceptOnboardingSchema>,
+      res: Response,
+    ): Promise<void> => {
+      const resource = await service.acceptOnboarding(req.ctx, req.valid.body);
 
       respond.ok(res, applyTransport(req, res, resource));
     },

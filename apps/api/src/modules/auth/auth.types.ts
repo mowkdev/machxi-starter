@@ -138,6 +138,28 @@ export interface PrincipalAdapter<P extends Population = Population> {
     tx?: DbExecutor,
   ) => Promise<PrincipalRecord | undefined>;
   /**
+   * The onboarding link's effect, and therefore **staff only** (ADR-0071 §8):
+   * the operator's first password and the move out of `invited`, in the
+   * transaction that consumed the token.
+   *
+   * The mirror of {@link activateVerified} across the two populations, and the
+   * asymmetry is the two flows': a user proves a mailbox and needs no password
+   * because they already chose one, while an operator has no password at all
+   * until this call and their address was asserted by whoever created the row
+   * (ADR-0071 §3).
+   *
+   * Resolves to `undefined` when no row moved — the account was deleted or
+   * disabled since the mint, or has already onboarded — which the caller
+   * answers by throwing, so the consume rolls back and a refused accept spends
+   * nothing.
+   */
+  activateOnboarded?: (
+    id: string,
+    passwordHash: string,
+    at: Date,
+    tx?: DbExecutor,
+  ) => Promise<PrincipalRecord | undefined>;
+  /**
    * "Does a live account of this population already hold this address?"
    * (ADR-0071 §6), and **users only** for {@link changeEmailVerified}'s
    * reason.

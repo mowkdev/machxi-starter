@@ -22,7 +22,7 @@
     "email": { "label": "Email" },
     "password": {
       "label": "Initial password",
-      "description": "Hand this over out of band and ask them to change it. Nothing forces a change at first sign-in."
+      "description": "Leave this empty to email them an invitation instead. If you type one, hand it over out of band — nothing forces a change at first sign-in."
     },
     "firstName": { "label": "First name" },
     "lastName": { "label": "Last name" },
@@ -37,12 +37,13 @@
     "edit": "Edit",
     "resetPassword": "Reset password",
     "revokeSessions": "Sign out everywhere",
+    "resendInvitation": "Resend invitation",
     "delete": "Delete"
   },
   "create": {
     "routeTitle": "New staff member",
     "title": "New staff member",
-    "description": "They can sign in as soon as this is saved.",
+    "description": "Leave the password empty and they are emailed an invitation to choose their own; type one and they can sign in as soon as this is saved.",
     "submit": "Create"
   },
   "edit": {
@@ -61,6 +62,11 @@
     "title_other": "Delete {{count}} staff accounts?",
     "description": "The accounts and their role grants are deleted outright. This cannot be undone. Some may be refused — the last super admin, an account that outranks you, or your own — and you will be told which.",
     "confirm": "Delete"
+  },
+  "resendInvitation": {
+    "title": "Resend the invitation to {{email}}?",
+    "description": "A new link goes to that address and the previous one stops working. Only an operator who has not set a password yet can be sent one.",
+    "confirm": "Resend invitation"
   },
   "revokeSessions": {
     "title": "Sign {{email}} out everywhere?",
@@ -105,6 +111,7 @@
     "deleted": "The staff member was deleted.",
     "passwordReset": "The password was reset and every session of that account was signed out.",
     "sessionsRevoked": "Every session of that account was signed out.",
+    "invitationSent": "The invitation was sent.",
     "emailChanged": "The address was changed."
   }
 }

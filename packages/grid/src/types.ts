@@ -19,6 +19,24 @@ export interface RowAction<TRow> {
   readonly destructive?: boolean;
   /** A row the action cannot apply to (the caller's own account, say). */
   readonly isDisabled?: (row: TRow) => boolean;
+  /**
+   * A row the action does not **exist** for, as opposed to one it is refused
+   * on (`D18.11`).
+   *
+   * The distinction is worth the second predicate. `isDisabled` says "this
+   * control applies here and you may not use it", which is the honest answer
+   * when a rule depends on the actor or on state the client does not hold.
+   * This says "there is no such operation on this row" — an invitation to
+   * re-send to somebody who has already accepted one, say — and a menu that
+   * greyed those out would carry one dead entry per row for the sake of a
+   * case that is the exception rather than the rule.
+   *
+   * It reads the **row**, so what it may decide is what the row says. A
+   * predicate here that guessed at the actor's standing, or at a count only
+   * the server holds, would be the client-side authorization ADR-0042 keeps
+   * out of this file — that belongs to `can()`, above the grid.
+   */
+  readonly isHidden?: (row: TRow) => boolean;
 }
 
 /** The `meta` a feature hands to {@link AppGrid}, reaching cell renderers. */

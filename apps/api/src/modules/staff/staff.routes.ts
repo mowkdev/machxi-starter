@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 
 import { authorize, noStore, validate } from "../../core/middleware/index.js";
 import type {
@@ -11,6 +11,7 @@ import {
   deleteStaffSchema,
   getStaffSchema,
   listStaffSchema,
+  resendStaffOnboardingSchema,
   revokeStaffSessionsSchema,
   setStaffEmailSchema,
   setStaffPasswordSchema,
@@ -43,13 +44,46 @@ import {
  * and it is the same directive the auth router applies for the same reason
  * (ADR-0020).
  */
-export const createStaffRouter = (controller: StaffController): Router => {
+export interface StaffRouterDeps {
+  readonly controller: StaffController;
+  /**
+   * The mailbox's budget on ADR-0071 §8's two senders, from the composition
+   * root (§8, amended at `D18.11`).
+   *
+   * One instance mounted twice, because both mail the same invitation to the
+   * same mailbox. It sits **inside** the mount, so `authenticate` and
+   * `authorize("admin")` have both already run — §5's stated refinement of
+   * ADR-0011's order, and the reason for it: what is rationed is a stranger's
+   * inbox, so a caller who is about to be refused for want of `admin` must
+   * not be able to spend it.
+   */
+  readonly onboardingMailRateLimiter: RequestHandler;
+}
+
+export const createStaffRouter = ({
+  controller,
+  onboardingMailRateLimiter,
+}: StaffRouterDeps): Router => {
   const router = Router();
 
   router.use(noStore);
 
   router.get("/", validate(listStaffSchema), controller.list);
-  router.post("/", validate(createStaffSchema), controller.create);
+  /*
+   * The limiter is on `create` because the body may name a **stranger's**
+   * address and the endpoint may mail it (ADR-0071 §8, amended at `D18.11`).
+   * It is keyed on that address, so a create that supplies a password — which
+   * mails nothing — spends a budget it did not need; that is the trade
+   * `skipFailedRequests: false` already makes everywhere else in §4, and the
+   * alternative is a limiter that reads the body twice to decide whether to
+   * count.
+   */
+  router.post(
+    "/",
+    onboardingMailRateLimiter,
+    validate(createStaffSchema),
+    controller.create,
+  );
 
   router.get("/:id", validate(getStaffSchema), controller.getById);
   router.patch("/:id", validate(updateStaffSchema), controller.update);
@@ -90,12 +124,35 @@ export const createStaffRouter = (controller: StaffController): Router => {
    * `authorize("super_admin")` rather than the bare `authorize()` that means
    * the same thing: a reader must not have to know that an empty list is a
    * lock in order to see which role this route is for.
+   *
+   * It carries **no mailbox limiter**, unlike the two §8 senders: nothing is
+   * mailed here at all (§7).
    */
   router.post(
     "/:id/email",
     authorize("super_admin"),
     validate(setStaffEmailSchema),
     controller.setEmail,
+  );
+
+  /*
+   * `POST /:id/onboarding/resend` (ADR-0071 §8) — no guard of its own, and
+   * that is the mount's `admin` rather than an omission: creating the invited
+   * row is an `admin`'s right, so re-sending the message it already sent
+   * cannot be a higher bar. There is nothing here for `super_admin` to
+   * narrow, because the message goes to the address the row already holds —
+   * unlike `POST /:id/email` above, which changes where every future link
+   * lands.
+   *
+   * A sub-resource for the reason `sessions/revoke` and `password` are: it is
+   * an action with a side effect outside this row — a message and a token —
+   * rather than a field of the staff member.
+   */
+  router.post(
+    "/:id/onboarding/resend",
+    onboardingMailRateLimiter,
+    validate(resendStaffOnboardingSchema),
+    controller.resendOnboarding,
   );
 
   // A hard delete: the row goes and `staff_roles` cascades with it (ADR-0028).

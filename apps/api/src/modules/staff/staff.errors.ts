@@ -44,6 +44,47 @@ export const lastSuperAdmin = (): AppError =>
   );
 
 /**
+ * `POST /api/v1/admin/staff/:id/onboarding/resend` on a row that is not
+ * `invited` (ADR-0071 §8).
+ *
+ * `409` rather than `404` or `403`, for {@link lastSuperAdmin}'s reason: the
+ * account exists, the caller has the privilege, and what refuses is the row's
+ * state — an operator who has already chosen a password has no pending
+ * invitation to replace, and one an admin has disabled must not be handed a
+ * way back in by mail. It names the conflict because only an authenticated
+ * `admin` reaches it, and they can already read the status they are being
+ * told about.
+ */
+export const staffNotInvited = (): AppError =>
+  conflict(
+    "Only an invited staff member can be sent an onboarding link",
+    "STAFF_NOT_INVITED",
+  );
+
+/**
+ * An operation aimed at an operator who has not accepted their invitation
+ * (ADR-0071 §8) — {@link staffNotInvited}'s mirror.
+ *
+ * Two callers, and the same sentence is true of both. `POST /:id/password`
+ * has no password to replace: the row's hash is null and the invitation is
+ * how it gets one, so writing a hash there would hand over a credential the
+ * account cannot sign in with — `status` would still be `invited` — and the
+ * `204` would be a claim nobody could act on. And `PATCH /:id { status:
+ * "active" }` would produce the same row from the other direction: `active`
+ * with no password, which every other path in this module treats as
+ * impossible and which `countOtherActiveSuperAdmins` would count as a
+ * survivor.
+ *
+ * `409` for {@link lastSuperAdmin}'s reason: the caller has the privilege and
+ * what refuses is the row's state.
+ */
+export const staffInvitationPending = (): AppError =>
+  conflict(
+    "This staff member has not accepted their invitation yet",
+    "STAFF_INVITATION_PENDING",
+  );
+
+/**
  * Only a `super_admin` may grant or revoke `super_admin`.
  *
  * Without this rule the role is self-service: `authorize("admin")` lets an

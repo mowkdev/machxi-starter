@@ -29,6 +29,8 @@
   "USER_DELETED": "This account has been deleted.",
   "STAFF_EMAIL_TAKEN": "That email address is already in use.",
   "STAFF_LAST_SUPER_ADMIN": "That change is not allowed.",
+  "STAFF_NOT_INVITED": "That change is not allowed.",
+  "STAFF_INVITATION_PENDING": "That change is not allowed.",
 
   "ORGANIZATION_LAST_OWNER": "An organization needs at least one owner. Make someone else an owner first.",
   "ORGANIZATION_PERSONAL_UNDELETABLE": "Your personal organization is removed with your account.",

@@ -64,6 +64,10 @@ export const createUserRouter = (container: Container): Router => {
       // same key a malformed `login` produces.
       passwordResetSubmitRateLimiter:
         container.rateLimiters.passwordResetSubmit,
+      // Passed and never registered here: `onboarding/accept` exists only
+      // where the population is `staff` (ADR-0071 §8), and the condition that
+      // says so lives in the router beside the route.
+      onboardingAcceptRateLimiter: container.rateLimiters.onboardingAccept,
       // `POST /user/auth/impersonate` (ADR-0057 §3) — registered here and
       // nowhere else, because the auth router is one factory per segment and
       // an admin-segment twin would turn a URL fragment into a staff session.

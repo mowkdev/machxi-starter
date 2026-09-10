@@ -10,6 +10,10 @@ import {
   type RequestContext,
 } from "../../../core/context/index.js";
 import { isAppError } from "../../../core/errors/index.js";
+import {
+  createMailTemplates,
+  type MailSender,
+} from "../../../core/mail/index.js";
 import type { AccountTokens } from "../../../core/tokens/index.js";
 import { REVOKE_REASONS } from "../../auth/index.js";
 import type {
@@ -33,6 +37,8 @@ import { createStaffService } from "../staff.service.js";
 const SUPER_ADMIN_ID = "11111111-1111-7111-8111-111111111111";
 const ADMIN_ID = "22222222-2222-7222-8222-222222222222";
 const ACTOR_ID = "33333333-3333-7333-8333-333333333333";
+/** The `invited` operator ADR-0071 §8's two endpoints act on. */
+const INVITED_ID = "44444444-4444-7444-8444-444444444444";
 /**
  * An actor id with hex *letters* in it, for the case-spelling rule below.
  *
@@ -49,7 +55,8 @@ const NOW = new Date("2026-08-18T12:00:00.000Z");
 interface FakeStaffRow {
   readonly id: string;
   email: string;
-  passwordHash: string;
+  /** Nullable since ADR-0071 §8: an `invited` operator has no password yet. */
+  passwordHash: string | null;
   firstName: string;
   lastName: string;
   status: StaffStatus;
@@ -125,11 +132,27 @@ const createFakeRepository = (seed: FakeStaffRow[]) => {
         passwordHash: input.passwordHash,
         firstName: input.firstName,
         lastName: input.lastName,
-        status: "active",
+        // The caller's, since ADR-0071 §8: an invitation writes `invited` and
+        // a password writes `active`, and a fake that hard-coded one of them
+        // would pass whichever the service sent.
+        status: input.status,
         roles: [],
       };
 
       rows.set(row.id, row);
+
+      return Promise.resolve(toRecord(row));
+    },
+
+    /** The onboarding link's write (ADR-0071 §8), `invited` rows only. */
+    activateOnboarded: (id: string, passwordHash: string) => {
+      const row = rows.get(id);
+
+      if (row === undefined || row.status !== "invited")
+        return Promise.resolve(undefined);
+
+      row.passwordHash = passwordHash;
+      row.status = "active";
 
       return Promise.resolve(toRecord(row));
     },
@@ -360,11 +383,27 @@ const createFakeAudit = () => {
 /** ADR-0071 §1's service, narrowed to the one call this module makes of it. */
 const createFakeAccountTokens = () => {
   const superseded: { purpose: string; principalId: string }[] = [];
+  /** Every `staff_onboarding` mint, so the link's principal can be asserted. */
+  const minted: { purpose: string; principalId: string }[] = [];
 
   return {
     superseded,
+    minted,
     accountTokens: {
-      mint: () => Promise.reject(new Error("staff mints no tokens here")),
+      mint: (
+        _ctx: RequestContext,
+        input: { purpose: string; principal: { id: string } },
+      ) => {
+        minted.push({
+          purpose: input.purpose,
+          principalId: input.principal.id,
+        });
+
+        return Promise.resolve({
+          token: `token-${String(minted.length)}`,
+          expiresAt: NOW,
+        });
+      },
       consume: () => Promise.resolve(undefined),
       supersede: (
         _ctx: RequestContext,
@@ -381,12 +420,35 @@ const createFakeAccountTokens = () => {
   } as const;
 };
 
+/**
+ * ADR-0066 §1's port, recording what went out (`D18.11`).
+ *
+ * The `to` and the subject are what the onboarding cases assert — that an
+ * invitation mails the address the row holds, and that a create with a
+ * password mails nothing at all. The link itself is the templates' business
+ * and is proved against them in `core/mail/__tests__/templates.test.ts`.
+ */
+const createFakeMail = () => {
+  const sent: { to: string; subject: string }[] = [];
+
+  const mail: MailSender = {
+    send: (_ctx, message) => {
+      sent.push({ to: message.to, subject: message.subject });
+
+      return Promise.resolve();
+    },
+  };
+
+  return { mail, sent } as const;
+};
+
 const build = (seed: FakeStaffRow[]) => {
   const repo = createFakeRepository(seed);
   const hasher = createFakeHasher();
   const sessions = createFakeSessions();
   const audit = createFakeAudit();
   const tokens = createFakeAccountTokens();
+  const mail = createFakeMail();
 
   const service = createStaffService({
     repository: repo.repository,
@@ -394,13 +456,21 @@ const build = (seed: FakeStaffRow[]) => {
     sessions: sessions.sessions,
     audit: audit.audit,
     accountTokens: tokens.accountTokens,
+    mail: mail.mail,
+    // The real templates, built on two throwaway origins: what these cases
+    // assert about a message is its recipient, and a fake template would only
+    // be able to prove that a fake was called.
+    mailTemplates: createMailTemplates({
+      customerUrl: "http://customer.test",
+      adminUrl: "http://admin.test",
+    }),
     // The service composes repositories, and the fakes share no state that a
     // rollback would have to undo, so "one transaction" is just "run it".
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
   });
 
-  return { service, repo, hasher, sessions, audit, tokens } as const;
+  return { service, repo, hasher, sessions, audit, tokens, mail } as const;
 };
 
 /** An `admin` caller — enough for every endpoint, per `authorize("admin")`. */
@@ -550,6 +620,242 @@ describe("createStaffService", () => {
         "UNAUTHENTICATED",
         401,
       );
+    });
+
+    /* ── the invitation half (ADR-0071 §8) ──────────────────────────────── */
+
+    it("creates an invited row with no hash and mails the link", async () => {
+      const { service, hasher, repo, tokens, mail } = build([]);
+
+      const created = await service.create(ctx(), {
+        email: "invitee@machxi.local",
+        firstName: "Ivy",
+        lastName: "Invited",
+        roles: ["editor"],
+      });
+
+      expect(created.status).toBe("invited");
+      // No password in the body is no argon2 at all — the one place this
+      // endpoint got cheaper rather than more expensive.
+      expect(hasher.calls.hash).toBe(0);
+      expect(repo.rows.get(created.id)?.passwordHash).toBeNull();
+      expect(tokens.minted).toEqual([
+        { purpose: "staff_onboarding", principalId: created.id },
+      ]);
+      expect(mail.sent).toEqual([
+        { to: "invitee@machxi.local", subject: "Set up your account" },
+      ]);
+    });
+
+    it("mails nothing when a password was supplied", async () => {
+      // The two halves of one endpoint, and this is the assertion that keeps
+      // them apart: an `active` account's credential was handed over out of
+      // band, so a message here would be a link nobody needs to a mailbox
+      // nobody asked to involve.
+      const { service, tokens, mail } = build([]);
+
+      await service.create(ctx(), {
+        email: "typed@machxi.local",
+        password: "InitialPassword!1",
+        firstName: "Tom",
+        lastName: "Typed",
+        roles: ["editor"],
+      });
+
+      expect(tokens.minted).toEqual([]);
+      expect(mail.sent).toEqual([]);
+    });
+
+    it("mints nothing when the address is taken", async () => {
+      // The mint is inside the transaction the insert is in (ADR-0071 §1), so
+      // a refused create leaves no token row and sends no message — which the
+      // fake can only show because the insert resolves `undefined` rather
+      // than throwing, exactly as the unique index makes it.
+      const { service, tokens, mail } = build([adminRow()]);
+
+      await expectAppError(
+        () =>
+          service.create(ctx(), {
+            email: "admin@machxi.local",
+            firstName: "Ada",
+            lastName: "Twin",
+            roles: ["editor"],
+          }),
+        "STAFF_EMAIL_TAKEN",
+        409,
+      );
+
+      expect(tokens.minted).toEqual([]);
+      expect(mail.sent).toEqual([]);
+    });
+  });
+
+  describe("resendOnboarding", () => {
+    /** An `invited` row: the only state this endpoint acts on. */
+    const invitedRow = (): FakeStaffRow => ({
+      id: INVITED_ID,
+      email: "invitee@machxi.local",
+      passwordHash: null,
+      firstName: "Ivy",
+      lastName: "Invited",
+      status: "invited",
+      roles: ["editor"],
+    });
+
+    it("re-mints and mails the row's own address", async () => {
+      const { service, tokens, mail } = build([invitedRow()]);
+
+      await service.resendOnboarding(ctx(), INVITED_ID, {});
+
+      expect(tokens.minted).toEqual([
+        { purpose: "staff_onboarding", principalId: INVITED_ID },
+      ]);
+      // The address on the row, never one the caller passed: this body has no
+      // address field, which is what makes a stolen admin session unable to
+      // redirect the link.
+      expect(mail.sent).toEqual([
+        { to: "invitee@machxi.local", subject: "Set up your account" },
+      ]);
+    });
+
+    it("answers STAFF_NOT_INVITED for an active operator", async () => {
+      const { service, tokens, mail } = build([adminRow()]);
+
+      await expectAppError(
+        () => service.resendOnboarding(ctx(), ADMIN_ID, {}),
+        "STAFF_NOT_INVITED",
+        409,
+      );
+
+      expect(tokens.minted).toEqual([]);
+      expect(mail.sent).toEqual([]);
+    });
+
+    it("answers STAFF_NOT_INVITED for a disabled operator", async () => {
+      // The sharper half of the same rule: a `disabled` account must not be
+      // handed a way back in by mail, and "not invited" is the honest reason.
+      const { service, mail } = build([
+        { ...invitedRow(), status: "disabled" },
+      ]);
+
+      await expectAppError(
+        () => service.resendOnboarding(ctx(), INVITED_ID, {}),
+        "STAFF_NOT_INVITED",
+        409,
+      );
+
+      expect(mail.sent).toEqual([]);
+    });
+
+    it("answers 404 for an unknown id", async () => {
+      const { service } = build([]);
+
+      await expectAppError(
+        () => service.resendOnboarding(ctx(), INVITED_ID, {}),
+        "NOT_FOUND",
+        404,
+      );
+    });
+  });
+
+  /*
+   * The two operations that had never met an `invited` row until `D18.11` made
+   * one the ordinary way to create an operator (ADR-0071 §8, amended on that
+   * step's reviewers). Both would otherwise produce a row no other path in
+   * this module believes in.
+   */
+  describe("an operator who has not accepted their invitation", () => {
+    const invitedRow = (): FakeStaffRow => ({
+      id: INVITED_ID,
+      email: "invitee@machxi.local",
+      passwordHash: null,
+      firstName: "Ivy",
+      lastName: "Invited",
+      status: "invited",
+      roles: ["editor"],
+    });
+
+    it("cannot have a password set for them", async () => {
+      // The hash would be written and `status` would stay `invited`, so the
+      // operator could not sign in with the credential they were handed —
+      // and no argon2 is bought for a request that is about to be refused.
+      const { service, hasher, repo } = build([actorRow(), invitedRow()]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(ctx(), INVITED_ID, {
+            password: "InitialPassword!1",
+            currentPassword: ACTOR_PASSWORD,
+          }),
+        "STAFF_INVITATION_PENDING",
+        409,
+      );
+
+      expect(repo.rows.get(INVITED_ID)?.passwordHash).toBeNull();
+      expect(hasher.calls.hash).toBe(0);
+    });
+
+    it("cannot be activated by a patch", async () => {
+      // `countOtherActiveSuperAdmins` reads `status` alone, so an `active`
+      // row with no password would count as a survivor of the ADR-0017
+      // invariant while nobody can sign in as it.
+      const { service, repo } = build([invitedRow()]);
+
+      await expectAppError(
+        () => service.update(ctx(), INVITED_ID, { status: "active" }),
+        "STAFF_INVITATION_PENDING",
+        409,
+      );
+
+      expect(repo.rows.get(INVITED_ID)?.status).toBe("invited");
+    });
+
+    it("may still be moved to any other status", async () => {
+      // What is refused is the **pairing**, not the transition: an operator
+      // invited and then disabled by mistake has to be able to go back.
+      const { service } = build([invitedRow()]);
+
+      const disabled = await service.update(ctx(), INVITED_ID, {
+        status: "disabled",
+      });
+
+      expect(disabled.status).toBe("disabled");
+
+      const invited = await service.update(ctx(), INVITED_ID, {
+        status: "invited",
+      });
+
+      expect(invited.status).toBe("invited");
+    });
+
+    it("is refused activation from `disabled` too, not only from `invited`", async () => {
+      // A guard that watched the status rather than the hash would let the
+      // same bad row through one status along.
+      const { service } = build([{ ...invitedRow(), status: "disabled" }]);
+
+      await expectAppError(
+        () => service.update(ctx(), INVITED_ID, { status: "active" }),
+        "STAFF_INVITATION_PENDING",
+        409,
+      );
+    });
+
+    it("keeps a live onboarding link when a password set is refused", async () => {
+      // The refusal spends nothing: the supersession is inside the write's
+      // transaction, and the write never happens.
+      const { service, tokens } = build([actorRow(), invitedRow()]);
+
+      await expectAppError(
+        () =>
+          service.setPassword(ctx(), INVITED_ID, {
+            password: "InitialPassword!1",
+            currentPassword: ACTOR_PASSWORD,
+          }),
+        "STAFF_INVITATION_PENDING",
+        409,
+      );
+
+      expect(tokens.superseded).toEqual([]);
     });
   });
 
@@ -1195,6 +1501,11 @@ describe("createStaffService", () => {
         sessions: sessions.sessions,
         audit: createFakeAudit().audit,
         accountTokens: createFakeAccountTokens().accountTokens,
+        mail: createFakeMail().mail,
+        mailTemplates: createMailTemplates({
+          customerUrl: "http://customer.test",
+          adminUrl: "http://admin.test",
+        }),
         transaction: (fn) => fn(undefined as never),
         now: () => NOW,
       });
@@ -1434,6 +1745,7 @@ describe("the fake repository", () => {
         passwordHash: "x",
         firstName: "A",
         lastName: "B",
+        status: "active",
       }),
     ).resolves.toBeUndefined();
   });

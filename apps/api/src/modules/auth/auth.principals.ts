@@ -75,8 +75,34 @@ export const createStaffPrincipalAdapter = (
   updatePasswordHash: repository.updatePasswordHash,
   findActiveByEmail: repository.findActiveByEmail,
 
+  /**
+   * The onboarding link's effect (ADR-0071 §8), and the roles come back with
+   * it because the session minted a moment later is built from them —
+   * `activateVerified`'s reason on the users side.
+   *
+   * The repository's `where` is what makes this safe rather than a check here:
+   * only an `invited` row moves, so a second accept finds nothing and is
+   * refused with the token's claim rolled back.
+   */
+  activateOnboarded: async (
+    id,
+    passwordHash,
+    at,
+    tx,
+  ): Promise<PrincipalRecord | undefined> => {
+    const updated = await repository.activateOnboarded(
+      id,
+      passwordHash,
+      at,
+      tx,
+    );
+
+    return updated === undefined ? undefined : staffRecord(updated);
+  },
+
   // No `create`: staff cannot self-register (ADR-0017 §Invariants). They are
-  // created by an admin through `POST /api/v1/admin/staff` in step 9.
+  // created by an admin through `POST /api/v1/admin/staff`, which since
+  // ADR-0071 §8 may create the row `invited` and mail the link this consumes.
 });
 
 export const createUserPrincipalAdapter = (

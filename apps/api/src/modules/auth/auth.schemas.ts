@@ -1,4 +1,5 @@
 import {
+  acceptOnboardingBody,
   confirmEmailBody,
   forgotPasswordBody,
   loginBody,
@@ -34,3 +35,10 @@ export const resendVerificationSchema = {
 export const confirmEmailSchema = { body: confirmEmailBody } as const;
 export const forgotPasswordSchema = { body: forgotPasswordBody } as const;
 export const resetPasswordSchema = { body: resetPasswordBody } as const;
+
+/**
+ * `POST /api/v1/admin/auth/onboarding/accept` (ADR-0071 §8) — the admin
+ * segment's only route registered above `authenticate`, besides `login` and
+ * the recovery pair.
+ */
+export const acceptOnboardingSchema = { body: acceptOnboardingBody } as const;

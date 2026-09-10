@@ -12,6 +12,7 @@ import type { AuthController } from "./auth.controller.js";
 import type { ImpersonationController } from "./auth.impersonation.controller.js";
 import { exchangeImpersonationSchema } from "./auth.impersonation.schemas.js";
 import {
+  acceptOnboardingSchema,
   confirmEmailSchema,
   forgotPasswordSchema,
   loginSchema,
@@ -75,6 +76,18 @@ export interface AuthRouterDeps {
    */
   readonly passwordResetSubmitRateLimiter: RequestHandler;
   /**
+   * The same argon2 budget on `onboarding/accept` (ADR-0071 §8), and a
+   * counter of its own for `passwordResetSubmit`'s reason: this body carries
+   * no address either, so its key is the caller's — the key a malformed
+   * `login` produces — and one shared instance would let sign-in noise from
+   * an office refuse a new colleague the one link they have.
+   *
+   * Passed to both mounts and registered by only one, exactly as
+   * {@link AuthRouterDeps.impersonation} is: the condition lives beside the
+   * route it guards.
+   */
+  readonly onboardingAcceptRateLimiter: RequestHandler;
+  /**
    * The exchange half of the impersonation flow (ADR-0057 §3).
    *
    * Passed to both mounts and registered by only one — see the route below.
@@ -104,6 +117,7 @@ export const createAuthRouter = ({
   mailboxRateLimiter,
   mailSourceRateLimiter,
   passwordResetSubmitRateLimiter,
+  onboardingAcceptRateLimiter,
   impersonation,
   refuseImpersonated,
 }: AuthRouterDeps): Router => {
@@ -200,6 +214,35 @@ export const createAuthRouter = ({
     validate(resetPasswordSchema),
     controller.resetPassword,
   );
+
+  /*
+   * `POST /onboarding/accept` (ADR-0071 §8), unauthenticated for the reason
+   * `password/reset` is: the token in the body is the credential, and an
+   * `invited` operator has no session and no password to get one with.
+   *
+   * **Only on the `staff` segment**, which is the mirror of the condition
+   * `/impersonate` carries below and refuses the mirror mistake. This factory
+   * is mounted once per segment, so an unconditional registration would create
+   * a user-segment twin — a second endpoint able to spend a
+   * `staff_onboarding` token, on a population whose adapter has no
+   * `activateOnboarded` to serve it. The condition is what keeps that a
+   * compile-time absence rather than a `500` somebody has to find.
+   *
+   * **No CSRF guard**, for the reason `login` and the recovery pair carry
+   * none (ADR-0029 §CSRF): the request leans on nothing in the browser's jar,
+   * so there is no cross-site submission whose intent needs proving. It does
+   * carry the argon2 budget, because it hashes a password before it can know
+   * whether the token is any good (ADR-0020 §Hashing cost vs. liveness) —
+   * `password/reset`'s reasoning, on the route that is its twin.
+   */
+  if (population === "staff") {
+    router.post(
+      "/onboarding/accept",
+      onboardingAcceptRateLimiter,
+      validate(acceptOnboardingSchema),
+      controller.acceptOnboarding,
+    );
+  }
 
   // The exchange (ADR-0057 §3), unauthenticated like `login` and for the same
   // reason: the handoff token is the credential, and a client that had a

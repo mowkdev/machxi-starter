@@ -3,6 +3,7 @@ import type {
   ListEnvelope,
   ListStaffQuery,
   Page,
+  ResendStaffOnboardingBody,
   SetEmailBody,
   SetPasswordBody,
   StaffResource,
@@ -93,6 +94,25 @@ export const createStaffApi = (client: ApiClient) =>
      */
     setEmail: async (id: string, body: SetEmailBody): Promise<void> => {
       await client.instance.post(`/staff/${id}/email`, body);
+    },
+
+    /**
+     * `POST /admin/staff/:id/onboarding/resend` — a new invitation link
+     * (`D18.11`, ADR-0071 §8).
+     *
+     * `admin`, like every other route under this resource: creating the
+     * invited row is an admin's right, so re-sending the message it already
+     * sent cannot be a higher bar. The body carries only the locale the panel
+     * is being read in, because the invited account has none of its own yet
+     * (ADR-0071 §2), and no address — the link goes to the one on the row, so
+     * nothing a caller sends can redirect it. `204`, and the previous link
+     * stops working.
+     */
+    resendOnboarding: async (
+      id: string,
+      body: ResendStaffOnboardingBody,
+    ): Promise<void> => {
+      await client.instance.post(`/staff/${id}/onboarding/resend`, body);
     },
 
     /** `POST /admin/staff/:id/sessions/revoke` — forced sign-out. `204`. */

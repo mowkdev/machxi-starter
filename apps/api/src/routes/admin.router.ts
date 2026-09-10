@@ -73,6 +73,10 @@ export const createAdminRouter = (container: Container): Router => {
       // same key a malformed `login` produces.
       passwordResetSubmitRateLimiter:
         container.rateLimiters.passwordResetSubmit,
+      // The same numbers on `onboarding/accept`, in its own counter (ADR-0071
+      // §8). Registered on this segment and only this one — the condition is
+      // in the router, beside the route.
+      onboardingAcceptRateLimiter: container.rateLimiters.onboardingAccept,
       // Passed and never registered on this segment: the exchange exists only
       // where the population is `user` (ADR-0057 §3), and the condition that
       // says so lives in the router beside the route.
@@ -101,7 +105,13 @@ export const createAdminRouter = (container: Container): Router => {
   router.use(
     "/staff",
     authorize("admin"),
-    createStaffRouter(container.controllers.staff),
+    createStaffRouter({
+      controller: container.controllers.staff,
+      // ADR-0071 §8's mailbox budget (amended at `D18.11`), mounted on both of
+      // that section's senders from one instance — they mail one message to
+      // one mailbox, so a counter each would be two budgets for one flow.
+      onboardingMailRateLimiter: container.rateLimiters.staffOnboardingMailbox,
+    }),
   );
 
   router.use(

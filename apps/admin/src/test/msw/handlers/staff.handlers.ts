@@ -2,11 +2,13 @@ import {
   createStaffBody,
   filtersToRecord,
   listStaffQuery,
+  resendStaffOnboardingBody,
   setEmailBody,
   setPasswordBody,
   updateStaffBody,
   type CreateStaffBody,
   type ListStaffQuery,
+  type ResendStaffOnboardingBody,
   type SetEmailBody,
   type SetPasswordBody,
   type StaffResource,
@@ -87,6 +89,8 @@ export interface StaffMockState {
     passwords: { id: string; body: SetPasswordBody }[];
     /** Every administrative address change asked for (`D18.10`, ADR-0071 §7). */
     emails: { id: string; body: SetEmailBody }[];
+    /** Every invitation resend asked for (`D18.11`, ADR-0071 §8). */
+    resent: { id: string; body: ResendStaffOnboardingBody }[];
     revoked: string[];
     deleted: string[];
   };
@@ -103,6 +107,7 @@ export const createStaffMockState = (
     updated: [],
     passwords: [],
     emails: [],
+    resent: [],
     revoked: [],
     deleted: [],
   },
@@ -188,7 +193,14 @@ export const createStaffHandlers = (state: StaffMockState) =>
         email: body.email,
         firstName: body.firstName,
         lastName: body.lastName,
-        status: "active",
+        /*
+         * The absence of a password is the request, exactly as ADR-0071 §8
+         * reads it: no `status` field exists on this body, so the row the API
+         * makes is decided by whether a credential was supplied. A mock that
+         * hard-coded `active` would let a form that stopped sending the
+         * distinction pass.
+         */
+        status: body.password === undefined ? "invited" : "active",
         roles: body.roles,
         lastLoginAt: null,
         createdAt: "2026-08-20T10:00:00.000Z",
@@ -243,6 +255,13 @@ export const createStaffHandlers = (state: StaffMockState) =>
 
         state.seen.passwords.push({ id, body });
 
+        // ADR-0071 §8, amended at `D18.11`: an operator who has not accepted
+        // their invitation has no password to replace. Enforced here because
+        // the menu's `isHidden` is a claim about this refusal, and a mock
+        // that answered `204` would let the client keep offering it.
+        if (state.rows.find((row) => row.id === id)?.status === "invited")
+          return fail(409, "STAFF_INVITATION_PENDING");
+
         // `staffService.verifyActorPassword`, called by `setPassword` before it
         // hashes anything: ADR-0027 rule 1, the actor re-presenting their own
         // password, answered with the same `403` the self-service endpoints use.
@@ -279,6 +298,33 @@ export const createStaffHandlers = (state: StaffMockState) =>
         state.rows = state.rows.map((row) =>
           row.id === id ? { ...row, email: body.email } : row,
         );
+
+        return new Response(null, { status: 204 });
+      },
+    ),
+
+    /*
+     * `POST /staff/:id/onboarding/resend` (ADR-0071 §8).
+     *
+     * It enforces the **row's status** and nothing else, which is the one rule
+     * the client draws its menu from: `STAFF_NOT_INVITED` is what a stale row
+     * gets, and a suite that never saw it could not prove the confirm reports
+     * it. No role check, for the reason every other handler here gives — the
+     * guard is the API's, and what this suite asserts is whether the
+     * affordance is drawn (ADR-0042).
+     */
+    http.post(
+      `${API}/staff/:id/onboarding/resend`,
+      async ({ params, request }): Promise<Response> => {
+        const id = String(params["id"]);
+        const body = resendStaffOnboardingBody.parse(await request.json());
+
+        state.seen.resent.push({ id, body });
+
+        const staff = state.rows.find((row) => row.id === id);
+
+        if (staff === undefined) return fail(404, "NOT_FOUND");
+        if (staff.status !== "invited") return fail(409, "STAFF_NOT_INVITED");
 
         return new Response(null, { status: 204 });
       },

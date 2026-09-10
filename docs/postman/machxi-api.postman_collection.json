@@ -827,6 +827,51 @@
             },
             "description": "One indistinguishable `401` for every way a reset link can fail — unknown, already spent, expired, or minted for the other population (ADR-0071 §4). The caller is an anonymous holder of a URL fragment, so every distinction between those cases is something for them to learn; the SPA has one thing to say either way, which is to ask for a new link."
           }
+        },
+        {
+          "name": "Accept an onboarding link nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED, and no session is placed\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "  pm.expect(",
+                  "    pm.response.headers.has(\"Set-Cookie\"),",
+                  "    \"a refused link signs nobody in\",",
+                  "  ).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/onboarding/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "onboarding", "accept"]
+            },
+            "description": "One indistinguishable `401` for every way an onboarding link can fail — unknown, already spent, past its seven days, minted for another purpose, or naming a row that has left `invited` (ADR-0071 §8). The caller is an anonymous holder of a URL fragment, and the one screen that reads this says the same sentence to all of them: ask an administrator for another link.\n\nUnauthenticated, like `login` and the recovery pair beside it: the token in the body **is** the credential, and an invited operator has no session and no password to get one with.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\",\n  \"password\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -1023,7 +1068,7 @@
                   "  const staff = pm.response.json().data;",
                   "",
                   "  pm.expect(staff.email).to.eql(pm.environment.get(\"newStaffEmail\"));",
-                  "  pm.expect(staff.status, \"v1 creates staff active\").to.eql(\"active\");",
+                  "  pm.expect(staff.status, \"a password in the body creates an active account\").to.eql(\"active\");",
                   "  pm.expect(staff.roles).to.eql([\"editor\"]);",
                   "  pm.expect(staff.lastLoginAt, \"never signed in\").to.eql(null);",
                   "  pm.expect(staff, \"passwordHash has no wire representation\").to.not.have.property(\"passwordHash\");",
@@ -1453,6 +1498,281 @@
               ]
             },
             "description": "The address the folder started with, so the rest of the run — 'Admin › Profile' signs in with it — is unaffected. The address just released is free again immediately, which is what makes this restore possible at all."
+          }
+        },
+        {
+          "name": "Invite a staff member instead",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// One address per run, for the reason the create above has one: staff",
+                  "// addresses are unique and a fixed one would answer STAFF_EMAIL_TAKEN on",
+                  "// the second run.",
+                  "pm.environment.set(",
+                  "  \"invitedStaffEmail\",",
+                  "  \"qa-invited-\" + Date.now() + \"@machxi.local\",",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 with an invited account that has no password\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const staff = pm.response.json().data;",
+                  "",
+                  "  pm.expect(staff.email).to.eql(pm.environment.get(\"invitedStaffEmail\"));",
+                  "  pm.expect(staff.status, \"no password in the body means an invitation\").to.eql(",
+                  "    \"invited\",",
+                  "  );",
+                  "  pm.expect(staff.lastLoginAt, \"never signed in\").to.eql(null);",
+                  "  pm.expect(staff, \"passwordHash has no wire representation\").to.not.have.property(",
+                  "    \"passwordHash\",",
+                  "  );",
+                  "});",
+                  "",
+                  "pm.environment.set(\"invitedStaffId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff"]
+            },
+            "description": "The same endpoint with the `password` **omitted** (ADR-0071 §8): the row is created `invited` with a null hash and an onboarding link is mailed to the address, so the operator chooses their own credential and it never travels through whoever created the row.\n\nThere is no `status` field for the body to disagree with — which of the two accounts this makes is decided by whether a credential was supplied. The `locale` rides along because an invited row has no stored one to write the message in (§2).\n\nThe address is timestamped so the run is repeatable, exactly as the request above.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{invitedStaffEmail}}\",\n  \"firstName\": \"Ivy\",\n  \"lastName\": \"Invited\",\n  \"roles\": [\n    \"editor\"\n  ],\n  \"locale\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Re-send the invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204, and no body\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "  pm.expect(pm.response.text(), \"204 carries nothing\").to.be.oneOf([\"\", undefined]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{invitedStaffId}}/onboarding/resend",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{invitedStaffId}}",
+                "onboarding",
+                "resend"
+              ]
+            },
+            "description": "A fresh link for an operator who has not accepted the first one (ADR-0071 §8). The mint supersedes the live token for the pair (§1), so pressing this five times leaves one working link rather than five — and the previous one stops working, which is the property that makes offering \"resend\" safe.\n\nNo address in the body and no credential: the message goes to the address **on the row**, so nothing a caller sends can redirect it, and the `admin` mount is the whole guard. Whether the link itself works is the browser tier's to prove, because only a tier that can read the mailbox can follow one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locale\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Re-send it to somebody who has already joined",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 STAFF_NOT_INVITED\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"STAFF_NOT_INVITED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/onboarding/resend",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "onboarding",
+                "resend"
+              ]
+            },
+            "description": "`409` and not a silent `204` (ADR-0071 §8): the account exists and the caller may read it, and what refuses is the row's **state** — an operator who has already chosen a password has no pending invitation to replace, and a `disabled` one must not be handed a way back in by mail.\n\nIt names the conflict because only an authenticated `admin` reaches it, and they can already read the status they are being told about (ADR-0020 §Enumeration).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locale\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Set a password for the invited operator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 STAFF_INVITATION_PENDING\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"STAFF_INVITATION_PENDING\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{invitedStaffId}}/password",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{invitedStaffId}}",
+                "password"
+              ]
+            },
+            "description": "The invitation is how an operator gets their **first** password (ADR-0071 §8, amended at `D18.11`). Writing one here would leave `status` at `invited`, so the credential handed over could not be used — login refuses every inactive row — and the `204` would be a claim nobody could act on.\n\n`409` rather than `403`: the caller has the privilege and what refuses is the row's state, which is `STAFF_LAST_SUPER_ADMIN`'s reason exactly.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{qaPasswordRotated}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Activate the invited operator by hand",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 STAFF_INVITATION_PENDING\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"STAFF_INVITATION_PENDING\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{invitedStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{invitedStaffId}}"]
+            },
+            "description": "The same row from the other direction. `status` is an ordinary field of `updateStaffBody`, so without this refusal an admin could patch an invitation to `active` and produce an operator who can never sign in — and whom the last-super-admin count treats as a survivor, because that query reads `status` alone (ADR-0071 §8, amended at `D18.11`).\n\nWhat is refused is the **pairing** rather than the transition: every other status still moves, and the request below puts this row somewhere else and back.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -8001,6 +8321,37 @@
               "path": ["api", "v1", "admin", "staff", "{{lastStaffId}}"]
             },
             "description": "A **hard** delete: the row goes and `staff_roles` cascades with it (ADR-0028). Staff have no `deleted_at` — a staff member is a directory entry, where a customer record is referenced by future order history.\n\nThe caller is the seeded super admin, which matters for the two rules a guard cannot express: nobody deletes themselves, and only a super admin may delete one."
+          }
+        },
+        {
+          "name": "Delete the invited staff account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{invitedStaffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "staff", "{{invitedStaffId}}"]
+            },
+            "description": "The other row this run created under `/admin/staff` (ADR-0071 §8), removed for the reason the one above it is: staff addresses are unique with no soft delete, so a run that left its rows behind would grow the directory by two every time it is run.\n\nThe token rows go with it — `account_tokens.principal_id` is swept by `db:sessions:prune` once they are consumed or expired (ADR-0071 §1), which is a job rather than a cascade."
           }
         },
         {

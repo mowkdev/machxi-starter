@@ -2,6 +2,7 @@ import { ResetStaffPasswordDialog } from "./reset-staff-password-dialog";
 import {
   BulkDeleteStaffDialog,
   DeleteStaffDialog,
+  ResendStaffInvitationDialog,
   RevokeStaffSessionsDialog,
 } from "./staff-confirm-dialogs";
 import type { StaffAction } from "./types";
@@ -33,6 +34,10 @@ export const StaffDialogs = ({
     case "reset-password":
       return (
         <ResetStaffPasswordDialog staff={action.staff} onClose={onClose} />
+      );
+    case "resend-invitation":
+      return (
+        <ResendStaffInvitationDialog staff={action.staff} onClose={onClose} />
       );
     case "revoke-sessions":
       return (

@@ -337,6 +337,13 @@ export const buildContainer = ({
     // through (ADR-0071 §1).
     audit,
     accountTokens,
+    // ADR-0066 §1's port and ADR-0071 §2's messages, for the flow this module
+    // owns end to end but for the consume: a staff member created without a
+    // password is `invited` and is mailed an onboarding link (§8). The link
+    // lands on the **admin** app, which is why `mailTemplates` is built from
+    // both origins above.
+    mail,
+    mailTemplates,
     transaction,
   });
 
@@ -485,6 +492,52 @@ export const buildContainer = ({
     passwordResetSubmit: createTokenRouteRateLimiter(
       config,
       rateLimitStore("password-reset-submit"),
+    ),
+    /**
+     * The argon2 budget on `POST /admin/auth/onboarding/accept` (ADR-0071 §8).
+     *
+     * `passwordResetSubmit`'s twin in every respect, which is the argument for
+     * it: an opaque token in the body, no address to key on, and a password
+     * hashed before the token can be judged — so it needs the liveness control
+     * ADR-0020 §Hashing cost describes, and it must not share a counter with
+     * any endpoint whose key a caller can vary. Its own instance for
+     * `invitationLookup`'s reason: a new colleague following the one link they
+     * were sent must not be refused because somebody in the same office has
+     * been mistyping a password all afternoon.
+     */
+    onboardingAccept: createTokenRouteRateLimiter(
+      config,
+      rateLimitStore("onboarding-accept"),
+    ),
+    /**
+     * The mailbox's budget on §8's two senders — `POST /admin/staff` when it
+     * invites, and the resend beside it (ADR-0071 §8, amended at `D18.11` on
+     * that step's `security-reviewer`).
+     *
+     * §8's first draft gave them none, on two arguments the reviewer took
+     * apart. "The create mails an address at most once, ever" is false: the
+     * delete is **hard** (ADR-0028) and is the same caller's right, so
+     * create-delete-create re-mails the same stranger at two requests a
+     * message — §5's own defeat read one flow along. And "the resend goes to
+     * the address on the row, which nothing can redirect" is true and bounds
+     * the wrong axis: it closes redirection and says nothing at all about
+     * repetition, which is what a mailbox budget is for.
+     *
+     * One instance for both, because they mail **the same message to the same
+     * mailbox** and a counter each would be two budgets for one flow. What
+     * they cannot share is the **key**, and the reason is structural rather
+     * than a choice: at the create there is no row to name, and at the resend
+     * there is no address in the request. So one mailbox is reached under two
+     * keys — its address, and `subject:<id>` — and the honest ceiling is
+     * `RATE_LIMIT_MAILBOX_MAX` **per key**, not per mailbox. That is a bound
+     * where there was none, and it is stated here rather than rounded down in
+     * the record: closing the gap would mean reading the row's address before
+     * the limiter runs, which is a database read on the refused path and the
+     * thing every key in this file is shaped to avoid.
+     */
+    staffOnboardingMailbox: createMailboxRateLimiter(
+      config,
+      rateLimitStore("staff-onboarding-mailbox"),
     ),
     /**
      * `POST /public/invitations/lookup` — ADR-0067 §5's first condition, which

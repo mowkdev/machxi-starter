@@ -62,12 +62,19 @@ import { AppFormProvider } from "./context";
  * **state is not its request body** (**amended D3.7 → D3.8**).
  *
  * That is not the common case and was not the case at all until `D3.8`: a body
- * whose fields are all required — `createStaffBody` — is held by the controls
- * as-is. A body with *optional* fields is not, because "the operator left this
- * blank" has to arrive as an absent key and no control can hold absence. Such a
- * form resolves through a transform, RHF types that with its third parameter,
- * and this frame has to carry the pair or the caller is forced into a cast that
+ * whose fields are all required is held by the controls as-is. A body with
+ * *optional* fields is not, because "the operator left this blank" has to
+ * arrive as an absent key and no control can hold absence. Such a form
+ * resolves through a transform, RHF types that with its third parameter, and
+ * this frame has to carry the pair or the caller is forced into a cast that
  * asserts away the very distinction the transform exists to make.
+ *
+ * **`createStaffBody` was this comment's example of the all-required case and
+ * stopped being one at `D18.11`**: ADR-0071 §8 made its `password` optional,
+ * because leaving the box empty *is* the request to send an invitation. That
+ * surface transforms on the way out like the users one — it wraps the resolver
+ * rather than reaching for `TSubmitted`, which is the shape below and the one
+ * a form with a `zodResolver` over the wire body should prefer.
  */
 export interface AppFormFrameProps<
   TValues extends FieldValues,

@@ -18,6 +18,18 @@ import { waitForRows } from "./support/app";
  * way to prove that is to make the form too tall for the viewport and look.
  */
 
+/**
+ * What ADR-0054 §7's title rung really is: the number it draws, and the most
+ * the band may grow to for the copy it holds (`D18.11`).
+ *
+ * A pair rather than an exact value, because the band is a `min-h` and the
+ * sentence inside it is copy — which changes, and did at `D18.10`. 73 is the
+ * measured height of a two-line description in both shells; anything above it
+ * is a band that has stopped being this rung rather than a sentence that has
+ * grown by a line.
+ */
+const TITLE_BAND = { min: 60, max: 73 } as const;
+
 const openFirstRecord = async (page: Page): Promise<void> => {
   await page
     .getByRole("button", { name: /^Row actions for/ })
@@ -259,10 +271,19 @@ for (const { name, path, frame } of SURFACES) {
      * 64 in both shells. The title bar holds *copy*: the users drawer's edit
      * description is a sentence about why the email is not editable, and at
      * 512px it wraps to two lines, so the band grows to hold it — which is
-     * exactly what a floor is for and what an `h-15` would have clipped. The
-     * exact 60 is asserted below, on the shell whose meta line is one line.
+     * exactly what a floor is for and what an `h-15` would have clipped.
+     *
+     * **A ceiling as well, since `D18.11`.** The exact 60 used to be asserted
+     * on the dialog below, and it stopped being true when `D18.10` lengthened
+     * the staff surface's own description — leaving *nothing* pinning the rung
+     * at either site, so a band that grew to 200 would have passed both. A
+     * floor and a ceiling say what the band really is: §7's rung, plus at most
+     * one extra line of the 13px meta text it holds. Measured at 73 for a
+     * two-line description in both shells; `TITLE_BAND` names the pair once so
+     * the two sites cannot drift.
      */
-    expect(bands.title).toBeGreaterThanOrEqual(60);
+    expect(bands.title).toBeGreaterThanOrEqual(TITLE_BAND.min);
+    expect(bands.title).toBeLessThanOrEqual(TITLE_BAND.max);
     expect(bands.footer).toBe(64);
     expect(bands.footerRule).toBe("1px");
     /*
@@ -323,10 +344,21 @@ test("staff's dialog is 600 wide, edge to edge", async ({ app: page }) => {
   expect(measured?.left).toBe(0);
   expect(measured?.right).toBe(0);
   /*
-   * The exact 60, on the shell whose meta line fits one line at this width —
-   * the number §7 draws, as opposed to the floor the band ships as.
+   * **A floor and a ceiling, not an exact 60** — corrected at `D18.11`, and
+   * the correction is what this assertion was actually measuring. 60 is the
+   * number ADR-0054 §7 draws and the band ships it as a `min-h`; the exact
+   * form held only while the meta line under the title fitted one line at
+   * this width, which made it an assertion about the **sentence** rather than
+   * about the geometry. `D18.10` lengthened that sentence — the edit surface
+   * now explains that the address has a flow of its own further down — and it
+   * wraps here as it already did in the drawer at 512.
+   *
+   * The ceiling is what stops the relaxation giving the rung away: a band that
+   * grew to 200 would satisfy a bare floor at both sites. `TITLE_BAND` is the
+   * same pair the sibling above asserts.
    */
-  expect(measured?.title).toBe(60);
+  expect(measured?.title).toBeGreaterThanOrEqual(TITLE_BAND.min);
+  expect(measured?.title).toBeLessThanOrEqual(TITLE_BAND.max);
 
   await page.getByRole("button", { name: "Cancel" }).click();
 });

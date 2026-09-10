@@ -31,8 +31,12 @@ import {
  * control means**, and it is worth the paragraph because it is the first place
  * the D3.6 machinery met a contract it could not express.
  *
- * `createStaffBody` has no optional fields, so a staff create form always sends
- * every key. `createUserBody` has four, and for each of them "the operator left
+ * *(It was also the first. `createStaffBody` had no optional fields until
+ * `D18.11` made its `password` one — the staff surface now transforms on the
+ * way out too, by wrapping its resolver rather than by RHF's third type
+ * parameter.)*
+ *
+ * `createUserBody` has four optional fields, and for each of them "the operator left
  * this blank" has to reach the API as an **absent key** — `""` is refused by
  * `nameSchema.trim().min(1)` and by `z.enum(USER_STATUSES)`, and `null` is
  * refused because only the *update* body is nullable. But an HTML control

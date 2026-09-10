@@ -176,11 +176,22 @@ export const staffResourceConfig = {
        */
       props: { type: "password", autoComplete: "off" },
       /*
-       * The operational instruction ADR-0027 rule 4 leaves as the consequence
-       * of not building a forced change: an administrator-set password stays
-       * valid until its holder changes it, so somebody has to ask them to.
+       * Since `D18.11` the description carries the field's own optionality
+       * as well as ADR-0027 rule 4's operational instruction: leaving the box
+       * empty is a *request* — an invitation is mailed and the operator
+       * chooses their own credential (ADR-0071 §8) — and a typed password
+       * still stays valid until its holder changes it, so somebody has to ask
+       * them to.
        */
       description: "staff:fields.password.description",
+      /*
+       * `""` rather than absent, so the control is registered and controlled
+       * from the first render like every other text field here. The surface
+       * is what turns an untouched box back into an omitted key: an empty
+       * string is not a password `createStaffBody` would accept, and the
+       * whole point of §8 is that omitting the field means something.
+       */
+      initialValue: "",
       variants: ["create"],
     },
     firstName: {

@@ -3,6 +3,7 @@ import type {
   CreateStaffBody,
   ListStaffQuery,
   Page,
+  ResendStaffOnboardingBody,
   SetEmailBody,
   SetPasswordBody,
   StaffResource,
@@ -18,6 +19,12 @@ import { requirePopulation } from "../../core/auth/index.js";
 import type { Audit } from "../../core/audit/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
+import {
+  createMailDelivery,
+  localeFor,
+  type MailSender,
+  type MailTemplates,
+} from "../../core/mail/index.js";
 import type { AccountTokens } from "../../core/tokens/index.js";
 import {
   currentPasswordInvalid,
@@ -28,7 +35,9 @@ import {
   lastSuperAdmin,
   selfDeletionForbidden,
   staffEmailTaken,
+  staffInvitationPending,
   staffNotFound,
+  staffNotInvited,
   superAdminGrantForbidden,
   superAdminTargetForbidden,
 } from "./staff.errors.js";
@@ -87,8 +96,16 @@ export interface StaffServiceDeps {
    * about tokens it does not mint: an administrative address change spends
    * **every** live link the subject holds, because each one was mailed to the
    * mailbox the change exists to stop trusting (§7, amended at `D18.10`).
+   *
+   * Since `D18.11` it also **mints**: staff onboarding is this module's own
+   * flow (§8), so the link an invitation carries is minted here and consumed
+   * by the auth module, which is where a link is followed without a session.
    */
   readonly accountTokens: AccountTokens;
+  /** ADR-0066 §1's port. Never a mail client a service imports. */
+  readonly mail: MailSender;
+  /** ADR-0071 §2's messages, built from the two SPA origins at the root. */
+  readonly mailTemplates: MailTemplates;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
@@ -100,9 +117,12 @@ export const createStaffService = ({
   sessions,
   audit,
   accountTokens,
+  mail,
+  mailTemplates,
   transaction,
   now = () => new Date(),
 }: StaffServiceDeps) => {
+  const { deliverDetached } = createMailDelivery({ mail });
   /** The acting staff member — `staff_roles.granted_by`, and the role rules below. */
   const actor = (ctx: RequestContext) => requirePopulation(ctx, "staff");
 
@@ -165,12 +185,70 @@ export const createStaffService = ({
     throw superAdminTargetForbidden();
   };
 
+  /**
+   * Refuses an operation on an operator who has not accepted their invitation
+   * (ADR-0071 §8, amended at `D18.11` on that step's reviewers).
+   *
+   * `invited` became a state an admin *creates on purpose* at `D18.11`, where
+   * before it was a status nothing wrote — so two neighbouring endpoints that
+   * had never met such a row acquired a blind spot on the same day. Setting a
+   * password on one writes a hash the account cannot sign in with, because
+   * `status` stays `invited` and login refuses every inactive row; and
+   * activating one by `PATCH` produces an `active` operator with no password
+   * at all, which `countOtherActiveSuperAdmins` would count as a survivor of
+   * the ADR-0017 invariant.
+   *
+   * The status alone decides it, not the hash: a row is `invited` until its
+   * link is followed, and what that link does is exactly to set the first
+   * password and move the status together.
+   */
+  const assertHasOnboarded = (ctx: RequestContext, target: StaffRecord) => {
+    if (target.status !== "invited") return;
+
+    ctx.logger.warn(
+      { staffId: target.id },
+      "refused, the staff member has not accepted their invitation",
+    );
+
+    throw staffInvitationPending();
+  };
+
   const read = async (id: string, tx?: DbExecutor): Promise<StaffRecord> => {
     const record = await repository.findById(id, tx);
 
     if (record === undefined) throw staffNotFound();
 
     return record;
+  };
+
+  /**
+   * ADR-0071 §8's link, minted for one operator.
+   *
+   * A named helper rather than two inline calls, so the purpose and the
+   * population are written once: a `staff_onboarding` token minted against
+   * `{ type: "user" }` would be a link the admin segment can never claim, and
+   * the mistake would surface as a dead link in somebody's mailbox rather than
+   * as a failure here.
+   *
+   * No payload. Unlike `change_email` (§6) there is nothing to carry: the row
+   * the token names is the whole of what the accept needs, and the password
+   * arrives with the request that spends it.
+   */
+  const mintOnboardingLink = async (
+    ctx: RequestContext,
+    staffId: string,
+    tx?: DbExecutor,
+  ): Promise<string> => {
+    const { token } = await accountTokens.mint(
+      ctx,
+      {
+        purpose: "staff_onboarding",
+        principal: { type: "staff", id: staffId },
+      },
+      tx,
+    );
+
+    return token;
   };
 
   /**
@@ -277,15 +355,32 @@ export const createStaffService = ({
       toStaffResource(await read(id)),
 
     /**
-     * `POST /api/v1/admin/staff` (ADR-0018 §Staff onboarding).
+     * `POST /api/v1/admin/staff` (ADR-0018 §Staff onboarding, ADR-0071 §8).
+     *
+     * **Two rows, one request, and the body decides which.** A `password`
+     * makes the `active` account this endpoint has always made — the
+     * credential is handed over out of band. No `password` makes an `invited`
+     * one with a null hash, and an onboarding link goes to the address: the
+     * operator chooses their own credential and it never travels through
+     * whoever created the row. That is §8's default, and the reason there is
+     * no `status` field for it to disagree with.
      *
      * The account and its grants are one transaction: a staff member who
      * exists with no role can sign in and do nothing, which is a support
-     * ticket rather than a state worth being able to reach.
+     * ticket rather than a state worth being able to reach. **The token joins
+     * that commit** for registration's reason (ADR-0071 §1): there must be no
+     * interval in which an `invited` row exists with no way to become usable.
      *
      * The password is hashed **outside** the transaction. argon2 holds a libuv
      * thread for ~130 ms, and holding a database connection open across that
-     * for no reason is how a burst of creates exhausts the pool.
+     * for no reason is how a burst of creates exhausts the pool. An invitation
+     * buys no hash at all, which is the one place this endpoint got cheaper.
+     *
+     * **The message goes out after the commit**, which is `register`'s rule
+     * exactly: a link mailed from inside a transaction that then rolls back
+     * names a token row that does not exist, and its reader has no way to
+     * recover on their own. Detached, because the answer reports the account
+     * and never the delivery.
      */
     create: async (
       ctx: RequestContext,
@@ -297,7 +392,9 @@ export const createStaffService = ({
       // body is a grant.
       assertMaySetSuperAdmin(ctx, body.roles, []);
 
-      const passwordHash = await hasher.hash(body.password);
+      const invited = body.password === undefined;
+      const passwordHash =
+        body.password === undefined ? null : await hasher.hash(body.password);
 
       const created = await transaction(async (tx) => {
         const record = await repository.create(
@@ -306,6 +403,7 @@ export const createStaffService = ({
             passwordHash,
             firstName: body.firstName,
             lastName: body.lastName,
+            status: invited ? "invited" : "active",
           },
           tx,
         );
@@ -314,17 +412,89 @@ export const createStaffService = ({
 
         await repository.replaceRoles(record.id, body.roles, grantedBy, tx);
 
-        return { ...record, roles: body.roles };
+        const token = invited
+          ? await mintOnboardingLink(ctx, record.id, tx)
+          : undefined;
+
+        return { ...record, roles: body.roles, token };
       });
 
       if (created === undefined) throw staffEmailTaken();
 
+      if (created.token !== undefined) {
+        deliverDetached(
+          ctx,
+          created.email,
+          { population: "staff", purpose: "staff_onboarding" },
+          mailTemplates.staffOnboarding({
+            token: created.token,
+            locale: localeFor(body.locale),
+          }),
+        );
+      }
+
       ctx.logger.info(
-        { staffId: created.id, roles: created.roles, grantedBy },
+        { staffId: created.id, roles: created.roles, grantedBy, invited },
         "staff member created",
       );
 
       return toStaffResource(created);
+    },
+
+    /**
+     * `POST /api/v1/admin/staff/:id/onboarding/resend` (ADR-0071 §8).
+     *
+     * **`invited` and nothing else.** An operator who has already chosen a
+     * password has no pending invitation to replace, and a `disabled` one must
+     * not be handed a way back in by mail — both answer `409
+     * STAFF_NOT_INVITED` rather than a silent success, because the caller is
+     * an authenticated admin looking at the row and a `204` that did nothing
+     * would be a claim they cannot check.
+     *
+     * The mint supersedes the live token for the pair (ADR-0071 §1), so an
+     * admin who presses this five times leaves one working link rather than
+     * five — and the previous one stops working, which is the property that
+     * makes offering "resend" safe at all.
+     *
+     * The status is read on the pooled client rather than inside a
+     * transaction, and that is honest about what this buys: two admins
+     * resending in the same instant both pass the check, and the lock inside
+     * the mint serialises them so the later link is the one that works.
+     * Nothing here writes the row, so there is no state for the race to leave
+     * inconsistent — the cost is one extra message.
+     */
+    resendOnboarding: async (
+      ctx: RequestContext,
+      id: string,
+      body: ResendStaffOnboardingBody,
+    ): Promise<void> => {
+      const target = await read(id);
+
+      if (target.status !== "invited") {
+        ctx.logger.warn(
+          { staffId: target.id, status: target.status },
+          "onboarding resend refused, the account is not invited",
+        );
+
+        throw staffNotInvited();
+      }
+
+      const token = await mintOnboardingLink(ctx, target.id);
+
+      deliverDetached(
+        ctx,
+        target.email,
+        { population: "staff", purpose: "staff_onboarding" },
+        mailTemplates.staffOnboarding({
+          token,
+          locale: localeFor(body.locale),
+        }),
+      );
+
+      ctx.logger.info(
+        { staffId: target.id, by: actor(ctx).id },
+        "onboarding link re-sent",
+      );
     },
 
     /**
@@ -361,6 +531,38 @@ export const createStaffService = ({
         // same rank as demoting them. Re-activating one does not.
         if (body.status !== undefined && body.status !== "active") {
           assertMayActOnSuperAdmin(ctx, current);
+        }
+
+        /*
+         * **`active` is the invitation link's to write, not this endpoint's**
+         * (ADR-0071 §8, amended at `D18.11` on that step's
+         * `security-reviewer`).
+         *
+         * `status` is a free field of this body and `password_hash` became
+         * nullable at `D18.1`, so without this an admin could `PATCH` an
+         * `invited` operator to `active` and produce a row that can never sign
+         * in and cannot be told why — and, sharper, one that
+         * `countOtherActiveSuperAdmins` counts as a survivor of the ADR-0017
+         * invariant, because that query reads `status` alone. The last real
+         * super admin could then demote themselves believing the guard held.
+         *
+         * **Keyed on the hash rather than on the status**, unlike
+         * {@link assertHasOnboarded}'s two callers, and the difference is what
+         * makes it right. This is the one path that may legitimately move a
+         * row *out* of `invited` — an operator invited and then disabled by
+         * mistake goes back — so refusing a transition would refuse the honest
+         * case; and a `disabled` row that never onboarded still has no
+         * password, so a guard that only watched `invited` would let the same
+         * bad row through one status along. What is refused is the **pairing**:
+         * `active` with nothing to sign in with.
+         */
+        if (body.status === "active" && current.passwordHash === null) {
+          ctx.logger.warn(
+            { staffId: id, status: current.status },
+            "activation refused, the staff member has no password",
+          );
+
+          throw staffInvitationPending();
         }
 
         await assertSuperAdminSurvives(current, body, tx);
@@ -486,9 +688,13 @@ export const createStaffService = ({
 
       await verifyActorPassword(ctx, body.currentPassword);
 
-      // The cheap refusal: an unknown id or an out-of-rank target costs no
-      // hash. Authority belongs to the re-read inside the transaction.
-      assertMayActOnSuperAdmin(ctx, await read(id));
+      // The cheap refusals: an unknown id, an out-of-rank target or a row that
+      // has not onboarded costs no hash. Authority belongs to the re-read
+      // inside the transaction.
+      const seen = await read(id);
+
+      assertMayActOnSuperAdmin(ctx, seen);
+      assertHasOnboarded(ctx, seen);
 
       const passwordHash = await hasher.hash(body.password);
 
@@ -498,8 +704,25 @@ export const createStaffService = ({
         const target = await read(id, tx);
 
         assertMayActOnSuperAdmin(ctx, target);
+        assertHasOnboarded(ctx, target);
 
         await repository.updatePasswordHash(target.id, passwordHash, at, tx);
+
+        // Every live link this operator holds dies with the password they did
+        // not choose — §6's rule as `D18.9` set it down and §7 restates: a
+        // password is written when the account may be in somebody else's
+        // hands, and a mailed link is a credential the session sweep below
+        // cannot see. Unreachable for `staff_onboarding` while the guard above
+        // stands, and written anyway, because the guard is a rule somebody may
+        // relax and this is the property that has to survive it
+        // (`D18.11`'s `security-reviewer`).
+        for (const purpose of TOKEN_PURPOSES) {
+          await accountTokens.supersede(
+            ctx,
+            { purpose, principal: { type: "staff", id: target.id } },
+            tx,
+          );
+        }
 
         return {
           targetId: target.id,

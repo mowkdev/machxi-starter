@@ -1,6 +1,15 @@
 import { staff, staffRoles, type DbExecutor } from "@repo/db";
 import type { ListQuery, StaffRole, StaffStatus } from "@repo/contracts";
-import { and, count, eq, ne, notExists, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  isNull,
+  ne,
+  notExists,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { internal } from "../../core/errors/index.js";
@@ -55,12 +64,22 @@ export interface StaffRecord {
   readonly updatedAt: Date;
 }
 
-/** `POST /api/v1/admin/staff` — an admin creates the account (ADR-0018). */
+/**
+ * `POST /api/v1/admin/staff` — an admin creates the account (ADR-0018,
+ * ADR-0071 §8).
+ *
+ * `passwordHash` is `null` for an invitation and `status` says which of the
+ * two rows this is. Both are required rather than defaulted, so the pairing is
+ * the caller's single decision: a `null` hash on an `active` row is an account
+ * that can never sign in and never be told why, and a hash on an `invited` one
+ * is a credential nobody was given.
+ */
 export interface NewStaffInput {
   readonly email: string;
-  readonly passwordHash: string;
+  readonly passwordHash: string | null;
   readonly firstName: string;
   readonly lastName: string;
+  readonly status: StaffStatus;
 }
 
 /**
@@ -274,10 +293,13 @@ export const createStaffRepository = (db: DbExecutor) =>
           passwordHash: input.passwordHash,
           firstName: input.firstName,
           lastName: input.lastName,
-          // An admin-created account is usable immediately: the initial
-          // password is handed over out of band (ADR-0018 §Staff onboarding).
-          // `invited` waits for the invitation-email feature.
-          status: "active",
+          // The caller's, since `D18.11`: an admin who typed an initial
+          // password gets the `active` row ADR-0018 §Staff onboarding always
+          // made, and one who did not gets the `invited` row ADR-0071 §8 mails
+          // a link to. The column is not defaulted here, because the status
+          // and the hash have to agree and only the service knows which
+          // request this was.
+          status: input.status,
         })
         .onConflictDoNothing({ target: staff.email })
         .returning({
@@ -442,6 +464,67 @@ export const createStaffRepository = (db: DbExecutor) =>
         .update(staff)
         .set({ passwordHash, updatedAt: at })
         .where(eq(staff.id, id));
+    },
+
+    /**
+     * The onboarding link's effect (ADR-0071 §8): the operator's first
+     * password and the move out of `invited`, in one statement.
+     *
+     * `eq(staff.status, "invited")` is in the `where` rather than checked on a
+     * row read first, and that is the whole safety of this function: the
+     * consume that admitted the request happens in the same transaction, so a
+     * second accept — or one racing the first — finds no row to update and is
+     * refused with the claim rolled back. It is `markEmailVerified`'s shape on
+     * the users side, and for the same reason.
+     *
+     * `active` and not merely "has a password": an `invited` row is exactly
+     * one that has never had one, so there is no other status this can move
+     * from and none it should move to. A `disabled` operator is untouched —
+     * their link is dead, which is what `staffNotInvited` says at the resend
+     * and what a refusal here says at the accept.
+     *
+     * **`password_hash is null` is in the `where` beside the status, and it is
+     * what makes the sentence above true rather than argued** (`D18.11`'s
+     * `security-reviewer`). The service refuses to set a password on an
+     * `invited` row and refuses to activate one that has none, so the pair
+     * "invited, with a hash" should be unreachable — but *should be* is a
+     * claim about two guards somebody may relax, and this clause is the same
+     * claim enforced by the statement that would otherwise overwrite a real
+     * credential from a mailed link. A link can only ever write a **first**
+     * password.
+     *
+     * @returns the whole aggregate, roles included, because the session minted
+     *   a moment later is built from them; `undefined` when no row matched.
+     */
+    activateOnboarded: async (
+      id: string,
+      passwordHash: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<StaffRecord | undefined> => {
+      const [updated] = await tx
+        .update(staff)
+        .set({ passwordHash, status: "active", updatedAt: at })
+        .where(
+          and(
+            eq(staff.id, id),
+            eq(staff.status, "invited"),
+            isNull(staff.passwordHash),
+          ),
+        )
+        .returning({ id: staff.id });
+
+      if (updated === undefined) return undefined;
+
+      // Read back through the aggregate read for the roles: `returning` cannot
+      // reach the join table, and the session is minted from them.
+      const row = await tx.query.staff.findFirst({
+        columns: recordColumns,
+        with: withRoles,
+        where: eq(staff.id, id),
+      });
+
+      return row === undefined ? undefined : toRecord(row);
     },
 
     /**

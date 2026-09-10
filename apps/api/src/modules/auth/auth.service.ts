@@ -1,4 +1,5 @@
 import type {
+  AcceptOnboardingBody,
   ConfirmEmailBody,
   ForgotPasswordBody,
   ImpersonatorResource,
@@ -27,6 +28,7 @@ import {
   impersonationHandoffInvalid,
   invalidCredentials,
   invalidRefreshToken,
+  onboardingLinkInvalid,
   passwordResetLinkInvalid,
   refreshReused,
   registrationConflict,
@@ -1422,6 +1424,115 @@ export const createAuthService = ({
         ctx.logger.info(
           { population, principalId: principal.id },
           "address confirmed and the device signed in",
+        );
+
+        return auth;
+      });
+    },
+
+    /**
+     * `POST /api/v1/admin/auth/onboarding/accept` (ADR-0071 §8).
+     *
+     * The staff twin of `verifyEmail`, and the differences are §8's rather
+     * than this file's. A customer proves a mailbox and already has the
+     * password they chose at registration; an operator's address was asserted
+     * by whoever created the row (§3) and what they lack is a **credential**,
+     * so the link carries a password with it and the account moves out of
+     * `invited` rather than out of `pending_verification`.
+     *
+     * What is the same, and deliberately so: the link's whole effect is one
+     * transaction — claim the token, write the first hash with the status,
+     * record it, mint the session — and **every refusal rolls the claim
+     * back**, so a token naming a row an admin has disabled since the message
+     * went out is refused with nothing spent and works again if the account is
+     * re-enabled. A replay of a *successful* accept is refused twice over: the
+     * token row is stamped, and the row it names has left `invited`.
+     *
+     * **The device is signed in**, exactly as verification signs one in and
+     * unlike the password reset of §4, which deliberately does not. The
+     * difference is what the two links prove. A reset link proves a mailbox
+     * for an account that already has a password somebody may be holding, so
+     * §4 revokes every session and hands out none; this link is the *only*
+     * way this account has ever been reachable, there are no sessions to
+     * revoke, and the person at the other end has just chosen the credential —
+     * making them sign in again would be asking them to prove, one second
+     * later, the thing they have this moment created.
+     *
+     * The hash is computed **before** the transaction opens, for
+     * `resetPassword`'s reason: ~130 ms of a libuv thread is not something to
+     * hold a claimed token row across. The price is that a refused token still
+     * buys a hash, which is what the route's own budget is for.
+     */
+    acceptOnboarding: async (
+      ctx: RequestContext,
+      { token, password }: AcceptOnboardingBody,
+    ): Promise<IssuedAuthResource> => {
+      const activate = principals.activateOnboarded;
+
+      if (activate === undefined) {
+        // The wiring refusal `register` and `verifyEmail` make, and for their
+        // reason read the other way round: the route is registered on the
+        // admin segment alone, and a user-segment twin would be a way to
+        // activate a customer account from a link nobody minted for one.
+        throw internal(
+          new Error(`population "${population}" has no onboarding path`),
+        );
+      }
+
+      const at = now();
+      const passwordHash = await hashLimiter.run(() => hasher.hash(password));
+
+      return transaction(async (tx) => {
+        const claimed = await accountTokens.consume(
+          ctx,
+          { purpose: "staff_onboarding", principalType: population, token },
+          tx,
+        );
+
+        if (claimed === undefined) throw onboardingLinkInvalid();
+
+        const principal = await activate(
+          claimed.principalId,
+          passwordHash,
+          at,
+          tx,
+        );
+
+        // The token was live but the row is not one this link may act on any
+        // more — deleted, disabled, or onboarded by a second tab a moment
+        // ago. One answer with the unknown-token case, and the throw is what
+        // undoes the claim.
+        if (principal === undefined) {
+          ctx.logger.warn(
+            { population, tokenId: claimed.id },
+            "onboarding refused: the account cannot be activated",
+          );
+
+          throw onboardingLinkInvalid();
+        }
+
+        // `identities` rather than the context's principal: the route is
+        // anonymous — the token is the credential — so the actor comes off the
+        // row that was claimed (ADR-0058, `account.verified`'s shape). This is
+        // the staff population's only self-service lifecycle event, and it is
+        // the one moment an operator account becomes able to sign in, so it
+        // belongs in the trail beside the address change that can move it.
+        await audit.record(
+          ctx,
+          {
+            event: "account.onboarded",
+            identities: { actor: { type: population, id: principal.id } },
+          },
+          tx,
+        );
+
+        const auth = await issueSession(ctx, principal, at, tx);
+
+        await principals.touchLastLogin(principal.id, at, tx);
+
+        ctx.logger.info(
+          { population, principalId: principal.id },
+          "onboarding accepted and the device signed in",
         );
 
         return auth;

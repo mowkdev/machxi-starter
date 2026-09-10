@@ -1,9 +1,11 @@
 // Credential shapes are declared in `auth/` and re-exported here, so a client
 // working against `/api/v1/admin/*` finds them where it looks (ADR-0027).
 export {
+  acceptOnboardingBody,
   changePasswordBody,
   setEmailBody,
   setPasswordBody,
+  type AcceptOnboardingBody,
   type ChangePasswordBody,
   type SetEmailBody,
   type SetPasswordBody,
@@ -13,12 +15,14 @@ export {
   LIST_STAFF_SORTABLE,
   createStaffBody,
   listStaffQuery,
+  resendStaffOnboardingBody,
   staffIdParams,
   staffRolesSchema,
   updateStaffBody,
   updateStaffProfileBody,
   type CreateStaffBody,
   type ListStaffQuery,
+  type ResendStaffOnboardingBody,
   type StaffIdParams,
   type UpdateStaffBody,
   type UpdateStaffProfileBody,

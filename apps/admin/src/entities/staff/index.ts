@@ -4,6 +4,7 @@ export { staffKeys } from "./staff.keys";
 export {
   useCreateStaff,
   useDeleteStaff,
+  useResendStaffOnboarding,
   useRevokeStaffSessions,
   useSetStaffEmail,
   useSetStaffPassword,

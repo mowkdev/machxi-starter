@@ -29,6 +29,8 @@
   "USER_DELETED": "That user is deleted and cannot be changed.",
   "STAFF_EMAIL_TAKEN": "Another staff member already uses that email address.",
   "STAFF_LAST_SUPER_ADMIN": "This is the last super admin. Promote someone else first.",
+  "STAFF_NOT_INVITED": "Only an invited staff member can be sent an onboarding link.",
+  "STAFF_INVITATION_PENDING": "This operator has not accepted their invitation yet. They set their own password from the link.",
 
   "ORGANIZATION_LAST_OWNER": "An organization needs at least one owner. Make someone else an owner first.",
   "ORGANIZATION_PERSONAL_UNDELETABLE": "A personal organization is removed with the account that owns it.",

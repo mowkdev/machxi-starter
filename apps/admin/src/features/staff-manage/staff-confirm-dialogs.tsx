@@ -1,16 +1,21 @@
 import type { StaffResource } from "@repo/contracts";
 
-import { useDeleteStaff, useRevokeStaffSessions } from "@/entities/staff";
+import {
+  useDeleteStaff,
+  useResendStaffOnboarding,
+  useRevokeStaffSessions,
+} from "@/entities/staff";
 import type { BulkTarget } from "@/shared/api/bulk-outcome";
-import { useT } from "@/shared/i18n";
+import { useLocale, useT } from "@/shared/i18n";
 import { ConfirmDialog } from "@/shared/ui";
 
 import { useBulkDeleteStaff } from "./use-bulk-delete-staff";
 
 /**
- * The two staff actions with no form to host them (ADR-0028, ADR-0018).
+ * The staff actions with no form to host them (ADR-0028, ADR-0018, ADR-0071
+ * §8).
  *
- * Both keep ADR-0034's error toast, because a confirm has no field for a
+ * They all keep ADR-0034's error toast, because a confirm has no field for a
  * refusal to land on — and the refusals here are the interesting part of the
  * step. **None of them is pre-guessed in the client**: the rank rule, the
  * last-super-admin invariant and the self-deletion rule are the service's, they
@@ -144,6 +149,54 @@ export const RevokeStaffSessionsDialog = ({
       isPending={revokeSessions.isPending}
       onConfirm={() => {
         revokeSessions.mutate(staff.id, { onSuccess: onClose });
+      }}
+    />
+  );
+};
+
+/**
+ * "Resend invitation" (`D18.11`, ADR-0071 §8).
+ *
+ * A confirm rather than a bare menu item, because the act is **not**
+ * idempotent in the way the menu makes it look: a new link supersedes the one
+ * already in the invitee's mailbox (ADR-0071 §1), so an accidental click turns
+ * a link somebody is halfway through following into a dead one. The sentence
+ * says so.
+ *
+ * **The locale rides in the body** for ADR-0071 §2's reason: the invited
+ * account has no stored one — it has never signed in — so the language this
+ * panel is being read in is the only fact there is to write the message in.
+ *
+ * The error toast stays: `STAFF_NOT_INVITED` is what this answers when the row
+ * stopped being `invited` between the grid's last fetch and the click, and a
+ * confirm has no field for it to land next to.
+ */
+export const ResendStaffInvitationDialog = ({
+  staff,
+  onClose,
+}: {
+  readonly staff: StaffResource;
+  readonly onClose: () => void;
+}) => {
+  const { t } = useT("staff");
+  const { locale } = useLocale();
+  const resend = useResendStaffOnboarding();
+
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t("resendInvitation.title", { email: staff.email })}
+      description={t("resendInvitation.description")}
+      confirmLabel={t("resendInvitation.confirm")}
+      isPending={resend.isPending}
+      onConfirm={() => {
+        resend.mutate(
+          { id: staff.id, body: { locale } },
+          { onSuccess: onClose },
+        );
       }}
     />
   );

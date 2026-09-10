@@ -2,6 +2,7 @@ import {
   TOKEN_TYPE,
   errorEnvelopeSchema,
   isErrorCode,
+  type AcceptOnboardingBody,
   type AcceptedResource,
   type AuthResource,
   type ConfirmEmailBody,
@@ -102,6 +103,15 @@ const COOKIE_TRANSPORT_PATHS = [
    * and then back on the sign-in screen, having spent the one link it had.
    */
   "/auth/verify-email",
+  /*
+   * And `onboarding/accept` (ADR-0071 §8), for `verify-email`'s reason
+   * exactly: it answers **login's body** — the operator has chosen the
+   * password the link was mailed for and the device is signed in — so without
+   * the header the API puts the refresh token in the body and sets no cookie
+   * (ADR-0029 §Opt-in). The account would be signed in until the first reload
+   * and then back on the sign-in screen, having spent the one link it had.
+   */
+  "/auth/onboarding/accept",
 ];
 
 /**
@@ -173,6 +183,17 @@ const COOKIE_TRANSPORT_PATHS = [
  * cannot be mistaken for an expired access token and cannot provoke a refresh
  * nobody asked for. The entry is here for the send rather than for the answer.
  */
+/*
+ * The onboarding accept is the ninth (ADR-0071 §8), and it is on this list
+ * for **both** halves of the argument the recovery pair make. It is registered
+ * above the admin segment's `authenticate` and reads no principal, so a bearer
+ * on it is a live credential going where nothing looks at it — and on the one
+ * request whose whole job is to replace whoever already had this browser. And
+ * its every refusal is one indistinguishable `401`: left off this list, a dead
+ * link would be read as an expired access token, and the client would answer
+ * it with a refresh nobody asked for — painting the refresh's sentence over
+ * the onboarding screen's own.
+ */
 const UNAUTHENTICATED_PATHS = [
   "/auth/login",
   "/auth/impersonate",
@@ -182,6 +203,7 @@ const UNAUTHENTICATED_PATHS = [
   "/auth/password/forgot",
   "/auth/password/reset",
   "/invitations/lookup",
+  "/auth/onboarding/accept",
 ];
 
 /**
@@ -819,6 +841,66 @@ export const createApiClient = ({
   };
 
   /**
+   * Turns an onboarding link and a chosen password into a session (ADR-0071
+   * §8).
+   *
+   * **`verifyEmail`'s twin on the other population**, and it writes the store
+   * for `login`'s own reason: the endpoint answers login's body, and the
+   * module that owns the session's memory is the one that writes it. A feature
+   * that hydrated it would be a second writer of the state this package exists
+   * to keep to one.
+   *
+   * The token is the credential and the request is unauthenticated, which
+   * {@link UNAUTHENTICATED_PATHS} makes true rather than merely states: an
+   * operator following this link may well be sitting in a browser already
+   * signed in as somebody else, and that somebody's bearer has no business on
+   * the request that replaces them. The interceptor has asked for cookie
+   * transport ({@link COOKIE_TRANSPORT_PATHS}), so `refreshToken` is absent
+   * from the response and `csrfToken` is present — the same shape login gets,
+   * and without it the operator is signed in until the first reload with their
+   * one link already spent.
+   *
+   * **An `admin`-segment call** — the URL segment, which is the `staff`
+   * population (ADR-0015) — and refused on any other client for
+   * {@link requireUserSegment}'s reason read the other way round. Unlike
+   * `verifyEmail` the route really is registered on one segment only — the
+   * customer client would get a `404` — but a `404` is a worse way to learn
+   * this than a refusal that names the mistake, and the reason the check
+   * exists is the *write*: a staff principal must never be hydrated into a
+   * customer app's store.
+   *
+   * Every way it can fail answers one indistinguishable `401` (ADR-0071 §8),
+   * so there is nothing here to branch on. The store is written only on
+   * success: a refused accept leaves whatever session the browser had exactly
+   * as it was.
+   */
+  const acceptOnboarding = async (
+    body: AcceptOnboardingBody,
+  ): Promise<AuthResource> => {
+    if (segment !== "admin") {
+      throw apiClientError({
+        status: 0,
+        code: TRANSPORT_ERROR_CODE,
+        message: "Staff onboarding is an admin-segment call",
+      });
+    }
+
+    const { data } = await instance.post<{ data: AuthResource }>(
+      "/auth/onboarding/accept",
+      body,
+    );
+    const resource = data.data;
+
+    store.setSession({
+      accessToken: resource.accessToken,
+      principal: resource.principal,
+      ...(resource.csrfToken ? { csrfToken: resource.csrfToken } : {}),
+    });
+
+    return resource;
+  };
+
+  /**
    * Redeems an impersonation handoff token for a session (`D13.7`,
    * ADR-0057 §3, §7).
    *
@@ -1079,6 +1161,7 @@ export const createApiClient = ({
     lookupInvitation,
     forgotPassword,
     resetPassword,
+    acceptOnboarding,
     redeemHandoff,
     logout,
     refreshSession,

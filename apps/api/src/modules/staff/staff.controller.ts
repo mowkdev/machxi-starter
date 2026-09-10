@@ -8,6 +8,7 @@ import type {
   deleteStaffSchema,
   getStaffSchema,
   listStaffSchema,
+  resendStaffOnboardingSchema,
   revokeStaffSessionsSchema,
   setStaffEmailSchema,
   setStaffPasswordSchema,
@@ -105,6 +106,27 @@ export const createStaffController = (service: StaffService) =>
       res: Response,
     ): Promise<void> => {
       await service.setEmail(req.ctx, req.valid.params.id, req.valid.body);
+      respond.noContent(res);
+    },
+
+    /**
+     * `204`: a new onboarding link is on its way (ADR-0071 §8).
+     *
+     * No body and no `202`, unlike the anonymous senders: this caller is an
+     * authenticated admin acting on a row they can read, so there is no
+     * enumeration to blur and nothing to report but that the request was
+     * accepted. Whether the relay took it is not in the answer either — the
+     * send is detached, for the reason every other send in this API is.
+     */
+    resendOnboarding: async (
+      req: ValidatedRequest<typeof resendStaffOnboardingSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.resendOnboarding(
+        req.ctx,
+        req.valid.params.id,
+        req.valid.body,
+      );
       respond.noContent(res);
     },
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { mailLocaleSchema } from "../auth/schemas.js";
 import { STAFF_ROLES, STAFF_STATUSES } from "../enums.js";
 import { listQuerySchema, type FilterSpec } from "../list-query.js";
 import { customRule } from "../locales/source.js";
@@ -38,18 +39,47 @@ export const staffRolesSchema = z
   );
 
 /**
- * `POST /api/v1/admin/staff` — an admin creates a staff member with an initial
- * password; the account starts `active` (ADR-0018 §Staff onboarding). Names are
- * required because the `staff` table has them `NOT NULL` (ADR-0017).
+ * `POST /api/v1/admin/staff` — an admin creates an operator, with an initial
+ * password or with an invitation (ADR-0018 §Staff onboarding, ADR-0071 §8).
+ * Names are required because the `staff` table has them `NOT NULL` (ADR-0017).
+ *
+ * **`password` is optional and the absence is the request**, not a field
+ * somebody forgot: omitted, the row is created `invited` with a null hash and
+ * an onboarding link is mailed; present, the account is `active` at once,
+ * exactly as before ADR-0071. There is no `status` field to disagree with that
+ * — which of the two happened is decided by whether a credential was supplied,
+ * so the two facts cannot come apart.
+ *
+ * `locale` is ADR-0071 §2's seam and rides here for `registerBody`'s reason: an
+ * invitation goes to a stranger, the row it names has no stored locale yet —
+ * it is one request old and has never signed in — so the only language fact
+ * available is the one the panel is being read in. Ignored when a password is
+ * supplied, because then nothing is mailed.
  */
 export const createStaffBody = z.strictObject({
   email: emailSchema,
-  password: passwordSchema,
+  password: passwordSchema.optional(),
   firstName: nameSchema,
   lastName: nameSchema,
   roles: staffRolesSchema,
+  locale: mailLocaleSchema,
 });
 export type CreateStaffBody = z.infer<typeof createStaffBody>;
+
+/**
+ * `POST /api/v1/admin/staff/:id/onboarding/resend` (ADR-0071 §8).
+ *
+ * A body of one optional field, and it is here rather than absent for
+ * {@link createStaffBody}'s reason: the message is re-sent to the same
+ * stranger, whose account still has no stored locale, so §2's seam is still
+ * the only language fact there is.
+ */
+export const resendStaffOnboardingBody = z.strictObject({
+  locale: mailLocaleSchema,
+});
+export type ResendStaffOnboardingBody = z.infer<
+  typeof resendStaffOnboardingBody
+>;
 
 /**
  * `PATCH /api/v1/admin/staff/:id` — profile, roles and status (see the endpoint

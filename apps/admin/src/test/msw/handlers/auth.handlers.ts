@@ -1,7 +1,9 @@
 import {
+  acceptOnboardingBody,
   forgotPasswordBody,
   loginBody,
   resetPasswordBody,
+  type AcceptOnboardingBody,
   type AuthResource,
   type ErrorCode,
   type ForgotPasswordBody,
@@ -56,6 +58,9 @@ export const authResource = (accessToken: string): AuthResource => ({
 /** The recovery link's token, as the mailed link would carry it (`D18.6`). */
 export const RESET_TOKEN = "reset-token-from-the-fragment";
 
+/** The onboarding link's token, as the invitation carries it (`D18.11`). */
+export const ONBOARDING_TOKEN = "onboarding-token-from-the-fragment";
+
 export interface AuthMockState {
   /** How many times `POST /auth/refresh` has been called. */
   refreshCalls: number;
@@ -79,6 +84,15 @@ export interface AuthMockState {
    * produce one call.
    */
   resetPasswordCalls: ResetPasswordBody[];
+  /**
+   * The bodies `POST /admin/auth/onboarding/accept` has been offered
+   * (`D18.11`).
+   *
+   * The token as well as the password, for `resetPasswordCalls`' reason: the
+   * token is what the screen had to carry out of the URL fragment without
+   * rendering, storing or mangling it.
+   */
+  acceptOnboardingCalls: AcceptOnboardingBody[];
   /** When set, refresh answers this instead of succeeding. */
   refreshFailsWith?: { status: number; code: ErrorCode } | undefined;
 }
@@ -88,6 +102,7 @@ export const createAuthMockState = (): AuthMockState => ({
   csrfCalls: 0,
   forgotPasswordCalls: [],
   resetPasswordCalls: [],
+  acceptOnboardingCalls: [],
 });
 
 export const createAuthHandlers = (state: AuthMockState) =>
@@ -173,6 +188,34 @@ export const createAuthHandlers = (state: AuthMockState) =>
         if (body.token !== RESET_TOKEN) return fail(401, "UNAUTHENTICATED");
 
         return new Response(null, { status: 204 });
+      },
+    ),
+
+    /*
+     * The onboarding link, spent (`D18.11`, ADR-0071 §8).
+     *
+     * **`200` with login's body**, which is the half of §8 a mock can get
+     * wrong invisibly and the opposite of `password/reset` above: this link is
+     * the only way the account has ever been reachable and the operator has
+     * just chosen its credential, so the device is signed in. A mock that
+     * answered `204` here would let this app grow a landing the API never
+     * produces.
+     *
+     * **One indistinguishable `401` for every refusal** — unknown, consumed,
+     * expired, or naming a row that has left `invited` — because the caller is
+     * an anonymous holder of a URL fragment.
+     */
+    http.post(
+      `${API}/auth/onboarding/accept`,
+      async ({ request }): Promise<Response> => {
+        const body = acceptOnboardingBody.parse(await request.json());
+
+        state.acceptOnboardingCalls.push(body);
+
+        if (body.token !== ONBOARDING_TOKEN)
+          return fail(401, "UNAUTHENTICATED");
+
+        return ok(authResource("access-onboarded"));
       },
     ),
 

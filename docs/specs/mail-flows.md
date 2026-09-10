@@ -177,6 +177,42 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/impersonation-
 - **WHEN** the account's password is changed, reset from a mailed link, or set by staff while a `change_email` token is live
 - **THEN** that token is spent in the same transaction and the link answers `401 UNAUTHENTICATED` — a password change ends the pending address change as it ends every other session
 
+## Requirement: An operator joins from an invitation rather than from a password somebody typed
+
+`POST /api/v1/admin/staff` with **no** `password` creates the operator `invited` with no password hash at all and mails an onboarding link into the **admin** app — the only one of these links that lands there besides a staff recovery. `POST /api/v1/admin/auth/onboarding/accept { token, password }` consumes it, writes that first password with `status: "active"`, writes an `account.onboarded` audit row and answers `200` with login's body: unlike the recovery above, this link **does** sign the device in, because it is the only way the account has ever been reachable and the person at the other end has just chosen its credential. The link lives `STAFF_ONBOARDING_TOKEN_TTL` — seven days, the longest of the four — and the route carries the login limiter's argon2 budget in a counter of its own. The message's language travels in the request body, because an invited account has no stored locale of its own yet. `POST /api/v1/admin/staff/:id/onboarding/resend` sends another and retires the previous one. Both senders share `RATE_LIMIT_MAILBOX_MAX` over the hour — the create keyed on the address in its body, the resend on the operator it names, because that request carries no address at all.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.service.test.ts`, `apps/api/src/core/mail/__tests__/templates.test.ts`
+
+### Scenario: Inviting an operator
+
+- **WHEN** an admin creates a staff member with no `password` in the body
+- **THEN** the answer is `201` with `status: "invited"`, one message goes to that address carrying `#token=…` on a link whose origin is `ADMIN_APP_URL`, and the row has no password hash
+
+### Scenario: Creating one with a password instead
+
+- **WHEN** the same request carries a `password`
+- **THEN** the account is `active`, nothing is mailed, and no token is minted
+
+### Scenario: Following the link
+
+- **WHEN** the token is posted to `onboarding/accept` with a chosen password
+- **THEN** the answer is `200` with login's body — the refresh token in the body, or in the refresh cookie for a caller sending `X-Auth-Transport: cookie` — the account is `active`, and an `account.onboarded` audit row names it as actor with no acting-as
+
+### Scenario: Asking for the link again
+
+- **WHEN** an admin calls `onboarding/resend` on that row
+- **THEN** the answer is `204`, a new message is sent, and the previous link stops working
+
+### Scenario: Asking for it for anybody else
+
+- **WHEN** the resend names an operator who is `active` or `disabled`
+- **THEN** the answer is `409 STAFF_NOT_INVITED` and nothing is sent — unlike the anonymous senders above, this caller is an authenticated admin who can already read the status they are being told about
+
+### Scenario: Many invitations to one mailbox
+
+- **WHEN** `RATE_LIMIT_MAILBOX_MAX` invitations have been sent to one address inside the hour, or that many resends have named one operator
+- **THEN** the next one answers `429 RATE_LIMITED`, while a different address is still answered `201`
+
 ## Requirement: An address a staff member types is proven by that assertion
 
 `POST /api/v1/admin/users` stamps `email_verified_at` on the account it creates, because the operator who typed the address is the authority a confirmation link would be asking, and no link is sent; `PATCH /api/v1/admin/users/:id` stamps it the same way when it moves an account to `active`, without disturbing a stamp the account already had. An admin who deliberately asks for `status: "pending_verification"` gets an account with no stamp, which is the one row the verification flow above has something to do to. Those two paths and the link are **every** way a user becomes `active`, which is what makes **every `active` user an account whose address is proven**.

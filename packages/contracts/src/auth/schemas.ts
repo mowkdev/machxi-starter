@@ -195,6 +195,27 @@ export const resetPasswordBody = z.strictObject({
 export type ResetPasswordBody = z.infer<typeof resetPasswordBody>;
 
 /**
+ * `POST /api/v1/admin/auth/onboarding/accept` (ADR-0071 §8).
+ *
+ * {@link resetPasswordBody}'s shape with the field named for what it is: an
+ * `invited` operator has no password at all — `staff.password_hash` is null
+ * until this request — so `password` is the first one rather than a `newPassword`
+ * replacing something. It is held to the policy for that schema's reason: the
+ * value is *becoming* the credential.
+ *
+ * The token is the credential and there is no `email` beside it, for the
+ * reason {@link verifyEmailBody} has none. The population comes from the
+ * segment: the route is registered on `/api/v1/admin/auth` alone, so a
+ * `staff_onboarding` token has no user-segment endpoint to be spent on, and no
+ * field a caller controls can move it to one.
+ */
+export const acceptOnboardingBody = z.strictObject({
+  token: accountTokenSchema,
+  password: passwordSchema,
+});
+export type AcceptOnboardingBody = z.infer<typeof acceptOnboardingBody>;
+
+/**
  * `POST /api/v1/{admin,user}/profile/change-password` — an account changing
  * its own password (ADR-0027).
  *

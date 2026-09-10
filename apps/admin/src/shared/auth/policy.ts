@@ -64,6 +64,22 @@ export type ResourceAction =
    */
   | "changeEmail"
   /**
+   * `POST /admin/staff/:id/onboarding/resend` (`D18.11`, ADR-0071 §8) — named
+   * for the route like the six above it.
+   *
+   * **`staff` alone**, and `users` has no key at all: there is no such route
+   * under `/admin/users`, because a customer's address is proven by a link
+   * they follow rather than asserted by an invitation an operator sends
+   * (ADR-0071 §3). That absence is the `Partial` describing the API, exactly
+   * as `impersonate`'s is in the other direction.
+   *
+   * Written out here even though nothing calls `can()` for it: this table is
+   * a transcription of the routers, `setPassword` and `revokeSessions` are in
+   * it on the same terms, and a route missing from it reads as "no such
+   * route" to the next person comparing the two.
+   */
+  | "resendOnboarding"
+  /**
    * `POST /admin/users/:id/impersonate` (`D13.8`, ADR-0057 §1/§7) — named for
    * the route like the five above it.
    *
@@ -110,6 +126,12 @@ export const RESOURCE_POLICY = {
      * not reached for mid-incident (ADR-0042 §Containment controls).
      */
     changeEmail: ["super_admin"],
+    /*
+     * `POST /:id/onboarding/resend` (ADR-0071 §8) — the mount's own `admin`,
+     * with no per-route `authorize`: creating the invited row is an admin's
+     * right, so re-sending the message it already sent cannot be a higher bar.
+     */
+    resendOnboarding: ["admin"],
   },
   /*
    * Mounted `authorize("admin", "manager")` — a manager may *read* the customer

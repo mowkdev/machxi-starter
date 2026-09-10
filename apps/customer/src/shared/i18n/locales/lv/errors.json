@@ -29,6 +29,8 @@
   "USER_DELETED": "Šis konts ir dzēsts.",
   "STAFF_EMAIL_TAKEN": "Šī e-pasta adrese jau tiek izmantota.",
   "STAFF_LAST_SUPER_ADMIN": "Šī izmaiņa nav atļauta.",
+  "STAFF_NOT_INVITED": "Šī izmaiņa nav atļauta.",
+  "STAFF_INVITATION_PENDING": "Šī izmaiņa nav atļauta.",
 
   "ORGANIZATION_LAST_OWNER": "Organizācijai ir vajadzīgs vismaz viens īpašnieks. Vispirms ieceļiet citu īpašnieku.",
   "ORGANIZATION_PERSONAL_UNDELETABLE": "Personīgā organizācija tiek dzēsta kopā ar jūsu kontu.",

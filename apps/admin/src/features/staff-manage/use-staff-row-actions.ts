@@ -95,6 +95,20 @@ export const useStaffRowActions = (
       {
         key: "reset-password",
         label: t("actions.resetPassword"),
+        /*
+         * Hidden on an `invited` row, and it is the same claim the resend
+         * makes rather than a second kind of rule (`D18.11`'s
+         * `code-reviewer`): an operator who has not followed their invitation
+         * has **no password to replace**, so the API answers `409
+         * STAFF_INVITATION_PENDING` and the item can only ever fail. Before
+         * §8 this row did not exist in practice, which is why the containment
+         * argument below never had to meet it.
+         *
+         * It does not weaken that argument. What must stay visible during an
+         * incident is a control that would *work* and that the operator may
+         * not be allowed to use; this one would work for nobody.
+         */
+        isHidden: (staff) => staff.status === "invited",
         onSelect: (staff) => {
           onAction({ kind: "reset-password", staff });
         },
@@ -104,6 +118,38 @@ export const useStaffRowActions = (
         label: t("actions.revokeSessions"),
         onSelect: (staff) => {
           onAction({ kind: "revoke-sessions", staff });
+        },
+      },
+      /*
+       * "Resend invitation" (`D18.11`, ADR-0071 §8), and the first entry in
+       * this menu hidden by **the row's own state** rather than by a
+       * capability or a role.
+       *
+       * That is a different thing from the paragraph above, and it does not
+       * contradict it: `isDisabled` stays unused because the refusals it
+       * would have to guess at — rank, the last super admin, whether the
+       * target is the actor — are state this app does not hold. `status` is
+       * not. It is a column of the row the operator is looking at, rendered
+       * two cells to the left, and `STAFF_NOT_INVITED` is the *whole* of what
+       * the endpoint refuses. Offering the item on an `active` operator would
+       * be an action that can only ever fail, on the one resource where every
+       * other menu entry works.
+       *
+       * `isHidden` rather than `isDisabled` for the reason `@repo/grid` gives
+       * where it declares the pair: there is no such operation on an `active`
+       * row, and a greyed-out entry on every row but the rare one would be a
+       * dead item in every menu in the panel.
+       *
+       * A stale row is still possible — the grid's page may be a minute old —
+       * and the API is still the enforcement: the confirm carries its error
+       * toast for exactly that click.
+       */
+      {
+        key: "resend-invitation",
+        label: t("actions.resendInvitation"),
+        isHidden: (staff) => staff.status !== "invited",
+        onSelect: (staff) => {
+          onAction({ kind: "resend-invitation", staff });
         },
       },
     );

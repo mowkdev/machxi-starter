@@ -29,6 +29,8 @@
   "USER_DELETED": "Šis lietotājs ir dzēsts, un to nevar mainīt.",
   "STAFF_EMAIL_TAKEN": "Šo e-pasta adresi jau izmanto cits darbinieks.",
   "STAFF_LAST_SUPER_ADMIN": "Šis ir pēdējais galvenais administrators. Vispirms paaugstiniet kādu citu.",
+  "STAFF_NOT_INVITED": "Uzaicinājuma saiti var nosūtīt tikai uzaicinātam darbiniekam.",
+  "STAFF_INVITATION_PENDING": "Šis operators vēl nav pieņēmis uzaicinājumu. Viņš pats iestata paroli no saites.",
 
   "ORGANIZATION_LAST_OWNER": "Organizācijai ir vajadzīgs vismaz viens īpašnieks. Vispirms ieceļiet citu īpašnieku.",
   "ORGANIZATION_PERSONAL_UNDELETABLE": "Personīgo organizāciju dzēš kopā ar kontu, kuram tā pieder.",

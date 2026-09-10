@@ -105,6 +105,22 @@ export const passwordResetLinkInvalid = (): AppError =>
 export const emailChangeLinkInvalid = (): AppError =>
   unauthenticated("This address confirmation link is no longer valid");
 
+/**
+ * Every way `POST /admin/auth/onboarding/accept` can fail, answered as one
+ * indistinguishable `401` (ADR-0071 §8).
+ *
+ * {@link verificationLinkInvalid}'s posture on the fourth single-use link, and
+ * with no exception at all: unknown token, already consumed, minted for
+ * another purpose or population, past `STAFF_ONBOARDING_TOKEN_TTL`, or naming
+ * a row that has left `invited` — onboarded already, or disabled by an admin
+ * since the message went out. The caller is an anonymous holder of a URL
+ * fragment and none of those distinctions is theirs to learn; the one screen
+ * that reads this says the same sentence to all of them — ask an
+ * administrator for another link.
+ */
+export const onboardingLinkInvalid = (): AppError =>
+  unauthenticated("This onboarding link is no longer valid");
+
 /** Missing, malformed, wrongly signed, or carrying the other population's `aud`. */
 export const tokenInvalid = (): AppError =>
   unauthenticated("Invalid access token", "AUTH_TOKEN_INVALID");

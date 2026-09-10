@@ -187,7 +187,45 @@ describe("the create surface", () => {
       lastName: "Operator",
       // The multi-checkbox seeded from config, plus the box the operator ticked.
       roles: ["editor", "manager"],
+      // ADR-0071 §2's seam, sent on both branches: the API ignores it when a
+      // password was typed, and a condition here would be one more thing to
+      // keep in step with the server.
+      locale: "en",
     });
+  });
+
+  /* ── the invitation half (ADR-0071 §8) ────────────────────────────────── */
+
+  it("omits the password when the box was left empty, rather than sending an empty one", async () => {
+    /*
+     * The distinction the whole of §8 rests on, and the one this form could
+     * lose invisibly: the field is seeded `""` so React holds it from the
+     * first render (ADR-0035), and `""` is a password `createStaffBody`
+     * refuses — while **absence** is the request to send an invitation. A
+     * surface that passed the seed straight through would answer a `400` on
+     * the flow's happy path.
+     */
+    const user = userEvent.setup();
+    await openCreate();
+
+    await user.type(screen.getByLabelText("Email"), "invitee@machxi.local");
+    await user.type(screen.getByLabelText("First name"), "Ivy");
+    await user.type(screen.getByLabelText("Last name"), "Invited");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await closed("Create");
+    expect(state.seen.created[0]).toEqual({
+      email: "invitee@machxi.local",
+      firstName: "Ivy",
+      lastName: "Invited",
+      roles: ["editor"],
+      locale: "en",
+    });
+    expect(state.seen.created[0]).not.toHaveProperty("password");
+
+    // And the row the API made is the invited one, which is what the menu
+    // below reads to decide whether an invitation can be re-sent.
+    expect(state.rows.at(-1)?.status).toBe("invited");
   });
 
   it("lands STAFF_EMAIL_TAKEN on the email field, not at the top of the form", async () => {
@@ -590,6 +628,140 @@ describe("the administrative password reset", () => {
         screen.getByLabelText("Your own current password"),
       ).toHaveAttribute("aria-invalid", "true");
     });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("the invitation resend (ADR-0071 §8)", () => {
+  /** The `invited` row this flow exists for — the fixture has none. */
+  const INVITED = {
+    ...MO,
+    id: "0198c1f0-0000-7000-8000-00000000000b",
+    email: "ivy@machxi.local",
+    status: "invited",
+  } as const;
+
+  const menuFor = async (
+    user: ReturnType<typeof userEvent.setup>,
+    id: string,
+  ) => {
+    await user.click(
+      await screen.findByRole("button", { name: `Row actions for ${id}` }),
+    );
+  };
+
+  /*
+   * The fixture rows are all `active` or `disabled`, so every case here builds
+   * its own state around `INVITED` — and it has to be a row the handler can
+   * *find*, because the resend answers `404` for an id it does not hold and
+   * that would pass for a refusal.
+   */
+  beforeEach(() => {
+    state = createStaffMockState([INVITED, ADA]);
+    server.use(...createStaffHandlers(state));
+  });
+
+  it("takes the password reset away on an invited row and leaves the rest", async () => {
+    /*
+     * `D18.11`'s `code-reviewer`: an operator who has not followed their
+     * invitation has no password to replace, so the API answers `409
+     * STAFF_INVITATION_PENDING` and the item could only ever fail. The
+     * containment controls beside it stay — what must survive an incident is
+     * a control that would *work* for somebody.
+     */
+    const user = userEvent.setup();
+
+    renderApp({ initialPath: "/staff", store: signedIn() });
+
+    await menuFor(user, INVITED.id);
+    await screen.findByRole("menuitem", { name: "Resend invitation" });
+
+    expect(
+      screen.queryByRole("menuitem", { name: "Reset password" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Sign out everywhere" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await menuFor(user, ADA.id);
+    expect(
+      await screen.findByRole("menuitem", { name: "Reset password" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the action on an invited row and on no other", async () => {
+    /*
+     * The row's own `status`, which is a column two cells to the left — not a
+     * rule this app is guessing at (the distinction `useStaffRowActions`
+     * draws where it declines to use `isDisabled`). `STAFF_NOT_INVITED` is
+     * the whole of what the endpoint refuses, so an item on an `active` row
+     * would be one that can only ever fail.
+     */
+    const user = userEvent.setup();
+
+    renderApp({ initialPath: "/staff", store: signedIn() });
+
+    await menuFor(user, INVITED.id);
+    expect(
+      await screen.findByRole("menuitem", { name: "Resend invitation" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await menuFor(user, ADA.id);
+    await screen.findByRole("menuitem", { name: "Edit" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Resend invitation" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("re-sends only after the operator confirms, and carries the reader's locale", async () => {
+    const user = userEvent.setup();
+    const { onClose } = open({ kind: "resend-invitation", staff: INVITED });
+
+    const dialog = screen.getByRole("alertdialog");
+
+    expect(
+      within(dialog).getByText(`Resend the invitation to ${INVITED.email}?`),
+    ).toBeInTheDocument();
+    expect(state.seen.resent).toHaveLength(0);
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Resend invitation" }),
+    );
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    });
+    // ADR-0071 §2's seam: the invited account has no stored locale, so the
+    // language this panel is being read in is the only fact there is.
+    expect(state.seen.resent).toEqual([
+      { id: INVITED.id, body: { locale: "en" } },
+    ]);
+  });
+
+  it("toasts STAFF_NOT_INVITED when the row stopped being invited", async () => {
+    /*
+     * The stale-row click the menu cannot prevent: the grid's page may be a
+     * minute old, and the API is the enforcement. A confirm has no field for
+     * a refusal to land on, so this one keeps ADR-0034's error toast.
+     */
+    const user = userEvent.setup();
+
+    state = createStaffMockState([INVITED, MO]);
+    server.use(...createStaffHandlers(state));
+
+    const { onClose } = open({ kind: "resend-invitation", staff: MO });
+
+    await user.click(screen.getByRole("button", { name: "Resend invitation" }));
+
+    expect(
+      await screen.findByText(
+        "Only an invited staff member can be sent an onboarding link.",
+      ),
+    ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 });

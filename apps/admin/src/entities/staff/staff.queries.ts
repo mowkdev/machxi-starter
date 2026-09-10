@@ -1,6 +1,7 @@
 import type {
   CreateStaffBody,
   ListStaffQuery,
+  ResendStaffOnboardingBody,
   SetEmailBody,
   SetPasswordBody,
   UpdateStaffBody,
@@ -151,9 +152,37 @@ export const useSetStaffEmail = () => {
 };
 
 /**
+ * A fresh invitation link (`D18.11`, ADR-0071 §8).
+ *
+ * The second mutation here that invalidates **nothing**, and for
+ * `useRevokeStaffSessions`'s reason: it writes a token row and sends a
+ * message, and neither is a column of the staff resource. The row's
+ * `updatedAt` does not move, so a refetch could only ever return what is
+ * already on screen.
+ *
+ * It keeps its error toast — the confirm that hosts it has no field for a
+ * refusal to land on, which is where `STAFF_NOT_INVITED` goes when the row
+ * stopped being `invited` while the menu was open.
+ */
+export const useResendStaffOnboarding = () => {
+  const api = useApi();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: ResendStaffOnboardingBody;
+    }) => api.resendOnboarding(id, body),
+    meta: { success: "staff:outcomes.invitationSent" },
+  });
+};
+
+/**
  * Forced sign-out (ADR-0018 §Revocation).
  *
- * The one mutation here that invalidates **nothing**, and that is the rule
+ * The first mutation here that invalidates **nothing**, and that is the rule
  * holding rather than bending: it writes to `sessions`, which is a different
  * aggregate and one this app does not cache. Nothing on the staff resource
  * changes, so there is no key of this entity's to invalidate — an

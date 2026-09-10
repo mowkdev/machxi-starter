@@ -2,6 +2,7 @@ import {
   changePasswordBody,
   createStaffBody,
   listStaffQuery,
+  resendStaffOnboardingBody,
   setEmailBody,
   setPasswordBody,
   staffIdParams,
@@ -65,6 +66,20 @@ export const setStaffPasswordSchema = {
 export const setStaffEmailSchema = {
   params: staffIdParams,
   body: setEmailBody,
+} as const;
+
+/**
+ * `POST /api/v1/admin/staff/:id/onboarding/resend` (ADR-0071 §8).
+ *
+ * The id in the path says whose link is re-minted; the body carries only
+ * ADR-0071 §2's locale seam, because an `invited` operator has no stored one
+ * yet. No credential is re-presented, unlike the two endpoints above: this
+ * sends the same message to the same address the row already holds, so there
+ * is nothing here that a stolen session could redirect.
+ */
+export const resendStaffOnboardingSchema = {
+  params: staffIdParams,
+  body: resendStaffOnboardingBody,
 } as const;
 
 /**

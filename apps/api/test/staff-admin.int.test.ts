@@ -15,6 +15,7 @@ import {
   type Tokens,
 } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
+import { lastMailTo, tokenFromMail } from "./support/mail.js";
 import { expectNoSecrets, staffResourceSchema } from "./support/resources.js";
 import {
   FIXTURE_PASSWORD,
@@ -118,6 +119,10 @@ describe("admin staff administration", () => {
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/sessions/revoke` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/password` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/email` },
+      {
+        method: "post",
+        path: `${STAFF_BASE}/${UNKNOWN_ID}/onboarding/resend`,
+      },
       { method: "delete", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
     ] as const;
 
@@ -312,6 +317,337 @@ describe("admin staff administration", () => {
       expect(paths).toEqual(
         expect.arrayContaining(["email", "password", "firstName", "roles"]),
       );
+    });
+  });
+
+  /*
+   * ADR-0071 §8 end to end — the invitation, the link, and the accept.
+   *
+   * What this proves that a unit test cannot: the row, its grants and its
+   * token land in **one commit**; the account really cannot sign in until the
+   * link is spent, against the same `authenticate` a browser meets; the token
+   * is single-use against a real `update … where consumed_at is null`; and the
+   * accept answers login's body on whichever transport the caller asked for.
+   */
+  describe("staff onboarding by invitation (ADR-0071 §8)", () => {
+    const ACCEPT = "/api/v1/admin/auth/onboarding/accept";
+    const CHOSEN_PASSWORD = "chosen-by-the-operator-1";
+
+    /** Creates an `invited` operator and hands back its link. */
+    const invite = async (
+      email: string,
+    ): Promise<{ id: string; token: string }> => {
+      harness.mail.length = 0;
+
+      const response = await request()
+        .post(STAFF_BASE)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({
+          email,
+          firstName: "Ivy",
+          lastName: "Invited",
+          roles: ["editor"],
+        })
+        .expect(201);
+
+      return {
+        id: response.body.data.id as string,
+        token: tokenFromMail(lastMailTo(harness, email)),
+      };
+    };
+
+    it("creates an invited row and mails a link into the admin app", async () => {
+      const email = "invited.one@machxi.local";
+
+      harness.mail.length = 0;
+
+      const response = await request()
+        .post(STAFF_BASE)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({
+          email,
+          firstName: "Ivy",
+          lastName: "Invited",
+          roles: ["editor"],
+        })
+        .expect(201);
+
+      expect(staffEnvelope.safeParse(response.body).success).toBe(true);
+      expect(response.body.data.status).toBe("invited");
+      expectNoSecrets(response.body);
+
+      const message = lastMailTo(harness, email);
+
+      expect(harness.mail).toHaveLength(1);
+      // The **admin** app, which is the half of §8 only the origin can carry:
+      // a link into the customer app would land an operator on a screen that
+      // cannot help them.
+      expect(message?.text).toContain(harness.config.apps.adminUrl);
+      expect(message?.text).toContain("/onboarding#token=");
+    });
+
+    it("has no password for login to be right about", async () => {
+      /*
+       * **Named for what it proves** (`D18.11`'s `code-reviewer`, correcting
+       * this file's first draft). The draft called itself "refuses the
+       * invited account at login" and cited `staffRecord`'s status check —
+       * which it never reaches: the row's hash is null, so `login` compares
+       * against `dummyHash()` and answers before `active` is consulted.
+       * Deleting that status check would have left this green.
+       *
+       * What is actually true, and is the property worth pinning, is that an
+       * `invited` operator is **indistinguishable from an unknown address**:
+       * every password answers the same `401 AUTH_INVALID_CREDENTIALS`, with
+       * no `403` to say the account exists and is waiting (ADR-0020
+       * §Enumeration). The status check is what refuses a *disabled* row, and
+       * `auth.int.test.ts` owns that case.
+       */
+      const email = "invited.cannot.login@machxi.local";
+
+      await invite(email);
+
+      for (const password of [CHOSEN_PASSWORD, "a-different-password-3"]) {
+        const response = await request()
+          .post("/api/v1/admin/auth/login")
+          .send({ email, password })
+          .expect(401);
+
+        expect(response.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+      }
+
+      const stranger = await request()
+        .post("/api/v1/admin/auth/login")
+        .send({
+          email: "nobody.at.all@machxi.local",
+          password: CHOSEN_PASSWORD,
+        })
+        .expect(401);
+
+      expect(stranger.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("refuses an administrative password set on an invited row", async () => {
+      /*
+       * `D18.11`'s reviewers, both of them. Writing a hash here would leave
+       * `status` at `invited`, so the operator could not sign in with the
+       * password they were just handed — and the `204` would be a claim
+       * nobody could act on. The invitation is how this account gets its
+       * first credential (ADR-0071 §8, amended).
+       */
+      const { id } = await invite("invited.no.reset@machxi.local");
+
+      const response = await request()
+        .post(`${STAFF_BASE}/${id}/password`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({
+          password: CHOSEN_PASSWORD,
+          currentPassword: NEW_ACCOUNT_PASSWORD,
+        })
+        .expect(409);
+
+      expect(response.body.error.code).toBe("STAFF_INVITATION_PENDING");
+
+      // And the link still works, which is what "refused" has to mean here.
+      const record = await asAdmin(`${STAFF_BASE}/${id}`).expect(200);
+
+      expect(record.body.data.status).toBe("invited");
+    });
+
+    it("refuses activating an operator who has never had a password", async () => {
+      /*
+       * The same row from the other direction (`D18.11`'s
+       * `security-reviewer`): `status` is a free field of `updateStaffBody`,
+       * so without this an admin could `PATCH` an invitation to `active` and
+       * produce an operator who can never sign in — and whom
+       * `countOtherActiveSuperAdmins` would count as a survivor of the
+       * ADR-0017 invariant, because that query reads `status` alone.
+       */
+      const { id } = await invite("invited.no.activate@machxi.local");
+
+      const response = await request()
+        .patch(`${STAFF_BASE}/${id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "active" })
+        .expect(409);
+
+      expect(response.body.error.code).toBe("STAFF_INVITATION_PENDING");
+
+      // Every other status still moves: this refuses a pairing, not a row.
+      await request()
+        .patch(`${STAFF_BASE}/${id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "disabled" })
+        .expect(200);
+    });
+
+    it("sets the password, activates the row and signs the device in", async () => {
+      const email = "invited.accepts@machxi.local";
+      const { id, token } = await invite(email);
+
+      const accepted = await request()
+        .post(ACCEPT)
+        .send({ token, password: CHOSEN_PASSWORD })
+        .expect(200);
+
+      expect(accepted.body.data.principal.id).toBe(id);
+      expect(accepted.body.data.accessToken).toEqual(expect.any(String));
+
+      const me = await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(accepted.body.data.accessToken))
+        .expect(200);
+
+      expect(me.body.data.id).toBe(id);
+
+      // And the password really is the account's now, through the ordinary
+      // door: the accept is not the only way in from here.
+      const record = await asAdmin(`${STAFF_BASE}/${id}`).expect(200);
+
+      expect(record.body.data.status).toBe("active");
+
+      const tokens = await login(harness.app, "staff", {
+        email,
+        password: CHOSEN_PASSWORD,
+      });
+
+      expect(tokens.accessToken).toEqual(expect.any(String));
+    });
+
+    it("refuses the same link a second time", async () => {
+      const { token } = await invite("invited.twice@machxi.local");
+
+      await request()
+        .post(ACCEPT)
+        .send({ token, password: CHOSEN_PASSWORD })
+        .expect(200);
+
+      const replay = await request()
+        .post(ACCEPT)
+        .send({ token, password: "a-different-password-2" })
+        .expect(401);
+
+      expect(replay.body.error.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("refuses a token minted for another purpose", async () => {
+      // One mechanism, four purposes, and the consume matches the purpose
+      // inside the claiming statement (ADR-0071 §1) — so a recovery link
+      // cannot be spent as an onboarding one.
+      harness.mail.length = 0;
+
+      await request()
+        .post("/api/v1/admin/auth/password/forgot")
+        .send({ email: FIXTURE_STAFF.manager })
+        .expect(202);
+
+      const reset = tokenFromMail(lastMailTo(harness, FIXTURE_STAFF.manager));
+
+      const response = await request()
+        .post(ACCEPT)
+        .send({ token: reset, password: CHOSEN_PASSWORD })
+        .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("is not mounted on the user segment", async () => {
+      // The condition in `auth.routes.ts` is the guard: a user-segment twin
+      // would be a second endpoint able to spend a staff token.
+      //
+      // Sent **with a valid user token**, which is what makes this a claim
+      // about the route rather than about the guard above it: anonymously the
+      // path answers `401` from that segment's `authenticate`, and a `401`
+      // would be indistinguishable from a route that exists and is protected.
+      const response = await request()
+        .post("/api/v1/user/auth/onboarding/accept")
+        .set("Authorization", bearer(userTokens.accessToken))
+        .send({ token: "anything", password: CHOSEN_PASSWORD })
+        .expect(404);
+
+      expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
+    });
+
+    it("re-sends the link and retires the previous one", async () => {
+      const email = "invited.resent@machxi.local";
+      const { id, token: first } = await invite(email);
+
+      harness.mail.length = 0;
+
+      await request()
+        .post(`${STAFF_BASE}/${id}/onboarding/resend`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({})
+        .expect(204);
+
+      const second = tokenFromMail(lastMailTo(harness, email));
+
+      expect(second).not.toBe(first);
+
+      // The mint supersedes the live token for the pair (ADR-0071 §1), so
+      // "resend" leaves one working link rather than two.
+      const stale = await request()
+        .post(ACCEPT)
+        .send({ token: first, password: CHOSEN_PASSWORD })
+        .expect(401);
+
+      expect(stale.body.error.code).toBe("UNAUTHENTICATED");
+
+      await request()
+        .post(ACCEPT)
+        .send({ token: second, password: CHOSEN_PASSWORD })
+        .expect(200);
+    });
+
+    it("refuses a resend for an account that is already active", async () => {
+      const response = await request()
+        .post(`${STAFF_BASE}/${adminId}/onboarding/resend`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({})
+        .expect(409);
+
+      expect(response.body.error.code).toBe("STAFF_NOT_INVITED");
+    });
+
+    it("answers 404 for a resend against an unknown id", async () => {
+      const response = await request()
+        .post(`${STAFF_BASE}/${UNKNOWN_ID}/onboarding/resend`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({})
+        .expect(404);
+
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+
+    it("spends nothing when the account has been disabled since the mint", async () => {
+      // A refused consumption rolls the claim back (ADR-0071 §1), so the link
+      // works again if the account becomes eligible — which is what makes
+      // "refused" different from "spent".
+      const email = "invited.disabled@machxi.local";
+      const { id, token } = await invite(email);
+
+      await request()
+        .patch(`${STAFF_BASE}/${id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "disabled" })
+        .expect(200);
+
+      const refused = await request()
+        .post(ACCEPT)
+        .send({ token, password: CHOSEN_PASSWORD })
+        .expect(401);
+
+      expect(refused.body.error.code).toBe("UNAUTHENTICATED");
+
+      await request()
+        .patch(`${STAFF_BASE}/${id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .send({ status: "invited" })
+        .expect(200);
+
+      await request()
+        .post(ACCEPT)
+        .send({ token, password: CHOSEN_PASSWORD })
+        .expect(200);
     });
   });
 

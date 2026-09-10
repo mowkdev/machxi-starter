@@ -132,6 +132,8 @@ const AUTH_ERROR_CODES = [
  * | `USER_DELETED` | 409 | a write aimed at a soft-deleted user account (ADR-0028) |
  * | `STAFF_EMAIL_TAKEN` | 409 | `POST /api/v1/admin/staff` with an email already in the `staff` table |
  * | `STAFF_LAST_SUPER_ADMIN` | 409 | disabling or demoting the only remaining `super_admin` (ADR-0017 invariant) |
+ * | `STAFF_NOT_INVITED` | 409 | re-sending an onboarding link to an operator who is not `invited` (ADR-0071 §8) |
+ * | `STAFF_INVITATION_PENDING` | 409 | setting a password on, or activating, an operator who has not accepted their invitation (ADR-0071 §8) |
  * | `ORGANIZATION_LAST_OWNER` | 409 | removing, demoting or leaving as the only remaining `owner` (ADR-0067 §2 invariant) |
  * | `ORGANIZATION_PERSONAL_UNDELETABLE` | 409 | `DELETE` aimed at a `personal` organization, which goes with its account and never on its own (ADR-0067 §2) |
  * | `ORGANIZATION_PERSONAL_CLOSED` | 409 | a second member aimed at a `personal` organization, which has exactly one (ADR-0067 §2) |
@@ -164,12 +166,28 @@ const AUTH_ERROR_CODES = [
  * answers an existing email with plain `CONFLICT` and a message that does not
  * confirm the address — telling an anonymous caller `USER_EMAIL_TAKEN` would
  * turn the endpoint into an account-existence oracle.
+ *
+ * `STAFF_NOT_INVITED` is `409` for `USER_DELETED`'s reason exactly: the row
+ * exists and the caller may read it, and what the request conflicts with is
+ * the account's state — an operator who has already onboarded, or one an
+ * admin has since disabled, has no pending link to replace. It names the
+ * conflict because, like the two "taken" codes, it is answered only to an
+ * authenticated `admin` who can already read the row's status.
+ *
+ * `STAFF_INVITATION_PENDING` is its mirror and the same `409` for the same
+ * reason: an operator who has not yet followed their invitation has no
+ * password for `POST /:id/password` to replace, and is made `active` by the
+ * link rather than by an edit (ADR-0071 §8). Both refusals exist because
+ * `invited` became a state an admin creates on purpose at `D18.11`, where
+ * before it was a status nothing wrote.
  */
 const DOMAIN_ERROR_CODES = [
   "USER_EMAIL_TAKEN",
   "USER_DELETED",
   "STAFF_EMAIL_TAKEN",
   "STAFF_LAST_SUPER_ADMIN",
+  "STAFF_NOT_INVITED",
+  "STAFF_INVITATION_PENDING",
   "ORGANIZATION_LAST_OWNER",
   "ORGANIZATION_PERSONAL_UNDELETABLE",
   "ORGANIZATION_PERSONAL_CLOSED",
