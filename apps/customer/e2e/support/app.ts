@@ -261,7 +261,7 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * **The floor is this suite's own cost, and that is the arithmetic `D12.10`
  * had to redo.** One window now carries two suites — `pnpm test:e2e` is
  * `turbo run test:e2e`, so the admin's walk and this one run back to back
- * against the same limiter — and the admin's floor of 180 can only speak for
+ * against the same limiter — and the admin's own floor can only speak for
  * the suite it guards. By the time this probe fires, the admin's share is
  * already spent, so the only question left here is whether what *remains*
  * covers this walk. Both floors together are what makes the enlarged run
@@ -274,20 +274,29 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * 300, and `pnpm test:e2e` runs them back to back through one limiter
  * (`--concurrency=1`), so on a 300 profile the command could not be green
  * however healthy every spec in it was. `D15.9` re-measured this suite at
- * **138** and `D17.3` at **156**, so the pair is **330** today; every one of
- * those numbers sits inside the 1000 ADR-0069 gives the committed development
- * profile, which is what makes the combined command runnable at all.
+ * **138** and `D17.3` at **156**. `D18.12` measured both again, each suite
+ * alone in a clear window of 1000: the admin's 38 specs **194**, this suite's
+ * 12 **154**, so the pair is **348** today; both sit inside the 1000 ADR-0069
+ * gives the committed development profile, which is what makes the combined
+ * command runnable at all.
  *
- * **The figure that will run out first is not that one.** ADR-0069 §2 sized 1000
- * on a tier run *and its retry* beside the Postman collection — 946 when it was
- * written, and 330 + 165 doubled is **990** today. Ten requests of headroom,
- * so the next growth of either suite is the one that crosses that record's own
- * premise rather than the raw sum, and it is the record that has to move again.
+ * **The figure that will run out first is not that one, and at `D18.12` it ran
+ * out.** ADR-0069 §2 sized 1000 on a tier run *and its retry* beside the
+ * Postman collection — 946 when it was written, 990 at `D17.3`, and measured
+ * here **1090**: 348 for the pair and **197** for the collection, which is
+ * itself no longer the 165 that record states. A single combined run beside
+ * the collection is 545 and has all the room it needs, so nothing in the
+ * definition of done fails today; what has gone is the headroom the record
+ * bought deliberately, so that a *failed* tier run and the diagnosis run after
+ * it both fit one window. **That number is ADR-0069's and a build step does not
+ * move it** — the same reason `D11.6` and `D11.11` each left it alone — so this
+ * is recorded here and in `D18`'s notes for the record to answer.
  *
  * **Neither floor is fudged to hide that, and neither number is the culprit.**
- * The admin's was measured at `D11.11` and re-measured at `D15.8`, and its
- * suite has not changed since `D11.12`; the app underneath it has, which is
- * where its growth came from. The fix — a larger `RATE_LIMIT_GLOBAL_MAX` for
+ * The admin's was measured at `D11.11`, re-measured at `D15.8` and again at
+ * `D18.12`, where its suite gained a file for the first time since `D11.12`;
+ * before that the app underneath it grew and the suite did not, which is where
+ * most of its growth came from. The fix — a larger `RATE_LIMIT_GLOBAL_MAX` for
  * the development profile — is the one `D11.6` recorded and `D11.11` left
  * untaken, both times for the same reason: the limit is ADR-0020's, and a
  * frozen record's number is not a build step's to move. **It moved by
@@ -311,19 +320,20 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * diagnosis that is exactly backwards. `D13.9`'s `security-reviewer` pass found
  * that; the parameter is the fix.
  *
- * **172 since `D18.4`, and the three are reasoned rather than measured.** The
- * organizations walk gained a second full document load — the confirmation link
- * is followed from a mailbox, so the app boots again (`GET /auth/csrf`,
- * `POST /auth/refresh`) and spends `POST /public/auth/verify-email` on top.
- * Nothing else in this suite changed. `D18.12` re-measures both tiers' floors
- * against a green run, which is the step that turns this arithmetic back into a
- * measurement; carrying the old number until then would have made a true
- * precondition three short, and a run that starts with too little budget fails
- * in the middle with a `429` instead of at the door with a sentence.
+ * **167 since `D18.12`, and measured rather than reasoned.** `D18.4` carried
+ * 172 — 159 and the margin — by adding three to the previous figure for the
+ * second document load the organizations walk gained when it began following a
+ * confirmation link out of a mailbox. Measured here, a green run of all 12
+ * specs took a clear window from 802 to 647, so the suite costs **154** and the
+ * floor is that plus the same 13. The reasoned number was five high, which is
+ * the harmless direction — a floor above the cost declines runs that would have
+ * finished — and it is corrected for the reason the arithmetic was labelled as
+ * arithmetic in the first place: a precondition nobody has measured drifts in
+ * whichever direction the next guess leans.
  */
 export const assertApiWindowClear = async (
   page: Page,
-  needed = 172,
+  needed = 167,
 ): Promise<void> => {
   /*
    * Throttled and absent are different failures, and this is the function that
@@ -388,7 +398,7 @@ export const assertApiWindowClear = async (
   const because =
     "This is not a defect in the app: `pnpm test:e2e` runs both apps' suites " +
     "through one window, so a second run inside the same quarter hour — or a " +
-    "run beside `pnpm test:postman`, which is 165 of its own — is what " +
+    "run beside `pnpm test:postman`, which is about 200 of its own — is what " +
     "spends it. Restarting `pnpm dev --filter api` clears the counters, which " +
     "are in memory." +
     stale;
@@ -455,12 +465,30 @@ export const assertApiWindowClear = async (
    * included, so the suite costs **156**. The margin is unchanged at the dozen,
    * so the floor is 169.
    *
-   * The admin's is **174** by the same method (299 to 124, 37 specs) and has not
-   * moved here — nothing in `D15.9` or `D17.3` is the admin's. **329 together**, against
-   * the 1000 [ADR-0069](../../../../docs/adr/0069-development-rate-limit-profile.md)
+   * **Moved a sixth time for `D18.12`, and this one went down.** `D18.4` carried
+   * the floor to 172 by *reasoning* three requests onto 156 for the mailbox the
+   * organizations walk now reads; measured at the deliverable's close-out, a
+   * green run of all twelve specs took a clear window from 802 to 647, so the
+   * suite costs **154** and the floor is 167. **The reading is `before - after`
+   * minus one**, because both ends are read by a probe of this same kind and the
+   * trailing one spends a request of its own; the suite's own fixture probe is
+   * inside the figure, as it has been since `D12.10`. What the five requests
+   * between the reasoned number and the measured one bought was margin nobody
+   * had counted — which is the argument for measuring rather than adding, in the
+   * direction that does no harm.
+   *
+   * The admin's, measured the same day and the same way, is **194** over 38
+   * specs — it gained `onboarding.spec.ts` at `D18.11`, where this suite gained
+   * nothing — so the pair is **348**, against the 1000
+   * [ADR-0069](../../../../docs/adr/0069-development-rate-limit-profile.md)
    * gives the committed development profile, which is the record that made
    * `pnpm test:e2e` runnable as one command at all; under the 300 it superseded
    * this sum would have been over the wall by the same margin `D15.8` hit.
+   *
+   * **One caveat this floor carries and the suite's does not**, from
+   * `impersonation.spec.ts`: that walk measures 50 to 54 depending on what a
+   * refocused tab refetches, so a high run leaves 9 of the 13 rather than all of
+   * it. The margin still covers it; a second spec of that kind would not.
    */
   if (Number.isFinite(remaining) && remaining < needed) {
     throw new Error(

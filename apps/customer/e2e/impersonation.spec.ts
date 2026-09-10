@@ -233,6 +233,11 @@ test("an operator opens a customer's account, acts in it, and leaves", async ({
    * 30-second `staleTime` by then. Three green runs measured 50, 50 and 54. The
    * floor takes the low one plus the margin, which is what the margin is for.
    *
+   * **`D18.12` measured it a fourth time and got 50 again**, by subtraction
+   * rather than in isolation — the whole suite costs 154 and the same suite
+   * without this file costs 104 — so the figure holds under both methods and
+   * the floor does not move. Nothing in this deliverable touched this walk.
+   *
    * **And it is not the only budget this walk spends.** The two mints are two
    * entries of ADR-0057 §1's per-actor allowance, keyed on the operator's id
    * rather than on an address, so five runs in a quarter hour exhaust

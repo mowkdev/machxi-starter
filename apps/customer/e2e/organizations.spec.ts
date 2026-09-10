@@ -170,7 +170,12 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * **52 since `D18.4`**, for the reason `support/app.ts` gives about its own
    * default: the walk now follows the confirmation link out of a mailbox, which
    * is a second full document load — two boot requests — plus the confirmation
-   * itself. Three, reasoned rather than measured; `D18.12` re-measures.
+   * itself. Three, reasoned rather than measured then — and **measured at
+   * `D18.12`, where the arithmetic held exactly**. The method is the one the
+   * suite's floor could not use for a single file: the whole suite costs 154,
+   * the same suite without this file costs 115, so what this walk adds in the
+   * tier is **39**, and 39 plus the 13 is the 52 already standing. It is the
+   * only figure in this deliverable that came back unchanged.
    */
   await assertApiWindowClear(page, 52);
 

@@ -177,7 +177,7 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
       : "";
   const because =
     "This is not a defect in the app: running the tier twice inside one " +
-    "window — or beside `pnpm test:postman`, which is another hundred — " +
+    "window — or beside `pnpm test:postman`, which is about 200 of its own — " +
     "is what spends it. Restarting `pnpm dev --filter api` clears the " +
     "counters, which are in memory." +
     stale;
@@ -208,12 +208,25 @@ export const assertApiWindowClear = async (page: Page): Promise<void> => {
    * left it with — six is inside the noise of one screen's boot, which is the
    * slack that produces exactly the mid-run collapse this check exists to
    * prevent.
+   *
+   * **Re-measured at `D18.12`, the same method again: 194** — a green run of
+   * all 38 specs took a clear window of 1000 from 998 to 803, this probe
+   * included. **The reading is `before - after` minus one**, because both ends
+   * are read by a probe of this same kind and the trailing one spends a request
+   * of its own. The suite grew by one file in this deliverable
+   * (`onboarding.spec.ts`, `D18.11`) and the app under it grew a screen, a
+   * dialog and a row action; twenty requests is where that landed. **The
+   * previous floor of 186 was below the measured cost**, which is the one
+   * state this check must never be in: a window holding 190 passed the door
+   * and then ran four requests short, so the run collapsed in its last spec or
+   * two — the mid-run `429` this check exists to turn into a sentence. The floor
+   * moves with the measurement and keeps the same dozen of margin.
    */
-  const NEEDED = 186;
+  const NEEDED = 206;
 
   if (Number.isFinite(remaining) && remaining < NEEDED) {
     throw new Error(
-      `The API has ${remaining}${ofQuota} requests left in the 15-minute window and a full run of this tier costs about 174, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
+      `The API has ${remaining}${ofQuota} requests left in the 15-minute window and a full run of this tier costs about 194, so it would fail somewhere in the middle rather than here. ${wait} ${because}`,
     );
   }
 };
