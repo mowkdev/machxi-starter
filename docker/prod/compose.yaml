@@ -119,6 +119,10 @@ services:
       - RATE_LIMIT_PASSWORD_RESET_MAX
       - RATE_LIMIT_PASSWORD_RESET_WINDOW
       - RATE_LIMIT_MAILBOX_MAX
+      # And the source's own, keyed on the caller's address alone (ADR-0071
+      # §4, amended at `D18.7`) — the only one of the three whose default is a
+      # capacity number, so the first a deployment with real traffic raises.
+      - RATE_LIMIT_MAIL_SOURCE_MAX
       - VERIFICATION_TOKEN_TTL
       - PASSWORD_RESET_TOKEN_TTL
       - EMAIL_CHANGE_TOKEN_TTL

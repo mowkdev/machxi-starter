@@ -1,7 +1,15 @@
 import { declaredErrorEnvelopeSchema } from "@repo/contracts";
 import type { AppConfig } from "../src/core/config/index.js";
 import supertest from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { createTestApp, type TestApp } from "./support/app.js";
 import { resetAndSeed, superAdmin } from "./support/seed.js";
@@ -9,7 +17,7 @@ import { resetAndSeed, superAdmin } from "./support/seed.js";
 /**
  * ADR-0020 §Rate limiting, end to end.
  *
- * `.env.test` sets the three limits effectively to infinity so the rest of the
+ * `.env.test` sets those limits effectively to infinity so the rest of the
  * suite is not throttled; these tests build their own apps with real limits
  * instead. That works because the memory store lives inside the limiter
  * instance, which lives inside one app — so a count here can never leak into
@@ -188,16 +196,16 @@ describe("global rate limit", () => {
 });
 
 /**
- * The two budgets on `password/forgot` (ADR-0071 §4, the second amended in at
- * `D18.5`).
+ * The budgets on `password/forgot` (ADR-0071 §4, the second amended in at
+ * `D18.5` and the third at `D18.7`).
  *
  * They are the only limiters in this repository that ration a **third party's**
- * inbox rather than the caller's own attempts, which is why they have a window
- * of their own and why there are two of them: one bounds what a single sender
- * may mail one mailbox, the other bounds what that mailbox receives from
- * everybody. Mounted together on one route, so each is proved by turning the
- * other off — otherwise the smaller number is the only one that ever fires and
- * the second limiter could be missing entirely without a test noticing.
+ * inbox rather than the caller's own attempts, which is why they share a window
+ * of their own and why there are three of them: what one sender may mail one
+ * mailbox, what that mailbox receives from everybody, and what one sender may
+ * mail in total. Mounted together on one route, so each is proved by turning
+ * the others off — otherwise the smallest number is the only one that ever
+ * fires and a limiter could be missing entirely without a test noticing.
  *
  * The addresses below belong to nobody. `forgot` answers `202` either way and
  * mails nothing, so what is exercised is the limiter and not the flow.
@@ -298,5 +306,90 @@ describe("the mailbox forgot limit", () => {
 
     await forgot("busy@machxi.local").expect(429);
     await forgot("quiet@machxi.local").expect(202);
+  });
+});
+
+/**
+ * The third of §4's keys, mounted (ADR-0071 §4, amended at `D18.7` on the
+ * operator's decision).
+ *
+ * Proved with the other two effectively off, for the reason they are proved
+ * with each other off: mounted together only the smallest number ever fires,
+ * and this limiter could be missing entirely without a test noticing. What is
+ * asserted here and nowhere else is the thing that makes it worth mounting —
+ * **one counter across four routes**, so a source that has spent its budget on
+ * `forgot` cannot start again on `register` or `resend-verification`. The key
+ * itself is the unit file's, where a source address can be varied without a
+ * proxy to trust.
+ */
+const RESEND = "/api/v1/public/auth/resend-verification";
+const REGISTER = "/api/v1/public/auth/register";
+
+describe("the per-source mail limit", () => {
+  let harness: TestApp;
+
+  /*
+   * A fresh app per test, where every other block here shares one.
+   *
+   * This is the only limiter in the file whose key is identical for every
+   * request the suite can make — supertest drives one loopback address — so
+   * two tests in one app would be one continuing budget, and the second would
+   * start already refused. The counter lives in the limiter instance, which
+   * lives in the app (ADR-0066 §4), so a new app is a new budget.
+   */
+  beforeEach(() => {
+    harness = createTestApp(
+      withLimits({
+        passwordResetMax: 100_000,
+        mailboxMax: 100_000,
+        mailSourceMax: 4,
+      }),
+    );
+  });
+
+  afterEach(async () => {
+    await harness.close();
+  });
+
+  it("refuses a walk across distinct addresses that neither other budget sees", async () => {
+    // Four different mailboxes, so the mailbox counter holds one apiece and
+    // the per-sender counter holds one apiece: both would admit the fifth.
+    const forgot = (email: string) =>
+      supertest(harness.app).post(FORGOT).send({ email });
+
+    for (let sent = 0; sent < 4; sent += 1) {
+      await forgot(`stranger-${String(sent)}@machxi.local`).expect(202);
+    }
+
+    const response = await forgot("stranger-4@machxi.local").expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+    expect(Number(response.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  it("is one counter across every endpoint that mails a stranger", async () => {
+    // The sharing is the decision (ADR-0071 §4): a budget per endpoint would
+    // be three budgets for one source to walk in turn. Two on `forgot` and
+    // two on `resend-verification` spend it, and `register` — which mails a
+    // link to an address the caller typed, the same walk under a different
+    // verb — is refused on the strength of requests it never saw.
+    //
+    // Nothing is created by this test, deliberately: the refusal happens
+    // above the controller, so the account `register` names is never written
+    // and the file stays independent of the seeds.
+    const spend = (path: string, email: string) =>
+      supertest(harness.app).post(path).send({ email }).expect(202);
+
+    await spend(FORGOT, "shared-0@machxi.local");
+    await spend(FORGOT, "shared-1@machxi.local");
+    await spend(RESEND, "shared-2@machxi.local");
+    await spend(RESEND, "shared-3@machxi.local");
+
+    const response = await supertest(harness.app)
+      .post(REGISTER)
+      .send({ email: "shared-4@machxi.local", password: "Str0ng!Passphrase" })
+      .expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
   });
 });

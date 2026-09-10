@@ -40,6 +40,11 @@ export const createPublicRouter = (container: Container): Router => {
         // (ADR-0071 §3), but the argon2 cost that limiter really rations is
         // unchanged.
         rateLimiter: container.rateLimiters.login,
+        // §4's source-keyed budget (amended at `D18.7`), the same instance
+        // both other senders take: registration mails a link to an address
+        // the caller typed, and the login limiter beside it keys on
+        // `IP + email`, so it resets on every new address a walk names.
+        mailSourceRateLimiter: container.rateLimiters.mailSource,
       }),
     );
   }
@@ -52,6 +57,7 @@ export const createPublicRouter = (container: Container): Router => {
       // so a person stuck on verification cannot spend the recovery budget for
       // the same mailbox.
       rateLimiter: container.rateLimiters.verification,
+      mailSourceRateLimiter: container.rateLimiters.mailSource,
     }),
   );
 

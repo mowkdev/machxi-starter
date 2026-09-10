@@ -61,6 +61,13 @@ export interface AuthRouterDeps {
    */
   readonly mailboxRateLimiter: RequestHandler;
   /**
+   * The third of §4's keys, keyed on the **source alone** (§4, amended at
+   * `D18.7`) — what one source may mail in total, however many addresses it
+   * names. One instance for every unauthenticated sender in the API, so this
+   * route shares its counter with `register` and `resend-verification`.
+   */
+  readonly mailSourceRateLimiter: RequestHandler;
+  /**
    * The argon2 budget on `password/reset` — the login limiter's numbers in a
    * counter of its own, because the reset's body carries no address and would
    * otherwise share the bucket every malformed `login` lands in.
@@ -94,6 +101,7 @@ export const createAuthRouter = ({
   refreshRateLimiter,
   passwordResetRateLimiter,
   mailboxRateLimiter,
+  mailSourceRateLimiter,
   passwordResetSubmitRateLimiter,
   impersonation,
   refuseImpersonated,
@@ -156,11 +164,15 @@ export const createAuthRouter = ({
    * forgot my password", because the guard fires on the presence of the
    * refresh cookie rather than on the endpoint's use of it.
    *
-   * `forgot` carries **two** limiters and the pair is the decision (§4,
-   * amended at `D18.5`): the first bounds what one sender may mail one
-   * mailbox, the second bounds what that mailbox receives from everybody.
-   * Every other limiter in this repository keys on the caller's address, so
-   * all of them vary together with the cheapest thing an attacker can change.
+   * `forgot` carries **three** limiters and the set is the decision (§4,
+   * amended at `D18.5` and again at `D18.7`): what one sender may mail one
+   * mailbox, what that mailbox receives from everybody, and what one sender
+   * may mail in total however many addresses it names. Three keys and three
+   * questions — the first two both carry the address the request names, so
+   * both reset when it changes and neither can see a walk across strangers.
+   * The third shares its counter with `register` and `resend-verification`,
+   * because what it rations is this deployment's outbound mail rather than
+   * this route.
    *
    * `reset` carries the **login limiter's numbers in a counter of its own**,
    * for the reason `register` shares that limiter (ADR-0020 §Hashing cost vs.
@@ -177,6 +189,7 @@ export const createAuthRouter = ({
     "/password/forgot",
     passwordResetRateLimiter,
     mailboxRateLimiter,
+    mailSourceRateLimiter,
     validate(forgotPasswordSchema),
     controller.forgotPassword,
   );
@@ -250,6 +263,17 @@ export interface RegisterRouterDeps {
   readonly controller: AuthController;
   /** The login limiter: registration hashes a password and creates a session too. */
   readonly rateLimiter: RequestHandler;
+  /**
+   * §4's source-keyed budget (amended at `D18.7`), shared with `forgot` and
+   * `resend-verification`.
+   *
+   * Registration is on it because it **mails a link to an address the caller
+   * typed**, which is the same walk across strangers' mailboxes that
+   * `forgot` is, under a different verb: the login limiter above keys on
+   * `IP + email` and so resets on every new address, exactly as §4's other
+   * two keys do.
+   */
+  readonly mailSourceRateLimiter: RequestHandler;
 }
 
 /**
@@ -265,6 +289,7 @@ export interface RegisterRouterDeps {
 export const createRegisterRouter = ({
   controller,
   rateLimiter,
+  mailSourceRateLimiter,
 }: RegisterRouterDeps): Router => {
   const router = Router();
 
@@ -272,6 +297,7 @@ export const createRegisterRouter = ({
   router.post(
     "/register",
     rateLimiter,
+    mailSourceRateLimiter,
     validate(registerSchema),
     controller.register,
   );
@@ -286,6 +312,12 @@ export interface VerificationRouterDeps {
    * at the composition root so one instance holds one count.
    */
   readonly rateLimiter: RequestHandler;
+  /**
+   * §4's source-keyed budget (amended at `D18.7`), on `resend-verification`
+   * alone: `verify-email` sends nothing and spends a credential the caller
+   * already holds.
+   */
+  readonly mailSourceRateLimiter: RequestHandler;
 }
 
 /**
@@ -314,6 +346,7 @@ export interface VerificationRouterDeps {
 export const createVerificationRouter = ({
   controller,
   rateLimiter,
+  mailSourceRateLimiter,
 }: VerificationRouterDeps): Router => {
   const router = Router();
 
@@ -329,6 +362,7 @@ export const createVerificationRouter = ({
   router.post(
     "/resend-verification",
     rateLimiter,
+    mailSourceRateLimiter,
     validate(resendVerificationSchema),
     controller.resendVerification,
   );

@@ -24,6 +24,7 @@ import {
   createImpersonationRateLimiter,
   createLoginRateLimiter,
   createMailboxRateLimiter,
+  createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
   createRefreshRateLimiter,
   createVerificationRateLimiter,
@@ -418,6 +419,23 @@ export const buildContainer = ({
      * the cheapest thing an attacker can change.
      */
     mailbox: createMailboxRateLimiter(config, rateLimitStore("mailbox")),
+    /**
+     * The third of §4's keys and the only one that does not move when the
+     * address does (ADR-0071 §4, amended at `D18.7` on the operator's
+     * decision).
+     *
+     * **One instance, mounted on every unauthenticated endpoint that mails an
+     * address a caller typed** — both segments' `forgot`, `resend-verification`
+     * and `register`. The sharing is the decision: the pair above bounds what
+     * one source may mail *one* mailbox and what one mailbox receives from
+     * everybody, and neither can see one source walking a list of strangers,
+     * because both keys vary with the address the request names. A counter per
+     * endpoint would be three budgets for that walk to spend in turn.
+     */
+    mailSource: createMailSourceRateLimiter(
+      config,
+      rateLimitStore("mail-source"),
+    ),
     /**
      * The argon2 budget on `password/reset` — the login limiter's numbers in a
      * **counter of its own** (`D18.5`'s `security-reviewer`).

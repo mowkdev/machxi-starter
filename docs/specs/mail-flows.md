@@ -67,7 +67,7 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/auth-register.
 
 ## Requirement: A password is recovered by mail on both segments
 
-`POST /api/v1/{admin,user}/auth/password/forgot { email }` answers `202 { accepted: true }` for every address and mails a link only to an account of that segment that is `active`. The link lands on the app the account signs into — the admin app for staff, the customer app for users — with its token in the fragment. `POST /api/v1/{admin,user}/auth/password/reset { token, newPassword }` consumes the token, sets the new hash, writes an `account.password_reset` audit row, **revokes every session of the account** and answers `204` with no session of its own. A token minted on one segment is not redeemable on the other. `forgot` carries two budgets over an hour: `RATE_LIMIT_PASSWORD_RESET_MAX` per caller and address together, and `RATE_LIMIT_MAILBOX_MAX` per address alone.
+`POST /api/v1/{admin,user}/auth/password/forgot { email }` answers `202 { accepted: true }` for every address and mails a link only to an account of that segment that is `active`. The link lands on the app the account signs into — the admin app for staff, the customer app for users — with its token in the fragment. `POST /api/v1/{admin,user}/auth/password/reset { token, newPassword }` consumes the token, sets the new hash, writes an `account.password_reset` audit row, **revokes every session of the account** and answers `204` with no session of its own. A token minted on one segment is not redeemable on the other. `forgot` carries three budgets over an hour: `RATE_LIMIT_PASSWORD_RESET_MAX` per caller and address together, `RATE_LIMIT_MAILBOX_MAX` per address alone, and `RATE_LIMIT_MAIL_SOURCE_MAX` per caller alone — the last shared with `resend-verification` and `register`, so it bounds one source's total mail to strangers however many addresses it names.
 Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
 Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`, `apps/api/src/core/middleware/__tests__/rate-limit.test.ts`
 
@@ -115,6 +115,11 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int
 
 - **WHEN** `RATE_LIMIT_MAILBOX_MAX` requests have named one address inside the hour, however many callers sent them
 - **THEN** the next one answers `429 RATE_LIMITED`, while a different address is still answered `202`
+
+### Scenario: One caller walking a list of strangers
+
+- **WHEN** one caller has sent `RATE_LIMIT_MAIL_SOURCE_MAX` of these requests inside the hour, each naming a different address
+- **THEN** the next one answers `429 RATE_LIMITED` even though no address has been named twice, and the same caller is refused on `resend-verification` and `register` too — one counter serves every endpoint that mails an address a caller typed, while another caller is still answered `202`
 
 ## Requirement: An address a staff member types is proven by that assertion
 

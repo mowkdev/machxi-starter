@@ -54,6 +54,11 @@ export const createUserRouter = (container: Container): Router => {
       // per deployment rather than one per segment.
       passwordResetRateLimiter: container.rateLimiters.passwordReset,
       mailboxRateLimiter: container.rateLimiters.mailbox,
+      // ADR-0071 §4's third key (amended at `D18.7`), keyed on the source
+      // alone and shared with `register` and `resend-verification`: the two
+      // above both carry the address the request names, so neither can see
+      // one source walking a list of strangers' mailboxes.
+      mailSourceRateLimiter: container.rateLimiters.mailSource,
       // The login limiter's numbers on `password/reset`, in a counter of its
       // own: the body carries no address, so its key is the caller's — the
       // same key a malformed `login` produces.

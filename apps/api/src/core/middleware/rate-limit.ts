@@ -8,19 +8,25 @@ import type { RateLimitStore } from "../rate-limit/index.js";
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
  *
- * Seven limiters and one failure shape: the global one on `/api`, a strict one
+ * Eight limiters and one failure shape: the global one on `/api`, a strict one
  * on login and registration, one on *failed* refreshes, one on the
  * impersonation mint since `D13.4` — the only one keyed on a principal rather
  * than on an address (ADR-0057 §1) — and, since `D18.2`, one each on the two
  * endpoints that mail a link to an address a stranger typed (ADR-0071 §3, §4),
- * joined at `D18.5` by the one keyed on the **mailbox alone**.
- * `/health` is deliberately outside all of them — a probe that gets
- * rate-limited takes a healthy instance out of rotation (ADR-0016).
+ * joined at `D18.5` by the one keyed on the **mailbox alone** and at `D18.7`
+ * by the one keyed on the **source alone**. `/health` is deliberately outside
+ * all of them — a probe that gets rate-limited takes a healthy instance out of
+ * rotation (ADR-0016).
  *
- * The first four share {@link RATE_LIMIT_WINDOW_MS}; the last three take
+ * The first four share {@link RATE_LIMIT_WINDOW_MS}; the last four take
  * `RATE_LIMIT_PASSWORD_RESET_WINDOW`, because what they ration is not an
  * attacker's attempts but a victim's inbox, and ADR-0071 §4 decides that
  * budget is per hour.
+ *
+ * The last three are three **keys**, not three numbers to reconcile: the
+ * address with the source, the address alone, and the source alone. Each
+ * answers a question the others cannot, which is why they are mounted
+ * together rather than the largest of them replacing the rest.
  *
  * The store is a **parameter** since `D14.6` (ADR-0066 §4, a delta on
  * ADR-0020): `undefined` selects `express-rate-limit`'s in-memory default,
@@ -35,8 +41,8 @@ import type { RateLimitStore } from "../rate-limit/index.js";
  * **No limit, window or key changed with it.** ADR-0020's `300 / 15 min / IP`,
  * `10 / 15 min / IP + email` and `5 / 15 min / IP` on failed refreshes,
  * ADR-0057 §1's per-staff-principal mint budget and ADR-0071 §4's `3 / hour /
- * IP + email` and `5 / hour / email` are exactly as decided; only where the
- * counter lives is configurable.
+ * IP + email`, `5 / hour / email` and `20 / hour / IP` are exactly as decided;
+ * only where the counter lives is configurable.
  */
 
 /** The window every limit in ADR-0020 is expressed over. */
@@ -273,8 +279,9 @@ export const createPasswordResetRateLimiter = (
  *
  * What it does **not** bound is one sender walking a list of *distinct*
  * addresses: this key varies with the address and so does the pair's other
- * half. ADR-0071 §4 states that, names the third limiter that would close it,
- * and does not take it.
+ * half. That is {@link createMailSourceRateLimiter}'s question, taken at
+ * `D18.7` on the operator's decision and mounted beside this one rather than
+ * in place of it.
  */
 export const createMailboxRateLimiter = (
   config: AppConfig,
@@ -288,6 +295,47 @@ export const createMailboxRateLimiter = (
 
       return email === "" ? `anon:${ipKey(req)}` : email;
     },
+  });
+
+/**
+ * `RATE_LIMIT_MAIL_SOURCE_MAX / RATE_LIMIT_PASSWORD_RESET_WINDOW / **IP**`,
+ * shared by every unauthenticated endpoint that mails an address a caller
+ * typed — `forgot` on both segments, `resend-verification` and `register`
+ * (ADR-0071 §4, amended at `D18.7` on the operator's decision).
+ *
+ * The third key, and the one the other two cannot supply. Both of them carry
+ * the *address* the request names, so both reset the moment it changes: one
+ * source naming three hundred strangers in turn gets three hundred fresh
+ * buckets from each, and the only thing left standing is ADR-0020's global
+ * limiter — which this repository's own development profile deliberately
+ * raises (ADR-0069). This key stays put while the address varies, which is
+ * exactly the walk it exists to ceiling.
+ *
+ * **One counter across all of those routes**, handed the same instance from
+ * the composition root. A limiter per endpoint would be three budgets for one
+ * source to spend in turn, and what is rationed here is this deployment's
+ * outbound mail to strangers rather than any one route. Registration is on it
+ * because it mails a link to an address the caller typed, which is the same
+ * walk under a different verb.
+ *
+ * **Its number is a capacity number**, unlike the two beside it, and ADR-0071
+ * §4 says so where it takes the limiter: the key is a source address, which
+ * behind a carrier-grade NAT or a corporate egress is a great many people, so
+ * the default is safe rather than measured and a deployment sizes it against
+ * its own traffic (`docs/deploy.md`). What it costs is stated there too — a
+ * source that spends it reaches no mail flow at all until the window turns,
+ * which behind a shared egress is everybody there.
+ *
+ * No fallback key to write, and no body read: this limiter has only the one
+ * key and every request carries it.
+ */
+export const createMailSourceRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
+    limit: config.rateLimit.mailSourceMax,
   });
 
 /**

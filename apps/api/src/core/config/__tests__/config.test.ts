@@ -89,6 +89,12 @@ describe("envSchema", () => {
       // the per-sender limiter could never be the one to refuse, and one policy
       // would be written twice.
       RATE_LIMIT_MAILBOX_MAX: 5,
+      // The source's own budget over the same hour, larger again and for a
+      // related reason (ADR-0071 §4, amended at `D18.7`): it is the ceiling on
+      // one source's *total* mail to strangers, so at or below the mailbox
+      // number it would be the only limiter that ever fires. The one capacity
+      // number of the three, and the one a deployment sizes.
+      RATE_LIMIT_MAIL_SOURCE_MAX: 20,
     });
     expect(env.CORS_ORIGINS).toEqual([]);
   });

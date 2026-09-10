@@ -453,6 +453,28 @@ export const envSchema = z
      * two sources and one mailbox.
      */
     RATE_LIMIT_MAILBOX_MAX: z.coerce.number().int().positive().default(5),
+    /**
+     * The **source's** own budget over that same window (ADR-0071 §4, amended
+     * at `D18.7`) — one counter shared by every unauthenticated endpoint that
+     * mails an address a caller typed.
+     *
+     * The two above both key on the address the request names, so both vary
+     * with it and neither can see one source walking a *list* of strangers'
+     * mailboxes. This is the only key that stays put while the address
+     * changes, which is what makes it the ceiling on that walk.
+     *
+     * **A capacity number, unlike the two above, and the section says so.**
+     * The key is a source address, which behind a carrier-grade NAT or a
+     * corporate egress is a great many people, so twenty is a safe default
+     * rather than a measured one: four times the mailbox budget, far above
+     * what one person asking from a phone and then a laptop produces in an
+     * hour, and sixty times tighter than the global limiter on the same key.
+     * A deployment whose own traffic is legitimately larger raises it —
+     * `docs/deploy.md` names it as the first of the three to reach for — and
+     * the committed development profile already does, this repository's
+     * browser tier and Postman collection being legitimate senders (ADR-0069).
+     */
+    RATE_LIMIT_MAIL_SOURCE_MAX: z.coerce.number().int().positive().default(20),
 
     /**
      * How long an impersonated session may live, from the exchange (ADR-0057

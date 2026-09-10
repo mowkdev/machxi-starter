@@ -12,21 +12,24 @@ import { isAppError } from "../../errors/index.js";
 import {
   createLoginRateLimiter,
   createMailboxRateLimiter,
+  createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
   createVerificationRateLimiter,
 } from "../rate-limit.js";
 
 /**
- * The two limiters that ration messages rather than attempts (ADR-0071 §3, §4).
+ * The limiters that ration messages rather than attempts (ADR-0071 §3, §4).
  *
  * They are tested here rather than in `test/rate-limit.int.test.ts` because
- * neither is mounted yet — `forgot` lands at `D18.5` and `resend-verification`
- * at `D18.3` — and because what is worth proving needs no database: the budget
- * is `3` and **the window it is per is an hour**, not the fifteen minutes every
- * other limiter in the file shares. That distinction is worth a test of its own
- * for the reason `D18.1`'s review found it: a `3` reached for the only window
- * in `config.rateLimit` would deploy twelve messages an hour into a stranger's
- * inbox, four times the decided number, with nothing failing.
+ * what is worth proving about them needs no database and, above all, needs an
+ * **address that can be varied**: three of the four differ from each other in
+ * nothing but their key, and a mounted route behind a proxy this suite would
+ * have to trust is the wrong place to vary one. The window is the other claim
+ * — the budget is `3` and **the window it is per is an hour**, not the fifteen
+ * minutes every other limiter in the file shares, a distinction worth a test
+ * of its own for the reason `D18.1`'s review found it: a `3` reached for the
+ * only window in `config.rateLimit` would deploy twelve messages an hour into
+ * a stranger's inbox, four times the decided number, with nothing failing.
  *
  * The window is asserted through `Retry-After`, which is what a client
  * actually observes, rather than through a header spelling that belongs to
@@ -222,6 +225,80 @@ describe("the mailbox limiter", () => {
 
     await nameless("203.0.113.30").expect(429);
     await nameless("203.0.113.31").expect(202);
+  });
+});
+
+describe("the source limiter", () => {
+  const source = () =>
+    appWith(
+      createMailSourceRateLimiter(
+        { ...config, rateLimit: { ...config.rateLimit, mailSourceMax: 4 } },
+        undefined,
+      ),
+    );
+  const from = (app: express.Express, client: string, email: string) =>
+    supertest(app).post("/0").set("X-Test-Client", client).send({ email });
+
+  it("counts one source however many addresses it names", async () => {
+    // The whole reason this limiter exists (ADR-0071 §4, amended at `D18.7`).
+    // Both keys beside it carry the address the request names, so both hand a
+    // fresh bucket to every new address — and a walk across strangers'
+    // mailboxes is the one shape neither can refuse.
+    const app = source();
+
+    await from(app, "203.0.113.7", "first@machxi.local").expect(202);
+    await from(app, "203.0.113.7", "second@machxi.local").expect(202);
+    await from(app, "203.0.113.7", "third@machxi.local").expect(202);
+    await from(app, "203.0.113.7", "fourth@machxi.local").expect(202);
+
+    const refused = await from(app, "203.0.113.7", "fifth@machxi.local").expect(
+      429,
+    );
+
+    // The same hour the other two mail budgets are per: what it rations is a
+    // stranger's inbox, not an attacker's patience.
+    expect(Number(refused.headers["retry-after"])).toBeGreaterThan(
+      FIFTEEN_MINUTES,
+    );
+  });
+
+  it("keeps a budget per source rather than one for everybody", async () => {
+    const app = source();
+
+    for (let sent = 0; sent < 4; sent += 1) {
+      await from(app, "203.0.113.7", `walk-${String(sent)}@machxi.local`).expect(
+        202,
+      );
+    }
+
+    await from(app, "203.0.113.7", "walk-4@machxi.local").expect(429);
+    // A limiter that stopped the whole world at four would be worse than none.
+    await from(app, "198.51.100.4", "walk-4@machxi.local").expect(202);
+  });
+
+  it("counts a body that names no address at all", async () => {
+    // It has no fallback key to choose, unlike the mailbox limiter: the source
+    // is on every request whatever the body says, so a request on its way to a
+    // `400` from `validate` is counted like any other.
+    const app = source();
+    const nameless = () =>
+      supertest(app).post("/0").set("X-Test-Client", "203.0.113.40").send({});
+
+    for (let sent = 0; sent < 4; sent += 1) {
+      await nameless().expect(202);
+    }
+
+    await nameless().expect(429);
+  });
+
+  it("defaults to a budget above the mailbox's own", async () => {
+    // Not a free-floating number: at or below `mailboxMax` this limiter would
+    // be the only one that ever fires and the pair beside it would be policy
+    // written twice (ADR-0071 §4 — three keys, three questions).
+    expect(config.rateLimit.mailSourceMax).toBe(20);
+    expect(config.rateLimit.mailSourceMax).toBeGreaterThan(
+      config.rateLimit.mailboxMax,
+    );
   });
 });
 

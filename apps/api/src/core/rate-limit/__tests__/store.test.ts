@@ -89,6 +89,11 @@ describe("createRateLimitStore", () => {
         // the two above and keys on the address alone, so on Redis it is one
         // more string that must not collide with theirs.
         "mailbox",
+        // The source-keyed mail limiter (`D18.7`, ADR-0071 §4). One counter
+        // shared by four mounts on purpose, which is precisely why it needs a
+        // string of its own here: sharing a *prefix* with any of the three
+        // above would merge two different questions into one budget.
+        "mail-source",
         // The reset's own argon2 counter (`D18.5`): the login limiter's
         // numbers, and it must not share the login limiter's keys.
         "password-reset-submit",
@@ -103,6 +108,7 @@ describe("createRateLimitStore", () => {
         "rl:password-reset:",
         "rl:verification:",
         "rl:mailbox:",
+        "rl:mail-source:",
         "rl:password-reset-submit:",
       ]);
     });
