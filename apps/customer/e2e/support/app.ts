@@ -310,10 +310,20 @@ export const signInAsOperator = async (page: Page): Promise<void> => {
  * and asserting the whole of it there aborts a perfectly healthy run with a
  * diagnosis that is exactly backwards. `D13.9`'s `security-reviewer` pass found
  * that; the parameter is the fix.
+ *
+ * **172 since `D18.4`, and the three are reasoned rather than measured.** The
+ * organizations walk gained a second full document load — the confirmation link
+ * is followed from a mailbox, so the app boots again (`GET /auth/csrf`,
+ * `POST /auth/refresh`) and spends `POST /public/auth/verify-email` on top.
+ * Nothing else in this suite changed. `D18.12` re-measures both tiers' floors
+ * against a green run, which is the step that turns this arithmetic back into a
+ * measurement; carrying the old number until then would have made a true
+ * precondition three short, and a run that starts with too little budget fails
+ * in the middle with a `429` instead of at the door with a sentence.
  */
 export const assertApiWindowClear = async (
   page: Page,
-  needed = 169,
+  needed = 172,
 ): Promise<void> => {
   /*
    * Throttled and absent are different failures, and this is the function that

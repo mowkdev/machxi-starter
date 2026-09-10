@@ -95,11 +95,6 @@ describe("registration", () => {
      * `undefined` where the access token and the principal go, which is not
      * "no session" but a broken one — a shape the boot sequence has no branch
      * for, on a client that would then believe it was signed in.
-     *
-     * Where the form *lands* is not asserted here, and deliberately: today it
-     * navigates home and the dashboard guard turns it straight back to the
-     * sign-in screen, which is honest but not the screen a person should meet.
-     * The check-your-mail screen and its resend are the step that builds them.
      */
     const { user, store } = setup();
 
@@ -111,6 +106,40 @@ describe("registration", () => {
 
     expect(store.isAuthenticated()).toBe(false);
     expect(store.getPrincipal()).toBeNull();
+  });
+
+  it("lands on the check-your-mail screen and never on the home address", async () => {
+    /*
+     * **`/` is the address this must not go to** (`D18.4`, ADR-0071 §3). A
+     * `202` starts no session, so the `_dashboard` guard would turn a
+     * just-registered visitor straight back to the sign-in screen — telling
+     * somebody who has created an account that they are not signed in, and
+     * nothing about why. The assertion is on the router rather than on the
+     * copy alone, because a redirect chain that passed through `/` would leave
+     * the same words on screen at the end of it.
+     */
+    const { user, router } = setup();
+
+    await registerAs(user);
+
+    expect(
+      await screen.findByText(/Follow the link in your inbox/),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/verify-email");
+
+    /*
+     * `replace`, so Back cannot return to a sign-up form whose address is now
+     * taken: re-submitting it would answer the generic `409` and read as a
+     * failure of the thing that just worked.
+     */
+    expect(router.history.length).toBe(1);
+
+    /*
+     * And the address is carried to the resend control rather than asked for
+     * again — as history state, which is why this is read off the rendered
+     * field and not off the URL (`verify-email/awaited-address.ts`).
+     */
+    expect(screen.getByLabelText("Email")).toHaveValue(NEW_ADDRESS);
   });
 
   it("omits the names it was not given, and asks for no transport", async () => {
@@ -127,9 +156,16 @@ describe("registration", () => {
      * present — so an untouched box has to leave the body altogether rather
      * than travel as `""`, which the API would refuse for a field the customer
      * never filled in.
+     *
+     * **`locale` is present and the names are absent, in one assertion.** The
+     * reader's language is the one thing the server cannot look up here — no
+     * account exists yet, so there is no stored locale to write the
+     * confirmation message in (ADR-0071 §2, ADR-0046) — and it travels in the
+     * body for exactly that reason. The suite renders `en` by default, so this
+     * is also the value the harness declares.
      */
     expect(state.registerCalls).toEqual([
-      { email: NEW_ADDRESS, password: GOOD_PASSWORD },
+      { email: NEW_ADDRESS, password: GOOD_PASSWORD, locale: "en" },
     ]);
 
     /*

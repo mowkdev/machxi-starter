@@ -7,7 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { useApiClient } from "@/shared/api/context";
-import { useT } from "@/shared/i18n";
+import { useLocale, useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
 import {
   Button,
@@ -18,6 +18,8 @@ import {
   FieldLabel,
   Input,
 } from "@/shared/ui";
+
+import { awaitingVerification } from "../verify-email/awaited-address";
 
 /**
  * ADR-0054 §7's 38px rung and §3's 13/18 control type, exactly as the sign-in
@@ -31,11 +33,14 @@ const AUTH_INPUT = `${AUTH_CONTROL} md:text-[13px]`;
  * The registration form (`D15.6`, ADR-0067 §6 — the deferral ADR-0055 §5 left
  * open, closed because sign-up is what creates the personal organization).
  *
- * **The sign-in form's twin, deliberately and not by copy-paste inertia.** The
- * response is login's — `201` with the same `AuthResource` (ADR-0018) — the
- * store is hydrated by the client rather than here, and the refusal is
- * rendered through ADR-0034's code map and never from the API's own `message`,
- * which is a developer-facing English default (ADR-0013). Hand-wired rather
+ * **The sign-in form's twin in everything but its answer.** Since ADR-0071 §3
+ * the response is `202 { accepted: true }` and no session at all: an address
+ * nobody has proven is not an account anybody may be signed into, and what
+ * signs a device in is the confirmation link. So this form's success path is a
+ * navigation to the screen that says so rather than a landing. The refusal is
+ * still rendered through ADR-0034's code map and never from the API's own
+ * `message`, which is a developer-facing English default (ADR-0013).
+ * Hand-wired rather
  * than config-driven for the reason the login form is: ADR-0035's machinery is
  * built around a record being edited, and a sign-up is not one. What that
  * machinery would have enforced is honoured by hand — every field disabled
@@ -60,6 +65,7 @@ const AUTH_INPUT = `${AUTH_CONTROL} md:text-[13px]`;
 export const RegisterForm = () => {
   const { t } = useT("auth");
   const client = useApiClient();
+  const { locale } = useLocale();
   const messageForError = useMessageForError();
   const navigate = useNavigate();
 
@@ -79,6 +85,14 @@ export const RegisterForm = () => {
     const parsed = registerBody.safeParse({
       email,
       password,
+      /*
+       * The reader's language, on the one seam where the server cannot know it
+       * (ADR-0071 §2, ADR-0046): no account exists yet, so there is no stored
+       * locale to write the confirmation message in. The templates ship
+       * English today and fall back to it, so this is the parameter arriving
+       * before the second dictionary rather than a promise being broken.
+       */
+      locale,
       // `exactOptionalPropertyTypes` (ADR-0002) makes the spread the honest
       // form: an absent key and an explicitly `undefined` one are different
       // things, and only the first is what "the customer left it blank" means.
@@ -101,15 +115,28 @@ export const RegisterForm = () => {
     setPending(true);
 
     try {
-      /*
-       * The client hydrates the store — it owns the session's memory, and a
-       * feature that wrote it would be a second writer (ADR-0033). This
-       * feature only decides where to go next, and unlike the sign-in form it
-       * has no `redirect` to spend: nothing turned a new account away from a
-       * page it had not yet been able to reach.
-       */
       await client.register(parsed.data);
-      await navigate({ to: "/" });
+      /*
+       * **Where a `202` lands** (ADR-0071 §3). Registration starts no session,
+       * so `/` was the one place this must not go: the `_dashboard` guard
+       * turns an anonymous visitor straight back to the sign-in screen, which
+       * tells somebody who has just created an account that they are not
+       * signed in and nothing about why. The confirmation screen says what
+       * happened and carries the one control that can put it right.
+       *
+       * The address travels as history state so the resend control starts
+       * filled in — see `verify-email/awaited-address.ts` for why it is not a
+       * search param.
+       *
+       * `replace`, so Back cannot return to a sign-up form whose address is
+       * now taken: the account exists, and re-submitting it would answer the
+       * generic `409` and read as a failure of the thing that just worked.
+       */
+      await navigate({
+        to: "/verify-email",
+        replace: true,
+        state: awaitingVerification(parsed.data.email),
+      });
     } catch (error) {
       setFormError(messageForError(error));
     } finally {

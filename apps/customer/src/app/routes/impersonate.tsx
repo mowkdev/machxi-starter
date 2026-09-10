@@ -7,8 +7,9 @@ import { ImpersonatePage } from "@/pages/impersonate";
  * ADR-0057 §7). A route file is wiring (ADR-0049): a path and the page it
  * mounts.
  *
- * **The only address in this app that sits under neither layout route, and
- * both omissions are decisions.**
+ * **The first address in this app to sit under neither layout route, and both
+ * omissions are decisions.** `D18.4`'s `/verify-email` is the second, and it
+ * is here for the same two reasons.
  *
  * It is not under `_dashboard`, because the whole point of the screen is that
  * there is no session yet — the guard would bounce it to `/login` before the

@@ -10,6 +10,8 @@ import {
   type ImpersonateBody,
   type LoginBody,
   type RegisterBody,
+  type ResendVerificationBody,
+  type VerifyEmailBody,
 } from "@repo/contracts";
 import axios, {
   type AxiosInstance,
@@ -86,6 +88,15 @@ const COOKIE_TRANSPORT_PATHS = [
   // header exists to move a refresh token into a cookie, and registration now
   // issues no token at all. It joins the confirmation call at the step that
   // adds one, which is the request that really does start a session.
+  /*
+   * And that is this one. `verify-email` answers **login's body** (ADR-0071
+   * §3) — the person has just proven the address and the device that opened
+   * the link is signed in — so it needs the header for login's own reason:
+   * without it the API puts the refresh token in the body and sets no cookie
+   * (ADR-0029 §Opt-in), and the account is signed in until the first reload
+   * and then back on the sign-in screen, having spent the one link it had.
+   */
+  "/auth/verify-email",
 ];
 
 /**
@@ -114,10 +125,23 @@ const COOKIE_TRANSPORT_PATHS = [
  * holding a token there would mean a session is already live, and posting it
  * on a request that reads no principal is the same needless send.
  */
+/*
+ * The verification pair are the fourth and fifth, and they join for the reason
+ * the exchange did rather than registration's (ADR-0071 §3). `verify-email`'s
+ * credential is the token out of the URL fragment and every way it can fail
+ * answers one indistinguishable `401`; `resend-verification` has no credential
+ * at all and answers `202` to everything. Both are mounted on the public
+ * segment behind no guard, so a bearer sent on either is a live session
+ * credential travelling where nothing reads it — and on `verify-email` that
+ * bearer would belong to whoever already had this browser, on the one request
+ * whose whole job is to replace them.
+ */
 const UNAUTHENTICATED_PATHS = [
   "/auth/login",
   "/auth/impersonate",
   "/auth/register",
+  "/auth/verify-email",
+  "/auth/resend-verification",
 ];
 
 /**
@@ -459,6 +483,33 @@ export const createApiClient = ({
   };
 
   /**
+   * Where the calls that have no population go (ADR-0015).
+   *
+   * One expression rather than three copies of the same template literal: it
+   * is a base URL the request interceptor fences to this client's own host,
+   * and a fence is worth having exactly one string to check.
+   */
+  const publicBaseUrl = `${baseUrl}/api/v1/public`;
+
+  /**
+   * The guard the two public calls that *write the store* share.
+   *
+   * Extracted at `D18.4` rather than copied: `register` had it alone, and the
+   * property is one property — this client's store is pinned to one population
+   * and a public endpoint will answer anybody, so the check has to be here and
+   * has to say the same thing in both places.
+   */
+  const requireUserSegment = (what: string): void => {
+    if (segment !== "user") {
+      throw apiClientError({
+        status: 0,
+        code: TRANSPORT_ERROR_CODE,
+        message: `${what} is a user-segment call`,
+      });
+    }
+  };
+
+  /**
    * Registers an account (`D15.6`, ADR-0067 §6; ADR-0071 §3 for the answer).
    *
    * **It starts no session, and that is the point.** Registration answered
@@ -477,7 +528,7 @@ export const createApiClient = ({
    * It still lives here, beside `login`, because the segment rule below is
    * about this package's own memory and is unchanged by the answer.
    *
-   * **The one call in this package that leaves its segment, and it says so in
+   * **The first call in this package that left its segment, and it says so in
    * one place.** Registration is mounted on `/api/v1/public` (ADR-0015): it is
    * the endpoint for somebody who has no population yet, so it cannot live
    * under `/user`, and the base URL this client is pinned to would send it to
@@ -486,10 +537,12 @@ export const createApiClient = ({
    * {@link COOKIE_TRANSPORT_PATHS} match on the request's own `url` rather
    * than on the resolved address — and the override itself is fenced to this
    * client's own host by the interceptor, which grew that check for this call
-   * (`D15.6`, `security-reviewer`).
+   * (`D15.6`, `security-reviewer`). ADR-0071 §3's confirmation pair are the
+   * second and third, on the same override.
    *
-   * **A `user`-segment call, refused on any other client, and this is the one
-   * place in this file that reads its own segment.** Unlike `redeemHandoff`,
+   * **A `user`-segment call, refused on any other client** — see
+   * {@link requireUserSegment}, which is where this file reads its own
+   * segment. Unlike `redeemHandoff`,
    * which is a `404` by construction because the API registers that route on
    * one segment only, this endpoint is public by design and would answer
    * anybody. What would be wrong is not the request but the write — a `user`
@@ -504,17 +557,87 @@ export const createApiClient = ({
    * other refusal does.
    */
   const register = async (body: RegisterBody): Promise<void> => {
-    if (segment !== "user") {
-      throw apiClientError({
-        status: 0,
-        code: TRANSPORT_ERROR_CODE,
-        message: "Registration is a user-segment call",
-      });
-    }
+    requireUserSegment("Registration");
 
     await instance.post<{ data: AcceptedResource }>("/auth/register", body, {
-      baseURL: `${baseUrl}/api/v1/public`,
+      baseURL: publicBaseUrl,
     });
+  };
+
+  /**
+   * Turns a confirmation link into a session (ADR-0071 §3).
+   *
+   * **`register`'s other half, and the one that actually signs a device in.**
+   * The endpoint consumes the single-use token, makes the account `active`
+   * with its address stamped proven, and answers **login's body** — so this
+   * writes the store for `login`'s own reason: the module that owns the
+   * session's memory is the one that writes it, and a feature that hydrated it
+   * would be a second writer of the state this package exists to keep to one.
+   * The `/verify-email` screen therefore hands over a token and gets an
+   * `AuthResource` back, exactly as the sign-in form does.
+   *
+   * The token is the credential and the request is unauthenticated, which
+   * {@link UNAUTHENTICATED_PATHS} makes true rather than merely states: a
+   * browser that already holds somebody's session must not put that bearer on
+   * the one request whose whole job is to replace it. The request interceptor
+   * has asked for cookie transport ({@link COOKIE_TRANSPORT_PATHS}), so
+   * `refreshToken` is absent from the response and `csrfToken` is present
+   * (ADR-0029 §Opt-in) — the same shape login gets, and without it the account
+   * is signed in until the first reload with its one link already spent.
+   *
+   * Every way it can fail answers one indistinguishable `401` (ADR-0071 §3),
+   * so there is nothing here to branch on and it does not try to. The store is
+   * written only on success: a refused confirmation leaves whatever session
+   * the browser had exactly as it was, rather than half-writing over it.
+   *
+   * **A `user`-segment call for `register`'s reason exactly**, and refused on
+   * any other client. The route is mounted on `/api/v1/public` and would
+   * answer anybody; what would be wrong is the *write* — a `user` principal
+   * hydrated into the store an admin app's guards read — and the server has
+   * nothing to say about it, so the check has to be here.
+   */
+  const verifyEmail = async (token: string): Promise<AuthResource> => {
+    requireUserSegment("Address verification");
+
+    const body: VerifyEmailBody = { token };
+    const { data } = await instance.post<{ data: AuthResource }>(
+      "/auth/verify-email",
+      body,
+      { baseURL: publicBaseUrl },
+    );
+    const resource = data.data;
+
+    store.setSession({
+      accessToken: resource.accessToken,
+      principal: resource.principal,
+      ...(resource.csrfToken ? { csrfToken: resource.csrfToken } : {}),
+    });
+
+    return resource;
+  };
+
+  /**
+   * Asks for the confirmation link again (ADR-0071 §3).
+   *
+   * **No segment guard, and its absence is the decision.** The two guards
+   * above are about this package's *memory* — they exist because a `user`
+   * principal must not be hydrated into an admin app's store — and this call
+   * writes nothing at all. It answers `202` for every address, known or not
+   * (ADR-0020 §Enumeration), so there is no resource to be handed to the wrong
+   * client either. Guarding it would be a check with no failure to prevent.
+   *
+   * The locale travels in the body because no account is known to be acting:
+   * the answer must not depend on whether an address has one, so the server
+   * cannot look up a stored locale to write in (ADR-0071 §2, ADR-0046).
+   */
+  const resendVerification = async (
+    body: ResendVerificationBody,
+  ): Promise<void> => {
+    await instance.post<{ data: AcceptedResource }>(
+      "/auth/resend-verification",
+      body,
+      { baseURL: publicBaseUrl },
+    );
   };
 
   /**
@@ -761,6 +884,8 @@ export const createApiClient = ({
     instance,
     login,
     register,
+    verifyEmail,
+    resendVerification,
     redeemHandoff,
     logout,
     refreshSession,

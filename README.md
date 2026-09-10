@@ -231,9 +231,12 @@ bundler, so there is no per-package build step (ADR-0002).
   browser tier nightly and on demand, never on push.
 - `docker/local/` — the compose setup; see [`docker/README.md`](docker/README.md)
   for the scripts, the two databases (`machxi` and `machxi_test`) and troubleshooting.
-  Since `D14.6` it also runs **Mailpit**: the API's `MAIL_TRANSPORT` defaults to
-  `log` and delivers nothing, and switching it to `smtp` puts the message in an
-  inbox at <http://localhost:8025> (ADR-0066 §1).
+  Since `D14.6` it also runs **Mailpit**, and since `D18.4` that is what a local
+  API talks to: `.env.example` ships `MAIL_TRANSPORT=smtp`, so every mailed link
+  lands in an inbox at <http://localhost:8025> (ADR-0066 §1) — which is what the
+  browser tier reads its links out of (ADR-0071 §Consequences). The `log`
+  transport is still there and still the schema's default; it writes a line per
+  message and delivers nothing.
 - `docker/prod/` — the reference deployment (ADR-0059 §6): `migrate` (one-shot,
   under a `pg_advisory_lock`), `api`, `admin` and `customer`, with Postgres and
   Redis external. The images are `apps/*/Dockerfile`, and

@@ -246,6 +246,66 @@ describe("sign in", () => {
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
   });
 
+  it("offers the confirmation screen when the address has not been proven", async () => {
+    /*
+     * `403 AUTH_EMAIL_UNVERIFIED` (`D18.4`, ADR-0071 §3) — the one refusal on
+     * this screen with a way forward, and the only one that gets an
+     * affordance. The code is deliberately distinguishable from
+     * `AUTH_INVALID_CREDENTIALS`: the password has already been proven, so
+     * ADR-0020 §Enumeration has nothing left to protect, and a client that
+     * could not tell them apart would have to offer the resend to everybody
+     * who mistypes a password.
+     */
+    const { user, store, router } = setup();
+
+    server.use(
+      http.post(`${API}/auth/login`, () => fail(403, "AUTH_EMAIL_UNVERIFIED")),
+    );
+
+    await signIn(user);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Confirm your email address before signing in.",
+    );
+    expect(store.isAuthenticated()).toBe(false);
+
+    await user.click(
+      screen.getByRole("link", { name: "Send the confirmation link again" }),
+    );
+
+    expect(router.state.location.pathname).toBe("/verify-email");
+    /*
+     * And the address travels with it as history state, so the resend control
+     * starts filled in with what was just typed rather than asking a second
+     * time. Read off the rendered field, because history state is not in the
+     * URL — which is the whole reason it was chosen.
+     */
+    expect(await screen.findByLabelText("Email")).toHaveValue(
+      CREDENTIALS.email,
+    );
+  });
+
+  it("offers that way out only for that one refusal", async () => {
+    const { user } = setup();
+
+    server.use(
+      http.post(`${API}/auth/login`, () =>
+        fail(401, "AUTH_INVALID_CREDENTIALS"),
+      ),
+    );
+
+    await signIn(user, CREDENTIALS.email, "WrongPassword!123");
+
+    await screen.findByRole("alert");
+
+    // A wrong password is not an unproven address, and offering to mail a
+    // confirmation link over one would say something about the account that
+    // ADR-0020 §Enumeration refuses to say.
+    expect(
+      screen.queryByRole("link", { name: "Send the confirmation link again" }),
+    ).toBeNull();
+  });
+
   it("degrades to one written sentence for a code it has never heard of", async () => {
     const { user } = setup();
 

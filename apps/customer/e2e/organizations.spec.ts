@@ -13,6 +13,7 @@ import {
   refreshCookiePaths,
   settingsNav,
 } from "./support/app";
+import { linkFromMail, waitForMail } from "./support/mail";
 
 /**
  * The organizations walk, end to end and across two accounts (`D15.8`;
@@ -33,7 +34,15 @@ import {
  * **And one claim `D15.6` explicitly left to a browser**: the refresh cookie
  * the API sets from the **public** segment is scoped to `/api/v1/user/auth`, so
  * the next reload's refresh sends it. The suites there assert the header that
- * asks for cookie transport; only a jar can say where the cookie landed.
+ * asks for cookie transport; only a jar can say where the cookie landed. Since
+ * `D18.4` that cookie arrives from the *confirmation* rather than from
+ * registration (ADR-0071 §3), which is the same claim one endpoint along.
+ *
+ * **And one this deliverable adds**: the walk now reads its confirmation link
+ * out of **Mailpit**. Every flow in ADR-0071 is a single-use token delivered
+ * in a link's fragment, and a tier that cannot open a mailbox can watch a form
+ * say "we have sent you a link" and nothing after it — so the run is made with
+ * `MAIL_TRANSPORT=smtp` against the local compose (`support/mail.ts`).
  *
  * **One test, not six.** Every stage below depends on the one before it — an
  * invitation cannot be accepted before it is created, and an organization
@@ -136,6 +145,7 @@ test.afterEach(async ({ page }) => {
 test("an account registers, makes a team, invites somebody, and they join", async ({
   app,
   page,
+  request,
 }) => {
   const context = page.context();
 
@@ -150,8 +160,13 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * worker fixture's own probe and sign-in inside it; those are already spent
    * by the time this file runs in the tier, so what it adds there is about
    * **36** — and the margin is the dozen `D12.10` chose.
+   *
+   * **52 since `D18.4`**, for the reason `support/app.ts` gives about its own
+   * default: the walk now follows the confirmation link out of a mailbox, which
+   * is a second full document load — two boot requests — plus the confirmation
+   * itself. Three, reasoned rather than measured; `D18.12` re-measures.
    */
-  await assertApiWindowClear(page, 49);
+  await assertApiWindowClear(page, 52);
 
   // ---- Registration, and the personal organization it creates (§2, §6) ----
 
@@ -166,20 +181,50 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
   await page.getByRole("button", { name: "Create account" }).click();
 
   /*
+   * **Landed on the check-your-mail screen, and signed into nothing**
+   * (`D18.4`, ADR-0071 §3). Registration answers `202` and issues no session:
+   * an address nobody has proven is not an account anybody may be signed into,
+   * so what a browser sees here is the confirmation screen and not a home
+   * screen. `D15.6` asserted the opposite and was right at the time.
+   */
+  await expect(page.getByText(/Follow the link in your inbox/)).toBeVisible();
+
+  /*
+   * **The half only this tier can prove.** Everything up to here — the form,
+   * the `202`, the screen — is asserted against MSW by the component suite,
+   * and everything after the token reaches the API is asserted against a
+   * database by the integration tier. What neither can do is take the token
+   * out of a *mailbox*: the link is what a person actually follows, its
+   * fragment never reaches a server, and the SPA route that strikes it is the
+   * only thing that turns it into a session (ADR-0071 §1, §3).
+   *
+   * `request` rather than `page.request`, and the isolation is the point: the
+   * browser context's jar holds this account's cookies and Mailpit is another
+   * process on the same host, so a request made through the page would carry
+   * a live `Path=/` CSRF cookie to a server that has no business seeing one.
+   */
+  const message = await waitForMail(request, NEWCOMER.email);
+
+  await page.goto(linkFromMail(message, "/verify-email"));
+
+  /*
    * Landed signed in, on this app's home screen — the same heading `signIn`
-   * waits for, because ADR-0018 says registration's response *is* login's and
-   * `D15.6` handled it exactly so.
+   * waits for. The link proved the mailbox and the device that opened it is
+   * signed in, which is ADR-0071 §3's whole answer to "verified before login".
    */
   await expect(
     page.getByRole("heading", { name: "Your account", level: 1 }),
   ).toBeVisible();
 
   /*
-   * **The claim `D15.6` could not make.** `POST /api/v1/public/auth/register`
-   * answers on the *public* segment, and the cookie it sets has to be scoped to
-   * the *user* segment's `authCookiePath` or the next boot's refresh will never
-   * send it — an account that is signed in until the first reload, which is the
-   * `D13.7` failure one endpoint along and which no response body shows.
+   * **The claim `D15.6` could not make, moved one endpoint along** (`D18.4`).
+   * It was registration that set the cookie and it is now
+   * `POST /api/v1/public/auth/verify-email`; the property is unchanged and so
+   * is the reason it needs a browser. Both answer on the *public* segment, and
+   * the cookie has to be scoped to the *user* segment's `authCookiePath` or
+   * the next boot's refresh will never send it — an account that is signed in
+   * until the first reload, which is the `D13.7` failure one endpoint along
+   * and which no response body shows.
    *
    * **The whole set of paths, not the first match** (`D15.8`'s security
    * review): asking "did one land here" cannot fail if the API *also* wrote
@@ -190,7 +235,7 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    */
   expect(
     await refreshCookiePaths(context),
-    "registration set the refresh cookie on the user segment and nowhere else",
+    "the confirmation set the refresh cookie on the user segment and nowhere else",
   ).toEqual([USER_REFRESH_COOKIE.path]);
 
   /*

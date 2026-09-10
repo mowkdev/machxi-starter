@@ -45,6 +45,7 @@
         "SEED_SUPER_ADMIN_*",
         "E2E_BASE_URL",
         "E2E_API_URL",
+        "E2E_MAILPIT_URL",
         "E2E_CUSTOMER_*",
         "CI"
       ]

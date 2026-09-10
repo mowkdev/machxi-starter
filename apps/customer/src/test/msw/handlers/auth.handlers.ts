@@ -2,10 +2,13 @@ import {
   impersonateBody,
   loginBody,
   registerBody,
+  resendVerificationBody,
+  verifyEmailBody,
   type AuthResource,
   type ErrorCode,
   type ImpersonatorResource,
   type RegisterBody,
+  type ResendVerificationBody,
   type UserPrincipalResource,
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
@@ -111,6 +114,9 @@ export const IMPERSONATED_PRINCIPAL: UserPrincipalResource = {
 /** The handoff the admin panel would have put in the URL fragment. */
 export const HANDOFF_TOKEN = "handoff-token-from-the-fragment";
 
+/** The confirmation link's token, as the mailed link would carry it. */
+export const VERIFICATION_TOKEN = "verification-token-from-the-fragment";
+
 export const CREDENTIALS = {
   email: "customer@machxi.local",
   password: "DevPassword!123",
@@ -173,6 +179,34 @@ export interface AuthMockState {
    */
   registerAskedForCookies: boolean;
   /**
+   * The tokens `POST /public/auth/verify-email` has been offered, in order
+   * (`D18.4`, ADR-0071 §3).
+   *
+   * A list rather than a count, for the reason `impersonateCalls` is one: what
+   * a test has to be able to see is *which* value left the address bar — the
+   * fragment is the credential, and a screen that posted the wrong half of it
+   * would still produce one call.
+   */
+  verifyEmailCalls: string[];
+  /**
+   * Whether the confirmation asked for cookie transport (ADR-0029 §Opt-in).
+   *
+   * Recorded rather than enforced, exactly as its two siblings are: a request
+   * without the header is valid and answers with a body-borne refresh token
+   * and no cookie, which is invisible in the response and would leave a
+   * just-verified account signed in only until the first reload — having spent
+   * the one link it had.
+   */
+  verifyEmailAskedForCookies: boolean;
+  /**
+   * The bodies `POST /public/auth/resend-verification` has been offered.
+   *
+   * Bodies rather than a count, because the address and the locale are both
+   * the point: the endpoint answers `202` whatever it is handed (ADR-0020
+   * §Enumeration), so what left the form is the only thing a test can see.
+   */
+  resendVerificationCalls: ResendVerificationBody[];
+  /**
    * Addresses that already belong to an account.
    *
    * The refusal is the generic `409 CONFLICT` ADR-0020 §Enumeration requires —
@@ -205,6 +239,9 @@ export const createAuthMockState = (): AuthMockState => ({
   impersonateAskedForCookies: false,
   registerCalls: [],
   registerAskedForCookies: false,
+  verifyEmailCalls: [],
+  verifyEmailAskedForCookies: false,
+  resendVerificationCalls: [],
   takenEmails: [CREDENTIALS.email],
   hasRefreshCookie: true,
 });
@@ -289,6 +326,58 @@ export const createAuthHandlers = (state: AuthMockState) =>
 
         // `202` with a constant body, which is what the endpoint answers: no
         // token, no principal, nothing a client could mistake for a session.
+        return ok({ accepted: true }, 202);
+      },
+    ),
+
+    /*
+     * The confirmation link, spent (`D18.4`, ADR-0071 §3).
+     *
+     * **On `PUBLIC_API` and mounted whatever the registration flag says**,
+     * which is how the API registers it: an address can reach
+     * `pending_verification` without self-registration, and a link already in
+     * a mailbox must not stop working because sign-ups were closed.
+     *
+     * It answers **login's body** — the person has just proven the address and
+     * the device that opened the link is signed in — and **one
+     * indistinguishable `401` for every refusal**, which is the whole of §3's
+     * discipline: an unknown token, a consumed one, an expired one and an
+     * account that can no longer be activated all answer the same thing. A
+     * mock that distinguished them would let this app grow a branch the API
+     * can never take.
+     */
+    http.post(
+      `${PUBLIC_API}/auth/verify-email`,
+      async ({ request }): Promise<Response> => {
+        state.verifyEmailAskedForCookies =
+          request.headers.get(TRANSPORT_HEADER) === "cookie";
+
+        const body = verifyEmailBody.parse(await request.json());
+
+        state.verifyEmailCalls.push(body.token);
+
+        if (body.token !== VERIFICATION_TOKEN)
+          return fail(401, "UNAUTHENTICATED");
+
+        return ok(authResource("access-verified"));
+      },
+    ),
+
+    /*
+     * "Send me the link again" (`D18.4`, ADR-0071 §3).
+     *
+     * `202 { accepted: true }` for **every** address — known, unknown, already
+     * active — because the answer must not be an oracle (ADR-0020
+     * §Enumeration). A mock that refused a stranger's address would let this
+     * app render a distinction the API refuses to make.
+     */
+    http.post(
+      `${PUBLIC_API}/auth/resend-verification`,
+      async ({ request }): Promise<Response> => {
+        const body = resendVerificationBody.parse(await request.json());
+
+        state.resendVerificationCalls.push(body);
+
         return ok({ accepted: true }, 202);
       },
     ),

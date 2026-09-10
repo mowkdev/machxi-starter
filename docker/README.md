@@ -61,12 +61,14 @@ docker compose --env-file .env -f docker/local/compose.yaml ps
 - **Containers** `machxi-postgres` and `machxi-mailpit`, **project**
   `machxi-local`, **network** `machxi-local` (named, so later services join it
   by name).
-- **A local inbox** at <http://localhost:8025>, and SMTP on 1025. The API does
-  **not** use it by default: `MAIL_TRANSPORT` defaults to `log`, which writes a
-  line per message and delivers nothing (ADR-0066 §1). Set `MAIL_TRANSPORT=smtp`
-  to read messages here — the `SMTP_*` defaults already point at this service,
-  which accepts any credentials or none. Mailpit has no volume, so the inbox is
-  empty after every `docker:down`.
+- **A local inbox** at <http://localhost:8025>, and SMTP on 1025. Since `D18.4`
+  this is what a local API talks to: `.env.example` ships `MAIL_TRANSPORT=smtp`
+  and the `SMTP_*` defaults already point at this service, which accepts any
+  credentials or none (ADR-0066 §1). It is also where `pnpm test:e2e` reads the
+  links it follows, so a run with this container down proves none of D18's
+  flows. `MAIL_TRANSPORT=log` is the way back to a stack with no mail server: it
+  writes a line per message and delivers nothing. Mailpit has no volume, so the
+  inbox is empty after every `docker:down`.
 - **Volume** `machxi-local_postgres-data` — data survives `down`; `docker:reset`
   is the only documented way to wipe it.
 - **Two databases**: `machxi` (dev) and `machxi_test`. The test database is

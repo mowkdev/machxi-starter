@@ -47,6 +47,26 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+      # The mailbox, beside Postgres and for the same reason: without it the
+      # tier has nothing to read (ADR-0071 §Consequences). Every flow in that
+      # record is a single-use token delivered in a link, so a run with no mail
+      # server can watch a form say "we have sent you a link" and prove nothing
+      # after it.
+      #
+      # **No `options: --health-cmd`.** The image is built on `scratch` and has
+      # no shell, and GitHub runs a health command through one — so the
+      # readiness poll is in the "Start the stack" step below, beside the three
+      # servers it already waits for. Both ports are published because both are
+      # used from the host: the API sends on 1025 and the tier reads on 8025.
+      mailpit:
+        image: axllent/mailpit:v1.31.0
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: "true"
+          MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+        ports:
+          - 1025:1025
+          - 8025:8025
+
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +79,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The examples carry `MAIL_TRANSPORT=smtp` since `D18.4`, pointed at the
+      # `SMTP_*` defaults that are the Mailpit service above — so the tier can
+      # read the links it follows without this step overriding anything. One
+      # writer: the example file states the local setup, and this copies it.
       - name: Copy the example environment files
         run: |
           cp .env.example .env
@@ -120,6 +144,9 @@ jobs:
             await wait("http://localhost:4000/health/ready");
             await wait("http://localhost:3001/");
             await wait("http://localhost:3002/");
+            // The mailbox, polled here rather than as a service health check:
+            // the image has no shell for GitHub to run one in.
+            await wait("http://localhost:8025/readyz");
           '
 
       - name: Run the browser tier
@@ -129,6 +156,11 @@ jobs:
         if: failure()
         run: tail -n 200 /tmp/api.log /tmp/admin.log /tmp/customer.log
 
+      # A retained trace records the confirmation link the walk followed, whose
+      # fragment is a single-use credential with a day to live (ADR-0071 §1).
+      # Harmless here — this job's database and mailbox die with it, so the token
+      # is dead before the artifact exists — and it stops being harmless the
+      # first time this workflow is pointed at a shared environment.
       - name: Playwright reports
         if: failure()
         uses: actions/upload-artifact@v4

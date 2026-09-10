@@ -1,9 +1,10 @@
 import { loginBody } from "@repo/contracts";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { useLandingSlug } from "@/entities/organization";
 
+import { isApiClientError } from "@/shared/api/api-error";
 import { useApiClient } from "@/shared/api/context";
 import { useT } from "@/shared/i18n";
 import { useMessageForError } from "@/shared/notifications/messages";
@@ -15,6 +16,8 @@ import {
   FieldLabel,
   Input,
 } from "@/shared/ui";
+
+import { awaitingVerification } from "../verify-email/awaited-address";
 
 /**
  * ADR-0054 §7's 38px login rung and §3's 13/18 control type, spelled on the
@@ -67,11 +70,28 @@ export const LoginForm = () => {
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  /**
+   * Whether the last refusal was `403 AUTH_EMAIL_UNVERIFIED` (ADR-0071 §3).
+   *
+   * **The one refusal on this screen with something to offer.** Every other
+   * failure is answered by the catalogue sentence and nothing else, because
+   * there is nothing a customer can do about it here. This one has a way
+   * forward — the link is in a mailbox, or a new one is a click away — and the
+   * code is deliberately distinguishable, so the affordance is honest rather
+   * than a guess (the password has already been proven, which is what leaves
+   * ADR-0020 §Enumeration nothing to protect).
+   *
+   * A boolean beside the sentence rather than the whole error in state: the
+   * sentence still comes from the code map, and what is new is only whether to
+   * draw a link under it.
+   */
+  const [unverified, setUnverified] = useState(false);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFieldErrors({});
     setFormError(null);
+    setUnverified(false);
 
     const parsed = loginBody.safeParse({ email, password });
 
@@ -152,6 +172,9 @@ export const LoginForm = () => {
         : navigate({ params: { orgSlug: slug }, to: "/orgs/$orgSlug" }));
     } catch (error) {
       setFormError(messageForError(error));
+      setUnverified(
+        isApiClientError(error) && error.code === "AUTH_EMAIL_UNVERIFIED",
+      );
     } finally {
       setPending(false);
     }
@@ -204,6 +227,28 @@ export const LoginForm = () => {
           {formError === null ? null : (
             <FieldError role="alert">{formError}</FieldError>
           )}
+
+          {/*
+           * The way out of the one refusal that has one (ADR-0071 §3). The
+           * address travels as history state so the resend control on the
+           * other side starts filled in with what was just typed — this screen
+           * is the only place that knows it, and the confirmation screen would
+           * otherwise ask for it a second time.
+           *
+           * A link rather than a button that resends from here: `/verify-email`
+           * is where the outcome is said and where a person waits, and firing
+           * the request from under a sign-in form would leave them on a screen
+           * that still says they cannot sign in.
+           */}
+          {unverified ? (
+            <Link
+              className="text-[13px] leading-5 font-medium underline underline-offset-4"
+              state={awaitingVerification(email)}
+              to="/verify-email"
+            >
+              {t("unverified.resend")}
+            </Link>
+          ) : null}
 
           <Button className={LOGIN_CONTROL} type="submit">
             {pending ? t("submitting") : t("submit")}

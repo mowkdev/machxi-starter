@@ -1,10 +1,14 @@
 import {
   impersonateBody,
   registerBody,
+  resendVerificationBody,
+  verifyEmailBody,
   type AuthResource,
   type Page,
   type RegisterBody,
+  type ResendVerificationBody,
   type UserPrincipalResource,
+  type VerifyEmailBody,
 } from "@repo/contracts";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -677,6 +681,199 @@ describe("registration", () => {
      * this the one place in the client that reads its own segment.
      */
     expect(store.isAuthenticated()).toBe(false);
+  });
+});
+
+describe("address verification", () => {
+  /**
+   * ADR-0071 §3's pair, on the public segment beside registration (`D18.4`).
+   *
+   * The same `/api/v1/public` override registration established, so a client
+   * that sent either to `/api/v1/user` would meet no handler and fail against
+   * `onUnhandledRequest: "error"` rather than an assertion somebody has to
+   * remember to write.
+   */
+  const PUBLIC_API = "http://api.test/api/v1/public";
+  const USER_API = "http://api.test/api/v1/user";
+
+  const VERIFIED: UserPrincipalResource = {
+    kind: "user",
+    id: "0198c1f0-0000-7000-8000-0000000000c3",
+    email: "nina@machxi.local",
+    firstName: "Nina",
+    lastName: "Newcomer",
+    roles: ["customer"],
+  };
+
+  const verifiedResource = (): AuthResource => ({
+    ...authResource("access-verified"),
+    principal: VERIFIED,
+  });
+
+  /** A `user`-segment client, because these are user-population flows. */
+  const setupUser = () => {
+    const store = createSessionStore();
+
+    return {
+      store,
+      client: createApiClient({
+        store,
+        baseUrl: "http://api.test",
+        segment: "user",
+      }),
+    };
+  };
+
+  it("asks for cookie transport, sends no bearer, and hydrates the store", async () => {
+    const { client, store } = setupUser();
+    const seen: {
+      body?: VerifyEmailBody;
+      transport?: string | null;
+      authorization?: string | null;
+    } = {};
+
+    /*
+     * A live session already in this browser — the ordinary case rather than
+     * the exotic one, since a link is followed wherever the mail is read — so
+     * the `Authorization` assertion below is about the interceptor's rule and
+     * not about an empty store.
+     */
+    store.setSession({ accessToken: "somebody-elses-session" });
+
+    server.use(
+      http.post(`${PUBLIC_API}/auth/verify-email`, async ({ request }) => {
+        seen.transport = request.headers.get("x-auth-transport");
+        seen.authorization = request.headers.get("authorization");
+        // The API's own schema, so a body this client builds wrongly throws
+        // here rather than being quietly accepted (ADR-0036).
+        seen.body = verifyEmailBody.parse(await request.json());
+
+        return ok(verifiedResource());
+      }),
+    );
+
+    await expect(client.verifyEmail("a-live-link")).resolves.toMatchObject({
+      principal: VERIFIED,
+    });
+
+    expect(seen.body).toEqual({ token: "a-live-link" });
+    /*
+     * The header registration lost and this call inherited (ADR-0029 §Opt-in,
+     * ADR-0071 §3): without it the refresh token comes back in the body, no
+     * cookie is set, and the account is signed in until the first reload —
+     * having spent the one link it had. Invisible in the response, so it is
+     * asserted at the wire.
+     */
+    expect(seen.transport).toBe("cookie");
+    // The credential is the token in the body. Whoever already had this
+    // browser has no business on the request that replaces them.
+    expect(seen.authorization).toBeNull();
+
+    expect(store.getPrincipal()).toEqual(VERIFIED);
+    expect(store.getAccessToken()).toBe("access-verified");
+    expect(store.getCsrfToken()).toBe("csrf-for-access-verified");
+  });
+
+  it("leaves the session already in the browser alone when the link is refused", async () => {
+    const { client, store } = setupUser();
+
+    store.setSession({ accessToken: "somebody-elses-session" });
+
+    server.use(
+      http.post(`${PUBLIC_API}/auth/verify-email`, () =>
+        fail(401, "UNAUTHENTICATED"),
+      ),
+    );
+
+    await expect(client.verifyEmail("a-dead-link")).rejects.toSatisfy(
+      isApiClientError,
+    );
+
+    // Half-writing an identity over a refusal is the failure `redeemHandoff`
+    // records for its own path; the rule is the same one endpoint along.
+    expect(store.getAccessToken()).toBe("somebody-elses-session");
+  });
+
+  it("does not retry a 401 through a refresh nobody asked for", async () => {
+    const { client } = setupUser();
+    let refreshCalls = 0;
+
+    server.use(
+      http.post(`${USER_API}/auth/refresh`, () => {
+        refreshCalls += 1;
+        return fail(401, "AUTH_INVALID_REFRESH_TOKEN");
+      }),
+      http.post(`${PUBLIC_API}/auth/verify-email`, () =>
+        fail(401, "UNAUTHENTICATED"),
+      ),
+    );
+
+    /*
+     * Every way the endpoint can fail answers one `401` (ADR-0071 §3), and
+     * none of them is an expired access token. Off {@link
+     * UNAUTHENTICATED_PATHS} the client would fire a refresh nobody asked for
+     * and hand the caller the *refresh's* failure instead of the link's — and
+     * `endSession` would fire over a session that may not even be this
+     * person's.
+     */
+    await expect(client.verifyEmail("a-dead-link")).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+
+    expect(refreshCalls).toBe(0);
+  });
+
+  it("refuses to verify from a client pinned to the admin segment", async () => {
+    // No handler: a request that escaped would fail loudly against
+    // `onUnhandledRequest: "error"` rather than being answered by accident.
+    const { client, store } = setup();
+
+    await expect(client.verifyEmail("a-live-link")).rejects.toSatisfy(
+      isApiClientError,
+    );
+
+    /*
+     * The point is the *write*, not the request. The endpoint is public and
+     * would answer anybody, so nothing on the server stops a `user` principal
+     * being hydrated into the store an admin app's guards read.
+     */
+    expect(store.isAuthenticated()).toBe(false);
+  });
+
+  it("resends without a bearer, without cookie transport, and writes nothing", async () => {
+    const { client, store } = setupUser();
+    const seen: {
+      body?: ResendVerificationBody;
+      transport?: string | null;
+      authorization?: string | null;
+    } = {};
+
+    store.setSession({ accessToken: "somebody-elses-session" });
+
+    server.use(
+      http.post(
+        `${PUBLIC_API}/auth/resend-verification`,
+        async ({ request }) => {
+          seen.transport = request.headers.get("x-auth-transport");
+          seen.authorization = request.headers.get("authorization");
+          seen.body = resendVerificationBody.parse(await request.json());
+
+          // `202 { accepted: true }` for every address, known or not
+          // (ADR-0020 §Enumeration).
+          return ok({ accepted: true }, 202);
+        },
+      ),
+    );
+
+    await expect(
+      client.resendVerification({ email: "nina@machxi.local", locale: "en" }),
+    ).resolves.toBeUndefined();
+
+    expect(seen.body).toEqual({ email: "nina@machxi.local", locale: "en" });
+    // Nothing to put in a cookie: the answer carries no token at all.
+    expect(seen.transport).toBeNull();
+    expect(seen.authorization).toBeNull();
+    expect(store.getAccessToken()).toBe("somebody-elses-session");
   });
 });
 

@@ -37,11 +37,12 @@ services:
 
   # The local mail server (ADR-0066 §1).
   #
-  # It is **not** what the API talks to by default: `MAIL_TRANSPORT` defaults
-  # to `log`, so a fresh clone runs with no mail server at all and this
-  # container is only started because it is cheap. A developer who wants to
-  # *read* a message sets `MAIL_TRANSPORT=smtp` — the `SMTP_*` defaults are
-  # this service's — and opens http://localhost:8025.
+  # What a local API talks to since `D18.4`: `.env.example` ships
+  # `MAIL_TRANSPORT=smtp` and the `SMTP_*` defaults are this service's, so a
+  # clone that has run `pnpm docker:up` can read its own mail at
+  # http://localhost:8025 — which is what `pnpm test:e2e` does (ADR-0071
+  # §Consequences). `MAIL_TRANSPORT=log` is the way back to a stack with no mail
+  # server; it delivers nothing and this container is then merely cheap.
   #
   # No volume: a development inbox is scratch data by definition, and keeping
   # it across a `docker compose down` would only be a thing to explain.
@@ -61,8 +62,17 @@ services:
     ports:
       # SMTP, and the web inbox. Both are host ports, so both are overridable
       # for the same reason POSTGRES_PORT is.
-      - "${MAILPIT_SMTP_PORT:-1025}:1025"
-      - "${MAILPIT_UI_PORT:-8025}:8025"
+      #
+      # **Bound to the loopback interface since `D18.4`**, and the difference
+      # from Postgres beside it is what the inbox now holds: the API delivers
+      # here, so these messages carry live single-use links that activate an
+      # account (ADR-0071 §1) and Mailpit's API has no authentication at all.
+      # Published on every interface, anyone on the same network could read one
+      # and spend it. Nothing local loses anything — the API and the browser
+      # tier both run on the host, and a container on this network reaches
+      # `mailpit:1025` by name rather than through a published port.
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     healthcheck:
       # The image is `scratch`-based and has no shell, so this is the exec form
       # against the binary's own readiness endpoint — `pnpm docker:up` passes
