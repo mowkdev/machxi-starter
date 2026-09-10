@@ -208,6 +208,65 @@ describe("redaction", () => {
     });
   });
 
+  it("redacts the `payload` column and the `newEmail` body field (ADR-0071)", () => {
+    // Not credentials, and redacted anyway: `account_tokens.payload` carries
+    // the address a change-of-address is about to move to, which the old
+    // mailbox has not been told about yet, and `newEmail` is the request
+    // body's name for the same value — a controller logging its input would
+    // print it under the other spelling.
+    const [logger, capture] = capturing({ level: "info" });
+
+    logger.info(
+      {
+        newEmail: "new@example.test",
+        accountToken: {
+          id: "01930000-0000-7000-8000-000000000002",
+          payload: { newEmail: "nested@example.test" },
+        },
+      },
+      "email change requested",
+    );
+
+    expect(capture.raw()).not.toContain("new@example.test");
+    expect(capture.raw()).not.toContain("nested@example.test");
+    expect(capture.lines()[0]).toMatchObject({ newEmail: "[Redacted]" });
+    expect(capture.lines()[0]).toMatchObject({
+      newEmail: "[Redacted]",
+      accountToken: {
+        id: "01930000-0000-7000-8000-000000000002",
+        payload: "[Redacted]",
+      },
+    });
+  });
+
+  it("redacts `link`, which is the form a mailed credential travels in", () => {
+    // Ahead of its use, the way `tokenHash` was (ADR-0071 §1): the token is
+    // not logged as a column, it is logged as the URL that carries it in a
+    // fragment, and the `log` mail transport writes a line per message.
+    const [logger, capture] = capturing({ level: "info" });
+
+    logger.info(
+      { link: "https://app.test/verify-email#token=live-credential" },
+      "verification mailed",
+    );
+
+    expect(capture.raw()).not.toContain("live-credential");
+    expect(capture.lines()[0]).toMatchObject({ link: "[Redacted]" });
+  });
+
+  it("leaves `req.url` alone, which is why `url` is not a redact path", () => {
+    // The deliberate omission (`D18.1`'s `security-reviewer`): `*.url` would
+    // blank the URL on every request log line in the repository, trading the
+    // observability of the whole HTTP layer for one hypothetical field name.
+    const [logger, capture] = capturing({ level: "info" });
+
+    logger.info({ req: { method: "GET", url: "/api/v1/health" } }, "request");
+
+    expect(capture.lines()[0]).toMatchObject({
+      req: { method: "GET", url: "/api/v1/health" },
+    });
+  });
+
   it("redacts the authorization and cookie request headers", () => {
     const [logger, capture] = capturing({ level: "info" });
 

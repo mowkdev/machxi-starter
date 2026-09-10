@@ -46,6 +46,34 @@ export const users = pgTable(
     firstName: text(),
     lastName: text(),
     status: userStatusEnum().notNull().default("active"),
+    /**
+     * When the address on this row was proven (ADR-0071 §3).
+     *
+     * `null` means it never was. Set by the verification link, and set the
+     * same way by a staff member who **asserts** the address — creating the
+     * account through `POST /admin/users` or setting it under §7 — because the
+     * operator is the authority a link would be asking.
+     *
+     * The invariant it is *for* is what everything downstream will lean on:
+     * **every `active` user has a proven address**, so address-match
+     * acceptance of an invitation (ADR-0067 §5) needs no extra rule and a
+     * federated identity (D19) may link by reading `status` alone. Nothing
+     * re-checks this column as a flag — it is the record of the fact, not the
+     * gate.
+     *
+     * **It does not hold yet, and nothing may lean on it before `D18.3`**
+     * (`D18.1`'s `security-reviewer`). The column and its backfill arrive at
+     * `D18.1`; the paths that keep it true arrive at `D18.3`, when
+     * registration starts creating `pending_verification` and the two staff
+     * paths that assert an address start stamping. Between the two, every
+     * account created is `active` with a null stamp. Reading the invariant as
+     * already true is exactly how an unenforced claim becomes an
+     * account-takeover primitive, so the sentence carries its date.
+     *
+     * Deliberately not `not null` with a default: the whole point is that a
+     * `pending_verification` row has nothing here.
+     */
+    emailVerifiedAt: timestamp({ withTimezone: true }),
     /** `null` until the account signs in for the first time. */
     lastLoginAt: timestamp({ withTimezone: true }),
     ...timestamps(),

@@ -166,6 +166,10 @@ describe("migration 0001", () => {
     // migration applies from nothing, since the list is taken after a fresh
     // replay of every committed migration.
     expect(rows.map((row) => row.table_name)).toEqual([
+      // The one token table behind every mail flow came with `0014`
+      // (`D18.1`, ADR-0071 §1) — one table with a `purpose` column rather
+      // than four with the same five columns.
+      "account_tokens",
       "audit_events",
       "impersonation_handoffs",
       // The tenant and what it owns came with `0011` (`D15.1`, ADR-0067 §2).
@@ -286,6 +290,15 @@ describe("migration 0001", () => {
       staff_role: ["super_admin", "admin", "manager", "editor"],
       staff_status: ["active", "invited", "disabled"],
       theme: ["light", "dark", "system"],
+      // `token_purpose` came with `0014` (`D18.1`, ADR-0071 §1). Expected to
+      // grow — a fifth flow is a fifth label — and `ALTER TYPE … ADD VALUE`
+      // appends, so no row and no sort order moves when it does.
+      token_purpose: [
+        "verify_email",
+        "reset_password",
+        "change_email",
+        "staff_onboarding",
+      ],
       user_role: ["customer"],
       user_status: ["active", "pending_verification", "disabled"],
     });

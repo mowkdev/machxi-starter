@@ -4,10 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DbClient } from "../client.js";
 import {
   RETENTION_DAYS,
+  pruneAccountTokens,
   pruneImpersonationHandoffs,
   pruneSessions,
 } from "../prune-sessions.js";
-import { impersonationHandoffs, sessions } from "../index.js";
+import { accountTokens, impersonationHandoffs, sessions } from "../index.js";
 import { truncateAllWithOwner } from "../testing.js";
 import { readTestOwnerDatabaseUrl } from "../tooling/env.js";
 import { migrateFreshTestDatabase } from "./helpers.int.js";
@@ -19,11 +20,12 @@ import { migrateFreshTestDatabase } from "./helpers.int.js";
  * it must *not* do — remove a session that is still usable — is invisible in a
  * unit test with a fake, and expensive to discover in production.
  *
- * **Two tables since `D13.4`** (ADR-0057 §2): the same command sweeps
- * `impersonation_handoffs`, and the "must not" there is sharper still — a
- * handoff that is neither consumed nor expired is a support operator's
- * in-flight impersonation, and deleting it breaks a flow that is halfway
- * through.
+ * **Three tables since `D18.1`.** `impersonation_handoffs` joined at `D13.4`
+ * (ADR-0057 §2) and `account_tokens` here (ADR-0071 §1), and the "must not"
+ * sharpens with each: a handoff that is neither consumed nor expired is a
+ * support operator's in-flight impersonation, and a live token row is
+ * somebody's unopened mail — the link in it is the only way back into an
+ * account whose password they have forgotten.
  */
 
 const PRINCIPAL_ID = "11111111-1111-7111-8111-111111111111";
@@ -274,5 +276,97 @@ describe("pruneImpersonationHandoffs", () => {
       await pruneImpersonationHandoffs(client.db, days(-RETENTION_DAYS)),
     ).toBe(1);
     expect(await remaining()).toEqual(["live"]);
+  });
+});
+
+const insertToken = async (
+  label: string,
+  values: { expiresAt: Date; consumedAt?: Date },
+): Promise<void> => {
+  await client.db.insert(accountTokens).values({
+    purpose: "reset_password",
+    principalType: "user",
+    principalId: USER_ID,
+    tokenHash: label,
+    expiresAt: values.expiresAt,
+    consumedAt: values.consumedAt ?? null,
+  });
+};
+
+const remainingTokens = async (): Promise<string[]> => {
+  const rows = await client.db
+    .select({ hash: accountTokens.tokenHash })
+    .from(accountTokens);
+
+  return rows.map((row) => row.hash).sort();
+};
+
+describe("pruneAccountTokens", () => {
+  it("keeps a live token and one that only recently died", async () => {
+    // The row this sweep must never touch: unopened mail, and the only way
+    // back into an account whose password its owner has forgotten. The second
+    // is the audit-trail grace `RETENTION_DAYS` exists for — "was a reset link
+    // sent to this address last week" is a question an incident asks.
+    await insertToken("live", { expiresAt: days(1) });
+    await insertToken("just-consumed", {
+      expiresAt: days(-1),
+      consumedAt: days(-1),
+    });
+
+    expect(await pruneAccountTokens(client.db, days(-RETENTION_DAYS))).toBe(0);
+    expect(await remainingTokens()).toEqual(["just-consumed", "live"]);
+  });
+
+  it("removes a token consumed before the cutoff", async () => {
+    // The ordinary case: redeemed minutes after the mint, so the row is dead
+    // long before any expiry the TTL wrote, and retention is measured from
+    // whichever of the two came first.
+    await insertToken("long-consumed", {
+      expiresAt: days(1),
+      consumedAt: days(-RETENTION_DAYS - 1),
+    });
+    await insertToken("live", { expiresAt: days(1) });
+
+    expect(await pruneAccountTokens(client.db, days(-RETENTION_DAYS))).toBe(1);
+    expect(await remainingTokens()).toEqual(["live"]);
+  });
+
+  it("removes a token that expired before the cutoff, unopened", async () => {
+    await insertToken("long-expired", {
+      expiresAt: days(-RETENTION_DAYS - 1),
+    });
+
+    expect(await pruneAccountTokens(client.db, days(-RETENTION_DAYS))).toBe(1);
+    expect(await remainingTokens()).toEqual([]);
+  });
+
+  it("is a no-op on an empty table", async () => {
+    expect(await pruneAccountTokens(client.db, days(-RETENTION_DAYS))).toBe(0);
+  });
+
+  it("clears a token backlog larger than one batch", async () => {
+    await insertToken("spent-1", { expiresAt: days(-RETENTION_DAYS - 1) });
+    await insertToken("spent-2", { expiresAt: days(-RETENTION_DAYS - 2) });
+    await insertToken("live", { expiresAt: days(1) });
+
+    expect(await pruneAccountTokens(client.db, days(-RETENTION_DAYS), 1)).toBe(
+      2,
+    );
+    expect(await remainingTokens()).toEqual(["live"]);
+  });
+
+  it("leaves the other two tables alone", async () => {
+    // Three statements, not one: a sweep that took every credential table in
+    // one predicate would be one `where` clause away from deleting a live
+    // reset link because a session expired.
+    await insert("live", { expiresAt: days(7) });
+    await insertHandoff("redeemable", { expiresAt: days(1) });
+    await insertToken("long-expired", {
+      expiresAt: days(-RETENTION_DAYS - 1),
+    });
+
+    expect(await pruneAccountTokens(client.db, days(-RETENTION_DAYS))).toBe(1);
+    expect(await remaining()).toEqual(["live"]);
+    expect(await remainingHandoffs()).toEqual(["redeemable"]);
   });
 });

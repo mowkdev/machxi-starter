@@ -27,11 +27,17 @@ import {
  * also why authentication and the admin endpoints share one record type rather
  * than reading the same row through two shapes — what they differ over is
  * three timestamps on a row that is being fetched either way.
+ *
+ * It is `string | null` since ADR-0071 §8 (`D18.1`), matching `UserRecord`: an
+ * `invited` operator has no password at all until they consume the onboarding
+ * token. `null` means "no password login for this account" and never "any
+ * password matches" — every caller that verifies against it checks for null
+ * first, which is the rule `auth.service` has enforced for users since D1.
  */
 export interface StaffRecord {
   readonly id: string;
   readonly email: string;
-  readonly passwordHash: string;
+  readonly passwordHash: string | null;
   readonly firstName: string;
   readonly lastName: string;
   readonly status: StaffStatus;
@@ -80,7 +86,7 @@ const withRoles = { roles: { columns: { role: true } } } as const;
 type StaffRowWithRoles = {
   readonly id: string;
   readonly email: string;
-  readonly passwordHash: string;
+  readonly passwordHash: string | null;
   readonly firstName: string;
   readonly lastName: string;
   readonly status: StaffStatus;

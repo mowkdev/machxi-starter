@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   KNOWN_PUBLIC_SECRETS,
+  LOCAL_ADMIN_APP_URL,
+  LOCAL_CUSTOMER_APP_URL,
   PLACEHOLDER_JWT_ACCESS_SECRET,
   envSchema,
   formatConfigIssues,
@@ -65,6 +67,23 @@ describe("envSchema", () => {
       IMPERSONATION_SESSION_TTL: 30 * 60,
       IMPERSONATION_HANDOFF_TTL: 60,
       FEATURE_USER_REGISTRATION: true,
+      // The two SPA dev servers, so a fresh clone mails clickable links with
+      // nothing configured (ADR-0071 §1). Production refuses both of these
+      // exact values — see the production guards below.
+      CUSTOMER_APP_URL: LOCAL_CUSTOMER_APP_URL,
+      ADMIN_APP_URL: LOCAL_ADMIN_APP_URL,
+      // Seconds, and the four differ because the four questions do: a day to
+      // read your mail, an hour for a credential you just asked for, an hour
+      // again for a takeover-enabling address change, a week for an operator
+      // who may not start until Monday.
+      VERIFICATION_TOKEN_TTL: 24 * 3600,
+      PASSWORD_RESET_TOKEN_TTL: 3600,
+      EMAIL_CHANGE_TOKEN_TTL: 3600,
+      STAFF_ONBOARDING_TOKEN_TTL: 7 * 86400,
+      RATE_LIMIT_PASSWORD_RESET_MAX: 3,
+      // The window that 3 is *per*: ADR-0071 §4 gives this limiter an hour of
+      // its own, where every other one takes the module's fixed 15 minutes.
+      RATE_LIMIT_PASSWORD_RESET_WINDOW: 3600,
     });
     expect(env.CORS_ORIGINS).toEqual([]);
   });
@@ -150,17 +169,20 @@ describe("envSchema", () => {
   });
 
   describe("production guards", () => {
-    // `TRUST_PROXY`, `MAIL_TRANSPORT` and `METRICS_TOKEN` are stated here,
-    // not defaulted, so each guard below fails for its own reason: since
-    // ADR-0059 §7 an unstated hop is itself a production failure, and since
-    // ADR-0066 §1–§2 so are an unstated mail transport and a missing metrics
-    // token — leaving any of them out would make every assertion in this
-    // block pass for four reasons at once.
+    // `TRUST_PROXY`, `MAIL_TRANSPORT`, `METRICS_TOKEN` and the two app URLs
+    // are stated here, not defaulted, so each guard below fails for its own
+    // reason: since ADR-0059 §7 an unstated hop is itself a production
+    // failure, since ADR-0066 §1–§2 so are an unstated mail transport and a
+    // missing metrics token, and since ADR-0071 §1 so is an app URL left on
+    // its development default — leaving any of them out would make every
+    // assertion in this block pass for six reasons at once.
     const production = {
       NODE_ENV: "production",
       TRUST_PROXY: "1",
       MAIL_TRANSPORT: "log",
       METRICS_TOKEN: "m".repeat(32),
+      CUSTOMER_APP_URL: "https://app.example.com",
+      ADMIN_APP_URL: "https://admin.example.com",
     } as const;
 
     it.each(KNOWN_PUBLIC_SECRETS)(
@@ -196,6 +218,8 @@ describe("envSchema", () => {
           NODE_ENV: "production",
           MAIL_TRANSPORT: "log",
           METRICS_TOKEN: "m".repeat(32),
+          CUSTOMER_APP_URL: "https://app.example.com",
+          ADMIN_APP_URL: "https://admin.example.com",
         }),
       ).toThrow(/TRUST_PROXY/);
       expect(() => parse({ ...production, TRUST_PROXY: "false" })).toThrow(
@@ -242,6 +266,75 @@ describe("envSchema", () => {
       expect(() => parse({ ...production, CORS_ORIGINS: "*" })).toThrow(
         /CORS_ORIGINS/,
       );
+    });
+
+    it("refuses either app URL left on its development default (ADR-0071 §1)", () => {
+      // The API builds every link it mails out of these, so an inherited
+      // localhost sends a verification or reset link into the recipient's own
+      // machine — and nothing in a response or a log says so. Each is asserted
+      // on its own, against a `production` that states the other, so neither
+      // passes because of the other's refusal.
+      expect(() =>
+        parse({ ...production, CUSTOMER_APP_URL: LOCAL_CUSTOMER_APP_URL }),
+      ).toThrow(/CUSTOMER_APP_URL/);
+      expect(() =>
+        parse({ ...production, ADMIN_APP_URL: LOCAL_ADMIN_APP_URL }),
+      ).toThrow(/ADMIN_APP_URL/);
+    });
+
+    it.each([
+      "http://localhost:3000",
+      "http://127.0.0.1:3002",
+      "http://[::1]:3002",
+      "https://localhost:3002",
+    ])("refuses %s, which is the same failure by another spelling", (url) => {
+      // The reason the refusal reads the parsed URL rather than comparing
+      // against the two committed defaults (`D18.1`'s `security-reviewer`):
+      // an exact comparison refuses two strings and waves through every other
+      // way of writing the recipient's own machine.
+      expect(() => parse({ ...production, CUSTOMER_APP_URL: url })).toThrow(
+        /CUSTOMER_APP_URL/,
+      );
+    });
+
+    it("refuses a plain-http app origin in production, loopback or not", () => {
+      // The half no comparison against a default could have caught. These
+      // links carry a single-use token that can take an account over, in a
+      // fragment: over http the whole URL sits in the browser bar and crosses
+      // the network in the clear.
+      expect(() =>
+        parse({ ...production, CUSTOMER_APP_URL: "http://app.example.com" }),
+      ).toThrow(/CUSTOMER_APP_URL/);
+      expect(() =>
+        parse({ ...production, ADMIN_APP_URL: "http://admin.internal" }),
+      ).toThrow(/ADMIN_APP_URL/);
+    });
+
+    it("takes the two app URLs a real deployment states", () => {
+      const env = parse(production);
+
+      expect(env.CUSTOMER_APP_URL).toBe("https://app.example.com");
+      expect(env.ADMIN_APP_URL).toBe("https://admin.example.com");
+    });
+
+    it("leaves both defaults alone outside production", () => {
+      // The whole point of the refusal is that it is production's to answer
+      // (ADR-0004): a developer's machine serves both SPAs on localhost.
+      expect(parse().CUSTOMER_APP_URL).toBe(LOCAL_CUSTOMER_APP_URL);
+      expect(parse().ADMIN_APP_URL).toBe(LOCAL_ADMIN_APP_URL);
+      expect(() => parse({ NODE_ENV: "test" })).not.toThrow();
+    });
+
+    it("refuses an app URL that is not a bare origin", () => {
+      // `originSchema`, for the reason CORS_ORIGINS uses it: `localhost:3002`
+      // parses as a URL with `localhost:` for a scheme, and a trailing path
+      // would be concatenated into every link the API mails.
+      expect(() =>
+        parse({ ...production, CUSTOMER_APP_URL: "app.example.com" }),
+      ).toThrow(/CUSTOMER_APP_URL/);
+      expect(() =>
+        parse({ ...production, CUSTOMER_APP_URL: "https://app.example.com/" }),
+      ).toThrow(/CUSTOMER_APP_URL/);
     });
   });
 });
@@ -384,6 +477,8 @@ describe("the ADR-0066 seams", () => {
       NODE_ENV: "production",
       TRUST_PROXY: "1",
       METRICS_TOKEN: "m".repeat(32),
+      CUSTOMER_APP_URL: "https://app.example.com",
+      ADMIN_APP_URL: "https://admin.example.com",
     };
 
     expect(() => loadConfig(production)).toThrow(/MAIL_TRANSPORT/);
@@ -398,6 +493,8 @@ describe("the ADR-0066 seams", () => {
       NODE_ENV: "production",
       TRUST_PROXY: "1",
       MAIL_TRANSPORT: "log",
+      CUSTOMER_APP_URL: "https://app.example.com",
+      ADMIN_APP_URL: "https://admin.example.com",
     };
 
     // The body is numbers, but the numbers name every route the API has.

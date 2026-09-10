@@ -210,6 +210,45 @@ describe("dev fixtures", () => {
     ]);
   });
 
+  it("stamps every fixture but the pending one verified (ADR-0071 §3)", async () => {
+    // The invariant `email_verified_at` exists to buy: an `active` user has a
+    // proven address. A fixture that broke it would be the one population in
+    // the database that does, and the failure would land on whoever next
+    // signed in as `customer@machxi.local` once `D18.3` starts refusing an
+    // unverified login.
+    //
+    // `pending@machxi.local` is the deliberate exception and the reason the
+    // fixture exists from D18 on: it is the row the verification flow has
+    // something to do to, and the one `AUTH_EMAIL_UNVERIFIED` is proved
+    // against. Its stamp must stay null, so this asserts both directions.
+    const rows = await client.db
+      .select({
+        email: users.email,
+        status: users.status,
+        emailVerifiedAt: users.emailVerifiedAt,
+      })
+      .from(users);
+
+    expect(rows.length).toBe(DEV_USERS.length);
+
+    for (const row of rows) {
+      if (row.status === "pending_verification") {
+        expect(row.emailVerifiedAt).toBeNull();
+      } else {
+        expect(row.emailVerifiedAt).toBeInstanceOf(Date);
+      }
+    }
+
+    // Not vacuous in either direction: the fixtures must actually carry one of
+    // each, or the loop above proves whichever half happens to be present.
+    expect(
+      rows.filter((row) => row.status === "pending_verification").length,
+    ).toBe(1);
+    expect(rows.filter((row) => row.emailVerifiedAt !== null).length).toBe(
+      DEV_USERS.length - 1,
+    );
+  });
+
   it("signs the fixtures in with the committed password", async () => {
     const manager = await client.db.query.staff.findFirst({
       where: eq(staff.email, DEV_STAFF[0].email),

@@ -130,6 +130,33 @@ export const ORGANIZATION_OWNER_ROLE = "owner" satisfies OrganizationRole;
  * order is the lifecycle: `pending` first, then the three ways it ends, then
  * the one that just happens.
  */
+/**
+ * What a row of `account_tokens` is for (ADR-0071 §1).
+ *
+ * One table and one mechanism behind five flows — a single-use token, hashed
+ * at rest, delivered in a link's fragment and consumed once inside the
+ * transaction that acts on it — so this tuple is what tells two live tokens of
+ * the same principal apart. A `pgEnum` like every other one here and, unlike
+ * {@link INVITATION_STATUSES}, a stored fact: the purpose is written at the
+ * mint and never derived.
+ *
+ * The organization invitation is deliberately **not** a value here. It keeps
+ * its own table and its own `token_hash` because it carries organization state
+ * a generic row does not (ADR-0067 §2, as ADR-0071 §1 inherits it), and a
+ * purpose that named it would be a second place to look for the same row.
+ *
+ * Each purpose has its own TTL in the API's configuration, which is where a
+ * duration belongs — a record decides that the windows differ and by what
+ * argument, not what the numbers are.
+ */
+export const TOKEN_PURPOSES = [
+  "verify_email",
+  "reset_password",
+  "change_email",
+  "staff_onboarding",
+] as const;
+export type TokenPurpose = (typeof TOKEN_PURPOSES)[number];
+
 export const INVITATION_STATUSES = [
   "pending",
   "accepted",

@@ -5,11 +5,13 @@ import {
   POPULATIONS,
   STAFF_ROLES,
   STAFF_STATUSES,
+  TOKEN_PURPOSES,
   USER_ROLES,
   USER_STATUSES,
 } from "@repo/contracts";
 
 import {
+  accountTokens,
   auditActorTypeEnum,
   auditEvents,
   impersonationHandoffs,
@@ -19,6 +21,7 @@ import {
   staffRoleEnum,
   staffRoles,
   staffStatusEnum,
+  tokenPurposeEnum,
   userRoleEnum,
   userRoles,
   users,
@@ -48,6 +51,7 @@ describe("enums", () => {
     // The same tuple behind two Postgres types, on purpose (ADR-0058): a live
     // session and a recorded fact must be free to grow apart.
     ["audit_actor_type", auditActorTypeEnum, POPULATIONS],
+    ["token_purpose", tokenPurposeEnum, TOKEN_PURPOSES],
   ])(
     "%s mirrors its @repo/contracts tuple, in order",
     (name, pgEnum, contractValues) => {
@@ -75,8 +79,13 @@ describe("staff", () => {
     expect(email?.isUnique).toBe(true);
   });
 
-  it("requires a password hash and both names", () => {
-    expect(columns.get("passwordHash")?.notNull).toBe(true);
+  it("requires both names but no longer a password hash (ADR-0071 §8)", () => {
+    // Nullable since `D18.1`: an `invited` operator has no password at all
+    // until they consume the onboarding token, which is better than a
+    // placeholder hash somebody had to invent — that would leave a verifiable
+    // digest on a row nobody has proved anything about, and make `invited`
+    // indistinguishable from `active` at the column.
+    expect(columns.get("passwordHash")?.notNull).toBe(false);
     expect(columns.get("firstName")?.notNull).toBe(true);
     expect(columns.get("lastName")?.notNull).toBe(true);
   });
@@ -106,6 +115,89 @@ describe("users", () => {
   it("is soft-deletable", () => {
     expect(columns.get("deletedAt")?.notNull).toBe(false);
     expect(columns.has("deletedAt")).toBe(true);
+  });
+
+  it("records when the address was proven, and leaves it null (ADR-0071 §3)", () => {
+    // Nullable with no default is the decision, not an oversight: `null` is
+    // what a `pending_verification` row carries, and a defaulted column would
+    // make every account claim a proof nobody gave.
+    expect(columns.get("emailVerifiedAt")?.notNull).toBe(false);
+    expect(columns.get("emailVerifiedAt")?.hasDefault).toBe(false);
+    expect(columns.get("emailVerifiedAt")?.getSQLType()).toBe(
+      "timestamp with time zone",
+    );
+  });
+});
+
+describe("account_tokens", () => {
+  const config = getTableConfig(accountTokens);
+  const columns = columnsOf(accountTokens);
+
+  it("carries no foreign key, like the other two credential tables", () => {
+    // Postgres cannot express "references staff or users depending on
+    // principal_type" (ADR-0018), staff are hard-deleted (ADR-0028), and a
+    // consumed row is the record of a mint that happened. Every consume looks
+    // its principal up itself.
+    expect(config.foreignKeys).toHaveLength(0);
+  });
+
+  it("stores only the hash of the token, uniquely (ADR-0071 §1)", () => {
+    // The `sessions.refresh_token_hash` storage form, for the reason that
+    // column has it: a database read must not yield a usable credential.
+    expect(columns.has("token")).toBe(false);
+    expect(columns.get("tokenHash")?.notNull).toBe(true);
+    expect(columns.get("tokenHash")?.isUnique).toBe(true);
+  });
+
+  it("names the purpose and the principal, and requires all three", () => {
+    expect(columns.get("purpose")?.notNull).toBe(true);
+    expect(columns.get("principalType")?.notNull).toBe(true);
+    expect(columns.get("principalId")?.notNull).toBe(true);
+  });
+
+  it("makes single use a column, not a convention", () => {
+    // `consumed_at` nullable is what lets a consume be atomic — `update …
+    // where consumed_at is null returning` — so a replay updates no row rather
+    // than being caught by a check the caller might forget.
+    expect(columns.get("expiresAt")?.notNull).toBe(true);
+    expect(columns.get("consumedAt")?.notNull).toBe(false);
+  });
+
+  it("carries an optional jsonb payload for the one flow that needs one", () => {
+    // `change_email` and nothing else (ADR-0071 §6). A nullable `new_email`
+    // column per flow is how a shared table stops being one.
+    expect(columns.get("payload")?.notNull).toBe(false);
+    expect(columns.get("payload")?.getSQLType()).toBe("jsonb");
+  });
+
+  it("indexes the re-mint lookup and the expiry the sweep scans", () => {
+    expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      "account_tokens_expires_at_idx",
+      "account_tokens_principal_purpose_idx",
+    ]);
+  });
+
+  it("leads the lookup index with the principal, not the purpose", () => {
+    // The selective half: a deployment has four purposes and as many
+    // principals as it has accounts.
+    const index = config.indexes.find(
+      (candidate) =>
+        candidate.config.name === "account_tokens_principal_purpose_idx",
+    );
+
+    // `"name" in column` because an index entry may be a raw `SQL` expression
+    // rather than a column, and drizzle types the array as the union. Nothing
+    // here declares one — the fallback exists so the assertion reads the
+    // shape rather than asserting a cast.
+    //
+    // TS property names, like `columnsOf` above: `casing: "snake_case"` is
+    // applied by drizzle-kit when it writes the SQL, so the objects in the
+    // schema still carry the camelCase keys.
+    expect(
+      index?.config.columns.map((column) =>
+        "name" in column ? column.name : "(expression)",
+      ),
+    ).toEqual(["principalType", "principalId", "purpose"]);
   });
 });
 
@@ -310,6 +402,8 @@ describe("shared column helpers", () => {
     // A mutable row — the consume writes `consumed_at` — so it takes the pair
     // like every other table; `audit_events` is the one documented exception.
     ["impersonation_handoffs", impersonationHandoffs],
+    // Mutable for the same reason: the consume writes `consumed_at`.
+    ["account_tokens", accountTokens],
   ])("gives %s created_at and updated_at, both defaulted", (_name, table) => {
     const columns = columnsOf(table);
 

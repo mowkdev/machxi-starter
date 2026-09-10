@@ -241,6 +241,16 @@ const noAuditTable = [
  * Exported for that test alone. Nothing else should read it.
  */
 export const RESTRICTED_SCHEMA_TABLE_IMPORTS = [
+  // The one token table behind every mail flow (ADR-0071 §1). Exactly the
+  // protection `sessions` and `impersonationHandoffs` get and no more: this
+  // list feeds `noSchemaTables`, which covers services and controllers, so a
+  // *repository* may still import the table — that is the layering rule
+  // (ADR-0009), not a single-writer rule. `core/tokens` being the only place
+  // that mints and consumes is a convention this list does not enforce; the
+  // `noAuditTable` shape below is what enforcing it would look like.
+  // (`D18.1`'s `security-reviewer`, on a comment that claimed more than the
+  // rule delivers.)
+  "accountTokens",
   // `audit_events` is append-only by decision (ADR-0058), and the decision is
   // only real if no service can reach the table: the writer in `core/audit` is
   // the one insert path, and it holds no update or delete. The database
@@ -280,6 +290,7 @@ const noSchemaTables = [
       "principalTypeEnum",
       "staffRoleEnum",
       "staffStatusEnum",
+      "tokenPurposeEnum",
       "userRoleEnum",
       "userStatusEnum",
     ],

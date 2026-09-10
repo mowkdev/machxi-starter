@@ -114,6 +114,51 @@ export const KNOWN_PUBLIC_SEED_PASSWORDS: readonly string[] = [
 const MIN_JWT_SECRET_LENGTH = 32;
 
 /**
+ * The two SPA origins a developer's machine serves (ADR-0071 §1).
+ *
+ * They are the schema's defaults **and** what production refuses, which is the
+ * `TRUST_PROXY` shape (ADR-0059 §7): a default that makes a fresh clone work
+ * with no configuration at all, and a refusal that stops a deployment
+ * inheriting it. The failure being designed out is specific — the API composes
+ * every link it mails out of these, so an inherited `localhost` would send a
+ * password-reset link into the recipient's own machine, and nothing in a
+ * response or a log would say so. It is the recipient who discovers it.
+ */
+export const LOCAL_CUSTOMER_APP_URL = "http://localhost:3002";
+export const LOCAL_ADMIN_APP_URL = "http://localhost:3001";
+
+/**
+ * Whether an app origin is one a production deployment must not mail links to.
+ *
+ * **The parsed URL, not string identity against the two constants above**
+ * (`D18.1`'s `security-reviewer`). An exact comparison refuses exactly two
+ * spellings and waves through `http://localhost:3000`, `http://127.0.0.1:3002`
+ * and `http://[::1]:3002` — every one of which reproduces the failure the
+ * refusal exists to stop, a link mailed into the recipient's own machine.
+ *
+ * The scheme is the second half and the one no comparison against a default
+ * could ever have caught: these links carry single-use, takeover-enabling
+ * tokens in a fragment, and over `http:` the whole URL sits in the browser bar
+ * and crosses the network in the clear. The repository already treats a scheme
+ * as a security constraint where a value decides where something sensitive
+ * goes (`ERROR_REPORTING_DSN`, `REDIS_URL`); this is that rule applied to the
+ * one value that decides where a credential is delivered.
+ */
+const isLocalOrInsecureAppUrl = (value: string): boolean => {
+  const url = URL.parse(value);
+
+  // Unreachable: `originSchema()` has already refused anything unparseable, so
+  // this is type narrowing rather than a second validation. Refusing on `null`
+  // is the safe direction either way.
+  if (url === null) return true;
+
+  return (
+    url.protocol !== "https:" ||
+    ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname)
+  );
+};
+
+/**
  * A browser origin: scheme, host and optional port, and nothing else.
  *
  * Not `z.url()` on its own — `new URL("localhost:3001")` succeeds, reading
@@ -359,6 +404,37 @@ export const envSchema = z
       .int()
       .positive()
       .default(10),
+    /**
+     * The `3 / hour` budget ADR-0020 reserved a row for and ADR-0071 §4
+     * spends, keyed on address **and** email over a window of its own.
+     *
+     * Three rather than the login limiter's ten, and an hour rather than
+     * fifteen minutes, because the thing being rationed is different: a login
+     * attempt costs the attacker a guess, while a `forgot` costs the *victim*
+     * a message in their inbox. The limit that matters here is the one that
+     * stops a stranger mailing somebody twenty times, and it is generous
+     * against the honest case — nobody legitimately asks for a fourth reset
+     * link inside an hour, having already been sent three.
+     */
+    RATE_LIMIT_PASSWORD_RESET_MAX: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(3),
+    /**
+     * **The window that number is per**, and the reason it is a variable at
+     * all: every other limiter takes `RATE_LIMIT_WINDOW_MS`, a fixed fifteen
+     * minutes in `core/middleware/rate-limit.ts`, and ADR-0071 §4 decides this
+     * one is "the limiter's own, one hour".
+     *
+     * It lands here beside the count rather than in the step that builds the
+     * limiter (`D18.2`), because a `3` with no hour to be per is a `3` in
+     * fifteen minutes: the only window reachable from `config.rateLimit` would
+     * be the shared one, and the deployed budget would silently be twelve
+     * messages an hour into a stranger's inbox — four times the decided
+     * number, with nothing failing. (`D18.1`'s `security-reviewer`.)
+     */
+    RATE_LIMIT_PASSWORD_RESET_WINDOW: durationSchema.default(3600),
 
     /**
      * How long an impersonated session may live, from the exchange (ADR-0057
@@ -430,6 +506,52 @@ export const envSchema = z
           .max(30 * 24 * 60 * 60),
       )
       .default(7 * 24 * 60 * 60),
+    // ─── Mail flows (ADR-0071 §1) ─────────────────────────────────────────
+    /**
+     * Where each SPA answers, so the API can build the links it mails.
+     *
+     * The API learns the two origins because it is the side that composes the
+     * message: a template writes `${customerAppUrl}/verify-email#token=…`, and
+     * a client cannot be asked to supply the origin its own link will point at
+     * — that would let an unauthenticated caller choose where a credential is
+     * delivered, which is a phishing endpoint with extra steps.
+     *
+     * `originSchema()` rather than a bare `z.url()`, for the reason
+     * `CORS_ORIGINS` uses it and one more: `new URL("localhost:3002")` parses
+     * with `localhost:` as the scheme, so the most likely typo would sail
+     * through and every link in every message would be unclickable. The
+     * defaults are the two dev servers (3002 customer, 3001 admin), beside the
+     * `VITE_` twins each SPA already reads, and **production must state both**
+     * — a deployment that inherited `http://localhost:3002` would mail links
+     * into the recipient's own machine.
+     */
+    CUSTOMER_APP_URL: originSchema().default(LOCAL_CUSTOMER_APP_URL),
+    ADMIN_APP_URL: originSchema().default(LOCAL_ADMIN_APP_URL),
+    /**
+     * How long each kind of link stays redeemable. The duration form of every
+     * other TTL here, parsed to seconds at startup.
+     *
+     * Four numbers rather than one, because the four windows answer different
+     * questions (ADR-0071 §1). A verification link is read whenever the person
+     * next opens their mail — a day. A reset link is a credential somebody
+     * asked for a minute ago and is about to use — an hour, and the same for a
+     * change of address, which is takeover-enabling and therefore held to the
+     * reset's standard rather than the verification's. A staff onboarding link
+     * is sent to somebody who may not start until Monday — a week, and it is
+     * the least exposed of the four because it reaches an operator's work
+     * address rather than an address a stranger typed into a form.
+     *
+     * No ceiling, unlike the two impersonation windows: those have one because
+     * a phrase in the record ("a fixed end", "sixty seconds is all an onlooker
+     * gets") would otherwise be retired by a typo. Nothing here makes such a
+     * claim — the mitigation ADR-0071 §1 names for a fragment-borne token is
+     * the TTL itself, so a deployment that widens one is choosing a weaker
+     * mitigation deliberately, not defeating a property silently.
+     */
+    VERIFICATION_TOKEN_TTL: durationSchema.default(24 * 3600),
+    PASSWORD_RESET_TOKEN_TTL: durationSchema.default(3600),
+    EMAIL_CHANGE_TOKEN_TTL: durationSchema.default(3600),
+    STAFF_ONBOARDING_TOKEN_TTL: durationSchema.default(7 * 86400),
     CORS_ORIGINS: csvSchema,
 
     // `z.stringbool()`, never `z.coerce.boolean()`: the latter is
@@ -545,6 +667,26 @@ export const envSchema = z
       path: ["TRUST_PROXY"],
       message:
         'must state the proxy hop in production: a count, a CIDR list, or "loopback". Both constants are refused, and so is anything that resolves to one — "true" makes Express take the left-most X-Forwarded-For entry verbatim, so req.ip becomes attacker-controlled and the login rate limit bypassable (ADR-0020), while "false", "0" and an empty value make every request behind a proxy report the proxy\'s address instead, collapsing the login limiter, the refresh limiter and the audit trail onto one key (ADR-0059 §7). A production deployment with nothing in front of it is the case this refuses to guess at',
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      !isLocalOrInsecureAppUrl(env.CUSTOMER_APP_URL),
+    {
+      path: ["CUSTOMER_APP_URL"],
+      message:
+        "must be an https origin that is not a loopback address in production (ADR-0071 §1). The API builds every link it mails out of it, so a development value — the committed http://localhost:3002, or any 127.0.0.1 / ::1 spelling of it — sends verification, reset and invitation links into the recipient's own machine, and plain http puts a single-use token that can take the account over in the browser bar and on the wire in the clear. Nothing in a response or a log says so; the recipient discovers it",
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      !isLocalOrInsecureAppUrl(env.ADMIN_APP_URL),
+    {
+      path: ["ADMIN_APP_URL"],
+      message:
+        "must be an https origin that is not a loopback address in production, for the reason CUSTOMER_APP_URL must (ADR-0071 §1): the staff onboarding link is built out of it, and it hands whoever opens it a password on an operator account",
     },
   )
   .refine(

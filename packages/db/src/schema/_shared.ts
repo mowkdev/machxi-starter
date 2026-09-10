@@ -10,6 +10,7 @@ import {
   STAFF_ROLES,
   STAFF_STATUSES,
   THEMES,
+  TOKEN_PURPOSES,
   USER_ROLES,
   USER_STATUSES,
 } from "@repo/contracts";
@@ -139,3 +140,16 @@ export const organizationRoleEnum = pgEnum(
   "organization_role",
   ORGANIZATION_ROLES,
 );
+
+/**
+ * What a row of `account_tokens` is for (ADR-0071 §1), built from the
+ * `@repo/contracts` tuple like every other one here.
+ *
+ * Deliberately **not** `principal_type`-adjacent and deliberately not widened
+ * to cover the organization invitation: that row lives in its own table with
+ * its own `token_hash` because it carries organization state a generic row
+ * does not (ADR-0067 §2). The enum is expected to grow — a fifth flow is a
+ * fifth label and an `ALTER TYPE … ADD VALUE`, which appends, so no row and no
+ * sort order moves.
+ */
+export const tokenPurposeEnum = pgEnum("token_purpose", TOKEN_PURPOSES);

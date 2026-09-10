@@ -94,6 +94,11 @@ export const TRUNCATED_TABLES = [
   // a handoff row minted by one integration file would otherwise still be
   // consumable in the next.
   "impersonation_handoffs",
+  // The same fact for the same reason one table further (ADR-0071 §1): a
+  // verification or reset token minted by one integration file carries no
+  // foreign key, so nothing sweeps it as a side effect and the next file's
+  // "the token consumes once" would be answered by somebody else's row.
+  "account_tokens",
   // The one table `cascade` can never reach: `audit_events` carries no foreign
   // key by decision (ADR-0058), so nothing sweeps it as a side effect and a
   // row written by one integration file would otherwise be counted by the

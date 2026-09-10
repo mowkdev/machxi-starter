@@ -1,7 +1,11 @@
 import { inArray, lt, or } from "drizzle-orm";
 
 import { createDb, type DbExecutor } from "./client.js";
-import { impersonationHandoffs, sessions } from "./schema/index.js";
+import {
+  accountTokens,
+  impersonationHandoffs,
+  sessions,
+} from "./schema/index.js";
 import { isEntryPoint } from "./tooling/entrypoint.js";
 import { readDatabaseUrl, readNodeEnv } from "./tooling/env.js";
 import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
@@ -18,12 +22,13 @@ import { describeTarget, writeErrorLine, writeLine } from "./tooling/report.js";
  * yet; when one arrives it calls {@link pruneSessions} instead of shelling
  * out, which is why the query lives in a function rather than in `main`.
  *
- * **Two tables since `D13.4`** (ADR-0057 §2, which decides that "the
- * `db:sessions:prune` sweep grows their deletion"): `impersonation_handoffs`
- * holds the one-time tokens a mint issues, and a consumed or expired row is
+ * **Three tables since `D18.1`.** `impersonation_handoffs` joined at `D13.4`
+ * (ADR-0057 §2, which decides that "the `db:sessions:prune` sweep grows their
+ * deletion") and `account_tokens` joins here on the same sentence in ADR-0071
+ * §1: both hold one-time tokens, and a consumed or expired row of either is
  * inert the moment it stops being redeemable. The command keeps its name — the
  * job is "delete the credential rows nothing can use any more", and a spent
- * handoff is one — and reports the two counts separately, so an operator
+ * verification link is one — and reports the counts separately, so an operator
  * reading the line can see which table grew.
  *
  * Unlike `db:reset` and `db:seed --dev` this is **not** refused in production —
@@ -180,6 +185,52 @@ export const pruneImpersonationHandoffs = async (
   });
 };
 
+/**
+ * Deletes mail-flow tokens that expired, or were consumed, before `cutoff`
+ * (ADR-0071 §1).
+ *
+ * The same cutoff, the same predicate and the same batching as the handoff
+ * sweep above, deliberately: retention has one rule in this file, and a third
+ * constant would be a third decision nobody made. The TTLs differ by three
+ * orders of magnitude across the four purposes — an hour for a reset, a week
+ * for a staff onboarding — and none of that matters here, because a row is
+ * only swept once it is *already* unredeemable and `RETENTION_DAYS` is
+ * entirely audit-trail grace on top of that.
+ *
+ * A row that is neither consumed nor past its expiry is **never** touched: it
+ * is somebody's unopened mail. The `expires_at` index is what makes the first
+ * half of the predicate a scan of the dead rows rather than of the table.
+ *
+ * @returns how many rows were deleted.
+ */
+export const pruneAccountTokens = async (
+  db: DbExecutor,
+  cutoff: Date,
+  batchSize: number = PRUNE_BATCH_SIZE,
+): Promise<number> => {
+  const spent = or(
+    lt(accountTokens.expiresAt, cutoff),
+    lt(accountTokens.consumedAt, cutoff),
+  );
+
+  return pruneInBatches(batchSize, async () => {
+    const result = await db
+      .delete(accountTokens)
+      .where(
+        inArray(
+          accountTokens.id,
+          db
+            .select({ id: accountTokens.id })
+            .from(accountTokens)
+            .where(spent)
+            .limit(batchSize),
+        ),
+      );
+
+    return result.count;
+  });
+};
+
 const main = async (): Promise<void> => {
   // The **application** role, alone among this package's CLI entry points
   // (ADR-0061 §1): this one runs no DDL — two `delete … where expired`
@@ -204,9 +255,10 @@ const main = async (): Promise<void> => {
     // justify an exclusive lock on the table an API is authenticating against.
     const deleted = await pruneSessions(client.db, cutoff);
     const handoffs = await pruneImpersonationHandoffs(client.db, cutoff);
+    const tokens = await pruneAccountTokens(client.db, cutoff);
 
     writeLine(
-      `db:sessions:prune ✓ ${String(deleted)} session(s) and ${String(handoffs)} handoff(s) removed`,
+      `db:sessions:prune ✓ ${String(deleted)} session(s), ${String(handoffs)} handoff(s) and ${String(tokens)} token(s) removed`,
     );
   } finally {
     await client.close();

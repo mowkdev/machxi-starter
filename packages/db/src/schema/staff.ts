@@ -31,11 +31,23 @@ export const staff = pgTable(
     /** Case-insensitive and unique **within staff** — the same person may also be a user. */
     email: citext().notNull().unique(),
     /**
-     * argon2id PHC string (ADR-0018). `not null`, unlike `users.password_hash`:
-     * staff have no passwordless path — they are created by an admin with an
-     * initial password.
+     * argon2id PHC string (ADR-0018).
+     *
+     * **Nullable since ADR-0071 §8**, where ADR-0017's "staff have no
+     * passwordless path" stops being true: an operator created without a
+     * password is `invited` with no hash at all, and sets one by consuming the
+     * onboarding token mailed to them. `null` means "no password login for
+     * this account", never "any password matches" — the same reading
+     * `users.password_hash` has carried since D1, and the auth service's
+     * `principal.passwordHash !== null` guard is the one that enforces it for
+     * both populations.
+     *
+     * A placeholder hash was the alternative and is worse: it is a credential
+     * somebody has to invent, it makes `invited` indistinguishable from
+     * `active` at the column, and it leaves a verifiable digest on a row that
+     * nobody has proved anything about.
      */
-    passwordHash: text().notNull(),
+    passwordHash: text(),
     firstName: text().notNull(),
     lastName: text().notNull(),
     status: staffStatusEnum().notNull().default("active"),

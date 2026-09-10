@@ -98,6 +98,30 @@ services:
       # where an operator reads it. (`D14.6`'s `security-reviewer`.)
       - MAIL_TRANSPORT
       - MAIL_FROM
+      # Where each SPA answers, as the **API** reads them: it builds every link
+      # it mails out of these (ADR-0071 §1). `${…}` rather than bare keys and
+      # rather than a `:-` fallback, for the reason `TRUST_PROXY` above takes
+      # the same form — the schema refuses the committed development defaults
+      # in production, and a fallback written here would supply the inherited
+      # value itself and put that refusal back to sleep. Two names beside the
+      # `VITE_` build arguments below, which carry the same origins into the
+      # browser bundles: same values, different consumers.
+      - CUSTOMER_APP_URL=${CUSTOMER_APP_URL}
+      - ADMIN_APP_URL=${ADMIN_APP_URL}
+      # The four link lifetimes (ADR-0071 §1). Bare keys: unset means the
+      # schema's own 24h / 1h / 1h / 7d, which are sized by what the recipient
+      # is being asked to do rather than by the deployment.
+      # The reset limiter's budget and the hour it is per (ADR-0071 §4). Bare
+      # keys, so unset means the schema's 3/hour — and this is the first
+      # limiter here whose default is an anti-abuse number rather than a
+      # capacity one, which is why it is reachable at all. (`D18.1`'s
+      # `security-reviewer`.)
+      - RATE_LIMIT_PASSWORD_RESET_MAX
+      - RATE_LIMIT_PASSWORD_RESET_WINDOW
+      - VERIFICATION_TOKEN_TTL
+      - PASSWORD_RESET_TOKEN_TTL
+      - EMAIL_CHANGE_TOKEN_TTL
+      - STAFF_ONBOARDING_TOKEN_TTL
       - SMTP_HOST
       - SMTP_PORT
       - SMTP_SECURE

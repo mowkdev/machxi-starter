@@ -11,6 +11,7 @@ import {
   STAFF_ROLES,
   STAFF_STATUSES,
   SUPER_ADMIN_ROLE,
+  TOKEN_PURPOSES,
   USER_ROLES,
   USER_STATUSES,
   type InvitationStatus,
@@ -20,6 +21,7 @@ import {
   type Role,
   type StaffRole,
   type StaffStatus,
+  type TokenPurpose,
   type UserRole,
   type UserStatus,
 } from "../index.js";
@@ -72,6 +74,7 @@ describe("enums", () => {
       ORGANIZATION_KINDS,
       ORGANIZATION_ROLES,
       INVITATION_STATUSES,
+      TOKEN_PURPOSES,
     ]) {
       expect(new Set(values).size).toBe(values.length);
     }
@@ -82,6 +85,15 @@ describe("enums", () => {
 
     expect(schema.parse("admin")).toBe("admin");
     expect(schema.safeParse("customer").success).toBe(false);
+
+    // The same tuple that becomes `pgEnum("token_purpose", …)` also has to
+    // validate a request body (ADR-0023, ADR-0071 §1): one declaration, two
+    // consumers, which is the whole reason these live here rather than in
+    // `@repo/db`.
+    const purposes = z.enum(TOKEN_PURPOSES);
+
+    expect(purposes.parse("verify_email")).toBe("verify_email");
+    expect(purposes.safeParse("invitation").success).toBe(false);
   });
 
   it("declares the organization kinds and membership roles (ADR-0067 §2)", () => {
@@ -126,6 +138,24 @@ describe("enums", () => {
     expect(invitable.safeParse("owner").success).toBe(false);
   });
 
+  it("declares the four token purposes (ADR-0071 §1)", () => {
+    expect(TOKEN_PURPOSES).toEqual([
+      "verify_email",
+      "reset_password",
+      "change_email",
+      "staff_onboarding",
+    ]);
+  });
+
+  it("leaves the organization invitation out of the purposes (ADR-0071 §1)", () => {
+    // It keeps its own table and its own `token_hash`, because it carries
+    // organization state a generic row does not. A purpose named for it would
+    // be a second place to look for one row.
+    for (const purpose of TOKEN_PURPOSES) {
+      expect(purpose).not.toContain("invitation");
+    }
+  });
+
   it("derives the unions from the arrays rather than restating them", () => {
     const population: Population = "staff";
     const staffRole: StaffRole = "manager";
@@ -136,6 +166,7 @@ describe("enums", () => {
     const organizationKind: OrganizationKind = "personal";
     const organizationRole: OrganizationRole = "owner";
     const invitationStatus: InvitationStatus = "pending";
+    const tokenPurpose: TokenPurpose = "verify_email";
 
     expect([
       population,
@@ -147,6 +178,7 @@ describe("enums", () => {
       organizationKind,
       organizationRole,
       invitationStatus,
-    ]).toHaveLength(9);
+      tokenPurpose,
+    ]).toHaveLength(10);
   });
 });

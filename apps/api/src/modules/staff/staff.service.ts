@@ -211,8 +211,17 @@ export const createStaffService = ({
     // exactly wrong (ADR-0013 — the message is developer-facing, but it must
     // not describe the wrong thing). Reachable once D2.4 can delete a staff
     // account inside its access token's remaining life.
+    // `passwordHash !== null` before the verify, since ADR-0071 §8 made the
+    // column nullable: an `invited` operator has no password, so there is
+    // nothing for a current-password check to succeed against. The same shape
+    // the users service has used since D1 — `null` is "no password login",
+    // never "any password matches", and the guard is what keeps the two
+    // readings apart. Unreachable through the guards today, because an
+    // `invited` row cannot hold a session to act with; written anyway, because
+    // the type is what makes that argument checkable rather than remembered.
     if (
       record !== undefined &&
+      record.passwordHash !== null &&
       (await hasher.verify(record.passwordHash, currentPassword))
     ) {
       return;

@@ -14,6 +14,7 @@ export const devUsersSeeder: Seeder = {
   name: "102-dev-users",
   run: async ({ db, hasher, log }) => {
     const passwordHash = await hasher.hash(DEV_PASSWORD);
+    const verifiedAt = new Date();
 
     await db
       .insert(users)
@@ -24,6 +25,23 @@ export const devUsersSeeder: Seeder = {
           firstName,
           lastName,
           status,
+          /*
+           * Every fixture but the pending one is stamped verified
+           * (ADR-0071 §3). The invariant is "an `active` user has a proven
+           * address", and a fixture that broke it would be the one population
+           * in the database that does — with the failure landing on whoever
+           * next tried to sign in as `customer@machxi.local`.
+           *
+           * `pending@machxi.local` keeps a null stamp, which is the whole
+           * point of that fixture from D18 on: it is the account the
+           * verification flow has something to do to, and the row
+           * `AUTH_EMAIL_UNVERIFIED` is proved against. `disabled@` *is*
+           * stamped — its address was asserted by the seeder that wrote it,
+           * and `disabled` is a decision about the account rather than a
+           * statement about the mailbox.
+           */
+          emailVerifiedAt:
+            status === "pending_verification" ? null : verifiedAt,
         })),
       )
       // The conflict target is the **partial** index `users_email_active_unique`

@@ -99,6 +99,13 @@
       "when": 1788525302673,
       "tag": "0013_invitation_token_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788996050450,
+      "tag": "0014_mail_flows",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
 import type {
+  accountTokens,
   auditEvents,
   impersonationHandoffs,
   organizationInvitations,
@@ -52,6 +53,16 @@ export type ImpersonationHandoff = InferSelectModel<
 export type NewImpersonationHandoff = InferInsertModel<
   typeof impersonationHandoffs
 >;
+
+/**
+ * A mail-flow token (ADR-0071 §1). One table behind five flows, discriminated
+ * by `purpose`; `payload` is empty for all of them but `change_email`.
+ *
+ * Like the handoff above, the raw token is never a column: `tokenHash` is the
+ * SHA-256, and nothing maps either onto the wire.
+ */
+export type AccountToken = InferSelectModel<typeof accountTokens>;
+export type NewAccountToken = InferInsertModel<typeof accountTokens>;
 
 /**
  * An audit row (ADR-0058).

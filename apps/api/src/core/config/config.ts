@@ -69,6 +69,26 @@ export interface AppConfig {
      */
     readonly impersonationHandoffTtlSec: number;
   };
+  /**
+   * Where each SPA answers, so the API can build the links it mails
+   * (ADR-0071 §1).
+   *
+   * Grouped as `apps` rather than folded into `http`: these are not this
+   * process's own listening address, they are two other origins it composes
+   * URLs for. `http.corsOrigins` is the allow-list of who may call in; this is
+   * where a message points somebody back to.
+   */
+  readonly apps: {
+    readonly customerUrl: string;
+    readonly adminUrl: string;
+  };
+  /** The four link lifetimes, in seconds (ADR-0071 §1). */
+  readonly tokens: {
+    readonly verificationTtlSec: number;
+    readonly passwordResetTtlSec: number;
+    readonly emailChangeTtlSec: number;
+    readonly staffOnboardingTtlSec: number;
+  };
   /** Organizations and their invitations (ADR-0067). */
   readonly organizations: {
     /**
@@ -83,6 +103,19 @@ export interface AppConfig {
     readonly refreshMax: number;
     /** Per window, keyed on the minting staff member's id (ADR-0057 §1). */
     readonly impersonationMax: number;
+    /**
+     * Per {@link passwordResetWindowSec}, keyed on address and email
+     * (ADR-0071 §4) — the one limiter whose window is its own rather than the
+     * shared fifteen minutes of `RATE_LIMIT_WINDOW_MS`.
+     */
+    readonly passwordResetMax: number;
+    /**
+     * That window, in seconds. Carried beside the count because the count
+     * means nothing without it: every other limiter here is per the module's
+     * fixed fifteen minutes, so a limiter built from `passwordResetMax` alone
+     * would deploy four times the budget ADR-0071 §4 decided.
+     */
+    readonly passwordResetWindowSec: number;
     /**
      * Where the counters live (ADR-0066 §4). `undefined` is the in-memory
      * store, which counts per process; a URL makes one budget out of N
@@ -169,6 +202,16 @@ export const toAppConfig = (env: Env): AppConfig =>
       impersonationSessionTtlSec: env.IMPERSONATION_SESSION_TTL,
       impersonationHandoffTtlSec: env.IMPERSONATION_HANDOFF_TTL,
     }),
+    apps: Object.freeze({
+      customerUrl: env.CUSTOMER_APP_URL,
+      adminUrl: env.ADMIN_APP_URL,
+    }),
+    tokens: Object.freeze({
+      verificationTtlSec: env.VERIFICATION_TOKEN_TTL,
+      passwordResetTtlSec: env.PASSWORD_RESET_TOKEN_TTL,
+      emailChangeTtlSec: env.EMAIL_CHANGE_TOKEN_TTL,
+      staffOnboardingTtlSec: env.STAFF_ONBOARDING_TOKEN_TTL,
+    }),
     organizations: Object.freeze({
       invitationTtlSec: env.ORGANIZATION_INVITATION_TTL,
     }),
@@ -177,6 +220,8 @@ export const toAppConfig = (env: Env): AppConfig =>
       loginMax: env.RATE_LIMIT_LOGIN_MAX,
       refreshMax: env.RATE_LIMIT_REFRESH_MAX,
       impersonationMax: env.RATE_LIMIT_IMPERSONATION_MAX,
+      passwordResetMax: env.RATE_LIMIT_PASSWORD_RESET_MAX,
+      passwordResetWindowSec: env.RATE_LIMIT_PASSWORD_RESET_WINDOW,
       redisUrl: env.REDIS_URL,
     }),
     mail: Object.freeze({

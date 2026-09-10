@@ -25,6 +25,7 @@ export {
 export * as schema from "./schema/index.js";
 
 export {
+  accountTokens,
   auditEvents,
   impersonationHandoffs,
   organizationInvitations,
@@ -48,6 +49,7 @@ export {
   staffRoleEnum,
   staffStatusEnum,
   themeEnum,
+  tokenPurposeEnum,
   userRoleEnum,
   userStatusEnum,
 } from "./schema/index.js";
@@ -63,8 +65,10 @@ export {
 } from "./organizations.js";
 
 export type {
+  AccountToken,
   AuditEvent,
   ImpersonationHandoff,
+  NewAccountToken,
   NewAuditEvent,
   NewImpersonationHandoff,
   NewOrganization,
