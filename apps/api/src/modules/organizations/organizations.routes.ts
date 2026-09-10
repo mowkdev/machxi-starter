@@ -298,11 +298,18 @@ export interface PublicInvitationsRouterDeps {
    * by nothing but a secret is limited **as an authentication route is**,
    * because guessing is the only attack on it.
    *
-   * The container builds it with the login limiter's numbers in a counter of
-   * its own — this body carries a token and no address, so its key degrades to
-   * the caller's, which is the same key a malformed `login` produces, and one
-   * shared instance would let sign-in noise from an office refuse its own
+   * The container builds it with `createTokenRouteRateLimiter` — ADR-0020's
+   * numbers on the **source alone**, reading no body — in a counter of its
+   * own, so sign-in noise from one office egress cannot refuse its own
    * invitees their link (`D18.5`'s argument for `password/reset`).
+   *
+   * **Corrected at `D18.8`, on that step's `security-reviewer`.** This
+   * paragraph used to say the login limiter's key "degrades to the caller's"
+   * on a body with no `email`, which ADR-0071 §4's `D18.7` amendment had
+   * already retracted in as many words: it does not degrade, it lets a caller
+   * *invent* the field and open a bucket per request. The wiring was already
+   * right; the reasoning beside it was the exact reasoning that would lead the
+   * next author to mount the login limiter on a token route.
    */
   readonly rateLimiter: RequestHandler;
 }

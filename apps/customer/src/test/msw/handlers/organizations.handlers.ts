@@ -1,13 +1,16 @@
 import {
+  acceptInvitationByTokenBody,
   createInvitationBody,
   createOrganizationBody,
   filtersToRecord,
   listInvitationsQuery,
   listMembershipsQuery,
+  lookupInvitationBody,
   membershipRoleBody,
   updateOrganizationBody,
   type CreateInvitationBody,
   type CreateOrganizationBody,
+  type InvitationLookupResource,
   type InvitationResource,
   type MembershipResource,
   type OrganizationResource,
@@ -18,7 +21,7 @@ import { http, type HttpHandler } from "msw";
 
 import { userPrincipal } from "@/test/principals";
 
-import { API } from "./auth.handlers";
+import { API, PUBLIC_API } from "./auth.handlers";
 import { fail, listOk, ok } from "./envelope";
 import { parseListSearch } from "./list-query";
 
@@ -46,7 +49,12 @@ import { parseListSearch } from "./list-query";
  * - `CONFLICT` on a slug somebody else already holds;
  * - `NOT_FOUND` for an organization the caller is not a member of — **never
  *   `403`** (ADR-0067 §4), because a `403` would confirm that the organization
- *   exists to somebody outside it.
+ *   exists to somebody outside it;
+ * - `NOT_FOUND` for a token the invitation lookup cannot read, one answer for
+ *   unknown, accepted, declined, revoked and expired alike (ADR-0071 §5);
+ * - `ORGANIZATION_INVITATION_ADDRESS_MISMATCH` on accepting a link whose
+ *   invited address is not the caller's — the condition that endpoint exists
+ *   for, and the one a permissive mock would erase entirely.
  *
  * **The caller is `userPrincipal()`'s customer**, the same fixture the session
  * stores in this suite are built from, because two of these screens turn on
@@ -191,12 +199,35 @@ export const RECEIVED_INVITATION: InvitationResource = {
   createdAt: "2026-09-05T10:00:00.000Z",
 };
 
+/**
+ * The token in the link `RECEIVED_INVITATION` was delivered with (`D18.8`,
+ * ADR-0071 §5).
+ *
+ * A fixture rather than a value the create handler mints, because no response
+ * body carries one and none ever will: the plaintext is returned to nobody and
+ * the row holds only its SHA-256 (ADR-0067 §2). A suite that walked the link
+ * has to be *given* the token, exactly as a person is given it by a message.
+ */
+export const INVITATION_TOKEN = "invitation-token-from-the-fragment";
+
 export interface OrganizationsMockState {
   organizations: OrganizationResource[];
   memberships: MembershipResource[];
   invitations: InvitationResource[];
   /** Invitations addressed to the caller's own address. */
   received: InvitationResource[];
+  /**
+   * The address the bearer on these requests belongs to (`D18.8`).
+   *
+   * **The mock's stand-in for `callerAccount(ctx)`**, which is what
+   * `accept-by-token` compares the invited address against (ADR-0071 §5). A
+   * handler cannot read a principal out of a fake bearer, and the refusal it
+   * gates is the whole point of the endpoint — so the suite states who is
+   * holding the browser and the handler answers accordingly. A test that
+   * renders a session under a different address sets this to the same one, or
+   * it is asserting against a service kinder than production (ADR-0036).
+   */
+  callerEmail: string;
   /** What the client actually asked for, for assertions that need the wire. */
   readonly seen: {
     created: CreateOrganizationBody[];
@@ -208,6 +239,10 @@ export interface OrganizationsMockState {
     revoked: { organizationId: string; id: string }[];
     accepted: string[];
     declined: string[];
+    /** The tokens `lookup` was asked about, in order. */
+    lookedUp: string[];
+    /** The tokens `accept-by-token` was asked to spend, in order. */
+    acceptedByToken: string[];
   };
 }
 
@@ -216,6 +251,7 @@ export const createOrganizationsMockState = (): OrganizationsMockState => ({
   memberships: MEMBERSHIP_ROWS.map((row) => ({ ...row })),
   invitations: INVITATION_ROWS.map((row) => ({ ...row })),
   received: [{ ...RECEIVED_INVITATION }],
+  callerEmail: CALLER.email,
   seen: {
     created: [],
     updated: [],
@@ -226,6 +262,8 @@ export const createOrganizationsMockState = (): OrganizationsMockState => ({
     revoked: [],
     accepted: [],
     declined: [],
+    lookedUp: [],
+    acceptedByToken: [],
   },
 });
 
@@ -260,6 +298,53 @@ const requireRole = (
   organization.role !== null && roles.includes(organization.role)
     ? null
     : fail(403, "FORBIDDEN");
+
+/**
+ * Taking an offer, which is one write reached two ways (ADR-0071 §5).
+ *
+ * `/:id/accept` names the invitation by an id the caller's own list gave them
+ * and `/accept-by-token` names it by the token out of a mailed link; what
+ * happens afterwards is the same statement in the same transaction — the row
+ * leaves the received list, the membership is created and the organization is
+ * answered with, so the client's next act needs no second request. Shared here
+ * rather than written twice, because a mock whose two paths could drift is a
+ * mock that can certify one of them against behaviour the other has.
+ */
+const joinFrom = (
+  state: OrganizationsMockState,
+  invitation: InvitationResource,
+): OrganizationResource => {
+  state.received = state.received.filter((row) => row.id !== invitation.id);
+
+  const joined: OrganizationResource = {
+    id: invitation.organizationId,
+    slug: invitation.organizationName.toLowerCase(),
+    name: invitation.organizationName,
+    kind: "team",
+    role: invitation.role,
+    createdBy: OTHER_MEMBER_ID,
+    createdAt: "2026-01-01T10:00:00.000Z",
+    updatedAt: "2026-01-01T10:00:00.000Z",
+    deletedAt: null,
+  };
+
+  state.organizations = [...state.organizations, joined];
+  state.memberships = [
+    ...state.memberships,
+    {
+      organizationId: joined.id,
+      userId: CALLER.id,
+      email: state.callerEmail,
+      firstName: CALLER.firstName,
+      lastName: CALLER.lastName,
+      role: invitation.role,
+      createdAt: "2026-09-05T12:00:00.000Z",
+      updatedAt: "2026-09-05T12:00:00.000Z",
+    },
+  ];
+
+  return joined;
+};
 
 const ownersOf = (
   state: OrganizationsMockState,
@@ -634,42 +719,83 @@ export const createOrganizationsHandlers = (
     if (invitation === undefined) return fail(404, "NOT_FOUND");
 
     state.seen.accepted.push(id);
-    state.received = state.received.filter((row) => row.id !== id);
-
-    const joined: OrganizationResource = {
-      id: invitation.organizationId,
-      slug: invitation.organizationName.toLowerCase(),
-      name: invitation.organizationName,
-      kind: "team",
-      role: invitation.role,
-      createdBy: OTHER_MEMBER_ID,
-      createdAt: "2026-01-01T10:00:00.000Z",
-      updatedAt: "2026-01-01T10:00:00.000Z",
-      deletedAt: null,
-    };
-
-    state.organizations = [...state.organizations, joined];
-    state.memberships = [
-      ...state.memberships,
-      {
-        organizationId: joined.id,
-        userId: CALLER.id,
-        email: CALLER.email,
-        firstName: CALLER.firstName,
-        lastName: CALLER.lastName,
-        role: invitation.role,
-        createdAt: "2026-09-05T12:00:00.000Z",
-        updatedAt: "2026-09-05T12:00:00.000Z",
-      },
-    ];
 
     /*
      * `200` with the organization joined rather than `204`: the client's next
      * act is to switch into it, and answering with it saves the round trip the
      * switcher would otherwise make (`organizations.controller.ts`).
      */
-    return ok(joined);
+    return ok(joinFrom(state, invitation));
   }),
+
+  /*
+   * The mailed link's two halves (`D18.8`, ADR-0071 §5). The lookup is on the
+   * **public** segment — its caller may have no account at all, which is the
+   * whole reason the screen has a stranger landing — and acceptance is on this
+   * app's own, because it is the session that says who joins.
+   */
+  http.post(
+    `${PUBLIC_API}/invitations/lookup`,
+    async ({ request }): Promise<Response> => {
+      const { token } = lookupInvitationBody.parse(await request.json());
+
+      state.seen.lookedUp.push(token);
+
+      const invitation =
+        token === INVITATION_TOKEN ? state.received[0] : undefined;
+
+      /*
+       * One indistinguishable `404` for unknown, accepted, declined, revoked,
+       * expired and organization-deleted alike — which in this mock is the
+       * single condition "the fixture token, and the offer still outstanding".
+       * Modelled rather than answered `200` to everything, because the
+       * dead-link sentence is one of the landings this suite exists to prove.
+       */
+      if (invitation === undefined) return fail(404, "NOT_FOUND");
+
+      /*
+       * Three fields and **no invitation id**, which is the shape of the
+       * resource rather than a trimming: an id would be authority for the
+       * other accept path, the one scoped by address alone (ADR-0071 §5).
+       * Built as the typed resource so a client reading a field the API does
+       * not send fails here rather than in production.
+       */
+      const lookup: InvitationLookupResource = {
+        organizationName: invitation.organizationName,
+        email: invitation.email,
+        role: invitation.role,
+      };
+
+      return ok(lookup);
+    },
+  ),
+
+  http.post(
+    `${API}/invitations/accept-by-token`,
+    async ({ request }): Promise<Response> => {
+      const { token } = acceptInvitationByTokenBody.parse(await request.json());
+
+      state.seen.acceptedByToken.push(token);
+
+      const invitation =
+        token === INVITATION_TOKEN ? state.received[0] : undefined;
+
+      if (invitation === undefined) return fail(404, "NOT_FOUND");
+
+      /*
+       * **The condition the endpoint exists for**: the token proves the
+       * mailbox, the session proves the account, and the two must agree
+       * (ADR-0071 §5). Refused **before** anything is spent, so a link opened
+       * in the wrong browser still works in the right one — the rule every
+       * flow in ADR-0071 §1 keeps, and the one it would be easiest for a mock
+       * to be kinder about than the service.
+       */
+      if (invitation.email !== state.callerEmail)
+        return fail(403, "ORGANIZATION_INVITATION_ADDRESS_MISMATCH");
+
+      return ok(joinFrom(state, invitation));
+    },
+  ),
 
   http.post(`${API}/invitations/:id/decline`, ({ params }): Response => {
     const id = String(params["id"]);

@@ -84,7 +84,7 @@
   },
   "invitations": {
     "title": "Neapstiprinātie ielūgumi",
-    "description": "Ielūgumi, kas gaida apstiprinājumu. E-pasts pagaidām netiek sūtīts, tāpēc cilvēkam jāpaziņo citādi.",
+    "description": "Ielūgumi, kas gaida apstiprinājumu. Katram uz e-pastu nosūtīta saite, ko var izmantot vienreiz.",
     "empty": "Neviens ielūgums negaida.",
     "error": "Neizdevās ielādēt ielūgumus.",
     "columns": {
@@ -114,6 +114,21 @@
       "description": "Piedāvājums beidzas. To pašu adresi pēc tam var uzaicināt vēlreiz.",
       "confirm": "Atsaukt"
     }
+  },
+  "link": {
+    "title": "Tu esi uzaicināts",
+    "pending": "Notiek ielūguma pārbaude…",
+    "refused": "Šo ielūguma saiti nevar izmantot. Iespējams, tā ir atsaukta, jau izmantota vai tai beidzies derīguma termiņš — palūdz, lai uzaicinātājs nosūta jaunu.",
+    "unavailable": "Ielūgumu pašlaik neizdevās pārbaudīt. Tava saite joprojām ir derīga — mēģini vēlreiz pēc brīža.",
+    "retry": "Mēģināt vēlreiz",
+    "offer": "{{organization}} tevi uzaicina pievienoties kā {{role}}.",
+    "accept": "Pieņemt ielūgumu",
+    "accepting": "Notiek pievienošanās…",
+    "stranger": "Ielūgums nosūtīts uz {{email}}. Izveido kontu ar šo adresi — tiklīdz to apstiprināsi, ielūgums gaidīs tavā kontā.",
+    "strangerClosed": "Ielūgums nosūtīts uz {{email}}. Piesakies ar šo adresi, lai to pieņemtu — ielūgums gaidīs tavā kontā.",
+    "mismatch": "Ielūgums nosūtīts uz {{email}}, bet šajā pārlūkā esi pieteicies kā {{current}}. Piesakies ar uzaicināto adresi, lai to pieņemtu; ielūgums gaidīs tajā kontā.",
+    "signOut": "Izrakstīties",
+    "haveAccount": "Jums jau ir konts? Pieteikties"
   },
   "inbox": {
     "title": "Ielūgumi",

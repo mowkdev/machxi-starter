@@ -521,6 +521,44 @@ export const useAcceptInvitation = () => {
   });
 };
 
+/**
+ * Accepting from the mailed link (`D18.8`, ADR-0071 §5).
+ *
+ * **`useAcceptInvitation`'s twin, and it invalidates exactly the same two
+ * lists** — the offer leaves the received list and the organization joins the
+ * switcher's — because the write is the same write asked with a different
+ * authority. What differs is only what names the invitation: a token out of a
+ * URL fragment rather than an id out of the caller's own list.
+ *
+ * **Neither `meta.success` nor a failure toast, and both omissions are
+ * deliberate.** The inbox stays where it is and needs a sentence to say
+ * something happened; this screen's whole answer is the navigation into the
+ * organization it just joined, and a toast arriving on top of a page that has
+ * already changed underneath the reader is the surface saying the same thing
+ * twice. Failures are `FORM_MUTATION_META`'s case exactly (`D18.8`,
+ * `code-reviewer`): the screen renders every one of them itself — the dead
+ * link as a state of its own, everything else inline through ADR-0034's code
+ * map — so the global handler's toast would be the identical sentence a second
+ * time.
+ *
+ * It deliberately does not navigate: where a customer goes next is routing,
+ * and an entity hook may not decide it (`useAcceptInvitation`'s own rule).
+ */
+export const useAcceptInvitationByToken = () => {
+  const api = useMyInvitationsApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (token: string): Promise<OrganizationResource> =>
+      api.acceptByToken(token),
+    meta: FORM_MUTATION_META,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: invitationKeys.mine() });
+      void queryClient.invalidateQueries({ queryKey: organizationKeys.mine() });
+    },
+  });
+};
+
 export const useDeclineInvitation = () => {
   const api = useMyInvitationsApi();
   const queryClient = useQueryClient();

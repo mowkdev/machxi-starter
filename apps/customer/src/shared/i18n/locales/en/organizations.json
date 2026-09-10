@@ -84,7 +84,7 @@
   },
   "invitations": {
     "title": "Pending invitations",
-    "description": "Invitations waiting to be accepted. Nothing is emailed yet, so the person has to be told another way.",
+    "description": "Invitations waiting to be accepted. Each one was emailed a link that can be used once.",
     "empty": "No invitations are waiting.",
     "error": "The invitations could not be loaded.",
     "columns": {
@@ -114,6 +114,21 @@
       "description": "The offer ends. The same address can be invited again afterwards.",
       "confirm": "Revoke"
     }
+  },
+  "link": {
+    "title": "You have been invited",
+    "pending": "Checking the invitation…",
+    "refused": "This invitation link cannot be used. It may have been withdrawn, already accepted, or expired — ask whoever invited you to send a new one.",
+    "unavailable": "The invitation could not be checked just now. Your link is still fine — try again in a moment.",
+    "retry": "Try again",
+    "offer": "{{organization}} has invited you to join as {{role}}.",
+    "accept": "Accept the invitation",
+    "accepting": "Joining…",
+    "stranger": "The invitation was sent to {{email}}. Create an account with that address — once you have confirmed it, the invitation will be waiting in your account.",
+    "strangerClosed": "The invitation was sent to {{email}}. Sign in with that address to accept it — you will find the invitation waiting in your account.",
+    "mismatch": "The invitation was sent to {{email}}, and this browser is signed in as {{current}}. Sign in with the invited address to accept it; the invitation will be waiting in that account.",
+    "signOut": "Sign out",
+    "haveAccount": "Already have an account? Sign in"
   },
   "inbox": {
     "title": "Invitations",

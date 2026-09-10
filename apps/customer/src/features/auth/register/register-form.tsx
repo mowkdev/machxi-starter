@@ -62,14 +62,40 @@ const AUTH_INPUT = `${AUTH_CONTROL} md:text-[13px]`;
  * back as the generic `409 CONFLICT` ADR-0020 §Enumeration requires — never a
  * code that would confirm the address has an account.
  */
-export const RegisterForm = () => {
+export interface RegisterFormProps {
+  /**
+   * An address the sign-up is **fixed to**, or nothing for the ordinary form
+   * (`D18.8`, ADR-0071 §5).
+   *
+   * The invitation screen is its only caller: a stranger who follows an
+   * invitation link creates an account with the invited address, because that
+   * is the address the offer is addressed to and any other one would produce
+   * an account the invitation cannot reach. So the box is filled in and read
+   * only rather than absent — a person is entitled to see which mailbox they
+   * are signing up with, and a hidden field would make the one fact the screen
+   * is about invisible.
+   *
+   * **`readOnly`, not `disabled`.** A disabled control is skipped by keyboard
+   * navigation and is not announced with its value, and this is a fact the
+   * reader needs; read only keeps it reachable, selectable and read aloud
+   * while refusing the edit.
+   *
+   * Nothing here is a security boundary and it does not pretend to be one: the
+   * API decides who may join what, and it decides by comparing the invited
+   * address to the session's own (ADR-0071 §5). What this prevents is a
+   * mistake, not an attack.
+   */
+  readonly email?: string;
+}
+
+export const RegisterForm = ({ email: fixedEmail }: RegisterFormProps = {}) => {
   const { t } = useT("auth");
   const client = useApiClient();
   const { locale } = useLocale();
   const messageForError = useMessageForError();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(fixedEmail ?? "");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -159,6 +185,7 @@ export const RegisterForm = () => {
               onChange={(event) => {
                 setEmail(event.target.value);
               }}
+              readOnly={fixedEmail !== undefined}
               type="email"
               value={email}
             />

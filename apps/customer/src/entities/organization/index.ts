@@ -30,6 +30,7 @@ export {
 } from "./organization.members.api";
 export {
   useAcceptInvitation,
+  useAcceptInvitationByToken,
   useActiveOrganization,
   useCreateOrganization,
   useDeclineInvitation,

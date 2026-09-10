@@ -19,6 +19,7 @@ import { Route as AuthLoginRouteImport } from './routes/_auth.login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth.register'
 import { Route as DashboardIndexRouteImport } from './routes/_dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/_dashboard.account'
+import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
 import { Route as DashboardAccountIndexRouteImport } from './routes/_dashboard.account.index'
 import { Route as DashboardAccountInvitationsRouteImport } from './routes/_dashboard.account.invitations'
 import { Route as DashboardAccountPreferencesRouteImport } from './routes/_dashboard.account.preferences'
@@ -78,6 +79,11 @@ const DashboardAccountRoute = DashboardAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => DashboardRoute,
+} as any)
+const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
+  id: '/invitations/accept',
+  path: '/invitations/accept',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardAccountIndexRoute = DashboardAccountIndexRouteImport.update({
   id: '/',
@@ -153,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/account': typeof DashboardAccountRouteWithChildren
+  '/invitations/accept': typeof InvitationsAcceptRoute
   '/account/invitations': typeof DashboardAccountInvitationsRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
   '/account/profile': typeof DashboardAccountProfileRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/invitations/accept': typeof InvitationsAcceptRoute
   '/account/invitations': typeof DashboardAccountInvitationsRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
   '/account/profile': typeof DashboardAccountProfileRoute
@@ -195,6 +203,7 @@ export interface FileRoutesById {
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
   '/_dashboard/account': typeof DashboardAccountRouteWithChildren
+  '/invitations/accept': typeof InvitationsAcceptRoute
   '/_dashboard/': typeof DashboardIndexRoute
   '/_dashboard/account/invitations': typeof DashboardAccountInvitationsRoute
   '/_dashboard/account/preferences': typeof DashboardAccountPreferencesRoute
@@ -219,6 +228,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/account'
+    | '/invitations/accept'
     | '/account/invitations'
     | '/account/preferences'
     | '/account/profile'
@@ -239,6 +249,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/register'
+    | '/invitations/accept'
     | '/account/invitations'
     | '/account/preferences'
     | '/account/profile'
@@ -260,6 +271,7 @@ export interface FileRouteTypes {
     | '/_auth/login'
     | '/_auth/register'
     | '/_dashboard/account'
+    | '/invitations/accept'
     | '/_dashboard/'
     | '/_dashboard/account/invitations'
     | '/_dashboard/account/preferences'
@@ -280,6 +292,7 @@ export interface RootRouteChildren {
   ImpersonateRoute: typeof ImpersonateRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  InvitationsAcceptRoute: typeof InvitationsAcceptRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -353,6 +366,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/account'
       preLoaderRoute: typeof DashboardAccountRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/invitations/accept': {
+      id: '/invitations/accept'
+      path: '/invitations/accept'
+      fullPath: '/invitations/accept'
+      preLoaderRoute: typeof InvitationsAcceptRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_dashboard/account/': {
       id: '/_dashboard/account/'
@@ -516,6 +536,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImpersonateRoute: ImpersonateRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  InvitationsAcceptRoute: InvitationsAcceptRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -18,10 +18,23 @@ import { expect, type APIRequestContext } from "@playwright/test";
  * which is the only body these templates ever produce (`core/mail/templates`
  * sets no `html` part), so there is one place a link can be.
  *
- * **The address is the key, and the run's addresses are unique by
- * construction** — every spec that registers builds one from a per-run stamp —
- * so a search by recipient cannot collide with a message left by an earlier
- * run or by a developer's own poking about. Nothing here deletes anything: a
+ * **The address is the key where the address is the run's own** — every spec
+ * that registers builds one from a per-run stamp — so a search by recipient
+ * cannot collide with a message left by an earlier run or by a developer's own
+ * poking about.
+ *
+ * **Amended at `D18.8`: one message goes to an address that is not the run's.**
+ * An invitation is addressed to the *seeded* customer, whose address is fixed
+ * and committed, so its mailbox holds every invitation every previous run ever
+ * sent. Newest-first is not enough on its own there: delivery is a second
+ * process's work, so "the newest message to that address" is an older run's
+ * until this one's arrives, and a poll that only asks whether *a* message
+ * exists is satisfied by the stale one immediately. So `waitForMail` takes an
+ * optional **subject marker**, and the caller passes something only this run
+ * can have produced. The filter is applied here rather than in Mailpit's query
+ * language, so it depends on no search-syntax behaviour beyond `to:`.
+ *
+ * Nothing here deletes anything: a
  * failed run's mail is evidence, exactly as its rows are (`organizations.spec`
  * says the same about the account it leaves behind), and a suite that emptied
  * the inbox would be a suite that erases the diagnosis on the way out.
@@ -50,8 +63,20 @@ interface MailpitMessage {
 }
 
 /**
- * The most recent message to an address, or `undefined` while none has
- * arrived.
+ * How many of a mailbox's newest messages are read when a subject marker has
+ * to be matched.
+ *
+ * A handful rather than one, because a fixed address accumulates across runs
+ * and the wanted message is not always the very newest — a spec may send two
+ * in a row, and a developer may have been poking about. A handful rather than
+ * a page, because a mailbox left to accumulate should not travel over the wire
+ * to answer one question.
+ */
+const SEARCH_WINDOW = 20;
+
+/**
+ * The most recent message to an address — optionally the most recent whose
+ * subject carries a given marker — or `undefined` while none has arrived.
  *
  * Newest first is Mailpit's own order, and it is the order that matters:
  * minting supersedes the live token for the same account and purpose
@@ -62,12 +87,13 @@ interface MailpitMessage {
 const latestTo = async (
   request: APIRequestContext,
   email: string,
+  subject: string | undefined,
 ): Promise<MailpitSummary | undefined> => {
   const response = await request.get(`${MAILPIT_URL}/api/v1/search`, {
-    // `limit: 1` because only the newest is ever wanted, and because a mailbox
-    // that has been left to accumulate should not travel over the wire to
-    // answer one question.
-    params: { query: `to:${email}`, limit: 1 },
+    params: {
+      query: `to:${email}`,
+      limit: subject === undefined ? 1 : SEARCH_WINDOW,
+    },
   });
 
   /*
@@ -86,8 +112,11 @@ const latestTo = async (
   const body = (await response.json()) as {
     readonly messages?: readonly MailpitSummary[];
   };
+  const messages = body.messages ?? [];
 
-  return body.messages?.[0];
+  return subject === undefined
+    ? messages[0]
+    : messages.find((message) => message.Subject.includes(subject));
 };
 
 /**
@@ -97,20 +126,33 @@ const latestTo = async (
  * API opens an SMTP connection after answering the request — so the only
  * honest wait is one that asks until it is true, and the only honest failure
  * is Playwright's own timeout with the address in the message.
+ *
+ * **`subject` is required wherever the recipient is not the run's own**
+ * (`D18.8`): a fixed address holds every message every previous run sent it,
+ * so without a marker this poll is satisfied by a stale message before this
+ * run's has been delivered — and the link it then follows is one the API
+ * consumed weeks ago. Pass something only this run can have produced.
  */
 export const waitForMail = async (
   request: APIRequestContext,
   email: string,
+  subject?: string,
 ): Promise<string> => {
   let id: string | undefined;
 
   await expect
     .poll(
       async () => {
-        id = (await latestTo(request, email))?.ID;
+        id = (await latestTo(request, email, subject))?.ID;
         return id;
       },
-      { message: `no message arrived for ${email}`, timeout: 20_000 },
+      {
+        message:
+          subject === undefined
+            ? `no message arrived for ${email}`
+            : `no message whose subject holds "${subject}" arrived for ${email}`,
+        timeout: 20_000,
+      },
     )
     .toBeDefined();
 

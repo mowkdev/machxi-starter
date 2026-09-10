@@ -38,11 +38,17 @@ import { linkFromMail, waitForMail } from "./support/mail";
  * `D18.4` that cookie arrives from the *confirmation* rather than from
  * registration (ADR-0071 §3), which is the same claim one endpoint along.
  *
- * **And one this deliverable adds**: the walk now reads its confirmation link
- * out of **Mailpit**. Every flow in ADR-0071 is a single-use token delivered
- * in a link's fragment, and a tier that cannot open a mailbox can watch a form
- * say "we have sent you a link" and nothing after it — so the run is made with
+ * **And two this deliverable adds, both of them mailboxes**: the walk reads its
+ * confirmation link out of **Mailpit** (`D18.4`), and since `D18.8` the invitee
+ * follows a mailed invitation link rather than accepting from the account
+ * area. Every flow in ADR-0071 is a single-use token delivered in a link's
+ * fragment, and a tier that cannot open a mailbox can watch a form say "we
+ * have sent you a link" and nothing after it — so the run is made with
  * `MAIL_TRANSPORT=smtp` against the local compose (`support/mail.ts`).
+ *
+ * Address-match acceptance from `/account/invitations` is unchanged and is
+ * still the other half of ADR-0067 §4; what moved is which of the two this
+ * walk exercises, because the link is the half no other tier can reach.
  *
  * **One test, not six.** Every stage below depends on the one before it — an
  * invitation cannot be accepted before it is created, and an organization
@@ -370,40 +376,48 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
   await page.keyboard.press("Escape");
   await expect(leaving).toBeHidden();
 
-  // ---- The second account accepts, in its own browser (§4, §6) ----
+  // ---- The second account accepts, from the mailed link (§5, ADR-0071 §5) ----
 
   /*
    * `app` is the worker's signed-in seeded customer — a different context, a
    * different jar and a different account, which is the only honest way to walk
-   * an invitation. The inbox is an **account** section and not an organization
-   * screen: what selects these rows is the caller's own address (ADR-0067 §5's
-   * principal-scoped read), and the caller is by definition not a member yet.
+   * an invitation.
+   *
+   * **From the link rather than from the account area, since `D18.8`.** The
+   * inbox is still there and still accepts by address match (ADR-0067 §4), and
+   * `account.spec.ts`'s and the component suite's cases cover it; what only
+   * this tier can do is take a token out of a *mailbox* and let a browser
+   * follow it. That is the half of ADR-0071 §5 no other tier reaches: the
+   * integration suite reads its links out of the `MailSender` port and MSW
+   * answers whatever the fixture says.
+   *
+   * **The subject marker is not optional here**, and it is the one place in
+   * this tier where the recipient is not the run's own address. The seeded
+   * customer's mailbox holds every invitation every previous run ever sent, so
+   * "the newest message to that address" is an older run's until this one is
+   * delivered — and the link in it was consumed weeks ago. The organization's
+   * name carries this run's stamp and the template puts it in the subject.
    */
-  await app.goto("/account/invitations");
+  const invitation = await waitForMail(request, CUSTOMER_EMAIL, TEAM.name);
 
-  const offer = app.getByRole("listitem").filter({ hasText: TEAM.name });
-
-  await expect(offer).toHaveText(/Invited as Member/);
-
-  await offer.getByRole("button", { name: "Accept" }).click();
-
-  await expect(app.getByText("You joined the organization.")).toBeVisible();
+  await app.goto(linkFromMail(invitation, "/invitations/accept"));
 
   /*
-   * And the tenant is in this person's chrome. The switcher is the shell's, so
-   * this is the acceptance arriving on a screen that never asked about it —
-   * the entity hook invalidates both lists, which is the thing MSW can only
-   * pretend to do.
+   * The offer, read before anything is joined: the lookup is unauthenticated
+   * and consumes nothing, so the screen can say what is being offered and by
+   * whom to whoever opened the mail (ADR-0071 §5).
    */
-  const appSwitcher = app.getByRole("button", { name: "Switch organization" });
+  await expect(
+    app.getByText(`${TEAM.name} has invited you to join as Member.`),
+  ).toBeVisible();
 
-  await appSwitcher.click();
-
-  await app.getByRole("menuitem", { name: TEAM.name }).click();
-
-  await expect(app).toHaveURL(`/orgs/${TEAM.slug}`);
+  await app.getByRole("button", { name: "Accept the invitation" }).click();
 
   /*
+   * **Landed in the organization**, which is the acceptance and the navigation
+   * in one: the token proved the mailbox, the session proved the account, and
+   * the API answered with the organization joined.
+   *
    * **And the screen resolved, which the address does not say** (`D15.8`'s
    * review, carried onto the shape `D15.9` replaced it with). The slug is
    * matched client-side against the switcher's list, so an organization this
@@ -411,7 +425,18 @@ test("an account registers, makes a team, invites somebody, and they join", asyn
    * screen naming the context is what says the membership the acceptance
    * created is really there.
    */
+  await expect(app).toHaveURL(`/orgs/${TEAM.slug}`);
   await expect(app.getByText(`You are in ${TEAM.name}.`)).toBeVisible();
+
+  /*
+   * And the tenant is in this person's chrome. The switcher is the shell's, so
+   * this is the acceptance arriving on a surface that never asked about it —
+   * the entity hook invalidates both lists, which is the thing MSW can only
+   * pretend to do.
+   */
+  const appSwitcher = app.getByRole("button", { name: "Switch organization" });
+
+  await expect(appSwitcher).toHaveText(new RegExp(TEAM.name));
 
   // ---- The switch itself: the screen is kept, the prefix moves (§6) ----
 

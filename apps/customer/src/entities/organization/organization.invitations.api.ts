@@ -1,4 +1,5 @@
 import type {
+  AcceptInvitationByTokenBody,
   CreateInvitationBody,
   InvitationResource,
   ListEnvelope,
@@ -20,10 +21,19 @@ import type { ApiClient } from "@/shared/api/client";
  * invitee is not a member of anything yet — which is exactly what an invitation
  * is for. Sharing one factory would hide that difference behind a parameter.
  *
- * **Nothing here carries a token.** The row's `token_hash` is minted by the API
- * and read by nothing in D15 (ADR-0067 §2 as amended): acceptance matches by
- * address, because nothing in this deliverable can deliver a token. The mail
- * deliverable adds the link; this client needs no change for it.
+ * **One call here carries a token, and it is the only one** (`D18.8`,
+ * ADR-0071 §5). Through D15 nothing did: the row's `token_hash` was minted by
+ * the API and read by nobody (ADR-0067 §2 as amended), because acceptance
+ * matched by address and no deliverable could deliver a link. The mail
+ * deliverable delivers one, so `acceptByToken` joins the invitee's own
+ * factory — and nothing else moved, because address-match acceptance is still
+ * how an offer is taken from the account area's inbox.
+ *
+ * **The link's other half is not here**, and its absence is the segment rather
+ * than an omission: `POST /public/invitations/lookup` is mounted outside this
+ * app's `/user` prefix, so it lives in `@repo/api-client` beside `register`
+ * and the verification pair, which are public for the same reason. It is also
+ * the one call in the flow a person with no account at all can make.
  */
 export const createOrganizationInvitationsApi = (client: ApiClient) =>
   ({
@@ -105,6 +115,32 @@ export const createMyInvitationsApi = (client: ApiClient) =>
       const { data } = await client.instance.post<
         SuccessEnvelope<OrganizationResource>
       >(`/invitations/${id}/accept`, {});
+
+      return data.data;
+    },
+
+    /**
+     * `POST /user/invitations/accept-by-token` — the mailed link, redeemed
+     * (ADR-0071 §5). `200` with the organization joined, like {@link accept}.
+     *
+     * **The same answer as accepting by id, and a different authority.** There
+     * the caller names a row their own address selected; here they present the
+     * token out of the link's fragment, and the API joins them only when the
+     * invited address is the one their session carries — the token proves the
+     * mailbox, the session proves the account, and the two must agree. A
+     * caller whose address differs is `403
+     * ORGANIZATION_INVITATION_ADDRESS_MISMATCH` and the link is left unspent,
+     * so it still works in the browser it was meant for.
+     *
+     * The token is a body field rather than a path segment for the reason
+     * every flow in ADR-0071 §1 keeps: a single-use credential has no business
+     * in a URL an access log or a proxy writes down.
+     */
+    acceptByToken: async (token: string): Promise<OrganizationResource> => {
+      const body: AcceptInvitationByTokenBody = { token };
+      const { data } = await client.instance.post<
+        SuccessEnvelope<OrganizationResource>
+      >("/invitations/accept-by-token", body);
 
       return data.data;
     },

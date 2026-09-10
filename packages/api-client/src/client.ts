@@ -9,7 +9,9 @@ import {
   type ErrorDetail,
   type ForgotPasswordBody,
   type ImpersonateBody,
+  type InvitationLookupResource,
   type LoginBody,
+  type LookupInvitationBody,
   type RegisterBody,
   type ResendVerificationBody,
   type ResetPasswordBody,
@@ -157,6 +159,19 @@ const COOKIE_TRANSPORT_PATHS = [
  * visitor "out" of a session they never had and painting the *refresh's*
  * sentence over the reset screen's own.
  */
+/*
+ * The invitation lookup is the eighth (ADR-0071 §5). It is mounted on the
+ * **public** segment behind no guard, its credential is the token out of the
+ * URL fragment, and it reads no principal — so a bearer sent on it is a live
+ * session credential travelling where nothing looks at it. The screen that
+ * calls it is reached by whoever opened the mail, which very often is a
+ * browser already holding somebody's session: a person who is signed in as
+ * themselves and has been invited under a second address, or a shared machine.
+ *
+ * Its refusal is a `404` rather than a `401`, so unlike the recovery pair it
+ * cannot be mistaken for an expired access token and cannot provoke a refresh
+ * nobody asked for. The entry is here for the send rather than for the answer.
+ */
 const UNAUTHENTICATED_PATHS = [
   "/auth/login",
   "/auth/impersonate",
@@ -165,6 +180,7 @@ const UNAUTHENTICATED_PATHS = [
   "/auth/resend-verification",
   "/auth/password/forgot",
   "/auth/password/reset",
+  "/invitations/lookup",
 ];
 
 /**
@@ -664,6 +680,46 @@ export const createApiClient = ({
   };
 
   /**
+   * Reads what an invitation link is offering, before there is a session
+   * (ADR-0071 §5).
+   *
+   * **It lives in this package rather than in an app's entity slice because of
+   * the segment it is on.** The route is mounted on `/api/v1/public` — the
+   * caller is whoever opened the mail, who may have no account at all — and an
+   * app reaches only its own segment through `client.instance`. That is
+   * `register`'s and the verification pair's situation exactly, and this is
+   * where those three live.
+   *
+   * **No segment guard, for `resendVerification`'s reason.** The two guards on
+   * this client are about its *memory*: they exist because a `user` principal
+   * must not be hydrated into an admin app's store. This writes nothing at
+   * all, and the answer it returns is the same answer the endpoint gives
+   * anybody holding the token, so there is no resource to be handed to the
+   * wrong client either.
+   *
+   * The token is the credential and it is the whole of the authority: the
+   * answer carries the organization's name, the invited address and the role
+   * and deliberately no invitation id (ADR-0071 §5), because an id would be
+   * authority for the *other* accept path — the one scoped by address alone.
+   *
+   * Unknown, accepted, declined, revoked, expired and "its organization was
+   * deleted" are one indistinguishable `404`, so there is nothing here to
+   * branch on and it does not try to.
+   */
+  const lookupInvitation = async (
+    token: string,
+  ): Promise<InvitationLookupResource> => {
+    const body: LookupInvitationBody = { token };
+    const { data } = await instance.post<{ data: InvitationLookupResource }>(
+      "/invitations/lookup",
+      body,
+      { baseURL: publicBaseUrl },
+    );
+
+    return data.data;
+  };
+
+  /**
    * Asks for a password-recovery link (ADR-0071 §4).
    *
    * **On this client's own segment, and that is the whole of the population
@@ -978,6 +1034,7 @@ export const createApiClient = ({
     register,
     verifyEmail,
     resendVerification,
+    lookupInvitation,
     forgotPassword,
     resetPassword,
     redeemHandoff,

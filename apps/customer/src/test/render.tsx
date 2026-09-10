@@ -2,7 +2,7 @@ import type { Locale } from "@repo/contracts";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { StrictMode, type ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 
 import { createQueryClient } from "@/shared/api/query-client";
@@ -262,6 +262,19 @@ export interface RenderAppOptions extends ProviderOptions {
    * router's context, and a component rendered in isolation has no router.
    */
   readonly features?: AppFeatures;
+  /**
+   * Renders the tree inside `StrictMode`, as `app/index.tsx` does (`D18.8`).
+   *
+   * Off by default and deliberately so: double invocation doubles every render
+   * and every effect in a suite whose assertions do not depend on it, and the
+   * app's own production build has no `StrictMode` at all. The cases that want
+   * it are the ones whose *claim* is about the second invocation — a latch
+   * that keeps one arrival to one request — because without it such a case
+   * passes with the latch deleted, which is exactly what `code-reviewer` found
+   * here. `session-provider.test.tsx` makes the same choice one level down,
+   * with its own parameter.
+   */
+  readonly strict?: boolean;
 }
 
 /**
@@ -285,6 +298,7 @@ export const renderApp = ({
   initialPath = "/",
   pseudoNotice = false,
   features,
+  strict = false,
   ...options
 }: RenderAppOptions = {}): RenderAppResult => {
   const value = providers(options);
@@ -302,8 +316,12 @@ export const renderApp = ({
     },
   });
 
-  return {
-    ...render(
+  /*
+   * The whole tree, so `StrictMode` — when a case asks for it — wraps every
+   * provider and the router alike, which is where `app/index.tsx` puts it.
+   */
+  const tree =
+    (
       /*
        * `SessionProvider` is deliberately absent from this tree, and it is the
        * one place the harness is not the app.
@@ -343,8 +361,11 @@ export const renderApp = ({
             </QueryClientProvider>
           </ApiProvider>
         </GridDensityProvider>
-      </ThemeProvider>,
-    ),
+      </ThemeProvider>
+    );
+
+  return {
+    ...render(strict ? <StrictMode>{tree}</StrictMode> : tree),
     router,
     ...value,
   };
