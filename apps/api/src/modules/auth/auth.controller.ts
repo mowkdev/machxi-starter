@@ -14,6 +14,7 @@ import type { IssuedAuthResource } from "./auth.mapper.js";
 import type { AuthService } from "./auth.service.js";
 import { applyAuthTransport } from "./auth.transport.js";
 import type {
+  confirmEmailSchema,
   forgotPasswordSchema,
   loginSchema,
   refreshSchema,
@@ -189,6 +190,31 @@ export const createAuthController = ({
       const resource = await service.verifyEmail(req.ctx, req.valid.body);
 
       respond.ok(res, applyTransport(req, res, resource));
+    },
+
+    /**
+     * `204` and **no session** (ADR-0071 §6).
+     *
+     * `resetPassword`'s answer rather than `verifyEmail`'s, and the two links
+     * being one mechanism is exactly why the difference is worth stating. A
+     * verification link signs the device in because the person has just proven
+     * the address the account is *identified* by and holds no session yet. An
+     * address change is a change to an account that already has one: §6 leaves
+     * every session untouched, so there is neither a session to issue nor one
+     * to end, and `applyTransport` is deliberately not called — a browser that
+     * asked for cookie transport gets no `Set-Cookie` at all.
+     *
+     * No body either. What the caller wants to know is "did it work", which is
+     * the status; the new address is the one the message they are holding was
+     * sent to, so echoing it would tell them nothing they did not type.
+     */
+    confirmEmail: async (
+      req: ValidatedRequest<typeof confirmEmailSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.confirmEmailChange(req.ctx, req.valid.body);
+
+      respond.noContent(res);
     },
 
     /**

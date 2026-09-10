@@ -1,4 +1,5 @@
 import type {
+  ChangeEmailBody,
   ChangePasswordBody,
   DeleteProfileBody,
   ImpersonatorResource,
@@ -149,6 +150,38 @@ export const useChangePassword = () => {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: profileKeys.all });
+    },
+  });
+};
+
+/**
+ * `POST /user/profile/change-email` (`D18.9`; ADR-0071 §6).
+ *
+ * `CREDENTIAL_MUTATION` for the reason its two neighbours carry it: the
+ * customer's current password is this mutation's `variables`, and without
+ * `gcTime: 0` it outlives the dialog that collected it by five minutes.
+ *
+ * **It invalidates nothing, and that is the whole shape of this flow.** The
+ * standing rule in this slice is "invalidate what this write could have
+ * changed the response of", and the answer here is *nothing*: the account is
+ * untouched until a link in a mailbox is followed. Invalidating the profile
+ * would refetch an unchanged row and, worse, suggest to the next reader that
+ * this call moves an address. What changes the cached profile is
+ * `/confirm-email`, which is a different screen on a different segment and
+ * refetches for itself.
+ *
+ * The success sentence says the same thing in the customer's language: a link
+ * is on its way, and nothing has changed yet.
+ */
+export const useChangeEmail = () => {
+  const api = useApi();
+
+  return useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: (body: ChangeEmailBody) => api.changeEmail(body),
+    meta: {
+      ...FORM_MUTATION_META,
+      success: "profile:outcomes.emailChangeRequested",
     },
   });
 };

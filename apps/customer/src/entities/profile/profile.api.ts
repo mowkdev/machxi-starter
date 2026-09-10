@@ -1,4 +1,5 @@
 import type {
+  ChangeEmailBody,
   ChangePasswordBody,
   DeleteProfileBody,
   SuccessEnvelope,
@@ -70,6 +71,27 @@ export const createProfileApi = (client: ApiClient) =>
      */
     changePassword: async (body: ChangePasswordBody): Promise<void> => {
       await client.instance.post("/profile/change-password", body);
+    },
+
+    /**
+     * `POST /user/profile/change-email` — asking to move to a new address
+     * (`D18.9`; ADR-0071 §6). `202`.
+     *
+     * **Nothing has changed when this resolves**, which is the one thing a
+     * caller must not get wrong about it. The API mails a confirmation link to
+     * `newEmail` and leaves the account exactly as it was; the address moves
+     * only when somebody follows that link, on `/confirm-email`, possibly on
+     * another device and possibly an hour later. So there is no resource to
+     * return and nothing of this entity's to invalidate.
+     *
+     * The current password is in the body for `changePassword`'s reason, taken
+     * further: a changed address redirects every future recovery link, so a
+     * stolen access token that could move one would be worth the account.
+     * There is no `:id` here either — the only account this can ever move is
+     * the caller's (ADR-0019 §3).
+     */
+    changeEmail: async (body: ChangeEmailBody): Promise<void> => {
+      await client.instance.post("/profile/change-email", body);
     },
 
     /**

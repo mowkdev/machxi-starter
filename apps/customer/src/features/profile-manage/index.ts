@@ -1,3 +1,4 @@
+export { ChangeEmailDialog, changeEmailFields } from "./change-email-dialog";
 export {
   ChangePasswordDialog,
   changePasswordFields,

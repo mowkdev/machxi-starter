@@ -229,6 +229,65 @@ describe("the mailbox limiter", () => {
   });
 });
 
+describe("the mailbox limiter on a body that spells the recipient differently", () => {
+  /**
+   * `POST /user/profile/change-email` (ADR-0071 §6, amended at `D18.9`) — the
+   * first sender whose body does not call the recipient `email`.
+   *
+   * Two claims, and the second is the one worth the test. It really does key
+   * on the mailbox rather than on the caller, so one account cannot re-reach a
+   * stranger's inbox past the budget; and it reads **only** the field the
+   * mount names, so a caller cannot hand every request a key of its own by
+   * inventing the other one — which is the flaw `D18.7` found in the login
+   * limiter's key, transplanted here the moment a second field is readable.
+   */
+  const changeEmail = () =>
+    appWith(
+      createMailboxRateLimiter(config, undefined, {
+        recipientField: "newEmail",
+      }),
+    );
+
+  const ask = (
+    app: express.Express,
+    client: string,
+    body: Record<string, string>,
+  ) => supertest(app).post("/0").set("X-Test-Client", client).send(body);
+
+  it("counts the address the change is aimed at, whoever asks", async () => {
+    const app = changeEmail();
+    const newEmail = "victim@machxi.local";
+
+    for (let asked = 0; asked < 5; asked += 1) {
+      await ask(app, `203.0.113.${String(60 + asked)}`, { newEmail }).expect(
+        202,
+      );
+    }
+
+    await ask(app, "198.51.100.9", { newEmail }).expect(429);
+    await ask(app, "198.51.100.9", { newEmail: "other@machxi.local" }).expect(
+      202,
+    );
+  });
+
+  it("cannot be reset by the field this endpoint's schema does not have", async () => {
+    const app = changeEmail();
+    const newEmail = "target@machxi.local";
+
+    for (let asked = 0; asked < 5; asked += 1) {
+      await ask(app, "203.0.113.70", { newEmail }).expect(202);
+    }
+
+    // `email` is not a field of `changeEmailBody`, so a body carrying one is
+    // on its way to a `400` — and must not have bought a fresh bucket on the
+    // way there.
+    await ask(app, "203.0.113.70", {
+      newEmail,
+      email: "invented@machxi.local",
+    }).expect(429);
+  });
+});
+
 describe("the source limiter", () => {
   const source = () =>
     appWith(

@@ -142,6 +142,22 @@ export const resendVerificationBody = z.strictObject({
 export type ResendVerificationBody = z.infer<typeof resendVerificationBody>;
 
 /**
+ * `POST /api/v1/public/auth/confirm-email` — the other end of ADR-0071 §6's
+ * address change.
+ *
+ * {@link verifyEmailBody}'s shape exactly, and for its reasons: the token
+ * *is* the credential, the row it claims already names the account **and**
+ * the address it is moving to (the `change_email` payload of §1), and a
+ * second field a caller controls would be a second thing to disagree with the
+ * row about. Unauthenticated, because a link is followed wherever the mail is
+ * read — the new mailbox is very often not the one holding a session.
+ */
+export const confirmEmailBody = z.strictObject({
+  token: accountTokenSchema,
+});
+export type ConfirmEmailBody = z.infer<typeof confirmEmailBody>;
+
+/**
  * `POST /api/v1/{admin,user}/auth/password/forgot` (ADR-0071 §4).
  *
  * The same shape as {@link resendVerificationBody} and for the same reasons:

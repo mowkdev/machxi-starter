@@ -1,4 +1,5 @@
 import type {
+  ConfirmEmailBody,
   ForgotPasswordBody,
   ImpersonatorResource,
   LoginBody,
@@ -10,6 +11,7 @@ import type {
   UserPrincipalResource,
   VerifyEmailBody,
 } from "@repo/contracts";
+import { LOCALES, type Locale } from "@repo/contracts";
 import type { PasswordHasher } from "@repo/crypto";
 import { randomToken, sha256Base64url } from "@repo/crypto";
 import type { DbExecutor } from "@repo/db";
@@ -20,6 +22,7 @@ import type { RequestContext } from "../../core/context/index.js";
 import { internal } from "../../core/errors/index.js";
 import {
   accountDisabled,
+  emailChangeLinkInvalid,
   emailUnverified,
   impersonationHandoffInvalid,
   invalidCredentials,
@@ -37,6 +40,13 @@ import {
   type IssuedAuthResource,
 } from "./auth.mapper.js";
 import type { OrganizationsService } from "../organizations/organizations.service.js";
+// The one error this module raises that belongs to another aggregate's
+// vocabulary (ADR-0013): `USER_EMAIL_TAKEN` is the users module's code, and
+// `confirm-email` is the second endpoint that can raise it. Imported rather
+// than restated, because two factories for one code is how one sentence
+// becomes two — the mirror of `currentPasswordInvalid`, which lives in this
+// module and is imported by the users one.
+import { userEmailTaken } from "../users/users.errors.js";
 import type { AccountTokens } from "../../core/tokens/index.js";
 import { createMailDelivery, localeFor } from "../../core/mail/index.js";
 import type { MailSender, MailTemplates } from "../../core/mail/index.js";
@@ -269,6 +279,53 @@ export interface AuthServiceDeps {
   readonly now?: () => Date;
   readonly newRefreshToken?: () => string;
 }
+
+/**
+ * What a `change_email` token carries beside the account it names
+ * (ADR-0071 §1's `payload`, §6's flow).
+ *
+ * Two fields, and the second one is the reason this is a shape rather than a
+ * bare string. The address is obvious — nothing changes until the link is
+ * followed, so the address being moved to has to live somewhere until then,
+ * and the token row is the only place that is not a second table. The
+ * **locale** is there because the message this payload eventually produces is
+ * sent from an *anonymous* endpoint: §2 says an account's stored locale is
+ * what it is written in, and `confirm-email` has no principal to read one
+ * from. Carrying it from the mint, where the account *was* acting, is what
+ * lets the notice to the old address be written in the reader's language
+ * without the anonymous half learning how to read a settings row.
+ */
+export interface EmailChangePayload {
+  readonly newEmail: string;
+  readonly locale: Locale;
+}
+
+/** Type guard over `LOCALES`, so a stored value that is no longer one is dropped. */
+const isLocale = (value: unknown): value is Locale =>
+  typeof value === "string" && (LOCALES as readonly string[]).includes(value);
+
+/**
+ * Reads {@link EmailChangePayload} back out of a claimed row.
+ *
+ * `payload` is `jsonb`, so what comes back is `unknown` whatever was written
+ * (`tokens.repository.ts` says why the column is not `$type`d): the flow that
+ * wrote it is the one that knows its shape, and this is that flow. An address
+ * that is not a string makes the whole payload `undefined` — the caller
+ * answers a dead link, because there is nothing to move the account to — while
+ * a locale that is missing or no longer in `LOCALES` falls back to English,
+ * which is what every template does with one it has no copy for anyway.
+ */
+export const readEmailChangePayload = (
+  payload: Record<string, unknown> | null,
+): EmailChangePayload | undefined => {
+  const newEmail = payload?.["newEmail"];
+
+  if (typeof newEmail !== "string" || newEmail === "") return undefined;
+
+  const locale = payload?.["locale"];
+
+  return { newEmail, locale: isLocale(locale) ? locale : "en" };
+};
 
 export const createAuthService = ({
   population,
@@ -1372,6 +1429,159 @@ export const createAuthService = ({
     },
 
     /**
+     * `POST /api/v1/public/auth/confirm-email` (ADR-0071 §6) — the half of
+     * the address change that actually changes an address.
+     *
+     * The request half lives in the users module, where the profile is: it
+     * verifies the current password, refuses a taken address and mails the new
+     * mailbox a link. **Nothing has moved by then.** This is what moves it,
+     * and it moves it for whoever holds the link — anonymous, because the new
+     * mailbox is very often not the one holding a session.
+     *
+     * The whole effect is one transaction: claim the token, read the account
+     * to learn the address it is leaving, ask the uniqueness question **again**
+     * (an hour may have passed, and the answer is not a fact the token can
+     * carry), write the new address with `email_verified_at` stamped, and
+     * record it. Every refusal rolls the claim back, so a link refused because
+     * the account was disabled for an afternoon still works when it is not.
+     *
+     * **No session is issued and none is revoked**, which is §6's decision
+     * rather than an omission: an address is not a credential, and the person
+     * signed in on another device did not stop being that person. What the
+     * change *is* worth is the sentence the notice below carries — it
+     * redirects every future recovery link — and it is why the request half is
+     * refused under impersonation (ADR-0057 §5).
+     *
+     * **The old address is notified afterwards, plainly and with no link.** It
+     * is the only warning the previous mailbox gets, and a link in it would be
+     * a credential mailed to an address the account no longer belongs to.
+     */
+    confirmEmailChange: async (
+      ctx: RequestContext,
+      { token }: ConfirmEmailBody,
+    ): Promise<void> => {
+      const changeEmail = principals.changeEmailVerified;
+      const isTaken = principals.isEmailTaken;
+
+      if (changeEmail === undefined || isTaken === undefined) {
+        // `register`'s and `verifyEmail`'s wiring refusal, for their reason:
+        // the route is mounted from the user service, and a staff twin would
+        // be a way to move an operator's address from a URL fragment.
+        throw internal(
+          new Error(`population "${population}" has no address-change path`),
+        );
+      }
+
+      const at = now();
+
+      const changed = await transaction(async (tx) => {
+        const claimed = await accountTokens.consume(
+          ctx,
+          { purpose: "change_email", principalType: population, token },
+          tx,
+        );
+
+        if (claimed === undefined) throw emailChangeLinkInvalid();
+
+        const requested = readEmailChangePayload(claimed.payload);
+
+        if (requested === undefined) {
+          // Unreachable through the API — the mint writes the address — and
+          // refused as a dead link rather than as a `500`, because the only
+          // caller who could ever see it is holding a URL fragment and has
+          // nothing to do about it either way.
+          ctx.logger.error(
+            { population, tokenId: claimed.id },
+            "address change refused: the token carries no address",
+          );
+
+          throw emailChangeLinkInvalid();
+        }
+
+        // Read before the write, for the address being left: it is where the
+        // notice goes, and after the update the row no longer holds it.
+        const principal = await principals.findById(claimed.principalId, tx);
+
+        if (principal === undefined) throw emailChangeLinkInvalid();
+
+        // Asked again, inside the transaction, because the request half asked
+        // it up to `EMAIL_CHANGE_TOKEN_TTL` ago. This `409` is the one refusal
+        // on the endpoint that is not the indistinguishable `401`: whoever
+        // holds the link already knows which address it names — it is the
+        // mailbox the message arrived in — so there is no existence left to
+        // conceal, and it is the only failure here that a different address
+        // would fix.
+        if (await isTaken(requested.newEmail, tx)) throw userEmailTaken();
+
+        const updated = await changeEmail(
+          principal.id,
+          requested.newEmail,
+          at,
+          tx,
+        );
+
+        // The token was live but the account is not one a link may act on any
+        // more — deleted, disabled, or beaten to the address by a change that
+        // committed between the check above and this statement. One answer
+        // with the unknown-token case, and the throw is what undoes the claim.
+        if (updated === undefined) {
+          ctx.logger.warn(
+            { population, tokenId: claimed.id },
+            "address change refused: the account cannot be changed",
+          );
+
+          throw emailChangeLinkInvalid();
+        }
+
+        // `identities` rather than the context's principal: the route is
+        // anonymous — the token is the credential — so the actor comes off
+        // the row that was claimed (ADR-0058, verification's shape). Both
+        // addresses are on the row because ADR-0071 §7 requires the trail to
+        // name them; an address is a fact about the account rather than a
+        // credential, and without the old one the row cannot answer "where did
+        // this account's mail used to go".
+        await audit.record(
+          ctx,
+          {
+            event: "account.email_changed",
+            identities: { actor: { type: population, id: principal.id } },
+            data: {
+              previousEmail: principal.email,
+              newEmail: requested.newEmail,
+            },
+          },
+          tx,
+        );
+
+        return {
+          principalId: principal.id,
+          previousEmail: principal.email,
+          newEmail: requested.newEmail,
+          locale: requested.locale,
+        } as const;
+      });
+
+      // **After the commit**, for `register`'s reason: a notice sent from
+      // inside the transaction is a notice about a change that was rolled
+      // back. Detached, because nothing in the answer reports delivery and
+      // somebody is waiting on a screen (`core/mail/delivery.ts`).
+      deliverDetached(
+        ctx,
+        changed.previousEmail,
+        { population, purpose: "change_email" },
+        mailTemplates.emailChanged({
+          locale: changed.locale,
+          newEmail: changed.newEmail,
+        }),
+      );
+
+      ctx.logger.info(
+        { population, principalId: changed.principalId },
+        "address changed from a mailed link",
+      );
+    },
+
+    /**
      * `POST /api/v1/{admin,user}/auth/password/forgot` (ADR-0071 §4).
      *
      * **Always resolves**, exactly as `resendVerification` does and for the
@@ -1496,6 +1706,22 @@ export const createAuthService = ({
         }
 
         await principals.updatePasswordHash(principal.id, passwordHash, at, tx);
+
+        // In the same commit as the new hash, beside the session sweep below
+        // and for its reason (`D18.9`'s `security-reviewer`): a pending
+        // `change_email` link is a credential the account did not choose,
+        // mailed to an address somebody else typed, and the session sweep
+        // cannot see it. Recovery is the flow a person reaches when the
+        // account is already in somebody else's hands, so a link that outlived
+        // it would hand the account back an hour later.
+        await accountTokens.supersede(
+          ctx,
+          {
+            purpose: "change_email",
+            principal: { type: population, id: principal.id },
+          },
+          tx,
+        );
 
         // `identities` rather than the context's principal: the route is
         // anonymous — the token is the credential — so the actor comes off the

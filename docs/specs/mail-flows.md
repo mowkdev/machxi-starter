@@ -121,6 +121,62 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int
 - **WHEN** one caller has sent `RATE_LIMIT_MAIL_SOURCE_MAX` of these requests inside the hour, each naming a different address
 - **THEN** the next one answers `429 RATE_LIMITED` even though no address has been named twice, and the same caller is refused on `resend-verification` and `register` too — one counter serves every endpoint that mails an address a caller typed, while another caller is still answered `202`
 
+## Requirement: An address changes when the new one is proven
+
+`POST /api/v1/user/profile/change-email { newEmail, currentPassword }` verifies the caller's own password, refuses an address a live account already holds with `409 USER_EMAIL_TAKEN`, and answers `202 { accepted: true }` having **changed nothing** — a confirmation link goes to the new address, and the account keeps the address it had. `POST /api/v1/public/auth/confirm-email { token }` consumes that link, asks the uniqueness question again inside its own transaction, swaps the address, stamps `email_verified_at`, writes an `account.email_changed` audit row naming both addresses, and answers `204`. No session is issued and none is revoked — an address is not a credential. The address the account has left is sent a plain notice with no link. Under an impersonated session the request answers `403 AUTH_IMPERSONATION_REFUSED`. The request carries `RATE_LIMIT_MAILBOX_MAX` per **new** address over the hour, in a counter of its own.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/impersonation-exclusions.int.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`, `apps/api/src/core/middleware/__tests__/rate-limit.test.ts`
+
+### Scenario: Asking to move to an unused address
+
+- **WHEN** an account asks to change its address, presenting its current password
+- **THEN** the answer is `202 { accepted: true }` with no `Set-Cookie`, the account still holds its old address, one message goes to the new address carrying `#token=…`, and one unconsumed `change_email` token row holds the new address in its payload
+
+### Scenario: Asking with the wrong password
+
+- **WHEN** the current password does not verify
+- **THEN** the answer is `403 AUTH_CURRENT_PASSWORD_INVALID`, nothing is minted and nothing is sent
+
+### Scenario: Asking for an address somebody holds
+
+- **WHEN** the new address belongs to a live account — another one, or the caller's own
+- **THEN** the answer is `409 USER_EMAIL_TAKEN` and nothing is sent
+
+### Scenario: Asking under an impersonated session
+
+- **WHEN** a support operator acting as the customer asks
+- **THEN** the answer is `403 AUTH_IMPERSONATION_REFUSED` before the body is validated, nothing is sent, and the same request on the customer's own session answers `202`
+
+### Scenario: Following the link
+
+- **WHEN** the token from the message is posted to `confirm-email`
+- **THEN** the answer is `204` with no `Set-Cookie`, the account holds the new address with `email_verified_at` re-stamped, an `account.email_changed` audit row names the account as actor and carries both addresses, a plain notice with no link reaches the old address, and sessions opened before the change still work
+
+### Scenario: Following it twice
+
+- **WHEN** the same token is posted again
+- **THEN** the answer is `401 UNAUTHENTICATED` and the address stays as the first confirmation left it
+
+### Scenario: An address taken between the request and the click
+
+- **WHEN** another account claims the new address before the link is followed
+- **THEN** the answer is `409 USER_EMAIL_TAKEN`, the account keeps its old address, and the token's `consumed_at` is still null — a refused confirmation spends nothing
+
+### Scenario: Asking twice
+
+- **WHEN** the account asks again, for a different address
+- **THEN** the newest link works and the previous one answers `401 UNAUTHENTICATED`
+
+### Scenario: A token of another purpose
+
+- **WHEN** a verification token is posted to `confirm-email`
+- **THEN** the answer is `401 UNAUTHENTICATED` and the token still verifies on its own endpoint
+
+### Scenario: The password changes while a link is pending
+
+- **WHEN** the account's password is changed, reset from a mailed link, or set by staff while a `change_email` token is live
+- **THEN** that token is spent in the same transaction and the link answers `401 UNAUTHENTICATED` — a password change ends the pending address change as it ends every other session
+
 ## Requirement: An address a staff member types is proven by that assertion
 
 `POST /api/v1/admin/users` stamps `email_verified_at` on the account it creates, because the operator who typed the address is the authority a confirmation link would be asking, and no link is sent; `PATCH /api/v1/admin/users/:id` stamps it the same way when it moves an account to `active`, without disturbing a stamp the account already had. An admin who deliberately asks for `status: "pending_verification"` gets an account with no stamp, which is the one row the verification flow above has something to do to. Those two paths and the link are **every** way a user becomes `active`, which is what makes **every `active` user an account whose address is proven**.

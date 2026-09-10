@@ -483,6 +483,24 @@ const createFakeAccountTokens = () => {
         consumedAt: new Date(clock),
       });
     },
+    /** The mint's side effect without a replacement (`D18.9`). */
+    supersede: (_ctx, { purpose, principal }) => {
+      let superseded = 0;
+
+      for (const row of minted) {
+        if (
+          row.purpose === purpose &&
+          row.principalType === principal.type &&
+          row.principalId === principal.id &&
+          !row.consumed
+        ) {
+          row.consumed = true;
+          superseded += 1;
+        }
+      }
+
+      return Promise.resolve(superseded);
+    },
   };
 
   return { tokens, minted } as const;

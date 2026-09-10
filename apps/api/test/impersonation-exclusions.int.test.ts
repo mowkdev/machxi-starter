@@ -169,6 +169,42 @@ describe("the exclusion list", () => {
       .expect(204);
   });
 
+  it("refuses a change of address, and lets the account's owner through", async () => {
+    // ADR-0071 §6's entry on the list, and the one with the longest fuse: an
+    // address moved is every future recovery link redirected, so the account
+    // belongs to whoever holds the new mailbox from the next `forgot`
+    // onwards — without the password ever being known.
+    const email = "exclusions-email@machxi.local";
+    const { tokens } = await impersonate(email);
+
+    const refused = await supertest(harness.app)
+      .post(`${PROFILE}/change-email`)
+      .set("Authorization", bearer(tokens.accessToken))
+      .send({
+        newEmail: "taken-over@machxi.local",
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      })
+      .expect(403);
+
+    expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
+    // The guard runs before the schema and before the argon2 pool, so nothing
+    // was mailed to the address the operator typed either.
+    expect(
+      harness.mail.filter((m) => m.to === "taken-over@machxi.local"),
+    ).toHaveLength(0);
+
+    const owner = await signIn(email);
+
+    await supertest(harness.app)
+      .post(`${PROFILE}/change-email`)
+      .set("Authorization", bearer(owner.accessToken))
+      .send({
+        newEmail: "chosen-by-the-owner@machxi.local",
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      })
+      .expect(202);
+  });
+
   it("refuses self-deletion, and lets the account's owner through", async () => {
     const email = "exclusions-delete@machxi.local";
     const { tokens } = await impersonate(email);

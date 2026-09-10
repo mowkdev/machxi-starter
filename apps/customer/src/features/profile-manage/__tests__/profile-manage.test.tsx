@@ -1,4 +1,8 @@
-import { changePasswordBody, deleteProfileBody } from "@repo/contracts";
+import {
+  changeEmailBody,
+  changePasswordBody,
+  deleteProfileBody,
+} from "@repo/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http } from "msw";
@@ -27,6 +31,7 @@ import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp, renderWithProviders } from "@/test/render";
 
+import { ChangeEmailDialog, changeEmailFields } from "../change-email-dialog";
 import {
   ChangePasswordDialog,
   changePasswordFields,
@@ -249,6 +254,168 @@ describe("the details form", () => {
      */
     await waitFor(() => {
       expect(screen.getByLabelText("First name")).toBeDisabled();
+    });
+  });
+});
+
+describe("the change-email dialog", () => {
+  const NEW_EMAIL = "moved@machxi.local";
+
+  const open = (onClose = vi.fn()) => ({
+    onClose,
+    ...renderWithProviders(<ChangeEmailDialog onClose={onClose} />),
+  });
+
+  it("declares a field map the endpoint's own body accepts", () => {
+    /*
+     * The contract test a field map owes when it is not a resource's
+     * (ADR-0035). `changeEmailBody` is a `strictObject`, so one parse proves
+     * both directions: no unknown key, nothing required left unrendered.
+     */
+    const parsed = changeEmailBody.safeParse({
+      newEmail: NEW_EMAIL,
+      currentPassword: CURRENT_PASSWORD,
+    });
+
+    expect(Object.keys(changeEmailFields)).toEqual([
+      "newEmail",
+      "currentPassword",
+    ]);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
+  it("requires the current password before anything is sent", async () => {
+    const user = userEvent.setup();
+
+    open();
+
+    await user.type(screen.getByLabelText("New email address"), NEW_EMAIL);
+    await user.click(
+      screen.getByRole("button", { name: "Send the confirmation link" }),
+    );
+
+    /*
+     * The rule ADR-0071 §6 inherits from ADR-0027 and leans on hardest: an
+     * address change redirects every future recovery link, so an access token
+     * that could move one would be worth the account. The client holds the
+     * same schema the API validates with (ADR-0011), so the refusal happens
+     * without a request at all.
+     */
+    expect(
+      await within(screen.getByRole("dialog")).findByText(/required/i),
+    ).toBeInTheDocument();
+    expect(state.seen.emailChangeRequests).toHaveLength(0);
+  });
+
+  it("sends the change and says a link is on its way, with nothing changed", async () => {
+    const user = userEvent.setup();
+    const { onClose } = open();
+
+    await user.type(screen.getByLabelText("New email address"), NEW_EMAIL);
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Send the confirmation link" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "A confirmation link is on its way to the new address. Nothing changes until you follow it.",
+      ),
+    ).toBeInTheDocument();
+
+    expect(state.seen.emailChangeRequests).toEqual([
+      { newEmail: NEW_EMAIL, currentPassword: CURRENT_PASSWORD },
+    ]);
+    // The claim the whole flow rests on, asserted where a client could most
+    // easily get it wrong: `202` is not `200`, and the account has not moved.
+    expect(state.profile.email).toBe(PROFILE.email);
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it("puts a wrong current password under the password box", async () => {
+    const user = userEvent.setup();
+
+    open();
+
+    await user.type(screen.getByLabelText("New email address"), NEW_EMAIL);
+    await user.type(screen.getByLabelText("Current password"), "not-the-one");
+    await user.click(
+      screen.getByRole("button", { name: "Send the confirmation link" }),
+    );
+
+    /*
+     * `AUTH_CURRENT_PASSWORD_INVALID` is a `403` with no `details`, so the
+     * field it belongs under is this form's decision (ADR-0027 §Contracts) —
+     * and the sentence is the ADR-0034 catalogue's rather than the API's
+     * developer-facing message.
+     */
+    expect(
+      await screen.findByText("That is not your current password."),
+    ).toBeInTheDocument();
+    expect(state.seen.emailChangeRequests).toHaveLength(0);
+  });
+
+  it("puts a taken address under the address box", async () => {
+    const user = userEvent.setup();
+
+    state.takenEmails.push(NEW_EMAIL);
+    open();
+
+    await user.type(screen.getByLabelText("New email address"), NEW_EMAIL);
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Send the confirmation link" }),
+    );
+
+    /*
+     * The one refusal here that a different value would fix, so it belongs on
+     * the box holding that value rather than at the top of the form —
+     * `USER_EMAIL_TAKEN` is a `409` with no `details` either, and reaches the
+     * field through `codeFields`.
+     */
+    expect(
+      await screen.findByText("That email address is already in use."),
+    ).toBeInTheDocument();
+    expect(state.seen.emailChangeRequests).toHaveLength(0);
+  });
+
+  it("keeps no trace of the password once the mutation has settled", async () => {
+    const user = userEvent.setup();
+    const { queryClient, unmount } = renderWithProviders(
+      <ChangeEmailDialog onClose={vi.fn()} />,
+    );
+
+    await user.type(screen.getByLabelText("New email address"), NEW_EMAIL);
+    await user.type(
+      screen.getByLabelText("Current password"),
+      CURRENT_PASSWORD,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Send the confirmation link" }),
+    );
+
+    await waitFor(() => {
+      expect(state.seen.emailChangeRequests).toHaveLength(1);
+    });
+
+    unmount();
+
+    /*
+     * `CREDENTIAL_MUTATION`'s `gcTime: 0`, asserted the way its neighbours
+     * are: the customer's password is this mutation's `variables`, and without
+     * it the value would sit in the query cache for five minutes after the
+     * dialog that collected it is gone.
+     */
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
     });
   });
 });

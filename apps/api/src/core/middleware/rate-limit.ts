@@ -289,16 +289,60 @@ export const createPasswordResetRateLimiter = (
 export const createMailboxRateLimiter = (
   config: AppConfig,
   store: RateLimitStore,
+  {
+    recipientField = "email",
+    skipFailedRequests = false,
+  }: MailboxRateLimiterOptions = {},
 ): RequestHandler =>
   rateLimit({
     ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
     limit: config.rateLimit.mailboxMax,
+    skipFailedRequests,
     keyGenerator: (req) => {
-      const email = keyEmail(req);
+      const email = keyEmail(req, recipientField);
 
       return email === "" ? `anon:${ipKey(req)}` : email;
     },
   });
+
+/** {@link createMailboxRateLimiter}'s per-mount choices. */
+export interface MailboxRateLimiterOptions {
+  /**
+   * Which field of the body names the mailbox this budget is spent on.
+   *
+   * `email` for every sender up to `D18.7` — `forgot` on both segments and an
+   * organization's invitation. `D18.9` added the first body that spells it
+   * differently: `POST /user/profile/change-email` names the recipient
+   * `newEmail`, because the address it carries is the one the account is
+   * moving **to** (ADR-0071 §6).
+   *
+   * Named at the mount rather than guessed by trying both, and that is the
+   * decision rather than a style: this limiter runs above `validate`, so a
+   * reader that fell back to a second field would let a caller on *any* of
+   * these routes hand every request a key of its own by inventing the field
+   * the schema does not have — the exact hole `D18.7`'s `security-reviewer`
+   * found in the login limiter's key and the reason
+   * {@link createTokenRouteRateLimiter} exists.
+   */
+  readonly recipientField?: "email" | "newEmail";
+  /**
+   * Whether a refused request keeps its share of the budget.
+   *
+   * `false` everywhere §4 decided it, and the reason is §4's own: `forgot` and
+   * the invitation answer the same thing to nearly everything they are handed,
+   * so "a budget an invalid body escapes is not a budget".
+   *
+   * `true` on `change-email` alone, and it is a different endpoint rather than
+   * a softer rule (`D18.9`'s `code-reviewer`). That route demands a credential
+   * and can refuse for reasons that mail nothing at all — a wrong current
+   * password above all — while this limiter runs above both the schema and the
+   * credential check. Counting those would mean five mistyped passwords lock a
+   * person out of moving to that address for the rest of the hour, which is
+   * the budget denying the mailbox it exists to protect. What is rationed here
+   * is messages, and only a `202` sends one.
+   */
+  readonly skipFailedRequests?: boolean;
+}
 
 /**
  * `RATE_LIMIT_MAIL_SOURCE_MAX / RATE_LIMIT_PASSWORD_RESET_WINDOW / **IP**`,
@@ -424,11 +468,14 @@ export const createVerificationRateLimiter = (
  * lower-cased here because an unbounded value from an unvalidated body would
  * otherwise become a memory-store key.
  */
-const keyEmail = (req: Request): string => {
+const keyEmail = (
+  req: Request,
+  field: "email" | "newEmail" = "email",
+): string => {
   const body: unknown = req.body;
   const email =
-    typeof body === "object" && body !== null && "email" in body
-      ? (body as { email: unknown }).email
+    typeof body === "object" && body !== null && field in body
+      ? (body as Record<string, unknown>)[field]
       : undefined;
 
   return typeof email === "string"

@@ -106,6 +106,38 @@ export const deleteProfileBody = z.strictObject({
 export type DeleteProfileBody = z.infer<typeof deleteProfileBody>;
 
 /**
+ * `POST /api/v1/user/profile/change-email` — an account asking to move to a
+ * new address (ADR-0071 §6).
+ *
+ * **Nothing here changes an address.** The endpoint mails a confirmation link
+ * to `newEmail` and answers `202`; the address moves only when that link is
+ * followed, which is what makes the request safe to accept from a caller who
+ * has typed a mailbox they may not own.
+ *
+ * `currentPassword` is required for the reason ADR-0027 requires it on a
+ * password change, and with more force: a changed address redirects every
+ * future recovery link, so an access token that could move it would be worth
+ * the account. It is `presentedPasswordSchema` rather than `passwordSchema` —
+ * the value is a credential being verified, and an account whose password
+ * predates a policy change must still be able to change its address.
+ *
+ * Declared here rather than beside the credential shapes in `auth/` for
+ * {@link deleteProfileBody}'s reason: only `users` change their own address.
+ * A staff member's is set by a super admin (ADR-0071 §7), which is a
+ * different body on a different segment with a different subject.
+ *
+ * **No `locale`**, where the anonymous senders carry one: this caller is an
+ * account, and an account's locale is a stored fact the server reads for
+ * itself (ADR-0046, ADR-0071 §2). A field here would be a client telling the
+ * server what language its own row says.
+ */
+export const changeEmailBody = z.strictObject({
+  newEmail: emailSchema,
+  currentPassword: presentedPasswordSchema,
+});
+export type ChangeEmailBody = z.infer<typeof changeEmailBody>;
+
+/**
  * `GET /api/v1/admin/users` (ADR-0014). `q` searches email and name.
  * `deletedAt` is filterable by presence only: the timestamp itself is an
  * internal soft-delete marker, but "show me deleted accounts" is a real admin

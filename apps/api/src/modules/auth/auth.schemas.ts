@@ -1,4 +1,5 @@
 import {
+  confirmEmailBody,
   forgotPasswordBody,
   loginBody,
   refreshBody,
@@ -30,5 +31,6 @@ export const verifyEmailSchema = { body: verifyEmailBody } as const;
 export const resendVerificationSchema = {
   body: resendVerificationBody,
 } as const;
+export const confirmEmailSchema = { body: confirmEmailBody } as const;
 export const forgotPasswordSchema = { body: forgotPasswordBody } as const;
 export const resetPasswordSchema = { body: resetPasswordBody } as const;

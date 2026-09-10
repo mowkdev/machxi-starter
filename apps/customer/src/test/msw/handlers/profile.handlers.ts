@@ -1,7 +1,9 @@
 import {
+  changeEmailBody,
   changePasswordBody,
   deleteProfileBody,
   updateProfileBody,
+  type ChangeEmailBody,
   type ChangePasswordBody,
   type DeleteProfileBody,
   type UpdateProfileBody,
@@ -78,6 +80,15 @@ export interface ProfileMockState {
    * mock has no sessions, so the fact is recorded rather than enacted.
    */
   allSessionsRevoked: boolean;
+  /**
+   * Addresses a live account already holds, so `change-email` can answer
+   * `409 USER_EMAIL_TAKEN` (ADR-0071 §6).
+   *
+   * A list rather than a second profile, because what the client has to get
+   * right is the refusal and not the row behind it: the API asks the question
+   * of the whole `users` table, which a mock of one account cannot model.
+   */
+  takenEmails: string[];
   readonly seen: {
     updated: UpdateProfileBody[];
     /** Bodies the endpoint **accepted**. A refusal goes in `refused`. */
@@ -86,6 +97,15 @@ export interface ProfileMockState {
     /** Deletions the endpoint accepted, and the ones it refused. */
     deleted: DeleteProfileBody[];
     refusedDeletes: DeleteProfileBody[];
+    /**
+     * Address changes the endpoint **accepted** (ADR-0071 §6).
+     *
+     * There is no `changed` counterpart and there must not be: a `202` here
+     * means a link was mailed and the account is untouched, so a mock that
+     * moved `state.profile.email` would certify a client built on a lie about
+     * the flow.
+     */
+    emailChangeRequests: ChangeEmailBody[];
   };
 }
 
@@ -96,12 +116,14 @@ export const createProfileMockState = (
   password: CURRENT_PASSWORD,
   otherSessionsRevoked: 0,
   allSessionsRevoked: false,
+  takenEmails: [],
   seen: {
     updated: [],
     changed: [],
     refused: [],
     deleted: [],
     refusedDeletes: [],
+    emailChangeRequests: [],
   },
 });
 
@@ -177,6 +199,42 @@ export const createProfileHandlers = (state: ProfileMockState) =>
         state.otherSessionsRevoked = 2;
 
         return new Response(null, { status: 204 });
+      },
+    ),
+
+    http.post(
+      `${API}/profile/change-email`,
+      async ({ request }): Promise<Response> => {
+        const refusal = gone(state);
+
+        if (refusal !== null) return refusal;
+
+        const body = changeEmailBody.parse(await request.json());
+
+        // The credential first, as the service has it: nothing is minted and
+        // nothing is mailed until the actor has proven who they are
+        // (ADR-0027's rule, ADR-0071 §6).
+        if (body.currentPassword !== state.password) {
+          return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+        }
+
+        // The caller's own address included, which is what the API answers:
+        // it is held by a live account — theirs.
+        if (
+          body.newEmail === state.profile.email ||
+          state.takenEmails.includes(body.newEmail)
+        ) {
+          return fail(409, "USER_EMAIL_TAKEN");
+        }
+
+        state.seen.emailChangeRequests.push(body);
+
+        /*
+         * `202` and **the profile untouched**, which is the whole of what this
+         * endpoint promises (ADR-0071 §6): the address moves when somebody
+         * follows the link, on `/confirm-email`, and never here.
+         */
+        return ok({ accepted: true }, 202);
       },
     ),
 

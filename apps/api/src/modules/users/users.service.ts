@@ -1,4 +1,5 @@
 import type {
+  ChangeEmailBody,
   ChangePasswordBody,
   CreateUserBody,
   DeleteProfileBody,
@@ -16,12 +17,16 @@ import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
+import { createMailDelivery } from "../../core/mail/index.js";
+import type { MailSender, MailTemplates } from "../../core/mail/index.js";
+import type { AccountTokens } from "../../core/tokens/index.js";
 import {
   currentPasswordInvalid,
   REVOKE_REASONS,
   type AuthService,
 } from "../auth/index.js";
 import type { OrganizationsService } from "../organizations/index.js";
+import type { SettingsService } from "../settings/index.js";
 import type { StaffService } from "../staff/index.js";
 import { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
 import { toUserResource } from "./users.mapper.js";
@@ -91,6 +96,28 @@ export interface UsersServiceDeps {
     OrganizationsService,
     "ensurePersonalOrganizationFor" | "deletePersonalOrganizationFor"
   >;
+  /**
+   * The settings service, narrowed to the one question this module cannot
+   * answer about itself: which language the acting account reads
+   * (ADR-0046 — a locale is an account fact; ADR-0071 §2 — a message to an
+   * account is written in it).
+   *
+   * The fourth service-to-service edge in this file and the same shape as the
+   * three above. `get` reads the row of whichever population `ctx.principal`
+   * names, so the caller passes the context and this module never learns that
+   * there are two settings tables.
+   */
+  readonly locales: Pick<SettingsService, "get">;
+  /**
+   * ADR-0071 §1's mint, for the one flow in this module that mails a link
+   * (§6). The consume is the auth module's, because the link is followed
+   * without a session.
+   */
+  readonly accountTokens: AccountTokens;
+  /** ADR-0066 §1's port. Never a mail client a service imports. */
+  readonly mail: MailSender;
+  /** ADR-0071 §2's messages, built from the two SPA origins at the root. */
+  readonly mailTemplates: MailTemplates;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
@@ -102,9 +129,14 @@ export const createUsersService = ({
   sessions,
   actors,
   organizations,
+  locales,
+  accountTokens,
+  mail,
+  mailTemplates,
   transaction,
   now = () => new Date(),
 }: UsersServiceDeps) => {
+  const { deliverDetached } = createMailDelivery({ mail });
   /**
    * The account acting on itself — `/api/v1/user/profile` (ADR-0019 §3).
    *
@@ -470,6 +502,19 @@ export const createUsersService = ({
       const revoked = await transaction(async (tx) => {
         await repository.updatePasswordHash(record.id, passwordHash, at, tx);
 
+        // The administrative twin of `changePassword`'s sweep, and it belongs
+        // here more than there: the plausible reason for a staff reset is that
+        // the account is compromised, so a `change_email` link the attacker
+        // asked for is exactly what must not survive it.
+        await accountTokens.supersede(
+          ctx,
+          {
+            purpose: "change_email",
+            principal: { type: "user", id: record.id },
+          },
+          tx,
+        );
+
         return sessions.revokeSessionsFor(ctx, {
           principalId: record.id,
           reason: REVOKE_REASONS.passwordReset,
@@ -561,6 +606,22 @@ export const createUsersService = ({
       const revoked = await transaction(async (tx) => {
         await repository.updatePasswordHash(principal.id, passwordHash, at, tx);
 
+        // In the same commit as the new hash, and for the reason the session
+        // sweep beside it is (`D18.9`'s `security-reviewer`): a pending
+        // `change_email` link is a credential this account did not choose and
+        // this sweep cannot see, mailed to an address somebody else typed. An
+        // attacker who briefly held the password would otherwise still own the
+        // account an hour after it was taken back — the link confirms, the
+        // address moves, and the next `forgot` goes to their mailbox.
+        await accountTokens.supersede(
+          ctx,
+          {
+            purpose: "change_email",
+            principal: { type: "user", id: principal.id },
+          },
+          tx,
+        );
+
         return sessions.revokeSessionsFor(ctx, {
           principalId: principal.id,
           reason: REVOKE_REASONS.passwordChanged,
@@ -570,6 +631,107 @@ export const createUsersService = ({
       });
 
       ctx.logger.info({ userId: principal.id, revoked }, "password changed");
+    },
+
+    /**
+     * `POST /api/v1/user/profile/change-email` — asking to move the account to
+     * a new address (ADR-0071 §6).
+     *
+     * **Nothing here changes an address**, and that is the whole design rather
+     * than a limitation. The caller has typed a mailbox; typing it is not
+     * evidence of owning it. So this verifies who is asking, refuses an
+     * address a live account already holds, puts the requested address in a
+     * single-use token's payload and mails **the new address** a link. The
+     * account is untouched until `POST /public/auth/confirm-email` claims that
+     * token (the auth module, because the link is followed from a mailbox
+     * rather than from this session).
+     *
+     * **The current password is required**, for the reason ADR-0027 requires
+     * it on a password change and with more force: an address change redirects
+     * every future recovery link, so an access token that could move an
+     * address would be worth the account outright. `changePassword`'s
+     * refusal, to the letter — including for an account whose `password_hash`
+     * is `null`, which means "no password login" (ADR-0017) and never "any
+     * password matches".
+     *
+     * **The route refuses an impersonated session** (ADR-0057 §5, mounted in
+     * `users.routes.ts`), which is the same sentence read from the other end:
+     * the operation this endpoint starts is exactly the takeover a support
+     * operator must not be able to perform.
+     *
+     * The locale is the **account's**, read through the settings service
+     * (ADR-0071 §2, ADR-0046): this caller is an account, so unlike
+     * registration or an invitation to a stranger there is a stored fact to
+     * read and no reason to let a client name the language its own row
+     * already states. It travels into the token's payload beside the address,
+     * because the notice the *old* address receives is sent from an anonymous
+     * endpoint that has no principal to read it from.
+     */
+    requestEmailChange: async (
+      ctx: RequestContext,
+      body: ChangeEmailBody,
+    ): Promise<void> => {
+      const principal = self(ctx);
+      const record = await readSelf(principal.id);
+
+      const verified =
+        record.passwordHash !== null &&
+        (await hasher.verify(record.passwordHash, body.currentPassword));
+
+      if (!verified) {
+        ctx.logger.warn(
+          { userId: principal.id },
+          "address change refused, current password did not verify",
+        );
+
+        throw currentPasswordInvalid();
+      }
+
+      // The caller's own address included, deliberately: it is held by a live
+      // account — theirs — so "already taken" is the truthful answer, and a
+      // flow that mailed a confirmation link for an address the account
+      // already has would spend a message to change nothing.
+      if (await repository.emailTaken(body.newEmail)) {
+        ctx.logger.warn(
+          { userId: principal.id },
+          "address change refused, the new address is taken",
+        );
+
+        throw userEmailTaken();
+      }
+
+      const { locale } = await locales.get(ctx);
+
+      const { token } = await accountTokens.mint(ctx, {
+        purpose: "change_email",
+        principal: { type: "user", id: principal.id },
+        // The address lives here until the link is followed, which is what
+        // ADR-0071 §1 gave the column for; the locale rides with it so the
+        // anonymous confirmation can write the old address's notice in this
+        // account's language. Both are redacted in logs (ADR-0005).
+        payload: { newEmail: body.newEmail, locale },
+      });
+
+      deliverDetached(
+        ctx,
+        body.newEmail,
+        { population: "user", purpose: "change_email" },
+        mailTemplates.confirmEmailChange({
+          token,
+          locale,
+          newEmail: body.newEmail,
+        }),
+      );
+
+      // The **new** address is not on the line and the account id is: this row
+      // is the operational half of the flow, and the address it names is one
+      // the account does not hold yet — it belongs in the token, which is
+      // deleted by the sweep, rather than in whatever ships the logs
+      // (ADR-0005's `newEmail` path exists for exactly this).
+      ctx.logger.info(
+        { userId: principal.id },
+        "address change requested, confirmation link sent",
+      );
     },
 
     /**

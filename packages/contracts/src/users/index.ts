@@ -9,6 +9,7 @@ export {
 export {
   LIST_USERS_FILTERABLE,
   LIST_USERS_SORTABLE,
+  changeEmailBody,
   createUserBody,
   deleteProfileBody,
   listUsersQuery,
@@ -16,6 +17,7 @@ export {
   updateUserBody,
   userIdParams,
   userRolesSchema,
+  type ChangeEmailBody,
   type CreateUserBody,
   type DeleteProfileBody,
   type ListUsersQuery,

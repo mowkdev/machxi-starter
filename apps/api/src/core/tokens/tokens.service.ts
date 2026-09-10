@@ -93,6 +93,32 @@ export interface AccountTokens {
     tx?: DbExecutor,
   ) => Promise<MintedAccountToken>;
   /**
+   * Spends every live token of this principal and purpose **without minting a
+   * replacement** (ADR-0071 §1, §6 as amended at `D18.9`).
+   *
+   * {@link AccountTokens.mint} already supersedes as a side effect, which
+   * covers "the same person asked again". What this covers is the other case:
+   * an operation that invalidates a link somebody else is holding. A password
+   * change ends every other session because the account may be being recovered
+   * from somebody — and a pending `change_email` link is a credential of
+   * exactly that kind, mailed to an address the attacker chose, that the
+   * session sweep cannot see (`D18.9`'s `security-reviewer`).
+   *
+   * `tx` is required: the whole value is that it lands in the same commit as
+   * the operation that justifies it, so a rolled-back password change does not
+   * leave a link destroyed.
+   *
+   * @returns how many live rows were stamped.
+   */
+  readonly supersede: (
+    ctx: RequestContext,
+    input: {
+      readonly purpose: TokenPurpose;
+      readonly principal: TokenPrincipal;
+    },
+    tx: DbExecutor,
+  ) => Promise<number>;
+  /**
    * Claims the token for this purpose and population, once.
    *
    * @returns the row, or `undefined` when the token is unknown, of another
@@ -213,6 +239,35 @@ export const createAccountTokens = ({
       );
 
       return { token, expiresAt } as const;
+    },
+
+    supersede: async (ctx, { purpose, principal }, tx) => {
+      const superseded = await repository.supersedeLive(
+        {
+          purpose,
+          principalType: principal.type,
+          principalId: principal.id,
+          at: now(),
+        },
+        tx,
+      );
+
+      if (superseded > 0) {
+        // Only when something was actually spent: a line on every password
+        // change saying "no links destroyed" is noise, and the interesting
+        // event — a link somebody was holding stopped working — is rare.
+        ctx.logger.info(
+          {
+            purpose,
+            principalType: principal.type,
+            principalId: principal.id,
+            superseded,
+          },
+          "account tokens superseded without replacement",
+        );
+      }
+
+      return superseded;
     },
 
     consume: async (ctx, { purpose, principalType, token }, tx) => {

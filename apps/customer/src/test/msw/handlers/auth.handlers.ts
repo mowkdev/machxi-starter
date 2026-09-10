@@ -1,4 +1,5 @@
 import {
+  confirmEmailBody,
   forgotPasswordBody,
   impersonateBody,
   loginBody,
@@ -7,6 +8,7 @@ import {
   resetPasswordBody,
   verifyEmailBody,
   type AuthResource,
+  type ConfirmEmailBody,
   type ErrorCode,
   type ForgotPasswordBody,
   type ImpersonatorResource,
@@ -123,6 +125,8 @@ export const VERIFICATION_TOKEN = "verification-token-from-the-fragment";
 
 /** The recovery link's token, as the mailed link would carry it (`D18.6`). */
 export const RESET_TOKEN = "reset-token-from-the-fragment";
+/** The address change's link, as `/confirm-email` receives it (`D18.9`). */
+export const EMAIL_CHANGE_TOKEN = "email-change-token-from-the-fragment";
 
 export const CREDENTIALS = {
   email: "customer@machxi.local",
@@ -232,6 +236,24 @@ export interface AuthMockState {
    */
   resetPasswordCalls: ResetPasswordBody[];
   /**
+   * The bodies `POST /public/auth/confirm-email` has been offered (`D18.9`).
+   *
+   * The token and nothing else, because that is the whole body: what the
+   * screen had to do was carry it out of the URL fragment without rendering,
+   * storing or mangling it (ADR-0071 §1, §6).
+   */
+  confirmEmailCalls: ConfirmEmailBody[];
+  /**
+   * When set, `confirm-email` answers `409 USER_EMAIL_TAKEN` (ADR-0071 §6).
+   *
+   * The one refusal on that endpoint that is **not** the indistinguishable
+   * `401`, and the only one the screen has a second sentence for: somebody
+   * claimed the address between the request and the click. A flag rather than
+   * an address list, because the endpoint's body carries no address for a
+   * mock to compare — the address lives in the token's payload, server-side.
+   */
+  confirmEmailTaken: boolean;
+  /**
    * Addresses that already belong to an account.
    *
    * The refusal is the generic `409 CONFLICT` ADR-0020 §Enumeration requires —
@@ -269,6 +291,8 @@ export const createAuthMockState = (): AuthMockState => ({
   resendVerificationCalls: [],
   forgotPasswordCalls: [],
   resetPasswordCalls: [],
+  confirmEmailCalls: [],
+  confirmEmailTaken: false,
   takenEmails: [CREDENTIALS.email],
   hasRefreshCookie: true,
 });
@@ -454,6 +478,41 @@ export const createAuthHandlers = (state: AuthMockState) =>
         state.resetPasswordCalls.push(body);
 
         if (body.token !== RESET_TOKEN) return fail(401, "UNAUTHENTICATED");
+
+        return new Response(null, { status: 204 });
+      },
+    ),
+
+    /*
+     * The address change's link, spent (`D18.9`, ADR-0071 §6).
+     *
+     * **`204` and no session either way**, which is the half of §6 a mock can
+     * get wrong invisibly: this endpoint issues no session and revokes none —
+     * an address is not a credential — so a mock answering an `AuthResource`
+     * or clearing anything would let this app grow a landing the API cannot
+     * produce.
+     *
+     * **One indistinguishable `401` for every refusal but one.** The exception
+     * is `409 USER_EMAIL_TAKEN`, which §6 makes distinguishable on purpose:
+     * whoever holds the link already knows which address it names, because it
+     * is the mailbox the message arrived in.
+     *
+     * On the **public** segment, like the two verification routes beside it:
+     * the link is followed from a mailbox by a browser that may have no
+     * account at all.
+     */
+    http.post(
+      `${PUBLIC_API}/auth/confirm-email`,
+      async ({ request }): Promise<Response> => {
+        const body = confirmEmailBody.parse(await request.json());
+
+        state.confirmEmailCalls.push(body);
+
+        if (state.confirmEmailTaken) return fail(409, "USER_EMAIL_TAKEN");
+
+        if (body.token !== EMAIL_CHANGE_TOKEN) {
+          return fail(401, "UNAUTHENTICATED");
+        }
 
         return new Response(null, { status: 204 });
       },

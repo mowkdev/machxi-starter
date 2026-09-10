@@ -1,7 +1,7 @@
 {
   "account": {
     "title": "Jūsu dati",
-    "description": "Vārdu varat mainīt pats. E-pasta adrese ir tā, ar kuru piesakāties, tāpēc to šeit pagaidām mainīt nevar."
+    "description": "Vārdu varat mainīt pats. E-pasta adrese ir tā, ar kuru pieteicaties, tāpēc tās maiņai nosūtām saiti uz jauno adresi."
   },
   "summary": {
     "email": "E-pasts",
@@ -9,10 +9,32 @@
     "lastLogin": "Pēdējā pieteikšanās"
   },
   "fields": {
-    "firstName": { "label": "Vārds" },
-    "lastName": { "label": "Uzvārds" }
+    "firstName": {
+      "label": "Vārds"
+    },
+    "lastName": {
+      "label": "Uzvārds"
+    }
   },
   "save": "Saglabāt izmaiņas",
+  "email": {
+    "action": "Mainīt e-pastu",
+    "dialog": {
+      "title": "Mainiet savu e-pasta adresi",
+      "description": "Uz jauno adresi nosūtīsim saiti. Nekas nemainās, kamēr to neatverat, un līdz tam piesakieties ar pašreizējo adresi.",
+      "submit": "Nosūtīt apstiprinājuma saiti"
+    },
+    "fields": {
+      "newEmail": {
+        "label": "Jaunā e-pasta adrese",
+        "description": "Saite nonāks tieši šeit, tāpēc adresei jābūt tādai, ko varat atvērt."
+      },
+      "currentPassword": {
+        "label": "Pašreizējā parole",
+        "description": "Nepieciešama arī tad, ja esat pieteicies — uz mainīto adresi tiktu sūtītas visas turpmākās paroles atjaunošanas saites."
+      }
+    }
+  },
   "password": {
     "title": "Parole",
     "description": "Tās maiņa atsaka visas pārējās ierīces un atstāj šo pieteiktu.",
@@ -60,6 +82,7 @@
   "outcomes": {
     "updated": "Jūsu dati tika saglabāti.",
     "passwordChanged": "Jūsu parole tika nomainīta. Visas pārējās ierīces tika atteiktas; šī paliek.",
-    "deleted": "Jūsu konts ir slēgts. Jūs esat atteikts visās ierīcēs."
+    "deleted": "Jūsu konts ir slēgts. Jūs esat atteikts visās ierīcēs.",
+    "emailChangeRequested": "Apstiprinājuma saite jau ir ceļā uz jauno adresi. Nekas nemainās, kamēr to neatverat."
   }
 }

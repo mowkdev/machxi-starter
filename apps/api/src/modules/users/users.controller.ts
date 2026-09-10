@@ -1,9 +1,11 @@
+import type { AcceptedResource } from "@repo/contracts";
 import type { Request, Response } from "express";
 
 import { respond } from "../../core/http/index.js";
 import type { ValidatedRequest } from "../../core/middleware/index.js";
 import type { AuthCookies } from "../auth/index.js";
 import type {
+  changeEmailSchema,
   changePasswordSchema,
   createUserSchema,
   deleteProfileSchema,
@@ -141,6 +143,31 @@ export const createUserProfileController = ({
     ): Promise<void> => {
       await service.changePassword(req.ctx, req.valid.body);
       respond.noContent(res);
+    },
+
+    /**
+     * `202`: a link is on its way to the new address and **nothing has
+     * changed** (ADR-0071 §6).
+     *
+     * The status is the whole of what this endpoint promises. `200` would say
+     * the address moved, which it has not and must not — the caller has typed
+     * a mailbox they may not own — and `204` would say the same thing more
+     * quietly. `202` is the shape `register` and both `forgot` endpoints
+     * already use for "accepted, and the rest happens in a mailbox".
+     *
+     * Unlike those three, this one is **not** an oracle-free answer and does
+     * not have to be: the caller is authenticated, and `409 USER_EMAIL_TAKEN`
+     * tells them only that somebody holds an address they were about to move
+     * to — which they will discover from the flow's failure anyway, and which
+     * they can only act on if they are told (ADR-0020 §Enumeration bounds what
+     * an *anonymous* caller may learn).
+     */
+    changeEmail: async (
+      req: ValidatedRequest<typeof changeEmailSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.requestEmailChange(req.ctx, req.valid.body);
+      respond.accepted<AcceptedResource>(res, { accepted: true });
     },
 
     /**

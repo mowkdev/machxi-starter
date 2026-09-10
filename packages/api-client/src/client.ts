@@ -4,6 +4,7 @@ import {
   isErrorCode,
   type AcceptedResource,
   type AuthResource,
+  type ConfirmEmailBody,
   type CsrfResource,
   type ErrorCode,
   type ErrorDetail,
@@ -680,6 +681,46 @@ export const createApiClient = ({
   };
 
   /**
+   * Spends an address-change link, so the new address becomes the account's
+   * (ADR-0071 §6).
+   *
+   * **It writes nothing to the store and it is right not to.** Compare its two
+   * neighbours: `verifyEmail` writes a session because the endpoint issues
+   * one, and `resetPassword` clears the store because the endpoint revokes
+   * every session there is. This endpoint does neither — §6 leaves sessions
+   * untouched, an address not being a credential — so the honest client
+   * behaviour is to leave the browser exactly as it found it.
+   *
+   * What that costs is a stale `email` on the principal in memory, in the one
+   * case where the link happens to be opened in the browser already signed
+   * into the account it belongs to. It is the screen's to deal with rather
+   * than this function's: the endpoint answers `204` with no principal, so
+   * there is nothing here to rebuild one from, and the store's rule is that it
+   * is written from a response that carries a session (`D3.9`'s single-writer
+   * finding). The customer app's `/confirm-email` screen invalidates the
+   * profile query instead, which is what every account screen reads the
+   * address from; the header's account control catches up at the next token
+   * rotation, and the case only arises at all when the link happens to be
+   * opened in a browser signed into the account that moved.
+   *
+   * **No segment guard**, for `resendVerification`'s reason: the two guards on
+   * this client exist because a `user` principal must not be hydrated into an
+   * admin app's store, and this writes nothing at all.
+   *
+   * Every way the link can be bad answers one indistinguishable `401`, with
+   * the single exception §6 makes on purpose — `409 USER_EMAIL_TAKEN`, when
+   * somebody claimed the address in the meantime — so there is exactly one
+   * thing here worth branching on and the screen does the branching.
+   */
+  const confirmEmail = async (token: string): Promise<void> => {
+    const body: ConfirmEmailBody = { token };
+
+    await instance.post("/auth/confirm-email", body, {
+      baseURL: publicBaseUrl,
+    });
+  };
+
+  /**
    * Reads what an invitation link is offering, before there is a session
    * (ADR-0071 §5).
    *
@@ -1034,6 +1075,7 @@ export const createApiClient = ({
     register,
     verifyEmail,
     resendVerification,
+    confirmEmail,
     lookupInvitation,
     forgotPassword,
     resetPassword,

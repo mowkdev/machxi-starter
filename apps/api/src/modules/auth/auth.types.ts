@@ -120,6 +120,34 @@ export interface PrincipalAdapter<P extends Population = Population> {
     tx?: DbExecutor,
   ) => Promise<PrincipalRecord | undefined>;
   /**
+   * The address change's write, and therefore **users only** (ADR-0071 §6):
+   * a staff member's address is set by a super admin rather than proven by a
+   * link (§7), so the staff adapter has nothing to implement.
+   *
+   * The new address and `email_verified_at` move together, inside the
+   * transaction that consumed the token. Resolves to `undefined` when no row
+   * moved — the account was deleted or disabled since the request, or another
+   * account claimed the address in the meantime — which the caller answers by
+   * throwing, so the consume rolls back and a refused confirmation spends
+   * nothing.
+   */
+  changeEmailVerified?: (
+    id: string,
+    email: string,
+    at: Date,
+    tx?: DbExecutor,
+  ) => Promise<PrincipalRecord | undefined>;
+  /**
+   * "Does a live account of this population already hold this address?"
+   * (ADR-0071 §6), and **users only** for {@link changeEmailVerified}'s
+   * reason.
+   *
+   * A boolean rather than a record, because the caller is an anonymous route:
+   * the confirmation must be able to answer `409` without any path existing
+   * through which it could reach a stranger's row.
+   */
+  isEmailTaken?: (email: string, tx?: DbExecutor) => Promise<boolean>;
+  /**
    * The one lookup `resend-verification` needs, and **users only** for the
    * reason {@link create} is: `pending_verification` is a `user` status, and a
    * staff row that has not onboarded is ADR-0071 §8's flow rather than this

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DashboardRouteImport } from './routes/_dashboard'
+import { Route as ConfirmEmailRouteImport } from './routes/confirm-email'
 import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
@@ -38,6 +39,11 @@ const AuthRoute = AuthRouteImport.update({
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/_dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfirmEmailRoute = ConfirmEmailRouteImport.update({
+  id: '/confirm-email',
+  path: '/confirm-email',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImpersonateRoute = ImpersonateRouteImport.update({
@@ -152,6 +158,7 @@ const DashboardOrgsOrgSlugSettingsMembersRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof DashboardIndexRoute
+  '/confirm-email': typeof ConfirmEmailRoute
   '/impersonate': typeof ImpersonateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
@@ -174,6 +181,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof DashboardIndexRoute
+  '/confirm-email': typeof ConfirmEmailRoute
   '/impersonate': typeof ImpersonateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/_dashboard': typeof DashboardRouteWithChildren
+  '/confirm-email': typeof ConfirmEmailRoute
   '/impersonate': typeof ImpersonateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/confirm-email'
     | '/impersonate'
     | '/reset-password'
     | '/verify-email'
@@ -243,6 +253,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/confirm-email'
     | '/impersonate'
     | '/reset-password'
     | '/verify-email'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_auth'
     | '/_dashboard'
+    | '/confirm-email'
     | '/impersonate'
     | '/reset-password'
     | '/verify-email'
@@ -289,6 +301,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   DashboardRoute: typeof DashboardRouteWithChildren
+  ConfirmEmailRoute: typeof ConfirmEmailRoute
   ImpersonateRoute: typeof ImpersonateRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
@@ -309,6 +322,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/confirm-email': {
+      id: '/confirm-email'
+      path: '/confirm-email'
+      fullPath: '/confirm-email'
+      preLoaderRoute: typeof ConfirmEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/impersonate': {
@@ -533,6 +553,7 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   DashboardRoute: DashboardRouteWithChildren,
+  ConfirmEmailRoute: ConfirmEmailRoute,
   ImpersonateRoute: ImpersonateRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,

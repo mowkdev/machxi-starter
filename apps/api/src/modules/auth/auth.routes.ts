@@ -12,6 +12,7 @@ import type { AuthController } from "./auth.controller.js";
 import type { ImpersonationController } from "./auth.impersonation.controller.js";
 import { exchangeImpersonationSchema } from "./auth.impersonation.schemas.js";
 import {
+  confirmEmailSchema,
   forgotPasswordSchema,
   loginSchema,
   refreshSchema,
@@ -365,6 +366,39 @@ export const createVerificationRouter = ({
     mailSourceRateLimiter,
     validate(resendVerificationSchema),
     controller.resendVerification,
+  );
+
+  /*
+   * `POST /api/v1/public/auth/confirm-email` (ADR-0071 §6) — the landing this
+   * router's docblock said it was waiting for.
+   *
+   * Here rather than beside `/user/profile/change-email`, which is where the
+   * change is *asked for*: the link is followed from the new mailbox, which is
+   * very often not the browser holding the session — a work address opened on
+   * a phone is the ordinary case — so a route under `authenticate("user")`
+   * would refuse the person the message was addressed to.
+   *
+   * **No limiter and no CSRF guard**, and both absences are the decisions
+   * §3's amendment set down for this router rather than inheritances nobody
+   * re-checked. The credential is 32 random bytes with an hour to live and the
+   * consume is one indexed update, so guessing is not a rate problem and the
+   * budget belongs at the mint — which is the authenticated half, behind a
+   * session and a password. Nothing in the browser's jar authorises the
+   * request: the token in the body *is* the credential, so there is no
+   * cross-site submission whose intent needs proving, and unlike
+   * `verify-email` this route does not even issue a session for a cross-site
+   * page to want.
+   *
+   * The one item on §3's "what would change it" list this route does touch is
+   * "acts on an authenticated principal" — it moves an address on a real
+   * account. It acts on the account the *token* names and never on one the
+   * request's own credentials identify, which is the distinction that list
+   * draws: there is no ambient authority here for a CSRF guard to protect.
+   */
+  router.post(
+    "/confirm-email",
+    validate(confirmEmailSchema),
+    controller.confirmEmail,
   );
 
   return router;

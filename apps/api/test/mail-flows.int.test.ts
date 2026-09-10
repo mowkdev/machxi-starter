@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { login } from "./support/actors.js";
+import { bearer, login } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
 import { lastMailTo, tokenFromMail } from "./support/mail.js";
 import {
@@ -35,6 +35,8 @@ const REGISTER = "/api/v1/public/auth/register";
 const VERIFY = "/api/v1/public/auth/verify-email";
 const RESEND = "/api/v1/public/auth/resend-verification";
 const LOGIN = "/api/v1/user/auth/login";
+const CHANGE_EMAIL = "/api/v1/user/profile/change-email";
+const CONFIRM = "/api/v1/public/auth/confirm-email";
 const PASSWORD = "a-perfectly-fine-password";
 
 describe("address verification", () => {
@@ -784,3 +786,402 @@ describe.each(RESET_CASES)(
     });
   },
 );
+
+/**
+ * A person changes their own address by proving the new one (ADR-0071 §6).
+ *
+ * The third flow on §1's mechanism and the first one whose two halves sit on
+ * different segments: the request is authenticated and self-scoped, because
+ * only the account holder may start it; the confirmation is anonymous, because
+ * the link is followed from the **new** mailbox, which is very often not the
+ * browser holding the session.
+ *
+ * What this proves that a unit test cannot: the request really changes nothing
+ * — the row still holds the old address after a `202`, and the new address
+ * lives only in a token's payload; the swap, the stamp and the audit row share
+ * one transaction against a real database; the uniqueness question is asked
+ * again at the confirmation and answered by the same `409` an hour later; a
+ * refused confirmation spends nothing, so the link still works; and the
+ * message the old address receives carries no link at all.
+ *
+ * The exclusion is not here. `refuseImpersonated` on the request route is
+ * proved in `impersonation-exclusions.int.test.ts`, which owns the mint, the
+ * exchange and the `impersonation.refused` audit row that every entry on
+ * ADR-0057 §5's list is checked for (`D18.9`'s amendment to the plan).
+ */
+describe("address change", () => {
+  let harness: TestApp;
+  /** The account this suite moves about, looked up once. */
+  let holderId = "";
+
+  beforeAll(async () => {
+    harness = createTestApp();
+    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+
+    const [row] = await harness.db.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, FIXTURE_USERS.active));
+
+    holderId = row?.id ?? "";
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  beforeEach(() => {
+    harness.mail.length = 0;
+  });
+
+  const request = () => supertest(harness.app);
+
+  /** Signs in as the holder with a password other than the fixture's. */
+  const holderWith = async (
+    password: string,
+  ): Promise<{ token: string; email: string }> => {
+    const [row] = await harness.db.db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, holderId));
+    const email = row?.email ?? FIXTURE_USERS.active;
+    const tokens = await login(harness.app, "user", { email, password });
+
+    return { token: tokens.accessToken, email };
+  };
+
+  /** Signs in as the holder, whatever address it currently answers to. */
+  const holder = (): Promise<{ token: string; email: string }> =>
+    holderWith(FIXTURE_PASSWORD);
+
+  const changeEmail = (accessToken: string, body: Record<string, unknown>) =>
+    request()
+      .post(CHANGE_EMAIL)
+      .set("Authorization", bearer(accessToken))
+      .send(body);
+
+  const confirm = (token: string) => request().post(CONFIRM).send({ token });
+
+  const accountRow = async () => {
+    const [row] = await harness.db.db
+      .select({
+        email: users.email,
+        verifiedAt: users.emailVerifiedAt,
+        status: users.status,
+      })
+      .from(users)
+      .where(eq(users.id, holderId));
+
+    return row;
+  };
+
+  /** Asks for the change and hands back the token the message carried. */
+  const requestAndReadLink = async (newEmail: string): Promise<string> => {
+    const { token } = await holder();
+
+    await changeEmail(token, {
+      newEmail,
+      currentPassword: FIXTURE_PASSWORD,
+    }).expect(202);
+
+    return tokenFromMail(lastMailTo(harness, newEmail));
+  };
+
+  /** Puts the fixture's own address back, so later cases can sign in. */
+  const restoreAddress = async (): Promise<void> => {
+    const current = await accountRow();
+
+    if (current?.email === FIXTURE_USERS.active) return;
+
+    const link = await requestAndReadLink(FIXTURE_USERS.active);
+
+    await confirm(link).expect(204);
+  };
+
+  /* ── the request: nothing moves ──────────────────────────────────────── */
+
+  it("answers 202, mails the new address and changes nothing", async () => {
+    const newEmail = "moved.one@machxi.local";
+    const { token } = await holder();
+
+    const response = await changeEmail(token, {
+      newEmail,
+      currentPassword: FIXTURE_PASSWORD,
+    }).expect(202);
+
+    expect(response.body.data).toEqual({ accepted: true });
+    // No session is issued and none is ended: an address is not a credential
+    // (ADR-0071 §6).
+    expect(response.headers["set-cookie"]).toBeUndefined();
+
+    // The claim the whole flow rests on.
+    expect(await accountRow()).toMatchObject({
+      email: FIXTURE_USERS.active,
+      status: "active",
+    });
+
+    // Exactly one message, to the address nobody has proven yet — and nothing
+    // to the address that still signs in.
+    expect(harness.mail).toHaveLength(1);
+    expect(harness.mail[0]?.to).toBe(newEmail);
+
+    const [row] = await harness.db.db
+      .select({
+        purpose: accountTokens.purpose,
+        consumedAt: accountTokens.consumedAt,
+        payload: accountTokens.payload,
+      })
+      .from(accountTokens)
+      .where(
+        and(
+          eq(accountTokens.principalId, holderId),
+          eq(accountTokens.purpose, "change_email"),
+        ),
+      )
+      .orderBy(desc(accountTokens.createdAt));
+
+    expect(row).toMatchObject({ purpose: "change_email", consumedAt: null });
+    // The address waits in the payload until somebody proves it (ADR-0071 §1).
+    expect(row?.payload).toMatchObject({ newEmail });
+  });
+
+  it("puts the token in the fragment and never in the path or the query", async () => {
+    const newEmail = "moved.fragment@machxi.local";
+    const token = await requestAndReadLink(newEmail);
+    const text = lastMailTo(harness, newEmail)?.text ?? "";
+    const [beforeHash = ""] = text.split("#token=");
+
+    expect(text).toContain(
+      `${harness.config.apps.customerUrl}/confirm-email#token=${token}`,
+    );
+    expect(beforeHash, "no server log, proxy or Referer sees it").not.toContain(
+      token,
+    );
+  });
+
+  it("refuses a wrong current password with 403 and mails nothing", async () => {
+    const { token } = await holder();
+
+    const response = await changeEmail(token, {
+      newEmail: "moved.wrongpass@machxi.local",
+      currentPassword: "not-the-password",
+    }).expect(403);
+
+    expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+    expect(harness.mail).toHaveLength(0);
+  });
+
+  it("refuses an address a live account already holds, at the request", async () => {
+    const { token } = await holder();
+
+    const response = await changeEmail(token, {
+      newEmail: FIXTURE_USERS.disabled,
+      currentPassword: FIXTURE_PASSWORD,
+    }).expect(409);
+
+    expect(response.body.error.code).toBe("USER_EMAIL_TAKEN");
+    expect(harness.mail).toHaveLength(0);
+  });
+
+  it("refuses an unauthenticated request outright", async () => {
+    await request()
+      .post(CHANGE_EMAIL)
+      .send({
+        newEmail: "moved.anon@machxi.local",
+        currentPassword: FIXTURE_PASSWORD,
+      })
+      .expect(401);
+  });
+
+  /* ── the confirmation: the address moves ─────────────────────────────── */
+
+  it("swaps the address, stamps the proof and notifies the old one", async () => {
+    const before = await accountRow();
+    const previous = before?.email ?? FIXTURE_USERS.active;
+    const newEmail = "moved.confirmed@machxi.local";
+    const link = await requestAndReadLink(newEmail);
+
+    harness.mail.length = 0;
+
+    const response = await confirm(link).expect(204);
+
+    // No session either way (ADR-0071 §6): the person signed in elsewhere did
+    // not stop being that person, and this device proved a mailbox rather than
+    // an account.
+    expect(response.headers["set-cookie"]).toBeUndefined();
+
+    const account = await accountRow();
+
+    expect(account?.email).toBe(newEmail);
+    /*
+     * The stamp **moved**, and the comparison is what makes that a claim: this
+     * fixture is seeded verified, so `not.toBeNull()` would hold with the
+     * column left out of the `set(...)` altogether (`D18.9`'s
+     * `code-reviewer`). The column records when *this* address was proven, and
+     * it was proven a moment ago.
+     */
+    expect(account?.verifiedAt?.getTime() ?? 0).toBeGreaterThan(
+      before?.verifiedAt?.getTime() ?? 0,
+    );
+
+    // The notice, to the address the account has just left — plainly, and with
+    // no link, because that mailbox no longer belongs to the account.
+    const notice = lastMailTo(harness, previous);
+
+    expect(notice?.text).toContain(newEmail);
+    expect(notice?.text).not.toContain("#token=");
+
+    // The session opened before the change still works: nothing was revoked.
+    await login(harness.app, "user", {
+      email: newEmail,
+      password: FIXTURE_PASSWORD,
+    });
+
+    const [audited] = await harness.db.db
+      .select({
+        event: auditEvents.event,
+        actorId: auditEvents.actorId,
+        actingAsId: auditEvents.actingAsId,
+        data: auditEvents.data,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.event, "account.email_changed"))
+      .orderBy(desc(auditEvents.occurredAt));
+
+    expect(audited).toMatchObject({
+      actorId: holderId,
+      actingAsId: null,
+      data: { previousEmail: previous, newEmail },
+    });
+
+    await restoreAddress();
+  });
+
+  it("refuses a replay with 401 and leaves the address alone", async () => {
+    const newEmail = "moved.replay@machxi.local";
+    const link = await requestAndReadLink(newEmail);
+
+    await confirm(link).expect(204);
+
+    const replay = await confirm(link).expect(401);
+
+    expect(replay.body.error.code).toBe("UNAUTHENTICATED");
+    expect((await accountRow())?.email).toBe(newEmail);
+
+    await restoreAddress();
+  });
+
+  it("refuses a token nobody minted with the same answer", async () => {
+    const response = await confirm("this-token-was-never-minted").expect(401);
+
+    expect(response.body.error.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("refuses a verification token presented here, and spends nothing", async () => {
+    // One flow can never spend another's credential: the purpose is matched
+    // inside the claiming statement (ADR-0071 §1).
+    const email = "moved.other.purpose@machxi.local";
+
+    await request()
+      .post(REGISTER)
+      .send({ email, password: PASSWORD })
+      .expect(202);
+
+    const token = tokenFromMail(lastMailTo(harness, email));
+
+    await confirm(token).expect(401);
+    // Still redeemable where it belongs, which is what proves nothing was
+    // spent.
+    await request().post(VERIFY).send({ token }).expect(200);
+  });
+
+  it("refuses an address taken since the request, and spends nothing", async () => {
+    // The uniqueness question is asked again inside the transaction, because
+    // up to `EMAIL_CHANGE_TOKEN_TTL` may have passed since the request asked
+    // it (ADR-0071 §6).
+    const contested = "moved.contested@machxi.local";
+    const link = await requestAndReadLink(contested);
+
+    // Somebody else claims it in the meantime.
+    await request()
+      .post(REGISTER)
+      .send({ email: contested, password: PASSWORD })
+      .expect(202);
+
+    const refused = await confirm(link).expect(409);
+
+    expect(refused.body.error.code).toBe("USER_EMAIL_TAKEN");
+    expect((await accountRow())?.email).toBe(FIXTURE_USERS.active);
+
+    const [row] = await harness.db.db
+      .select({ consumedAt: accountTokens.consumedAt })
+      .from(accountTokens)
+      .where(
+        and(
+          eq(accountTokens.principalId, holderId),
+          eq(accountTokens.purpose, "change_email"),
+        ),
+      )
+      .orderBy(desc(accountTokens.createdAt));
+
+    expect(row?.consumedAt, "a refused consume rolls its stamp back").toBe(
+      null,
+    );
+  });
+
+  it("spends the pending link when the password changes", async () => {
+    /*
+     * `D18.9`'s `security-reviewer`, and it is a takeover chain rather than an
+     * inconsistency. An attacker who briefly holds the password asks to move
+     * the address to a mailbox of their own; the owner notices and changes the
+     * password, which ends every other session — and, before this, left the
+     * attacker's link redeemable for the rest of `EMAIL_CHANGE_TOKEN_TTL`. The
+     * link confirms, the address moves, and the next `forgot` hands the
+     * account over. The session sweep cannot see a token row, so the sweep has
+     * to be told about it.
+     */
+    const link = await requestAndReadLink("moved.stolen@machxi.local");
+    const { token, email } = await holder();
+
+    await request()
+      .post("/api/v1/user/profile/change-password")
+      .set("Authorization", bearer(token))
+      .send({
+        currentPassword: FIXTURE_PASSWORD,
+        newPassword: "ChosenByTheOwner!2026",
+      })
+      .expect(204);
+
+    await confirm(link).expect(401);
+    expect((await accountRow())?.email).toBe(email);
+
+    // Put the fixture's own password back, so the cases after this one can
+    // sign in.
+    await request()
+      .post("/api/v1/user/profile/change-password")
+      .set(
+        "Authorization",
+        bearer((await holderWith("ChosenByTheOwner!2026")).token),
+      )
+      .send({
+        currentPassword: "ChosenByTheOwner!2026",
+        newPassword: FIXTURE_PASSWORD,
+      })
+      .expect(204);
+  });
+
+  it("leaves one working link however many times it is asked for", async () => {
+    // A mint supersedes the live row for the pair, so a person who changes
+    // their mind holds one link rather than two (ADR-0071 §1).
+    const first = await requestAndReadLink("moved.first@machxi.local");
+    const second = await requestAndReadLink("moved.second@machxi.local");
+
+    expect(second).not.toBe(first);
+    await confirm(first).expect(401);
+    await confirm(second).expect(204);
+
+    expect((await accountRow())?.email).toBe("moved.second@machxi.local");
+
+    await restoreAddress();
+  });
+});

@@ -1,4 +1,9 @@
-import type { ListUsersQuery, UserRole, UserStatus } from "@repo/contracts";
+import type {
+  ListUsersQuery,
+  Locale,
+  UserRole,
+  UserStatus,
+} from "@repo/contracts";
 import { createLogger } from "@repo/logger";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +14,10 @@ import {
   type RequestContext,
 } from "../../../core/context/index.js";
 import { isAppError } from "../../../core/errors/index.js";
+import { createMailTemplates } from "../../../core/mail/index.js";
+import type { MailMessage, MailSender } from "../../../core/mail/index.js";
+import type { AccountTokens } from "../../../core/tokens/index.js";
+import type { SettingsService } from "../../settings/index.js";
 import { currentPasswordInvalid, REVOKE_REASONS } from "../../auth/index.js";
 import type {
   NewUserInput,
@@ -34,6 +43,10 @@ const SESSION_ID = "session-1";
 /** What the acting staff member presents on `POST /:id/password` (D2.3). */
 const ACTOR_PASSWORD = "actor-secret";
 const NOW = new Date("2026-08-18T12:00:00.000Z");
+/** What the fake mint hands back, so a test can find it in a rendered link. */
+const MINTED_TOKEN = "minted-token-value";
+/** `CUSTOMER_APP_URL` as the templates are built with here (ADR-0071 §1). */
+const CUSTOMER_URL = "https://app.machxi.test";
 
 /* ── fakes ────────────────────────────────────────────────────────────────── */
 
@@ -227,6 +240,39 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
       return Promise.resolve(true);
     },
 
+    /** Live rows only, which is the partial unique index's own predicate. */
+    emailTaken: (email: string) =>
+      Promise.resolve(
+        [...rows.values()].some((row) => row.email === email && !row.deleted),
+      ),
+
+    /**
+     * The address change's write (ADR-0071 §6): the new address and the stamp
+     * together, live and `active` rows only, and refused when a live row
+     * already holds the address — the fake's version of the statement's own
+     * `NOT EXISTS`.
+     */
+    updateEmailVerified: (id: string, email: string, at: Date) => {
+      const row = rows.get(id);
+
+      if (row === undefined || row.deleted || row.status !== "active") {
+        return Promise.resolve(undefined);
+      }
+
+      if (
+        [...rows.values()].some(
+          (other) => other.email === email && !other.deleted,
+        )
+      ) {
+        return Promise.resolve(undefined);
+      }
+
+      row.email = email;
+      row.emailVerifiedAt = at;
+
+      return Promise.resolve(toRecord(row));
+    },
+
     updateLastLoginAt: () => Promise.resolve(),
 
     updatePasswordHash: (id: string, passwordHash: string) => {
@@ -361,6 +407,100 @@ const createFakeOrganizations = () => {
   } as const;
 };
 
+/**
+ * The settings service, narrowed to the one question this module cannot answer
+ * about itself: which language the acting account reads (ADR-0046, ADR-0071
+ * §2).
+ *
+ * A fake, because what this suite asserts about the edge is that it is taken
+ * and that its answer reaches both the template and the token's payload — not
+ * how a settings row is stored, which `settings.service.test.ts` owns.
+ */
+const createFakeLocales = (locale: Locale = "lv") =>
+  ({
+    locales: {
+      get: () =>
+        Promise.resolve({ locale } as unknown as Awaited<
+          ReturnType<SettingsService["get"]>
+        >),
+    },
+  }) as const;
+
+/**
+ * ADR-0071 §1's mint, recording what each flow asked for.
+ *
+ * The token it hands back is a fixed string: what a fake can prove here is
+ * that the purpose, the principal and the **payload** are right, because the
+ * payload is what carries the requested address for the hour before anybody
+ * proves it. Single use, supersession and "a rolled-back consume spends
+ * nothing" are properties of the real statements and are proved against
+ * Postgres (`account-tokens.int.test.ts`, D18.2's amendment).
+ */
+const createFakeAccountTokens = () => {
+  const mints: {
+    purpose: string;
+    principalId: string;
+    payload: Record<string, unknown> | undefined;
+  }[] = [];
+  /** Links spent without a replacement — `D18.9`'s `security-reviewer`. */
+  const superseded: { purpose: string; principalId: string }[] = [];
+
+  return {
+    mints,
+    superseded,
+    accountTokens: {
+      mint: (
+        _ctx: RequestContext,
+        input: {
+          purpose: string;
+          principal: { id: string };
+          payload?: Record<string, unknown> | undefined;
+        },
+      ) => {
+        mints.push({
+          purpose: input.purpose,
+          principalId: input.principal.id,
+          payload: input.payload,
+        });
+
+        return Promise.resolve({ token: MINTED_TOKEN, expiresAt: NOW });
+      },
+      consume: () => Promise.resolve(undefined),
+      supersede: (
+        _ctx: RequestContext,
+        input: { purpose: string; principal: { id: string } },
+      ) => {
+        superseded.push({
+          purpose: input.purpose,
+          principalId: input.principal.id,
+        });
+
+        return Promise.resolve(0);
+      },
+    } as unknown as AccountTokens,
+  } as const;
+};
+
+/** ADR-0066 §1's port, capturing rather than sending. */
+const createFakeMail = () => {
+  const sent: { to: string; subject: string; text: string }[] = [];
+
+  return {
+    sent,
+    mail: {
+      send: (_ctx: RequestContext, message: MailMessage) => {
+        sent.push({
+          to: message.to,
+          subject: message.subject,
+          text: message.text,
+        });
+
+        return Promise.resolve();
+      },
+    } as MailSender,
+  } as const;
+};
+
 /* ── harness ──────────────────────────────────────────────────────────────── */
 
 const userPrincipal = (id: string): Principal => ({
@@ -409,6 +549,9 @@ const build = (seed: FakeUserRow[]) => {
   const sessions = createFakeSessions();
   const actors = createFakeActors();
   const organizations = createFakeOrganizations();
+  const locales = createFakeLocales();
+  const tokens = createFakeAccountTokens();
+  const mail = createFakeMail();
 
   const service = createUsersService({
     repository: repo.repository,
@@ -416,11 +559,30 @@ const build = (seed: FakeUserRow[]) => {
     sessions: sessions.sessions,
     actors: actors.actors,
     organizations: organizations.organizations,
+    locales: locales.locales,
+    accountTokens: tokens.accountTokens,
+    mail: mail.mail,
+    // The **real** templates over two fixed origins, so what the address-change
+    // cases assert is the message this repository actually renders — including
+    // that the token lands after the `#` (ADR-0071 §1).
+    mailTemplates: createMailTemplates({
+      customerUrl: CUSTOMER_URL,
+      adminUrl: "https://admin.machxi.test",
+    }),
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
   });
 
-  return { service, repo, hasher, sessions, actors, organizations } as const;
+  return {
+    service,
+    repo,
+    hasher,
+    sessions,
+    actors,
+    organizations,
+    tokens,
+    mail,
+  } as const;
 };
 
 /** The admin segment: a staff principal acting on somebody else's account. */
@@ -878,6 +1040,103 @@ describe("createUsersService — the user segment", () => {
         "UNAUTHENTICATED",
         401,
       );
+    });
+  });
+
+  /* -- D18.9: a person changes their own address (ADR-0071 §6) ------------- */
+
+  describe("requestEmailChange", () => {
+    const body = {
+      newEmail: "moved@machxi.local",
+      currentPassword: "CurrentPassword!1",
+    } as const;
+
+    it("changes nothing, mints the address into the token and mails the new one", async () => {
+      const { service, repo, tokens, mail } = build([userRow()]);
+
+      await service.requestEmailChange(selfCtx(), body);
+
+      // The claim the whole flow rests on: asking is not moving.
+      expect(repo.rows.get(USER_ID)?.email).toBe("customer@machxi.local");
+
+      expect(tokens.mints).toEqual([
+        {
+          purpose: "change_email",
+          principalId: USER_ID,
+          // The address waits here until somebody proves it, and the locale
+          // rides with it so the anonymous confirmation can write the old
+          // address's notice in this account's language (ADR-0071 §1, §2).
+          payload: { newEmail: body.newEmail, locale: "lv" },
+        },
+      ]);
+
+      expect(mail.sent).toHaveLength(1);
+      expect(mail.sent[0]?.to).toBe(body.newEmail);
+      // The link's shape, against the real templates: the token is after the
+      // `#` and nowhere a server log, a proxy or a `Referer` could see it.
+      expect(mail.sent[0]?.text).toContain(
+        `${CUSTOMER_URL}/confirm-email#token=${MINTED_TOKEN}`,
+      );
+    });
+
+    it("refuses a wrong current password before minting or mailing anything", async () => {
+      const { service, tokens, mail } = build([userRow()]);
+
+      await expect(
+        service.requestEmailChange(selfCtx(), {
+          ...body,
+          currentPassword: "not-the-password",
+        }),
+      ).rejects.toMatchObject({ code: "AUTH_CURRENT_PASSWORD_INVALID" });
+
+      expect(tokens.mints).toHaveLength(0);
+      expect(mail.sent).toHaveLength(0);
+    });
+
+    it("refuses an account with no password login rather than admitting it", async () => {
+      // `null` means "no password login" (ADR-0017) and never "any password
+      // matches" — `changePassword`'s and `deleteProfile`'s rule exactly.
+      const { service, tokens } = build([userRow({ passwordHash: null })]);
+
+      await expect(
+        service.requestEmailChange(selfCtx(), body),
+      ).rejects.toMatchObject({ code: "AUTH_CURRENT_PASSWORD_INVALID" });
+
+      expect(tokens.mints).toHaveLength(0);
+    });
+
+    it("refuses an address a live account already holds, the caller's own included", async () => {
+      const { service, tokens, mail } = build([
+        userRow(),
+        userRow({ id: OTHER_ID, email: body.newEmail }),
+      ]);
+
+      await expect(
+        service.requestEmailChange(selfCtx(), body),
+      ).rejects.toMatchObject({ code: "USER_EMAIL_TAKEN" });
+
+      await expect(
+        service.requestEmailChange(selfCtx(), {
+          ...body,
+          newEmail: "customer@machxi.local",
+        }),
+      ).rejects.toMatchObject({ code: "USER_EMAIL_TAKEN" });
+
+      expect(tokens.mints).toHaveLength(0);
+      expect(mail.sent).toHaveLength(0);
+    });
+
+    it("accepts an address only a soft-deleted account holds", async () => {
+      // The partial unique index releases an address on soft deletion
+      // (ADR-0028), so a deleted row holding the string is not a conflict.
+      const { service, tokens } = build([
+        userRow(),
+        userRow({ id: OTHER_ID, email: body.newEmail, deleted: true }),
+      ]);
+
+      await service.requestEmailChange(selfCtx(), body);
+
+      expect(tokens.mints).toHaveLength(1);
     });
   });
 

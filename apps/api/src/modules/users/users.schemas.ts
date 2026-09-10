@@ -1,4 +1,5 @@
 import {
+  changeEmailBody,
   changePasswordBody,
   createUserBody,
   deleteProfileBody,
@@ -47,6 +48,18 @@ export const setUserPasswordSchema = {
 } as const;
 
 export const updateProfileSchema = { body: updateProfileBody } as const;
+
+/**
+ * `POST /api/v1/user/profile/change-email` — asking to move to a new address
+ * (ADR-0071 §6).
+ *
+ * No `params`, like every other route on this segment: the subject is
+ * `ctx.principal`, so there is no id for a caller to point at somebody else's
+ * account with (ADR-0019 §3). The confirmation half is on the public segment
+ * and validates {@link confirmEmailSchema} in the auth module — the link is
+ * followed from a mailbox rather than from this session.
+ */
+export const changeEmailSchema = { body: changeEmailBody } as const;
 export const changePasswordSchema = { body: changePasswordBody } as const;
 
 /**

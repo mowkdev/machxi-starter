@@ -7,6 +7,7 @@ import { GridDensityCards } from "@/features/density";
 import { InvitationInbox } from "@/features/invitation-inbox";
 import { LocaleRows } from "@/features/locale";
 import {
+  ChangeEmailDialog,
   ChangePasswordDialog,
   DeleteAccountDialog,
   ProfileDetailsForm,
@@ -196,12 +197,38 @@ const dateTime = (value: string | null): string =>
 export const AccountProfileSection = () => {
   const { t } = useT("profile");
   const profile = useProfile();
+  const [changingEmail, setChangingEmail] = useState(false);
 
   return (
     <Card aria-labelledby="account-summary-title" role="region">
       <CardHeader>
         <CardTitle id="account-summary-title">{t("account.title")}</CardTitle>
         <CardDescription>{t("account.description")}</CardDescription>
+        {/*
+         * `D18.9`: the one control on this screen that opens a ceremony rather
+         * than editing a field (ADR-0071 §6, ADR-0040).
+         *
+         * It sits in the card's header, beside the summary it acts on, rather
+         * than under the details form below — the form writes names and cannot
+         * carry an address at all, because `updateProfileBody` deliberately
+         * has no such field. Putting the trigger inside the form would suggest
+         * the two are saved together, and they are not: names change on
+         * submit, an address changes when a link in a mailbox is followed.
+         *
+         * `outline`, which is the security section's spelling for "opens a
+         * ceremony": the destructive variant is reserved for the one control
+         * on this whole area that cannot be undone.
+         */}
+        <CardAction>
+          <Button
+            onClick={() => {
+              setChangingEmail(true);
+            }}
+            variant="outline"
+          >
+            {t("email.action")}
+          </Button>
+        </CardAction>
       </CardHeader>
 
       <CardContent>
@@ -250,6 +277,14 @@ export const AccountProfileSection = () => {
           </>
         )}
       </CardContent>
+
+      {changingEmail ? (
+        <ChangeEmailDialog
+          onClose={() => {
+            setChangingEmail(false);
+          }}
+        />
+      ) : null}
     </Card>
   );
 };

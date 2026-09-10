@@ -3748,6 +3748,154 @@
               "path": ["api", "v1", "user", "profile"]
             }
           }
+        },
+        {
+          "name": "Ask to change my address",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"profileNewEmail\", \"qa-moved-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202, and the account has not moved\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "",
+                  "  pm.expect(pm.response.headers.has(\"Set-Cookie\"), \"no session is issued or ended\").to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"{{profileNewEmail}}\",\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/change-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "change-email"]
+            },
+            "description": "`202`, and **nothing has changed** (ADR-0071 §6). A confirmation link is mailed to the new address and the account keeps the address it had until somebody follows it — which is why the request below still reads the old one back.\n\nThe link itself cannot be walked from Postman — it arrives in a mailbox — so the browser tier reads it from Mailpit and this folder proves everything either side of it, exactly as `Public › Register` does.\n\n`currentPassword` is required despite a valid session, and with more force than on the password change above: a changed address is where every future recovery link would go, so an access token that could move one would be worth the account."
+          }
+        },
+        {
+          "name": "Ask to change to an address that is taken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 USER_EMAIL_TAKEN\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"USER_EMAIL_TAKEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"{{customerEmail}}\",\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/change-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "change-email"]
+            },
+            "description": "The caller is authenticated staff of their own account rather than an anonymous prober, so this may name the conflict — ADR-0020 §Enumeration bounds what an **anonymous** caller learns, and the anonymous `register` answers a bare `CONFLICT` for the same collision.\n\nNothing is mailed and nothing is minted: the check runs before the token."
+          }
+        },
+        {
+          "name": "Ask to change my address with the wrong password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(",
+                  "    \"AUTH_CURRENT_PASSWORD_INVALID\",",
+                  "  );",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"qa-never-mailed@machxi.local\",\n  \"currentPassword\": \"not-the-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/change-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "change-email"]
+            },
+            "description": "`403` and not `401`: the session is valid and stays valid — it is the *operation* that is refused (ADR-0027). The credential is verified before anything is minted or mailed, so a wrong password cannot spend a stranger's inbox."
+          }
         }
       ]
     },
@@ -4478,6 +4626,47 @@
               "path": ["api", "v1", "public", "auth", "verify-email"]
             },
             "description": "Unknown, already consumed, expired, of another purpose or of the other population — one indistinguishable `401`, because the caller of this endpoint is an anonymous holder of a URL fragment and every distinction between those cases is something for them to learn (ADR-0071 §3). The generic code rather than one of its own: the only client is the app's confirmation screen, which has one thing to say either way."
+          }
+        },
+        {
+          "name": "Confirm an address change with a token nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED, one answer for every failure\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/confirm-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "confirm-email"]
+            },
+            "description": "Unknown, already consumed, expired, of another purpose or of the other population — one indistinguishable `401`, for the reason `verify-email` above answers one: the caller is an anonymous holder of a URL fragment (ADR-0071 §6).\n\nThe one refusal this endpoint makes distinguishable is `409 USER_EMAIL_TAKEN`, when a live account claimed the address between the request and the click. It is not reachable from here — it needs a real link — and the integration tier proves it, along with the swap itself.\n\nUnauthenticated and CSRF-free by design: the token *is* the credential, so nothing in the browser's jar authorises the request."
           }
         },
         {

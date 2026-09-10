@@ -72,14 +72,19 @@ Proved by: `apps/api/test/impersonation.int.test.ts`
 
 ## Requirement: The takeover-enabling operations are refused
 
-Under an impersonated session, `POST /user/profile/change-password`, `DELETE /user/profile` and `POST /user/auth/logout-all` answer `403 AUTH_IMPERSONATION_REFUSED` before any body is validated or any hash computed, and each refusal is written to the audit log as `impersonation.refused`. Every other operation succeeds and is recorded in the trail with both identities.
-Records: [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Under an impersonated session, `POST /user/profile/change-password`, `POST /user/profile/change-email`, `DELETE /user/profile`, `POST /user/auth/logout-all` and `POST /user/invitations/accept-by-token` answer `403 AUTH_IMPERSONATION_REFUSED` before any body is validated or any hash computed, and each refusal is written to the audit log as `impersonation.refused`. `PATCH /user/profile` is deliberately not among them: it is what support opens the app to do, and its body cannot carry an address. Every other operation succeeds and is recorded in the trail with both identities.
+Records: [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0058](../adr/0058-append-only-audit-log.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0071](../adr/0071-mail-flows.md)
 Proved by: `apps/api/test/impersonation-exclusions.int.test.ts`
 
 ### Scenario: An excluded operation
 
 - **WHEN** an impersonated session calls `change-password`
 - **THEN** the answer is `403 AUTH_IMPERSONATION_REFUSED`, and the same call on the customer's real session succeeds
+
+### Scenario: A change of address
+
+- **WHEN** an impersonated session calls `change-email`
+- **THEN** the answer is `403 AUTH_IMPERSONATION_REFUSED`, nothing is mailed to the address the operator typed, and the same call on the customer's real session answers `202`
 
 ### Scenario: An allowed write
 

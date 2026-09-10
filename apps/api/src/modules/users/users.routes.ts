@@ -10,6 +10,7 @@ import type {
   UsersController,
 } from "./users.controller.js";
 import {
+  changeEmailSchema,
   changePasswordSchema,
   createUserSchema,
   deleteProfileSchema,
@@ -171,6 +172,17 @@ export const createUsersRouter = ({
 export interface UserProfileRouterDeps {
   readonly controller: UserProfileController;
   /**
+   * The mailbox's own budget on `change-email` (ADR-0071 §6, amended at
+   * `D18.9`), keyed on `newEmail` and counted in an instance of its own.
+   *
+   * Mounted **after** `refuseImpersonated` rather than first, which is the
+   * refinement of ADR-0011's rate-limit-first order that ADR-0071 §5 states
+   * for the invitation and that applies here word for word: what is rationed
+   * is a third party's inbox, so a caller who is going to be refused anyway
+   * must not be able to spend it — or the limiter becomes the denial.
+   */
+  readonly mailboxRateLimiter: RequestHandler;
+  /**
    * ADR-0057 §5's exclusion guard, on the two operations here that would let an
    * impersonator take the account over (ADR-0019's declarative style).
    *
@@ -185,6 +197,7 @@ export interface UserProfileRouterDeps {
 export const createUserProfileRouter = ({
   controller,
   refuseImpersonated,
+  mailboxRateLimiter,
 }: UserProfileRouterDeps): Router => {
   const router = Router();
 
@@ -200,6 +213,31 @@ export const createUserProfileRouter = ({
     refuseImpersonated,
     validate(changePasswordSchema),
     controller.changePassword,
+  );
+
+  /*
+   * `POST /change-email` (ADR-0071 §6) — asking to move to a new address.
+   *
+   * `refuseImpersonated` before `validate`, exactly as `change-password` has
+   * it and for the identical reason: it is a guard, so a request that fails it
+   * must not first have a body carrying a password parsed to produce a better
+   * error message.
+   *
+   * **The third entry on ADR-0057 §5's list from this router**, and the one
+   * with the sharpest argument for being there. A support operator who could
+   * move a customer's address would redirect every future recovery link to a
+   * mailbox of their choosing — the account is theirs from the next `forgot`
+   * onwards, without the password ever being known — which is the definition
+   * of takeover-enabling that list is drawn from. `PATCH /` stays off it
+   * because `updateProfileBody` cannot carry an address at all, and that is
+   * now load-bearing rather than incidental.
+   */
+  router.post(
+    "/change-email",
+    refuseImpersonated,
+    mailboxRateLimiter,
+    validate(changeEmailSchema),
+    controller.changeEmail,
   );
 
   // Self-service deletion (ADR-0055 §4), on ADR-0028's user semantics: the row

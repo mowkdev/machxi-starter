@@ -1,6 +1,15 @@
 import { userRoles, users, type DbExecutor } from "@repo/db";
 import type { ListQuery, UserRole, UserStatus } from "@repo/contracts";
-import { and, count, eq, isNull, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  isNull,
+  notExists,
+  notInArray,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { internal } from "../../core/errors/index.js";
 import {
@@ -145,6 +154,17 @@ export const listColumns: ColumnMap = {
 
 /** The columns `q` reaches, exported with {@link listColumns} and for its reason. */
 export const searchColumns = [users.email, users.firstName, users.lastName];
+
+/**
+ * A second name for `users`, used only by the address change's `NOT EXISTS`
+ * (ADR-0071 §6).
+ *
+ * The uniqueness question is asked about the table being updated, so the
+ * subquery needs a name of its own or every column reference in it is
+ * ambiguous. Declared once at module scope because an alias is a compile-time
+ * label rather than a per-call value.
+ */
+const taken = alias(users, "taken_email");
 
 /** The field whose presence in a query means "the client is asking about deletion". */
 const DELETED_AT_FIELD = "deletedAt";
@@ -466,6 +486,95 @@ export const createUsersRepository = (db: DbExecutor) =>
       // Read back through the aggregate read, so the caller gets the roles as
       // well: `returning` cannot reach the join table, and the session this
       // account is about to be issued is minted from `roles`.
+      const row = await tx.query.users.findFirst({
+        columns: recordColumns,
+        with: withRoles,
+        where: eq(users.id, id),
+      });
+
+      return row === undefined ? undefined : toRecord(row);
+    },
+
+    /**
+     * "Does a live account already hold this address?" (ADR-0071 §6).
+     *
+     * The read behind both halves of the address change: the request refuses a
+     * taken address with `USER_EMAIL_TAKEN` before anything is mailed, and the
+     * confirmation asks again **inside its own transaction**, because an hour
+     * can pass between the two and the answer is not a fact the token can
+     * carry.
+     *
+     * Live rows only, which is the partial unique index's own predicate
+     * (ADR-0028): a soft-deleted account releases its address, so one holding
+     * the string is not a conflict. A boolean rather than a row, because
+     * neither caller may learn anything else about an account that is not
+     * theirs — the confirmation is served on an **anonymous** route.
+     */
+    emailTaken: async (email: string, tx: DbExecutor = db): Promise<boolean> =>
+      (await tx.query.users.findFirst({
+        columns: { id: true },
+        where: and(eq(users.email, email), isNull(users.deletedAt)),
+      })) !== undefined,
+
+    /**
+     * The address change's whole write (ADR-0071 §6): the new address, and
+     * `email_verified_at` stamped with it.
+     *
+     * The stamp moves because the *proof* moved: `email_verified_at` records
+     * when the address on this row was proven, and the row now carries an
+     * address proven a moment ago by the link being consumed. Leaving the old
+     * instant would make the column describe a mailbox the account no longer
+     * uses.
+     *
+     * `status` is deliberately absent and `active` is deliberately in the
+     * `where`: this is not a path that activates anything (that is
+     * {@link UsersRepository.markEmailVerified}, §3's), and an account
+     * disabled or deleted between the request and the click must not be moved
+     * by a link. `NOT EXISTS` carries the uniqueness into the same
+     * statement, which is not the same as making it atomic: under `read
+     * committed` two concurrent confirmations for one free address both see no
+     * conflicting row and both attempt the update, and the loser is resolved
+     * by `users_email_active_unique` — surfacing as the error handler's
+     * generic `409 CONFLICT` rather than `USER_EMAIL_TAKEN`, with its token
+     * claim rolled back either way (`D18.9`'s reviewers, both of them). What
+     * the clause really buys is the **committed** case, which is the one that
+     * happens: an address claimed in the hour since the service asked. The
+     * index is the arbiter of the last microsecond, and no duplicate live
+     * address is possible on either path.
+     *
+     * @returns the account as it now stands, or `undefined` when no row
+     *   matched — which the caller answers by throwing, so the token's
+     *   consumption rolls back with it and the link still works.
+     */
+    updateEmailVerified: async (
+      id: string,
+      email: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<UserRecord | undefined> => {
+      const [updated] = await tx
+        .update(users)
+        .set({ email, emailVerifiedAt: at, updatedAt: at })
+        .where(
+          and(
+            eq(users.id, id),
+            isNull(users.deletedAt),
+            eq(users.status, "active"),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(taken)
+                .where(and(eq(taken.email, email), isNull(taken.deletedAt))),
+            ),
+          ),
+        )
+        .returning({ id: users.id });
+
+      if (updated === undefined) return undefined;
+
+      // Read back through the aggregate read for `markEmailVerified`'s reason:
+      // `returning` cannot reach the join table, and every caller of a
+      // `UserRecord` expects the grants on it.
       const row = await tx.query.users.findFirst({
         columns: recordColumns,
         with: withRoles,

@@ -335,10 +335,30 @@ export const buildContainer = ({
     transaction,
   });
 
+  // One service for both segments and both tables (ADR-0045). It takes no
+  // hasher and no session dependency: a settings row holds display state and
+  // nothing a credential or a session could be reached through.
+  const settingsService = createSettingsService({
+    repository: settingsRepository,
+    transaction,
+  });
+
   const usersService = createUsersService({
     repository: usersRepository,
     hasher: limitedHasher,
     sessions: userAuth,
+    // The account's own language, for the one message this module sends
+    // (ADR-0071 §2, §6): a locale is an account fact, and which of the two
+    // settings tables holds it is the settings service's business rather than
+    // this module's. Narrowed to `get`, like every other edge here.
+    locales: settingsService,
+    // ADR-0071 §1's mint and ADR-0066 §1's port: `change-email` mails a
+    // confirmation link to an address nobody has proven yet, and the address
+    // waits in the token's payload until somebody does (§6). The *consume* is
+    // the auth module's, because the link is followed without a session.
+    accountTokens,
+    mail,
+    mailTemplates,
     // Built above, and the only dependency between two *feature* modules in
     // this file — the `sessions` lines are feature-to-auth, which is the edge
     // ADR-0009 was amended about. `POST /api/v1/admin/users/:id/password` has a
@@ -349,14 +369,6 @@ export const buildContainer = ({
     // account they are about: `POST /admin/users` creates the personal
     // organization, and both deletion paths soft-delete it.
     organizations: organizationsService,
-    transaction,
-  });
-
-  // One service for both segments and both tables (ADR-0045). It takes no
-  // hasher and no session dependency: a settings row holds display state and
-  // nothing a credential or a session could be reached through.
-  const settingsService = createSettingsService({
-    repository: settingsRepository,
     transaction,
   });
 
@@ -503,6 +515,38 @@ export const buildContainer = ({
     invitationMailbox: createMailboxRateLimiter(
       config,
       rateLimitStore("invitation-mailbox"),
+    ),
+    /**
+     * `POST /user/profile/change-email` — the mailbox's budget on the second
+     * authenticated sender (ADR-0071 §6, amended at `D18.9`).
+     *
+     * §4 leaves each authenticated sender's budget to the step that builds it,
+     * and this one lands where the invitation's did, for the same reason read
+     * one flow along: the address is a **stranger's**, typed by the caller, and
+     * the message that goes to it names it. A session, a password and the
+     * supersession of the previous token bound nothing about how many
+     * different mailboxes one account can reach, or how often it can re-reach
+     * one — so without this the only ceiling would be ADR-0020's global
+     * limiter, which is the ceiling §5's amendment refused to accept for the
+     * invitation.
+     *
+     * The **recipient** key rather than the actor's, which is what keeps the
+     * honest case whole: a person who mistypes an address and asks again
+     * spends a second mailbox's budget rather than their own. A counter of its
+     * own, so being asked to confirm an address never spends the budget that
+     * address needs to recover a password. And keyed on `newEmail`, which is
+     * what this body calls the recipient.
+     */
+    emailChangeMailbox: createMailboxRateLimiter(
+      config,
+      rateLimitStore("email-change-mailbox"),
+      // `skipFailedRequests` is the one place this endpoint's budget parts
+      // company with §4's, and the route is why: it demands a credential and
+      // refuses for reasons that mail nothing, while the limiter runs above
+      // both the schema and the credential check. Five mistyped passwords
+      // would otherwise lock a person out of moving to that address for the
+      // rest of the hour (`D18.9`'s `code-reviewer`).
+      { recipientField: "newEmail", skipFailedRequests: true },
     ),
   } as const;
 

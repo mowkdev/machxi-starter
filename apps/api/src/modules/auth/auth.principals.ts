@@ -141,5 +141,23 @@ export const createUserPrincipalAdapter = (
     return updated === undefined ? undefined : userRecord(updated);
   },
 
+  /**
+   * The address change's write (ADR-0071 §6), and the roles come back with it
+   * for `activateVerified`'s reason: every `PrincipalRecord` carries the
+   * grants, whether or not this particular caller mints a session from them.
+   */
+  changeEmailVerified: async (
+    id,
+    email,
+    at,
+    tx,
+  ): Promise<PrincipalRecord | undefined> => {
+    const updated = await repository.updateEmailVerified(id, email, at, tx);
+
+    return updated === undefined ? undefined : userRecord(updated);
+  },
+
+  isEmailTaken: repository.emailTaken,
+
   findPendingVerificationByEmail: repository.findPendingVerificationByEmail,
 });

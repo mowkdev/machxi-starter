@@ -8,6 +8,10 @@ export {
   type PasswordReset,
   type PasswordResetStatus,
 } from "./password-reset/use-reset-password";
+export {
+  useConfirmEmail,
+  type EmailChangeStatus,
+} from "./email-change/use-confirm-email";
 export { useAwaitedAddress } from "./verify-email/awaited-address";
 export { ResendVerificationForm } from "./verify-email/resend-verification-form";
 export {

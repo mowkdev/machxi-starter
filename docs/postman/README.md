@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 181 requests in 18 folders: `Health`, `Metrics`,
+- `machxi-api.postman_collection.json` — 185 requests in 18 folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
   `User › Settings`, `Public`, `User › Organizations`, `User › Invitations`,
@@ -142,6 +142,17 @@ unique index exists to make possible. That second registration is then found by
 its address and removed administratively, because nobody can sign in as an
 account whose address has never been proven.
 
+**The address change is proved from both ends and walked from neither**
+(ADR-0071 §6). `User › Profile` asks for one — `202`, and the request after it
+still reads the _old_ address back, which is the whole claim — and asks twice
+more to be refused, once for an address a live account holds (`409
+USER_EMAIL_TAKEN`, nameable because the caller is authenticated) and once with a
+wrong password (`403`, before anything is minted or mailed). `Public` posts a
+token nobody minted at `confirm-email` for the one indistinguishable `401`. The
+swap itself needs the link, which arrives in a mailbox: the browser tier reads
+it from Mailpit and the integration tier proves the transaction, exactly as they
+do for `register` above.
+
 **Negative paths are deliberate, not accidental.** `403` for a manager writing to
 `/admin/users`, `409 CONFLICT` (never `USER_EMAIL_TAKEN`) for a duplicate public
 registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Each
@@ -153,7 +164,7 @@ verification limiter's `3 / hour / IP + email` — and only ever against
 **per-run** addresses, which is why both `resend-verification` requests generate
 one rather than using a fixture: a fixed address there would answer `429` on the
 fourth run of the hour and the assertion is that the two answers are identical —
-and, since the mail flows joined `Public` and recovery joined both auth folders, 178 of the global
+and, since the mail flows joined `Public` and recovery joined both auth folders, 182 of the global
 `RATE_LIMIT_GLOBAL_MAX` per 15 minutes (the three health probes and the metrics scrape sit outside every
 limiter). On the committed development profile that is a small share of the
 window, which is the point of ADR-0069: one window holds this collection, the

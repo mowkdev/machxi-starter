@@ -85,6 +85,26 @@ export const verificationLinkInvalid = (): AppError =>
 export const passwordResetLinkInvalid = (): AppError =>
   unauthenticated("This password reset link is no longer valid");
 
+/**
+ * Every way `POST /public/auth/confirm-email` can fail **except** the one a
+ * person can act on, answered as one indistinguishable `401` (ADR-0071 §6).
+ *
+ * {@link verificationLinkInvalid}'s posture on the third single-use link:
+ * unknown token, already consumed, minted for another purpose or population,
+ * past `EMAIL_CHANGE_TOKEN_TTL`, or naming an account that has since been
+ * disabled or deleted — one answer, because the caller is an anonymous holder
+ * of a URL fragment.
+ *
+ * The exception is deliberate and it is the one case the screen can do
+ * something with: an address that a live account has taken since the request
+ * answers `409 USER_EMAIL_TAKEN`, because the holder of this link has already
+ * been told which address it is — it is the mailbox the message arrived in —
+ * so there is no existence to conceal, and "somebody else took it" is the only
+ * refusal here that a different address would fix.
+ */
+export const emailChangeLinkInvalid = (): AppError =>
+  unauthenticated("This address confirmation link is no longer valid");
+
 /** Missing, malformed, wrongly signed, or carrying the other population's `aud`. */
 export const tokenInvalid = (): AppError =>
   unauthenticated("Invalid access token", "AUTH_TOKEN_INVALID");

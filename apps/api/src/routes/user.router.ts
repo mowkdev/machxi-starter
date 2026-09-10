@@ -81,6 +81,11 @@ export const createUserRouter = (container: Container): Router => {
     createUserProfileRouter({
       controller: container.controllers.userProfile,
       refuseImpersonated: container.refuseImpersonated,
+      // The invited mailbox's budget, one flow along (ADR-0071 §6, amended at
+      // `D18.9`): `change-email` mails a link to an address the caller typed,
+      // and a counter of its own keeps that from spending the recovery budget
+      // for the same mailbox.
+      mailboxRateLimiter: container.rateLimiters.emailChangeMailbox,
     }),
   );
 
