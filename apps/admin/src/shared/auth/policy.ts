@@ -52,6 +52,18 @@ export type ResourceAction =
   | "setPassword"
   | "revokeSessions"
   /**
+   * `POST /admin/{staff,users}/:id/email` (`D18.10`, ADR-0071 §7) — named for
+   * the route like the five above it.
+   *
+   * **The first action both resources grant to `super_admin` alone**, and the
+   * first row here that names that role at all. It is written out rather than
+   * left absent — which `ResourcePolicy`'s `Partial` says means the same thing
+   * — because absence is how this table records "no such route", and there are
+   * two such routes. A reader comparing the table with the routers must be
+   * able to see that they were transcribed, not overlooked.
+   */
+  | "changeEmail"
+  /**
    * `POST /admin/users/:id/impersonate` (`D13.8`, ADR-0057 §1/§7) — named for
    * the route like the five above it.
    *
@@ -78,8 +90,9 @@ export type ResourcePolicy = ResourcePolicyShape<ResourceName, ResourceAction>;
 export const RESOURCE_POLICY = {
   /*
    * `apps/api/src/routes/admin.router.ts` — `authorize("admin")` at the mount,
-   * and `staff.routes.ts` carries no per-route guard at all, deliberately: the
-   * whole resource is `admin`, so every row here is that one mount.
+   * and `staff.routes.ts` carries exactly one per-route guard: `POST /:id/email`
+   * narrows to `super_admin` (`D18.10`). Every other row here is that one
+   * mount.
    */
   staff: {
     read: ["admin"],
@@ -88,13 +101,24 @@ export const RESOURCE_POLICY = {
     delete: ["admin"],
     setPassword: ["admin"],
     revokeSessions: ["admin"],
+    /*
+     * The one route in `staff.routes.ts` that carries an `authorize(` of its
+     * own (ADR-0071 §7): `POST /:id/email`, narrowing the mount to
+     * `super_admin`. Gated rather than shown-and-refused, unlike the
+     * containment controls beside it — nothing about an incident is made worse
+     * by an operator not seeing a control they may never use, and this one is
+     * not reached for mid-incident (ADR-0042 §Containment controls).
+     */
+    changeEmail: ["super_admin"],
   },
   /*
    * Mounted `authorize("admin", "manager")` — a manager may *read* the customer
    * base — and `users.routes.ts` narrows six writing routes back to
    * `authorize("admin")`: `POST /`, `PATCH /:id`, `POST /:id/sessions/revoke`,
    * `POST /:id/password`, `POST /:id/impersonate`, `DELETE /:id`. Six, counted
-   * from the call sites — five until `D13.4` added the mint.
+   * from the call sites — five until `D13.4` added the mint. A seventh call,
+   * `POST /:id/email`, narrows further to `authorize("super_admin")` (`D18.10`)
+   * and is the `changeEmail` row below.
    */
   users: {
     read: ["admin", "manager"],
@@ -123,6 +147,8 @@ export const RESOURCE_POLICY = {
      * bounds the operators who *can* mint.
      */
     impersonate: ["admin"],
+    /* `POST /:id/email` (ADR-0071 §7) — the staff row's twin, same reasoning. */
+    changeEmail: ["super_admin"],
   },
   /*
    * Mounted `authorize("admin", "manager")` — a manager may *read* the tenant

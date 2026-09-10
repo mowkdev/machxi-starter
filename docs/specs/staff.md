@@ -1,10 +1,10 @@
 # Staff
 
-Operators are created by an admin, never by themselves. `/api/v1/admin/staff` is `admin`-only throughout; `/api/v1/admin/profile` is every operator acting on their own account. The `super_admin` role bypasses every role check, so what protects it is the service's rules rather than a guard.
+Operators are created by an admin, never by themselves. `/api/v1/admin/staff` is `admin`-only throughout, but for one route that narrows to `super_admin`; `/api/v1/admin/profile` is every operator acting on their own account. The `super_admin` role bypasses every role check, so what protects it is the service's rules rather than a guard.
 
 ## Requirement: The resource is admin-only
 
-`/admin/staff` mounts `authorize("admin")` and every route inherits it; a `manager` or `editor` reaches nothing under it.
+`/admin/staff` mounts `authorize("admin")` and every route inherits it; a `manager` or `editor` reaches nothing under it. One route narrows further — `POST /:id/email` admits `super_admin` alone.
 Records: [ADR-0019](../adr/0019-authorization-guards.md)
 Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/core/middleware/__tests__/authorize.test.ts`
 
@@ -93,6 +93,22 @@ Proved by: `apps/api/test/staff-admin.int.test.ts`
 
 - **WHEN** the caller's `currentPassword` does not verify
 - **THEN** the answer is `403 AUTH_CURRENT_PASSWORD_INVALID`, the same whether or not `:id` exists
+
+## Requirement: A super admin sets an operator's address
+
+`POST /admin/staff/:id/email` is the one route under `/admin/staff` that narrows the mount's guard: it admits `super_admin` alone, so a plain `admin` answers `403 FORBIDDEN`. It takes the subject's new `email` and the acting operator's own `currentPassword`, verified first — a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not `:id` exists. The address is set immediately with no confirmation link, because the operator is the authority a link would be asking. An address any staff account already holds — the subject's own included — answers `409 STAFF_EMAIL_TAKEN`. Success answers `204`, writes an `account.email_changed` audit row naming the acting operator, the subject and both addresses, spends every live mailed link the operator holds — recovery and onboarding alike, because each was addressed to the mailbox being replaced — and revokes **no** session: an address is not a credential. A super admin may name their own id.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/staff-admin.int.test.ts`
+
+### Scenario: A plain admin tries
+
+- **WHEN** an `admin` calls `POST /admin/staff/:id/email`
+- **THEN** the answer is `403 FORBIDDEN` and the address is unchanged
+
+### Scenario: The address is set
+
+- **WHEN** a `super_admin` sets a new address with their own password
+- **THEN** the answer is `204`, the operator signs in under the new address, and their existing sessions still work
 
 ## Requirement: The profile is names only, and the password change spares this session
 

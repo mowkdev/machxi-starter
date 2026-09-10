@@ -4,6 +4,7 @@ import {
   createUserBody,
   deleteProfileBody,
   listUsersQuery,
+  setEmailBody,
   setPasswordBody,
   updateProfileBody,
   updateUserBody,
@@ -45,6 +46,20 @@ export const deleteUserSchema = { params: userIdParams } as const;
 export const setUserPasswordSchema = {
   params: userIdParams,
   body: setPasswordBody,
+} as const;
+
+/**
+ * `POST /api/v1/admin/users/:id/email` — a super admin setting a customer's
+ * address outright (ADR-0071 §7).
+ *
+ * The same division {@link setUserPasswordSchema} makes: the id in the path
+ * says whose address is being set, and `currentPassword` in the body is the
+ * **acting** super admin's own. The body is shared with the staff endpoint,
+ * because the operation is one operation on two resources.
+ */
+export const setUserEmailSchema = {
+  params: userIdParams,
+  body: setEmailBody,
 } as const;
 
 export const updateProfileSchema = { body: updateProfileBody } as const;

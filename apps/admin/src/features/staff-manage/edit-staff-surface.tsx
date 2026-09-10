@@ -7,6 +7,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import {
@@ -15,6 +16,7 @@ import {
   useStaff,
   useUpdateStaff,
 } from "@/entities/staff";
+import { useCan } from "@/shared/auth";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { useT } from "@/shared/i18n";
 import {
@@ -27,6 +29,15 @@ import {
   editSurfaceOf,
   fieldsForVariant,
 } from "@/shared/resource/config";
+import {
+  Button,
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldTitle,
+} from "@/shared/ui";
+
+import { ChangeStaffEmailDialog } from "./change-staff-email-dialog";
 
 /**
  * `PATCH /admin/staff/:id` — names, roles and status (ADR-0017).
@@ -101,6 +112,9 @@ export const EditStaffSurface = ({
    */
   const detail = useStaff(staff.id);
 
+  /** The address ceremony, ephemeral for ADR-0040's reason: it is not a link. */
+  const [changingEmail, setChangingEmail] = useState(false);
+
   const form = useForm<UpdateStaffBody>({
     resolver: zodResolver(updateStaffBody),
     defaultValues: toFormValues(staff),
@@ -158,29 +172,102 @@ export const EditStaffSurface = ({
     }
   };
 
+  const record = detail.data ?? staff;
+
   return (
-    <AppFormSurface
-      surface={editSurfaceOf(staffResourceConfig)}
-      onClose={close}
-      title={t("edit.title", { email: staff.email })}
-      description={t("edit.description")}
-      form={form}
-      fields={staffResourceConfig.fields}
-      variant="edit"
-      onSubmit={onSubmit}
-      isPending={updateStaff.isPending}
-      submitLabel={t("edit.submit")}
-      // Nothing changed is nothing to send, and saying so on the button is
-      // kinder than a validation error that says the same thing afterwards.
-      canSubmit={form.formState.isDirty}
-    >
-      <StaffFormInput fieldName="email" />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StaffFormInput fieldName="firstName" />
-        <StaffFormInput fieldName="lastName" />
-      </div>
-      <StaffFormInput fieldName="status" />
-      <StaffFormInput fieldName="roles" />
-    </AppFormSurface>
+    /*
+     * The ceremony is a **sibling** of the surface rather than a child of it
+     * (`D18.10`) — `edit-user-surface.tsx` carries the reasoning, and it bites
+     * harder here: this resource's record surface *is* an `AppFormDialog`, so a
+     * dialog rendered inside it would be a form inside a form in the React
+     * tree, and a React portal bubbles synthetic events up that tree whatever
+     * the DOM says.
+     */
+    <>
+      <AppFormSurface
+        surface={editSurfaceOf(staffResourceConfig)}
+        onClose={close}
+        // `record`, not the loader's snapshot — the users twin says why.
+        title={t("edit.title", { email: record.email })}
+        description={t("edit.description")}
+        form={form}
+        fields={staffResourceConfig.fields}
+        variant="edit"
+        onSubmit={onSubmit}
+        isPending={updateStaff.isPending}
+        submitLabel={t("edit.submit")}
+        // Nothing changed is nothing to send, and saying so on the button is
+        // kinder than a validation error that says the same thing afterwards.
+        canSubmit={form.formState.isDirty}
+      >
+        <StaffFormInput fieldName="email" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StaffFormInput fieldName="firstName" />
+          <StaffFormInput fieldName="lastName" />
+        </div>
+        <StaffFormInput fieldName="status" />
+        <StaffFormInput fieldName="roles" />
+        <ChangeEmailField
+          email={record.email}
+          onOpen={() => {
+            setChangingEmail(true);
+          }}
+        />
+      </AppFormSurface>
+
+      {changingEmail ? (
+        <ChangeStaffEmailDialog
+          staff={record}
+          onClose={() => {
+            setChangingEmail(false);
+          }}
+        />
+      ) : null}
+    </>
+  );
+};
+
+/**
+ * The address, and the way to change it — `super_admin` only (ADR-0071 §7,
+ * ADR-0042).
+ *
+ * The users twin, and hidden from everyone else for its reason: this is a
+ * deliberate correction with somebody to ask, not a containment control
+ * somebody reaches for mid-incident, so its absence costs a plain `admin`
+ * nothing (ADR-0042 §Containment controls).
+ *
+ * It sits under the fields, where the form has no `email` control for it to sit
+ * beside: `email` is declared `variants: ["create"]`, so the edit variant
+ * renders none at all. The address is not a field of `updateStaffBody` and
+ * never has been, which is what makes this a sub-resource rather than a
+ * permission on a box.
+ */
+const ChangeEmailField = ({
+  email,
+  onOpen,
+}: {
+  readonly email: string;
+  readonly onOpen: () => void;
+}) => {
+  const { t } = useT("staff");
+  const can = useCan();
+
+  if (!can("changeEmail", "staff")) return null;
+
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldTitle>{t("changeEmail.field.label")}</FieldTitle>
+        <FieldDescription className="break-all">{email}</FieldDescription>
+      </FieldContent>
+      {/*
+       * `type="button"`, load-bearing: this sits inside the surface's `<form>`,
+       * where the default type would submit the record on the way to opening a
+       * dialog about something else.
+       */}
+      <Button onClick={onOpen} size="sm" type="button" variant="outline">
+        {t("changeEmail.action")}
+      </Button>
+    </Field>
   );
 };

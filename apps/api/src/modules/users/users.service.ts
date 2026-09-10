@@ -5,16 +5,19 @@ import type {
   DeleteProfileBody,
   ListUsersQuery,
   Page,
+  SetEmailBody,
   SetPasswordBody,
   UpdateProfileBody,
   UpdateUserBody,
   UserResource,
   UserRole,
 } from "@repo/contracts";
+import { TOKEN_PURPOSES } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
+import type { Audit } from "../../core/audit/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
 import { createMailDelivery } from "../../core/mail/index.js";
@@ -114,6 +117,14 @@ export interface UsersServiceDeps {
    * without a session.
    */
   readonly accountTokens: AccountTokens;
+  /**
+   * ADR-0058's writer, for the one row this module writes itself: the super
+   * admin's administrative address change (ADR-0071 §7). Passed whole, as the
+   * impersonation service takes it — `record` is the transactional discipline
+   * that row is written on, and `trail` is what a later best-effort row here
+   * would use.
+   */
+  readonly audit: Audit;
   /** ADR-0066 §1's port. Never a mail client a service imports. */
   readonly mail: MailSender;
   /** ADR-0071 §2's messages, built from the two SPA origins at the root. */
@@ -131,6 +142,7 @@ export const createUsersService = ({
   organizations,
   locales,
   accountTokens,
+  audit,
   mail,
   mailTemplates,
   transaction,
@@ -526,6 +538,150 @@ export const createUsersService = ({
         { userId: record.id, revoked },
         "user password reset by staff",
       );
+    },
+
+    /**
+     * `POST /api/v1/admin/users/:id/email` — a super admin setting a
+     * customer's address outright (ADR-0071 §7).
+     *
+     * **The administrative twin of §6, and deliberately not its shape.** The
+     * self-service change mails a link and changes nothing, because the caller
+     * has typed a mailbox they may not own. Here the caller is the authority
+     * that link would be asking, so the address is written on the spot and
+     * counts as **asserted** (§3) — there is nobody left to ask.
+     *
+     * The order is `setPassword`'s, for `setPassword`'s reasons. The actor's
+     * own password is verified **first**, before the subject is read, so a
+     * wrong one answers the same `403` whether or not the id exists and the
+     * endpoint is no enumeration oracle. Only then the subject, refused with
+     * `409 USER_DELETED` if the row is soft-deleted (ADR-0028).
+     *
+     * The uniqueness question is asked twice: once here, so the answer is
+     * `USER_EMAIL_TAKEN` rather than the generic conflict a unique index
+     * raises, and once inside the statement that writes (`NOT EXISTS` in the
+     * repository). The subject's *own* current address counts as taken, which
+     * is §6's rule and the truthful one — it is held by a live account, and a
+     * "change" to the address the row already has would write an audit row
+     * about nothing.
+     *
+     * **The stamp follows `create`'s split rather than being unconditional.**
+     * An `active` or `disabled` row is stamped: a staff member typing the
+     * address is what proves it. A `pending_verification` row is not — that
+     * status means an account which has proven nothing, and stamping it would
+     * make `email_verified_at` disagree with `status` on the one row the
+     * verification flow exists to move. What it *does* get is the new address
+     * on the row, so a resend goes to the mailbox the operator corrected.
+     *
+     * **Every live link the account holds dies with the old address**, on the
+     * mechanism §6 already added to every path that writes a password hash
+     * (amended at `D18.10`). Each of them was mailed to the mailbox this
+     * request exists to stop trusting, and none of them binds to an address —
+     * they bind to the account. The loop below says which, and why the first
+     * draft's `change_email`-only version was the smaller half of the hole.
+     */
+    setEmail: async (
+      ctx: RequestContext,
+      id: string,
+      body: SetEmailBody,
+    ): Promise<void> => {
+      const at = now();
+
+      await actors.verifyActorPassword(ctx, body.currentPassword);
+
+      // The cheap refusals, outside the transaction: an unknown id and a
+      // deleted subject are named here so the caller gets `404` and `409
+      // USER_DELETED` rather than the uniqueness clause's answer. Authority
+      // belongs to the re-read inside, which is `setPassword`'s "checked twice,
+      // and the second one counts" (`D18.10`'s `security-reviewer`).
+      await readWritable(id);
+
+      if (await repository.emailTaken(body.email)) {
+        ctx.logger.warn(
+          { userId: id },
+          "address set refused, the address is taken",
+        );
+
+        throw userEmailTaken();
+      }
+
+      await transaction(async (tx) => {
+        // Inside, because two things are read off it that the write depends
+        // on: the status that decides the stamp, and the address the audit row
+        // records as the previous one. Read on the pooled client, a `PATCH` or
+        // a §6 confirmation committing in between would make the trail name an
+        // address the account had already left.
+        const record = await readWritable(id, tx);
+
+        const updated = await repository.setEmail(
+          record.id,
+          body.email,
+          // `create`'s split (ADR-0071 §3): asserted for a row that is usable,
+          // null for one that has proven nothing.
+          record.status === "pending_verification" ? null : at,
+          at,
+          tx,
+        );
+
+        // The statement's own uniqueness clause found what the read above did
+        // not — an address claimed in between. The throw is what rolls the
+        // write back.
+        if (updated === undefined) throw userEmailTaken();
+
+        /*
+         * **Every live link this account holds dies with the old address**
+         * (`D18.10`'s `security-reviewer`; ADR-0071 §7, amended).
+         *
+         * The first draft superseded `change_email` alone, on §6's argument
+         * that a pending address change is a credential the session sweep
+         * cannot see. The other purposes bind to the **principal id** and
+         * never to the address, so each was a link mailed to the mailbox this
+         * request exists to stop trusting — and two of them are sharper than
+         * the one that was closed: `verify_email` activates the row *and*
+         * stamps the new address proven *and* issues a session, which is the
+         * exact case §7's amendment names ("an operator correcting the mailbox
+         * a link is about to be resent to"); `reset_password` sets a password
+         * on an account whose sessions this endpoint deliberately leaves alone.
+         *
+         * Iterated over `TOKEN_PURPOSES` rather than listed, so the rule is
+         * "an address change spends every link" and a fifth purpose is covered
+         * on the day it is declared. A purpose that should *survive* an
+         * address change has to say so here, which is the safe direction for
+         * the omission to point.
+         */
+        for (const purpose of TOKEN_PURPOSES) {
+          await accountTokens.supersede(
+            ctx,
+            { purpose, principal: { type: "user", id: record.id } },
+            tx,
+          );
+        }
+
+        // Both addresses, because ADR-0071 §7 requires the trail to name them,
+        // and the subject, because the actor here is somebody else — the
+        // acting super admin, whom `audit.record` reads off `ctx.principal`.
+        // `actingAs` stays empty: the request ran as the operator and not as
+        // the customer, which is the distinction ADR-0058 draws.
+        await audit.record(
+          ctx,
+          {
+            event: "account.email_changed",
+            data: {
+              subjectType: "user",
+              subjectId: record.id,
+              previousEmail: record.email,
+              newEmail: body.email,
+            },
+          },
+          tx,
+        );
+      });
+
+      // No address on the line, and the reason is not `newEmail`'s redaction —
+      // this body's field is `email`, which ADR-0005 deliberately does **not**
+      // redact, because an address is ordinary personal data almost everywhere
+      // it appears. So no line in this function may carry the body: the two
+      // addresses belong in the audit row, which is not shipped to a log sink.
+      ctx.logger.info({ userId: id }, "user address set by a super admin");
     },
 
     /** `GET /api/v1/user/profile` — the caller's own account. */

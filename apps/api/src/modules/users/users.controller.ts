@@ -13,6 +13,7 @@ import type {
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,
+  setUserEmailSchema,
   setUserPasswordSchema,
   updateProfileSchema,
   updateUserSchema,
@@ -82,6 +83,19 @@ export const createUsersController = (service: UsersService) =>
       res: Response,
     ): Promise<void> => {
       await service.setPassword(req.ctx, req.valid.params.id, req.valid.body);
+      respond.noContent(res);
+    },
+
+    /**
+     * `204`: the address is set (ADR-0071 §7). No body for `setPassword`'s
+     * reason — the caller already knows what they sent, and the account's new
+     * state is one `GET /:id` away if they want it read back.
+     */
+    setEmail: async (
+      req: ValidatedRequest<typeof setUserEmailSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.setEmail(req.ctx, req.valid.params.id, req.valid.body);
       respond.noContent(res);
     },
 

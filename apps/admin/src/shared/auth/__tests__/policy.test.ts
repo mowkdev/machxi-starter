@@ -59,6 +59,20 @@ import { RESOURCE_POLICY, type ResourcePolicy } from "../policy";
  * The memberships sub-resource gets no key of its own: its three writes carry
  * the same guard as the resource's, so a second key would be the same value
  * written twice and a second place to drift from the router.
+ *
+ * **Re-read 2026-09-10 (`D18.10`)**, when the administrative address change
+ * arrived — the first `authorize("super_admin")` in this API:
+ *
+ * - `apps/api/src/modules/staff/staff.routes.ts` — **one** `authorize(` call,
+ *   where the grep used to find none: `POST /:id/email`. A second occurrence
+ *   of the string is in that file's own header prose, which is again the copy
+ *   this fixture exists not to trust.
+ * - `apps/api/src/modules/users/users.routes.ts` — a seventh `authorize(`
+ *   call, and the only one that is not `("admin")`: `POST /:id/email`.
+ *
+ * Both are `changeEmail` below. Written out rather than left absent — which
+ * the type says means the same thing — because absence is how this table says
+ * "no such route", and both routes exist.
  */
 const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
   staff: {
@@ -68,6 +82,7 @@ const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
     delete: ["admin"],
     setPassword: ["admin"],
     revokeSessions: ["admin"],
+    changeEmail: ["super_admin"],
   },
   users: {
     read: ["admin", "manager"],
@@ -77,6 +92,7 @@ const TRANSCRIBED_FROM_ROUTERS: ResourcePolicy = {
     setPassword: ["admin"],
     revokeSessions: ["admin"],
     impersonate: ["admin"],
+    changeEmail: ["super_admin"],
   },
   organizations: {
     read: ["admin", "manager"],
@@ -109,6 +125,8 @@ const UNIVERSAL_ACTIONS = [
   "delete",
   "setPassword",
   "revokeSessions",
+  // `changeEmail` is universal since `D18.10`: both resources have the route.
+  "changeEmail",
 ] as const;
 
 describe("RESOURCE_POLICY", () => {
@@ -163,6 +181,23 @@ describe("can(principal, action, resource)", () => {
     expect(can(staff("editor"), "read", "users")).toBe(false);
   });
 
+  it("offers the address change to a super admin and to nobody else", () => {
+    /*
+     * `D18.10`, ADR-0071 §7 — the first row in this table that names
+     * `super_admin`, and the first affordance an `admin` is refused. The
+     * `admin` cases are the ones worth asserting: a plain admin reaches both
+     * record surfaces, may reset a password there, and must still not be shown
+     * a control the API answers `403` to.
+     */
+    expect(can(staff("super_admin"), "changeEmail", "users")).toBe(true);
+    expect(can(staff("super_admin"), "changeEmail", "staff")).toBe(true);
+
+    expect(can(staff("admin"), "changeEmail", "users")).toBe(false);
+    expect(can(staff("admin"), "changeEmail", "staff")).toBe(false);
+    expect(can(staff("manager"), "changeEmail", "users")).toBe(false);
+    expect(can(staff("editor"), "changeEmail", "staff")).toBe(false);
+  });
+
   it("grants every universally-routed action on both resources", () => {
     /*
      * The `Partial` record exists so absence is expressible and `can`'s `?? []`
@@ -173,9 +208,11 @@ describe("can(principal, action, resource)", () => {
      * exists, and the gating rule — which is narrower than the table (see
      * `allowedCapabilities`) — would silently follow it.
      *
-     * Six actions rather than seven since `D13.8`. That is not a weakening: the
-     * seventh has a route on one resource only, and the case below pins its
-     * absence on the other as the fact it is.
+     * Seven actions since `D18.10`, not eight: `impersonate` has a route on
+     * one resource only, and the case below pins its absence on the other as
+     * the fact it is. `changeEmail` joined the list because both resources
+     * really do have the route — its *roles* are narrower, which is a
+     * different claim and is asserted below.
      */
     for (const resource of ["staff", "users"] as const)
       for (const action of UNIVERSAL_ACTIONS)

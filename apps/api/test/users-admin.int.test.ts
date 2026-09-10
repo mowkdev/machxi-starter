@@ -4,12 +4,14 @@ import {
   successEnvelopeSchema,
 } from "@repo/contracts";
 import {
+  accountTokens,
+  auditEvents,
   organizationMemberships,
   organizations,
   personalOrganizationSlug,
   users,
 } from "@repo/db";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -54,6 +56,8 @@ const USERS_BASE = "/api/v1/admin/users";
 describe("admin user administration", () => {
   let harness: TestApp;
   let adminTokens: Tokens;
+  /** The only caller `POST /:id/email` admits (ADR-0071 §7). */
+  let superAdminTokens: Tokens;
   let managerTokens: Tokens;
   let editorTokens: Tokens;
   let userTokens: Tokens;
@@ -63,7 +67,7 @@ describe("admin user administration", () => {
     harness = createTestApp();
     await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
 
-    const superAdminTokens = await login(harness.app, "staff", superAdmin());
+    superAdminTokens = await login(harness.app, "staff", superAdmin());
 
     // There is no seeded plain `admin`, and a `super_admin` would pass every
     // guard by bypass rather than by role — which is exactly what this file
@@ -154,7 +158,18 @@ describe("admin user administration", () => {
       { method: "delete", path: `${USERS_BASE}/${UNKNOWN_ID}` },
     ] as const;
 
-    const ROUTES = [...READ_ROUTES, ...WRITE_ROUTES];
+    /**
+     * The routes a plain `admin` is refused too (ADR-0071 §7).
+     *
+     * Listed apart from {@link WRITE_ROUTES} rather than added to it, because
+     * the only assertion that differs is the one about an `admin` — every
+     * other row of the matrix says the same thing about both lists.
+     */
+    const SUPER_ADMIN_ROUTES = [
+      { method: "post", path: `${USERS_BASE}/${UNKNOWN_ID}/email` },
+    ] as const;
+
+    const ROUTES = [...READ_ROUTES, ...WRITE_ROUTES, ...SUPER_ADMIN_ROUTES];
 
     const call = (route: (typeof ROUTES)[number]) =>
       route.method === "get"
@@ -199,11 +214,25 @@ describe("admin user administration", () => {
       );
     });
 
-    it.each(WRITE_ROUTES)(
+    it.each([...WRITE_ROUTES, ...SUPER_ADMIN_ROUTES])(
       "$method $path refuses a manager, who may only read",
       async (route) => {
         const response = await call(route)
           .set("Authorization", bearer(managerTokens.accessToken))
+          .expect(403);
+
+        expect(response.body.error.code).toBe("FORBIDDEN");
+      },
+    );
+
+    it.each(SUPER_ADMIN_ROUTES)(
+      "$method $path refuses a plain admin (ADR-0071 §7)",
+      async (route) => {
+        // The one narrowing in this router that goes past `admin`. The
+        // refusal is the guard's own `FORBIDDEN`, before any body is parsed —
+        // so an `admin` cannot use the endpoint to learn anything either.
+        const response = await call(route)
+          .set("Authorization", bearer(adminTokens.accessToken))
           .expect(403);
 
         expect(response.body.error.code).toBe("FORBIDDEN");
@@ -1175,6 +1204,296 @@ describe("admin user administration", () => {
       }).expect(400);
 
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+  });
+
+  /**
+   * `POST /api/v1/admin/users/:id/email` — a super admin setting a customer's
+   * address outright (ADR-0071 §7).
+   *
+   * The administrative counterpart of §6, and the difference is the point:
+   * nothing is mailed and nothing is confirmed, because the operator is the
+   * authority a confirmation link would be asking. The address counts as
+   * **asserted** the moment it is written.
+   */
+  describe("POST /api/v1/admin/users/:id/email", () => {
+    const SUPER_ADMIN_PASSWORD = superAdmin().password;
+
+    const setEmail = (id: string, body: object, token?: Tokens) =>
+      request()
+        .post(`${USERS_BASE}/${id}/email`)
+        .set("Authorization", bearer((token ?? superAdminTokens).accessToken))
+        .send(body);
+
+    const rowOf = async (id: string) => {
+      const [row] = await harness.db.db
+        .select({
+          email: users.email,
+          status: users.status,
+          emailVerifiedAt: users.emailVerifiedAt,
+        })
+        .from(users)
+        .where(eq(users.id, id));
+
+      return row;
+    };
+
+    it("sets the address, stamps it asserted, and audits both addresses", async () => {
+      const before = "set.email.before@machxi.local";
+      const after = "set.email.after@machxi.local";
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: before },
+      );
+
+      const response = await setEmail(created.id, {
+        email: after,
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(204);
+
+      expect(response.text).toBe("");
+
+      const row = await rowOf(created.id);
+
+      expect(row?.email).toBe(after);
+      // Asserted, which is what keeps §3's invariant true of this path too:
+      // every `active` user has a proven address.
+      expect(row?.emailVerifiedAt).not.toBeNull();
+
+      // The new address is the one that signs in.
+      await login(harness.app, "user", {
+        email: after,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      const [audited] = await harness.db.db
+        .select({
+          actorType: auditEvents.actorType,
+          actingAsId: auditEvents.actingAsId,
+          data: auditEvents.data,
+        })
+        .from(auditEvents)
+        .where(eq(auditEvents.event, "account.email_changed"))
+        .orderBy(desc(auditEvents.occurredAt));
+
+      expect(audited).toMatchObject({
+        // The acting operator, never the customer: the request ran as the
+        // super admin, so `acting_as` stays empty and the subject rides in
+        // the row's data (ADR-0058, ADR-0071 §7).
+        actorType: "staff",
+        actingAsId: null,
+        data: {
+          subjectType: "user",
+          subjectId: created.id,
+          previousEmail: before,
+          newEmail: after,
+        },
+      });
+    });
+
+    it("refuses a plain admin with 403 and changes nothing", async () => {
+      const email = "set.email.admin.refused@machxi.local";
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      const response = await setEmail(
+        created.id,
+        { email: "nope@machxi.local", currentPassword: NEW_ACCOUNT_PASSWORD },
+        adminTokens,
+      ).expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+      expect((await rowOf(created.id))?.email).toBe(email);
+    });
+
+    it("refuses a super admin who cannot re-present their own password", async () => {
+      const email = "set.email.password.refused@machxi.local";
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      const response = await setEmail(created.id, {
+        email: "still.nope@machxi.local",
+        currentPassword: "not-the-super-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+      expect((await rowOf(created.id))?.email).toBe(email);
+    });
+
+    it("answers the same 403 for an id that does not exist", async () => {
+      // The actor is verified before the subject is read, so the endpoint is
+      // no enumeration oracle for somebody who cannot use it (ADR-0027).
+      const response = await setEmail(UNKNOWN_ID, {
+        email: "unknown.subject@machxi.local",
+        currentPassword: "not-the-super-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+    });
+
+    it("answers 409 for an address a live account already holds", async () => {
+      const email = "set.email.conflict@machxi.local";
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      const response = await setEmail(created.id, {
+        email: FIXTURE_USERS.active,
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(409);
+
+      expect(response.body.error.code).toBe("USER_EMAIL_TAKEN");
+      expect((await rowOf(created.id))?.email).toBe(email);
+    });
+
+    it("counts the subject's own address as taken", async () => {
+      // §6's rule read on the administrative half: the address is held by a
+      // live account — this one — so "already taken" is truthful, and a change
+      // to nothing would write an audit row about nothing.
+      const email = "set.email.same@machxi.local";
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email },
+      );
+
+      const response = await setEmail(created.id, {
+        email,
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(409);
+
+      expect(response.body.error.code).toBe("USER_EMAIL_TAKEN");
+    });
+
+    it("moves a pending_verification account's address without stamping it", async () => {
+      // `POST /admin/users`'s own split (ADR-0071 §3): a row that has proven
+      // nothing keeps a null stamp, so `email_verified_at` never disagrees
+      // with the one status the verification flow exists to move — while the
+      // address itself is corrected, so a resend reaches the right mailbox.
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        {
+          email: "set.email.pending@machxi.local",
+          status: "pending_verification",
+        },
+      );
+
+      // Stamped by hand, which `PATCH /:id { status: "pending_verification" }`
+      // on a proven account really does leave behind (`D18.10`'s
+      // `security-reviewer`): the column is written unconditionally, so this
+      // path must **clear** it rather than skip the write and keep a stamp an
+      // address the account no longer holds once earned.
+      await harness.db.db
+        .update(users)
+        .set({ emailVerifiedAt: new Date() })
+        .where(eq(users.id, created.id));
+
+      await setEmail(created.id, {
+        email: "set.email.pending.new@machxi.local",
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(204);
+
+      const row = await rowOf(created.id);
+
+      expect(row?.email).toBe("set.email.pending.new@machxi.local");
+      expect(row?.status).toBe("pending_verification");
+      expect(row?.emailVerifiedAt).toBeNull();
+    });
+
+    it("refuses a soft-deleted account with 409 USER_DELETED", async () => {
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "set.email.deleted@machxi.local" },
+      );
+
+      await request()
+        .delete(`${USERS_BASE}/${created.id}`)
+        .set("Authorization", bearer(adminTokens.accessToken))
+        .expect(204);
+
+      const response = await setEmail(created.id, {
+        email: "set.email.deleted.new@machxi.local",
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(409);
+
+      expect(response.body.error.code).toBe("USER_DELETED");
+    });
+
+    it("spends every live link the account holds", async () => {
+      /*
+       * `D18.10`'s `security-reviewer`. The first draft superseded
+       * `change_email` alone, and the two purposes it left live are the sharper
+       * ones: a `verify_email` link mailed to the old mailbox activates the row
+       * *and* stamps the corrected address proven *and* issues a session, and
+       * a `reset_password` one sets a password on an account this endpoint
+       * deliberately does not sign out. Both were addressed to the mailbox the
+       * correction exists to stop trusting.
+       */
+      const created = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        {
+          email: "set.email.links@machxi.local",
+          status: "pending_verification",
+        },
+      );
+
+      // A verification link to the mailbox that is about to be replaced.
+      await request()
+        .post("/api/v1/public/auth/resend-verification")
+        .send({ email: "set.email.links@machxi.local", locale: "en" })
+        .expect(202);
+
+      const live = async (): Promise<number> => {
+        const [row] = await harness.db.db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(accountTokens)
+          .where(
+            and(
+              eq(accountTokens.principalId, created.id),
+              isNull(accountTokens.consumedAt),
+            ),
+          );
+
+        return row?.total ?? 0;
+      };
+
+      expect(await live()).toBeGreaterThan(0);
+
+      await setEmail(created.id, {
+        email: "set.email.links.new@machxi.local",
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(204);
+
+      expect(await live()).toBe(0);
+    });
+
+    it("rejects an unknown field and a malformed address", async () => {
+      const unknownField = await setEmail(customerId, {
+        email: "fine@machxi.local",
+        currentPassword: SUPER_ADMIN_PASSWORD,
+        newEmail: "fine@machxi.local",
+      }).expect(400);
+
+      expect(unknownField.body.error.code).toBe("VALIDATION_ERROR");
+
+      const malformed = await setEmail(customerId, {
+        email: "not-an-address",
+        currentPassword: SUPER_ADMIN_PASSWORD,
+      }).expect(400);
+
+      expect(malformed.body.error.code).toBe("VALIDATION_ERROR");
     });
   });
 });

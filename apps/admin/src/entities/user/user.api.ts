@@ -4,6 +4,7 @@ import type {
   ListEnvelope,
   ListUsersQuery,
   Page,
+  SetEmailBody,
   SetPasswordBody,
   SuccessEnvelope,
   UpdateUserBody,
@@ -76,6 +77,23 @@ export const createUserApi = (client: ApiClient) =>
      */
     setPassword: async (id: string, body: SetPasswordBody): Promise<void> => {
       await client.instance.post(`/users/${id}/password`, body);
+    },
+
+    /**
+     * `POST /admin/users/:id/email` — a super admin sets the address
+     * (`D18.10`, ADR-0071 §7).
+     *
+     * `email` is the subject's new address and `currentPassword` is the
+     * **acting** operator's own, for the reason the reset above takes one and
+     * with more force: an address redirects every future recovery link.
+     *
+     * `super_admin` alone at the guard, never a plain `admin`; the record
+     * surface declines to offer it to one (`RESOURCE_POLICY.users.changeEmail`)
+     * and the router is what enforces it. `204` — nothing is mailed and
+     * nothing is confirmed.
+     */
+    setEmail: async (id: string, body: SetEmailBody): Promise<void> => {
+      await client.instance.post(`/users/${id}/email`, body);
     },
 
     /** `POST /admin/users/:id/sessions/revoke` — forced sign-out. `204`. */

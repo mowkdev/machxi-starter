@@ -15,6 +15,7 @@ export {
   registerBody,
   resendVerificationBody,
   resetPasswordBody,
+  setEmailBody,
   setPasswordBody,
   verifyEmailBody,
   type ChangePasswordBody,
@@ -26,6 +27,7 @@ export {
   type RegisterBody,
   type ResendVerificationBody,
   type ResetPasswordBody,
+  type SetEmailBody,
   type SetPasswordBody,
   type VerifyEmailBody,
 } from "./schemas.js";

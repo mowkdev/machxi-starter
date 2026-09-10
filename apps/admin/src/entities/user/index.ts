@@ -6,6 +6,7 @@ export {
   useDeleteUser,
   useImpersonateUser,
   useRevokeUserSessions,
+  useSetUserEmail,
   useSetUserPassword,
   useUser,
   useUserList,

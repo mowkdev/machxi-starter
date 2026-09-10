@@ -1,6 +1,7 @@
 import { staff, staffRoles, type DbExecutor } from "@repo/db";
 import type { ListQuery, StaffRole, StaffStatus } from "@repo/contracts";
-import { and, count, eq, ne, notInArray, sql } from "drizzle-orm";
+import { and, count, eq, ne, notExists, notInArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { internal } from "../../core/errors/index.js";
 import {
@@ -17,6 +18,13 @@ import {
  * repositories inside one transaction (ADR-0006); outside one it is the client
  * itself.
  */
+
+/**
+ * The same table under a second name, so a statement writing one row can ask
+ * about the others in its own `where` (`D18.10`). The users repository has the
+ * identical alias for the identical reason.
+ */
+const taken = alias(staff, "taken_email");
 
 /**
  * A staff row plus its roles — the whole aggregate, read once.
@@ -434,6 +442,66 @@ export const createStaffRepository = (db: DbExecutor) =>
         .update(staff)
         .set({ passwordHash, updatedAt: at })
         .where(eq(staff.id, id));
+    },
+
+    /**
+     * "Does a staff account already hold this address?" (ADR-0071 §7).
+     *
+     * The subject's **own** address counts, deliberately and for the reason
+     * ADR-0071 §6 gives on the users side: it is held by a live account, so
+     * "already taken" is the truthful answer, and a "change" to the address a
+     * row already has would write an audit row about nothing.
+     *
+     * Unconditional on status and with no soft-delete predicate, unlike the
+     * users twin: `staff` has no `deleted_at` (ADR-0028), so the unique index
+     * on `email` is total and this read matches it exactly.
+     */
+    emailTaken: async (email: string, tx: DbExecutor = db): Promise<boolean> =>
+      (await tx.query.staff.findFirst({
+        columns: { id: true },
+        where: eq(staff.email, email),
+      })) !== undefined,
+
+    /**
+     * The super admin's administrative set (ADR-0071 §7).
+     *
+     * There is no verification stamp to write: `staff` has no
+     * `email_verified_at` and needs none — every operator's address is
+     * asserted by the admin who typed it, which is the invariant ADR-0071 §3
+     * gives `users` a column for and this population gets from the fact that
+     * nobody self-registers into it.
+     *
+     * `onConflictDoNothing` is not available on an update, so uniqueness rides
+     * in the `where` as a `NOT EXISTS` — the users twin's shape, with the same
+     * honest limit: the index is the arbiter of the last microsecond and this
+     * clause buys the committed case.
+     *
+     * @returns `false` when no row matched — an unknown id, or an address
+     *   claimed since the service asked.
+     */
+    updateEmail: async (
+      id: string,
+      email: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<boolean> => {
+      const updated = await tx
+        .update(staff)
+        .set({ email, updatedAt: at })
+        .where(
+          and(
+            eq(staff.id, id),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(taken)
+                .where(eq(taken.email, email)),
+            ),
+          ),
+        )
+        .returning({ id: staff.id });
+
+      return updated.length > 0;
     },
 
     /**

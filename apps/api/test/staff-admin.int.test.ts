@@ -117,6 +117,7 @@ describe("admin staff administration", () => {
       { method: "patch", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/sessions/revoke` },
       { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/password` },
+      { method: "post", path: `${STAFF_BASE}/${UNKNOWN_ID}/email` },
       { method: "delete", path: `${STAFF_BASE}/${UNKNOWN_ID}` },
     ] as const;
 
@@ -630,6 +631,189 @@ describe("admin staff administration", () => {
       }).expect(400);
 
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
+  });
+
+  /**
+   * `POST /api/v1/admin/staff/:id/email` — a super admin setting an operator's
+   * address outright (ADR-0071 §7).
+   *
+   * The one route in this router that narrows the mount's `admin` guard, and
+   * the reason it does is the operation rather than the subject: an address
+   * redirects every future recovery link, so it is not something an `admin`
+   * may do to a peer. There is no rank rule underneath, because the only
+   * caller who arrives already outranks everybody — including themselves,
+   * which §7 permits explicitly.
+   */
+  describe("POST /api/v1/admin/staff/:id/email", () => {
+    const setEmail = (token: string, id: string, body: object) =>
+      request()
+        .post(`${STAFF_BASE}/${id}/email`)
+        .set("Authorization", bearer(token))
+        .send(body);
+
+    const emailOf = async (id: string): Promise<string> => {
+      const response = await request()
+        .get(`${STAFF_BASE}/${id}`)
+        .set("Authorization", bearer(superAdminTokens.accessToken))
+        .expect(200);
+
+      return response.body.data.email as string;
+    };
+
+    it("sets the address, signs the operator in under it, and keeps their sessions", async () => {
+      const before = "staff.set.email.before@machxi.local";
+      const after = "staff.set.email.after@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email: before, roles: ["editor"] },
+      );
+      const tokens = await login(harness.app, "staff", {
+        email: before,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      const response = await setEmail(superAdminTokens.accessToken, target.id, {
+        email: after,
+        currentPassword: superAdmin().password,
+      }).expect(204);
+
+      expect(response.text).toBe("");
+      expect(await emailOf(target.id)).toBe(after);
+
+      // An address is not a credential (ADR-0071 §6), so nothing is revoked —
+      // the operator stays signed in on the device they are holding.
+      await request()
+        .get("/api/v1/admin/auth/me")
+        .set("Authorization", bearer(tokens.accessToken))
+        .expect(200);
+
+      await login(harness.app, "staff", {
+        email: after,
+        password: NEW_ACCOUNT_PASSWORD,
+      });
+
+      const withOldAddress = await request()
+        .post("/api/v1/admin/auth/login")
+        .send({ email: before, password: NEW_ACCOUNT_PASSWORD })
+        .expect(401);
+
+      expect(withOldAddress.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("refuses a plain admin with 403 and changes nothing", async () => {
+      const email = "staff.set.email.admin.refused@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email, roles: ["editor"] },
+      );
+
+      const response = await setEmail(adminTokens.accessToken, target.id, {
+        email: "staff.set.email.nope@machxi.local",
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+      expect(await emailOf(target.id)).toBe(email);
+    });
+
+    it("refuses a super admin who cannot re-present their own password", async () => {
+      const email = "staff.set.email.password.refused@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email, roles: ["editor"] },
+      );
+
+      const response = await setEmail(superAdminTokens.accessToken, target.id, {
+        email: "staff.set.email.still.nope@machxi.local",
+        currentPassword: "not-the-super-admins-password",
+      }).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+      expect(await emailOf(target.id)).toBe(email);
+    });
+
+    it("answers the same 403 for an id that does not exist", async () => {
+      const response = await setEmail(
+        superAdminTokens.accessToken,
+        UNKNOWN_ID,
+        {
+          email: "staff.set.email.unknown@machxi.local",
+          currentPassword: "not-the-super-admins-password",
+        },
+      ).expect(403);
+
+      expect(response.body.error.code).toBe("AUTH_CURRENT_PASSWORD_INVALID");
+    });
+
+    it("answers 404 for an unknown id once the actor verifies", async () => {
+      const response = await setEmail(
+        superAdminTokens.accessToken,
+        UNKNOWN_ID,
+        {
+          email: "staff.set.email.unknown2@machxi.local",
+          currentPassword: superAdmin().password,
+        },
+      ).expect(404);
+
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+
+    it("answers 409 for an address another operator already holds", async () => {
+      const email = "staff.set.email.conflict@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email, roles: ["editor"] },
+      );
+
+      const response = await setEmail(superAdminTokens.accessToken, target.id, {
+        email: FIXTURE_STAFF.manager,
+        currentPassword: superAdmin().password,
+      }).expect(409);
+
+      expect(response.body.error.code).toBe("STAFF_EMAIL_TAKEN");
+      expect(await emailOf(target.id)).toBe(email);
+    });
+
+    it("counts the subject's own address as taken", async () => {
+      const email = "staff.set.email.same@machxi.local";
+      const target = await createStaffMember(
+        harness.app,
+        adminTokens.accessToken,
+        { email, roles: ["editor"] },
+      );
+
+      const response = await setEmail(superAdminTokens.accessToken, target.id, {
+        email,
+        currentPassword: superAdmin().password,
+      }).expect(409);
+
+      expect(response.body.error.code).toBe("STAFF_EMAIL_TAKEN");
+    });
+
+    it("rejects an unknown field and a malformed address", async () => {
+      const unknownField = await setEmail(
+        superAdminTokens.accessToken,
+        adminId,
+        {
+          email: "staff.set.email.fine@machxi.local",
+          currentPassword: superAdmin().password,
+          roles: ["super_admin"],
+        },
+      ).expect(400);
+
+      expect(unknownField.body.error.code).toBe("VALIDATION_ERROR");
+
+      const malformed = await setEmail(superAdminTokens.accessToken, adminId, {
+        email: "not-an-address",
+        currentPassword: superAdmin().password,
+      }).expect(400);
+
+      expect(malformed.body.error.code).toBe("VALIDATION_ERROR");
     });
   });
 

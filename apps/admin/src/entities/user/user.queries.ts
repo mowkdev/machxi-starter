@@ -1,6 +1,7 @@
 import type {
   CreateUserBody,
   ListUsersQuery,
+  SetEmailBody,
   SetPasswordBody,
   UpdateUserBody,
 } from "@repo/contracts";
@@ -109,6 +110,36 @@ export const useSetUserPassword = () => {
     meta: {
       ...FORM_MUTATION_META,
       success: "users:outcomes.passwordReset",
+    },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: userKeys.detail(id) });
+    },
+  });
+};
+
+/**
+ * The administrative address change (`D18.10`, ADR-0071 §7).
+ *
+ * `CREDENTIAL_MUTATION` for the **variables**, like the reset above it: the
+ * body carries the acting operator's plaintext password, and a settled
+ * mutation's variables sit in the mutation cache for `gcTime` otherwise.
+ *
+ * It invalidates the ordinary way, and here that matters more than usual — the
+ * address is a column both the list and the detail render, so a stale cache
+ * would show the operator the old one immediately after they changed it.
+ */
+export const useSetUserEmail = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: ({ id, body }: { id: string; body: SetEmailBody }) =>
+      api.setEmail(id, body),
+    meta: {
+      ...FORM_MUTATION_META,
+      success: "users:outcomes.emailChanged",
     },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: userKeys.lists() });

@@ -1,5 +1,15 @@
-import { createUserBody, setPasswordBody } from "@repo/contracts";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  createUserBody,
+  setPasswordBody,
+  type StaffRole,
+} from "@repo/contracts";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -324,6 +334,142 @@ describe("the edit surface", () => {
     expect(
       await screen.findByText("That user is deleted and cannot be changed."),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The address change on the record surface (`D18.10`, ADR-0071 §7, ADR-0042).
+ *
+ * The staff suite's twin, and this one adds the claim only a drawer can make:
+ * the ceremony is a **sibling** of the record surface rather than a child of
+ * it, so opening it and submitting it must not save the record underneath.
+ * That is not decoration — a React portal bubbles synthetic events up the
+ * React tree whatever the DOM says, so nesting the two forms would have made
+ * every address change a silent `PATCH` as well.
+ */
+describe("the address change on the record surface", () => {
+  const openRecordAs = async (roles: readonly StaffRole[], id: string) => {
+    const store = createSessionStore();
+
+    store.setSession({
+      accessToken: "test-access-token",
+      principal: staffPrincipal(roles),
+    });
+
+    const result = renderApp({ initialPath: `/users/${id}`, store });
+
+    await screen.findByRole("button", { name: "Save changes" });
+
+    return result;
+  };
+
+  it("is absent for an admin and present for a super admin", async () => {
+    await openRecordAs(["admin"], CARA.id);
+
+    expect(
+      screen.queryByRole("button", { name: "Change address" }),
+      "an admin reaches this surface and may reset a password on it, and must still not be offered a control the API answers 403 to",
+    ).not.toBeInTheDocument();
+
+    cleanup();
+
+    await openRecordAs(["super_admin"], CARA.id);
+
+    expect(
+      await screen.findByRole("button", { name: "Change address" }),
+    ).toBeInTheDocument();
+    // Read out beside the control, because the form has no field for it:
+    // `updateUserBody` never had one, and that is now load-bearing. Named by
+    // its label rather than by the address, which the drawer's title carries
+    // too.
+    expect(screen.getByText("Email address")).toBeInTheDocument();
+  });
+
+  it("sends the new address, and saves nothing else on the way", async () => {
+    const user = userEvent.setup();
+
+    await openRecordAs(["super_admin"], CARA.id);
+
+    /*
+     * The record form is dirtied **first**, and that is what makes the two
+     * assertions at the end mean anything (`D18.10`'s `code-reviewer`). On a
+     * pristine form the nested arrangement would have taken `onSubmit`'s
+     * empty-diff branch — no `PATCH`, a silent `close()` — so
+     * `state.seen.updated` would have been empty in both worlds and the test
+     * would have passed against the bug it exists to catch.
+     */
+    await user.type(await screen.findByLabelText("First name"), "!");
+
+    await user.click(screen.getByRole("button", { name: "Change address" }));
+
+    await user.type(
+      await screen.findByLabelText("New email address"),
+      "moved@example.test",
+    );
+    await user.type(
+      screen.getByLabelText("Your own current password"),
+      "DevPassword!123",
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: `Change the address for ${CARA.email}`,
+    });
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Change address" }),
+    );
+
+    await waitFor(() => {
+      expect(state.seen.emails[0]).toEqual({
+        id: CARA.id,
+        body: {
+          email: "moved@example.test",
+          currentPassword: "DevPassword!123",
+        },
+      });
+    });
+
+    // The drawer behind it is untouched, on both counts a nested form would
+    // fail: no `PATCH` was sent, and the surface is still open — the nested
+    // path navigates away even when it has nothing to save.
+    expect(state.seen.updated).toEqual([]);
+    expect(
+      screen.getByRole("button", { name: "Save changes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("puts the operator's own wrong password under the box that fixes it", async () => {
+    const user = userEvent.setup();
+
+    await openRecordAs(["super_admin"], CARA.id);
+
+    await user.click(screen.getByRole("button", { name: "Change address" }));
+
+    await user.type(
+      await screen.findByLabelText("New email address"),
+      "moved@example.test",
+    );
+    await user.type(
+      screen.getByLabelText("Your own current password"),
+      "not-the-operators-password",
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: `Change the address for ${CARA.email}`,
+    });
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Change address" }),
+    );
+
+    // `403 AUTH_CURRENT_PASSWORD_INVALID` carries no `details` — it belongs to
+    // the credential check rather than to a request field — and the operator's
+    // question is still "what do I retype?" (ADR-0027 §Contracts).
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Your own current password"),
+      ).toHaveAttribute("aria-invalid", "true");
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { noStore, validate } from "../../core/middleware/index.js";
+import { authorize, noStore, validate } from "../../core/middleware/index.js";
 import type {
   StaffController,
   StaffProfileController,
@@ -12,6 +12,7 @@ import {
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,
+  setStaffEmailSchema,
   setStaffPasswordSchema,
   updateStaffProfileSchema,
   updateStaffSchema,
@@ -20,11 +21,16 @@ import {
 /**
  * `/api/v1/admin/staff/*` (ADR-0015).
  *
- * There is no guard in this file, and that is deliberate: the whole resource
- * is `admin`-only, so the segment router mounts `authenticate("staff")` and
- * `authorize("admin")` once at the mount point and every route below inherits
- * them (ADR-0019 §2). A per-route `authorize` here would be a second place to
- * keep in sync, and a route added without one would look correct.
+ * There is **one** guard in this file, and every other route deliberately has
+ * none: the resource is `admin`-only, so the segment router mounts
+ * `authenticate("staff")` and `authorize("admin")` once at the mount point and
+ * every route below inherits them (ADR-0019 §2). A per-route `authorize`
+ * repeating that would be a second place to keep in sync, and a route added
+ * without one would look correct.
+ *
+ * The exception since `D18.10` is `POST /:id/email`, which *narrows* the mount
+ * to `super_admin` (ADR-0071 §7). Narrowing is what ADR-0019 §2 permits and is
+ * safe in this direction only, because both guards run.
  *
  * The order within a route is the one ADR-0011 fixes:
  * `rateLimit → authenticate → authorize → validate → controller`.
@@ -66,6 +72,30 @@ export const createStaffRouter = (controller: StaffController): Router => {
     "/:id/password",
     validate(setStaffPasswordSchema),
     controller.setPassword,
+  );
+
+  /*
+   * `POST /:id/email` (ADR-0071 §7) — **the one route in this file that
+   * carries a guard**, and the exception the header paragraph above is written
+   * against rather than a hole in it.
+   *
+   * The mount says `admin`; this narrows it to `super_admin`, which a route
+   * may do and may never do in the other direction, because both run. The
+   * reason it is not left to the mount is §7's own: setting an address
+   * redirects every future recovery link for that account, so it is the one
+   * operation here an `admin` may not perform on a peer — and there is nothing
+   * in the service that could express that, because rank rules are about the
+   * *subject's* standing and this is about the actor's.
+   *
+   * `authorize("super_admin")` rather than the bare `authorize()` that means
+   * the same thing: a reader must not have to know that an empty list is a
+   * lock in order to see which role this route is for.
+   */
+  router.post(
+    "/:id/email",
+    authorize("super_admin"),
+    validate(setStaffEmailSchema),
+    controller.setEmail,
   );
 
   // A hard delete: the row goes and `staff_roles` cascades with it (ADR-0028).

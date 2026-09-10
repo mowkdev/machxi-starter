@@ -9,6 +9,7 @@ import type {
   getStaffSchema,
   listStaffSchema,
   revokeStaffSessionsSchema,
+  setStaffEmailSchema,
   setStaffPasswordSchema,
   updateStaffProfileSchema,
   updateStaffSchema,
@@ -91,6 +92,19 @@ export const createStaffController = (service: StaffService) =>
       res: Response,
     ): Promise<void> => {
       await service.setPassword(req.ctx, req.valid.params.id, req.valid.body);
+      respond.noContent(res);
+    },
+
+    /**
+     * `204`: the address is set (ADR-0071 §7). No body, for the reason
+     * `setPassword` has none — the caller knows what they sent, and the row as
+     * it now stands is one `GET /:id` away.
+     */
+    setEmail: async (
+      req: ValidatedRequest<typeof setStaffEmailSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.setEmail(req.ctx, req.valid.params.id, req.valid.body);
       respond.noContent(res);
     },
 

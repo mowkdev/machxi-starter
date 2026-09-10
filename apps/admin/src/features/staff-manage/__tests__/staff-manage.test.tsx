@@ -1,5 +1,5 @@
-import { setPasswordBody } from "@repo/contracts";
-import { screen, waitFor, within } from "@testing-library/react";
+import { setPasswordBody, type StaffRole } from "@repo/contracts";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { API } from "@/test/msw/handlers/auth.handlers";
 import { fail } from "@/test/msw/handlers/envelope";
 import {
+  ACTOR_PASSWORD,
   STAFF_ROWS,
   createStaffHandlers,
   createStaffMockState,
@@ -364,6 +365,136 @@ describe("the edit surface", () => {
     expect(
       await screen.findByText(
         "This is the last super admin. Promote someone else first.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The address change on the record surface (`D18.10`, ADR-0071 §7, ADR-0042).
+ *
+ * Two claims, and only the first is about this app's own rules: the affordance
+ * is drawn for a `super_admin` and for nobody else, and the ceremony it opens
+ * sends what the endpoint takes. The MSW handler deliberately does **not**
+ * enforce the role — the guard is the API's, proved in
+ * `staff-admin.int.test.ts` — so a test that passed because two copies of the
+ * same rule agreed with each other is not available here.
+ */
+describe("the address change on the record surface", () => {
+  const openRecordAs = async (roles: readonly StaffRole[], id: string) => {
+    const store = createSessionStore();
+
+    store.setSession({
+      accessToken: "test-access-token",
+      principal: staffPrincipal(roles),
+    });
+
+    const result = renderApp({ initialPath: `/staff/${id}`, store });
+
+    await screen.findByRole("button", { name: "Save changes" });
+
+    return result;
+  };
+
+  it("is absent for an admin and present for a super admin", async () => {
+    await openRecordAs(["admin"], MO.id);
+
+    expect(
+      screen.queryByRole("button", { name: "Change address" }),
+      "an admin reaches this surface and may reset a password on it, and must still not be offered a control the API answers 403 to",
+    ).not.toBeInTheDocument();
+
+    cleanup();
+
+    await openRecordAs(["super_admin"], MO.id);
+
+    expect(
+      await screen.findByRole("button", { name: "Change address" }),
+    ).toBeInTheDocument();
+    // The current address is read out beside the control, because the form
+    // itself has no field for it — `updateStaffBody` never had one. Named by
+    // its label rather than by the address, which the surface's own title
+    // carries too.
+    expect(screen.getByText("Email address")).toBeInTheDocument();
+  });
+
+  it("sends the new address with the operator's own password", async () => {
+    const user = userEvent.setup();
+
+    await openRecordAs(["super_admin"], MO.id);
+
+    // Dirtied first, so a nested submit would produce a real `PATCH` rather
+    // than `onSubmit`'s empty-diff branch — the users twin says why that
+    // matters (`D18.10`'s `code-reviewer`).
+    await user.type(await screen.findByLabelText("First name"), "!");
+
+    await user.click(screen.getByRole("button", { name: "Change address" }));
+
+    await user.type(
+      await screen.findByLabelText("New email address"),
+      "moved@example.test",
+    );
+    await user.type(
+      screen.getByLabelText("Your own current password"),
+      ACTOR_PASSWORD,
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: `Change the address for ${MO.email}`,
+    });
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Change address" }),
+    );
+
+    await waitFor(() => {
+      expect(state.seen.emails[0]).toEqual({
+        id: MO.id,
+        body: {
+          email: "moved@example.test",
+          currentPassword: ACTOR_PASSWORD,
+        },
+      });
+    });
+
+    // The record surface underneath is untouched: opening a ceremony from
+    // inside a form must not submit the form it was opened from, and must not
+    // navigate away from it either.
+    expect(state.seen.updated).toEqual([]);
+    expect(
+      screen.getByRole("button", { name: "Save changes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("puts a taken address under the field the operator can retype", async () => {
+    const user = userEvent.setup();
+
+    await openRecordAs(["super_admin"], MO.id);
+
+    await user.click(screen.getByRole("button", { name: "Change address" }));
+
+    // ADA's address, which the mock holds and the API would refuse the same
+    // way: a `409` with no `details`, mapped to the box it belongs under.
+    await user.type(
+      await screen.findByLabelText("New email address"),
+      ADA.email,
+    );
+    await user.type(
+      screen.getByLabelText("Your own current password"),
+      ACTOR_PASSWORD,
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: `Change the address for ${MO.email}`,
+    });
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Change address" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Another staff member already uses that email address.",
       ),
     ).toBeInTheDocument();
   });

@@ -332,6 +332,11 @@ export const buildContainer = ({
     repository: staffRepository,
     hasher: limitedHasher,
     sessions: staffAuth,
+    // The one row this module writes for itself (ADR-0058, ADR-0071 §7), and
+    // the token service that flow supersedes a live `change_email` link
+    // through (ADR-0071 §1).
+    audit,
+    accountTokens,
     transaction,
   });
 
@@ -364,6 +369,10 @@ export const buildContainer = ({
     // ADR-0009 was amended about. `POST /api/v1/admin/users/:id/password` has a
     // *staff* member acting, so the actor's own password is verified by the
     // module that owns the staff aggregate (ADR-0027 rule 1, ADR-0009).
+    // `account.email_changed` for the administrative half of the flow
+    // (ADR-0071 §7): the actor is the super admin on the context and the
+    // subject rides in the row's data.
+    audit,
     actors: staffService,
     // The three writes ADR-0067 §2 requires to be transactional with the
     // account they are about: `POST /admin/users` creates the personal

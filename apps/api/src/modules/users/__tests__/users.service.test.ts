@@ -7,6 +7,7 @@ import type {
 import { createLogger } from "@repo/logger";
 import { describe, expect, it } from "vitest";
 
+import type { Audit, AuditEntry } from "../../../core/audit/index.js";
 import type { LimitedHasher } from "../../../core/auth/index.js";
 import {
   createRequestContext,
@@ -273,6 +274,32 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
       return Promise.resolve(toRecord(row));
     },
 
+    /**
+     * The super admin's administrative set (ADR-0071 §7): the address, the
+     * stamp written **unconditionally** so it always describes the address now
+     * on the row, and refused when a live row already holds the address — the
+     * fake's version of the statement's `NOT EXISTS`. Unlike
+     * `updateEmailVerified` above, `status` is not in the predicate.
+     */
+    setEmail: (id: string, email: string, verifiedAt: Date | null) => {
+      const row = rows.get(id);
+
+      if (row === undefined || row.deleted) return Promise.resolve(undefined);
+
+      if (
+        [...rows.values()].some(
+          (other) => other.email === email && !other.deleted,
+        )
+      ) {
+        return Promise.resolve(undefined);
+      }
+
+      row.email = email;
+      row.emailVerifiedAt = verifiedAt;
+
+      return Promise.resolve(toRecord(row));
+    },
+
     updateLastLoginAt: () => Promise.resolve(),
 
     updatePasswordHash: (id: string, passwordHash: string) => {
@@ -436,6 +463,31 @@ const createFakeLocales = (locale: Locale = "lv") =>
  * nothing" are properties of the real statements and are proved against
  * Postgres (`account-tokens.int.test.ts`, D18.2's amendment).
  */
+/**
+ * ADR-0058's writer, recording what was appended.
+ *
+ * `record` is awaited by the service and is inside its transaction, so what a
+ * fake can prove here is the entry: the event name, and that both addresses
+ * and the subject are on it (ADR-0071 §7). Whether the row survives a rollback
+ * is a property of the real transaction and is proved against Postgres.
+ */
+const createFakeAudit = () => {
+  const entries: AuditEntry[] = [];
+
+  const audit: Audit = {
+    record: (_ctx, entry) => {
+      entries.push(entry);
+
+      return Promise.resolve();
+    },
+    trail: (_ctx, entry) => {
+      entries.push(entry);
+    },
+  };
+
+  return { audit, entries } as const;
+};
+
 const createFakeAccountTokens = () => {
   const mints: {
     purpose: string;
@@ -551,6 +603,7 @@ const build = (seed: FakeUserRow[]) => {
   const organizations = createFakeOrganizations();
   const locales = createFakeLocales();
   const tokens = createFakeAccountTokens();
+  const audit = createFakeAudit();
   const mail = createFakeMail();
 
   const service = createUsersService({
@@ -561,6 +614,7 @@ const build = (seed: FakeUserRow[]) => {
     organizations: organizations.organizations,
     locales: locales.locales,
     accountTokens: tokens.accountTokens,
+    audit: audit.audit,
     mail: mail.mail,
     // The **real** templates over two fixed origins, so what the address-change
     // cases assert is the message this repository actually renders — including
@@ -581,6 +635,7 @@ const build = (seed: FakeUserRow[]) => {
     actors,
     organizations,
     tokens,
+    audit,
     mail,
   } as const;
 };

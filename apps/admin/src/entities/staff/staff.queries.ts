@@ -1,6 +1,7 @@
 import type {
   CreateStaffBody,
   ListStaffQuery,
+  SetEmailBody,
   SetPasswordBody,
   UpdateStaffBody,
 } from "@repo/contracts";
@@ -115,6 +116,32 @@ export const useSetStaffPassword = () => {
     meta: {
       ...FORM_MUTATION_META,
       success: "staff:outcomes.passwordReset",
+    },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: staffKeys.detail(id) });
+    },
+  });
+};
+
+/**
+ * The administrative address change (`D18.10`, ADR-0071 §7).
+ *
+ * `CREDENTIAL_MUTATION` for the variables, as the reset above: the body
+ * carries the acting operator's plaintext password. It invalidates the
+ * ordinary way — the address is a column both the list and the detail render.
+ */
+export const useSetStaffEmail = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: ({ id, body }: { id: string; body: SetEmailBody }) =>
+      api.setEmail(id, body),
+    meta: {
+      ...FORM_MUTATION_META,
+      success: "staff:outcomes.emailChanged",
     },
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: staffKeys.lists() });

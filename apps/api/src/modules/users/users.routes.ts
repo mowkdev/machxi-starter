@@ -18,6 +18,7 @@ import {
   getUserSchema,
   listUsersSchema,
   revokeUserSessionsSchema,
+  setUserEmailSchema,
   setUserPasswordSchema,
   updateProfileSchema,
   updateUserSchema,
@@ -28,9 +29,10 @@ import {
  *
  * Unlike the staff router, this resource is not uniformly `admin`: the segment
  * mounts it behind `authorize("admin", "manager")` because a manager may
- * *read* the customer base, and the five writing routes refine that to
- * `authorize("admin")` (ADR-0019 §2). `super_admin` bypasses both, on the one
- * line in `authorize` where that is stated.
+ * *read* the customer base, and the writing routes refine that per route
+ * (ADR-0019 §2) — six to `authorize("admin")` and, since `D18.10`, one to
+ * `authorize("super_admin")`. `super_admin` bypasses every one of them, on the
+ * one line in `authorize` where that is stated.
  *
  * Refining per route is what the ADR calls for and is safe in this direction
  * only: a route may narrow the mount's guard, never widen it, because both run.
@@ -100,6 +102,28 @@ export const createUsersRouter = ({
     authorize("admin"),
     validate(setUserPasswordSchema),
     controller.setPassword,
+  );
+
+  /*
+   * `POST /:id/email` (ADR-0071 §7) — **the first route in this API guarded on
+   * `super_admin` alone.**
+   *
+   * A sub-resource for `POST /:id/password`'s reason and one narrower still:
+   * setting an address is an action with side effects — every future recovery
+   * link now goes somewhere else — and ADR-0071 rejected the alternative by
+   * name, an `email` field on `PATCH /:id` accepted only for a super admin,
+   * because a body field whose acceptance depends on the caller's role is a
+   * second authorization mechanism beside ADR-0019's guards.
+   *
+   * `authorize("super_admin")` rather than the bare `authorize()` that means
+   * the same thing: the guard is the record's sentence, and a reader must not
+   * have to know that an empty list is a lock to see which role this is.
+   */
+  router.post(
+    "/:id/email",
+    authorize("super_admin"),
+    validate(setUserEmailSchema),
+    controller.setEmail,
   );
 
   // `admin` only, never `manager` (ADR-0057 §1): reading the customer base is

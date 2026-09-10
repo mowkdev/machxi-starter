@@ -3,6 +3,7 @@ import type {
   ListEnvelope,
   ListStaffQuery,
   Page,
+  SetEmailBody,
   SetPasswordBody,
   StaffResource,
   SuccessEnvelope,
@@ -79,6 +80,19 @@ export const createStaffApi = (client: ApiClient) =>
      */
     setPassword: async (id: string, body: SetPasswordBody): Promise<void> => {
       await client.instance.post(`/staff/${id}/password`, body);
+    },
+
+    /**
+     * `POST /admin/staff/:id/email` — a super admin sets the address
+     * (`D18.10`, ADR-0071 §7).
+     *
+     * The users twin, and the one route under `/admin/staff` that narrows the
+     * resource's `admin` mount to `super_admin`. `currentPassword` is the
+     * acting operator's own. `204`, and **no session is revoked** — an address
+     * is not a credential, so the operator whose address moved stays signed in.
+     */
+    setEmail: async (id: string, body: SetEmailBody): Promise<void> => {
+      await client.instance.post(`/staff/${id}/email`, body);
     },
 
     /** `POST /admin/staff/:id/sessions/revoke` — forced sign-out. `204`. */

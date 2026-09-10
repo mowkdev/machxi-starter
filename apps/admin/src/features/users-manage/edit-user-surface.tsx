@@ -7,6 +7,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 
 import { useRecordNavigation } from "@/shared/grid/record-navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import {
@@ -15,6 +16,7 @@ import {
   useUser,
   userResourceConfig,
 } from "@/entities/user";
+import { useCan } from "@/shared/auth";
 import { AppFormSurface } from "@/shared/form/app-form-surface";
 import { useT } from "@/shared/i18n";
 import {
@@ -27,6 +29,15 @@ import {
   editSurfaceOf,
   fieldsForVariant,
 } from "@/shared/resource/config";
+import {
+  Button,
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldTitle,
+} from "@/shared/ui";
+
+import { ChangeUserEmailDialog } from "./change-user-email-dialog";
 
 /**
  * `PATCH /admin/users/:id` — names and status.
@@ -79,8 +90,12 @@ export const EditUserSurface = ({
   };
 
   // The loader primed this key, so it resolves warm; it stays a subscription so
-  // an invalidation under the open surface is noticed.
+  // an invalidation under the open surface is noticed — which is what makes the
+  // address below update the moment the ceremony beside it lands.
   const detail = useUser(user.id);
+
+  /** The address ceremony, ephemeral for ADR-0040's reason: it is not a link. */
+  const [changingEmail, setChangingEmail] = useState(false);
 
   const form = useForm<UpdateUserBody>({
     resolver: zodResolver(updateUserBody),
@@ -126,25 +141,104 @@ export const EditUserSurface = ({
     }
   };
 
+  const record = detail.data ?? user;
+
   return (
-    <AppFormSurface
-      surface={editSurfaceOf(userResourceConfig)}
-      onClose={close}
-      title={t("edit.title", { email: user.email })}
-      description={t("edit.description")}
-      form={form}
-      fields={userResourceConfig.fields}
-      variant="edit"
-      onSubmit={onSubmit}
-      isPending={updateUser.isPending}
-      submitLabel={t("edit.submit")}
-      canSubmit={form.formState.isDirty}
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <UserFormInput fieldName="firstName" />
-        <UserFormInput fieldName="lastName" />
-      </div>
-      <UserFormInput fieldName="status" />
-    </AppFormSurface>
+    /*
+     * The ceremony is a **sibling** of the surface, not a child of it
+     * (`D18.10`). Both are Radix dialogs and both would work nested in the
+     * DOM — Radix portals each one to `document.body` — but a React portal
+     * still bubbles synthetic events up the *React* tree, so a submit inside a
+     * dialog rendered under `AppFormSurface` would reach this surface's own
+     * `<form>` and save the record as a side effect of changing an address.
+     * Siblings cannot do that. The trigger stays inside, where the operator
+     * looks for it; only the dialog moves out.
+     */
+    <>
+      <AppFormSurface
+        surface={editSurfaceOf(userResourceConfig)}
+        onClose={close}
+        // `record`, not the loader's snapshot: a successful address change
+        // invalidates the detail query but does not re-run the loader, so
+        // `user.email` would leave the heading naming an address the field
+        // directly beneath it has already replaced (`D18.10`'s `code-reviewer`).
+        title={t("edit.title", { email: record.email })}
+        description={t("edit.description")}
+        form={form}
+        fields={userResourceConfig.fields}
+        variant="edit"
+        onSubmit={onSubmit}
+        isPending={updateUser.isPending}
+        submitLabel={t("edit.submit")}
+        canSubmit={form.formState.isDirty}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <UserFormInput fieldName="firstName" />
+          <UserFormInput fieldName="lastName" />
+        </div>
+        <UserFormInput fieldName="status" />
+        <ChangeEmailField
+          email={record.email}
+          onOpen={() => {
+            setChangingEmail(true);
+          }}
+        />
+      </AppFormSurface>
+
+      {changingEmail ? (
+        <ChangeUserEmailDialog
+          user={record}
+          onClose={() => {
+            setChangingEmail(false);
+          }}
+        />
+      ) : null}
+    </>
+  );
+};
+
+/**
+ * The address, and the way to change it — `super_admin` only (ADR-0071 §7,
+ * ADR-0042).
+ *
+ * **Absent rather than shown-and-refused**, which is the opposite of what this
+ * app does with reset password and sign out everywhere. Those two stay visible
+ * to a `manager` because they are what somebody reaches for *during* an
+ * incident, and a hidden control is a silent absence with nothing to escalate
+ * (ADR-0042 §Containment controls). Setting an address is not that: it is a
+ * deliberate correction with somebody to ask, and an operator who cannot make
+ * it loses nothing by not seeing it.
+ *
+ * It reads `email` rather than editing it, because `updateUserBody` has no such
+ * field and this is a sub-resource with a guard of its own — which is what the
+ * surrounding form's description means by "its own flow".
+ */
+const ChangeEmailField = ({
+  email,
+  onOpen,
+}: {
+  readonly email: string;
+  readonly onOpen: () => void;
+}) => {
+  const { t } = useT("users");
+  const can = useCan();
+
+  if (!can("changeEmail", "users")) return null;
+
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldTitle>{t("changeEmail.field.label")}</FieldTitle>
+        <FieldDescription className="break-all">{email}</FieldDescription>
+      </FieldContent>
+      {/*
+       * `type="button"`, load-bearing: this sits inside the surface's `<form>`,
+       * where the default type would submit the record on the way to opening a
+       * dialog about something else.
+       */}
+      <Button onClick={onOpen} size="sm" type="button" variant="outline">
+        {t("changeEmail.action")}
+      </Button>
+    </Field>
   );
 };

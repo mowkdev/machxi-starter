@@ -2,6 +2,7 @@ import {
   changePasswordBody,
   createStaffBody,
   listStaffQuery,
+  setEmailBody,
   setPasswordBody,
   staffIdParams,
   updateStaffBody,
@@ -49,6 +50,21 @@ export const deleteStaffSchema = { params: staffIdParams } as const;
 export const setStaffPasswordSchema = {
   params: staffIdParams,
   body: setPasswordBody,
+} as const;
+
+/**
+ * `POST /api/v1/admin/staff/:id/email` — a super admin setting an operator's
+ * address outright (ADR-0071 §7).
+ *
+ * The same division {@link setStaffPasswordSchema} makes: the id in the path
+ * says whose address is being set, `currentPassword` in the body is the
+ * **acting** super admin's own. The body is `@repo/contracts`' `setEmailBody`,
+ * shared with the users endpoint, because the operation is one operation on
+ * two resources.
+ */
+export const setStaffEmailSchema = {
+  params: staffIdParams,
+  body: setEmailBody,
 } as const;
 
 /**

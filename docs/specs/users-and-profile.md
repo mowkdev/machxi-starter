@@ -4,7 +4,7 @@ One aggregate, two views: `/api/v1/admin/users` is staff acting on a customer's 
 
 ## Requirement: Managers read the customer base; admins change it
 
-`/admin/users` mounts for `admin` and `manager`; every writing route — create, update, revoke sessions, set password, impersonate, delete — narrows to `admin`. `super_admin` passes every check.
+`/admin/users` mounts for `admin` and `manager`; every writing route — create, update, revoke sessions, set password, impersonate, delete — narrows to `admin`, and setting an address narrows further to `super_admin`. `super_admin` passes every check.
 Records: [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md)
 Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/core/middleware/__tests__/authorize.test.ts`
 
@@ -75,6 +75,32 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 - **WHEN** the actor's password verifies
 - **THEN** the subject can sign in with the new password, and their previous sessions answer `401 AUTH_SESSION_REVOKED` on refresh
+
+## Requirement: A super admin sets a customer's address
+
+`POST /admin/users/:id/email` takes the subject's new `email` and the acting operator's `currentPassword`, and admits `super_admin` alone — a plain `admin` answers `403 FORBIDDEN` at the guard. The actor's password is verified first, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. The address is set immediately with no confirmation link and counts as **asserted**: `email_verified_at` is written with the address, stamped on any status but `pending_verification`, where it is cleared. An address a live account already holds — the subject's own included — answers `409 USER_EMAIL_TAKEN`; a soft-deleted subject answers `409 USER_DELETED`. Success answers `204`, writes an `account.email_changed` audit row naming the acting operator, the subject and both addresses, revokes no session, and **spends every live mailed link the account holds** — verification, recovery and a pending address change alike, because each was addressed to the mailbox being replaced.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/users-admin.int.test.ts`
+
+### Scenario: A plain admin tries
+
+- **WHEN** an `admin` calls `POST /admin/users/:id/email`
+- **THEN** the answer is `403 FORBIDDEN` and the address is unchanged
+
+### Scenario: The address is set
+
+- **WHEN** a `super_admin` sets a new address with their own password
+- **THEN** the answer is `204`, the account signs in under the new address with `email_verified_at` stamped, and an `account.email_changed` row names both addresses with the operator as actor
+
+### Scenario: The address is taken
+
+- **WHEN** the new address is held by another live account, or is the one the subject already has
+- **THEN** the answer is `409 USER_EMAIL_TAKEN` and nothing changes
+
+### Scenario: A link was already in the old mailbox
+
+- **WHEN** the account holds a live verification, recovery or address-change link and a `super_admin` sets a new address
+- **THEN** every one of those links is spent, so none of them can act on the account afterwards
 
 ## Requirement: An admin delete is soft, and ends every session
 

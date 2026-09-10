@@ -2,11 +2,13 @@ import {
   createUserBody,
   filtersToRecord,
   listUsersQuery,
+  setEmailBody,
   setPasswordBody,
   updateUserBody,
   type CreateUserBody,
   type ImpersonationHandoffResource,
   type ListUsersQuery,
+  type SetEmailBody,
   type SetPasswordBody,
   type UpdateUserBody,
   type UserResource,
@@ -88,6 +90,8 @@ export interface UsersMockState {
     created: CreateUserBody[];
     updated: { id: string; body: UpdateUserBody }[];
     passwords: { id: string; body: SetPasswordBody }[];
+    /** Every administrative address change asked for (`D18.10`, ADR-0071 §7). */
+    emails: { id: string; body: SetEmailBody }[];
     revoked: string[];
     /** Target ids the mint was asked for, in order (`D13.8`, ADR-0057 §1). */
     minted: string[];
@@ -105,6 +109,7 @@ export const createUsersMockState = (
     created: [],
     updated: [],
     passwords: [],
+    emails: [],
     revoked: [],
     minted: [],
     deleted: [],
@@ -301,6 +306,53 @@ export const createUsersHandlers = (state: UsersMockState) =>
           state.rows.find((row) => row.id === id),
         );
         if (refused !== null) return refused;
+
+        return new Response(null, { status: 204 });
+      },
+    ),
+
+    /*
+     * `POST /users/:id/email` (ADR-0071 §7) — the administrative address set.
+     *
+     * **No role check here, and that is deliberate**: MSW answers whatever
+     * reaches it, and the guard lives in the API. What the suite asserts about
+     * `super_admin` is that the *affordance* is drawn or not (ADR-0042), which
+     * is a claim about the client and is testable here; a mock that also
+     * refused would let a test pass because two copies of the same rule agreed
+     * with each other.
+     *
+     * The order is the service's: the actor's own password first, then the
+     * subject's state, then uniqueness — so a wrong password answers the same
+     * `403` whether or not the id exists (ADR-0027, ADR-0020 §Enumeration).
+     */
+    http.post(
+      `${API}/users/:id/email`,
+      async ({ params, request }): Promise<Response> => {
+        const id = String(params["id"]);
+        const body = setEmailBody.parse(await request.json());
+
+        state.seen.emails.push({ id, body });
+
+        if (body.currentPassword !== state.actorPassword)
+          return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+
+        const refused = refusedIfDeleted(
+          state.rows.find((row) => row.id === id),
+        );
+        if (refused !== null) return refused;
+
+        // The subject's own address counts as taken, which is the API's rule
+        // and the one a test of the conflict copy leans on.
+        if (
+          state.rows.some(
+            (row) => row.email === body.email && row.deletedAt === null,
+          )
+        )
+          return fail(409, "USER_EMAIL_TAKEN");
+
+        state.rows = state.rows.map((row) =>
+          row.id === id ? { ...row, email: body.email } : row,
+        );
 
         return new Response(null, { status: 204 });
       },

@@ -51,7 +51,7 @@
   "edit": {
     "routeTitle": "Rediģēt lietotāju",
     "title": "Rediģēt {{email}}",
-    "description": "E-pastu rediģēt nevar — tā identifikatora maiņa, ar kuru izveidota sesija, ir atsevišķa darbība.",
+    "description": "E-pasta adrese šeit nav lauks — tā identifikatora maiņa, ar kuru izveidota sesija, ir atsevišķa darbība zemāk.",
     "submit": "Saglabāt izmaiņas"
   },
   "delete": {
@@ -91,11 +91,29 @@
       }
     }
   },
+  "changeEmail": {
+    "field": { "label": "E-pasta adrese" },
+    "action": "Mainīt adresi",
+    "title": "Mainīt adresi kontam {{email}}",
+    "description": "Adrese mainās uzreiz pēc saglabāšanas. Nekas netiek nosūtīts un nekas netiek apstiprināts — apstiprinājums esat jūs. Viņu sesijas paliek neskartas, un turpmāk viņi piesakās ar jauno adresi.",
+    "submit": "Mainīt adresi",
+    "fields": {
+      "email": {
+        "label": "Jaunā e-pasta adrese",
+        "description": "Tā nedrīkst piederēt citam aktīvam kontam. Konts tiek uzskatīts par tādu, kas šo adresi ir apliecinājis."
+      },
+      "currentPassword": {
+        "label": "Jūsu pašreizējā parole",
+        "description": "Apstiprina, ka izmaiņas veicat jūs, nevis nozagta sesija."
+      }
+    }
+  },
   "outcomes": {
     "created": "Lietotājs tika izveidots.",
     "updated": "Lietotājs tika atjaunināts.",
     "deleted": "Lietotājs tika dzēsts.",
     "passwordReset": "Parole tika atiestatīta, un visas šī konta sesijas tika atteiktas.",
-    "sessionsRevoked": "Visas šī konta sesijas tika atteiktas."
+    "sessionsRevoked": "Visas šī konta sesijas tika atteiktas.",
+    "emailChanged": "Adrese tika nomainīta."
   }
 }

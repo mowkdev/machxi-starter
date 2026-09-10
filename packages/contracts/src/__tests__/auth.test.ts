@@ -12,6 +12,7 @@ import {
   MIN_PASSWORD_LENGTH,
   refreshBody,
   registerBody,
+  setEmailBody,
   setPasswordBody,
 } from "../index.js";
 
@@ -265,6 +266,53 @@ describe("setPasswordBody", () => {
         password,
         currentPassword: password,
         newPassword: password,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("setEmailBody", () => {
+  it("takes the subject's new address and the actor's own current password", () => {
+    expect(
+      setEmailBody.safeParse({
+        email: "new@example.test",
+        currentPassword: "short",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("lower-cases and trims the address, as every other address field does", () => {
+    const parsed = setEmailBody.parse({
+      email: "  NEW@Example.Test  ",
+      currentPassword: password,
+    });
+
+    expect(parsed.email).toBe("new@example.test");
+  });
+
+  it("requires the actor to re-present their own password (ADR-0027 rule 1)", () => {
+    // The step-up check `setPasswordBody` rests on, on the operation that
+    // redirects every future recovery link rather than one credential.
+    expect(setEmailBody.safeParse({ email: "new@example.test" }).success).toBe(
+      false,
+    );
+  });
+
+  it("refuses a value that is not an address", () => {
+    expect(
+      setEmailBody.safeParse({ email: "nope", currentPassword: password })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects an unknown field rather than ignoring it", () => {
+    // `newEmail` is §6's field name; sending it here must fail loudly rather
+    // than set nothing and answer `204`.
+    expect(
+      setEmailBody.safeParse({
+        email: "new@example.test",
+        currentPassword: password,
+        newEmail: "other@example.test",
       }).success,
     ).toBe(false);
   });

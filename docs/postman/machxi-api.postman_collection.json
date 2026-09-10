@@ -1291,6 +1291,171 @@
           }
         },
         {
+          "name": "Set the staff member's address",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The address is moved and moved back within this folder, because the",
+                  "// 'Admin › Profile' folder signs in as this operator by address.",
+                  "pm.environment.set(\"movedStaffEmail\", \"qa-staff-moved-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{movedStaffEmail}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/email",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "email"
+              ]
+            },
+            "description": "`POST /admin/staff/:id/email` (ADR-0071 §7) — the one route under `/admin/staff` that narrows the mount's `admin` guard to `super_admin`. This run is signed in as the seeded super admin, so it passes; the refusal of a plain `admin` is proved in `staff-admin.int.test.ts`, because this collection has no plain-admin fixture to send it with.\n\n`currentPassword` is the **caller's own**, as on the password reset beside it: setting an address redirects every future recovery link, so a stolen access token must not be enough on its own. Nothing is mailed and nothing is confirmed — the operator is the authority a confirmation link would be asking."
+          }
+        },
+        {
+          "name": "Set it to an address already taken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 STAFF_EMAIL_TAKEN\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"STAFF_EMAIL_TAKEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/email",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "email"
+              ]
+            },
+            "description": "Uniqueness among staff accounts, named rather than hidden: the caller is an authenticated super admin who can already list every operator's address, so there is no enumeration to protect (ADR-0020 §Enumeration)."
+          }
+        },
+        {
+          "name": "Set the address back",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newStaffEmail}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/staff/{{lastStaffId}}/email",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "staff",
+                "{{lastStaffId}}",
+                "email"
+              ]
+            },
+            "description": "The address the folder started with, so the rest of the run — 'Admin › Profile' signs in with it — is unaffected. The address just released is free again immediately, which is what makes this restore possible at all."
+          }
+        },
+        {
           "name": "Get a staff member that does not exist",
           "event": [
             {
@@ -1934,6 +2099,150 @@
               ]
             },
             "description": "Refused before the subject is even read, so the same `403` comes back whether or not the id exists — a caller who cannot use this endpoint cannot use it to learn which ids are real either."
+          }
+        },
+        {
+          "name": "Set the user's address",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Moved and moved back inside this folder: 'User › Profile' signs in as",
+                  "// this account by address.",
+                  "pm.environment.set(\"movedUserEmail\", \"qa-user-moved-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{movedUserEmail}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}", "email"]
+            },
+            "description": "`POST /admin/users/:id/email` (ADR-0071 §7) — `super_admin` alone, which this run is. The address is set immediately and counts as **asserted**: `email_verified_at` is stamped with it, because the operator is the authority a confirmation link would be asking (§3). No session is revoked — an address is not a credential."
+          }
+        },
+        {
+          "name": "Set it to the address the account already has",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 USER_EMAIL_TAKEN\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"USER_EMAIL_TAKEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{movedUserEmail}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}", "email"]
+            },
+            "description": "The subject's own address counts as taken, deliberately: it is held by a live account, so 'already taken' is the truthful answer, and a change to the address a row already has would write an audit row about nothing (ADR-0071 §6's rule, read on the administrative half)."
+          }
+        },
+        {
+          "name": "Set the address back",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staffAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"currentPassword\": \"{{superAdminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{lastUserId}}/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "users", "{{lastUserId}}", "email"]
+            },
+            "description": "Back to the address the folder created, so 'User › Profile' and the teardown still find the account by it."
           }
         },
         {

@@ -236,6 +236,35 @@ export const setPasswordBody = z.strictObject({
 export type SetPasswordBody = z.infer<typeof setPasswordBody>;
 
 /**
+ * `POST /api/v1/admin/{staff,users}/:id/email` — a super admin setting
+ * somebody else's address outright (ADR-0071 §7).
+ *
+ * {@link setPasswordBody}'s shape with the subject's field changed, and the
+ * same division of ownership: `email` is the **subject's** new address and
+ * `currentPassword` is the **acting super admin's** own, re-presented as
+ * ADR-0027 rule 1 requires wherever one account rewrites another's identity.
+ * `presentedPasswordSchema` for the reason that rule always uses it — the
+ * value is a credential being verified, and an operator whose password
+ * predates a policy change must still be able to act.
+ *
+ * **One body for both populations**, where §6's `changeEmailBody` is the
+ * users' alone. That asymmetry is the endpoints': the self-service change is a
+ * `users`-only flow with a confirmation link behind it, and this is the
+ * administrative operation both resources expose at the same path shape with
+ * the same guard. A second identical object per population would be a second
+ * place for the two to drift.
+ *
+ * **No `locale`**, unlike the anonymous senders: nothing is mailed. The
+ * address is set immediately and counts as asserted (ADR-0071 §3) — the
+ * operator is the authority a confirmation link would be asking.
+ */
+export const setEmailBody = z.strictObject({
+  email: emailSchema,
+  currentPassword: presentedPasswordSchema,
+});
+export type SetEmailBody = z.infer<typeof setEmailBody>;
+
+/**
  * Upper bound on a submitted impersonation handoff token.
  *
  * The same bound {@link MAX_REFRESH_TOKEN_LENGTH} puts on the other opaque

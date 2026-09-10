@@ -5,6 +5,7 @@ export {
   useCreateStaff,
   useDeleteStaff,
   useRevokeStaffSessions,
+  useSetStaffEmail,
   useSetStaffPassword,
   useStaff,
   useStaffList,

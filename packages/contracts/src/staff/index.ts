@@ -2,8 +2,10 @@
 // working against `/api/v1/admin/*` finds them where it looks (ADR-0027).
 export {
   changePasswordBody,
+  setEmailBody,
   setPasswordBody,
   type ChangePasswordBody,
+  type SetEmailBody,
   type SetPasswordBody,
 } from "../auth/schemas.js";
 export {

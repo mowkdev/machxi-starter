@@ -2,6 +2,7 @@ import type { ListStaffQuery, StaffRole, StaffStatus } from "@repo/contracts";
 import { createLogger } from "@repo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { Audit, AuditEntry } from "../../../core/audit/index.js";
 import type { LimitedHasher } from "../../../core/auth/index.js";
 import {
   createRequestContext,
@@ -9,6 +10,7 @@ import {
   type RequestContext,
 } from "../../../core/context/index.js";
 import { isAppError } from "../../../core/errors/index.js";
+import type { AccountTokens } from "../../../core/tokens/index.js";
 import { REVOKE_REASONS } from "../../auth/index.js";
 import type {
   NewStaffInput,
@@ -181,6 +183,27 @@ const createFakeRepository = (seed: FakeStaffRow[]) => {
 
     remove: (id: string) => Promise.resolve(rows.delete(id)),
 
+    /** The unique index on `email`, which is total on this table (ADR-0028). */
+    emailTaken: (email: string) =>
+      Promise.resolve([...rows.values()].some((row) => row.email === email)),
+
+    /**
+     * The administrative set (ADR-0071 §7), refused when any row already holds
+     * the address — the fake's version of the statement's own `NOT EXISTS`.
+     */
+    updateEmail: (id: string, email: string) => {
+      const row = rows.get(id);
+
+      if (row === undefined) return Promise.resolve(false);
+      if ([...rows.values()].some((other) => other.email === email)) {
+        return Promise.resolve(false);
+      }
+
+      row.email = email;
+
+      return Promise.resolve(true);
+    },
+
     updateLastLoginAt: () => Promise.resolve(),
     // A no-op until D2.3, when the staff module gained endpoints that write a
     // password rather than only the login-time argon2 upgrade.
@@ -309,22 +332,75 @@ const actorRow = (): FakeStaffRow => ({
 /** What {@link actorRow} presents on a credential endpoint. */
 const ACTOR_PASSWORD = "actor-secret";
 
+/**
+ * ADR-0058's writer, recording what was appended (`D18.10`).
+ *
+ * What a fake proves here is the entry — the event name, and that both
+ * addresses and the subject are on the row ADR-0071 §7 asks for. Whether it
+ * survives a rollback is a property of the real transaction and is proved
+ * against Postgres.
+ */
+const createFakeAudit = () => {
+  const entries: AuditEntry[] = [];
+
+  const audit: Audit = {
+    record: (_ctx, entry) => {
+      entries.push(entry);
+
+      return Promise.resolve();
+    },
+    trail: (_ctx, entry) => {
+      entries.push(entry);
+    },
+  };
+
+  return { audit, entries } as const;
+};
+
+/** ADR-0071 §1's service, narrowed to the one call this module makes of it. */
+const createFakeAccountTokens = () => {
+  const superseded: { purpose: string; principalId: string }[] = [];
+
+  return {
+    superseded,
+    accountTokens: {
+      mint: () => Promise.reject(new Error("staff mints no tokens here")),
+      consume: () => Promise.resolve(undefined),
+      supersede: (
+        _ctx: RequestContext,
+        input: { purpose: string; principal: { id: string } },
+      ) => {
+        superseded.push({
+          purpose: input.purpose,
+          principalId: input.principal.id,
+        });
+
+        return Promise.resolve(0);
+      },
+    } as unknown as AccountTokens,
+  } as const;
+};
+
 const build = (seed: FakeStaffRow[]) => {
   const repo = createFakeRepository(seed);
   const hasher = createFakeHasher();
   const sessions = createFakeSessions();
+  const audit = createFakeAudit();
+  const tokens = createFakeAccountTokens();
 
   const service = createStaffService({
     repository: repo.repository,
     hasher: hasher.hasher,
     sessions: sessions.sessions,
+    audit: audit.audit,
+    accountTokens: tokens.accountTokens,
     // The service composes repositories, and the fakes share no state that a
     // rollback would have to undo, so "one transaction" is just "run it".
     transaction: (fn) => fn(undefined as never),
     now: () => NOW,
   });
 
-  return { service, repo, hasher, sessions } as const;
+  return { service, repo, hasher, sessions, audit, tokens } as const;
 };
 
 /** An `admin` caller — enough for every endpoint, per `authorize("admin")`. */
@@ -1117,6 +1193,8 @@ describe("createStaffService", () => {
           verify: hasher.hasher.verify,
         },
         sessions: sessions.sessions,
+        audit: createFakeAudit().audit,
+        accountTokens: createFakeAccountTokens().accountTokens,
         transaction: (fn) => fn(undefined as never),
         now: () => NOW,
       });

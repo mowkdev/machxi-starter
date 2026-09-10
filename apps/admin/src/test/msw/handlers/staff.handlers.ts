@@ -2,10 +2,12 @@ import {
   createStaffBody,
   filtersToRecord,
   listStaffQuery,
+  setEmailBody,
   setPasswordBody,
   updateStaffBody,
   type CreateStaffBody,
   type ListStaffQuery,
+  type SetEmailBody,
   type SetPasswordBody,
   type StaffResource,
   type UpdateStaffBody,
@@ -83,6 +85,8 @@ export interface StaffMockState {
     created: CreateStaffBody[];
     updated: { id: string; body: UpdateStaffBody }[];
     passwords: { id: string; body: SetPasswordBody }[];
+    /** Every administrative address change asked for (`D18.10`, ADR-0071 §7). */
+    emails: { id: string; body: SetEmailBody }[];
     revoked: string[];
     deleted: string[];
   };
@@ -98,6 +102,7 @@ export const createStaffMockState = (
     created: [],
     updated: [],
     passwords: [],
+    emails: [],
     revoked: [],
     deleted: [],
   },
@@ -243,6 +248,37 @@ export const createStaffHandlers = (state: StaffMockState) =>
         // password, answered with the same `403` the self-service endpoints use.
         if (body.currentPassword !== state.actorPassword)
           return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+
+        return new Response(null, { status: 204 });
+      },
+    ),
+
+    /*
+     * `POST /staff/:id/email` (ADR-0071 §7). No role check, for the reason the
+     * users twin gives: the guard is the API's, and what this suite asserts is
+     * whether the *affordance* is drawn (ADR-0042).
+     */
+    http.post(
+      `${API}/staff/:id/email`,
+      async ({ params, request }): Promise<Response> => {
+        const id = String(params["id"]);
+        const body = setEmailBody.parse(await request.json());
+
+        state.seen.emails.push({ id, body });
+
+        if (body.currentPassword !== state.actorPassword)
+          return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+
+        if (!state.rows.some((row) => row.id === id))
+          return fail(404, "NOT_FOUND");
+
+        // The subject's own address counts as taken, which is the API's rule.
+        if (state.rows.some((row) => row.email === body.email))
+          return fail(409, "STAFF_EMAIL_TAKEN");
+
+        state.rows = state.rows.map((row) =>
+          row.id === id ? { ...row, email: body.email } : row,
+        );
 
         return new Response(null, { status: 204 });
       },

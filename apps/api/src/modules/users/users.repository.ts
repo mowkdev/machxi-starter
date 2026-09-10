@@ -585,6 +585,83 @@ export const createUsersRepository = (db: DbExecutor) =>
     },
 
     /**
+     * The super admin's administrative set (ADR-0071 §7): the address, and the
+     * assertion stamp that goes with it.
+     *
+     * **Not {@link UsersRepository.updateEmailVerified} with a different
+     * caller.** That one serves a mailed link, so it matches `status =
+     * 'active'` — a link must not move an account somebody disabled while the
+     * message sat in a mailbox. Here the actor is a super admin looking at the
+     * row, and §7 says "any account": a `disabled` customer whose address a
+     * support case has to correct is exactly the case this endpoint exists
+     * for. What both refuse is a **deleted** row, which is ADR-0028's rule for
+     * every write on this resource and the service's `409 USER_DELETED`.
+     *
+     * `verifiedAt` is passed rather than derived, because the two halves of
+     * §3's invariant are the caller's to decide: an `active` row is stamped —
+     * the operator is the authority a link would be asking — and a
+     * `pending_verification` one is passed `null`, the same split `create`
+     * makes and the same one the backfill migration made. Nothing here writes
+     * `status`: setting an address is not an activation.
+     *
+     * **The column is written unconditionally, `null` included** (`D18.10`'s
+     * `security-reviewer`). Skipping the write when `verifiedAt` is `null`
+     * would leave the stamp a *previous* address earned, and that is reachable:
+     * `updateUserBody.status` accepts the whole enum, and `updateColumns`
+     * stamps only on a move **to** `active`, so a proven account patched back
+     * to `pending_verification` keeps a non-null stamp. Moving its address
+     * without clearing it would leave the row asserting proof of a mailbox
+     * nobody has ever answered — the exact disagreement between column and
+     * status this split exists to prevent.
+     *
+     * `NOT EXISTS` carries the uniqueness into the statement for the reason
+     * `updateEmailVerified` does, with the same honest limit — under `read
+     * committed` the index is the arbiter of the last microsecond, and the
+     * clause buys the committed case, which is the one that happens.
+     *
+     * @returns the account as it now stands, or `undefined` when no row
+     *   matched — a deleted row, an unknown id, or an address claimed since
+     *   the service asked.
+     */
+    setEmail: async (
+      id: string,
+      email: string,
+      verifiedAt: Date | null,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<UserRecord | undefined> => {
+      const [updated] = await tx
+        .update(users)
+        .set({ email, emailVerifiedAt: verifiedAt, updatedAt: at })
+        .where(
+          and(
+            eq(users.id, id),
+            isNull(users.deletedAt),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(taken)
+                .where(and(eq(taken.email, email), isNull(taken.deletedAt))),
+            ),
+          ),
+        )
+        .returning({ id: users.id });
+
+      if (updated === undefined) return undefined;
+
+      // Read back through the aggregate read, as every other write here does:
+      // `returning` cannot reach the join table and a `UserRecord` carries the
+      // grants.
+      const row = await tx.query.users.findFirst({
+        columns: recordColumns,
+        with: withRoles,
+        where: eq(users.id, id),
+      });
+
+      return row === undefined ? undefined : toRecord(row);
+    },
+
+    /**
      * "Is there an account here waiting for its address to be proven?"
      * (ADR-0071 §3).
      *

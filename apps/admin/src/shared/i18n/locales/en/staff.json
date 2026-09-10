@@ -48,7 +48,7 @@
   "edit": {
     "routeTitle": "Edit staff member",
     "title": "Edit {{email}}",
-    "description": "Email is not editable — changing the identifier a session was established with is its own flow.",
+    "description": "The email address is not a field here — changing the identifier a session was established with is its own flow, below.",
     "submit": "Save changes"
   },
   "delete": {
@@ -82,11 +82,29 @@
       }
     }
   },
+  "changeEmail": {
+    "field": { "label": "Email address" },
+    "action": "Change address",
+    "title": "Change the address for {{email}}",
+    "description": "The address changes as soon as you save. Nothing is mailed and nothing is confirmed — you are the confirmation. Their sessions are untouched, and they sign in to this panel with the new address from now on.",
+    "submit": "Change address",
+    "fields": {
+      "email": {
+        "label": "New email address",
+        "description": "It must not belong to another operator."
+      },
+      "currentPassword": {
+        "label": "Your own current password",
+        "description": "Confirms it is you making the change, not a stolen session."
+      }
+    }
+  },
   "outcomes": {
     "created": "The staff member was created.",
     "updated": "The staff member was updated.",
     "deleted": "The staff member was deleted.",
     "passwordReset": "The password was reset and every session of that account was signed out.",
-    "sessionsRevoked": "Every session of that account was signed out."
+    "sessionsRevoked": "Every session of that account was signed out.",
+    "emailChanged": "The address was changed."
   }
 }

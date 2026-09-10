@@ -3,19 +3,22 @@ import type {
   CreateStaffBody,
   ListStaffQuery,
   Page,
+  SetEmailBody,
   SetPasswordBody,
   StaffResource,
   StaffRole,
   UpdateStaffBody,
   UpdateStaffProfileBody,
 } from "@repo/contracts";
-import { SUPER_ADMIN_ROLE } from "@repo/contracts";
+import { SUPER_ADMIN_ROLE, TOKEN_PURPOSES } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
+import type { Audit } from "../../core/audit/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import { toPage } from "../../core/http/index.js";
+import type { AccountTokens } from "../../core/tokens/index.js";
 import {
   currentPasswordInvalid,
   REVOKE_REASONS,
@@ -73,6 +76,19 @@ export interface StaffServiceDeps {
    * (ADR-0009), and it should not be handed login while it is at it.
    */
   readonly sessions: Pick<AuthService, "revokeSessionsFor">;
+  /**
+   * ADR-0058's writer, for the one row this module writes itself: the super
+   * admin's administrative address change (ADR-0071 §7). Passed whole, as the
+   * users service takes it.
+   */
+  readonly audit: Audit;
+  /**
+   * ADR-0071 §1's token service, for the one thing this module has to say
+   * about tokens it does not mint: an administrative address change spends
+   * **every** live link the subject holds, because each one was mailed to the
+   * mailbox the change exists to stop trusting (§7, amended at `D18.10`).
+   */
+  readonly accountTokens: AccountTokens;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now?: () => Date;
@@ -82,6 +98,8 @@ export const createStaffService = ({
   repository,
   hasher,
   sessions,
+  audit,
+  accountTokens,
   transaction,
   now = () => new Date(),
 }: StaffServiceDeps) => {
@@ -496,6 +514,118 @@ export const createStaffService = ({
       ctx.logger.info(
         { staffId: targetId, revoked, by: actor(ctx).id },
         "staff password reset by an admin",
+      );
+    },
+
+    /**
+     * `POST /api/v1/admin/staff/:id/email` — a super admin setting an
+     * operator's address outright (ADR-0071 §7).
+     *
+     * The users twin, with two differences that come from the population
+     * rather than from the flow:
+     *
+     * - **No verification stamp.** `staff` has no `email_verified_at`, because
+     *   nobody self-registers into this table — every operator's address was
+     *   asserted by whoever created the row (ADR-0071 §3).
+     * - **No rank rule.** `assertMayActOnSuperAdmin` guards the operations an
+     *   `admin` can reach; this route is `authorize("super_admin")`, so the
+     *   only caller who arrives already outranks everybody. §7 says so
+     *   explicitly, including that a super admin may name their own id. The
+     *   last-super-admin invariant is untouched because nothing here writes
+     *   `status` or a role.
+     *
+     * The order is `setPassword`'s: the actor's own password first, so a wrong
+     * one answers the same `403` whether or not the id exists; then the
+     * subject; then the write. The address the subject already holds is
+     * refused too, with the same `409 STAFF_EMAIL_TAKEN`: it is held by a live
+     * account, and §7 says uniqueness among live accounts is what this refuses.
+     *
+     * **No session is revoked**, and it is worth saying why not, since the two
+     * neighbouring endpoints revoke everything: an address is not a credential
+     * (ADR-0071 §6 says so for the self-service half). What sessions authorise
+     * is unchanged, and an operator signed out of the panel because somebody
+     * corrected a typo in their address would be a worse outcome for no gain.
+     */
+    setEmail: async (
+      ctx: RequestContext,
+      id: string,
+      body: SetEmailBody,
+    ): Promise<void> => {
+      const at = now();
+
+      await verifyActorPassword(ctx, body.currentPassword);
+
+      // The cheap refusal, outside the transaction: an unknown id costs no
+      // uniqueness read. Authority belongs to the re-read inside, which is the
+      // shape `setPassword` already uses for the rank rule.
+      await read(id);
+
+      // The subject's own address included, exactly as ADR-0071 §6's request
+      // half includes the caller's: it is held by a live account, so "already
+      // taken" is truthful, and a change to the address the row already has
+      // would write an audit row about nothing.
+      if (await repository.emailTaken(body.email)) {
+        ctx.logger.warn(
+          { staffId: id },
+          "address set refused, the address is taken",
+        );
+
+        throw staffEmailTaken();
+      }
+
+      await transaction(async (tx) => {
+        // Inside, because the address the audit row records as the previous
+        // one comes off it: read on the pooled client, a `PATCH` committing in
+        // between would make the trail name an address the row had left.
+        const target = await read(id, tx);
+
+        // The statement's own uniqueness clause sees what the read above could
+        // not: an address claimed in between. The throw rolls the audit row
+        // back with it.
+        if (!(await repository.updateEmail(target.id, body.email, at, tx))) {
+          throw staffEmailTaken();
+        }
+
+        // Every live link this operator holds dies with the old address — the
+        // users twin carries the argument in full (`D18.10`'s
+        // `security-reviewer`; ADR-0071 §7, amended). Two of these purposes are
+        // reachable for staff today: `reset_password`, which §4 mints on the
+        // admin segment, and `staff_onboarding`, whose link lives seven days
+        // and whose `accept` sets a password and signs the device in (§8).
+        for (const purpose of TOKEN_PURPOSES) {
+          await accountTokens.supersede(
+            ctx,
+            { purpose, principal: { type: "staff", id: target.id } },
+            tx,
+          );
+        }
+
+        // The actor is read off `ctx.principal` — the acting super admin — and
+        // the subject rides in `data`, because the request ran *as* the
+        // operator and not as the person whose address moved (ADR-0058). Both
+        // addresses, which ADR-0071 §7 requires of the trail.
+        await audit.record(
+          ctx,
+          {
+            event: "account.email_changed",
+            data: {
+              subjectType: "staff",
+              subjectId: target.id,
+              previousEmail: target.email,
+              newEmail: body.email,
+            },
+          },
+          tx,
+        );
+      });
+
+      // No address on the line, and not because of a redaction path: this
+      // body's field is `email`, which ADR-0005 deliberately does **not**
+      // redact. So no line in this function may carry the body — the two
+      // addresses belong in the audit row, which no log sink receives.
+      ctx.logger.info(
+        { staffId: id, by: actor(ctx).id },
+        "staff address set by a super admin",
       );
     },
 
