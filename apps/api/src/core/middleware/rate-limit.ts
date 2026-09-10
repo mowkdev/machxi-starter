@@ -8,27 +8,34 @@ import type { RateLimitStore } from "../rate-limit/index.js";
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
  *
- * Four limiters, all sharing one window and one failure shape: the global one
- * on `/api`, a strict one on login and registration, one on *failed*
- * refreshes, and — since `D13.4` — one on the impersonation mint, the only one
- * in this file keyed on a principal rather than on an address (ADR-0057 §1).
+ * Six limiters and one failure shape: the global one on `/api`, a strict one
+ * on login and registration, one on *failed* refreshes, one on the
+ * impersonation mint since `D13.4` — the only one keyed on a principal rather
+ * than on an address (ADR-0057 §1) — and, since `D18.2`, one each on the two
+ * endpoints that mail a link to an address a stranger typed (ADR-0071 §3, §4).
  * `/health` is deliberately outside all of them — a probe that gets
  * rate-limited takes a healthy instance out of rotation (ADR-0016).
+ *
+ * The first four share {@link RATE_LIMIT_WINDOW_MS}; the last two take
+ * `RATE_LIMIT_PASSWORD_RESET_WINDOW`, because what they ration is not an
+ * attacker's attempts but a victim's inbox, and ADR-0071 §4 decides that
+ * budget is per hour.
  *
  * The store is a **parameter** since `D14.6` (ADR-0066 §4, a delta on
  * ADR-0020): `undefined` selects `express-rate-limit`'s in-memory default,
  * which counts per process, and a `Store` — Redis, when `REDIS_URL` is set —
  * makes one budget out of N instances. The *choice* is made once in
- * `core/rate-limit` and applied to all four factories from the composition
- * root, because a per-limiter choice is a choice one limiter can be left out
- * of — but each limiter is handed its **own** store instance under its own key
- * prefix, because three of the four key on the address alone and would
- * otherwise share a counter.
+ * `core/rate-limit` and applied to every factory from the composition root,
+ * because a per-limiter choice is a choice one limiter can be left out of —
+ * but each limiter is handed its **own** store instance under its own key
+ * prefix, because several of them key on the same thing and would otherwise
+ * share a counter.
  *
- * **None of the limits, windows or keys changed with it.** ADR-0020's
- * `300 / 15 min / IP`, `10 / 15 min / IP + email` and `5 / 15 min / IP` on
- * failed refreshes, and ADR-0057 §1's per-staff-principal mint budget, are
- * exactly as decided; only where the counter lives is configurable.
+ * **No limit, window or key changed with it.** ADR-0020's `300 / 15 min / IP`,
+ * `10 / 15 min / IP + email` and `5 / 15 min / IP` on failed refreshes,
+ * ADR-0057 §1's per-staff-principal mint budget and ADR-0071 §4's `3 / hour /
+ * IP + email` are exactly as decided; only where the counter lives is
+ * configurable.
  */
 
 /** The window every limit in ADR-0020 is expressed over. */
@@ -209,6 +216,61 @@ export const createImpersonationRateLimiter = (
         ? `anon:${ipKey(req)}`
         : `${principal.kind}:${principal.id}`;
     },
+  });
+
+/**
+ * `RATE_LIMIT_PASSWORD_RESET_MAX / RATE_LIMIT_PASSWORD_RESET_WINDOW / IP +
+ * email` on `forgot`, both segments — `3 / hour` by default (ADR-0020's
+ * reserved row, spent by ADR-0071 §4).
+ *
+ * **The only limiter here with a window of its own**, and the reason is the
+ * thing being rationed. Every limit above bounds an attacker's attempts, so
+ * fifteen minutes is a sensible unit; this one bounds *messages sent to a
+ * stranger's mailbox*, where the cost falls on the victim rather than on the
+ * caller. Three an hour is generous against the honest case — nobody
+ * legitimately asks for a fourth reset link having been sent three — and it is
+ * what stops the endpoint being a free mail cannon aimed at one address.
+ *
+ * Keyed on address **and** email, like login and for the same reason: one
+ * mailbox behind a shared NAT must not spend everybody else's budget. Reading
+ * the body before `validate` is deliberate and is what {@link keyEmail}
+ * documents — a request refused by a schema must still count, or an attacker
+ * gets an unlimited budget by sending one that fails.
+ */
+export const createPasswordResetRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
+    limit: config.rateLimit.passwordResetMax,
+    keyGenerator: (req) => `${ipKey(req)}:${keyEmail(req)}`,
+  });
+
+/**
+ * The same budget on `resend-verification` (ADR-0071 §3), in a **counter of
+ * its own**.
+ *
+ * "Its own limiter" is the decision, not "its own number": the two endpoints
+ * ration the identical resource — a message this deployment sends to an
+ * address somebody typed — so a second knob would be two ways to write one
+ * policy, and ADR-0071 names exactly one budget. What must not be shared is
+ * the *counter*: a person who is legitimately stuck on verification would
+ * otherwise spend the recovery budget for the same mailbox, and be unable to
+ * reset the password they came to reset.
+ *
+ * The separation is real only because the composition root hands every limiter
+ * its own store instance under its own prefix (ADR-0066 §4); building this one
+ * beside a route would give each mount a fresh budget instead.
+ */
+export const createVerificationRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
+    limit: config.rateLimit.passwordResetMax,
+    keyGenerator: (req) => `${ipKey(req)}:${keyEmail(req)}`,
   });
 
 /**

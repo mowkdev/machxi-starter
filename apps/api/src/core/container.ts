@@ -23,7 +23,9 @@ import {
   createGlobalRateLimiter,
   createImpersonationRateLimiter,
   createLoginRateLimiter,
+  createPasswordResetRateLimiter,
   createRefreshRateLimiter,
+  createVerificationRateLimiter,
 } from "./middleware/index.js";
 import {
   createDbIndicator,
@@ -60,8 +62,12 @@ import {
 import { createAudit, createAuditRepository } from "./audit/index.js";
 import { createCookieNames } from "./http/index.js";
 import { createLimitedHasher } from "./auth/index.js";
-import { createMailSender } from "./mail/index.js";
+import { createMailSender, createMailTemplates } from "./mail/index.js";
 import { createMetrics } from "./metrics/index.js";
+import {
+  createAccountTokens,
+  createAccountTokensRepository,
+} from "./tokens/index.js";
 import type { RateLimitStoreFactory } from "./rate-limit/index.js";
 import { createErrorReporter, type ErrorReporter } from "./reporting/index.js";
 
@@ -167,6 +173,35 @@ export const buildContainer = ({
   // cannot be audited does not happen" a property of the database rather than
   // of a convention.
   const audit = createAudit({ repository: createAuditRepository(db.db) });
+
+  /**
+   * The one mint and the one consume behind every mail flow (ADR-0071 §1),
+   * built here for the audit writer's reason: the mechanism is infrastructure
+   * the feature modules borrow, and the purposes belong to the features.
+   *
+   * The TTL map is the point of building it at the composition root. Each
+   * purpose has its own window and only this file can see all four
+   * (`core/config` holds the numbers, `@repo/contracts` holds the purposes), so
+   * a fifth purpose fails `pnpm check-types` here until somebody decides how
+   * long its link should live.
+   *
+   * Not `tokens` — that name is taken by the access-token service above, and
+   * an *account* token is the opposite kind of credential: opaque, stored as a
+   * hash, single-use, and redeemed rather than presented.
+   *
+   * It has no caller until `D18.3`; the flows that mint and consume are the
+   * steps that follow.
+   */
+  const accountTokens = createAccountTokens({
+    repository: createAccountTokensRepository(db.db),
+    ttlSecByPurpose: {
+      verify_email: config.tokens.verificationTtlSec,
+      reset_password: config.tokens.passwordResetTtlSec,
+      change_email: config.tokens.emailChangeTtlSec,
+      staff_onboarding: config.tokens.staffOnboardingTtlSec,
+    },
+    transaction,
+  });
 
   // Built before the auth and users services, because both depend on it and
   // it depends on neither: it owns the personal organization's lifecycle, and
@@ -313,6 +348,23 @@ export const buildContainer = ({
       config,
       rateLimitStore("impersonation"),
     ),
+    /**
+     * The two that ration messages rather than attempts (ADR-0071 §3, §4) —
+     * `3 / hour / IP + email` each, mounted by `D18.3` and `D18.5`.
+     *
+     * Two instances of one budget, and the two prefixes are the decision: a
+     * person stuck on verification must not spend the recovery budget for the
+     * same mailbox and find themselves unable to reset the password they came
+     * to reset.
+     */
+    passwordReset: createPasswordResetRateLimiter(
+      config,
+      rateLimitStore("password-reset"),
+    ),
+    verification: createVerificationRateLimiter(
+      config,
+      rateLimitStore("verification"),
+    ),
   } as const;
 
   // The three ADR-0066 seams, all built here for the reason everything else
@@ -324,6 +376,15 @@ export const buildContainer = ({
   // the log transport and `createErrorReporter` returns `undefined` — while
   // the registry is always built, because the registry *is* the endpoint.
   const mail = createMailSender(config);
+  /**
+   * The messages the flows send (ADR-0071 §2), built from the two SPA origins
+   * once: a template that took an origin per call would let a caller choose
+   * where a single-use credential is delivered.
+   */
+  const mailTemplates = createMailTemplates({
+    customerUrl: config.apps.customerUrl,
+    adminUrl: config.apps.adminUrl,
+  });
   const metrics = createMetrics();
   const errorReporter =
     reporter ?? createErrorReporter({ dsn: config.reporting.dsn, logger });
@@ -342,9 +403,12 @@ export const buildContainer = ({
     requireMembership,
     rateLimiters,
     mail,
+    mailTemplates,
     metrics,
     /** `undefined` unless a DSN is configured or a test supplied a stub. */
     reporter: errorReporter,
+    /** ADR-0071 §1's mechanism, mounted by the flows from `D18.3` on. */
+    accountTokens,
     repositories: {
       staff: staffRepository,
       users: usersRepository,

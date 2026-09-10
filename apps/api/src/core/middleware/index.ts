@@ -21,7 +21,9 @@ export {
   createGlobalRateLimiter,
   createImpersonationRateLimiter,
   createLoginRateLimiter,
+  createPasswordResetRateLimiter,
   createRefreshRateLimiter,
+  createVerificationRateLimiter,
 } from "./rate-limit.js";
 export {
   validate,

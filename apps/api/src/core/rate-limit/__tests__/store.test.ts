@@ -63,7 +63,8 @@ describe("createRateLimitStore", () => {
     // `rate-limit-redis` keys on `prefix + key`, and the global, refresh and
     // login limiters all key on the address — so one shared instance would
     // merge their counters, and the refresh limiter's `skipSuccessfulRequests`
-    // would *decrement* the global one. `express-rate-limit` notices the reuse
+    // would *decrement* the global one. The two mail limiters key on the same
+    // address-and-email pair as each other, which is the sharpest case of all. `express-rate-limit` notices the reuse
     // and only logs it, so the collision would be silent and Redis-only.
     const connect = () => fakeClient();
 
@@ -72,9 +73,19 @@ describe("createRateLimitStore", () => {
       logger,
       connect,
     }).then((handle) => {
-      const prefixes = ["global", "login", "refresh", "impersonation"].map(
-        (name) => (handle.store(name) as { prefix: string }).prefix,
-      );
+      const prefixes = [
+        "global",
+        "login",
+        "refresh",
+        "impersonation",
+        // The two mail limiters (`D18.2`, ADR-0071 §3–§4). They share one
+        // budget by decision and must not share a *counter*, and on Redis the
+        // separation is exactly these two strings differing — which is why
+        // they belong in this list and not only in a memory-store test, where
+        // every limiter gets its own store whatever it is called.
+        "password-reset",
+        "verification",
+      ].map((name) => (handle.store(name) as { prefix: string }).prefix);
 
       expect(new Set(prefixes).size).toBe(prefixes.length);
       expect(prefixes).toEqual([
@@ -82,6 +93,8 @@ describe("createRateLimitStore", () => {
         "rl:login:",
         "rl:refresh:",
         "rl:impersonation:",
+        "rl:password-reset:",
+        "rl:verification:",
       ]);
     });
   });

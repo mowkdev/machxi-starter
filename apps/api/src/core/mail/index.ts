@@ -32,4 +32,14 @@ export {
   createSmtpMailSender,
   type SmtpMailSenderDeps,
 } from "./smtp-mail-sender.js";
+export {
+  MAIL_LINK_PATHS,
+  createMailTemplates,
+  type EmailChangeTemplateInput,
+  type InvitationTemplateInput,
+  type MailTemplates,
+  type MailTemplatesDeps,
+  type PasswordResetTemplateInput,
+  type TokenTemplateInput,
+} from "./templates.js";
 export type { MailMessage, MailSender, MailTemplate } from "./mail.types.js";
