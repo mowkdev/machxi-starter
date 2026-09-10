@@ -174,16 +174,20 @@ const unaccented = (root: HTMLElement): readonly string[] => {
 /**
  * The session each address has to be visited **in** to see the page it names.
  *
- * `/login` is the one route a signed-in operator cannot reach: the `_auth`
- * layout's mirror guard redirects them to the dashboard, so visiting it with a
- * session would have walked the dashboard twice under the name of the login
- * screen — a page silently uncovered while the suite reported ten green. Every
- * other address is behind the `_dashboard` guard and needs the opposite.
+ * `/login` and `/forgot-password` are the routes a signed-in operator cannot
+ * reach: the `_auth` layout's mirror guard redirects them to the dashboard, so
+ * visiting either with a session would have walked the dashboard twice under
+ * the name of an auth screen — a page silently uncovered while the suite
+ * reported ten green. Every other address is behind the `_dashboard` guard and
+ * needs the opposite, save `/reset-password`, which wears its own shell and is
+ * happy either way (`D18.6`).
  */
+const ANONYMOUS_PATHS = ["/login", "/forgot-password"];
+
 const storeFor = (path: string) => {
   const store = createSessionStore();
 
-  if (path !== "/login")
+  if (!ANONYMOUS_PATHS.includes(path))
     store.setSession({
       accessToken: "test-access-token",
       principal: PRINCIPAL,

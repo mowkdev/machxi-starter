@@ -1,8 +1,12 @@
 import {
+  forgotPasswordBody,
   loginBody,
+  resetPasswordBody,
   type AuthResource,
   type ErrorCode,
+  type ForgotPasswordBody,
   type PrincipalResource,
+  type ResetPasswordBody,
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
 
@@ -49,11 +53,32 @@ export const authResource = (accessToken: string): AuthResource => ({
   principal: PRINCIPAL,
 });
 
+/** The recovery link's token, as the mailed link would carry it (`D18.6`). */
+export const RESET_TOKEN = "reset-token-from-the-fragment";
+
 export interface AuthMockState {
   /** How many times `POST /auth/refresh` has been called. */
   refreshCalls: number;
   /** How many times `GET /auth/csrf` has been called. */
   csrfCalls: number;
+  /**
+   * The bodies `POST /admin/auth/password/forgot` has been offered (`D18.6`).
+   *
+   * Bodies rather than a count, because the address and the locale are both
+   * the point and the *answer* is not: the endpoint says `202` whatever it is
+   * handed (ADR-0020 §Enumeration), so what left the form is the only thing a
+   * test can see.
+   */
+  forgotPasswordCalls: ForgotPasswordBody[];
+  /**
+   * The bodies `POST /admin/auth/password/reset` has been offered (`D18.6`).
+   *
+   * The token as well as the password, because the token is what the screen
+   * had to carry out of the URL fragment without rendering, storing or
+   * mangling it — a screen that posted the wrong half of it would still
+   * produce one call.
+   */
+  resetPasswordCalls: ResetPasswordBody[];
   /** When set, refresh answers this instead of succeeding. */
   refreshFailsWith?: { status: number; code: ErrorCode } | undefined;
 }
@@ -61,6 +86,8 @@ export interface AuthMockState {
 export const createAuthMockState = (): AuthMockState => ({
   refreshCalls: 0,
   csrfCalls: 0,
+  forgotPasswordCalls: [],
+  resetPasswordCalls: [],
 });
 
 export const createAuthHandlers = (state: AuthMockState) =>
@@ -97,6 +124,57 @@ export const createAuthHandlers = (state: AuthMockState) =>
 
       return ok(authResource("access-login"));
     }),
+
+    /*
+     * "Email me a recovery link" (`D18.6`, ADR-0071 §4).
+     *
+     * **On `API`, this app's own segment**, which is where the API mounts it —
+     * beside `login`, so the population comes from the route and never from a
+     * field, and a customer's address asked for here reaches the staff table
+     * and finds nothing.
+     *
+     * `202 { accepted: true }` for **every** address, because the answer must
+     * not be an oracle (ADR-0020 §Enumeration) — and on this segment an oracle
+     * would enumerate the people who can administer the deployment. A mock
+     * that refused a stranger's address would let this app render a
+     * distinction the API refuses to make.
+     */
+    http.post(
+      `${API}/auth/password/forgot`,
+      async ({ request }): Promise<Response> => {
+        const body = forgotPasswordBody.parse(await request.json());
+
+        state.forgotPasswordCalls.push(body);
+
+        return ok({ accepted: true }, 202);
+      },
+    ),
+
+    /*
+     * The recovery link, spent (`D18.6`, ADR-0071 §4).
+     *
+     * **`204` and no session**, which is the half of §4 a mock can get wrong
+     * invisibly: the link proved the mailbox and not the device, and the
+     * endpoint revokes every session the account had. A mock that answered an
+     * `AuthResource` here would let this app grow a landing the API can never
+     * produce.
+     *
+     * **One indistinguishable `401` for every refusal** — unknown, consumed,
+     * expired, or minted on the other segment — because the caller is an
+     * anonymous holder of a URL fragment.
+     */
+    http.post(
+      `${API}/auth/password/reset`,
+      async ({ request }): Promise<Response> => {
+        const body = resetPasswordBody.parse(await request.json());
+
+        state.resetPasswordCalls.push(body);
+
+        if (body.token !== RESET_TOKEN) return fail(401, "UNAUTHENTICATED");
+
+        return new Response(null, { status: 204 });
+      },
+    ),
 
     http.post(`${API}/auth/logout`, () => new Response(null, { status: 204 })),
   ] as const satisfies readonly HttpHandler[];

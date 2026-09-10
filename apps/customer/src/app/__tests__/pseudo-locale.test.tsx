@@ -207,13 +207,15 @@ const ROUTE_PATHS: readonly string[] = [
 /**
  * The session each address has to be visited **in** to see the page it names.
  *
- * `/login` and `/register` are the routes a signed-in customer cannot reach:
- * `_auth`'s mirror guard redirects them home, so visiting either with a session
- * would have walked the home screen twice under the name of an auth screen — a
- * page silently uncovered while the suite reported two green. Every other
- * address is behind the `_dashboard` guard and needs the opposite.
+ * `/login`, `/register` and `/forgot-password` are the routes a signed-in
+ * customer cannot reach: `_auth`'s mirror guard redirects them home, so
+ * visiting any of them with a session would have walked the home screen twice
+ * under the name of an auth screen — a page silently uncovered while the suite
+ * reported two green. Every other address is behind the `_dashboard` guard and
+ * needs the opposite, or — `/verify-email`, `/impersonate` and
+ * `/reset-password` — wears its own shell and is happy either way.
  */
-const ANONYMOUS_PATHS = ["/login", "/register"];
+const ANONYMOUS_PATHS = ["/login", "/register", "/forgot-password"];
 
 const storeFor = (path: string) =>
   ANONYMOUS_PATHS.includes(path) ? createSessionStore() : authenticated();

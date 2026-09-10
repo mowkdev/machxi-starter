@@ -1,6 +1,13 @@
 export { LoginForm } from "./login/login-form";
 export { RegisterForm } from "./register/register-form";
 export { useSignOut, type SignOut } from "./logout/use-sign-out";
+export { ForgotPasswordForm } from "./password-reset/forgot-password-form";
+export { ResetPasswordForm } from "./password-reset/reset-password-form";
+export {
+  useResetPassword,
+  type PasswordReset,
+  type PasswordResetStatus,
+} from "./password-reset/use-reset-password";
 export { useAwaitedAddress } from "./verify-email/awaited-address";
 export { ResendVerificationForm } from "./verify-email/resend-verification-form";
 export {

@@ -1,14 +1,18 @@
 import {
+  forgotPasswordBody,
   impersonateBody,
   loginBody,
   registerBody,
   resendVerificationBody,
+  resetPasswordBody,
   verifyEmailBody,
   type AuthResource,
   type ErrorCode,
+  type ForgotPasswordBody,
   type ImpersonatorResource,
   type RegisterBody,
   type ResendVerificationBody,
+  type ResetPasswordBody,
   type UserPrincipalResource,
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
@@ -117,6 +121,9 @@ export const HANDOFF_TOKEN = "handoff-token-from-the-fragment";
 /** The confirmation link's token, as the mailed link would carry it. */
 export const VERIFICATION_TOKEN = "verification-token-from-the-fragment";
 
+/** The recovery link's token, as the mailed link would carry it (`D18.6`). */
+export const RESET_TOKEN = "reset-token-from-the-fragment";
+
 export const CREDENTIALS = {
   email: "customer@machxi.local",
   password: "DevPassword!123",
@@ -207,6 +214,24 @@ export interface AuthMockState {
    */
   resendVerificationCalls: ResendVerificationBody[];
   /**
+   * The bodies `POST /user/auth/password/forgot` has been offered (`D18.6`).
+   *
+   * Bodies rather than a count, because the address and the locale are both
+   * the point and the *answer* is not: the endpoint says `202` whatever it is
+   * handed (ADR-0020 §Enumeration), so what left the form is the only thing a
+   * test can see.
+   */
+  forgotPasswordCalls: ForgotPasswordBody[];
+  /**
+   * The bodies `POST /user/auth/password/reset` has been offered (`D18.6`).
+   *
+   * The token as well as the password, because the token is what the screen
+   * had to carry out of the URL fragment without rendering, storing or
+   * mangling it — a screen that posted the wrong half of it would still
+   * produce one call.
+   */
+  resetPasswordCalls: ResetPasswordBody[];
+  /**
    * Addresses that already belong to an account.
    *
    * The refusal is the generic `409 CONFLICT` ADR-0020 §Enumeration requires —
@@ -242,6 +267,8 @@ export const createAuthMockState = (): AuthMockState => ({
   verifyEmailCalls: [],
   verifyEmailAskedForCookies: false,
   resendVerificationCalls: [],
+  forgotPasswordCalls: [],
+  resetPasswordCalls: [],
   takenEmails: [CREDENTIALS.email],
   hasRefreshCookie: true,
 });
@@ -379,6 +406,56 @@ export const createAuthHandlers = (state: AuthMockState) =>
         state.resendVerificationCalls.push(body);
 
         return ok({ accepted: true }, 202);
+      },
+    ),
+
+    /*
+     * "Email me a recovery link" (`D18.6`, ADR-0071 §4).
+     *
+     * **On `API`, this app's own segment**, which is where the API mounts it —
+     * beside `login`, so the population comes from the route and never from a
+     * field. A handler on `PUBLIC_API` would answer a request this app never
+     * makes and let the real one fall through to `onUnhandledRequest: "error"`.
+     *
+     * `202 { accepted: true }` for **every** address — a live account's, a
+     * stranger's, a disabled one's — because the answer must not be an oracle
+     * (ADR-0020 §Enumeration). A mock that refused one of them would let this
+     * app render a distinction the API refuses to make.
+     */
+    http.post(
+      `${API}/auth/password/forgot`,
+      async ({ request }): Promise<Response> => {
+        const body = forgotPasswordBody.parse(await request.json());
+
+        state.forgotPasswordCalls.push(body);
+
+        return ok({ accepted: true }, 202);
+      },
+    ),
+
+    /*
+     * The recovery link, spent (`D18.6`, ADR-0071 §4).
+     *
+     * **`204` and no session**, which is the half of §4 a mock can get wrong
+     * invisibly: the link proved the mailbox and not the device, and the
+     * endpoint revokes every session the account had. A mock that answered an
+     * `AuthResource` here would let this app grow a landing the API can never
+     * produce.
+     *
+     * **One indistinguishable `401` for every refusal** — unknown, consumed,
+     * expired, or minted on the other segment — for the reason `verify-email`
+     * answers one: the caller is an anonymous holder of a URL fragment.
+     */
+    http.post(
+      `${API}/auth/password/reset`,
+      async ({ request }): Promise<Response> => {
+        const body = resetPasswordBody.parse(await request.json());
+
+        state.resetPasswordCalls.push(body);
+
+        if (body.token !== RESET_TOKEN) return fail(401, "UNAUTHENTICATED");
+
+        return new Response(null, { status: 204 });
       },
     ),
 

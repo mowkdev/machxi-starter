@@ -7,10 +7,12 @@ import {
   type CsrfResource,
   type ErrorCode,
   type ErrorDetail,
+  type ForgotPasswordBody,
   type ImpersonateBody,
   type LoginBody,
   type RegisterBody,
   type ResendVerificationBody,
+  type ResetPasswordBody,
   type VerifyEmailBody,
 } from "@repo/contracts";
 import axios, {
@@ -136,12 +138,33 @@ const COOKIE_TRANSPORT_PATHS = [
  * bearer would belong to whoever already had this browser, on the one request
  * whose whole job is to replace them.
  */
+/*
+ * The recovery pair are the sixth and seventh (ADR-0071 §4), and unlike every
+ * name above them they are on **this client's own segment** — `forgot` and
+ * `reset` sit beside their segment's `login`, registered before its
+ * `authenticate` and reading no principal.
+ *
+ * `forgot` has no credential at all and answers `202` to everything;
+ * `reset`'s credential is the token out of the URL fragment, and its every
+ * refusal is one indistinguishable `401`. Both are reachable from a browser
+ * that already holds somebody's session — a person may perfectly well ask for
+ * a link while signed in, and the link is followed wherever the mail is read —
+ * so without this a live bearer would travel on requests nothing reads it on.
+ *
+ * The `401` half matters more than the header half here: left off this list a
+ * refused link would be read as an expired access token, and the client would
+ * answer a dead token with a refresh nobody asked for — signing an anonymous
+ * visitor "out" of a session they never had and painting the *refresh's*
+ * sentence over the reset screen's own.
+ */
 const UNAUTHENTICATED_PATHS = [
   "/auth/login",
   "/auth/impersonate",
   "/auth/register",
   "/auth/verify-email",
   "/auth/resend-verification",
+  "/auth/password/forgot",
+  "/auth/password/reset",
 ];
 
 /**
@@ -641,6 +664,64 @@ export const createApiClient = ({
   };
 
   /**
+   * Asks for a password-recovery link (ADR-0071 §4).
+   *
+   * **On this client's own segment, and that is the whole of the population
+   * rule.** The route is `/{admin,user}/auth/password/forgot`, beside the
+   * segment's `login`, so a staff address asked for on the customer client is
+   * answered by the customer segment and mails nothing — no field in the body
+   * names a population, and none can, because a field a caller controls is a
+   * field a caller can disagree with the route about. This is the first pair
+   * in this file that needs no `baseURL` override for exactly that reason.
+   *
+   * It writes nothing to the store and answers `202` for every address, known
+   * or not (ADR-0020 §Enumeration), so there is no resource to hand to the
+   * wrong client and nothing here to branch on. The locale travels in the body
+   * because the answer must not depend on whether the address has an account
+   * whose stored locale could be read (ADR-0071 §2, §4).
+   */
+  const forgotPassword = async (body: ForgotPasswordBody): Promise<void> => {
+    await instance.post<{ data: AcceptedResource }>(
+      "/auth/password/forgot",
+      body,
+    );
+  };
+
+  /**
+   * Spends a recovery link on a new password (ADR-0071 §4).
+   *
+   * **It starts no session, and that is the decision rather than an omission.**
+   * `verify-email` answers login's body because the person has just proven the
+   * address; this answers `204` because the link proved the *mailbox* and not
+   * the device, and signing in with the password they have just chosen is one
+   * step away.
+   *
+   * **What it does do is end the session this browser already had**, and that
+   * is the other half of the same decision (`D18.6`, `security-reviewer`).
+   * "Writes nothing" is not the same as "leaves nothing": the endpoint revokes
+   * every session of the account, this browser's included, so a client that
+   * only declined to *write* would sit on an access token and a principal the
+   * server has just killed — and the recovery screen's landing on `/login`
+   * would then be bounced straight back by the `_auth` layout's
+   * authenticated-visitor guard, onto a dashboard rendering cached state until
+   * the next request meets a terminal code. The clear is unconditional because
+   * this client cannot know whether the link belonged to the account currently
+   * signed in — the answer carries no principal, by design — and forgetting a
+   * bystander account's *memory* is strictly better than keeping a revoked
+   * one: its refresh cookie is untouched, so a reload restores it.
+   *
+   * Every way it can fail answers one indistinguishable `401` (ADR-0071 §4),
+   * so there is nothing to branch on here either; the screen says the link
+   * cannot be used and offers another. Nothing is cleared on that path — a
+   * refused link says nothing about anybody's session.
+   */
+  const resetPassword = async (body: ResetPasswordBody): Promise<void> => {
+    await instance.post("/auth/password/reset", body);
+
+    endSession();
+  };
+
+  /**
    * Redeems an impersonation handoff token for a session (`D13.7`,
    * ADR-0057 §3, §7).
    *
@@ -741,7 +822,6 @@ export const createApiClient = ({
       if (!requestConfig) throw failure;
 
       const isRefresh = pathOf(requestConfig).startsWith("/auth/refresh");
-      const isLogin = pathOf(requestConfig).startsWith("/auth/login");
       /*
        * The bootstrap is the third "never recurse on this" endpoint, and the
        * retry flags cannot bound it: `fetchCsrfToken` builds a *fresh* config
@@ -795,8 +875,20 @@ export const createApiClient = ({
        * dead-cookie states ADR-0029 §Consequences records: the server killed
        * the session but could not clear the browser's cookie, so retrying only
        * replays a dead thirty-day credential until it expires.
+       *
+       * **Except on a route whose credential is in the body** — which used to
+       * read `!isLogin` and was the very divergence the comment above says a
+       * second enumeration always eventually has (`D18.6`,
+       * `security-reviewer`). `/auth/login` happened to be the whole of that
+       * list once; it is now seven paths, and a terminal code from any of them
+       * says nothing about a session in this browser, because none of them
+       * carries or reads one. Not reachable from this API — every one of those
+       * routes answers a single indistinguishable code — but a proxy, a WAF or
+       * edge auth in front of it can answer `AUTH_ACCOUNT_DISABLED`, and then
+       * asking for a recovery link would sign out whoever else was using the
+       * browser.
        */
-      if (isTerminalAuthCode(failure.code) && !isLogin) {
+      if (isTerminalAuthCode(failure.code) && !isUnauthenticatedRoute) {
         endSession();
         throw failure;
       }
@@ -886,6 +978,8 @@ export const createApiClient = ({
     register,
     verifyEmail,
     resendVerification,
+    forgotPassword,
+    resetPassword,
     redeemHandoff,
     logout,
     refreshSession,

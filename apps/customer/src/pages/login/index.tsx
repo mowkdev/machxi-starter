@@ -36,8 +36,20 @@ export const LoginPage = () => {
       <Card className="p-5">
         <LoginForm />
       </Card>
+      {/*
+       * Recovery, under the card with the other way out (ADR-0071 §4). It is
+       * ungated where the sign-up link is gated, and the asymmetry is the
+       * point: `FEATURE_USER_REGISTRATION` decides whether *new* accounts may
+       * be made here, and an account that already exists must be recoverable
+       * whatever a deployment has since decided about sign-ups.
+       */}
+      <p className="mt-4 text-center text-[13px] text-muted-foreground">
+        <Link className="underline underline-offset-4" to="/forgot-password">
+          {t("links.forgotPassword")}
+        </Link>
+      </p>
       {features.userRegistration ? (
-        <p className="mt-4 text-center text-[13px] text-muted-foreground">
+        <p className="mt-2 text-center text-[13px] text-muted-foreground">
           <Link className="underline underline-offset-4" to="/register">
             {t("links.register")}
           </Link>
