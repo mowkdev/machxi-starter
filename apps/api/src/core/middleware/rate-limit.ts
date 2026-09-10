@@ -8,15 +8,16 @@ import type { RateLimitStore } from "../rate-limit/index.js";
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
  *
- * Six limiters and one failure shape: the global one on `/api`, a strict one
+ * Seven limiters and one failure shape: the global one on `/api`, a strict one
  * on login and registration, one on *failed* refreshes, one on the
  * impersonation mint since `D13.4` — the only one keyed on a principal rather
  * than on an address (ADR-0057 §1) — and, since `D18.2`, one each on the two
- * endpoints that mail a link to an address a stranger typed (ADR-0071 §3, §4).
+ * endpoints that mail a link to an address a stranger typed (ADR-0071 §3, §4),
+ * joined at `D18.5` by the one keyed on the **mailbox alone**.
  * `/health` is deliberately outside all of them — a probe that gets
  * rate-limited takes a healthy instance out of rotation (ADR-0016).
  *
- * The first four share {@link RATE_LIMIT_WINDOW_MS}; the last two take
+ * The first four share {@link RATE_LIMIT_WINDOW_MS}; the last three take
  * `RATE_LIMIT_PASSWORD_RESET_WINDOW`, because what they ration is not an
  * attacker's attempts but a victim's inbox, and ADR-0071 §4 decides that
  * budget is per hour.
@@ -34,8 +35,8 @@ import type { RateLimitStore } from "../rate-limit/index.js";
  * **No limit, window or key changed with it.** ADR-0020's `300 / 15 min / IP`,
  * `10 / 15 min / IP + email` and `5 / 15 min / IP` on failed refreshes,
  * ADR-0057 §1's per-staff-principal mint budget and ADR-0071 §4's `3 / hour /
- * IP + email` are exactly as decided; only where the counter lives is
- * configurable.
+ * IP + email` and `5 / hour / email` are exactly as decided; only where the
+ * counter lives is configurable.
  */
 
 /** The window every limit in ADR-0020 is expressed over. */
@@ -245,6 +246,48 @@ export const createPasswordResetRateLimiter = (
     ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
     limit: config.rateLimit.passwordResetMax,
     keyGenerator: (req) => `${ipKey(req)}:${keyEmail(req)}`,
+  });
+
+/**
+ * `RATE_LIMIT_MAILBOX_MAX / RATE_LIMIT_PASSWORD_RESET_WINDOW / **email**` on
+ * `forgot`, both segments — `5 / hour` by default (ADR-0071 §4, amended at
+ * `D18.5` on the operator's decision).
+ *
+ * **The only limiter here with no source address in its key**, and that is the
+ * whole point of it. Every other one — the global limiter included — keys on
+ * the caller's address, so all of them vary together with the one thing an
+ * attacker can change most cheaply: a proxy pool, a botnet, or an IPv6 client
+ * with a `/64` to walk turns `3 / hour / IP + email` into `3 × N`, and the
+ * ceiling nobody had is the mailbox's own. This is that ceiling. The pair now
+ * says one sentence: a mailbox receives at most this many of these messages an
+ * hour from everybody, and at most `RATE_LIMIT_PASSWORD_RESET_MAX` of them
+ * from any one source.
+ *
+ * **A request with no readable address falls back to the source key**, prefixed
+ * so it can never collide with a real address. Keying every such request on the
+ * empty string would put them all in one bucket, and five malformed bodies an
+ * hour from anybody would then refuse `forgot` to the whole world — the
+ * failure `createImpersonationRateLimiter`'s own fallback avoids, for the same
+ * reason. `validate` rejects those requests a moment later; the limiter runs
+ * first, so it has to answer for them.
+ *
+ * What it does **not** bound is one sender walking a list of *distinct*
+ * addresses: this key varies with the address and so does the pair's other
+ * half. ADR-0071 §4 states that, names the third limiter that would close it,
+ * and does not take it.
+ */
+export const createMailboxRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
+    limit: config.rateLimit.mailboxMax,
+    keyGenerator: (req) => {
+      const email = keyEmail(req);
+
+      return email === "" ? `anon:${ipKey(req)}` : email;
+    },
   });
 
 /**

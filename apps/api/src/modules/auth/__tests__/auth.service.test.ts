@@ -285,6 +285,22 @@ const createFakePrincipals = (
 
       return Promise.resolve(row === undefined ? undefined : toRecord(row));
     },
+    /**
+     * Active rows only, as both real queries are (ADR-0071 §4).
+     *
+     * The narrowing is the thing worth reproducing here: `forgot` mails
+     * nobody whose address is unproven or whose account is disabled, and a
+     * fake that answered every row would let that regression pass.
+     */
+    findActiveByEmail: (email) => {
+      const row = [...rows.values()].find(
+        (candidate) => candidate.email === email && candidate.active,
+      );
+
+      return Promise.resolve(
+        row === undefined ? undefined : { id: row.id, email: row.email },
+      );
+    },
     touchLastLogin: () => {
       events.touchedLastLogin += 1;
 

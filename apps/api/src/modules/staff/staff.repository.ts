@@ -168,6 +168,25 @@ export const createStaffRepository = (db: DbExecutor) =>
       return row === undefined ? undefined : toRecord(row);
     },
 
+    /**
+     * "Is there an operator here a recovery link may be sent to?"
+     * (ADR-0071 §4).
+     *
+     * The user adapter's twin, and narrow for its reason: `password/forgot` is
+     * anonymous, and {@link StaffRepository.findByEmail} returns the password
+     * hash. `active` only — an `invited` row has no password to reset and is
+     * §8's flow rather than this one, and a `disabled` one could not sign in
+     * with whatever it chose.
+     */
+    findActiveByEmail: async (
+      email: string,
+      tx: DbExecutor = db,
+    ): Promise<{ readonly id: string; readonly email: string } | undefined> =>
+      tx.query.staff.findFirst({
+        columns: { id: true, email: true },
+        where: and(eq(staff.email, email), eq(staff.status, "active")),
+      }),
+
     /** By id — `GET /auth/me` and `GET /api/v1/admin/staff/:id`. */
     findById: async (
       id: string,

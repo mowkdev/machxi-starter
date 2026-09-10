@@ -84,6 +84,17 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
           .map(toRecord)[0],
       ),
 
+    /** `active` and undeleted only, as the real query is (ADR-0071 §4). */
+    findActiveByEmail: (email) =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter(
+            (row) =>
+              row.email === email && !row.deleted && row.status === "active",
+          )
+          .map((row) => ({ id: row.id, email: row.email }))[0],
+      ),
+
     findById: (id) => {
       const row = rows.get(id);
 

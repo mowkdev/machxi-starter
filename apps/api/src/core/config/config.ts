@@ -117,6 +117,13 @@ export interface AppConfig {
      */
     readonly passwordResetWindowSec: number;
     /**
+     * Per the same window, keyed on the **mailbox alone** (ADR-0071 §4,
+     * amended at `D18.5`) — what bounds the messages one address receives from
+     * everybody, where {@link passwordResetMax} bounds what it receives from
+     * any one source.
+     */
+    readonly mailboxMax: number;
+    /**
      * Where the counters live (ADR-0066 §4). `undefined` is the in-memory
      * store, which counts per process; a URL makes one budget out of N
      * instances. None of the limits above change with it.
@@ -222,6 +229,7 @@ export const toAppConfig = (env: Env): AppConfig =>
       impersonationMax: env.RATE_LIMIT_IMPERSONATION_MAX,
       passwordResetMax: env.RATE_LIMIT_PASSWORD_RESET_MAX,
       passwordResetWindowSec: env.RATE_LIMIT_PASSWORD_RESET_WINDOW,
+      mailboxMax: env.RATE_LIMIT_MAILBOX_MAX,
       redisUrl: env.REDIS_URL,
     }),
     mail: Object.freeze({

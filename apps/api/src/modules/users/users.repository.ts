@@ -501,6 +501,36 @@ export const createUsersRepository = (db: DbExecutor) =>
       return row;
     },
 
+    /**
+     * "Is there an account here a recovery link may be sent to?" (ADR-0071 §4).
+     *
+     * The only read `password/forgot` performs, and narrow for the reason
+     * {@link UsersRepository.findPendingVerificationByEmail} is narrow: the
+     * caller is anonymous, so it must not be able to reach a password hash
+     * through this path however the result is used later.
+     *
+     * `active` and nothing else. A `pending_verification` row has never proven
+     * its address, so mailing a recovery link to it would hand a credential to
+     * a mailbox nobody has confirmed; a `disabled` or deleted one cannot sign
+     * in with the new password anyway. All three, and an address nobody holds,
+     * answer `undefined` — every case the endpoint answers `202` to.
+     */
+    findActiveByEmail: async (
+      email: string,
+      tx: DbExecutor = db,
+    ): Promise<{ readonly id: string; readonly email: string } | undefined> => {
+      const row = await tx.query.users.findFirst({
+        columns: { id: true, email: true },
+        where: and(
+          eq(users.email, email),
+          isNull(users.deletedAt),
+          eq(users.status, "active"),
+        ),
+      });
+
+      return row;
+    },
+
     updateLastLoginAt: async (
       id: string,
       at: Date,

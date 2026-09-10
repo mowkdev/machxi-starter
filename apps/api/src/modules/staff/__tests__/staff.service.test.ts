@@ -88,6 +88,14 @@ const createFakeRepository = (seed: FakeStaffRow[]) => {
           .map(toRecord)[0],
       ),
 
+    /** `active` only, as the real query is (ADR-0071 §4). */
+    findActiveByEmail: (email) =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter((row) => row.email === email && row.status === "active")
+          .map((row) => ({ id: row.id, email: row.email }))[0],
+      ),
+
     findById: (id) => {
       const row = rows.get(id);
 

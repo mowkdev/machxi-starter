@@ -66,6 +66,25 @@ export const emailUnverified = (): AppError =>
 export const verificationLinkInvalid = (): AppError =>
   unauthenticated("This confirmation link is no longer valid");
 
+/**
+ * Every way `POST /{admin,user}/auth/password/reset` can fail, answered as one
+ * indistinguishable `401` (ADR-0071 §4).
+ *
+ * {@link verificationLinkInvalid}'s posture on the other single-use link, and
+ * for its reasons: unknown token, already consumed, minted for the other
+ * purpose or the other population, past `PASSWORD_RESET_TOKEN_TTL`, or naming
+ * an account that has since been disabled or deleted — one answer, because the
+ * caller is an anonymous holder of a URL fragment and every distinction is
+ * something for them to learn.
+ *
+ * The **generic** `UNAUTHENTICATED` code, again for the shipped reason: the
+ * only client is each SPA's `/reset-password` screen, which has one thing to
+ * say either way — ask for a new link — so a code of its own would be enum
+ * growth with no reader.
+ */
+export const passwordResetLinkInvalid = (): AppError =>
+  unauthenticated("This password reset link is no longer valid");
+
 /** Missing, malformed, wrongly signed, or carrying the other population's `aud`. */
 export const tokenInvalid = (): AppError =>
   unauthenticated("Invalid access token", "AUTH_TOKEN_INVALID");

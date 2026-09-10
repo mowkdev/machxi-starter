@@ -14,10 +14,12 @@ import type { IssuedAuthResource } from "./auth.mapper.js";
 import type { AuthService } from "./auth.service.js";
 import { applyAuthTransport } from "./auth.transport.js";
 import type {
+  forgotPasswordSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
 } from "./auth.schemas.js";
 
@@ -204,6 +206,43 @@ export const createAuthController = ({
       await service.resendVerification(req.ctx, req.valid.body);
 
       respond.accepted<AcceptedResource>(res, { accepted: true });
+    },
+
+    /**
+     * `202`, always — for an address with an account and for one that has
+     * never existed (ADR-0071 §4).
+     *
+     * `resendVerification`'s answer, for its reason: the service decides
+     * whether a message goes out, and a status, a body or a timing that
+     * differed between the two would be the account-existence oracle
+     * ADR-0020 §Enumeration refuses.
+     */
+    forgotPassword: async (
+      req: ValidatedRequest<typeof forgotPasswordSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.requestPasswordReset(req.ctx, req.valid.body);
+
+      respond.accepted<AcceptedResource>(res, { accepted: true });
+    },
+
+    /**
+     * `204` and **no session** (ADR-0071 §4).
+     *
+     * `applyTransport` is deliberately not called, exactly as it is not on
+     * `register`: the link proved the mailbox and not the device, so there is
+     * nothing to transport. A browser that asked for cookie transport gets no
+     * `Set-Cookie` at all, which is what makes "the reset issues no session"
+     * observable rather than merely intended — and the cookies it may still be
+     * holding name sessions this request has just revoked.
+     */
+    resetPassword: async (
+      req: ValidatedRequest<typeof resetPasswordSchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.resetPassword(req.ctx, req.valid.body);
+
+      respond.noContent(res);
     },
 
     /**

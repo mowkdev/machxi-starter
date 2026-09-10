@@ -65,6 +65,57 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/auth-register.
 - **WHEN** `FEATURE_USER_REGISTRATION=false`
 - **THEN** `register` answers `404 ROUTE_NOT_FOUND` while `verify-email` and `resend-verification` still answer — a link already in somebody's mailbox does not stop working because sign-ups were closed
 
+## Requirement: A password is recovered by mail on both segments
+
+`POST /api/v1/{admin,user}/auth/password/forgot { email }` answers `202 { accepted: true }` for every address and mails a link only to an account of that segment that is `active`. The link lands on the app the account signs into — the admin app for staff, the customer app for users — with its token in the fragment. `POST /api/v1/{admin,user}/auth/password/reset { token, newPassword }` consumes the token, sets the new hash, writes an `account.password_reset` audit row, **revokes every session of the account** and answers `204` with no session of its own. A token minted on one segment is not redeemable on the other. `forgot` carries two budgets over an hour: `RATE_LIMIT_PASSWORD_RESET_MAX` per caller and address together, and `RATE_LIMIT_MAILBOX_MAX` per address alone.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`, `apps/api/src/core/middleware/__tests__/rate-limit.test.ts`
+
+### Scenario: Asking for a link as an account holder
+
+- **WHEN** `forgot` names the address of an `active` account of that segment
+- **THEN** the answer is `202 { accepted: true }` with no `Set-Cookie`, and one message is sent carrying `#token=…` on a link into that segment's own app
+
+### Scenario: Asking for a link for anybody else
+
+- **WHEN** `forgot` names an address nobody holds, a disabled account, or one whose address has never been proven
+- **THEN** the answer is the identical `202 { accepted: true }` and nothing is sent — an unproven address is not mailed a way in
+
+### Scenario: Asking twice
+
+- **WHEN** `forgot` is called again for the same account
+- **THEN** the newest link works and the previous one answers `401 UNAUTHENTICATED`
+
+### Scenario: Choosing a new password
+
+- **WHEN** the token from the message is posted to `reset` with a new password
+- **THEN** the answer is `204` with no body and no `Set-Cookie`, the old password answers `401 AUTH_INVALID_CREDENTIALS` at login, the new one signs in, and an `account.password_reset` audit row names the account as actor with no acting-as
+
+### Scenario: The sessions that existed before
+
+- **WHEN** a refresh token issued before the reset is presented
+- **THEN** the answer is `401 AUTH_SESSION_REVOKED` — every session ends, including ones opened before the link was asked for
+
+### Scenario: Following the link twice
+
+- **WHEN** the same token is posted again
+- **THEN** the answer is `401 UNAUTHENTICATED` and the password stays as the first reset left it
+
+### Scenario: A token from the other segment
+
+- **WHEN** a staff token is posted to the user segment's `reset`, or a user's to the admin segment's
+- **THEN** the answer is `401 UNAUTHENTICATED` and the token still works on its own segment — a refused consumption spends nothing
+
+### Scenario: One caller asking repeatedly
+
+- **WHEN** a fourth `forgot` names the same address from the same caller inside the hour
+- **THEN** the answer is `429 RATE_LIMITED` with a `Retry-After` measured in the remainder of that hour
+
+### Scenario: Many callers asking about one mailbox
+
+- **WHEN** `RATE_LIMIT_MAILBOX_MAX` requests have named one address inside the hour, however many callers sent them
+- **THEN** the next one answers `429 RATE_LIMITED`, while a different address is still answered `202`
+
 ## Requirement: An address a staff member types is proven by that assertion
 
 `POST /api/v1/admin/users` stamps `email_verified_at` on the account it creates, because the operator who typed the address is the authority a confirmation link would be asking, and no link is sent; `PATCH /api/v1/admin/users/:id` stamps it the same way when it moves an account to `active`, without disturbing a stamp the account already had. An admin who deliberately asks for `status: "pending_verification"` gets an account with no stamp, which is the one row the verification flow above has something to do to. Those two paths and the link are **every** way a user becomes `active`, which is what makes **every `active` user an account whose address is proven**.

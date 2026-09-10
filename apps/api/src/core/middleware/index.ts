@@ -21,6 +21,7 @@ export {
   createGlobalRateLimiter,
   createImpersonationRateLimiter,
   createLoginRateLimiter,
+  createMailboxRateLimiter,
   createPasswordResetRateLimiter,
   createRefreshRateLimiter,
   createVerificationRateLimiter,

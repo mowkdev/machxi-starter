@@ -435,6 +435,24 @@ export const envSchema = z
      * number, with nothing failing. (`D18.1`'s `security-reviewer`.)
      */
     RATE_LIMIT_PASSWORD_RESET_WINDOW: durationSchema.default(3600),
+    /**
+     * The **mailbox's own** budget over that same window (ADR-0071 §4, amended
+     * at `D18.5`).
+     *
+     * The limiter above is keyed on address **and** email, so it bounds one
+     * sender mailing one mailbox; this one is keyed on the mailbox alone, and
+     * it is what bounds the mailbox. Without it a caller who can vary its
+     * source address delivers `3 × N` messages into a stranger's inbox with no
+     * ceiling at all — the global limiter is keyed on the source too, so it
+     * varies with the same thing.
+     *
+     * Larger than `RATE_LIMIT_PASSWORD_RESET_MAX` deliberately, and it has to
+     * be: at the same number the per-source limiter could never be the one to
+     * refuse, and the deployment would have one policy written twice. Five
+     * leaves room for a person asking from a phone and then a laptop, which is
+     * two sources and one mailbox.
+     */
+    RATE_LIMIT_MAILBOX_MAX: z.coerce.number().int().positive().default(5),
 
     /**
      * How long an impersonated session may live, from the exchange (ADR-0057

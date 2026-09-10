@@ -11,6 +11,7 @@ import { createRequestContext } from "../../context/index.js";
 import { isAppError } from "../../errors/index.js";
 import {
   createLoginRateLimiter,
+  createMailboxRateLimiter,
   createPasswordResetRateLimiter,
   createVerificationRateLimiter,
 } from "../rate-limit.js";
@@ -41,12 +42,20 @@ const config: AppConfig = loadConfig({
 const AN_HOUR = 3600;
 const FIFTEEN_MINUTES = 900;
 
-/** `req.ctx` as the context middleware would have left it; `ipKey` reads it. */
+/**
+ * `req.ctx` as the context middleware would have left it; `ipKey` reads it.
+ *
+ * The address is read from a header the test sets rather than fixed, because
+ * one of the claims below is that a limiter's key does **not** contain it —
+ * and an assertion about a value that never varies proves nothing. The real
+ * middleware has already refused to set `ip` unless `node:net` agreed it was
+ * one, which is what makes reading a header here faithful rather than lax.
+ */
 const context: RequestHandler = (req, _res, next) => {
   req.ctx = createRequestContext({
     requestId: "01J0000000000000000000000A",
     logger: createLogger({ level: "silent", name: "rate-limit-test" }),
-    ip: "203.0.113.7",
+    ip: req.get("X-Test-Client") ?? "203.0.113.7",
   });
 
   next();
@@ -155,6 +164,64 @@ describe("the verification limiter", () => {
     expect(Number(refused.headers["retry-after"])).toBeGreaterThan(
       FIFTEEN_MINUTES,
     );
+  });
+});
+
+describe("the mailbox limiter", () => {
+  const mailbox = () => appWith(createMailboxRateLimiter(config, undefined));
+  const from = (app: express.Express, client: string, email: string) =>
+    supertest(app).post("/0").set("X-Test-Client", client).send({ email });
+
+  it("counts one mailbox however many callers ask about it", async () => {
+    // The whole reason this limiter exists (ADR-0071 §4, amended at `D18.5`).
+    // Every other limiter in the file keys on the caller's address, so all of
+    // them vary together with the cheapest thing an attacker can change; five
+    // different sources here spend one budget, and the sixth is refused.
+    const app = mailbox();
+    const email = "victim@machxi.local";
+
+    expect(config.rateLimit.mailboxMax).toBe(5);
+
+    for (let sender = 0; sender < 5; sender += 1) {
+      await from(app, `203.0.113.${String(20 + sender)}`, email).expect(202);
+    }
+
+    const refused = await from(app, "198.51.100.4", email).expect(429);
+
+    // Still the hour, not the shared fifteen minutes: it rations the same
+    // thing the limiter beside it does.
+    expect(Number(refused.headers["retry-after"])).toBeGreaterThan(
+      FIFTEEN_MINUTES,
+    );
+  });
+
+  it("keeps a budget per mailbox rather than one for everybody", async () => {
+    const app = mailbox();
+
+    for (let sent = 0; sent < 5; sent += 1) {
+      await from(app, "203.0.113.7", "busy@machxi.local").expect(202);
+    }
+
+    await from(app, "203.0.113.7", "busy@machxi.local").expect(429);
+    await from(app, "203.0.113.7", "quiet@machxi.local").expect(202);
+  });
+
+  it("falls back to the caller's own address when the body names none", async () => {
+    // A body with no readable address is on its way to a `400` from
+    // `validate`, but the limiter runs first and has to key it somehow.
+    // Keying every such request on the empty string would put them all in one
+    // bucket, and five malformed bodies an hour from anybody would then refuse
+    // `forgot` to the whole world.
+    const app = mailbox();
+    const nameless = (client: string) =>
+      supertest(app).post("/0").set("X-Test-Client", client).send({});
+
+    for (let sent = 0; sent < 5; sent += 1) {
+      await nameless("203.0.113.30").expect(202);
+    }
+
+    await nameless("203.0.113.30").expect(429);
+    await nameless("203.0.113.31").expect(202);
   });
 });
 

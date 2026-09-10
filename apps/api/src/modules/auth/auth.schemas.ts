@@ -1,8 +1,10 @@
 import {
+  forgotPasswordBody,
   loginBody,
   refreshBody,
   registerBody,
   resendVerificationBody,
+  resetPasswordBody,
   verifyEmailBody,
 } from "@repo/contracts";
 
@@ -28,3 +30,5 @@ export const verifyEmailSchema = { body: verifyEmailBody } as const;
 export const resendVerificationSchema = {
   body: resendVerificationBody,
 } as const;
+export const forgotPasswordSchema = { body: forgotPasswordBody } as const;
+export const resetPasswordSchema = { body: resetPasswordBody } as const;

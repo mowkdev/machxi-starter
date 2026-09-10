@@ -114,7 +114,7 @@ export {
 } from "./auth.controller.js";
 export type {
   CreatePrincipalInput,
-  PendingPrincipal,
+  MailablePrincipal,
   PrincipalAdapter,
   PrincipalRecord,
 } from "./auth.types.js";

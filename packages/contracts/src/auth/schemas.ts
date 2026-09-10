@@ -142,6 +142,43 @@ export const resendVerificationBody = z.strictObject({
 export type ResendVerificationBody = z.infer<typeof resendVerificationBody>;
 
 /**
+ * `POST /api/v1/{admin,user}/auth/password/forgot` (ADR-0071 §4).
+ *
+ * The same shape as {@link resendVerificationBody} and for the same reasons:
+ * one field the caller controls, an optional locale on the seam where the
+ * server cannot know the reader's language, and an answer that is `202`
+ * whatever the address turns out to be.
+ *
+ * The locale travels in the body even though this endpoint's happy path *does*
+ * have an account behind it, whose locale is a stored fact (ADR-0046). Reading
+ * it would mean an extra query on exactly one of the two branches, which is a
+ * difference an attacker times; the endpoint's whole shape is that both
+ * branches look alike.
+ */
+export const forgotPasswordBody = z.strictObject({
+  email: emailSchema,
+  locale: mailLocaleSchema,
+});
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordBody>;
+
+/**
+ * `POST /api/v1/{admin,user}/auth/password/reset` (ADR-0071 §4).
+ *
+ * The token is the credential — there is no `email` beside it, for the reason
+ * {@link verifyEmailBody} has none — and the population comes from the segment
+ * the request arrived on, never from a field, so one population's link can
+ * never be spent on the other's endpoint.
+ *
+ * `newPassword` is held to the policy: unlike a login, this value is *becoming*
+ * the credential, and a short one here would be a short one forever.
+ */
+export const resetPasswordBody = z.strictObject({
+  token: accountTokenSchema,
+  newPassword: passwordSchema,
+});
+export type ResetPasswordBody = z.infer<typeof resetPasswordBody>;
+
+/**
  * `POST /api/v1/{admin,user}/profile/change-password` — an account changing
  * its own password (ADR-0027).
  *

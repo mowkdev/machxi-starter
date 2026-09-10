@@ -186,3 +186,117 @@ describe("global rate limit", () => {
     }
   });
 });
+
+/**
+ * The two budgets on `password/forgot` (ADR-0071 §4, the second amended in at
+ * `D18.5`).
+ *
+ * They are the only limiters in this repository that ration a **third party's**
+ * inbox rather than the caller's own attempts, which is why they have a window
+ * of their own and why there are two of them: one bounds what a single sender
+ * may mail one mailbox, the other bounds what that mailbox receives from
+ * everybody. Mounted together on one route, so each is proved by turning the
+ * other off — otherwise the smaller number is the only one that ever fires and
+ * the second limiter could be missing entirely without a test noticing.
+ *
+ * The addresses below belong to nobody. `forgot` answers `202` either way and
+ * mails nothing, so what is exercised is the limiter and not the flow.
+ */
+const FORGOT = "/api/v1/user/auth/password/forgot";
+const AN_HOUR = 3600;
+
+describe("the per-sender forgot limit", () => {
+  let harness: TestApp;
+
+  beforeAll(() => {
+    harness = createTestApp(
+      withLimits({ passwordResetMax: 3, mailboxMax: 100_000 }),
+    );
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  it("refuses the fourth request for one address, an hour out", async () => {
+    const forgot = () =>
+      supertest(harness.app)
+        .post(FORGOT)
+        .send({ email: "rationed@machxi.local" });
+
+    await forgot().expect(202);
+    await forgot().expect(202);
+    await forgot().expect(202);
+
+    const response = await forgot().expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+    // The window is the limiter's own: fifteen minutes here would be four
+    // times the budget ADR-0071 §4 decided, with nothing failing to say so.
+    const retryAfter = Number(response.headers["retry-after"]);
+
+    expect(retryAfter).toBeGreaterThan(AN_HOUR - 120);
+    expect(retryAfter).toBeLessThanOrEqual(AN_HOUR);
+  });
+
+  it("does not spend one mailbox's budget on another's", async () => {
+    // Keyed on the address **and** the email, so one mailbox behind a shared
+    // NAT cannot lock out everybody else there (ADR-0020's login key, reused).
+    const forgot = (email: string) =>
+      supertest(harness.app).post(FORGOT).send({ email });
+
+    await forgot("first.tenant@machxi.local").expect(202);
+    await forgot("first.tenant@machxi.local").expect(202);
+    await forgot("first.tenant@machxi.local").expect(202);
+    await forgot("first.tenant@machxi.local").expect(429);
+
+    await forgot("second.tenant@machxi.local").expect(202);
+  });
+});
+
+describe("the mailbox forgot limit", () => {
+  let harness: TestApp;
+
+  beforeAll(() => {
+    harness = createTestApp(
+      withLimits({ passwordResetMax: 100_000, mailboxMax: 5 }),
+    );
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  it("refuses the sixth message to one mailbox even where the sender's budget is untouched", async () => {
+    // The per-sender limiter is effectively off here, so the refusal can only
+    // come from the counter keyed on the mailbox alone (ADR-0071 §4, amended
+    // at `D18.5`). Without it, a caller who can vary its source address
+    // delivers `3 × N` messages into a stranger's inbox with no ceiling: every
+    // other limiter in this repository, the global one included, keys on that
+    // same source.
+    const forgot = () =>
+      supertest(harness.app)
+        .post(FORGOT)
+        .send({ email: "flooded@machxi.local" });
+
+    for (let sent = 0; sent < 5; sent += 1) {
+      await forgot().expect(202);
+    }
+
+    const response = await forgot().expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+  });
+
+  it("counts each mailbox separately", async () => {
+    const forgot = (email: string) =>
+      supertest(harness.app).post(FORGOT).send({ email });
+
+    for (let sent = 0; sent < 5; sent += 1) {
+      await forgot("busy@machxi.local").expect(202);
+    }
+
+    await forgot("busy@machxi.local").expect(429);
+    await forgot("quiet@machxi.local").expect(202);
+  });
+});

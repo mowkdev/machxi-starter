@@ -57,6 +57,17 @@ export const createAdminRouter = (container: Container): Router => {
       population: "staff",
       loginRateLimiter: container.rateLimiters.login,
       refreshRateLimiter: container.rateLimiters.refresh,
+      // ADR-0071 §4's pair on `password/forgot`: one bounds what a single
+      // sender may mail one mailbox, the other what that mailbox receives from
+      // everybody. Both instances are the container's, so the counters are one
+      // per deployment rather than one per segment.
+      passwordResetRateLimiter: container.rateLimiters.passwordReset,
+      mailboxRateLimiter: container.rateLimiters.mailbox,
+      // The login limiter's numbers on `password/reset`, in a counter of its
+      // own: the body carries no address, so its key is the caller's — the
+      // same key a malformed `login` produces.
+      passwordResetSubmitRateLimiter:
+        container.rateLimiters.passwordResetSubmit,
       // Passed and never registered on this segment: the exchange exists only
       // where the population is `user` (ADR-0057 §3), and the condition that
       // says so lives in the router beside the route.

@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 173 requests in 18 folders: `Health`, `Metrics`,
+- `machxi-api.postman_collection.json` — 178 requests in 18 folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
   `User › Settings`, `Public`, `User › Organizations`, `User › Invitations`,
@@ -73,6 +73,17 @@ address and for one nobody holds, and that a token nobody minted is one
 indistinguishable `401`. Walking an actual link is the browser tier's, which
 reads it out of Mailpit.
 
+**Recovery is the same shape, split across the two auth folders** (ADR-0071 §4).
+`Admin Auth` asks for a reset link and proves the answer — `202`, no session, no
+cookie — and that a token nobody minted is one indistinguishable `401`; `User
+Auth` proves the enumeration property, because by then the run has created an
+account of its own and can compare a live address against a stranger's **byte
+for byte**. It is split rather than duplicated because `Admin Auth` runs first,
+before any per-run staff account exists, and every address on this route has to
+be a per-run one: two hourly counters sit on `forgot` — one per caller and
+address, one per address alone — so a fixture there would answer `429` on the
+fourth run of the hour. Redeeming an actual reset link is the browser tier's.
+
 That is also why the invitee below is a **staff-created** account rather than the
 self-registered one: a staff member who types an address asserts it, so that
 account is `active` and can sign in, while a self-registered one cannot until
@@ -126,7 +137,7 @@ verification limiter's `3 / hour / IP + email` — and only ever against
 **per-run** addresses, which is why both `resend-verification` requests generate
 one rather than using a fixture: a fixed address there would answer `429` on the
 fourth run of the hour and the assertion is that the two answers are identical —
-and, since the mail flows joined `Public`, 173 of the global
+and, since the mail flows joined `Public` and recovery joined both auth folders, 178 of the global
 `RATE_LIMIT_GLOBAL_MAX` per 15 minutes (the three health probes and the metrics scrape sit outside every
 limiter). On the committed development profile that is a small share of the
 window, which is the point of ADR-0069: one window holds this collection, the

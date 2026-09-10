@@ -84,6 +84,11 @@ describe("envSchema", () => {
       // The window that 3 is *per*: ADR-0071 §4 gives this limiter an hour of
       // its own, where every other one takes the module's fixed 15 minutes.
       RATE_LIMIT_PASSWORD_RESET_WINDOW: 3600,
+      // The mailbox's own budget over that same hour, and larger than the 3
+      // above on purpose (ADR-0071 §4, amended at `D18.5`): at the same number
+      // the per-sender limiter could never be the one to refuse, and one policy
+      // would be written twice.
+      RATE_LIMIT_MAILBOX_MAX: 5,
     });
     expect(env.CORS_ORIGINS).toEqual([]);
   });

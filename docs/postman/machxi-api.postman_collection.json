@@ -731,6 +731,102 @@
             },
             "description": "Signature, `exp`, `iss` and the segment's `aud` are all checked inside jose before any claim of ours is read."
           }
+        },
+        {
+          "name": "Ask for a password reset link",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh address per run. This request is behind two hourly counters",
+                  "// — one per caller and address, one per address alone (ADR-0071 §4) —",
+                  "// so a fixed one would answer 429 on the fourth run of the hour.",
+                  "pm.environment.set(\"unknownStaffResetEmail\", \"qa-nostaff-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 with no session at all\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "  pm.expect(pm.response.headers.has(\"Set-Cookie\"), \"the link proves a mailbox, not this device\").to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownStaffResetEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/password/forgot",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "password", "forgot"]
+            },
+            "description": "Recovery, the half a collection can walk (ADR-0071 §4). The link itself arrives somewhere newman cannot read, so what is proved here is everything either side of it: the answer is `202` with no session and no cookie, and it is the same `202` whether or not an account is behind the address. Walking an actual reset link is the browser tier's, which reads it out of Mailpit."
+          }
+        },
+        {
+          "name": "Reset with a token nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED, and no session is placed\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "  pm.expect(pm.response.headers.has(\"Set-Cookie\"), \"a refused link signs nobody in\").to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/password/reset",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "auth", "password", "reset"]
+            },
+            "description": "One indistinguishable `401` for every way a reset link can fail — unknown, already spent, expired, or minted for the other population (ADR-0071 §4). The caller is an anonymous holder of a URL fragment, so every distinction between those cases is something for them to learn; the SPA has one thing to say either way, which is to ask for a new link."
+          }
         }
       ]
     },
@@ -3219,6 +3315,144 @@
               "path": ["api", "v1", "user", "auth", "me"]
             },
             "description": "The same rule in the other direction."
+          }
+        },
+        {
+          "name": "Ask for a password reset link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 with no session at all\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "  pm.expect(pm.response.headers.has(\"Set-Cookie\"), \"the link proves a mailbox, not this device\").to.be.false;",
+                  "});",
+                  "",
+                  "// Kept for the comparison in the next request.",
+                  "pm.environment.set(\"resetAcceptedBody\", JSON.stringify(pm.response.json().data));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/password/forgot",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "password", "forgot"]
+            },
+            "description": "The account this run created through `POST /admin/users`, which is `active` because a staff member typed its address and thereby asserted it (ADR-0071 §3). A per-run address rather than a fixture, because the two hourly counters on this route would refuse a fixed one on the fourth run of the hour. The message goes to a mailbox nobody owns; the answer is what this request asserts, and the next one asserts it is the same for a stranger."
+          }
+        },
+        {
+          "name": "Ask for one for an address nobody holds",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh address per run, for the reason the request above uses one.",
+                  "pm.environment.set(\"unknownResetEmail\", \"qa-noreset-\" + Date.now() + \"@machxi.local\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"the identical 202, byte for byte\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(JSON.stringify(pm.response.json().data)).to.eql(pm.environment.get(\"resetAcceptedBody\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unknownResetEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/password/forgot",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "password", "forgot"]
+            },
+            "description": "The enumeration property, asserted rather than described: an address with a live account and one that has never existed answer the same status and the same body, and the only difference is a message in a mailbox the caller has to already own (ADR-0020 §Enumeration, ADR-0071 §4)."
+          }
+        },
+        {
+          "name": "Reset with a token nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHENTICATED, and no session is placed\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "  pm.expect(pm.response.headers.has(\"Set-Cookie\"), \"a refused link signs nobody in\").to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-token-was-never-minted\",\n  \"newPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/password/reset",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "password", "reset"]
+            },
+            "description": "One indistinguishable `401` for every way a reset link can fail — unknown, already spent, expired, or minted for the other population (ADR-0071 §4). The caller is an anonymous holder of a URL fragment, so every distinction between those cases is something for them to learn; the SPA has one thing to say either way, which is to ask for a new link."
           }
         }
       ]

@@ -23,6 +23,7 @@ import {
   createGlobalRateLimiter,
   createImpersonationRateLimiter,
   createLoginRateLimiter,
+  createMailboxRateLimiter,
   createPasswordResetRateLimiter,
   createRefreshRateLimiter,
   createVerificationRateLimiter,
@@ -404,6 +405,36 @@ export const buildContainer = ({
     verification: createVerificationRateLimiter(
       config,
       rateLimitStore("verification"),
+    ),
+    /**
+     * The third of them, and the only limiter in the container with no source
+     * address in its key (ADR-0071 §4, amended at `D18.5`).
+     *
+     * Mounted **beside** `passwordReset` on both segments' `forgot` rather
+     * than instead of it: the pair is the decision. That one bounds what a
+     * single sender may mail one mailbox; this one bounds what the mailbox
+     * receives from everybody, which nothing did — every other limiter here,
+     * the global one included, keys on the caller's address and so varies with
+     * the cheapest thing an attacker can change.
+     */
+    mailbox: createMailboxRateLimiter(config, rateLimitStore("mailbox")),
+    /**
+     * The argon2 budget on `password/reset` — the login limiter's numbers in a
+     * **counter of its own** (`D18.5`'s `security-reviewer`).
+     *
+     * The route hashes a password before it can know whether the token is any
+     * good, so it needs the liveness control ADR-0020 §Hashing cost describes
+     * and `register` already shares. What it must not share is the count:
+     * `resetPasswordBody` carries no `email`, so its key degrades to the
+     * caller's address alone — and that is the *same* key `login` and
+     * `register` produce for a request whose body has no readable address.
+     * One instance would let ten malformed `POST /login` bodies from an IP
+     * block password-reset **completion** for everybody behind it, which is a
+     * denial of the one flow a person reaches when nothing else works.
+     */
+    passwordResetSubmit: createLoginRateLimiter(
+      config,
+      rateLimitStore("password-reset-submit"),
     ),
   } as const;
 

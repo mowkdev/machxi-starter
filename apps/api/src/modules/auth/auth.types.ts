@@ -52,13 +52,15 @@ export interface PrincipalRecord {
 
 /**
  * The minimum an anonymous flow may learn about an account it is about to mail
- * (ADR-0071 §3).
+ * (ADR-0071 §3, §4).
  *
- * Not a {@link PrincipalRecord}: `resend-verification` answers `202` whatever
- * it finds, so what it needs is an id to mint against and the address as the
- * database holds it — never the password hash, the roles or the wire resource.
+ * Not a {@link PrincipalRecord}: `resend-verification` and `password/forgot`
+ * answer `202` whatever they find, so what they need is an id to mint against
+ * and the address as the database holds it — never the password hash, the
+ * roles or the wire resource. Two anonymous endpoints reaching for a record
+ * that carries a credential is how one of them eventually returns it.
  */
-export interface PendingPrincipal {
+export interface MailablePrincipal {
   readonly id: string;
   readonly email: string;
 }
@@ -130,5 +132,19 @@ export interface PrincipalAdapter<P extends Population = Population> {
   findPendingVerificationByEmail?: (
     email: string,
     tx?: DbExecutor,
-  ) => Promise<PendingPrincipal | undefined>;
+  ) => Promise<MailablePrincipal | undefined>;
+  /**
+   * The one lookup `password/forgot` performs, and the only one here that is
+   * **not** optional (ADR-0071 §4): the reset exists on both segments, so an
+   * adapter that could not answer it would be an adapter whose segment silently
+   * mails nobody.
+   *
+   * Answers `undefined` for an unknown address and for every account a link
+   * must not be sent to — `pending_verification`, `invited`, `disabled`,
+   * deleted — which is every case the endpoint answers `202` to.
+   */
+  findActiveByEmail: (
+    email: string,
+    tx?: DbExecutor,
+  ) => Promise<MailablePrincipal | undefined>;
 }

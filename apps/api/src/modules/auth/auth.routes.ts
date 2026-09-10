@@ -12,10 +12,12 @@ import type { AuthController } from "./auth.controller.js";
 import type { ImpersonationController } from "./auth.impersonation.controller.js";
 import { exchangeImpersonationSchema } from "./auth.impersonation.schemas.js";
 import {
+  forgotPasswordSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
 } from "./auth.schemas.js";
 
@@ -47,6 +49,24 @@ export interface AuthRouterDeps {
   readonly loginRateLimiter: RequestHandler;
   readonly refreshRateLimiter: RequestHandler;
   /**
+   * ADR-0071 §4's `3 / hour / IP + email` on `password/forgot` — what one
+   * sender may mail one mailbox.
+   */
+  readonly passwordResetRateLimiter: RequestHandler;
+  /**
+   * Its other half, keyed on the **mailbox alone** (§4, amended at `D18.5`) —
+   * what that mailbox receives from everybody. Both are mounted, in that
+   * order, because they answer two different questions and neither implies
+   * the other.
+   */
+  readonly mailboxRateLimiter: RequestHandler;
+  /**
+   * The argon2 budget on `password/reset` — the login limiter's numbers in a
+   * counter of its own, because the reset's body carries no address and would
+   * otherwise share the bucket every malformed `login` lands in.
+   */
+  readonly passwordResetSubmitRateLimiter: RequestHandler;
+  /**
    * The exchange half of the impersonation flow (ADR-0057 §3).
    *
    * Passed to both mounts and registered by only one — see the route below.
@@ -72,6 +92,9 @@ export const createAuthRouter = ({
   population,
   loginRateLimiter,
   refreshRateLimiter,
+  passwordResetRateLimiter,
+  mailboxRateLimiter,
+  passwordResetSubmitRateLimiter,
   impersonation,
   refuseImpersonated,
 }: AuthRouterDeps): Router => {
@@ -116,6 +139,52 @@ export const createAuthRouter = ({
     }),
     validate(refreshSchema),
     controller.refresh,
+  );
+
+  /*
+   * Password recovery, both segments (ADR-0071 §4).
+   *
+   * Unauthenticated and mounted **above** `authenticate`, beside `login`, for
+   * the reason `login` is here: these are how somebody who cannot sign in gets
+   * back in, so a guard on them would be a guard on the recovery itself.
+   *
+   * **Neither carries a CSRF guard**, and that is the decision `login` makes
+   * rather than an oversight (ADR-0029 §CSRF): the request leans on nothing in
+   * the browser's jar — the address or the token in the body is the whole
+   * input — so there is no cross-site submission whose intent needs proving.
+   * Mounting one would also refuse a signed-in browser's perfectly ordinary "I
+   * forgot my password", because the guard fires on the presence of the
+   * refresh cookie rather than on the endpoint's use of it.
+   *
+   * `forgot` carries **two** limiters and the pair is the decision (§4,
+   * amended at `D18.5`): the first bounds what one sender may mail one
+   * mailbox, the second bounds what that mailbox receives from everybody.
+   * Every other limiter in this repository keys on the caller's address, so
+   * all of them vary together with the cheapest thing an attacker can change.
+   *
+   * `reset` carries the **login limiter's numbers in a counter of its own**,
+   * for the reason `register` shares that limiter (ADR-0020 §Hashing cost vs.
+   * liveness): the request hashes a password before it can know whether the
+   * token is any good, and every request admitted here holds a libuv thread
+   * and 64 MiB for ~130 ms. It is not the mail budget's business — nothing is
+   * sent. The counter is its own because this body carries no address, so the
+   * key degrades to the caller's, which is exactly the key a `login` with no
+   * readable address produces: one shared instance would let ten malformed
+   * sign-in attempts from an IP block reset *completion* for everybody behind
+   * it (`D18.5`'s `security-reviewer`).
+   */
+  router.post(
+    "/password/forgot",
+    passwordResetRateLimiter,
+    mailboxRateLimiter,
+    validate(forgotPasswordSchema),
+    controller.forgotPassword,
+  );
+  router.post(
+    "/password/reset",
+    passwordResetSubmitRateLimiter,
+    validate(resetPasswordSchema),
+    controller.resetPassword,
   );
 
   // The exchange (ADR-0057 §3), unauthenticated like `login` and for the same

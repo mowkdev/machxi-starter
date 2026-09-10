@@ -85,6 +85,13 @@ describe("createRateLimitStore", () => {
         // every limiter gets its own store whatever it is called.
         "password-reset",
         "verification",
+        // The mailbox limiter (`D18.5`, ADR-0071 §4). It shares its window with
+        // the two above and keys on the address alone, so on Redis it is one
+        // more string that must not collide with theirs.
+        "mailbox",
+        // The reset's own argon2 counter (`D18.5`): the login limiter's
+        // numbers, and it must not share the login limiter's keys.
+        "password-reset-submit",
       ].map((name) => (handle.store(name) as { prefix: string }).prefix);
 
       expect(new Set(prefixes).size).toBe(prefixes.length);
@@ -95,6 +102,8 @@ describe("createRateLimitStore", () => {
         "rl:impersonation:",
         "rl:password-reset:",
         "rl:verification:",
+        "rl:mailbox:",
+        "rl:password-reset-submit:",
       ]);
     });
   });

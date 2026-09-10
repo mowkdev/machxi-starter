@@ -1,7 +1,9 @@
 # ADR-0027: Credential self-service and administrative password reset
 
-- Status: accepted
+- Status: superseded by [ADR-0071](0071-mail-flows.md) (delta: the recovery this record left out is built — `forgot` and `reset` on both segments, by mail; §6 and §7 add a change of address, self-service and administrative)
 - Date: 2026-08-18
+
+> **Superseded in part 2026-09-10 by [ADR-0071](0071-mail-flows.md)**, at the head of `D18.5`, the step that builds the reset. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): §Out of scope below says "email-based password reset — needs email delivery, a single-use token table and the `3 / hour` limiter [ADR-0020](0020-security-baseline.md) reserves", and all three now exist, so 0071 §4 builds it. **Everything this record decides stands and is in force**: the current-password rule wherever a credential changes, the session rule on a self-service change (every other device, never this one), the administrative reset with the actor's own password re-presented, [ADR-0017](0017-identity-model-populations-and-roles.md)'s rank rule applied to it, and the four endpoints themselves — "another admin resets you" stays true and stops being the only path. 0071 §6 and §7 add what this record has no equivalent of at all, a change of **address**: proven by the account holder, or set outright by a super admin. Read 0071 for recovery and addresses, and this record for everything a signed-in principal does to its own credential.
 
 ## Context
 

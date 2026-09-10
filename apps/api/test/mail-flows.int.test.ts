@@ -1,12 +1,14 @@
-import { accountTokens, auditEvents, users } from "@repo/db";
+import { accountTokens, auditEvents, staff, users } from "@repo/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { login } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
 import { lastMailTo, tokenFromMail } from "./support/mail.js";
 import {
   FIXTURE_PASSWORD,
+  FIXTURE_STAFF,
   FIXTURE_USERS,
   resetAndSeed,
 } from "./support/seed.js";
@@ -437,3 +439,348 @@ describe("verification with self-registration switched off", () => {
     expect(response.body.error.code).toBe("UNAUTHENTICATED");
   });
 });
+
+/**
+ * Password recovery on both segments (ADR-0071 §4).
+ *
+ * The cases are written once and run per population, the shape
+ * `auth.int.test.ts` established: one service serves both, so a claim proved
+ * on one segment and not the other is a claim about an accident.
+ *
+ * What this proves that a unit test cannot: `forgot` answers the identical
+ * `202` for four different kinds of address while mailing exactly one of them;
+ * the new hash, the audit row and the revocation share **one** transaction
+ * against a real database; every session of the account is gone afterwards,
+ * which is the property the flow exists for; and a token minted for one
+ * population finds no row at all on the other's endpoint, because the consume
+ * matches the population inside its own `where`.
+ *
+ * The limiters are not here. `.env.test` turns both mail budgets off for the
+ * suite — these cases ask for the same account's link a dozen times over — and
+ * they are proved where every other mounted limiter is, in
+ * `rate-limit.int.test.ts`, against an app built with the real numbers.
+ */
+const RESET_CASES = [
+  {
+    population: "staff" as const,
+    base: "/api/v1/admin/auth",
+    known: FIXTURE_STAFF.manager,
+    /** The address this segment's `forgot` must refuse to mail. */
+    closed: FIXTURE_STAFF.editor,
+    /** Staff have no status meaning "the mailbox was never proven". */
+    unprovable: undefined,
+  },
+  {
+    population: "user" as const,
+    base: "/api/v1/user/auth",
+    known: FIXTURE_USERS.active,
+    closed: FIXTURE_USERS.disabled,
+    /** The seeded `pending_verification` row (ADR-0071 §3, amended `D18.1`). */
+    unprovable: FIXTURE_USERS.pending,
+  },
+] as const;
+
+describe.each(RESET_CASES)(
+  "password reset on the $population segment",
+  ({ population, base, known, closed, unprovable }) => {
+    let harness: TestApp;
+
+    beforeAll(async () => {
+      harness = createTestApp();
+      await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    });
+
+    afterAll(async () => {
+      await harness.close();
+    });
+
+    beforeEach(() => {
+      harness.mail.length = 0;
+    });
+
+    const request = () => supertest(harness.app);
+    const forgot = (email: string) =>
+      request().post(`${base}/password/forgot`).send({ email });
+    const reset = (body: Record<string, unknown>) =>
+      request().post(`${base}/password/reset`).send(body);
+
+    /** Asks, and hands back the token the message carried. */
+    const forgotAndReadLink = async (email: string): Promise<string> => {
+      await forgot(email).expect(202);
+
+      return tokenFromMail(lastMailTo(harness, email));
+    };
+
+    /** Moves the fixture this segment recovers between statuses. */
+    const setKnownStatus = async (
+      status: "active" | "disabled",
+    ): Promise<void> => {
+      // Branched rather than picking the table into a variable: the two tables
+      // are different Drizzle types and a union of them types nothing useful.
+      if (population === "staff") {
+        await harness.db.db
+          .update(staff)
+          .set({ status })
+          .where(eq(staff.email, known));
+
+        return;
+      }
+
+      await harness.db.db
+        .update(users)
+        .set({ status })
+        .where(eq(users.email, known));
+    };
+
+    /** Puts the fixture's own password back, so later cases can sign in. */
+    const restorePassword = async (): Promise<void> => {
+      const token = await forgotAndReadLink(known);
+
+      await reset({ token, newPassword: FIXTURE_PASSWORD }).expect(204);
+    };
+
+    /* ── forgot: one answer, and at most one message ─────────────────────── */
+
+    it("answers 202 and mails exactly one link for a live account", async () => {
+      const response = await forgot(known).expect(202);
+
+      expect(response.body.data).toEqual({ accepted: true });
+      expect(response.headers["set-cookie"]).toBeUndefined();
+      expect(harness.mail).toHaveLength(1);
+      expect(harness.mail[0]?.to).toBe(known);
+    });
+
+    it("puts the token in the fragment of a link into this segment's own app", async () => {
+      const token = await forgotAndReadLink(known);
+      const text = harness.mail[0]?.text ?? "";
+      const [beforeHash = ""] = text.split("#token=");
+      const origin =
+        population === "staff"
+          ? harness.config.apps.adminUrl
+          : harness.config.apps.customerUrl;
+
+      // The reset is the one flow that exists on both segments, so its link is
+      // the one that has to know which app the reader signs into (ADR-0071 §2).
+      expect(text).toContain(`${origin}/reset-password#token=${token}`);
+      expect(
+        beforeHash,
+        "no server log, proxy or Referer sees it",
+      ).not.toContain(token);
+    });
+
+    it("answers the same 202 for an address nobody holds, and mails nothing", async () => {
+      const response = await forgot(`nobody.${population}@machxi.local`).expect(
+        202,
+      );
+
+      expect(response.body.data).toEqual({ accepted: true });
+      expect(harness.mail).toHaveLength(0);
+    });
+
+    it("answers the same 202 for an account that cannot sign in, and mails nothing", async () => {
+      // A recovery link is a way in, and these accounts have none by decision
+      // (ADR-0071 §4). The seeds carry no inactive operator, so the staff case
+      // makes one — the claim is about the status rather than about which
+      // fixture happens to hold it.
+      if (population === "staff") {
+        await harness.db.db
+          .update(staff)
+          .set({ status: "disabled" })
+          .where(eq(staff.email, closed));
+      }
+
+      const response = await forgot(closed).expect(202);
+
+      expect(response.body.data).toEqual({ accepted: true });
+      expect(harness.mail).toHaveLength(0);
+    });
+
+    it("answers the same 202 for the other population's address, and mails nothing", async () => {
+      // Containment of the **mint**, where the case below contains the consume:
+      // each segment looks its address up in its own table, so a customer who
+      // asks the admin segment for a link is an address nobody there holds
+      // (ADR-0015's segments, ADR-0071 §4). A shared lookup would mail an
+      // operator's link into a customer's mailbox and the other way round.
+      const foreign =
+        population === "staff" ? FIXTURE_USERS.active : FIXTURE_STAFF.manager;
+      const response = await forgot(foreign).expect(202);
+
+      expect(response.body.data).toEqual({ accepted: true });
+      expect(harness.mail).toHaveLength(0);
+    });
+
+    if (unprovable !== undefined) {
+      it("answers the same 202 for an address that was never proven, and mails nothing", async () => {
+        // The one case a reader might expect to be mailed, and it is the one
+        // that matters most: a `pending_verification` account has not confirmed
+        // its mailbox, so a recovery link sent there would hand a credential to
+        // an address nobody has proven belongs to the account (ADR-0071 §4).
+        const response = await forgot(unprovable).expect(202);
+
+        expect(response.body.data).toEqual({ accepted: true });
+        expect(harness.mail).toHaveLength(0);
+      });
+    }
+
+    it("leaves one working link however many times it is asked for", async () => {
+      // A mint supersedes the live row for the pair, so asking twice cannot
+      // grow a set of redeemable links (ADR-0071 §1).
+      const first = await forgotAndReadLink(known);
+
+      harness.mail.length = 0;
+      const second = await forgotAndReadLink(known);
+
+      expect(second).not.toBe(first);
+      await reset({ token: first, newPassword: "Superseded!2026" }).expect(401);
+      await reset({ token: second, newPassword: "Superseded!2026" }).expect(
+        204,
+      );
+      await restorePassword();
+    });
+
+    /* ── reset: the hash, the sessions, and no session of its own ────────── */
+
+    it("sets the new password, ends every session, and issues none", async () => {
+      const NEXT = "RecoveredByMail!2026";
+      const before = await login(harness.app, population, {
+        email: known,
+        password: FIXTURE_PASSWORD,
+      });
+      const token = await forgotAndReadLink(known);
+
+      const response = await reset({ token, newPassword: NEXT }).expect(204);
+
+      // The link proved the mailbox, not the device (ADR-0071 §4): there is no
+      // transport call on this path at all, so not even a caller asking for
+      // cookies gets one.
+      expect(response.headers["set-cookie"]).toBeUndefined();
+      expect(response.body).toEqual({});
+
+      // Every session is gone, including one opened before the link was asked
+      // for: the person may be recovering the account from somebody.
+      const refused = await request()
+        .post(`${base}/refresh`)
+        .send({ refreshToken: before.refreshToken })
+        .expect(401);
+
+      expect(refused.body.error.code).toBe("AUTH_SESSION_REVOKED");
+
+      await request()
+        .post(`${base}/login`)
+        .send({ email: known, password: FIXTURE_PASSWORD })
+        .expect(401);
+      await login(harness.app, population, { email: known, password: NEXT });
+
+      const token2 = await forgotAndReadLink(known);
+
+      await reset({ token: token2, newPassword: FIXTURE_PASSWORD }).expect(204);
+    });
+
+    it("writes an `account.password_reset` audit row attributed to the account", async () => {
+      const token = await forgotAndReadLink(known);
+
+      await reset({ token, newPassword: FIXTURE_PASSWORD }).expect(204);
+
+      const [row] = await harness.db.db
+        .select({
+          event: auditEvents.event,
+          actorType: auditEvents.actorType,
+          actingAsId: auditEvents.actingAsId,
+        })
+        .from(auditEvents)
+        .where(eq(auditEvents.event, "account.password_reset"))
+        .orderBy(desc(auditEvents.occurredAt));
+
+      expect(row).toMatchObject({
+        event: "account.password_reset",
+        // The route is anonymous, so the actor comes off the claimed row and
+        // there is no impersonation to record (ADR-0058).
+        actorType: population,
+        actingAsId: null,
+      });
+    });
+
+    it("refuses a replay with 401 and leaves the password alone", async () => {
+      const token = await forgotAndReadLink(known);
+
+      await reset({ token, newPassword: FIXTURE_PASSWORD }).expect(204);
+
+      const replay = await reset({
+        token,
+        newPassword: "ReplayedLink!2026",
+      }).expect(401);
+
+      expect(replay.body.error.code).toBe("UNAUTHENTICATED");
+      await login(harness.app, population, {
+        email: known,
+        password: FIXTURE_PASSWORD,
+      });
+    });
+
+    it("refuses a token nobody minted with the same answer", async () => {
+      const response = await reset({
+        token: "this-token-was-never-minted",
+        newPassword: "NeverMinted!2026",
+      }).expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("spends nothing when the account can no longer be reset", async () => {
+      // The consume **succeeds** and the account check then throws, so this is
+      // the case that proves the transaction: the claim, the new hash, the
+      // audit row and the revocations are one unit, and the throw takes all
+      // four back (ADR-0071 §1, §4). The cross-segment case below refuses in
+      // the `where` and therefore has nothing to roll back — a different
+      // property, and this one is verification's `"spends nothing"` twin.
+      const token = await forgotAndReadLink(known);
+
+      await setKnownStatus("disabled");
+      await reset({ token, newPassword: "NeverApplied!2026" }).expect(401);
+
+      const [row] = await harness.db.db
+        .select({ consumedAt: accountTokens.consumedAt })
+        .from(accountTokens)
+        .where(
+          and(
+            eq(accountTokens.purpose, "reset_password"),
+            eq(accountTokens.principalType, population),
+          ),
+        )
+        .orderBy(desc(accountTokens.createdAt));
+
+      expect(row?.consumedAt, "a refused consume rolls its stamp back").toBe(
+        null,
+      );
+
+      await setKnownStatus("active");
+
+      // The hash and the sessions rolled back with it, so the password the
+      // account had is still the password it has — and the link still works,
+      // which is what "spends nothing" means to the person holding it.
+      await login(harness.app, population, {
+        email: known,
+        password: FIXTURE_PASSWORD,
+      });
+      await reset({ token, newPassword: FIXTURE_PASSWORD }).expect(204);
+    });
+
+    it("refuses the other segment's token, and spends nothing", async () => {
+      // `reset_password` is minted for both populations, so the consume matches
+      // the population inside its own `where` (`D18.2`'s reviewers). Presented
+      // to the wrong segment the token must find no row at all — and must still
+      // work where it belongs, which is what proves nothing was spent.
+      const other =
+        population === "staff" ? "/api/v1/user/auth" : "/api/v1/admin/auth";
+      const token = await forgotAndReadLink(known);
+
+      const refused = await request()
+        .post(`${other}/password/reset`)
+        .send({ token, newPassword: "WrongSegment!2026" })
+        .expect(401);
+
+      expect(refused.body.error.code).toBe("UNAUTHENTICATED");
+      await reset({ token, newPassword: FIXTURE_PASSWORD }).expect(204);
+    });
+  },
+);

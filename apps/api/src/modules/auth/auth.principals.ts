@@ -73,6 +73,7 @@ export const createStaffPrincipalAdapter = (
 
   touchLastLogin: repository.updateLastLoginAt,
   updatePasswordHash: repository.updatePasswordHash,
+  findActiveByEmail: repository.findActiveByEmail,
 
   // No `create`: staff cannot self-register (ADR-0017 §Invariants). They are
   // created by an admin through `POST /api/v1/admin/staff` in step 9.
@@ -97,6 +98,7 @@ export const createUserPrincipalAdapter = (
 
   touchLastLogin: repository.updateLastLoginAt,
   updatePasswordHash: repository.updatePasswordHash,
+  findActiveByEmail: repository.findActiveByEmail,
 
   /**
    * Insert plus the `customer` grant. Both run on the executor the service

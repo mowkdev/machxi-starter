@@ -34,6 +34,6 @@ Proved by: `apps/api/test/….int.test.ts`, …          at least one, existing
 | [`audit-log.md`](audit-log.md)                     | The append-only audit table and its two write disciplines                              |
 | [`health-and-metrics.md`](health-and-metrics.md)   | `/health/*` and `/metrics`, outside the limiters                                       |
 | [`organizations.md`](organizations.md)             | Organizations, memberships and invitations on both segments, and the guard             |
-| [`mail-flows.md`](mail-flows.md)                   | The single-use token behind every mailed link, and address verification                |
+| [`mail-flows.md`](mail-flows.md)                   | The single-use token behind every mailed link, address verification and recovery       |
 
 A capability with a route and no row here is the finding, and the step that touches it next writes the file.

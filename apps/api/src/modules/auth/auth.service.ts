@@ -1,4 +1,5 @@
 import type {
+  ForgotPasswordBody,
   ImpersonatorResource,
   Locale,
   LoginBody,
@@ -6,6 +7,7 @@ import type {
   PrincipalResource,
   RegisterBody,
   ResendVerificationBody,
+  ResetPasswordBody,
   UserPrincipalResource,
   VerifyEmailBody,
 } from "@repo/contracts";
@@ -23,6 +25,7 @@ import {
   impersonationHandoffInvalid,
   invalidCredentials,
   invalidRefreshToken,
+  passwordResetLinkInvalid,
   refreshReused,
   registrationConflict,
   sessionRevoked,
@@ -582,6 +585,42 @@ export const createAuthService = ({
         "mail delivery failed",
       );
     }
+  };
+
+  /**
+   * The same send, deliberately **not awaited** (ADR-0071 §3–§4, amended at
+   * `D18.5` on that step's `security-reviewer`).
+   *
+   * The two endpoints that answer `202` whatever they find must not differ
+   * between their branches in anything a caller can observe, and *time* is
+   * something a caller can observe: awaiting an SMTP round trip on the branch
+   * where an account exists, against a single indexed `SELECT` on the branch
+   * where none does, is an account-existence oracle measured in the tens or
+   * hundreds of milliseconds — larger than the difference ADR-0018 §Login goes
+   * to the trouble of erasing with `dummyHash()`, and reachable three times an
+   * hour per address, which is all a timing attack needs against a difference
+   * that size.
+   *
+   * `void` rather than a queue: {@link deliver} already swallows every failure
+   * and logs it, so this promise cannot reject and there is nothing to await
+   * for correctness. What it costs is a message lost if the process dies in
+   * the window between the response and the relay accepting it — invisible to
+   * the caller either way, because a `202` never promised delivery, and
+   * recoverable by asking again.
+   *
+   * The **residual** is the mint, which stays on the response path because the
+   * link cannot be built without it: one short transaction against a primary
+   * key, on the order of a millisecond against a sub-millisecond miss. It is
+   * written down in ADR-0071 §4 rather than claimed away, the posture
+   * ADR-0018 §Login takes with its own.
+   */
+  const deliverDetached = (
+    ctx: RequestContext,
+    to: string,
+    purpose: string,
+    template: MailTemplate,
+  ): void => {
+    void deliver(ctx, to, purpose, template);
   };
 
   /**
@@ -1436,6 +1475,166 @@ export const createAuthService = ({
     },
 
     /**
+     * `POST /api/v1/{admin,user}/auth/password/forgot` (ADR-0071 §4).
+     *
+     * **Always resolves**, exactly as `resendVerification` does and for the
+     * identical reason: an unknown address, an active account, a
+     * `pending_verification` one, a disabled one and a deleted one are one
+     * answer — `202` — because anything that differed between them would make
+     * an anonymous endpoint an account-existence oracle (ADR-0020
+     * §Enumeration). The only observable difference is a message in a mailbox
+     * the caller has to already own.
+     *
+     * `findActiveByEmail` is what decides who is mailed, and its narrowness is
+     * the decision rather than an optimisation: a `pending_verification` row
+     * has never proven its address, so a recovery link sent to it would be a
+     * credential mailed to a mailbox nobody has confirmed — the one flow that
+     * could reach that row is the verification link itself.
+     *
+     * The mint supersedes the live token for the pair (ADR-0071 §1), so the
+     * third request in a row leaves one working link rather than three, and
+     * the two limiters on the route bound how many messages the mailbox
+     * receives — one per sender, one for the mailbox itself (§4, amended at
+     * `D18.5`).
+     */
+    requestPasswordReset: async (
+      ctx: RequestContext,
+      { email, locale }: ForgotPasswordBody,
+    ): Promise<void> => {
+      const account = await principals.findActiveByEmail(email);
+
+      if (account === undefined) {
+        // No address on the line, for the reason the failed-login line carries
+        // none: this endpoint is anonymous, and a log full of addresses is a
+        // list of who was probed, with a timestamp.
+        ctx.logger.info(
+          { population },
+          "password reset answered without a message",
+        );
+
+        return;
+      }
+
+      const { token } = await accountTokens.mint(ctx, {
+        purpose: "reset_password",
+        principal: { type: population, id: account.id },
+      });
+
+      deliverDetached(
+        ctx,
+        account.email,
+        "reset_password",
+        mailTemplates.passwordReset({
+          token,
+          locale: localeFor(locale),
+          // The link has to land on the app this account signs into, and the
+          // segment is what knows which (ADR-0071 §2): a staff member sent to
+          // the customer app would arrive at a screen that cannot help them.
+          population,
+        }),
+      );
+
+      ctx.logger.info(
+        { population, principalId: account.id },
+        "password reset link sent",
+      );
+    },
+
+    /**
+     * `POST /api/v1/{admin,user}/auth/password/reset` (ADR-0071 §4).
+     *
+     * The link's whole effect, in one transaction: claim the token, write the
+     * new hash, record it, and **revoke every session of the account** — the
+     * person may well be recovering it from somebody, and a reset that left
+     * the thief's session alive would be a reset in name only.
+     *
+     * **No session is issued**, and that is the decision ADR-0071 §4 states
+     * against the common shortcut: the link proved the mailbox, not the
+     * device. Signing in is one step away and it is the step that proves the
+     * password just chosen actually works.
+     *
+     * **Every refusal rolls the claim back**, as verification's does: a token
+     * naming an account that has been disabled or deleted since the mint is
+     * refused with nothing spent, so the link still works if the account
+     * becomes eligible again.
+     *
+     * The hash is computed **before** the transaction opens. It costs ~130 ms
+     * of a libuv thread (ADR-0020 §Hashing cost vs. liveness), and holding a
+     * claimed token row locked for that long would serialise every reset
+     * behind the slowest one; the price is that a refused token still buys a
+     * hash, which is why the route carries the login limiter — the same
+     * limiter, for the same argon2 reason, that `register` shares.
+     */
+    resetPassword: async (
+      ctx: RequestContext,
+      { token, newPassword }: ResetPasswordBody,
+    ): Promise<void> => {
+      const at = now();
+      const passwordHash = await hashLimiter.run(() =>
+        hasher.hash(newPassword),
+      );
+
+      const { principalId, revoked } = await transaction(async (tx) => {
+        const claimed = await accountTokens.consume(
+          ctx,
+          { purpose: "reset_password", principalType: population, token },
+          tx,
+        );
+
+        if (claimed === undefined) throw passwordResetLinkInvalid();
+
+        const principal = await principals.findById(claimed.principalId, tx);
+
+        // The token was live but the account is not one a link may act on any
+        // more — deleted, disabled, or moved out of `active` meanwhile. One
+        // answer with the unknown-token case, and the throw is what undoes the
+        // claim.
+        if (principal === undefined || !principal.active) {
+          ctx.logger.warn(
+            { population, tokenId: claimed.id },
+            "password reset refused: the account cannot be reset",
+          );
+
+          throw passwordResetLinkInvalid();
+        }
+
+        await principals.updatePasswordHash(principal.id, passwordHash, at, tx);
+
+        // `identities` rather than the context's principal: the route is
+        // anonymous — the token is the credential — so the actor comes off the
+        // row that was claimed (ADR-0058, verification's shape).
+        await audit.record(
+          ctx,
+          {
+            event: "account.password_reset",
+            identities: { actor: { type: population, id: principal.id } },
+          },
+          tx,
+        );
+
+        // In the same transaction as the write, with no exception for any
+        // device: `revokeSessionsFor`'s administrative twin spares nobody
+        // either, and here the account holder has proven a mailbox rather than
+        // a session.
+        const ended = await revokeEverySessionOf(
+          ctx,
+          {
+            principalId: principal.id,
+            reason: REVOKE_REASONS.passwordReset,
+            at,
+          },
+          tx,
+        );
+
+        return { principalId: principal.id, revoked: ended.revoked } as const;
+      });
+
+      ctx.logger.info(
+        { population, principalId, revoked },
+        "password reset from a mailed link",
+      );
+    },
+    /**
      * `POST /api/v1/public/auth/resend-verification` (ADR-0071 §3).
      *
      * **Always resolves.** An unknown address, a live account, a disabled one
@@ -1477,7 +1676,7 @@ export const createAuthService = ({
 
       const token = await mintVerificationLink(ctx, pending.id);
 
-      await deliver(
+      deliverDetached(
         ctx,
         pending.email,
         "verify_email",
