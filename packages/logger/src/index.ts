@@ -48,6 +48,13 @@ export type LogLevel =
  * has always ended with: never put a credential in a field this list does not
  * name.
  *
+ * `clientSecret`, `codeVerifier` and `idToken` are here ahead of their use too
+ * (ADR-0072 §2), for the OIDC flow's three values that must never be written
+ * down: the OAuth client's secret, the PKCE verifier that turns an intercepted
+ * authorization code into a sign-in, and the provider's signed assertion about
+ * a person. The provider port holds all three in camelCase and never logs
+ * them; these entries are what keeps a debugging line from doing it instead.
+ *
  * Note that redaction does not reach pino's `err` serialiser — never build an
  * error message containing a credential or digest.
  */
@@ -70,6 +77,9 @@ export const defaultRedactPaths: readonly string[] = [
   "payload",
   "newEmail",
   "link",
+  "clientSecret",
+  "codeVerifier",
+  "idToken",
   "*.password",
   "*.currentPassword",
   "*.newPassword",
@@ -83,6 +93,9 @@ export const defaultRedactPaths: readonly string[] = [
   "*.payload",
   "*.newEmail",
   "*.link",
+  "*.clientSecret",
+  "*.codeVerifier",
+  "*.idToken",
 ];
 
 export interface CreateLoggerOptions {

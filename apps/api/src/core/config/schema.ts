@@ -128,6 +128,18 @@ export const LOCAL_CUSTOMER_APP_URL = "http://localhost:3002";
 export const LOCAL_ADMIN_APP_URL = "http://localhost:3001";
 
 /**
+ * The API's own origin on a developer's machine (ADR-0072 §2) — the schema's
+ * default for `API_PUBLIC_URL` and, by the same `TRUST_PROXY` shape as the two
+ * app origins above, one production refuses.
+ *
+ * The API composes the OIDC redirect URI out of it, and the identity provider
+ * sends the person's browser back to exactly that address with a single-use
+ * authorization code in the query. An inherited `localhost` would send it into
+ * the person's own machine; plain `http` would put the code on the wire.
+ */
+export const LOCAL_API_PUBLIC_URL = "http://localhost:4000";
+
+/**
  * Whether an app origin is one a production deployment must not mail links to.
  *
  * **The parsed URL, not string identity against the two constants above**
@@ -592,6 +604,51 @@ export const envSchema = z
     PASSWORD_RESET_TOKEN_TTL: durationSchema.default(3600),
     EMAIL_CHANGE_TOKEN_TTL: durationSchema.default(3600),
     STAFF_ONBOARDING_TOKEN_TTL: durationSchema.default(7 * 86400),
+    // ─── Federated identity (ADR-0072 §2) ─────────────────────────────────
+    /**
+     * The Google OAuth client, **both or neither** (the refinement below).
+     *
+     * Absent is the default and a complete configuration: the three sign-in
+     * routes are not mounted and answer `404 ROUTE_NOT_FOUND`, exactly as
+     * registration does with its flag off (ADR-0004). Half a pair is refused
+     * at startup rather than read as either — an id with no secret would mount
+     * routes whose every token exchange fails at Google, and a secret with no
+     * id is a credential somebody pasted into the wrong variable.
+     *
+     * The secret is a credential and is treated as one: it never enters a log
+     * line (`clientSecret` is in the logger's redact paths, ADR-0005) and it
+     * never reaches a browser — the code exchange is server to server.
+     */
+    GOOGLE_CLIENT_ID: optionalEnv(z.string().min(1)),
+    GOOGLE_CLIENT_SECRET: optionalEnv(z.string().min(1)),
+    /**
+     * This API's own public origin, which it has never needed to know until
+     * now: the OIDC redirect URI is `${API_PUBLIC_URL}/api/v1/public/auth/
+     * google/callback`, registered in the provider's console and sent on every
+     * authorization request, so the API has to be able to say it.
+     *
+     * `originSchema()` for the reason the two app URLs use it — a path or a
+     * trailing slash would be concatenated into a redirect URI the console
+     * then refuses to match — and **refused in production at a loopback or
+     * plain-http value** by the same check, for the same class of reason: the
+     * provider sends the person's browser here carrying a single-use code.
+     */
+    API_PUBLIC_URL: originSchema().default(LOCAL_API_PUBLIC_URL),
+    /**
+     * How long the federated sign-in handoff stays redeemable (ADR-0072 §2):
+     * the callback mints it, hands it to the customer app in a redirect's
+     * fragment, and the app exchanges it once for a session.
+     *
+     * The impersonation handoff's sixty seconds for the impersonation
+     * handoff's reason — it is a bearer credential in a URL — and its
+     * five-minute ceiling for the reason that one has a ceiling: "sixty
+     * seconds is all an onlooker gets" must not be retired by `60m` typed for
+     * `60s`. The mail flows' TTLs carry no ceiling because nothing rests on a
+     * phrase; this one does.
+     */
+    FEDERATED_HANDOFF_TTL: durationSchema
+      .pipe(z.number().int().max(300))
+      .default(60),
     CORS_ORIGINS: csvSchema,
 
     // `z.stringbool()`, never `z.coerce.boolean()`: the latter is
@@ -727,6 +784,26 @@ export const envSchema = z
       path: ["ADMIN_APP_URL"],
       message:
         "must be an https origin that is not a loopback address in production, for the reason CUSTOMER_APP_URL must (ADR-0071 §1): the staff onboarding link is built out of it, and it hands whoever opens it a password on an operator account",
+    },
+  )
+  .refine(
+    (env) =>
+      (env.GOOGLE_CLIENT_ID === undefined) ===
+      (env.GOOGLE_CLIENT_SECRET === undefined),
+    {
+      path: ["GOOGLE_CLIENT_ID"],
+      message:
+        "must be set together with GOOGLE_CLIENT_SECRET, or neither (ADR-0072 §2). Both unset leaves sign-in with Google unmounted; half a pair would mount routes whose every code exchange Google refuses, or leave a client secret in a deployment that has no client",
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      !isLocalOrInsecureAppUrl(env.API_PUBLIC_URL),
+    {
+      path: ["API_PUBLIC_URL"],
+      message:
+        "must be an https origin that is not a loopback address in production (ADR-0072 §2). The API builds the OIDC redirect URI out of it, and the identity provider sends the person's browser there carrying a single-use authorization code: the committed http://localhost:4000 would send it into their own machine, and plain http would put it on the wire in the clear",
     },
   )
   .refine(

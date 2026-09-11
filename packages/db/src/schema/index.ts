@@ -8,6 +8,7 @@
 export {
   auditActorTypeEnum,
   citext,
+  federatedProviderEnum,
   gridDensityEnum,
   localeEnum,
   organizationKindEnum,
@@ -44,6 +45,10 @@ export {
 } from "./organizations.js";
 export { sessions } from "./sessions.js";
 export { accountTokens } from "./account-tokens.js";
+export {
+  federatedIdentities,
+  federatedIdentitiesRelations,
+} from "./federated-identities.js";
 export { impersonationHandoffs } from "./impersonation.js";
 export { auditEvents } from "./audit.js";
 export {

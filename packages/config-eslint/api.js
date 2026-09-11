@@ -256,6 +256,10 @@ export const RESTRICTED_SCHEMA_TABLE_IMPORTS = [
   // the one insert path, and it holds no update or delete. The database
   // enforces the same thing twice over since ADR-0061 §2.
   "auditEvents",
+  // A user's external identities (ADR-0072 §1) — a way into an account, so
+  // a query over it belongs in a repository like every other credential
+  // table's, and nowhere above one.
+  "federatedIdentities",
   "impersonationHandoffs",
   // The tenant and what it owns (ADR-0067). Nothing above a repository reaches
   // a table, and these three least of all: an organization query without its
@@ -285,6 +289,7 @@ const noSchemaTables = [
       "schema",
       ...RESTRICTED_SCHEMA_TABLE_IMPORTS,
       "auditActorTypeEnum",
+      "federatedProviderEnum",
       "organizationKindEnum",
       "organizationRoleEnum",
       "principalTypeEnum",

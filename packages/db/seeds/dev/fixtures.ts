@@ -83,3 +83,24 @@ export const DEV_TEAM_ORGANIZATION = {
   invitee: DEV_USERS[1].email,
   inviteeRole: "member",
 } as const;
+
+/**
+ * The one federated identity the fixtures carry (ADR-0072 §1): a Google link
+ * on the first `--dev` customer, so the profile's list of ways in, and the
+ * unlink paths, have a row to answer about on a fresh clone without anybody
+ * signing in through Google.
+ *
+ * **The subject is synthetic and cannot be anybody's.** Google's `sub` is a
+ * decimal string; this one is not, so no real Google account can present an
+ * ID token that resolves to it — which matters, because resolution is by
+ * subject first and a fixture subject that collided with a real one would
+ * sign that stranger into `customer@machxi.local` on any clone configured
+ * with real credentials. The account keeps its password, so the fixture is
+ * the "both ways in" shape rather than the passwordless one.
+ */
+export const DEV_FEDERATED_IDENTITY = {
+  userEmail: DEV_USERS[0].email,
+  provider: "google",
+  subject: "dev-fixture-google-subject-customer",
+  email: DEV_USERS[0].email,
+} as const;

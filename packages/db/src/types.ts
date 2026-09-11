@@ -3,6 +3,7 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type {
   accountTokens,
   auditEvents,
+  federatedIdentities,
   impersonationHandoffs,
   organizationInvitations,
   organizationMemberships,
@@ -63,6 +64,14 @@ export type NewImpersonationHandoff = InferInsertModel<
  */
 export type AccountToken = InferSelectModel<typeof accountTokens>;
 export type NewAccountToken = InferInsertModel<typeof accountTokens>;
+
+/**
+ * A user's external identity (ADR-0072 §1): one provider account, resolved by
+ * (`provider`, `subject`). `email` is what the provider reported at the link —
+ * informational, and never a lookup key afterwards.
+ */
+export type FederatedIdentity = InferSelectModel<typeof federatedIdentities>;
+export type NewFederatedIdentity = InferInsertModel<typeof federatedIdentities>;
 
 /**
  * An audit row (ADR-0058).

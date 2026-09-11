@@ -12,6 +12,7 @@
  */
 
 export {
+  FEDERATED_PROVIDERS,
   INVITATION_STATUSES,
   ORGANIZATION_KINDS,
   ORGANIZATION_OWNER_ROLE,
@@ -24,6 +25,7 @@ export {
   TOKEN_PURPOSES,
   USER_ROLES,
   USER_STATUSES,
+  type FederatedProvider,
   type InvitationStatus,
   type OrganizationKind,
   type OrganizationRole,

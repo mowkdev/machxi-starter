@@ -99,6 +99,11 @@ export const TRUNCATED_TABLES = [
   // foreign key, so nothing sweeps it as a side effect and the next file's
   // "the token consumes once" would be answered by somebody else's row.
   "account_tokens",
+  // Named although `cascade` on `users` would empty it (ADR-0072 §1 gives it
+  // a real foreign key), for the settings tables' reason below: this list is
+  // read as "every application table". A fixture identity one integration
+  // file links would otherwise still resolve a subject in the next.
+  "federated_identities",
   // The one table `cascade` can never reach: `audit_events` carries no foreign
   // key by decision (ADR-0058), so nothing sweeps it as a side effect and a
   // row written by one integration file would otherwise be counted by the

@@ -104,8 +104,8 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 ## Requirement: An admin delete is soft, and ends every session
 
-`DELETE /admin/users/:id` sets `deletedAt` and `status: "disabled"`, revokes every session of the account and soft-deletes its personal organization in the same transaction, and answers `204`. A second delete answers `409 USER_DELETED`. The row survives; the address becomes registrable again. The organization half is stated in full by [`organizations.md`](organizations.md).
-Records: [ADR-0028](../adr/0028-account-deletion.md)
+`DELETE /admin/users/:id` sets `deletedAt` and `status: "disabled"`, revokes every session of the account, soft-deletes its personal organization and deletes its federated identities in the same transaction, and answers `204`. A second delete answers `409 USER_DELETED`. The row survives; the address becomes registrable again, and any Google account linked to it can sign in or link again. The organization half is stated in full by [`organizations.md`](organizations.md).
+Records: [ADR-0028](../adr/0028-account-deletion.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
 Proved by: `apps/api/test/users-admin.int.test.ts`
 
 ### Scenario: Delete, then read
@@ -117,6 +117,11 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 - **WHEN** the same account is deleted again
 - **THEN** the answer is `409 USER_DELETED`
+
+### Scenario: A linked Google account is released
+
+- **WHEN** an admin deletes an account that has a Google identity linked
+- **THEN** the identity is gone, and the same Google subject can be linked to another account
 
 ## Requirement: The profile is the caller's own, names only
 
@@ -142,8 +147,8 @@ Proved by: `apps/api/test/user-profile.int.test.ts`
 
 ## Requirement: An account may close itself, with its password
 
-`DELETE /user/profile` takes `{ currentPassword }`, verifies it before writing, then soft-deletes the account and its personal organization, revokes every session — the caller's included — clears the user population's cookies, and answers `204`. A second attempt answers `404 NOT_FOUND`: the self view no longer sees the account.
-Records: [ADR-0055](../adr/0055-customer-app.md), [ADR-0028](../adr/0028-account-deletion.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md)
+`DELETE /user/profile` takes `{ currentPassword }`, verifies it before writing, then soft-deletes the account and its personal organization, deletes its federated identities, revokes every session — the caller's included — clears the user population's cookies, and answers `204`. A second attempt answers `404 NOT_FOUND`: the self view no longer sees the account.
+Records: [ADR-0055](../adr/0055-customer-app.md), [ADR-0028](../adr/0028-account-deletion.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
 Proved by: `apps/api/test/user-profile.int.test.ts`
 
 ### Scenario: Wrong password

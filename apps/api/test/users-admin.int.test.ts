@@ -6,6 +6,7 @@ import {
 import {
   accountTokens,
   auditEvents,
+  federatedIdentities,
   organizationMemberships,
   organizations,
   personalOrganizationSlug,
@@ -881,6 +882,45 @@ describe("admin user administration", () => {
         .expect(401);
 
       expect(relogin.body.error.code).toBe("AUTH_INVALID_CREDENTIALS");
+    });
+
+    it("releases the account's federated identities, so the subject can come back too (ADR-0072 §1)", async () => {
+      // `(provider, subject)` is unique with no predicate: an identity left
+      // on a deleted row would hold that Google account forever, and the
+      // person could return with a password but never through Google. The
+      // delete is the identity table's version of releasing the address.
+      const first = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "delete.identity@machxi.local" },
+      );
+      const subject = "delete-identity-subject";
+
+      await harness.db.db
+        .insert(federatedIdentities)
+        .values({ userId: first.id, provider: "google", subject });
+
+      await remove(adminTokens.accessToken, first.id).expect(204);
+
+      expect(
+        await harness.db.db
+          .select({ id: federatedIdentities.id })
+          .from(federatedIdentities)
+          .where(eq(federatedIdentities.userId, first.id)),
+      ).toEqual([]);
+
+      // And the subject is free for the account the person comes back as.
+      const second = await createUserAccount(
+        harness.app,
+        adminTokens.accessToken,
+        { email: "delete.identity.again@machxi.local" },
+      );
+
+      await expect(
+        harness.db.db
+          .insert(federatedIdentities)
+          .values({ userId: second.id, provider: "google", subject }),
+      ).resolves.not.toThrow();
     });
 
     it("releases the address, so the same person can come back", async () => {

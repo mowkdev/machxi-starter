@@ -27,6 +27,7 @@ export * as schema from "./schema/index.js";
 export {
   accountTokens,
   auditEvents,
+  federatedIdentities,
   impersonationHandoffs,
   organizationInvitations,
   organizationMemberships,
@@ -42,6 +43,7 @@ export {
 
 export {
   auditActorTypeEnum,
+  federatedProviderEnum,
   localeEnum,
   organizationKindEnum,
   organizationRoleEnum,
@@ -67,9 +69,11 @@ export {
 export type {
   AccountToken,
   AuditEvent,
+  FederatedIdentity,
   ImpersonationHandoff,
   NewAccountToken,
   NewAuditEvent,
+  NewFederatedIdentity,
   NewImpersonationHandoff,
   NewOrganization,
   NewOrganizationInvitation,

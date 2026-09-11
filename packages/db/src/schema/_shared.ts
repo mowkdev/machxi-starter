@@ -2,6 +2,7 @@ import { customType, pgEnum, timestamp, uuid } from "drizzle-orm/pg-core";
 import { uuidv7 } from "uuidv7";
 
 import {
+  FEDERATED_PROVIDERS,
   GRID_DENSITIES,
   LOCALES,
   ORGANIZATION_KINDS,
@@ -153,3 +154,14 @@ export const organizationRoleEnum = pgEnum(
  * sort order moves.
  */
 export const tokenPurposeEnum = pgEnum("token_purpose", TOKEN_PURPOSES);
+
+/**
+ * Which external provider a row of `federated_identities` belongs to
+ * (ADR-0072 §1), built from the `@repo/contracts` tuple like every other one
+ * here. One label today; a second provider is an appended label and an
+ * adapter, and nothing in the table names Google.
+ */
+export const federatedProviderEnum = pgEnum(
+  "federated_provider",
+  FEDERATED_PROVIDERS,
+);

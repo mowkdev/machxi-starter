@@ -16,6 +16,7 @@ import {
 import { devStaffSeeder } from "./dev/101-dev-staff.js";
 import { devUsersSeeder } from "./dev/102-dev-users.js";
 import { devOrganizationsSeeder } from "./dev/103-dev-organizations.js";
+import { devFederatedIdentitiesSeeder } from "./dev/104-dev-federated-identities.js";
 import { superAdminSeeder } from "./seeders/001-super-admin.js";
 import type { SeedContext, Seeder } from "./types.js";
 
@@ -42,6 +43,9 @@ export const devSeeders: readonly Seeder[] = [
   // filename prefix is the order, and the order is what lets a later seeder
   // rely on an earlier one.
   devOrganizationsSeeder,
+  // After `102` for the same reason: the identity is linked to an account that
+  // seeder creates (ADR-0072 §1).
+  devFederatedIdentitiesSeeder,
 ];
 
 export interface SeedArgs {

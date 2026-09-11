@@ -108,6 +108,16 @@ services:
       # browser bundles: same values, different consumers.
       - CUSTOMER_APP_URL=${CUSTOMER_APP_URL}
       - ADMIN_APP_URL=${ADMIN_APP_URL}
+      # The API's own public origin (ADR-0072 §2), in the same `${…}` form and
+      # for the same reason: production refuses the development default, and a
+      # fallback here would supply it and put the refusal back to sleep.
+      - API_PUBLIC_URL=${API_PUBLIC_URL}
+      # Sign in with Google (ADR-0072 §2). Bare keys: unset means the routes
+      # are not mounted, which is a complete configuration, and the schema
+      # refuses one half without the other.
+      - GOOGLE_CLIENT_ID
+      - GOOGLE_CLIENT_SECRET
+      - FEDERATED_HANDOFF_TTL
       # The four link lifetimes (ADR-0071 §1). Bare keys: unset means the
       # schema's own 24h / 1h / 1h / 7d, which are sized by what the recipient
       # is being asked to do rather than by the deployment.

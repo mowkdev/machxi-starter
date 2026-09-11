@@ -80,6 +80,7 @@ const TTLS: Record<TokenPurpose, number> = {
   reset_password: 3600,
   change_email: 900,
   staff_onboarding: 7 * 86400,
+  federated_login: 60,
 };
 
 const NOW = new Date("2026-09-10T12:00:00.000Z");

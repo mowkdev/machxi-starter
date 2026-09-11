@@ -1,4 +1,9 @@
-import { userRoles, users, type DbExecutor } from "@repo/db";
+import {
+  federatedIdentities,
+  userRoles,
+  users,
+  type DbExecutor,
+} from "@repo/db";
 import type { ListQuery, UserRole, UserStatus } from "@repo/contracts";
 import {
   and,
@@ -755,6 +760,15 @@ export const createUsersRepository = (db: DbExecutor) =>
      * Only live rows match, so a second delete is a no-op rather than a
      * timestamp that moves; the service refuses it before reaching here.
      *
+     * **The account's federated identities go with it, hard-deleted on the
+     * same executor** (ADR-0072 §1, amended at `D19.1`) — the identity
+     * table's version of the partial index that releases the address
+     * (ADR-0028). `(provider, subject)` is unique with no predicate, so an
+     * identity left on a deleted row would hold the Google account forever:
+     * the person could come back with a password and never through Google.
+     * Nothing is lost by deleting it — an identity is a way in, and a deleted
+     * account has none — and the trail keeps the account's own deletion.
+     *
      * @returns `false` when no live row has that id.
      */
     softDelete: async (
@@ -768,7 +782,13 @@ export const createUsersRepository = (db: DbExecutor) =>
         .where(and(eq(users.id, id), isNull(users.deletedAt)))
         .returning({ id: users.id });
 
-      return deleted.length > 0;
+      if (deleted.length === 0) return false;
+
+      await tx
+        .delete(federatedIdentities)
+        .where(eq(federatedIdentities.userId, id));
+
+      return true;
     },
 
     // No standalone `rolesOf` — see the note in `staff.repository.ts`.

@@ -2,6 +2,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import {
+  FEDERATED_PROVIDERS,
   POPULATIONS,
   STAFF_ROLES,
   STAFF_STATUSES,
@@ -14,6 +15,8 @@ import {
   accountTokens,
   auditActorTypeEnum,
   auditEvents,
+  federatedIdentities,
+  federatedProviderEnum,
   impersonationHandoffs,
   principalTypeEnum,
   sessions,
@@ -52,6 +55,7 @@ describe("enums", () => {
     // session and a recorded fact must be free to grow apart.
     ["audit_actor_type", auditActorTypeEnum, POPULATIONS],
     ["token_purpose", tokenPurposeEnum, TOKEN_PURPOSES],
+    ["federated_provider", federatedProviderEnum, FEDERATED_PROVIDERS],
   ])(
     "%s mirrors its @repo/contracts tuple, in order",
     (name, pgEnum, contractValues) => {
@@ -198,6 +202,81 @@ describe("account_tokens", () => {
         "name" in column ? column.name : "(expression)",
       ),
     ).toEqual(["principalType", "principalId", "purpose"]);
+  });
+});
+
+describe("federated_identities", () => {
+  const config = getTableConfig(federatedIdentities);
+  const columns = columnsOf(federatedIdentities);
+
+  /** A unique constraint's columns by TS property name, as `columnsOf` keys them. */
+  const uniqueColumns = () =>
+    config.uniqueConstraints.map((constraint) =>
+      constraint.columns.map((column) => column.name),
+    );
+
+  it("is unique on (provider, subject): one provider account, one user (ADR-0072 §1)", () => {
+    // The sign-in's lookup, and the reason a subject can never become a second
+    // way into somebody else's account.
+    expect(uniqueColumns()).toContainEqual(["provider", "subject"]);
+  });
+
+  it("is unique on (user_id, provider): one identity per provider per user (ADR-0072 §1)", () => {
+    // "Unlink Google" names one row, and a second link on an account that has
+    // one is refused by the database as well as by the service.
+    expect(uniqueColumns()).toContainEqual(["userId", "provider"]);
+  });
+
+  it("has exactly those two constraints, both named, and no other index", () => {
+    // Named, for the reason `account_tokens` names its own: an unnamed
+    // constraint takes the TS property names into a snake_case database. The
+    // (user_id, provider) constraint leads with the reference, so it is the
+    // foreign key's index too and nothing else is declared.
+    expect(
+      config.uniqueConstraints.map((constraint) => constraint.name).sort(),
+    ).toEqual([
+      "federated_identities_provider_subject_unique",
+      "federated_identities_user_id_provider_unique",
+    ]);
+    expect(config.indexes).toHaveLength(0);
+  });
+
+  it("references users — a real foreign key, because it names one population", () => {
+    // The credential tables cannot carry one (they discriminate staff from
+    // users); this one can, and a hard delete would take the row with it.
+    const [reference] = config.foreignKeys.map((fk) => fk.reference());
+
+    expect(config.foreignKeys).toHaveLength(1);
+    expect(reference?.foreignTable).toBe(users);
+    expect(reference?.columns.map((column) => column.name)).toEqual(["userId"]);
+    expect(config.foreignKeys[0]?.onDelete).toBe("cascade");
+  });
+
+  it("requires the user, the provider and the subject, and nothing about the address", () => {
+    expect(columns.get("userId")?.notNull).toBe(true);
+    expect(columns.get("provider")?.notNull).toBe(true);
+    expect(columns.get("subject")?.notNull).toBe(true);
+    // Informational and never a lookup key after the link (ADR-0072 §1), so a
+    // provider that reports none still links.
+    expect(columns.get("email")?.notNull).toBe(false);
+    expect(columns.get("email")?.getSQLType()).toBe("citext");
+  });
+
+  it("stamps the link and leaves the first later sign-in null", () => {
+    expect(columns.get("linkedAt")?.notNull).toBe(true);
+    expect(columns.get("linkedAt")?.hasDefault).toBe(true);
+    expect(columns.get("lastLoginAt")?.notNull).toBe(false);
+  });
+
+  it("keeps no credential: no token, no password, no secret column", () => {
+    // What proves the identity is the provider's signed assertion at each
+    // sign-in (ADR-0072 §2), not anything stored here — so a read of this
+    // table yields nobody's way in.
+    expect(
+      [...columns.keys()].filter((name) =>
+        /token|secret|password|hash/i.test(name),
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -404,6 +483,8 @@ describe("shared column helpers", () => {
     ["impersonation_handoffs", impersonationHandoffs],
     // Mutable for the same reason: the consume writes `consumed_at`.
     ["account_tokens", accountTokens],
+    // Mutable: a sign-in writes `last_login_at`.
+    ["federated_identities", federatedIdentities],
   ])("gives %s created_at and updated_at, both defaulted", (_name, table) => {
     const columns = columnsOf(table);
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  FEDERATED_PROVIDERS,
   INVITATION_STATUSES,
   ORGANIZATION_KINDS,
   ORGANIZATION_OWNER_ROLE,
@@ -14,6 +15,7 @@ import {
   TOKEN_PURPOSES,
   USER_ROLES,
   USER_STATUSES,
+  type FederatedProvider,
   type InvitationStatus,
   type OrganizationKind,
   type OrganizationRole,
@@ -75,6 +77,7 @@ describe("enums", () => {
       ORGANIZATION_ROLES,
       INVITATION_STATUSES,
       TOKEN_PURPOSES,
+      FEDERATED_PROVIDERS,
     ]) {
       expect(new Set(values).size).toBe(values.length);
     }
@@ -138,13 +141,28 @@ describe("enums", () => {
     expect(invitable.safeParse("owner").success).toBe(false);
   });
 
-  it("declares the four token purposes (ADR-0071 §1)", () => {
+  it("declares the five token purposes, the federated handoff appended (ADR-0071 §1, ADR-0072 §2)", () => {
+    // Order is the Postgres enum's label order, and `federated_login` came
+    // last by `ALTER TYPE … ADD VALUE` — which appends, so nothing stored and
+    // no sort order moved when it did.
     expect(TOKEN_PURPOSES).toEqual([
       "verify_email",
       "reset_password",
       "change_email",
       "staff_onboarding",
+      "federated_login",
     ]);
+  });
+
+  it("declares the one federated provider (ADR-0072 §1)", () => {
+    expect(FEDERATED_PROVIDERS).toEqual(["google"]);
+
+    // The tuple validates a path segment as well as feeding the `pgEnum`:
+    // `DELETE /user/profile/identities/:provider` reads it (ADR-0072 §3).
+    const providers = z.enum(FEDERATED_PROVIDERS);
+
+    expect(providers.parse("google")).toBe("google");
+    expect(providers.safeParse("github").success).toBe(false);
   });
 
   it("leaves the organization invitation out of the purposes (ADR-0071 §1)", () => {
@@ -167,6 +185,7 @@ describe("enums", () => {
     const organizationRole: OrganizationRole = "owner";
     const invitationStatus: InvitationStatus = "pending";
     const tokenPurpose: TokenPurpose = "verify_email";
+    const federatedProvider: FederatedProvider = "google";
 
     expect([
       population,
@@ -179,6 +198,7 @@ describe("enums", () => {
       organizationRole,
       invitationStatus,
       tokenPurpose,
-    ]).toHaveLength(10);
+      federatedProvider,
+    ]).toHaveLength(11);
   });
 });

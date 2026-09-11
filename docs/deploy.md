@@ -62,6 +62,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
    | `VITE_ADMIN_API_URL`, `VITE_CUSTOMER_API_URL` | `https://api.example.com`                                                |
    | `VITE_CUSTOMER_APP_URL`                       | `https://app.example.com`                                                |
    | `CUSTOMER_APP_URL`, `ADMIN_APP_URL`           | the same two origins, read by the **API** (ADR-0071 §1)                  |
+   | `API_PUBLIC_URL`                              | `https://api.example.com` — the API's own origin (ADR-0072 §2)           |
    | `MAIL_TRANSPORT`                              | `log` or `smtp` — production must state one (ADR-0066 §1)                |
    | `MAIL_FROM`, `SMTP_*`                         | the relay and its sender, whenever the transport is `smtp` (step 8)      |
    | `METRICS_TOKEN`                               | ≥ 32 random characters — `GET /metrics` is open without it               |
@@ -69,6 +70,8 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
    **`MAIL_TRANSPORT` and `METRICS_TOKEN` are required in production** (ADR-0066 §1–§2). `log` writes a line per message and delivers nothing, and it has to be _stated_ rather than inherited, because a deployment that inherited it would silently swallow every message it sends. **Once D18's flows are deployed, `log` also means the deployment has no registration**: a customer whose address cannot be verified cannot sign in at all (ADR-0071 §3), and neither can an operator onboarded by invitation. `METRICS_TOKEN` is a bearer credential: without one, `GET /metrics` answers anybody, and its body names every route the API has.
 
    **`CUSTOMER_APP_URL` and `ADMIN_APP_URL` are required in production too** (ADR-0071 §1), and they are the API's own variables rather than the `VITE_` twins beside them — the SPAs inline theirs into a browser bundle at build time, the API reads these at startup to build the links it mails. The schema refuses the committed development defaults (`http://localhost:3002`, `http://localhost:3001`) exactly as it refuses both `TRUST_PROXY` constants, and for the same class of reason: a deployment that inherited them would mail every verification, reset, invitation and onboarding link into the recipient's own machine, with nothing in a response or a log to say so. The recipient is the one who finds out.
+
+   **`API_PUBLIC_URL` is required in production as well** (ADR-0072 §2), by the same check: `https`, and not a loopback address. It is the one origin the API has to know about _itself_ — the redirect URI it sends Google is composed from it — and it is refused at the development default whether or not Google is configured, so a deployment that turns sign-in on later cannot inherit `http://localhost:4000` into the one URL the identity provider sends a browser back to. Setting up Google itself is optional and is [its own section below](#sign-in-with-google-optional).
 
    **`REDIS_URL` is optional and stops being so at two instances** (ADR-0066 §4). Unset, every rate limiter counts in process memory, so N instances admit N times every limit in ADR-0020 — the login limiter included. Set, they share one budget. A configured Redis that cannot be reached stops the API from starting, and refuses requests rather than admitting them if it goes away later.
 
@@ -98,6 +101,21 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
    - **A `202` proves nothing at all, so read the logs beside the mailbox.** Four lines discriminate the four outcomes, and only the last is a broken relay: `mail sent` (the relay accepted it — look in the spam folder next), `mail not sent (log transport)` (`MAIL_TRANSPORT` is still `log`, which is what `docker/prod/.env.example` ships), `password reset answered without a message` (no active account holds that address — check it against `SEED_SUPER_ADMIN_EMAIL`, since a mistyped address answers `202` exactly like a delivered one) and `mail delivery failed` (the relay refused). The last is written twice under one message: the SMTP transport's own line comes first and carries the recipient and the driver's error, and the handler's line follows with the error's class and code alone (ADR-0071 §4) — so **treat the API's logs as holding recipients' addresses**, which the `mail sent` line already means on every successful send.
    - **`MAIL_TRANSPORT=smtp` on its own is not a configured relay.** The whole `SMTP_*` group defaults to the local compose's Mailpit — `localhost:1025`, no TLS, no credentials — which is exactly right on a laptop and is nothing at all inside a container. `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` and, where the relay authenticates, `SMTP_USER` and `SMTP_PASSWORD` are stated in `docker/prod/.env.example` beside it; the schema does not refuse the development defaults here as it does for the two app URLs, because a relay reachable at `localhost` is a legitimate deployment (a sidecar) rather than a mistake. **`SMTP_SECURE=false` does not mean "upgrade to TLS", it means "do not start in TLS"**: the transport passes the flag to nodemailer and requires nothing, so on 587 the upgrade is opportunistic and a relay that fails to advertise STARTTLS gets the credential and a single-use account-takeover link in the clear, with a successful send and nothing in a log to say so. Use `SMTP_SECURE=true` on 465, or a relay on 587 you have confirmed advertises STARTTLS.
    - **`MAIL_FROM` is the envelope sender the relay will judge you by.** It defaults to `no-reply@machxi.local`, which no managed relay will accept and no recipient's spam filter will like; it must be an address on a domain whose SPF and DKIM records name the relay you are sending through. That is the half of "mail works" no request against this API can check for you.
+
+## Sign in with Google (optional)
+
+Customers can sign in, or create an account, through Google (ADR-0072). It is off until the API is given an OAuth client, and the API is the control: without one, the three sign-in routes are not mounted and answer `404`.
+
+1. **Create the client** in the Google Cloud console — _APIs & Services → Credentials → Create credentials → OAuth client ID_, type **Web application**. The consent screen needs only the default `openid`, `email` and `profile` scopes; nothing here asks for more.
+2. **Register exactly one authorized redirect URI**, which is `API_PUBLIC_URL` followed by the callback path:
+
+   ```text
+   https://api.example.com/api/v1/public/auth/google/callback
+   ```
+
+   The API composes the same string from `API_PUBLIC_URL` and sends it on every authorization request, and Google refuses any request whose URI does not match a registered one character for character — scheme, host, port and path, with no trailing slash. A local client registers `http://localhost:4000/api/v1/public/auth/google/callback` — Google accepts plain `http` for `localhost` and nowhere else. **No authorized JavaScript origin is needed**: the flow is a server-side redirect, and no Google script runs in either SPA.
+
+3. **Give the API both halves**, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, on the compose resource. Both or neither — half a pair stops the API at startup. The secret is a credential: it belongs in the platform's secret store, never in `docker/prod/.env.example`, a commit or a `VITE_` variable, and nothing sends it to a browser, because the code exchange happens between the API and Google.
 
 ## Running the reference stack locally
 

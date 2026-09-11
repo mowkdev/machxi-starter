@@ -1,5 +1,10 @@
 import { successEnvelopeSchema } from "@repo/contracts";
-import { organizationMemberships, organizations, users } from "@repo/db";
+import {
+  federatedIdentities,
+  organizationMemberships,
+  organizations,
+  users,
+} from "@repo/db";
 import { and, eq } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -643,6 +648,32 @@ describe("user profile", () => {
 
       expect(second.id).not.toBe(first);
       expect(second.deletedAt).toBeNull();
+    });
+
+    it("takes the account's federated identities with it (ADR-0072 §1)", async () => {
+      // The admin path's twin: `(provider, subject)` is unique with no
+      // predicate, so an identity left behind would hold that Google account
+      // for ever. Closing oneself releases it exactly as an admin delete does.
+      const { id, tokens } = await freshUser(
+        "closes.with.identity@machxi.local",
+      );
+
+      await harness.db.db.insert(federatedIdentities).values({
+        userId: id,
+        provider: "google",
+        subject: "closes-itself-subject",
+      });
+
+      await remove(tokens.accessToken, {
+        currentPassword: NEW_ACCOUNT_PASSWORD,
+      }).expect(204);
+
+      expect(
+        await harness.db.db
+          .select({ id: federatedIdentities.id })
+          .from(federatedIdentities)
+          .where(eq(federatedIdentities.subject, "closes-itself-subject")),
+      ).toEqual([]);
     });
 
     it("refuses a wrong current password with 403, and deletes nothing", async () => {

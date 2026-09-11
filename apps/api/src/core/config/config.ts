@@ -82,12 +82,39 @@ export interface AppConfig {
     readonly customerUrl: string;
     readonly adminUrl: string;
   };
-  /** The four link lifetimes, in seconds (ADR-0071 §1). */
+  /**
+   * Every `account_tokens` lifetime, in seconds — the four link lifetimes
+   * (ADR-0071 §1) and the federated sign-in handoff (ADR-0072 §2), which is
+   * the same table's mechanism with no message around it.
+   */
   readonly tokens: {
     readonly verificationTtlSec: number;
     readonly passwordResetTtlSec: number;
     readonly emailChangeTtlSec: number;
     readonly staffOnboardingTtlSec: number;
+    readonly federatedHandoffTtlSec: number;
+  };
+  /**
+   * Sign-in through an external identity provider (ADR-0072 §2).
+   *
+   * `google` is **present only when both halves of the client are set**, and
+   * that presence is the whole of the routes' precondition: nothing checks a
+   * flag beside it, so there is no way to mount the flow without a client or
+   * to hold a client without the flow. The schema refuses half a pair, so
+   * `undefined` here always means "neither was set".
+   */
+  readonly federated: {
+    /**
+     * This API's public origin; the redirect URI is composed from it and
+     * stated once, in `docs/deploy.md`, for the provider's console.
+     */
+    readonly apiPublicUrl: string;
+    readonly google:
+      | {
+          readonly clientId: string;
+          readonly clientSecret: string;
+        }
+      | undefined;
   };
   /** Organizations and their invitations (ADR-0067). */
   readonly organizations: {
@@ -225,6 +252,20 @@ export const toAppConfig = (env: Env): AppConfig =>
       passwordResetTtlSec: env.PASSWORD_RESET_TOKEN_TTL,
       emailChangeTtlSec: env.EMAIL_CHANGE_TOKEN_TTL,
       staffOnboardingTtlSec: env.STAFF_ONBOARDING_TOKEN_TTL,
+      federatedHandoffTtlSec: env.FEDERATED_HANDOFF_TTL,
+    }),
+    federated: Object.freeze({
+      apiPublicUrl: env.API_PUBLIC_URL,
+      // Both or neither is the schema's refinement; the conjunction is
+      // restated here so the type follows the rule rather than trusting it.
+      google:
+        env.GOOGLE_CLIENT_ID !== undefined &&
+        env.GOOGLE_CLIENT_SECRET !== undefined
+          ? Object.freeze({
+              clientId: env.GOOGLE_CLIENT_ID,
+              clientSecret: env.GOOGLE_CLIENT_SECRET,
+            })
+          : undefined,
     }),
     organizations: Object.freeze({
       invitationTtlSec: env.ORGANIZATION_INVITATION_TTL,

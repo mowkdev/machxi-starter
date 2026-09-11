@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   KNOWN_PUBLIC_SECRETS,
   LOCAL_ADMIN_APP_URL,
+  LOCAL_API_PUBLIC_URL,
   LOCAL_CUSTOMER_APP_URL,
   PLACEHOLDER_JWT_ACCESS_SECRET,
   envSchema,
@@ -95,8 +96,30 @@ describe("envSchema", () => {
       // number it would be the only limiter that ever fires. The one capacity
       // number of the three, and the one a deployment sizes.
       RATE_LIMIT_MAIL_SOURCE_MAX: 20,
+      // The federated handoff (ADR-0072 §2): the impersonation handoff's
+      // sixty seconds, for the same reason — a bearer credential in a URL.
+      FEDERATED_HANDOFF_TTL: 60,
+      // The API's own dev origin, so a fresh clone composes a redirect URI
+      // with nothing configured. Production refuses it, below.
+      API_PUBLIC_URL: LOCAL_API_PUBLIC_URL,
     });
     expect(env.CORS_ORIGINS).toEqual([]);
+    // Neither half of the Google client: the default, and a complete
+    // configuration — the sign-in routes are simply not mounted.
+    expect(env.GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(env.GOOGLE_CLIENT_SECRET).toBeUndefined();
+  });
+
+  it("ceilings the federated handoff as it ceilings the impersonation one (ADR-0072 §2)", () => {
+    // Both are single-use bearer credentials in a URL fragment, and "sixty
+    // seconds is all an onlooker gets" is only true while a typo cannot
+    // retire it.
+    expect(() => parse({ FEDERATED_HANDOFF_TTL: "60m" })).toThrow(
+      /FEDERATED_HANDOFF_TTL/,
+    );
+    expect(parse({ FEDERATED_HANDOFF_TTL: "5m" }).FEDERATED_HANDOFF_TTL).toBe(
+      300,
+    );
   });
 
   it("ceilings the two impersonation windows, which no other TTL is (ADR-0057)", () => {
@@ -180,8 +203,9 @@ describe("envSchema", () => {
   });
 
   describe("production guards", () => {
-    // `TRUST_PROXY`, `MAIL_TRANSPORT`, `METRICS_TOKEN` and the two app URLs
-    // are stated here, not defaulted, so each guard below fails for its own
+    // `TRUST_PROXY`, `MAIL_TRANSPORT`, `METRICS_TOKEN`, the two app URLs and
+    // (since ADR-0072 §2) the API's own public origin are stated here, not
+    // defaulted, so each guard below fails for its own
     // reason: since ADR-0059 §7 an unstated hop is itself a production
     // failure, since ADR-0066 §1–§2 so are an unstated mail transport and a
     // missing metrics token, and since ADR-0071 §1 so is an app URL left on
@@ -194,6 +218,7 @@ describe("envSchema", () => {
       METRICS_TOKEN: "m".repeat(32),
       CUSTOMER_APP_URL: "https://app.example.com",
       ADMIN_APP_URL: "https://admin.example.com",
+      API_PUBLIC_URL: "https://api.example.com",
     } as const;
 
     it.each(KNOWN_PUBLIC_SECRETS)(
@@ -231,6 +256,7 @@ describe("envSchema", () => {
           METRICS_TOKEN: "m".repeat(32),
           CUSTOMER_APP_URL: "https://app.example.com",
           ADMIN_APP_URL: "https://admin.example.com",
+          API_PUBLIC_URL: "https://api.example.com",
         }),
       ).toThrow(/TRUST_PROXY/);
       expect(() => parse({ ...production, TRUST_PROXY: "false" })).toThrow(
@@ -334,6 +360,44 @@ describe("envSchema", () => {
       expect(parse().CUSTOMER_APP_URL).toBe(LOCAL_CUSTOMER_APP_URL);
       expect(parse().ADMIN_APP_URL).toBe(LOCAL_ADMIN_APP_URL);
       expect(() => parse({ NODE_ENV: "test" })).not.toThrow();
+    });
+
+    it("refuses API_PUBLIC_URL at its local default in production (ADR-0072 §2)", () => {
+      // The redirect URI is composed from it, and the identity provider sends
+      // the person's browser there with a single-use authorization code: an
+      // inherited localhost sends the code into their own machine.
+      expect(() =>
+        parse({ ...production, API_PUBLIC_URL: LOCAL_API_PUBLIC_URL }),
+      ).toThrow(/API_PUBLIC_URL/);
+    });
+
+    it.each(["http://127.0.0.1:4000", "http://api.example.com"])(
+      "refuses API_PUBLIC_URL=%s in production, by the app URLs' own check",
+      (url) => {
+        // The same parsed-URL reading `D18.1`'s review put on the app URLs:
+        // every spelling of loopback, and plain http anywhere, since the code
+        // would otherwise cross the network in the clear.
+        expect(() => parse({ ...production, API_PUBLIC_URL: url })).toThrow(
+          /API_PUBLIC_URL/,
+        );
+      },
+    );
+
+    it("takes the API's own origin a real deployment states, and leaves the default alone elsewhere", () => {
+      expect(parse(production).API_PUBLIC_URL).toBe("https://api.example.com");
+      expect(parse().API_PUBLIC_URL).toBe(LOCAL_API_PUBLIC_URL);
+      expect(() => parse({ NODE_ENV: "test" })).not.toThrow();
+    });
+
+    it("refuses an API_PUBLIC_URL that is not a bare origin", () => {
+      // A path or a trailing slash would be concatenated into a redirect URI
+      // the provider's console then refuses to match.
+      expect(() =>
+        parse({ API_PUBLIC_URL: "https://api.example.com/api/v1" }),
+      ).toThrow(/API_PUBLIC_URL/);
+      expect(() => parse({ API_PUBLIC_URL: "localhost:4000" })).toThrow(
+        /API_PUBLIC_URL/,
+      );
     });
 
     it("refuses an app URL that is not a bare origin", () => {
@@ -490,6 +554,7 @@ describe("the ADR-0066 seams", () => {
       METRICS_TOKEN: "m".repeat(32),
       CUSTOMER_APP_URL: "https://app.example.com",
       ADMIN_APP_URL: "https://admin.example.com",
+      API_PUBLIC_URL: "https://api.example.com",
     };
 
     expect(() => loadConfig(production)).toThrow(/MAIL_TRANSPORT/);
@@ -506,6 +571,7 @@ describe("the ADR-0066 seams", () => {
       MAIL_TRANSPORT: "log",
       CUSTOMER_APP_URL: "https://app.example.com",
       ADMIN_APP_URL: "https://admin.example.com",
+      API_PUBLIC_URL: "https://api.example.com",
     };
 
     // The body is numbers, but the numbers name every route the API has.
@@ -565,6 +631,68 @@ describe("the ADR-0066 seams", () => {
       loadConfig({ ...validEnv, REDIS_URL: "rediss://cache.internal:6379" })
         .rateLimit.redisUrl,
     ).toBe("rediss://cache.internal:6379");
+  });
+});
+
+/**
+ * ADR-0072 §2: the Google client is both halves or neither, and its presence
+ * is the one thing the sign-in routes are mounted on.
+ */
+describe("the Google client", () => {
+  const google = {
+    GOOGLE_CLIENT_ID: "client-id.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "client-secret",
+  } as const;
+
+  it("refuses a client id without a secret at startup", () => {
+    // Routes would mount whose every code exchange Google refuses.
+    expect(() =>
+      loadConfig({ ...validEnv, GOOGLE_CLIENT_ID: google.GOOGLE_CLIENT_ID }),
+    ).toThrow(/GOOGLE_CLIENT_ID/);
+  });
+
+  it("refuses a secret without a client id at startup", () => {
+    // A credential pasted into a deployment that has no client to use it.
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        GOOGLE_CLIENT_SECRET: google.GOOGLE_CLIENT_SECRET,
+      }),
+    ).toThrow(/GOOGLE_CLIENT_ID/);
+  });
+
+  it("reads a blank half as absent, so `KEY=` in an env file is neither", () => {
+    // A compose file's bare key turns an unset variable into an empty string
+    // on its way into a container; that is "not configured", not a value.
+    expect(
+      loadConfig({
+        ...validEnv,
+        GOOGLE_CLIENT_ID: "",
+        GOOGLE_CLIENT_SECRET: " ",
+      }).federated.google,
+    ).toBeUndefined();
+  });
+
+  it("makes both halves the routes' precondition, and neither its absence", () => {
+    // `federated.google` is what the mount reads (ADR-0072 §2): present only
+    // with both halves, and nothing else decides whether the flow exists.
+    expect(loadConfig(validEnv).federated.google).toBeUndefined();
+    expect(loadConfig({ ...validEnv, ...google }).federated.google).toEqual({
+      clientId: google.GOOGLE_CLIENT_ID,
+      clientSecret: google.GOOGLE_CLIENT_SECRET,
+    });
+  });
+
+  it("carries the API's origin and the handoff window beside it", () => {
+    const config = loadConfig({
+      ...validEnv,
+      API_PUBLIC_URL: "https://api.example.com",
+      FEDERATED_HANDOFF_TTL: "45s",
+    });
+
+    expect(config.federated.apiPublicUrl).toBe("https://api.example.com");
+    expect(config.tokens.federatedHandoffTtlSec).toBe(45);
+    expect(Object.isFrozen(config.federated)).toBe(true);
   });
 });
 

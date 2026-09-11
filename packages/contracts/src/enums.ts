@@ -148,14 +148,35 @@ export const ORGANIZATION_OWNER_ROLE = "owner" satisfies OrganizationRole;
  * Each purpose has its own TTL in the API's configuration, which is where a
  * duration belongs — a record decides that the windows differ and by what
  * argument, not what the numbers are.
+ *
+ * `federated_login` is the fifth, and the first that no message carries
+ * (ADR-0072 §2): the handoff the Google callback mints and hands the customer
+ * app in a redirect's fragment, exchanged once for a session — the
+ * impersonation handoff's shape and its sixty seconds, on this table's
+ * mechanism. Appended, so no stored row and no sort order moves.
  */
 export const TOKEN_PURPOSES = [
   "verify_email",
   "reset_password",
   "change_email",
   "staff_onboarding",
+  "federated_login",
 ] as const;
 export type TokenPurpose = (typeof TOKEN_PURPOSES)[number];
+
+/**
+ * The external identity providers a user may sign in through (ADR-0072 §1).
+ *
+ * One value today. A second provider is a value here, an `ALTER TYPE … ADD
+ * VALUE`, an adapter behind the API's OIDC port and a button — nothing in the
+ * identity table or the resolution rule names Google, which is the claim
+ * ADR-0072 §Consequences makes and this tuple is where it starts.
+ *
+ * Users only: staff get no federated login (ADR-0072 §5), so this is not a
+ * population-neutral list and nothing on the admin segment consumes it.
+ */
+export const FEDERATED_PROVIDERS = ["google"] as const;
+export type FederatedProvider = (typeof FEDERATED_PROVIDERS)[number];
 
 export const INVITATION_STATUSES = [
   "pending",

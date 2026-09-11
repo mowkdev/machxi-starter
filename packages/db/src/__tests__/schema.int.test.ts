@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DbClient } from "../client.js";
 import {
+  federatedIdentities,
   organizationInvitations,
   organizations,
   sessions,
@@ -171,6 +172,10 @@ describe("migration 0001", () => {
       // than four with the same five columns.
       "account_tokens",
       "audit_events",
+      // A user's external identities came with `0016` (`D19.1`, ADR-0072
+      // §1) — the passwordless path `users.password_hash` was left nullable
+      // for.
+      "federated_identities",
       "impersonation_handoffs",
       // The tenant and what it owns came with `0011` (`D15.1`, ADR-0067 §2).
       "organization_invitations",
@@ -245,6 +250,10 @@ describe("migration 0001", () => {
     );
 
     expect(rows).toEqual([
+      // What the provider reported at the link (ADR-0072 §1) — informational,
+      // and citext anyway so the one place it is shown beside the account's
+      // own address does not disagree about case.
+      { table_name: "federated_identities", udt_name: "citext" },
       // An invitation names an address, not an account (ADR-0067 §2), and it
       // must match the invitee's however either was typed — the same reason
       // the two account tables use the type.
@@ -271,6 +280,9 @@ describe("migration 0001", () => {
       // day an audit actor needs a third label it cannot widen the column a
       // live session is discriminated by.
       audit_actor_type: ["staff", "user"],
+      // `federated_provider` came with `0016` (`D19.1`, ADR-0072 §1). One
+      // label; a second provider appends one.
+      federated_provider: ["google"],
       // `grid_density` came with `0005` (`D11.6`, ADR-0053 §2 as amended):
       // the density is a column and a type, not a key in the `grids` jsonb.
       // Two labels, and comfortable is first because it is the default.
@@ -292,12 +304,15 @@ describe("migration 0001", () => {
       theme: ["light", "dark", "system"],
       // `token_purpose` came with `0014` (`D18.1`, ADR-0071 §1). Expected to
       // grow — a fifth flow is a fifth label — and `ALTER TYPE … ADD VALUE`
-      // appends, so no row and no sort order moves when it does.
+      // appends, so no row and no sort order moves when it does — and the
+      // fifth did, `federated_login` by `0015` (`D19.1`, ADR-0072 §2), in a
+      // migration of its own (ADR-0060 §5).
       token_purpose: [
         "verify_email",
         "reset_password",
         "change_email",
         "staff_onboarding",
+        "federated_login",
       ],
       user_role: ["customer"],
       user_status: ["active", "pending_verification", "disabled"],
@@ -889,6 +904,81 @@ describe("migration 0013 — the invitation's single-use token", () => {
         (consumed) => consumed.id,
       ),
     ).toEqual([row?.id]);
+  });
+});
+
+describe("migration 0016 — federated identities", () => {
+  /**
+   * The two constraints ADR-0072 §1 rests the linking rule on, against real
+   * Postgres: the unit suite reads what the schema declares, and this is the
+   * only place a constraint that silently failed to apply could be seen.
+   */
+  const addUser = async (email: string) => {
+    const [row] = await client.db
+      .insert(users)
+      .values({ email })
+      .returning({ id: users.id });
+
+    return row?.id ?? "";
+  };
+
+  it("links a subject to a user and stamps the link", async () => {
+    const userId = await addUser("linked@machxi.test");
+
+    const [row] = await client.db
+      .insert(federatedIdentities)
+      .values({
+        userId,
+        provider: "google",
+        subject: "subject-linked",
+        email: "linked@gmail.example",
+      })
+      .returning();
+
+    expect(row?.linkedAt).toBeInstanceOf(Date);
+    expect(row?.lastLoginAt).toBeNull();
+  });
+
+  it("refuses a second user for the same provider subject", async () => {
+    // One Google account resolves to one user: a second row for the subject
+    // would be a way into somebody else's account.
+    const userId = await addUser("second-for-subject@machxi.test");
+
+    await expectUniqueViolation(
+      client.db
+        .insert(federatedIdentities)
+        .values({ userId, provider: "google", subject: "subject-linked" }),
+    );
+  });
+
+  it("refuses a second identity of the same provider for one user", async () => {
+    const userId = await addUser("two-googles@machxi.test");
+
+    await client.db
+      .insert(federatedIdentities)
+      .values({ userId, provider: "google", subject: "subject-first" });
+
+    await expectUniqueViolation(
+      client.db
+        .insert(federatedIdentities)
+        .values({ userId, provider: "google", subject: "subject-second" }),
+    );
+  });
+
+  it("refuses an identity for a user that does not exist", async () => {
+    // The foreign key the credential tables cannot carry and this one does.
+    const insert = async () =>
+      client.db.insert(federatedIdentities).values({
+        userId: "00000000-0000-7000-8000-00000000dead",
+        provider: "google",
+        subject: "subject-orphan",
+      });
+
+    await expect(insert()).rejects.toThrow();
+
+    const error = await insert().catch((caught: unknown) => caught);
+
+    expect((error as { cause?: { code?: string } }).cause?.code).toBe("23503");
   });
 });
 

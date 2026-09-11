@@ -201,10 +201,11 @@ export const buildContainer = ({
    * the feature modules borrow, and the purposes belong to the features.
    *
    * The TTL map is the point of building it at the composition root. Each
-   * purpose has its own window and only this file can see all four
+   * purpose has its own window and only this file can see all of them
    * (`core/config` holds the numbers, `@repo/contracts` holds the purposes), so
-   * a fifth purpose fails `pnpm check-types` here until somebody decides how
-   * long its link should live.
+   * a new purpose fails `pnpm check-types` here until somebody decides how
+   * long its token should live — which is what `federated_login` did at
+   * `D19.1`.
    *
    * Not `tokens` — that name is taken by the access-token service above, and
    * an *account* token is the opposite kind of credential: opaque, stored as a
@@ -238,6 +239,10 @@ export const buildContainer = ({
       reset_password: config.tokens.passwordResetTtlSec,
       change_email: config.tokens.emailChangeTtlSec,
       staff_onboarding: config.tokens.staffOnboardingTtlSec,
+      // The federated sign-in handoff (ADR-0072 §2): no message carries it,
+      // the callback's redirect does, and its window is the impersonation
+      // handoff's sixty seconds for the same reason.
+      federated_login: config.tokens.federatedHandoffTtlSec,
     },
     transaction,
   });

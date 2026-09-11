@@ -6,6 +6,7 @@ import type { PasswordHasher } from "@repo/crypto";
 
 import { baseSeeders, devSeeders, runSeeders } from "../../seeds/run.js";
 import {
+  DEV_FEDERATED_IDENTITY,
   DEV_PASSWORD,
   DEV_STAFF,
   DEV_TEAM_ORGANIZATION,
@@ -13,6 +14,7 @@ import {
 } from "../../seeds/dev/fixtures.js";
 import type { DbClient } from "../client.js";
 import {
+  federatedIdentities,
   organizationMemberships,
   organizations,
   staff,
@@ -65,7 +67,8 @@ const countOf = async (
     | typeof staffRoles
     | typeof userRoles
     | typeof organizations
-    | typeof organizationMemberships,
+    | typeof organizationMemberships
+    | typeof federatedIdentities,
 ) => {
   const [row] = await client.db.select({ value: count() }).from(table);
 
@@ -267,6 +270,7 @@ describe("dev fixtures", () => {
       await countOf(userRoles),
       await countOf(organizations),
       await countOf(organizationMemberships),
+      await countOf(federatedIdentities),
     ];
 
     await seedDev();
@@ -278,7 +282,51 @@ describe("dev fixtures", () => {
       await countOf(userRoles),
       await countOf(organizations),
       await countOf(organizationMemberships),
+      await countOf(federatedIdentities),
     ]).toEqual(before);
+  });
+});
+
+/**
+ * The one fixture identity (ADR-0072 §1). Both runs have happened by the time
+ * this block reads — `dev fixtures` seeds once and its last case seeds again —
+ * so "exactly one" here is the idempotency claim, not the first insert's.
+ */
+describe("dev federated identity (ADR-0072 §1)", () => {
+  it("exists exactly once after two runs, on the first customer", async () => {
+    const rows = await client.db
+      .select({
+        userEmail: users.email,
+        provider: federatedIdentities.provider,
+        subject: federatedIdentities.subject,
+      })
+      .from(federatedIdentities)
+      .innerJoin(users, eq(users.id, federatedIdentities.userId));
+
+    expect(rows).toEqual([
+      {
+        userEmail: DEV_FEDERATED_IDENTITY.userEmail,
+        provider: "google",
+        subject: DEV_FEDERATED_IDENTITY.subject,
+      },
+    ]);
+  });
+
+  it("carries a subject no real Google account can present", async () => {
+    // Google's `sub` is a decimal string. Resolution is by subject first
+    // (ADR-0072 §1), so a fixture that collided with a real one would sign a
+    // stranger into the fixture account on any clone with real credentials.
+    expect(DEV_FEDERATED_IDENTITY.subject).not.toMatch(/^\d+$/);
+  });
+
+  it("leaves the account its password — the fixture is both ways in", async () => {
+    const owner = await client.db.query.users.findFirst({
+      where: eq(users.email, DEV_FEDERATED_IDENTITY.userEmail),
+    });
+
+    await expect(
+      hasher.verify(owner?.passwordHash ?? "", DEV_PASSWORD),
+    ).resolves.toBe(true);
   });
 });
 

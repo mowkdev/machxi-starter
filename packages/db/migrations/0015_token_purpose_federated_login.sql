@@ -1,0 +1,12 @@
+-- The fifth token purpose (ADR-0072 §2, `D19.1`): `federated_login`, the
+-- handoff the Google callback mints and the customer app exchanges once for a
+-- session, on `account_tokens`' mechanism (ADR-0071 §1).
+--
+-- **Alone in its file, by rule** (ADR-0060 §5): one transaction cannot add an
+-- enum label and then write it, and `migrate()` runs every pending migration
+-- in one transaction — so nothing in this batch may use the value. Nothing
+-- does: the first write of it is the API's, at `D19.2`, after this commits.
+--
+-- `ADD VALUE` appends, so no stored row and no sort order moves. Catalogue-only
+-- on PostgreSQL 16; nothing here is expected to block.
+ALTER TYPE "public"."token_purpose" ADD VALUE 'federated_login';

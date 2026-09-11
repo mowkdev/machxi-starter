@@ -254,6 +254,31 @@ describe("redaction", () => {
     expect(capture.lines()[0]).toMatchObject({ link: "[Redacted]" });
   });
 
+  it("redacts the OIDC client secret, the PKCE verifier and the ID token (ADR-0072 §2)", () => {
+    // Ahead of their use, like `link` above: the provider port holds all
+    // three and logs none, and these paths are what keeps a debugging line —
+    // top-level or one object down — from printing them instead.
+    const [logger, capture] = capturing({ level: "info" });
+
+    logger.info(
+      {
+        clientSecret: "google-client-secret",
+        codeVerifier: "pkce-verifier-value",
+        exchange: { idToken: "eyJhbGciOiJSUzI1NiJ9.signed-assertion" },
+      },
+      "code exchanged",
+    );
+
+    expect(capture.raw()).not.toContain("google-client-secret");
+    expect(capture.raw()).not.toContain("pkce-verifier-value");
+    expect(capture.raw()).not.toContain("signed-assertion");
+    expect(capture.lines()[0]).toMatchObject({
+      clientSecret: "[Redacted]",
+      codeVerifier: "[Redacted]",
+      exchange: { idToken: "[Redacted]" },
+    });
+  });
+
   it("leaves `req.url` alone, which is why `url` is not a redact path", () => {
     // The deliberate omission (`D18.1`'s `security-reviewer`): `*.url` would
     // blank the URL on every request log line in the repository, trading the
