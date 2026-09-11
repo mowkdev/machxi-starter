@@ -440,12 +440,14 @@ export const createMailSourceRateLimiter = (
  * memory store. Both are reasons enough; "the budget existed in the docblock
  * only" was not true and is not claimed.
  *
- * So this reads no body. Two routes take it: `password/reset`, where the
- * budget is ADR-0020 §Hashing cost's argon2 liveness control, and ADR-0067
- * §5's `invitations/lookup`, where it is the "limited as an authentication
- * route is" condition that record puts on a read scoped by nothing but a
- * secret. Each takes its **own instance**, so the two counters are separate
- * for the reason `D18.5` separated the reset's from `login`'s.
+ * So this reads no body. Its routes: `password/reset` and `onboarding/accept`,
+ * where the budget is ADR-0020 §Hashing cost's argon2 liveness control;
+ * ADR-0067 §5's `invitations/lookup`, where it is the "limited as an
+ * authentication route is" condition that record puts on a read scoped by
+ * nothing but a secret; and ADR-0072 §2's `google/start`, whose body names
+ * nobody because the person is not known until the provider says who they
+ * are. Each takes its **own instance**, so the counters are separate for the
+ * reason `D18.5` separated the reset's from `login`'s.
  */
 export const createTokenRouteRateLimiter = (
   config: AppConfig,

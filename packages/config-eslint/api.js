@@ -61,7 +61,16 @@ export const apiConfig = ({ tsconfigRootDir }) =>
         // ADR-0012: a controller may not write a response body itself. The
         // envelope is produced by `respond.*` and by the error middleware, both
         // of which live in `core/http` and are exempted below.
-        "no-restricted-syntax": ["error", ...functionalStyle, ...noRawResponse],
+        //
+        // ADR-0072 §2: the fake identity provider is reachable from tests
+        // only. The block below, which the test files match, drops this
+        // selector with the response rule.
+        "no-restricted-syntax": [
+          "error",
+          ...functionalStyle,
+          ...noRawResponse,
+          ...noFakeOidcProvider,
+        ],
       },
     },
 
@@ -74,6 +83,21 @@ export const apiConfig = ({ tsconfigRootDir }) =>
       files: ["src/core/http/**/*.ts", "src/**/__tests__/**/*.ts"],
       rules: {
         "no-restricted-syntax": ["error", ...functionalStyle],
+      },
+    },
+
+    {
+      // `core/http` writes response bodies, but it is not a test: the block
+      // above drops the fake-provider rule for both, so it is put back here
+      // for `core/http` alone (`D19.2`'s `security-reviewer`).
+      files: ["src/core/http/**/*.ts"],
+      ignores: ["src/**/__tests__/**/*.ts"],
+      rules: {
+        "no-restricted-syntax": [
+          "error",
+          ...functionalStyle,
+          ...noFakeOidcProvider,
+        ],
       },
     },
 
@@ -197,6 +221,36 @@ const noRawResponse = ["json", "send", "jsonp", "sendStatus"].flatMap(
     },
   ],
 );
+
+/**
+ * The fake identity provider, by name, in both spellings a file could reach it
+ * through (ADR-0072 §2; `D19.1`'s `security-reviewer`).
+ *
+ * The fake answers any scripted ID token, so a process that ran the sign-in
+ * flow against it would sign anybody in as anybody. The composition root
+ * therefore never chooses it from configuration — it takes an injected
+ * provider or builds Google's — and this rule is what keeps "never" true: no
+ * file under `src/` outside a test may import it, whatever a later change to
+ * the container intends. Its re-export from `core/oidc/index.ts` is an export,
+ * not an import, and the test harness under `test/` is outside `src/`.
+ */
+const noFakeOidcProvider = [
+  {
+    selector: "ImportSpecifier[imported.name='createFakeOidcProvider']",
+    message:
+      "The fake identity provider is for tests only (ADR-0072 §2): the container takes an injected provider or builds Google's.",
+  },
+  {
+    selector: "ObjectPattern > Property[key.name='createFakeOidcProvider']",
+    message:
+      "The fake identity provider is for tests only (ADR-0072 §2): the container takes an injected provider or builds Google's.",
+  },
+  {
+    selector: "MemberExpression[property.name='createFakeOidcProvider']",
+    message:
+      "The fake identity provider is for tests only (ADR-0072 §2): the container takes an injected provider or builds Google's.",
+  },
+];
 
 const noExpress = [
   {

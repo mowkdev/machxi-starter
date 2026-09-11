@@ -9,6 +9,7 @@ import type {
   SetPasswordBody,
   UpdateProfileBody,
   UpdateUserBody,
+  UserProfileResource,
   UserResource,
   UserRole,
 } from "@repo/contracts";
@@ -32,7 +33,7 @@ import type { OrganizationsService } from "../organizations/index.js";
 import type { SettingsService } from "../settings/index.js";
 import type { StaffService } from "../staff/index.js";
 import { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
-import { toUserResource } from "./users.mapper.js";
+import { toUserProfileResource, toUserResource } from "./users.mapper.js";
 import type { UserRecord, UsersRepository } from "./users.repository.js";
 
 /**
@@ -203,6 +204,35 @@ export const createUsersService = ({
     return record;
   };
 
+  /**
+   * Records → resources, with each account's linked identities (ADR-0072
+   * §3). One read for the whole set, so a page of fifty costs one statement
+   * rather than fifty.
+   */
+  const present = async (
+    records: readonly UserRecord[],
+    tx?: DbExecutor,
+  ): Promise<UserResource[]> => {
+    const identities = await repository.identitiesOf(
+      records.map((record) => record.id),
+      tx,
+    );
+
+    return records.map((record) => toUserResource(record, identities));
+  };
+
+  const presentOne = async (
+    record: UserRecord,
+    tx?: DbExecutor,
+  ): Promise<UserResource> =>
+    toUserResource(record, await repository.identitiesOf([record.id], tx));
+
+  /** The owner's view: {@link presentOne} and whether a password exists. */
+  const presentProfile = async (
+    record: UserRecord,
+  ): Promise<UserProfileResource> =>
+    toUserProfileResource(record, await repository.identitiesOf([record.id]));
+
   return {
     /**
      * `GET /api/v1/admin/users` (ADR-0014).
@@ -217,12 +247,12 @@ export const createUsersService = ({
     ): Promise<Page<UserResource>> => {
       const { rows, total } = await repository.list(query);
 
-      return toPage(query, rows.map(toUserResource), total);
+      return toPage(query, await present(rows), total);
     },
 
     /** `GET /api/v1/admin/users/:id`. */
     getById: async (_ctx: RequestContext, id: string): Promise<UserResource> =>
-      toUserResource(await readAny(id)),
+      presentOne(await readAny(id)),
 
     /**
      * `POST /api/v1/admin/users` — staff create an account directly, with an
@@ -305,7 +335,9 @@ export const createUsersService = ({
         "user created by staff",
       );
 
-      return toUserResource(created);
+      // A new account has linked nothing; the read is the same one every
+      // other answer takes, so the shape cannot drift from theirs.
+      return presentOne(created);
     },
 
     /**
@@ -384,7 +416,7 @@ export const createUsersService = ({
         "user updated by staff",
       );
 
-      return toUserResource(updated);
+      return presentOne(updated);
     },
 
     /**
@@ -685,8 +717,8 @@ export const createUsersService = ({
     },
 
     /** `GET /api/v1/user/profile` — the caller's own account. */
-    getProfile: async (ctx: RequestContext): Promise<UserResource> =>
-      toUserResource(await readSelf(self(ctx).id)),
+    getProfile: async (ctx: RequestContext): Promise<UserProfileResource> =>
+      presentProfile(await readSelf(self(ctx).id)),
 
     /**
      * `PATCH /api/v1/user/profile` — names only.
@@ -699,7 +731,7 @@ export const createUsersService = ({
     updateProfile: async (
       ctx: RequestContext,
       body: UpdateProfileBody,
-    ): Promise<UserResource> => {
+    ): Promise<UserProfileResource> => {
       const principal = self(ctx);
       const at = now();
 
@@ -715,7 +747,7 @@ export const createUsersService = ({
 
       ctx.logger.info({ userId: principal.id }, "profile updated");
 
-      return toUserResource(await readSelf(principal.id));
+      return presentProfile(await readSelf(principal.id));
     },
 
     /**

@@ -5299,6 +5299,70 @@
           }
         },
         {
+          "name": "Start a sign-in with Google",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Two honest answers, and this accepts either (ADR-0072 §2): the routes",
+                  "// exist only where GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set.",
+                  "if (pm.response.code === 404) {",
+                  "  pm.test(\"no Google client configured: 404 ROUTE_NOT_FOUND, as registration with its flag off\", function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"ROUTE_NOT_FOUND\");",
+                  "  });",
+                  "} else {",
+                  "  pm.test(\"200 with the provider's authorization URL, PKCE S256 and no verifier\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const url = pm.response.json().data.authorizationUrl;",
+                  "    pm.expect(url).to.include(\"code_challenge_method=S256\");",
+                  "    pm.expect(url).to.include(\"state=\");",
+                  "    pm.expect(url).to.include(\"nonce=\");",
+                  "    pm.expect(url).to.not.include(\"code_verifier\");",
+                  "  });",
+                  "  pm.test(\"the transaction cookie is HttpOnly, Secure and SameSite=Lax\", function () {",
+                  "    const cookie = pm.response.headers",
+                  "      .all()",
+                  "      .filter(function (h) { return h.key.toLowerCase() === \"set-cookie\"; })",
+                  "      .map(function (h) { return h.value; })",
+                  "      .find(function (v) { return v.indexOf(\".oidc=\") !== -1; });",
+                  "    pm.expect(cookie, \"a Set-Cookie for the transaction\").to.be.a(\"string\");",
+                  "    pm.expect(cookie).to.match(/HttpOnly/i);",
+                  "    pm.expect(cookie).to.match(/Secure/i);",
+                  "    pm.expect(cookie).to.match(/SameSite=Lax/i);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locale\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/google/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "google", "start"]
+            },
+            "description": "The start of a sign-in with Google (ADR-0072 §2): a `POST` from the customer app's own client, never a navigation, answering the authorization URL and setting `__Host-machxi.oidc` — the signed transaction that binds the callback to this browser. Behind a limiter of its own on `RATE_LIMIT_LOGIN_MAX`'s number, keyed on the source address alone.\n\nThe one request of the flow the collection can reach. The callback is a navigation from Google carrying a code only Google can mint, and the exchange needs the token that callback puts in a fragment; the integration tier drives both against a fake provider, and the operator's walk with real credentials drives Google itself.\n\nA default clone has no Google client, so this answers `404 ROUTE_NOT_FOUND` — the routes are mounted only when both halves of the client are set — and the test accepts that answer as well as the configured one."
+          }
+        },
+        {
           "name": "Find the account this run registered",
           "event": [
             {

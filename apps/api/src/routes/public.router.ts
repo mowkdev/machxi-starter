@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import type { Container } from "../core/container.js";
 import {
+  createFederatedRouter,
   createRegisterRouter,
   createVerificationRouter,
 } from "../modules/auth/index.js";
@@ -61,6 +62,28 @@ export const createPublicRouter = (container: Container): Router => {
       mailSourceRateLimiter: container.rateLimiters.mailSource,
     }),
   );
+
+  /*
+   * `/auth/google/{start,callback,exchange}` (ADR-0072 §2), mounted **only
+   * when the Google client is configured** — the container builds the
+   * controller then and not otherwise — so without one the three paths
+   * answer `ROUTE_NOT_FOUND`, registration's shape with its flag off. Not
+   * behind `FEATURE_USER_REGISTRATION`: that flag decides whether a sign-in
+   * may *create* an account, which is the service's question, and an
+   * existing account signs in through Google whatever it says.
+   */
+  const federated = container.controllers.federated;
+
+  if (federated !== undefined) {
+    router.use(
+      "/auth/google",
+      createFederatedRouter({
+        controller: federated,
+        startRateLimiter: container.rateLimiters.federatedStart,
+        callbackRateLimiter: container.rateLimiters.federatedCallback,
+      }),
+    );
+  }
 
   /*
    * `/invitations/lookup` (ADR-0071 §5).

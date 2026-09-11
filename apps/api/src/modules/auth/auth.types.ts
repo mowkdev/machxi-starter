@@ -1,4 +1,10 @@
-import type { Population, PrincipalResource, Role } from "@repo/contracts";
+import type {
+  FederatedIdentityResource,
+  FederatedProvider,
+  Population,
+  PrincipalResource,
+  Role,
+} from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
 /**
@@ -197,4 +203,94 @@ export interface PrincipalAdapter<P extends Population = Population> {
     email: string,
     tx?: DbExecutor,
   ) => Promise<MailablePrincipal | undefined>;
+}
+
+/**
+ * What a federated sign-in creates (ADR-0072 §1): an account with a proven
+ * address and **no password**. The status and the stamp are the adapter's to
+ * write, not the caller's — see {@link FederatedAccounts.createFederated}.
+ */
+export interface CreateFederatedPrincipalInput {
+  readonly email: string;
+  readonly firstName: string | undefined;
+  readonly lastName: string | undefined;
+  /** When the provider's claim proved the address — `email_verified_at`. */
+  readonly at: Date;
+}
+
+/** What linking writes (ADR-0072 §1, §3). */
+export interface LinkFederatedIdentityInput {
+  readonly userId: string;
+  readonly provider: FederatedProvider;
+  readonly subject: string;
+  /** The address the provider reported, informational only (ADR-0072 §1). */
+  readonly email: string | null;
+  readonly at: Date;
+}
+
+/**
+ * The account side of a sign-in with an external provider (ADR-0072 §1), and
+ * **users only**: staff get no federated login (§5).
+ *
+ * A seam of its own rather than more optional members on {@link
+ * PrincipalAdapter}, and the reason is what each is for. That adapter is the
+ * ADR-0017 abstraction one auth service serves two populations through; this
+ * is one population's identity table, which the staff service has no
+ * business being able to type-check a call to. It is the same translation of
+ * the users repository into what the auth module consumes, and it holds no
+ * rule — the order a sign-in resolves in is the service's.
+ */
+export interface FederatedAccounts {
+  /**
+   * The account a provider's subject is a way into, if any.
+   *
+   * `principal` is `undefined` only when the identity names a row the
+   * aggregate read no longer returns — unreachable while deletion releases
+   * identities in the same transaction (ADR-0072 §1), and refused by the
+   * caller rather than assumed away.
+   */
+  readonly findBySubject: (
+    provider: FederatedProvider,
+    subject: string,
+    tx?: DbExecutor,
+  ) => Promise<
+    | {
+        readonly identityId: string;
+        readonly principal: PrincipalRecord | undefined;
+      }
+    | undefined
+  >;
+  /**
+   * Inserts an `active` account with `email_verified_at` stamped, a null
+   * password hash and the `customer` grant, or resolves to `undefined` when a
+   * live account holds the address.
+   *
+   * `active` and the stamp are written **here** rather than passed in, for
+   * the reason registration's `pending_verification` is: the one caller
+   * creates an account on a provider's verified claim, and a status that was
+   * a parameter would be a thing a second call site could get wrong.
+   */
+  readonly createFederated: (
+    input: CreateFederatedPrincipalInput,
+    tx: DbExecutor,
+  ) => Promise<PrincipalRecord | undefined>;
+  /**
+   * Resolves to `false` when either uniqueness already holds — the subject is
+   * another account's, or this account already has one of this provider.
+   */
+  readonly link: (
+    input: LinkFederatedIdentityInput,
+    tx: DbExecutor,
+  ) => Promise<boolean>;
+  /** `last_login_at` on a sign-in through an identity already linked. */
+  readonly touchLogin: (
+    identityId: string,
+    at: Date,
+    tx: DbExecutor,
+  ) => Promise<void>;
+  /** The account's identities as `me` and `/user/profile` carry them (ADR-0072 §3). */
+  readonly identitiesOf: (
+    userId: string,
+    tx?: DbExecutor,
+  ) => Promise<readonly FederatedIdentityResource[]>;
 }

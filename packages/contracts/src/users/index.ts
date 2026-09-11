@@ -27,4 +27,8 @@ export {
   type UpdateUserBody,
   type UserIdParams,
 } from "./schemas.js";
-export { type UserResource } from "./types.js";
+export {
+  type FederatedIdentityResource,
+  type UserProfileResource,
+  type UserResource,
+} from "./types.js";

@@ -23,6 +23,8 @@
   "AUTH_EMAIL_UNVERIFIED": "This address has not been confirmed yet.",
   "AUTH_CURRENT_PASSWORD_INVALID": "That is not your current password.",
   "AUTH_IMPERSONATION_REFUSED": "That is not allowed on an impersonated session.",
+  "AUTH_FEDERATED_SIGNUP_CLOSED": "New accounts cannot be created here.",
+  "AUTH_FEDERATED_LINK_REQUIRED": "Google cannot confirm this address. Link Google from the account's own settings.",
   "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",
 
   "USER_EMAIL_TAKEN": "Another user already uses that email address.",

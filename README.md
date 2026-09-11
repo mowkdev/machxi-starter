@@ -53,7 +53,7 @@ Then, in a second terminal:
 
 ```sh
 curl http://localhost:4000/health/ready
-pnpm test:postman            # 198 requests, 603 assertions — did it actually work?
+pnpm test:postman            # 199 requests, 606 assertions — did it actually work?
 ```
 
 `pnpm test:postman` runs the Postman collection headless with newman against

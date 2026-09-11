@@ -36,7 +36,7 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 ## Requirement: Creating and updating an account
 
-`POST /admin/users` answers `201` with the resource; the address must be free among live accounts (`409 USER_EMAIL_TAKEN`), the role defaults to `customer`, the status to `active`, and the account's personal organization is created in the same transaction ([`organizations.md`](organizations.md)). `PATCH /admin/users/:id` changes names, status and roles in one transaction; a status leaving `active`, or a change to the role set, revokes every session of the account in the same commit.
+Every user resource on the admin segment carries the account's **`identities`** — `{ provider, email, linkedAt }`, read-only, empty for an account with none — and nothing about its password. `POST /admin/users` answers `201` with the resource; the address must be free among live accounts (`409 USER_EMAIL_TAKEN`), the role defaults to `customer`, the status to `active`, and the account's personal organization is created in the same transaction ([`organizations.md`](organizations.md)). `PATCH /admin/users/:id` changes names, status and roles in one transaction; a status leaving `active`, or a change to the role set, revokes every session of the account in the same commit.
 Records: [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0028](../adr/0028-account-deletion.md)
 Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`
 
@@ -125,9 +125,14 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 ## Requirement: The profile is the caller's own, names only
 
-`GET /user/profile` answers the caller's account; `PATCH /user/profile` accepts `firstName` and `lastName` (nullable) and nothing else — `status` and `roles` are unknown keys, so an account cannot re-enable or promote itself. A deleted account reaching either inside its token's lifetime answers `404 NOT_FOUND`.
-Records: [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0055](../adr/0055-customer-app.md)
+`GET /user/profile` answers the caller's account; `PATCH /user/profile` accepts `firstName` and `lastName` (nullable) and nothing else — `status` and `roles` are unknown keys, so an account cannot re-enable or promote itself. A deleted account reaching either inside its token's lifetime answers `404 NOT_FOUND`. Both answer the shared resource plus **`hasPassword`**, a boolean — never the hash — and the resource's **`identities`**, the account's linked external identities as `{ provider, email, linkedAt }`; the provider's subject never leaves the API ([`federated-identity.md`](federated-identity.md)).
+Records: [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0055](../adr/0055-customer-app.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
 Proved by: `apps/api/test/user-profile.int.test.ts`
+
+### Scenario: Which ways in the account has
+
+- **WHEN** a customer with a password and one linked Google account reads their profile
+- **THEN** the answer carries `hasPassword: true` and one identity `{ provider: "google", email, linkedAt }`, and no subject anywhere in the body
 
 ### Scenario: Promoting oneself
 

@@ -49,4 +49,20 @@ export const respond = {
   noContent: (res: Response): void => {
     res.status(204).end();
   },
+
+  /**
+   * `302` to another origin — the one answer in this API that is a
+   * navigation rather than a resource (ADR-0072 §2).
+   *
+   * The provider's callback is reached by a browser following a redirect from
+   * Google, so whatever it answers is what a person sees: an envelope would be
+   * JSON on a bare page. It answers every outcome, success and refusal alike,
+   * by sending the browser on to the customer app with the result in the URL
+   * **fragment**, which no server log and no `Referer` header carries. A
+   * helper here rather than `res.redirect` in the controller for `respond`'s
+   * own reason: the ways a controller may answer are the list in this file.
+   */
+  redirect: (res: Response, location: string): void => {
+    res.redirect(302, location);
+  },
 } as const;

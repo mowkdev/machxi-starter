@@ -4,9 +4,9 @@ Two populations sign in on two segments — `/api/v1/admin/auth` for staff, `/ap
 
 ## Requirement: Login answers a session or one indistinguishable refusal
 
-`POST /auth/login` with `{ email, password }` answers `200` with `accessToken`, `accessTokenExpiresAt`, `refreshToken`, `refreshTokenExpiresAt` and the `principal`. An unknown address and a wrong password answer the same `401 AUTH_INVALID_CREDENTIALS`, in the same time — the verifier runs against a dummy hash when no account matched. Only after the password verifies is the account's status considered.
-Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md)
-Proved by: `apps/api/test/auth.int.test.ts`, `apps/api/test/auth-segments.int.test.ts`
+`POST /auth/login` with `{ email, password }` answers `200` with `accessToken`, `accessTokenExpiresAt`, `refreshToken`, `refreshTokenExpiresAt` and the `principal`. An unknown address and a wrong password answer the same `401 AUTH_INVALID_CREDENTIALS`, in the same time — the verifier runs against a dummy hash when no account matched, and so does an account with **no password**, one created by a sign-in with Google ([`federated-identity.md`](federated-identity.md)): the answer must not say which way in exists. Only after the password verifies is the account's status considered.
+Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
+Proved by: `apps/api/test/auth.int.test.ts`, `apps/api/test/auth-segments.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`
 
 ### Scenario: Correct credentials
 
@@ -17,6 +17,11 @@ Proved by: `apps/api/test/auth.int.test.ts`, `apps/api/test/auth-segments.int.te
 
 - **WHEN** the address is unknown, or known with a wrong password
 - **THEN** the answer is `401 AUTH_INVALID_CREDENTIALS` in both cases, with nothing that distinguishes them
+
+### Scenario: An account with no password
+
+- **WHEN** any password is presented for an account that signs in only through Google
+- **THEN** the answer is `401 AUTH_INVALID_CREDENTIALS`, indistinguishable from a wrong password
 
 ### Scenario: Correct password, inactive account
 
@@ -108,14 +113,19 @@ Proved by: `apps/api/test/auth.int.test.ts`, `apps/api/test/auth-cookie.int.test
 
 ## Requirement: `me` re-reads the account
 
-`GET /auth/me` answers the principal from the database rather than from the token's claims, so a client can resynchronise after a role or profile change. An account deleted or disabled inside its token's lifetime is signed out here rather than at the next expiry.
-Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0057](../adr/0057-impersonation-sessions.md)
-Proved by: `apps/api/test/auth.int.test.ts`
+`GET /auth/me` answers the principal from the database rather than from the token's claims, so a client can resynchronise after a role or profile change. On the user segment it also answers **`hasPassword`** and **`identities`** — which ways into the account exist — which the token-issuing bodies do not carry. An account deleted or disabled inside its token's lifetime is signed out here rather than at the next expiry.
+Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
+Proved by: `apps/api/test/auth.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`
 
 ### Scenario: A live account
 
 - **WHEN** a principal calls `me`
 - **THEN** the answer is `200` with the principal resource as the database holds it, and it carries no `impersonatedBy` — that field travels on `refresh`
+
+### Scenario: A customer created through Google
+
+- **WHEN** an account made by a sign-in with Google calls `GET /api/v1/user/auth/me`
+- **THEN** the principal carries `hasPassword: false` and its one identity `{ provider: "google", email, linkedAt }`
 
 ### Scenario: The account is gone
 

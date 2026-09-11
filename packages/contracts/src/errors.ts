@@ -69,6 +69,16 @@ const GENERIC_ERROR_CODES = [
  * | `AUTH_CURRENT_PASSWORD_INVALID` | 403 | the caller re-presented their own password on a credential-setting endpoint and it did not verify | ask for the password again |
  * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching that population's `machxi.csrf.{admin,user}` cookie (ADR-0029; ADR-0056 for the per-population name) | re-read the cookie and retry; if it persists, re-login |
  * | `AUTH_IMPERSONATION_REFUSED` | 403 | the session is impersonated (ADR-0057) and the operation is one of the takeover-enabling ones it is not allowed | tell the operator the account's owner must do it |
+ * | `AUTH_FEDERATED_SIGNUP_CLOSED` | 403 | a Google sign-in found no account and `FEATURE_USER_REGISTRATION` is off, so none may be created (ADR-0072 §1) | say that new accounts are not being made here |
+ * | `AUTH_FEDERATED_LINK_REQUIRED` | 403 | a Google sign-in's address is one Google does not host, so its "verified" proves nothing about the mailbox today — answered the same whether or not an account holds it (ADR-0072 §1) | ask the person to sign in or register with a password and link Google from their account |
+ *
+ * The two `AUTH_FEDERATED_*` codes never travel in an envelope. The Google
+ * callback is a top-level navigation, so every refusal it makes is a `302` to
+ * the customer app with the code in the URL fragment (`#error=<code>`,
+ * ADR-0072 §2), and the app renders the catalogue's sentence for it. They are
+ * codes rather than prose because that fragment is all the app is told, and
+ * they are `403` in spirit for the reason their neighbours are: the provider
+ * vouched for the person, and it is the operation that is refused.
  *
  * `AUTH_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
  * *is* authenticated — their session is fine and stays fine — so a `401` would
@@ -120,6 +130,8 @@ const AUTH_ERROR_CODES = [
   "AUTH_EMAIL_UNVERIFIED",
   "AUTH_CURRENT_PASSWORD_INVALID",
   "AUTH_IMPERSONATION_REFUSED",
+  "AUTH_FEDERATED_SIGNUP_CLOSED",
+  "AUTH_FEDERATED_LINK_REQUIRED",
   "CSRF_TOKEN_INVALID",
 ] as const;
 

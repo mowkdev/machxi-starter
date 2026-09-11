@@ -51,6 +51,14 @@ export const USER_ROWS: readonly UserResource[] = [
     createdAt: "2026-04-02T10:00:00.000Z",
     updatedAt: "2026-08-18T12:00:00.000Z",
     deletedAt: null,
+    // One linked Google account, read-only on this segment (ADR-0072 §3).
+    identities: [
+      {
+        provider: "google",
+        email: "cara@gmail.test",
+        linkedAt: "2026-08-18T12:00:00.000Z",
+      },
+    ],
   },
   {
     id: "0198c2f0-0000-7000-8000-000000000002",
@@ -65,6 +73,7 @@ export const USER_ROWS: readonly UserResource[] = [
     createdAt: "2026-05-19T10:00:00.000Z",
     updatedAt: "2026-05-19T10:00:00.000Z",
     deletedAt: null,
+    identities: [],
   },
   {
     id: "0198c2f0-0000-7000-8000-000000000003",
@@ -79,6 +88,8 @@ export const USER_ROWS: readonly UserResource[] = [
     createdAt: "2026-03-08T10:00:00.000Z",
     updatedAt: "2026-07-15T10:00:00.000Z",
     deletedAt: "2026-07-15T10:00:00.000Z",
+    // Deletion releases every identity (ADR-0072 §1), so a deleted row has none.
+    identities: [],
   },
 ];
 
@@ -239,6 +250,7 @@ export const createUsersHandlers = (state: UsersMockState) =>
         createdAt: "2026-08-20T10:00:00.000Z",
         updatedAt: "2026-08-20T10:00:00.000Z",
         deletedAt: null,
+        identities: [],
       };
 
       state.rows = [...state.rows, created];

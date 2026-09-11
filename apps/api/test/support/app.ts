@@ -5,6 +5,11 @@ import { createApp } from "../../src/app.js";
 import type { MailMessage, MailSender } from "../../src/core/mail/index.js";
 import { loadConfig, type AppConfig } from "../../src/core/config/index.js";
 import { buildContainer, type Container } from "../../src/core/container.js";
+import {
+  createFakeOidcProvider,
+  oidcRedirectUri,
+  type FakeOidcProvider,
+} from "../../src/core/oidc/index.js";
 import type { ErrorReporter } from "../../src/core/reporting/index.js";
 import { createDb, type DbClient } from "../../src/core/db/index.js";
 
@@ -35,6 +40,17 @@ export interface TestApp {
    * wiring.
    */
   readonly mail: MailMessage[];
+  /**
+   * The identity provider this app signs in against, when the Google client
+   * is configured (ADR-0072 §2) — always the fake, never Google.
+   *
+   * Handed to the container through its override rather than chosen from
+   * configuration, which is the only way the fake can reach the flow
+   * (`D19.1`'s `security-reviewer`). `consent` is the person at the
+   * provider: it reads the authorization URL a start produced and returns the
+   * `code` and `state` the callback would receive.
+   */
+  readonly oidc: FakeOidcProvider;
   readonly close: () => Promise<void>;
 }
 
@@ -70,6 +86,15 @@ export const createTestApp = ({
   // Two connections and a short idle timeout: a test file opens a client per
   // app and must not hold the pool open past its own lifetime.
   const db = createDb(config.db.url, { max: 2, idleTimeout: 1 });
+  // The fake's client id and redirect URI are the configuration's, so the
+  // authorization URL a start returns is the one the real adapter would
+  // build for this deployment.
+  const oidc = createFakeOidcProvider({
+    ...(config.federated.google === undefined
+      ? {}
+      : { clientId: config.federated.google.clientId }),
+    redirectUri: oidcRedirectUri(config.federated.apiPublicUrl),
+  });
   const container = buildContainer({
     config,
     db,
@@ -77,6 +102,9 @@ export const createTestApp = ({
     // No `rateLimitStore`: the suite always uses the in-memory store, which is
     // what makes a limiter's count local to one app instance (ADR-0066 §4).
     mail: mailSender,
+    // Used only when `config.federated.google` is present; a configuration
+    // without the client mounts no route and never reaches it.
+    oidc: oidc.provider,
     ...(reporter === undefined ? {} : { reporter }),
   });
 
@@ -87,6 +115,7 @@ export const createTestApp = ({
     db,
     logger,
     mail,
+    oidc,
     close: db.close,
   } as const;
 };

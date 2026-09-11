@@ -60,6 +60,8 @@ export const PROFILE: UserResource = {
    * by construction a live one (ADR-0017, `UserResource`).
    */
   deletedAt: null,
+  // Nothing linked: the password-only account (ADR-0072 §3).
+  identities: [],
 };
 
 /** The customer's own current password, for the ADR-0027 check. */

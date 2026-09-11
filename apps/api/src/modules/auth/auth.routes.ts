@@ -9,6 +9,12 @@ import {
   validate,
 } from "../../core/middleware/index.js";
 import type { AuthController } from "./auth.controller.js";
+import type { FederatedController } from "./auth.federated.controller.js";
+import {
+  federatedCallbackSchema,
+  federatedExchangeSchema,
+  federatedStartSchema,
+} from "./auth.federated.schemas.js";
 import type { ImpersonationController } from "./auth.impersonation.controller.js";
 import { exchangeImpersonationSchema } from "./auth.impersonation.schemas.js";
 import {
@@ -442,6 +448,81 @@ export const createVerificationRouter = ({
     "/confirm-email",
     validate(confirmEmailSchema),
     controller.confirmEmail,
+  );
+
+  return router;
+};
+
+export interface FederatedRouterDeps {
+  readonly controller: FederatedController;
+  /**
+   * The start's own budget (ADR-0072 §2): `RATE_LIMIT_LOGIN_MAX`'s number,
+   * keyed on the source address alone, in a counter of its own — the
+   * `D18.2` precedent for a second counter on one number. A start costs the
+   * API a signature and Google a redirect, and there is no address yet to key
+   * on.
+   */
+  readonly startRateLimiter: RequestHandler;
+  /**
+   * The callback's budget — the start's number and key in a counter of its
+   * own (ADR-0072 §2, amended at `D19.2`): a sealed transaction replayed with
+   * invented codes is a request to Google's token endpoint per replay.
+   */
+  readonly callbackRateLimiter: RequestHandler;
+}
+
+/**
+ * `/api/v1/public/auth/google/{start,callback,exchange}` (ADR-0072 §2).
+ *
+ * Mounted by the public router **only when the Google client is configured**
+ * — both halves of it — so without one the three paths answer
+ * `404 ROUTE_NOT_FOUND`, exactly as registration does with its flag off
+ * (ADR-0004). Nothing here checks a flag: the mount is the control.
+ *
+ * - **`start`** is a `POST` from the customer app's own client, never a
+ *   navigation: a `GET` that redirected would be a link anyone could plant to
+ *   start a flow in a victim's browser.
+ * - **`callback`** is the one navigation, from Google. **No CSRF guard**, on
+ *   ADR-0071 §3's reasoning as ADR-0072 §2 applies it: the `state` in the
+ *   transaction cookie is the binding and the code is single-use at Google.
+ *   It carries a limiter of its own since `D19.2`'s `security-reviewer`,
+ *   because each callback with a valid cookie costs a request to Google.
+ *   Every outcome is a `302` — but for that limiter's `429` — so its query
+ *   schema cannot fail.
+ * - **`exchange`** is `verify-email`'s shape but for one thing: the token in
+ *   the body is the credential **and** the handoff binding the callback left
+ *   in the cookie must name it, so only the browser the callback answered can
+ *   spend it (amended at `D19.2`). The mint — the callback — is where a
+ *   budget belongs.
+ */
+export const createFederatedRouter = ({
+  controller,
+  startRateLimiter,
+  callbackRateLimiter,
+}: FederatedRouterDeps): Router => {
+  const router = Router();
+
+  // The exchange answers with a session and the other two with a credential's
+  // beginnings or its delivery; none of it belongs in a shared cache
+  // (ADR-0020).
+  router.use(noStore);
+
+  router.post(
+    "/start",
+    startRateLimiter,
+    validate(federatedStartSchema),
+    controller.start,
+  );
+  router.get(
+    "/callback",
+    callbackRateLimiter,
+    validate(federatedCallbackSchema),
+    controller.callback,
+  );
+  router.post(
+    "/exchange",
+    validate(federatedExchangeSchema),
+    controller.exchange,
   );
 
   return router;

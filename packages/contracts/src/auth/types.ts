@@ -1,5 +1,6 @@
 import type { StaffRole, UserRole } from "../enums.js";
 import type { IsoDateTime } from "../primitives.js";
+import type { FederatedIdentityResource } from "../users/types.js";
 
 /**
  * Responses of the authentication endpoints (ADR-0018).
@@ -146,6 +147,24 @@ export interface UserPrincipalResource {
    * deliberately unchanged.
    */
   readonly impersonatedBy?: ImpersonatorResource;
+  /**
+   * Whether the account can sign in with a password at all (ADR-0072 §3).
+   *
+   * **Present on `GET /api/v1/user/auth/me` only**, beside
+   * {@link UserPrincipalResource.identities}: `me` is the resynchronisation
+   * endpoint, and "which ways in does this account have" is a question a
+   * client asks there or on `/user/profile`, never one a token-issuing body
+   * needs answered. Optional rather than `| null` for `impersonatedBy`'s
+   * reason — an older client parses the principal unchanged.
+   *
+   * A boolean and never the hash, which stays inside the repository layer.
+   */
+  readonly hasPassword?: boolean;
+  /**
+   * The external identities linked to the account (ADR-0072 §3), on
+   * `GET /api/v1/user/auth/me` only — see {@link hasPassword}.
+   */
+  readonly identities?: readonly FederatedIdentityResource[];
 }
 
 /**
@@ -220,4 +239,17 @@ export interface AuthResource extends TokenPair {
 export interface ImpersonationHandoffResource {
   readonly token: string;
   readonly expiresAt: IsoDateTime;
+}
+
+/**
+ * The body of `POST /api/v1/public/auth/google/start` (ADR-0072 §2).
+ *
+ * Where the customer app sends the browser next: the provider's authorization
+ * endpoint with this attempt's `state`, `nonce` and PKCE challenge on it. The
+ * response also sets the transaction cookie, `__Host-machxi.oidc`, which is
+ * what binds the callback to this browser — the URL alone starts nothing the
+ * API will finish.
+ */
+export interface FederatedStartResource {
+  readonly authorizationUrl: string;
 }

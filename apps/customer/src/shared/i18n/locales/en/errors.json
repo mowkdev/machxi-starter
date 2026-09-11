@@ -23,6 +23,8 @@
   "AUTH_EMAIL_UNVERIFIED": "Confirm your email address before signing in. Check your inbox for the link, or ask for a new one.",
   "AUTH_CURRENT_PASSWORD_INVALID": "That is not your current password.",
   "AUTH_IMPERSONATION_REFUSED": "That cannot be done while impersonating this account. The account holder has to do it themselves.",
+  "AUTH_FEDERATED_SIGNUP_CLOSED": "New accounts cannot be created here right now. If you already have an account, sign in with your email and password.",
+  "AUTH_FEDERATED_LINK_REQUIRED": "Google can't confirm this email address for us. Sign in with your password, or create an account with one, then link Google from your account's security settings.",
   "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",
 
   "USER_EMAIL_TAKEN": "That email address is already in use.",

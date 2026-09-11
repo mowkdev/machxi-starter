@@ -1,4 +1,5 @@
 import {
+  FEDERATED_PROVIDERS,
   STAFF_ROLES,
   STAFF_STATUSES,
   USER_ROLES,
@@ -47,6 +48,24 @@ export const userResourceSchema = z.strictObject({
   // on purpose, and `USER_STATUSES` has no `deleted` member, so without this a
   // deleted account renders exactly like a live one (ADR-0012, amended).
   deletedAt: z.iso.datetime().nullable(),
+  // On both segments since ADR-0072 §3, and strict for the reason the whole
+  // schema is: the provider's `subject` is on the row and must never reach a
+  // response — it is the key a sign-in resolves by.
+  identities: z.array(
+    z.strictObject({
+      provider: z.enum(FEDERATED_PROVIDERS),
+      email: z.string().min(1).nullable(),
+      linkedAt: z.iso.datetime(),
+    }),
+  ),
+});
+
+/**
+ * `/api/v1/user/profile`'s shape (ADR-0072 §3): the shared resource and one
+ * boolean — never the hash it is derived from.
+ */
+export const userProfileResourceSchema = userResourceSchema.extend({
+  hasPassword: z.boolean(),
 });
 
 /**

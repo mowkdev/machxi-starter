@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { isAppError } from "../../../core/errors/index.js";
 import { DEFAULT_APP_ID } from "../../../core/http/index.js";
+import {
+  createAuthorizationRequest,
+  createOidcTransactionCodec,
+} from "../../../core/oidc/index.js";
 import { audienceFor, createTokenService } from "../auth.tokens.js";
 
 /**
@@ -199,5 +203,29 @@ describe("createTokenService", () => {
     await expect(tokens.verify(token, "staff")).resolves.toMatchObject({
       roles: ["admin"],
     });
+  });
+
+  it("refuses a sign-in transaction signed with the same key (ADR-0072 §2)", async () => {
+    // The transaction cookie is signed under `JWT_ACCESS_SECRET` too; its
+    // audience, `<APP_ID>-oidc`, is what stops it being presented as a bearer
+    // token. The other direction is proved beside the codec.
+    const sealed = await createOidcTransactionCodec({
+      secret: SECRET,
+      appId: APP_ID,
+      issuer: ISSUER,
+      now: at("2026-08-18T12:00:00.000Z"),
+    }).seal({
+      ...createAuthorizationRequest(),
+      intent: "signin",
+      locale: undefined,
+    });
+
+    for (const population of ["staff", "user"] as const) {
+      const refusal: unknown = await service()
+        .verify(sealed, population)
+        .catch((error: unknown) => error);
+
+      expect(isAppError(refusal) && refusal.code).toBe("AUTH_TOKEN_INVALID");
+    }
   });
 });

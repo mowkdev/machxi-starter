@@ -10,6 +10,19 @@ import type { OidcAuthorizationRequest } from "./oidc.types.js";
 export const OIDC_SCOPES = "openid email profile";
 
 /**
+ * Where the provider sends the browser back (ADR-0072 §2) — appended to
+ * `API_PUBLIC_URL` to make the redirect URI registered, exactly, in the
+ * provider's console and stated once in `docs/deploy.md`. The public router
+ * mounts the route at this path; the two are one fact written twice, and the
+ * integration tier's callback requests are what hold them together.
+ */
+export const OIDC_CALLBACK_PATH = "/api/v1/public/auth/google/callback";
+
+/** `${API_PUBLIC_URL}${OIDC_CALLBACK_PATH}`, for the adapter and the fake alike. */
+export const oidcRedirectUri = (apiPublicUrl: string): string =>
+  `${apiPublicUrl}${OIDC_CALLBACK_PATH}`;
+
+/**
  * A fresh `state`, `nonce` and PKCE verifier for one sign-in attempt.
  *
  * `randomToken(32)` for each — 256 bits, base64url, 43 characters, which is

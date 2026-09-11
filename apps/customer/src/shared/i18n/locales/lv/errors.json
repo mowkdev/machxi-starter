@@ -23,6 +23,8 @@
   "AUTH_EMAIL_UNVERIFIED": "Pirms pieteikšanās apstipriniet savu e-pasta adresi. Pārbaudiet pastkasti vai pieprasiet jaunu saiti.",
   "AUTH_CURRENT_PASSWORD_INVALID": "Šī nav jūsu pašreizējā parole.",
   "AUTH_IMPERSONATION_REFUSED": "To nevar izdarīt, uzdodoties par šo kontu. Tas jāizdara pašam konta īpašniekam.",
+  "AUTH_FEDERATED_SIGNUP_CLOSED": "Šobrīd šeit nevar izveidot jaunus kontus. Ja jums jau ir konts, piesakieties ar savu e-pastu un paroli.",
+  "AUTH_FEDERATED_LINK_REQUIRED": "Google nevar mums apstiprināt šo e-pasta adresi. Piesakieties ar paroli vai izveidojiet kontu ar paroli un pēc tam piesaistiet Google konta drošības iestatījumos.",
   "CSRF_TOKEN_INVALID": "Šo pieprasījumu nevarēja pārbaudīt. Mēģiniet vēlreiz.",
 
   "USER_EMAIL_TAKEN": "Šī e-pasta adrese jau tiek izmantota.",

@@ -6,7 +6,11 @@ import type {
 } from "../index.js";
 import {
   changePasswordBody,
+  federatedCallbackQuery,
+  federatedExchangeBody,
+  federatedStartBody,
   loginBody,
+  MAX_FEDERATED_CALLBACK_VALUE_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_REFRESH_TOKEN_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -409,5 +413,36 @@ describe("UserPrincipalResource — impersonatedBy", () => {
     expect(staffCarriesIt).toBe(false);
     expect(withActor.kind).toBe("staff");
     expect(staffPrincipal.kind).toBe("staff");
+  });
+});
+
+describe("the sign-in with Google schemas (ADR-0072 §2)", () => {
+  it("never fails the callback's query, so every refusal can be a redirect", () => {
+    // A validation error on a browser navigation would be JSON on a bare
+    // page; an unusable value reads as absent and the flow refuses it.
+    expect(
+      federatedCallbackQuery.parse({
+        code: ["one", "two"],
+        state: "s".repeat(MAX_FEDERATED_CALLBACK_VALUE_LENGTH + 1),
+        scope: "openid email profile",
+        authuser: "0",
+      }),
+    ).toEqual({ code: undefined, state: undefined, error: undefined });
+    expect(federatedCallbackQuery.parse({ code: "c", state: "s" })).toEqual({
+      code: "c",
+      state: "s",
+      error: undefined,
+    });
+  });
+
+  it("takes only the locale at the start, and only the token at the exchange", () => {
+    expect(federatedStartBody.parse({})).toEqual({});
+    expect(federatedStartBody.safeParse({ email: "a@b.c" }).success).toBe(
+      false,
+    );
+    expect(federatedExchangeBody.safeParse({ token: "" }).success).toBe(false);
+    expect(federatedExchangeBody.parse({ token: " t " })).toEqual({
+      token: "t",
+    });
   });
 });

@@ -1,6 +1,7 @@
 import type {
   AcceptOnboardingBody,
   ConfirmEmailBody,
+  FederatedExchangeBody,
   ForgotPasswordBody,
   ImpersonatorResource,
   LoginBody,
@@ -25,6 +26,7 @@ import {
   accountDisabled,
   emailChangeLinkInvalid,
   emailUnverified,
+  federatedHandoffInvalid,
   impersonationHandoffInvalid,
   invalidCredentials,
   invalidRefreshToken,
@@ -54,7 +56,11 @@ import { createMailDelivery, localeFor } from "../../core/mail/index.js";
 import type { MailSender, MailTemplates } from "../../core/mail/index.js";
 import type { SessionsRepository } from "./auth.repository.js";
 import type { TokenService } from "./auth.tokens.js";
-import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
+import type {
+  FederatedAccounts,
+  PrincipalAdapter,
+  PrincipalRecord,
+} from "./auth.types.js";
 
 /**
  * The authentication flows of ADR-0018, written once for both populations.
@@ -259,6 +265,13 @@ export interface AuthServiceDeps {
   readonly organizations?:
     Pick<OrganizationsService, "ensurePersonalOrganizationFor"> | undefined;
   /**
+   * The account's linked identities, wired on the **user** service only
+   * (ADR-0072 §3): `me` answers which ways in an account has, and the staff
+   * population has no federated login to answer about (§5). Narrowed to the
+   * one read, so this service cannot reach the linking half of the seam.
+   */
+  readonly federated?: Pick<FederatedAccounts, "identitiesOf"> | undefined;
+  /**
    * ADR-0071 §1's mint and consume, wired on both populations.
    *
    * The `user` service uses it for verification (§3); the `staff` one has no
@@ -342,6 +355,7 @@ export const createAuthService = ({
   impersonationSessionTtlSec,
   impersonators,
   organizations,
+  federated,
   accountTokens,
   mail,
   mailTemplates,
@@ -1193,6 +1207,19 @@ export const createAuthService = ({
         throw sessionRevoked();
       }
 
+      // Which ways in this account has (ADR-0072 §3), on the user population
+      // alone: `me` is where a client resynchronises, and "Set a password" or
+      // "Link Google" is decided from these two fields. Never on the
+      // token-issuing bodies — login and refresh do not need them, and the
+      // principal read behind them stays one statement.
+      if (principal.resource.kind === "user" && federated !== undefined) {
+        return {
+          ...principal.resource,
+          hasPassword: principal.passwordHash !== null,
+          identities: await federated.identitiesOf(principal.id),
+        };
+      }
+
       return principal.resource;
     },
 
@@ -1424,6 +1451,72 @@ export const createAuthService = ({
         ctx.logger.info(
           { population, principalId: principal.id },
           "address confirmed and the device signed in",
+        );
+
+        return auth;
+      });
+    },
+
+    /**
+     * `POST /api/v1/public/auth/google/exchange` (ADR-0072 §2) — the fragment
+     * token the Google callback minted, for a session.
+     *
+     * {@link verifyEmail}'s shape inherited whole: claim the `federated_login`
+     * token, re-read the account, issue the session and stamp the login, in
+     * one transaction, so every refusal rolls the claim back with it.
+     *
+     * **The account is re-read and must still be `active`** (`D19.1`'s
+     * `security-reviewer`, carried to this step). The callback checked it a
+     * few seconds ago, but a disable does not supersede a live handoff, and
+     * "disabled in that minute" must not open anyway — the impersonation
+     * exchange's reasoning about its own mint, applied to this one.
+     *
+     * Every refusal is the same `401` (ADR-0020 §Enumeration): unknown, spent,
+     * expired, of another purpose, or naming an account that is gone or no
+     * longer active.
+     */
+    exchangeFederatedHandoff: async (
+      ctx: RequestContext,
+      { token }: FederatedExchangeBody,
+    ): Promise<IssuedAuthResource> => {
+      if (population !== "user") {
+        // The route is mounted from the user controller on the public
+        // segment; a staff twin would be a way to turn a URL fragment into an
+        // operator's session, which no federated flow may mint (ADR-0072 §5).
+        throw internal(
+          new Error(`population "${population}" has no federated sign-in`),
+        );
+      }
+
+      const at = now();
+
+      return transaction(async (tx) => {
+        const claimed = await accountTokens.consume(
+          ctx,
+          { purpose: "federated_login", principalType: population, token },
+          tx,
+        );
+
+        if (claimed === undefined) throw federatedHandoffInvalid();
+
+        const principal = await principals.findById(claimed.principalId, tx);
+
+        if (principal === undefined || !principal.active) {
+          ctx.logger.warn(
+            { population, tokenId: claimed.id },
+            "federated exchange refused: the account is gone or not active",
+          );
+
+          throw federatedHandoffInvalid();
+        }
+
+        const auth = await issueSession(ctx, principal, at, tx);
+
+        await principals.touchLastLogin(principal.id, at, tx);
+
+        ctx.logger.info(
+          { population, principalId: principal.id },
+          "signed in through a federated identity",
         );
 
         return auth;

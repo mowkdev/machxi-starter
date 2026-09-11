@@ -189,6 +189,43 @@ type ClearAuthCookies = (
 type ReadRefreshCookie = (req: Request) => string | undefined;
 
 /**
+ * The transaction cookie's attributes (ADR-0072 §2, the delta on ADR-0029),
+ * in one place because two call sites write them and `res.clearCookie` only
+ * deletes a cookie whose `path`, `secure` and `sameSite` match what was set.
+ *
+ * - `__Host-` in the name, so `Path=/` and host-only are required here.
+ * - `httpOnly`: nothing in the browser has any business reading it.
+ * - **`SameSite=Lax`, the one cookie in this API that is not `Strict`**, and
+ *   the reason is the whole mechanism: the provider's callback is a top-level
+ *   navigation arriving from the provider's origin, and `Strict` would leave
+ *   the cookie behind. `Lax` still withholds it from every cross-site
+ *   subrequest and every cross-site `POST`.
+ */
+const oidcAttributes = {
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  path: "/",
+} as const;
+
+/**
+ * Writes a sign-in's sealed transaction (ADR-0072 §2). `maxAgeSec` is the
+ * transaction's own window, so the cookie and the token inside it end
+ * together.
+ */
+type SetOidcCookie = (res: Response, value: string, maxAgeSec: number) => void;
+
+/** The sealed transaction the browser attached, or `undefined`. */
+type ReadOidcCookie = (req: Request) => string | undefined;
+
+/**
+ * Clears the transaction, unconditionally: it is good for one callback, and a
+ * transaction that was matched, refused or never there must not be available
+ * to a second navigation.
+ */
+type ClearOidcCookie = (res: Response) => void;
+
+/**
  * Everything above, bound to one deployment's names (ADR-0064 §1).
  *
  * The interface is written out rather than inferred so that each function's
@@ -201,6 +238,9 @@ export interface AuthCookies {
   readonly setAuthCookies: SetAuthCookies;
   readonly clearAuthCookies: ClearAuthCookies;
   readonly readRefreshCookie: ReadRefreshCookie;
+  readonly setOidcCookie: SetOidcCookie;
+  readonly readOidcCookie: ReadOidcCookie;
+  readonly clearOidcCookie: ClearOidcCookie;
 }
 
 export const createAuthCookies = (names: CookieNames): AuthCookies => {
@@ -277,5 +317,18 @@ export const createAuthCookies = (names: CookieNames): AuthCookies => {
     },
 
     readRefreshCookie: (req) => readCookie(req, names.refresh),
+
+    setOidcCookie: (res, value, maxAgeSec) => {
+      res.cookie(names.oidc, value, {
+        ...oidcAttributes,
+        maxAge: maxAgeSec * 1000,
+      });
+    },
+
+    readOidcCookie: (req) => readCookie(req, names.oidc),
+
+    clearOidcCookie: (res) => {
+      res.clearCookie(names.oidc, oidcAttributes);
+    },
   } as const;
 };

@@ -53,6 +53,16 @@ describe("ERROR_CODES", () => {
     ).toHaveLength(1);
   });
 
+  it("names the two refusals a sign-in with Google makes and login does not (ADR-0072 §1)", () => {
+    // Two and no more: every other refusal on the callback reuses a code the
+    // catalogues already carry (ADR-0072 §2, amended at `D19.2`).
+    expect(ERROR_CODES).toContain("AUTH_FEDERATED_SIGNUP_CLOSED");
+    expect(ERROR_CODES).toContain("AUTH_FEDERATED_LINK_REQUIRED");
+    expect(
+      ERROR_CODES.filter((code) => code.startsWith("AUTH_FEDERATED_")),
+    ).toHaveLength(2);
+  });
+
   it("covers the domain conflicts the modules own", () => {
     expect(ERROR_CODES).toEqual(
       expect.arrayContaining([

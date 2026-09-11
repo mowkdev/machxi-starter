@@ -310,6 +310,14 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
 
       return Promise.resolve();
     },
+
+    // No account in these cases has linked an identity; the federated half
+    // of the aggregate is proved against Postgres (ADR-0072 §3,
+    // `federated-identity.int.test.ts`).
+    identitiesOf: () => Promise.resolve([]),
+    findIdentityBySubject: () => Promise.resolve(undefined),
+    linkIdentity: () => Promise.resolve(false),
+    touchIdentityLogin: () => Promise.resolve(),
   };
 
   return { repository, rows, calls } as const;

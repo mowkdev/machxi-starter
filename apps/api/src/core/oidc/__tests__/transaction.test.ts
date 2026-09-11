@@ -1,0 +1,143 @@
+import { SignJWT } from "jose";
+import { describe, expect, it } from "vitest";
+
+import {
+  OIDC_TRANSACTION_TTL_SEC,
+  createAuthorizationRequest,
+  createOidcTransactionCodec,
+} from "../index.js";
+
+/**
+ * The transaction cookie's value (ADR-0072 §2): what the start seals and the
+ * callback opens, signed under the access tokens' key with an audience of its
+ * own.
+ *
+ * The cases are the ways a value that is not this API's recent transaction
+ * could reach the callback — forged, tampered, stale, or a different kind of
+ * token signed with the same key — and every one of them must open to
+ * nothing, never to a partial transaction.
+ */
+
+const SECRET = "test-only-signing-key-for-the-oidc-transaction";
+const T0 = new Date("2026-09-11T12:00:00.000Z");
+
+const codec = (now: () => Date = () => T0, secret = SECRET) =>
+  createOidcTransactionCodec({
+    secret,
+    appId: "machxi",
+    issuer: "machxi-api",
+    now,
+  });
+
+const transaction = () => ({
+  ...createAuthorizationRequest(),
+  intent: "signin" as const,
+  locale: "lv" as const,
+});
+
+describe("createOidcTransactionCodec", () => {
+  it("opens what it sealed, field for field", async () => {
+    const sealed = transaction();
+    const value = await codec().seal(sealed);
+
+    expect(await codec().open(value)).toEqual(sealed);
+  });
+
+  it("carries an absent locale as absent", async () => {
+    const sealed = { ...transaction(), locale: undefined };
+
+    expect(await codec().open(await codec().seal(sealed))).toEqual(sealed);
+  });
+
+  it("opens nothing from an absent or empty cookie", async () => {
+    expect(await codec().open(undefined)).toBeUndefined();
+    expect(await codec().open("")).toBeUndefined();
+  });
+
+  it("opens nothing signed under another key", async () => {
+    const value = await codec(
+      () => T0,
+      "a-different-key-entirely-for-this",
+    ).seal(transaction());
+
+    expect(await codec().open(value)).toBeUndefined();
+  });
+
+  it("opens nothing whose payload was altered", async () => {
+    const [header, , signature] = (await codec().seal(transaction())).split(
+      ".",
+    );
+    const forged = Buffer.from(
+      JSON.stringify({ st: "mine", nn: "mine", cv: "mine", in: "signin" }),
+    ).toString("base64url");
+
+    expect(
+      await codec().open(`${header ?? ""}.${forged}.${signature ?? ""}`),
+    ).toBeUndefined();
+  });
+
+  it("opens nothing past its ten minutes", async () => {
+    const value = await codec().seal(transaction());
+    const later = new Date(
+      T0.getTime() + (OIDC_TRANSACTION_TTL_SEC + 1) * 1000,
+    );
+
+    expect(await codec(() => later).open(value)).toBeUndefined();
+  });
+
+  it("opens nothing that is an access token signed with the same key", async () => {
+    // The two share `JWT_ACCESS_SECRET`; the audience is what keeps them
+    // apart (`<APP_ID>-user` there, `<APP_ID>-oidc` here). The reverse
+    // direction is the auth module's to prove, beside its own verifier.
+    const issuedAt = Math.floor(T0.getTime() / 1000);
+    const access = await new SignJWT({
+      st: "s",
+      nn: "n",
+      cv: "v",
+      in: "signin",
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer("machxi-api")
+      .setAudience("machxi-user")
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + 900)
+      .sign(new TextEncoder().encode(SECRET));
+
+    expect(await codec().open(access)).toBeUndefined();
+  });
+
+  describe("the handoff binding (ADR-0072 §2, amended at `D19.2`)", () => {
+    it("binds exactly the token it was sealed for", async () => {
+      const binding = await codec().sealHandoff("the-handoff-token", 60);
+
+      expect(await codec().bindsHandoff(binding, "the-handoff-token")).toBe(
+        true,
+      );
+      expect(await codec().bindsHandoff(binding, "a-relayed-token")).toBe(
+        false,
+      );
+      expect(await codec().bindsHandoff(undefined, "the-handoff-token")).toBe(
+        false,
+      );
+    });
+
+    it("lives only as long as the handoff", async () => {
+      const binding = await codec().sealHandoff("the-handoff-token", 60);
+      const later = new Date(T0.getTime() + 61 * 1000);
+
+      expect(
+        await codec(() => later).bindsHandoff(binding, "the-handoff-token"),
+      ).toBe(false);
+    });
+
+    it("is never taken for a transaction, nor a transaction for it", async () => {
+      const binding = await codec().sealHandoff("the-handoff-token", 60);
+      const sealed = await codec().seal(transaction());
+
+      expect(await codec().open(binding)).toBeUndefined();
+      expect(await codec().bindsHandoff(sealed, "the-handoff-token")).toBe(
+        false,
+      );
+    });
+  });
+});

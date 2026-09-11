@@ -2,6 +2,9 @@ export {
   accountDisabled,
   currentPasswordInvalid,
   emailUnverified,
+  federatedHandoffInvalid,
+  federatedLinkRequired,
+  federatedSignupClosed,
   impersonationHandoffInvalid,
   impersonationRefused,
   invalidCredentials,
@@ -67,6 +70,7 @@ export {
   type AuthenticateDeps,
 } from "./auth.middleware.js";
 export {
+  createFederatedAccounts,
   createStaffPrincipalAdapter,
   createUserPrincipalAdapter,
 } from "./auth.principals.js";
@@ -78,10 +82,31 @@ export {
   type SessionsRepository,
 } from "./auth.repository.js";
 export {
+  FEDERATED_LANDING_PATH,
+  createFederatedController,
+  type FederatedController,
+  type FederatedControllerDeps,
+} from "./auth.federated.controller.js";
+export {
+  createFederatedSignInService,
+  type FederatedCallbackInput,
+  type FederatedCallbackOutcome,
+  type FederatedSignInService,
+  type FederatedSignInServiceDeps,
+  type FederatedStart,
+} from "./auth.federated.service.js";
+export {
+  federatedCallbackSchema,
+  federatedExchangeSchema,
+  federatedStartSchema,
+} from "./auth.federated.schemas.js";
+export {
   createAuthRouter,
+  createFederatedRouter,
   createRegisterRouter,
   createVerificationRouter,
   type AuthRouterDeps,
+  type FederatedRouterDeps,
   type RegisterRouterDeps,
   type VerificationRouterDeps,
 } from "./auth.routes.js";
@@ -113,7 +138,10 @@ export {
   type AuthControllerDeps,
 } from "./auth.controller.js";
 export type {
+  CreateFederatedPrincipalInput,
   CreatePrincipalInput,
+  FederatedAccounts,
+  LinkFederatedIdentityInput,
   MailablePrincipal,
   PrincipalAdapter,
   PrincipalRecord,

@@ -320,3 +320,63 @@ export const impersonateBody = z.strictObject({
   token: handoffTokenSchema,
 });
 export type ImpersonateBody = z.infer<typeof impersonateBody>;
+
+/**
+ * `POST /api/v1/public/auth/google/start` — the start of a sign-in with Google
+ * (ADR-0072 §2).
+ *
+ * An XHR from the customer app rather than a navigation, so a link planted on
+ * another site cannot start a flow in somebody's browser. The only field is the
+ * SPA's current language, carried in the transaction cookie to the callback
+ * for the reason {@link mailLocaleSchema} is optional: nothing about the
+ * person is known yet.
+ */
+export const federatedStartBody = z.strictObject({
+  locale: mailLocaleSchema,
+});
+export type FederatedStartBody = z.infer<typeof federatedStartBody>;
+
+/**
+ * Upper bound on a query value the provider's callback carries — the
+ * authorization `code`, the echoed `state`, and an `error` when the person
+ * declined. Google's codes are well under a kilobyte; the bound exists so an
+ * arbitrary URL cannot hand the API an arbitrary string.
+ */
+export const MAX_FEDERATED_CALLBACK_VALUE_LENGTH = 2048;
+
+const callbackValue = z
+  .string()
+  .max(MAX_FEDERATED_CALLBACK_VALUE_LENGTH)
+  .optional()
+  .catch(undefined);
+
+/**
+ * `GET /api/v1/public/auth/google/callback` — the one navigation, from the
+ * provider back to the API (ADR-0072 §2).
+ *
+ * **Every field falls back to `undefined` rather than failing**, and that is
+ * the decision: a validation error here would be a JSON body on a bare page,
+ * and ADR-0072 §2 answers every refusal on this route as a `302` to the
+ * customer app with the code in the fragment. A missing or overlong value is
+ * therefore an absent one, and the flow refuses it as it refuses any other
+ * callback it cannot bind to its own start. Unknown keys — `scope`,
+ * `authuser`, `prompt`, which Google adds — are dropped rather than refused.
+ */
+export const federatedCallbackQuery = z.object({
+  code: callbackValue,
+  state: callbackValue,
+  error: callbackValue,
+});
+export type FederatedCallbackQuery = z.infer<typeof federatedCallbackQuery>;
+
+/**
+ * `POST /api/v1/public/auth/google/exchange` — the fragment token for a
+ * session (ADR-0072 §2, `verify-email`'s shape).
+ *
+ * Unauthenticated: the token *is* the credential, single-use and sixty
+ * seconds, exactly as the impersonation handoff is.
+ */
+export const federatedExchangeBody = z.strictObject({
+  token: accountTokenSchema,
+});
+export type FederatedExchangeBody = z.infer<typeof federatedExchangeBody>;

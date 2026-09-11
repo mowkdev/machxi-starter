@@ -1,10 +1,15 @@
 import type { StaffRepository } from "../staff/staff.repository.js";
+import { toFederatedIdentityResource } from "../users/users.mapper.js";
 import type { UsersRepository } from "../users/users.repository.js";
 import {
   toStaffPrincipalResource,
   toUserPrincipalResource,
 } from "./auth.mapper.js";
-import type { PrincipalAdapter, PrincipalRecord } from "./auth.types.js";
+import type {
+  FederatedAccounts,
+  PrincipalAdapter,
+  PrincipalRecord,
+} from "./auth.types.js";
 
 /**
  * The two population adapters (ADR-0017 §Principal abstraction in code).
@@ -186,4 +191,68 @@ export const createUserPrincipalAdapter = (
   isEmailTaken: repository.emailTaken,
 
   findPendingVerificationByEmail: repository.findPendingVerificationByEmail,
+});
+
+/**
+ * The users repository as a federated sign-in consumes it (ADR-0072 §1) — the
+ * seam {@link FederatedAccounts} names, and a translation like the two above
+ * with no rule of its own.
+ */
+export const createFederatedAccounts = (
+  repository: UsersRepository,
+): FederatedAccounts => ({
+  findBySubject: async (provider, subject, tx) => {
+    const identity = await repository.findIdentityBySubject(
+      provider,
+      subject,
+      tx,
+    );
+
+    if (identity === undefined) return undefined;
+
+    const row = await repository.findById(identity.userId, tx);
+
+    return {
+      identityId: identity.id,
+      principal: row === undefined ? undefined : userRecord(row),
+    };
+  },
+
+  /**
+   * `active`, the address stamped, **no password**, and the `customer`
+   * grant, on the caller's executor so the account, its grant, its personal
+   * organization and its identity commit together (ADR-0072 §1, ADR-0067 §2).
+   *
+   * The provider's verified claim is the proof `email_verified_at` records —
+   * the same kind of assertion `POST /admin/users` makes when a staff member
+   * types an address (ADR-0071 §3) — so the invariant every `active` user has
+   * a proven address holds on this path too.
+   */
+  createFederated: async (input, tx) => {
+    const created = await repository.create(
+      {
+        email: input.email,
+        passwordHash: null,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        status: "active",
+        emailVerifiedAt: input.at,
+      },
+      tx,
+    );
+
+    if (created === undefined) return undefined;
+
+    await repository.grantRole(created.id, "customer", tx);
+
+    return userRecord({ ...created, roles: ["customer"] });
+  },
+
+  link: repository.linkIdentity,
+  touchLogin: repository.touchIdentityLogin,
+
+  identitiesOf: async (userId, tx) =>
+    (await repository.identitiesOf([userId], tx)).map(
+      toFederatedIdentityResource,
+    ),
 });

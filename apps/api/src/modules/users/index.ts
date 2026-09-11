@@ -6,9 +6,15 @@ export {
   type UsersController,
 } from "./users.controller.js";
 export { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
-export { toUserResource } from "./users.mapper.js";
+export {
+  toFederatedIdentityResource,
+  toUserProfileResource,
+  toUserResource,
+} from "./users.mapper.js";
 export {
   createUsersRepository,
+  type IdentityRecord,
+  type NewIdentityInput,
   type NewUserInput,
   type UserColumnPatch,
   type UserRecord,

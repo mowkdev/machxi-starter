@@ -225,3 +225,51 @@ export const impersonationRefused = (): AppError =>
     "This operation is not available while impersonating an account",
     "AUTH_IMPERSONATION_REFUSED",
   );
+
+/**
+ * Every way `POST /public/auth/google/exchange` can fail, answered as one
+ * indistinguishable `401` (ADR-0072 §2, `verify-email`'s posture inherited
+ * whole).
+ *
+ * Unknown token, already exchanged, past `FEDERATED_HANDOFF_TTL`, minted for
+ * another purpose, or naming an account that stopped being `active` in the
+ * seconds since the callback — one answer, because the caller is an anonymous
+ * holder of a URL fragment. The **generic** `UNAUTHENTICATED` code for
+ * {@link impersonationHandoffInvalid}'s reason: the one screen that reads it
+ * has one thing to say either way — sign in again.
+ */
+export const federatedHandoffInvalid = (): AppError =>
+  unauthenticated("This sign-in link is no longer valid");
+
+/**
+ * A sign-in with Google found no account, and `FEATURE_USER_REGISTRATION`
+ * says none may be made here (ADR-0072 §1).
+ *
+ * The flag means "may new accounts be made here", and a second door does not
+ * change what it means. Never an envelope: the callback answers it as
+ * `#error=AUTH_FEDERATED_SIGNUP_CLOSED` on a redirect (§2).
+ */
+export const federatedSignupClosed = (): AppError =>
+  forbidden(
+    "New accounts cannot be created here",
+    "AUTH_FEDERATED_SIGNUP_CLOSED",
+  );
+
+/**
+ * A sign-in with Google whose address Google does not host (ADR-0072 §1,
+ * amended at `D19.1` for linking and at `D19.2` for creation).
+ *
+ * Google's "verified" means "controls it now" only for an address it hosts;
+ * for any other it means "controlled it once". Linking on that would hand an
+ * existing account to whoever held the mailbox then, and creating on it would
+ * let them make an account the rightful owner's password reset could not take
+ * back. One answer whether or not an account holds the address, so it tells
+ * nobody which. The person signs in with a password — or registers with one —
+ * and links Google from the security section, which proves both sides at
+ * once. Redirect-only, like its neighbour.
+ */
+export const federatedLinkRequired = (): AppError =>
+  forbidden(
+    "Google cannot confirm this address; sign in or register with a password, then link Google from the account's security settings",
+    "AUTH_FEDERATED_LINK_REQUIRED",
+  );

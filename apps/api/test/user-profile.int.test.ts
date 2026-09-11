@@ -17,7 +17,10 @@ import {
   type Tokens,
 } from "./support/actors.js";
 import { createTestApp, type TestApp } from "./support/app.js";
-import { expectNoSecrets, userResourceSchema } from "./support/resources.js";
+import {
+  expectNoSecrets,
+  userProfileResourceSchema,
+} from "./support/resources.js";
 import {
   cookieValue,
   csrfCookie,
@@ -43,7 +46,7 @@ import {
  * back here as on the admin segment so a client learns one shape (ADR-0012).
  */
 
-const userEnvelope = successEnvelopeSchema(userResourceSchema);
+const userEnvelope = successEnvelopeSchema(userProfileResourceSchema);
 
 const PROFILE = "/api/v1/user/profile";
 
@@ -102,6 +105,28 @@ describe("user profile", () => {
       expect(response.body.data.email).toBe(FIXTURE_USERS.active);
       expect(response.body.meta.requestId).toEqual(expect.any(String));
       expectNoSecrets(response.body);
+    });
+
+    it("says which ways in the account has, and never the subject", async () => {
+      // The `--dev` customer keeps its password and carries one Google
+      // identity (ADR-0072 §3): both controls the security section offers
+      // are decided from these two fields.
+      const response = await request()
+        .get(PROFILE)
+        .set("Authorization", bearer(customerTokens.accessToken))
+        .expect(200);
+
+      expect(response.body.data.hasPassword).toBe(true);
+      expect(response.body.data.identities).toEqual([
+        {
+          provider: "google",
+          email: FIXTURE_USERS.active,
+          linkedAt: expect.any(String),
+        },
+      ]);
+      expect(JSON.stringify(response.body)).not.toContain(
+        "dev-fixture-google-subject",
+      );
     });
 
     it("forbids caching personal data", async () => {

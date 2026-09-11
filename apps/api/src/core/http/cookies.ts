@@ -86,6 +86,21 @@ const csrfCookieNameFor = (appId: string, population: Population): string =>
 const legacyCsrfCookieName = (appId: string): string => `__Host-${appId}.csrf`;
 
 /**
+ * A sign-in's authorization round trip with an external provider
+ * (ADR-0072 §2, the delta on ADR-0029 at `D19.2`).
+ *
+ * `__Host-`, so no other origin can set or shadow it and it is scoped to this
+ * host at `Path=/`. It is the one cookie in this file that is **not** a
+ * session credential and **not** `SameSite=Strict`: it holds a signed
+ * transaction — `state`, `nonce`, the PKCE verifier — for the ten minutes the
+ * round trip lasts, and it has to ride the top-level navigation back from the
+ * provider, which `Strict` would strip. Its attributes live beside the
+ * controller that writes it; its name lives here, with the others it must
+ * never collide with.
+ */
+const oidcCookieName = (appId: string): string => `__Host-${appId}.oidc`;
+
+/**
  * The brand this repository ships with, and the default of `APP_ID`
  * (ADR-0064 §1).
  *
@@ -97,7 +112,7 @@ const legacyCsrfCookieName = (appId: string): string => `__Host-${appId}.csrf`;
 export const DEFAULT_APP_ID = "machxi";
 
 /**
- * The three names one deployment answers to, built once from its `APP_ID`.
+ * The four names one deployment answers to, built once from its `APP_ID`.
  *
  * A bundle rather than three loose functions because two sides of the
  * dependency rule need them and neither may build its own: the auth
@@ -113,6 +128,8 @@ export interface CookieNames {
   readonly legacyCsrf: string;
   /** This deployment's CSRF cookie for one population (ADR-0056). */
   readonly csrf: (population: Population) => string;
+  /** {@link oidcCookieName} for this deployment (ADR-0072 §2). */
+  readonly oidc: string;
 }
 
 export const createCookieNames = (appId: string): CookieNames =>
@@ -120,6 +137,7 @@ export const createCookieNames = (appId: string): CookieNames =>
     refresh: refreshCookieName(appId),
     legacyCsrf: legacyCsrfCookieName(appId),
     csrf: (population: Population) => csrfCookieNameFor(appId, population),
+    oidc: oidcCookieName(appId),
   });
 
 /** `__Host-` requires it, and readability by the app's own pages needs it. */

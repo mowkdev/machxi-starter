@@ -21,19 +21,20 @@ Proved by: `apps/api/test/….int.test.ts`, …          at least one, existing
 
 ## Capabilities
 
-| Spec                                               | Covers                                                                                 |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [`envelope-and-errors.md`](envelope-and-errors.md) | The response envelope, the request id, validation and the generic error codes          |
-| [`auth-sessions.md`](auth-sessions.md)             | Login, refresh and rotation, the access token, logout, `me`, self-registration, limits |
-| [`csrf-and-cookies.md`](csrf-and-cookies.md)       | Cookie transport, the double-submit CSRF check, the bootstrap endpoint, CORS           |
-| [`users-and-profile.md`](users-and-profile.md)     | `/admin/users` and `/user/profile`: the customer aggregate on both segments            |
-| [`staff.md`](staff.md)                             | `/admin/staff` and `/admin/profile`: operators, roles and the `super_admin` invariants |
-| [`settings.md`](settings.md)                       | `/{admin,user}/settings`: the per-account display settings                             |
-| [`list-queries.md`](list-queries.md)               | The list-query language every collection endpoint speaks                               |
-| [`impersonation.md`](impersonation.md)             | The mint, the handoff, the impersonated session, its exclusions and its exit           |
-| [`audit-log.md`](audit-log.md)                     | The append-only audit table and its two write disciplines                              |
-| [`health-and-metrics.md`](health-and-metrics.md)   | `/health/*` and `/metrics`, outside the limiters                                       |
-| [`organizations.md`](organizations.md)             | Organizations, memberships and invitations on both segments, and the guard             |
-| [`mail-flows.md`](mail-flows.md)                   | The single-use token behind every mailed link, address verification and recovery       |
+| Spec                                               | Covers                                                                                  |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`envelope-and-errors.md`](envelope-and-errors.md) | The response envelope, the request id, validation and the generic error codes           |
+| [`auth-sessions.md`](auth-sessions.md)             | Login, refresh and rotation, the access token, logout, `me`, self-registration, limits  |
+| [`csrf-and-cookies.md`](csrf-and-cookies.md)       | Cookie transport, the double-submit CSRF check, the bootstrap endpoint, CORS            |
+| [`users-and-profile.md`](users-and-profile.md)     | `/admin/users` and `/user/profile`: the customer aggregate on both segments             |
+| [`staff.md`](staff.md)                             | `/admin/staff` and `/admin/profile`: operators, roles and the `super_admin` invariants  |
+| [`settings.md`](settings.md)                       | `/{admin,user}/settings`: the per-account display settings                              |
+| [`list-queries.md`](list-queries.md)               | The list-query language every collection endpoint speaks                                |
+| [`impersonation.md`](impersonation.md)             | The mint, the handoff, the impersonated session, its exclusions and its exit            |
+| [`audit-log.md`](audit-log.md)                     | The append-only audit table and its two write disciplines                               |
+| [`health-and-metrics.md`](health-and-metrics.md)   | `/health/*` and `/metrics`, outside the limiters                                        |
+| [`organizations.md`](organizations.md)             | Organizations, memberships and invitations on both segments, and the guard              |
+| [`mail-flows.md`](mail-flows.md)                   | The single-use token behind every mailed link, address verification and recovery        |
+| [`federated-identity.md`](federated-identity.md)   | Sign in with Google: the start, the callback's resolution, the handoff and its exchange |
 
 A capability with a route and no row here is the finding, and the step that touches it next writes the file.

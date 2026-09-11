@@ -4,11 +4,18 @@ import {
   users,
   type DbExecutor,
 } from "@repo/db";
-import type { ListQuery, UserRole, UserStatus } from "@repo/contracts";
+import type {
+  FederatedProvider,
+  ListQuery,
+  UserRole,
+  UserStatus,
+} from "@repo/contracts";
 import {
   and,
+  asc,
   count,
   eq,
+  inArray,
   isNull,
   notExists,
   notInArray,
@@ -57,10 +64,43 @@ export interface UserRecord {
   readonly deletedAt: Date | null;
 }
 
-/** What self-registration and `POST /api/v1/admin/users` insert. */
+/**
+ * One external identity linked to an account, as the account's resources
+ * carry it (ADR-0072 §3).
+ *
+ * The provider's `subject` is deliberately not on it: it is the key a sign-in
+ * resolves by and nothing a reader of an account needs. It never leaves
+ * {@link UsersRepository.findIdentityBySubject}.
+ */
+export interface IdentityRecord {
+  readonly userId: string;
+  readonly provider: FederatedProvider;
+  readonly email: string | null;
+  readonly linkedAt: Date;
+}
+
+/** What linking writes (ADR-0072 §1, §3). */
+export interface NewIdentityInput {
+  readonly userId: string;
+  readonly provider: FederatedProvider;
+  readonly subject: string;
+  /** The address the provider reported, informational only; `null` when it reported none. */
+  readonly email: string | null;
+  readonly at: Date;
+}
+
+/**
+ * What self-registration, `POST /api/v1/admin/users` and a sign-in with
+ * Google insert.
+ */
 export interface NewUserInput {
   readonly email: string;
-  readonly passwordHash: string;
+  /**
+   * `null` for the one path that creates an account with no password — a
+   * sign-in with Google (ADR-0072 §1), the population ADR-0017 reserved the
+   * nullable column for. Every other path passes a hash.
+   */
+  readonly passwordHash: string | null;
   readonly firstName?: string | undefined;
   readonly lastName?: string | undefined;
   /**
@@ -789,6 +829,109 @@ export const createUsersRepository = (db: DbExecutor) =>
         .where(eq(federatedIdentities.userId, id));
 
       return true;
+    },
+
+    /**
+     * The identities linked to each of these accounts (ADR-0072 §3), for the
+     * resources that carry them — `/user/profile`, `me` and the admin's user
+     * resource.
+     *
+     * One statement for a whole page rather than one per row, and a separate
+     * statement rather than a relation on the aggregate read: the aggregate
+     * read is also the principal lookup behind every login and refresh, and
+     * neither of those needs to know which ways in an account has. It reads
+     * `federated_identities_user_id_provider_unique`, which leads with the
+     * reference.
+     */
+    identitiesOf: async (
+      userIds: readonly string[],
+      tx: DbExecutor = db,
+    ): Promise<readonly IdentityRecord[]> => {
+      // `inArray(column, [])` is not a no-op in SQL, and an empty page has
+      // nothing to look up anyway.
+      if (userIds.length === 0) return [];
+
+      return tx
+        .select({
+          userId: federatedIdentities.userId,
+          provider: federatedIdentities.provider,
+          email: federatedIdentities.email,
+          linkedAt: federatedIdentities.linkedAt,
+        })
+        .from(federatedIdentities)
+        .where(inArray(federatedIdentities.userId, [...userIds]))
+        .orderBy(
+          asc(federatedIdentities.provider),
+          asc(federatedIdentities.linkedAt),
+        );
+    },
+
+    /**
+     * The first question a sign-in asks (ADR-0072 §1): which account, if any,
+     * this provider's subject is a way into.
+     *
+     * By (`provider`, `subject`) and nothing else — whatever address either
+     * side carries today. No `deleted_at` filter is needed on the account:
+     * deletion deletes the identities in the same transaction
+     * ({@link UsersRepository.softDelete}), so an identity always names a live
+     * row. The caller reads that row through the aggregate read it already
+     * uses, which is also what refuses the case if that ever stops being true.
+     */
+    findIdentityBySubject: async (
+      provider: FederatedProvider,
+      subject: string,
+      tx: DbExecutor = db,
+    ): Promise<{ readonly id: string; readonly userId: string } | undefined> =>
+      tx.query.federatedIdentities.findFirst({
+        columns: { id: true, userId: true },
+        where: and(
+          eq(federatedIdentities.provider, provider),
+          eq(federatedIdentities.subject, subject),
+        ),
+      }),
+
+    /**
+     * Links an identity to an account (ADR-0072 §1, §3), or resolves to
+     * `false` when either uniqueness already holds it — the subject is
+     * another account's, or this account already has an identity of this
+     * provider.
+     *
+     * `onConflictDoNothing` with no target, so **both** constraints answer
+     * `false` rather than a unique violation the error handler would turn into
+     * a `409` on a route whose every answer must be a redirect. Neither
+     * conflict is something to retry: the caller refuses.
+     */
+    linkIdentity: async (
+      input: NewIdentityInput,
+      tx: DbExecutor = db,
+    ): Promise<boolean> => {
+      const inserted = await tx
+        .insert(federatedIdentities)
+        .values({
+          userId: input.userId,
+          provider: input.provider,
+          subject: input.subject,
+          email: input.email,
+          linkedAt: input.at,
+          createdAt: input.at,
+          updatedAt: input.at,
+        })
+        .onConflictDoNothing()
+        .returning({ id: federatedIdentities.id });
+
+      return inserted.length > 0;
+    },
+
+    /** A sign-in through an identity that was already linked (ADR-0072 §1). */
+    touchIdentityLogin: async (
+      id: string,
+      at: Date,
+      tx: DbExecutor = db,
+    ): Promise<void> => {
+      await tx
+        .update(federatedIdentities)
+        .set({ lastLoginAt: at, updatedAt: at })
+        .where(eq(federatedIdentities.id, id));
     },
 
     // No standalone `rolesOf` — see the note in `staff.repository.ts`.

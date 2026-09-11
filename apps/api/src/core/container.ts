@@ -9,6 +9,9 @@ import {
   createAuthCookies,
   createAuthenticate,
   createAuthService,
+  createFederatedAccounts,
+  createFederatedController,
+  createFederatedSignInService,
   createHandoffsRepository,
   createHashLimiter,
   createImpersonationController,
@@ -73,6 +76,12 @@ import {
 } from "./mail/index.js";
 import { createMetrics } from "./metrics/index.js";
 import {
+  createGoogleOidcProvider,
+  createOidcTransactionCodec,
+  oidcRedirectUri,
+  type OidcProvider,
+} from "./oidc/index.js";
+import {
   createAccountTokens,
   createAccountTokensRepository,
 } from "./tokens/index.js";
@@ -128,6 +137,21 @@ export interface ContainerDeps {
    * exercises is the real wiring with the real templates.
    */
   readonly mail?: MailSender | undefined;
+  /**
+   * The ADR-0072 §2 identity-provider port, used **only when the Google
+   * client is configured** — and then normally the Google adapter, built
+   * here from `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+   * `API_PUBLIC_URL`.
+   *
+   * Overridable for {@link ContainerDeps.mail}'s reason: the integration
+   * tier drives the callback against the fake, because the one thing no test
+   * may reach is Google. **The fake is never chosen from configuration**
+   * (`D19.1`'s `security-reviewer`): this file does not import it, and the
+   * lint rule on `src/` refuses any file outside the tests that does. The
+   * only way to run the flow against it is to be a test that built a
+   * container.
+   */
+  readonly oidc?: OidcProvider | undefined;
 }
 
 export const buildContainer = ({
@@ -137,6 +161,7 @@ export const buildContainer = ({
   rateLimitStore = () => undefined,
   reporter,
   mail: mailOverride,
+  oidc: oidcOverride,
 }: ContainerDeps) => {
   const health = createHealthService({
     // The database is the only registered indicator in the first deliverable
@@ -302,10 +327,19 @@ export const buildContainer = ({
     // that cannot accidentally attribute one.
   });
 
+  // The user population's identity table as the auth module consumes it
+  // (ADR-0072 §1): the sign-in's resolution below, and `me`'s answer to
+  // "which ways in does this account have".
+  const federatedAccounts = createFederatedAccounts(usersRepository);
+  const userPrincipals = createUserPrincipalAdapter(usersRepository);
+
   const userAuth = createAuthService({
     ...authDeps,
     population: "user",
-    principals: createUserPrincipalAdapter(usersRepository),
+    principals: userPrincipals,
+    // Narrowed by the service's own type to `identitiesOf`, and wired on this
+    // service alone: staff get no federated login (ADR-0072 §5).
+    federated: federatedAccounts,
     // The staff adapter, narrowed by the service's own type to `findById`: it
     // is what turns `sessions.impersonated_by_staff_id` into the
     // `impersonatedBy: { id, email }` the banner renders from (ADR-0057 §4).
@@ -399,6 +433,55 @@ export const buildContainer = ({
   // service-to-service edges of the kind ADR-0009 permits, and neither reaches
   // a table it does not own. The audit writer is passed whole — both lifecycle
   // rows are written on `record`'s transactional discipline (ADR-0058).
+  /*
+   * Sign in with Google (ADR-0072 §1, §2) — **built only when the client is
+   * configured**, and `undefined` otherwise, which is what the public router
+   * reads to leave the three routes unmounted. `config.federated.google` is
+   * present only when both halves are set (the schema refuses half a pair),
+   * so there is no state in which the flow exists without a client.
+   *
+   * The provider is the Google adapter unless a test handed the container
+   * another one (see `ContainerDeps.oidc`); the redirect URI is composed once,
+   * here, from `API_PUBLIC_URL`, and is the string the console must hold.
+   *
+   * The transaction codec signs under the access tokens' key with its own
+   * audience, `<APP_ID>-oidc`, so the two kinds of token can never be taken
+   * for each other (`core/oidc/transaction.ts`).
+   */
+  const google = config.federated.google;
+  const federatedSignIn =
+    google === undefined
+      ? undefined
+      : createFederatedSignInService({
+          provider:
+            oidcOverride ??
+            createGoogleOidcProvider({
+              clientId: google.clientId,
+              clientSecret: google.clientSecret,
+              redirectUri: oidcRedirectUri(config.federated.apiPublicUrl),
+            }),
+          transactions: createOidcTransactionCodec({
+            secret: config.auth.accessSecret,
+            appId: config.app.id,
+            issuer: config.auth.issuer,
+          }),
+          principals: userPrincipals,
+          accounts: federatedAccounts,
+          // The third path that creates a user, so the personal organization
+          // lands in the same commit (ADR-0067 §2).
+          organizations: organizationsService,
+          accountTokens,
+          audit,
+          // The flag's meaning, read for the second door as the first reads
+          // it (ADR-0072 §1): with it off, a stranger is refused and nothing
+          // is written.
+          registrationOpen: config.features.userRegistration,
+          // The handoff binding the callback leaves in the cookie lives as
+          // long as the token it binds (ADR-0072 §2, amended at `D19.2`).
+          handoffTtlSec: config.tokens.federatedHandoffTtlSec,
+          transaction,
+        });
+
   const impersonationService = createImpersonationService({
     handoffs,
     targets: usersService,
@@ -497,6 +580,39 @@ export const buildContainer = ({
     passwordResetSubmit: createTokenRouteRateLimiter(
       config,
       rateLimitStore("password-reset-submit"),
+    ),
+    /**
+     * The start of a sign-in with Google (ADR-0072 §2): the login limiter's
+     * number, keyed on the source address alone, in a **counter of its own**
+     * — the `D18.2` precedent for a second counter on one number.
+     *
+     * `createTokenRouteRateLimiter` for the reason `passwordResetSubmit` takes
+     * it: there is no address in this body to key on — the person is not
+     * known until Google says who they are — and a factory that read one
+     * would let a caller mint a fresh key per request by inventing the field.
+     * Its own instance, so starting a sign-in never spends the budget a
+     * password login from the same office needs, or the other way round.
+     */
+    federatedStart: createTokenRouteRateLimiter(
+      config,
+      rateLimitStore("federated-start"),
+    ),
+    /**
+     * The callback's budget (ADR-0072 §2, amended at `D19.2` on that step's
+     * `security-reviewer`): the same number and key as the start's, in a
+     * counter of its own.
+     *
+     * The transaction cookie is single-use only in an honest browser — the
+     * sealed value carries no server-side spend — so its holder can replay it
+     * for ten minutes with invented codes, and every replay is a request from
+     * this API to Google's token endpoint. PKCE and Google's one-time codes
+     * keep that harmless for authentication; this keeps it from spending the
+     * client's quota for everybody. A person makes one callback per start, so
+     * the honest path never meets it.
+     */
+    federatedCallback: createTokenRouteRateLimiter(
+      config,
+      rateLimitStore("federated-callback"),
     ),
     /**
      * The argon2 budget on `POST /admin/auth/onboarding/accept` (ADR-0071 §8).
@@ -667,6 +783,8 @@ export const buildContainer = ({
       settings: settingsService,
       impersonation: impersonationService,
       organizations: organizationsService,
+      /** `undefined` unless the Google client is configured (ADR-0072 §2). */
+      federatedSignIn,
     } as const,
     controllers: {
       health: createHealthController(health),
@@ -710,6 +828,23 @@ export const buildContainer = ({
       // segment. `mint` requires a staff principal, and `exchange` is
       // registered by the auth router only where the population is `user`
       // (ADR-0057 §3).
+      /**
+       * Sign in with Google (ADR-0072 §2), present exactly when the service
+       * is — the public router mounts the three routes when this is defined
+       * and not otherwise. It takes the **user** auth service for the
+       * exchange, because the session it issues is a customer's and
+       * `sessions` is that service's aggregate.
+       */
+      federated:
+        federatedSignIn === undefined
+          ? undefined
+          : createFederatedController({
+              service: federatedSignIn,
+              auth: userAuth,
+              cookies: authCookies,
+              refreshTtlSec: config.auth.refreshTtlSec,
+              customerAppUrl: config.apps.customerUrl,
+            }),
       impersonation: createImpersonationController({
         service: impersonationService,
         cookies: authCookies,

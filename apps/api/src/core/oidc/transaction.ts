@@ -1,0 +1,227 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
+import { LOCALES, type Locale } from "@repo/contracts";
+import { sha256Base64url } from "@repo/crypto";
+import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { z } from "zod";
+
+import type { OidcAuthorizationRequest } from "./oidc.types.js";
+
+/**
+ * The transaction between a sign-in's start and its callback (ADR-0072 §2).
+ *
+ * Carried in the `__Host-<APP_ID>.oidc` cookie and nowhere else, as a compact
+ * HS256 JWT signed with `jose` under `JWT_ACCESS_SECRET`. **Signed, not
+ * encrypted, on purpose**: nothing in it is a secret from the browser that
+ * owns it — the verifier is worthless without the authorization code Google
+ * hands that same browser — and what the signature buys is that the API reads
+ * back exactly what it wrote. `__Host-` keeps every other origin from writing
+ * one.
+ *
+ * **The audience is `<APP_ID>-oidc`**, beside the access token's
+ * `<APP_ID>-staff` and `<APP_ID>-user` (ADR-0064 §1). The key is shared with
+ * the access tokens, so the audience is what keeps the two kinds of token
+ * from ever being mistaken for each other: an access token presented as a
+ * transaction fails `aud`, and a transaction presented as a bearer token fails
+ * it the other way round.
+ *
+ * A database row keyed by `state` was the alternative, and ADR-0072
+ * §Alternatives says why not: nothing would bind the callback to the browser
+ * that started, which is the login-CSRF case this cookie exists to close.
+ */
+
+/**
+ * How long a sign-in may take between the click and the return from the
+ * provider — the cookie's `Max-Age` and the token's `exp` (ADR-0072 §2).
+ */
+export const OIDC_TRANSACTION_TTL_SEC = 10 * 60;
+
+/** Pinned on verification, so a transaction cannot choose its own algorithm. */
+const ALGORITHM = "HS256";
+
+/**
+ * What a sign-in is for. `signin` is the only intent the start route mints
+ * today; ADR-0072 §3's link intent joins with its own authenticated start
+ * route, and the schema below widens with it rather than accepting a value no
+ * route can produce.
+ */
+export type OidcIntent = "signin";
+
+/** What the start wrote and the callback reads back. */
+export interface OidcTransaction extends OidcAuthorizationRequest {
+  readonly intent: OidcIntent;
+  /**
+   * The SPA's language at the start, when it said (ADR-0072 §2). Carried for
+   * whatever the callback needs to write in the reader's language; absent
+   * means the SPA did not say.
+   */
+  readonly locale: Locale | undefined;
+}
+
+/**
+ * The claims, read back after the signature, issuer, audience and expiry have
+ * verified. Short names because the whole thing rides in a cookie on every
+ * request to this host for ten minutes.
+ */
+const claimsSchema = z.object({
+  k: z.literal("tx"),
+  st: z.string().min(1),
+  nn: z.string().min(1),
+  cv: z.string().min(1),
+  in: z.literal("signin"),
+  lc: z.enum(LOCALES).optional(),
+});
+
+/**
+ * The **handoff binding** the callback leaves in the same cookie after a
+ * successful sign-in (ADR-0072 §2, amended at `D19.2`): the SHA-256 of the
+ * handoff token it put in the fragment, and nothing else.
+ *
+ * The transaction binds the *callback* to the browser that started; this binds
+ * the *exchange* to the browser the callback answered. Without it the
+ * sixty-second token is a bearer credential anybody can relay: an attacker
+ * runs the flow in their own browser, lifts `#token=` from the redirect, and
+ * sends a victim to the landing route, which signs a browser with no session
+ * into the attacker's account (`D19.2`'s `security-reviewer`). The `k` claim
+ * keeps the two kinds apart, so a transaction presented at the exchange, or a
+ * binding presented at the callback, opens to nothing.
+ */
+const handoffClaimsSchema = z.object({
+  k: z.literal("handoff"),
+  hh: z.string().min(1),
+});
+
+/** Equal-length digests compared in constant time. */
+const sameDigest = (a: string, b: string): boolean =>
+  timingSafeEqual(
+    createHash("sha256").update(a).digest(),
+    createHash("sha256").update(b).digest(),
+  );
+
+export interface OidcTransactionCodecDeps {
+  /** `JWT_ACCESS_SECRET` (ADR-0004). */
+  readonly secret: string;
+  /** `APP_ID` (ADR-0064 §1) — the audience's leading word. */
+  readonly appId: string;
+  /** `JWT_ISSUER`, the same issuer every token this API signs carries. */
+  readonly issuer: string;
+  readonly ttlSec?: number;
+  /** Injected so expiry is testable without sleeping (ADR-0018 §Testability). */
+  readonly now?: () => Date;
+}
+
+export interface OidcTransactionCodec {
+  /** The cookie's `Max-Age`, in seconds — the same window the token's `exp` sets. */
+  readonly ttlSec: number;
+  readonly seal: (transaction: OidcTransaction) => Promise<string>;
+  /**
+   * The transaction, or `undefined` for anything that is not one this API
+   * sealed in the last {@link ttlSec} seconds — wrong key, wrong audience,
+   * wrong issuer, expired, malformed or absent. **Never rejects**: the caller
+   * is the callback, which answers every refusal with the same redirect.
+   */
+  readonly open: (
+    value: string | undefined,
+  ) => Promise<OidcTransaction | undefined>;
+  /**
+   * Seals the binding for one handoff token, good for `ttlSec` — the
+   * handoff's own window, so the cookie and the token die together.
+   */
+  readonly sealHandoff: (token: string, ttlSec: number) => Promise<string>;
+  /**
+   * Whether `value` is a binding this API sealed, still live, for exactly
+   * this token. **Never rejects**; anything else is `false`.
+   */
+  readonly bindsHandoff: (
+    value: string | undefined,
+    token: string,
+  ) => Promise<boolean>;
+}
+
+export const createOidcTransactionCodec = ({
+  secret,
+  appId,
+  issuer,
+  ttlSec = OIDC_TRANSACTION_TTL_SEC,
+  now = () => new Date(),
+}: OidcTransactionCodecDeps): OidcTransactionCodec => {
+  const key = new TextEncoder().encode(secret);
+  const audience = `${appId}-oidc`;
+
+  const sign = (claims: JWTPayload, lifetimeSec: number): Promise<string> => {
+    const issuedAt = Math.floor(now().getTime() / 1000);
+
+    return new SignJWT(claims)
+      .setProtectedHeader({ alg: ALGORITHM, typ: "JWT" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + lifetimeSec)
+      .sign(key);
+  };
+
+  /** The verified payload, or `undefined` — never a rejection. */
+  const verify = async (
+    value: string | undefined,
+  ): Promise<JWTPayload | undefined> => {
+    if (value === undefined || value === "") return undefined;
+
+    try {
+      const { payload } = await jwtVerify(value, key, {
+        issuer,
+        audience,
+        algorithms: [ALGORITHM],
+        currentDate: now(),
+        requiredClaims: ["exp", "iat"],
+      });
+
+      return payload;
+    } catch {
+      return undefined;
+    }
+  };
+
+  return {
+    ttlSec,
+
+    seal: (transaction) =>
+      sign(
+        {
+          k: "tx",
+          st: transaction.state,
+          nn: transaction.nonce,
+          cv: transaction.codeVerifier,
+          in: transaction.intent,
+          ...(transaction.locale === undefined
+            ? {}
+            : { lc: transaction.locale }),
+        },
+        ttlSec,
+      ),
+
+    open: async (value) => {
+      const claims = claimsSchema.safeParse(await verify(value));
+
+      if (!claims.success) return undefined;
+
+      return {
+        state: claims.data.st,
+        nonce: claims.data.nn,
+        codeVerifier: claims.data.cv,
+        intent: claims.data.in,
+        locale: claims.data.lc,
+      };
+    },
+
+    sealHandoff: (token, lifetimeSec) =>
+      sign({ k: "handoff", hh: sha256Base64url(token) }, lifetimeSec),
+
+    bindsHandoff: async (value, token) => {
+      const claims = handoffClaimsSchema.safeParse(await verify(value));
+
+      return (
+        claims.success && sameDigest(claims.data.hh, sha256Base64url(token))
+      );
+    },
+  };
+};

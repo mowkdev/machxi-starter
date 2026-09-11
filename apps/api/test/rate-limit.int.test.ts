@@ -480,3 +480,57 @@ describe("the per-source mail limit", () => {
     expect(response.body.error.code).toBe("RATE_LIMITED");
   });
 });
+
+describe("the Google start limit", () => {
+  let harness: TestApp;
+
+  beforeAll(() => {
+    // No seed: a start reads no account, and neither does a refused login.
+    harness = createTestApp(withLimits({ loginMax: 2 }));
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  const START = "/api/v1/public/auth/google/start";
+
+  it("refuses the third start from one source, on login's number in a counter of its own", async () => {
+    // ADR-0072 §2: a start costs the API a signature and Google a redirect,
+    // and there is no address yet to key on — so the source alone.
+    await supertest(harness.app).post(START).send({}).expect(200);
+    await supertest(harness.app).post(START).send({}).expect(200);
+
+    const response = await supertest(harness.app)
+      .post(START)
+      .send({})
+      .expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+
+    // A counter of its own: the other limiters keyed on the source alone
+    // share the number and the key, and must not share the count
+    // (`D19.2`'s `code-reviewer` — the login limiter keys on the address as
+    // well, so it could never have collided).
+    const lookup = await supertest(harness.app)
+      .post("/api/v1/public/invitations/lookup")
+      .send({ token: "never-minted" });
+
+    expect(lookup.status).not.toBe(429);
+  });
+
+  it("gives the callback a counter of its own on the same number", async () => {
+    // Each callback carrying a valid cookie is a request to Google's token
+    // endpoint, and the sealed transaction is single-use only in an honest
+    // browser (ADR-0072 §2, amended at `D19.2`). The start budget spent above
+    // does not touch it.
+    const CALLBACK = "/api/v1/public/auth/google/callback";
+
+    await supertest(harness.app).get(CALLBACK).expect(302);
+    await supertest(harness.app).get(CALLBACK).expect(302);
+
+    const response = await supertest(harness.app).get(CALLBACK).expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+  });
+});

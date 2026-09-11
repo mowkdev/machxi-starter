@@ -1,7 +1,11 @@
 import { randomToken } from "@repo/crypto";
 
 import type { RequestContext } from "../context/index.js";
-import { buildAuthorizationUrl, codeChallengeFor } from "./authorization.js";
+import {
+  buildAuthorizationUrl,
+  codeChallengeFor,
+  oidcRedirectUri,
+} from "./authorization.js";
 import type {
   OidcAuthorizationRequest,
   OidcExchangeInput,
@@ -62,7 +66,7 @@ export interface FakeOidcProviderDeps {
  */
 export const createFakeOidcProvider = ({
   clientId = "fake-client-id",
-  redirectUri = "http://localhost:4000/api/v1/public/auth/google/callback",
+  redirectUri = oidcRedirectUri("http://localhost:4000"),
 }: FakeOidcProviderDeps = {}) => {
   const grants = new Map<
     string,
