@@ -1,6 +1,6 @@
 # Organizations
 
-Every user belongs to organizations; each membership carries a role; staff are above all of them. A request that addresses an organization names it in its path and a guard resolves the caller's membership of it; requests about the caller — which organizations they have, which invitations are addressed to them — stay outside that prefix. Staff manage the tenant base as an ordinary admin resource and are never members of anything. The customer app's switcher and its screens follow with the deliverable in progress.
+Every user belongs to organizations; each membership carries a role; staff are above all of them. A request that addresses an organization names it in its path and a guard resolves the caller's membership of it; requests about the caller — which organizations they have, which invitations are addressed to them — stay outside that prefix. Staff manage the tenant base as an ordinary admin resource and are never members of anything. The customer app's switcher and its screens are client behaviour and are not specified here.
 
 ## Requirement: Every live user has exactly one personal organization
 

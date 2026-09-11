@@ -1,6 +1,6 @@
 # D17 — Impersonation in a new tab
 
-- Status: **in progress** — scoped 2026-09-09 by `/scope`, on the operator's question of the same day; **opened 2026-09-09**, the day D15 shipped, on the operator's decision (ADR-0025 rule 5; ledger §How D17 opened). The plan below is what `/step` executes. Built before D16, whose row says "built last".
+- Status: **shipped 2026-09-09** — scoped 2026-09-09 by `/scope`, on the operator's question of the same day; opened 2026-09-09, the day D15 shipped, on the operator's decision (ADR-0025 rule 5; ledger §How D17 opened); all three steps built and the definition of done run by `/ship` the same day (ledger §How D17 closed). Built before D16, whose row says "built last". _This line read `in progress` until D18's close-out found it unmoved._
 - Records: [ADR-0070](../adr/0070-impersonation-in-a-new-tab.md) (impersonation opens the customer app in a new tab; a delta on ADR-0057 §3 and §7) — written `proposed` at scoping and accepted at `D17.1`'s head; a step whose record is still `proposed` is gated
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0017-impersonation-new-tab.notes.md`](0017-impersonation-new-tab.notes.md)

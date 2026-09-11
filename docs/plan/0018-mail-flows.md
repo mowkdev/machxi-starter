@@ -1,6 +1,6 @@
 # D18 — Mail flows
 
-- Status: **in progress** — scoped 2026-09-10 by `/scope`, on the operator's decision that Google sign-in ([D19](0019-google-sign-in.md)) waits for verified addresses; **opened 2026-09-10**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D18 opened). The plan below is what `/step` executes. Built before D16, whose row says "built last".
+- Status: **shipped 2026-09-11** — scoped 2026-09-10 by `/scope`, on the operator's decision that Google sign-in ([D19](0019-google-sign-in.md)) waits for verified addresses; opened 2026-09-10, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D18 opened); all twelve steps built, the definition of done run at `D18.12` and again by `/ship` on the committed tree (ledger §How D18 closed). Built before D16, whose row says "built last".
 - Records: [ADR-0071](../adr/0071-mail-flows.md) (mail flows — verified addresses, recovery, invitations delivered, addresses changed; deltas on ADR-0017, 0018, 0027 and 0057) — written `proposed` at scoping and accepted at `D18.1`'s head; its parents move at the step that makes each delta true, and the steps name which. A step whose record is still `proposed` is gated.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0018-mail-flows.notes.md`](0018-mail-flows.notes.md)

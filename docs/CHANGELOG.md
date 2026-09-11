@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D18 — Mail flows · 2026-09-11
+
+Every flow that needs a mailbox, built on one mechanism: a single-use, hashed token delivered in a fragment link. A self-registered account is usable once its address is proven — registration issues no session, the link does; either population recovers a password by mail, every session ending with the reset; an invitation is delivered and accepted from its link; a person changes their own address by proving the new one, refused under impersonation; a super admin sets any account's address outright; and a staff member is onboarded from an invitation instead of a password typed by an admin. Templates are English with a locale on the seam, the SMTP adapter is the one transport, three budgets bound what an unauthenticated caller can make the API mail, and the browser tier reads its links out of Mailpit. Tag `starter-D18`.
+
 ## D17 — Impersonation in a new tab · 2026-09-09
 
 The admin panel stays on screen while an operator acts as a customer: the Impersonate confirm opens the customer app in a tab of its own — pre-opened on the click itself, so no pop-up blocker can refuse it, with its opener disowned client-side and by the production `Cross-Origin-Opener-Policy` — and falls back to the same tab only when the open is refused. Because the panel now sits one click from a second mint, the exchange ends the impersonated session it replaces in the same browser, on the audit trail, so a stale tab meets a signed-out screen on its next authenticated request rather than silently changing identity. Tag `starter-D17`.
