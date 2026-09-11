@@ -1,6 +1,6 @@
 # D19 — Sign in with Google
 
-- Status: **planned** — decisions recorded 2026-09-09 and 2026-09-10; **scoped in full 2026-09-11 by `/scope`**, the day D18 shipped and its linking invariant became true (ADR-0071 §3). Opening is the operator's decision (ADR-0025 rule 5). Built before D16, whose row says "built last".
+- Status: **in progress** — decisions recorded 2026-09-09 and 2026-09-10; **scoped in full 2026-09-11 by `/scope`**, the day D18 shipped and its linking invariant became true (ADR-0071 §3); **opened 2026-09-11**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D19 opened). The plan below is what `/step` executes. Built before D16, whose row says "built last".
 - Records: [ADR-0072](../adr/0072-federated-identity-google-sign-in.md) (federated identity — the table and the linking rule, the start/callback/exchange flow, the credentials an account keeps, the customer app; deltas on ADR-0017, 0029 and 0057) — written `proposed` at scoping and accepted at `D19.1`'s head; its parents move at the step that makes each delta true, and the steps name which. A step whose record is still `proposed` is gated.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0019-google-sign-in.notes.md`](0019-google-sign-in.notes.md)
