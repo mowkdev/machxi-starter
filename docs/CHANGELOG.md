@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D19 — Sign in with Google · 2026-09-12
+
+A person signs in to the customer app, or creates an account there, through Google: plain OpenID Connect with PKCE and no new auth library, the ID token verified with `jose` against a provider port that has a real adapter and a fake, and the callback handed to the SPA as a sixty-second fragment token bound to the browser that answered it. Resolution is by subject, then by a verified address against an active account — which Google must host for the address to link — then creation wherever self-registration is open. An account keeps its ways in under its owner's control: Google is linked and unlinked from a Sign-in methods card that replaces the password card, a passwordless account sets a password through a reset link minted by its own session, and every recovery that writes a password without the account's own authority disconnects the identities it did not predate. The three endpoints exist only where a client is configured, so a default clone answers `404` and the mount is the control. Tag `starter-D19`.
+
 ## D18 — Mail flows · 2026-09-11
 
 Every flow that needs a mailbox, built on one mechanism: a single-use, hashed token delivered in a fragment link. A self-registered account is usable once its address is proven — registration issues no session, the link does; either population recovers a password by mail, every session ending with the reset; an invitation is delivered and accepted from its link; a person changes their own address by proving the new one, refused under impersonation; a super admin sets any account's address outright; and a staff member is onboarded from an invitation instead of a password typed by an admin. Templates are English with a locale on the seam, the SMTP adapter is the one transport, three budgets bound what an unauthenticated caller can make the API mail, and the browser tier reads its links out of Mailpit. Tag `starter-D18`.
