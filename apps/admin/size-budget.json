@@ -1,25 +1,28 @@
 {
   "notes": [
-    "The admin app's bundle budget (ADR-0052 \u00a7The bundle budget, D10.5).",
+    "The admin app's bundle budget (ADR-0052 §The bundle budget, D10.5).",
     "Bytes are GZIPPED, which is what a browser downloads; `pnpm size` measures dist/ and fails the gate when a number here is exceeded.",
     "js = every JavaScript byte the build emits. css = every CSS byte. entry = the module script dist/index.html loads, the chunk paid before anything renders. chunks = one ceiling per vendor chunk in dist/assets/vendor/ (D14.9).",
-    "Raising a budget is a deliberate diff of this file that someone reviews \u2014 that is the whole mechanism. Lowering one after a real saving is just as welcome.",
+    "Raising a budget is a deliberate diff of this file that someone reviews — that is the whole mechanism. Lowering one after a real saving is just as welcome.",
     "The headroom over the baseline is about 8% (11% on css, where a percentage of 14 kB is noise): enough for honest growth, tight enough that a new dependency trips it.",
-    "Baseline first measured 2026-08-29 at D10.5, on the tree that already carried D10.3's @dnd-kit and D10.4's stylesheet fix \u2014 the first build in which @repo/grid's and @repo/form's utilities actually reach the CSS. Re-measured 2026-08-30 at D11.1; the js and entry numbers moved by 47 and 2 bytes, which is what 'a token re-skin ships no code' looks like from here.",
-    "css rose 12598 -> 14042 at D11.1 and its budget with it, deliberately: ADR-0054 \u00a71 self-hosts IBM Plex through @fontsource, and five @fontsource stylesheets (Sans 400/500/600, Mono 400/500, whole faces so unicode-range can do the choosing) carry 28 @font-face rules - ~12.4 kB of very repetitive CSS that gzips to ~1.4 kB. The woff2/woff files themselves are emitted assets and are NOT counted here \u2014 a browser downloads only the subsets its text needs, so what this number prices is the declaration, not the faces.",
+    "Baseline first measured 2026-08-29 at D10.5, on the tree that already carried D10.3's @dnd-kit and D10.4's stylesheet fix — the first build in which @repo/grid's and @repo/form's utilities actually reach the CSS. Re-measured 2026-08-30 at D11.1; the js and entry numbers moved by 47 and 2 bytes, which is what 'a token re-skin ships no code' looks like from here.",
+    "css rose 12598 -> 14042 at D11.1 and its budget with it, deliberately: ADR-0054 §1 self-hosts IBM Plex through @fontsource, and five @fontsource stylesheets (Sans 400/500/600, Mono 400/500, whole faces so unicode-range can do the choosing) carry 28 @font-face rules - ~12.4 kB of very repetitive CSS that gzips to ~1.4 kB. The woff2/woff files themselves are emitted assets and are NOT counted here — a browser downloads only the subsets its text needs, so what this number prices is the declaration, not the faces.",
     "entry is resolved from dist/index.html rather than matched by filename: at D10.5's review an index-*.js pattern was found to match two chunks (the real entry plus an unrelated 0.6 kB one), and it would match zero the day Vite's entryFileNames changes - which would pass green forever.",
-    "NOT RAISED at D14.8, which is the outcome ADR-0062 \u00a71 predicted: the composition moved into @repo/app-kit and the same code is still shipped, so `pnpm size` prints js 334.2 / css 14.5 / entry 255.4 kB against 353.5 / 15.2 / 273.4. The one real addition is the top-level error boundary and its crash surface, which is a class component, a paragraph and a button \u2014 the ~0.6 kB the entry moved. The next raise this file expects is D14.9's, and it will be a *shape* change rather than a number: per-chunk ceilings beside these totals (ADR-0062 \u00a74).",
-    "SHAPE CHANGED at D14.9 (ADR-0062 \u00a74), which is what the D14.8 note said to expect: `chunks` joins `budgets` and `baseline.chunks` joins `baseline`, one ceiling per vendor chunk `vite.config.ts` names, and `scripts/size.mjs` fails on any of them. The mechanism is ADR-0052's and is unchanged \u2014 a committed byte count, raised only in a diff someone reviewed.",
+    "NOT RAISED at D14.8, which is the outcome ADR-0062 §1 predicted: the composition moved into @repo/app-kit and the same code is still shipped, so `pnpm size` prints js 334.2 / css 14.5 / entry 255.4 kB against 353.5 / 15.2 / 273.4. The one real addition is the top-level error boundary and its crash surface, which is a class component, a paragraph and a button — the ~0.6 kB the entry moved. The next raise this file expects is D14.9's, and it will be a *shape* change rather than a number: per-chunk ceilings beside these totals (ADR-0062 §4).",
+    "SHAPE CHANGED at D14.9 (ADR-0062 §4), which is what the D14.8 note said to expect: `chunks` joins `budgets` and `baseline.chunks` joins `baseline`, one ceiling per vendor chunk `vite.config.ts` names, and `scripts/size.mjs` fails on any of them. The mechanism is ADR-0052's and is unchanged — a committed byte count, raised only in a diff someone reviewed.",
     "The entry fell 255.4 -> 159.0 kB on that step, and nothing was removed: `manualChunks` moved React, the router, the query client and the table core out of the entry and into four cacheable chunks. js moved +191 bytes, which is what 'the same bytes in different files' looks like from here.",
-    "entry's budget is now 171.9 kB, and it may not be raised past 60% of the js budget \u2014 `size.mjs` enforces that arithmetic rather than trusting this note. Before D14.9 the entry was 76% of all JavaScript; the cap is what stops a later step giving that back by editing one number.",
-    "The chunk ceilings carry roughly the same headroom the totals do, and `baseline.chunks` records what each one measured on the day it was set \u2014 without that, a chunk drifting toward its ceiling is invisible until the day it trips, which is the opposite of what ADR-0052's raise-by-review mechanism is for. react is 59.0 kB and is expected to move only when React does; table is the one to watch, because it is @tanstack/react-table and only the grid uses it."
+    "entry's budget is now 171.9 kB, and it may not be raised past 60% of the js budget — `size.mjs` enforces that arithmetic rather than trusting this note. Before D14.9 the entry was 76% of all JavaScript; the cap is what stops a later step giving that back by editing one number.",
+    "The chunk ceilings carry roughly the same headroom the totals do, and `baseline.chunks` records what each one measured on the day it was set — without that, a chunk drifting toward its ceiling is invisible until the day it trips, which is the opposite of what ADR-0052's raise-by-review mechanism is for. react is 59.0 kB and is expected to move only when React does; table is the one to watch, because it is @tanstack/react-table and only the grid uses it.",
+    "RE-BASELINED 2026-09-11, after D18 shipped and outside any step, and the first raise of js since D14.9. The reason is that the file had stopped being true: the baseline below still said D14.9's numbers while a cold build measured js 342362 -> 361873 (+19.5 kB), css 14843 -> 14862 (+19 bytes) and entry 162773 -> 166837 (+4.1 kB), the four vendor chunks unmoved to the byte. D18 spent that in this app across D18.6 (the recovery screens), D18.10 (the change-address dialog on both record surfaces) and D18.11 (/onboarding and the passwordless staff create) with no raise and no baseline update, and the ~5% headroom this file is meant to run at had quietly become 0.03% — 353.4 against 353.5 kB as the script prints it. That is not the mechanism failing: nothing went over, so nothing asked anyone to look. It is the baseline going stale, which the D14.9 note above says is exactly what makes drift invisible.",
+    "The raise is js 362000 -> 380000 and nothing else: ~5% over the new baseline, the rule the customer file's D15.5 note set and this file has run at since D14.9. css (15600) and entry (176000) are left where they were, both still ~5% over what they measure; the chunk ceilings are untouched because the chunks did not move. The 60%-of-js rule size.mjs enforces is nowhere near binding at 380000.",
+    "The lever named at D18.11 is still unpulled: /onboarding and /reset-password are one screen with different copy. This re-baseline buys room; it does not cash that. The +4.1 kB on entry is the eager `en` catalogues ADR-0046 §3 bundles before any lazy import resolves, the same trade the customer file records at D12.8 and D15.5, and entry is the number to watch here too — 5.5% of headroom against 176000."
   ],
   "baseline": {
-    "measuredAt": "2026-09-03",
-    "step": "D14.9",
-    "js": 342362,
-    "css": 14843,
-    "entry": 162773,
+    "measuredAt": "2026-09-11",
+    "step": "D18 shipped (re-baselined outside a step)",
+    "js": 361873,
+    "css": 14862,
+    "entry": 166837,
     "chunks": {
       "query": 10598,
       "react": 60419,
@@ -28,7 +31,7 @@
     }
   },
   "budgets": {
-    "js": 362000,
+    "js": 380000,
     "css": 15600,
     "entry": 176000
   },
