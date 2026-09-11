@@ -34,3 +34,9 @@ apps/admin/test-results/
 apps/admin/playwright-report/
 apps/customer/test-results/
 apps/customer/playwright-report/
+
+# The desktop app's session outputs (`Claude outputs/`): notes a session
+# writes for the operator beside the repository, never part of it. Ignored
+# here, in .prettierignore (format:check walks untracked files too) and in
+# .dockerignore.
+Claude outputs/
