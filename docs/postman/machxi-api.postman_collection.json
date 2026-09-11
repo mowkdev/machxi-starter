@@ -4755,16 +4755,16 @@
           }
         },
         {
-          "name": "Ask for a set-password link",
+          "name": "Ask for a set-password link with a password already set",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"202 { accepted: true } and nothing changed yet\", function () {",
-                  "  pm.response.to.have.status(202);",
-                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "pm.test(\"409 CONFLICT: an account with a password changes it with the current one\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"CONFLICT\");",
                   "});"
                 ]
               }
@@ -4783,7 +4783,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "user", "profile", "password", "set-link"]
             },
-            "description": "\"Set a password\" (ADR-0072 §3): the account's own reset link, minted by the session with `requestedBy: \"session\"` and mailed to the account's address — `forgot`'s template and `/reset-password` screen. The reset that consumes it keeps the account's federated identities, where the one `forgot` sends removes them. On this run's own account, because the limit is three an hour per account."
+            "description": "\"Set a password\" (ADR-0072 §3, amended after `D19.4`): the account's own reset link, minted by the session with `requestedBy: \"session\"` and the asking session's id, and mailed to the account's address — `forgot`'s template and `/reset-password` screen. It is for an account **without** a password, and this run's own account has one, so the answer is `409 CONFLICT` and nothing is mailed. A passwordless account exists only through Google, which the collection cannot drive, so the `202` and what the consume keeps — the identities older than the asking session — are the integration tier's (`federated-identity.int.test.ts`)."
           }
         }
       ]

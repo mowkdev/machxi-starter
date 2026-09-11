@@ -3,9 +3,11 @@ import {
   federatedIdentities,
   organizationMemberships,
   organizations,
+  sessions,
   users,
+  type DbExecutor,
 } from "@repo/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -916,12 +918,21 @@ describe("sign in with Google", () => {
         "impersonated.ways@gmail.test",
         "sub-impersonated-ways",
       );
+      // The set-password link is for an account without a password (§3,
+      // amended after `D19.4`), so its half of the case is a Google-only one.
+      const passwordless = await googleOnly(
+        "sub-impersonated-passwordless",
+        "impersonated.passwordless@gmail.test",
+      );
       const operator = await impersonate(account.id);
+      const operatorOnPasswordless = await impersonate(passwordless.id);
 
       for (const refused of [
         await startLink(operator),
         await unlink(operator, NEW_ACCOUNT_PASSWORD),
-        await request().post(SET_LINK).set("Authorization", bearer(operator)),
+        await request()
+          .post(SET_LINK)
+          .set("Authorization", bearer(operatorOnPasswordless)),
       ]) {
         expect(refused.status).toBe(403);
         expect(refused.body.error.code).toBe("AUTH_IMPERSONATION_REFUSED");
@@ -933,7 +944,7 @@ describe("sign in with Google", () => {
       await startLink(account.accessToken).expect(200);
       await request()
         .post(SET_LINK)
-        .set("Authorization", bearer(account.accessToken))
+        .set("Authorization", bearer(passwordless.accessToken))
         .expect(202);
       await unlink(account.accessToken, NEW_ACCOUNT_PASSWORD).expect(204);
     });
@@ -1035,7 +1046,9 @@ describe("sign in with Google", () => {
         })
         .expect(204);
 
-      // Both ways in now work: the password just chosen, and Google.
+      // Both ways in now work: the password just chosen, and Google — the
+      // identity the account was made with is older than the session that
+      // asked, so the consume keeps it (§3, amended after `D19.4`).
       await request()
         .post(LOGIN)
         .send({ email, password: "ChosenLater!2026" })
@@ -1044,6 +1057,270 @@ describe("sign in with Google", () => {
       expect(await trailOf(account.id, "account.identity_unlinked")).toEqual(
         [],
       );
+      expect(
+        (await trailOf(account.id, "account.password_reset")).map(
+          (row) => row.data,
+        ),
+      ).toEqual([{ requestedBy: "session", unlinked: [] }]);
+    });
+
+    /* the set-password link keeps only what is older than its session */
+
+    /** Asks for the set-password link as `accessToken` and returns its token. */
+    const setLinkToken = async (accessToken: string, email: string) => {
+      await request()
+        .post(SET_LINK)
+        .set("Authorization", bearer(accessToken))
+        .expect(202);
+
+      return tokenFromMail(lastMailTo(harness, email));
+    };
+
+    const consume = (token: string) =>
+      request()
+        .post(RESET)
+        .send({ token, newPassword: "SetFromTheLink!2026" })
+        .expect(204);
+
+    it("refuses set-link with 409 CONFLICT on an account that has a password, and mails nothing", async () => {
+      // ADR-0072 §3, amended after `D19.4`: an account with a password
+      // changes it with the current one; the second door is what a stolen
+      // session would need.
+      const email = "has.a.password@example.test";
+      const account = await passwordAccount(email);
+      const before = harness.mail.length;
+
+      const response = await request()
+        .post(SET_LINK)
+        .set("Authorization", bearer(account.accessToken))
+        .expect(409);
+
+      expect(response.body.error.code).toBe("CONFLICT");
+      expect(harness.mail.length).toBe(before);
+    });
+
+    it("removes, at a session-minted consume, an identity linked after the asking session began", async () => {
+      const email = "linked.after@gmail.test";
+      const account = await googleOnly("sub-linked-after", email);
+
+      // The one provider allows one identity, and a passwordless account can
+      // neither gain a second nor lose its first from a session — so "linked
+      // after the session began" is set on the row rather than reached by a
+      // flow (the record says the first rule alone suffices today, and this
+      // is the rule that keeps it sufficient when a second provider arrives).
+      const [session] = await harness.db.db
+        .select({ createdAt: sessions.createdAt })
+        .from(sessions)
+        .where(eq(sessions.principalId, account.id));
+
+      await harness.db.db
+        .update(federatedIdentities)
+        .set({
+          linkedAt: new Date((session?.createdAt.getTime() ?? 0) + 60_000),
+        })
+        .where(eq(federatedIdentities.userId, account.id));
+
+      await consume(await setLinkToken(account.accessToken, email));
+
+      expect(await identitiesOf(account.id)).toEqual([]);
+      expect(await trailOf(account.id, "account.identity_unlinked")).toEqual([
+        { data: { provider: "google", via: "reset" }, actorId: account.id },
+      ]);
+      expect(
+        (await trailOf(account.id, "account.password_reset")).map(
+          (row) => row.data,
+        ),
+      ).toEqual([{ requestedBy: "session", unlinked: ["google"] }]);
+    });
+
+    it("removes every identity at a session-minted consume when the asking session's row is gone", async () => {
+      const email = "session.gone@gmail.test";
+      const account = await googleOnly("sub-session-gone", email);
+      const token = await setLinkToken(account.accessToken, email);
+
+      // Pruned — a revoked row would still say when it began; a missing one
+      // says nothing, and nothing is kept on its word.
+      await harness.db.db
+        .delete(sessions)
+        .where(eq(sessions.principalId, account.id));
+
+      await consume(token);
+
+      expect(await identitiesOf(account.id)).toEqual([]);
+      expect(await identityBySubject("sub-session-gone")).toBeUndefined();
+    });
+
+    it("names a mailbox reset in the account.password_reset row, with what it removed", async () => {
+      const email = "mailbox.reset@gmail.test";
+      const account = await linkedPasswordAccount(email, "sub-mailbox-reset");
+
+      await request().post(FORGOT).send({ email }).expect(202);
+      await consume(tokenFromMail(lastMailTo(harness, email)));
+
+      expect(
+        (await trailOf(account.id, "account.password_reset")).map(
+          (row) => row.data,
+        ),
+      ).toEqual([{ requestedBy: "mailbox", unlinked: ["google"] }]);
+    });
+
+    /* a link and a reset of one account serialise on its row */
+
+    /**
+     * Holds the account row's lock in a transaction of the suite's own, runs
+     * `start` — which must come to wait on that lock — and then `meanwhile`
+     * inside the held transaction before it commits.
+     *
+     * The wait is observed in `pg_locks` rather than assumed from a sleep: a
+     * request that never blocked would be a request that ran beside the held
+     * transaction, which is exactly the interleaving the lock exists to stop,
+     * and the case would pass by timing rather than prove anything.
+     */
+    const whileTheRowIsHeld = async <T>(
+      userId: string,
+      begin: () => Promise<T>,
+      meanwhile: (tx: DbExecutor) => Promise<void>,
+    ): Promise<T> => {
+      let pending: Promise<T> | undefined;
+
+      await harness.db.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select id from ${users} where id = ${userId} for update`,
+        );
+
+        pending = begin();
+
+        for (let attempt = 0; ; attempt += 1) {
+          const [row] = await tx.execute<{ waiting: number }>(
+            sql`select count(*)::int as waiting from pg_locks where not granted`,
+          );
+
+          if ((row?.waiting ?? 0) > 0) break;
+          if (attempt === 200) {
+            throw new Error("nothing came to wait on the account row");
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+
+        await meanwhile(tx);
+      });
+
+      if (pending === undefined) throw new Error("the request never began");
+
+      return pending;
+    };
+
+    it("leaves no identity behind when a link callback waits on a reset of the account", async () => {
+      // The reset holds the row; the link that waits on it reads the session
+      // the reset revoked, and refuses (ADR-0072 §3, amended after `D19.4`).
+      const account = await passwordAccount("link.waits@example.test");
+      const started = await startLink(account.accessToken).expect(200);
+      const { code, state } = harness.oidc.consent(
+        started.body.data.authorizationUrl as string,
+        hosted("sub-link-waits", "link.waits@gmail.test"),
+      );
+
+      const response = await whileTheRowIsHeld(
+        account.id,
+        () =>
+          callback({ code, state }, cookieValue(started, OIDC_COOKIE) ?? "")
+            .expect(302)
+            .then((answer) => answer),
+        // What a reset does before it commits: every session of the account
+        // ends (and every identity it can see goes — there is none yet).
+        async (tx) => {
+          await tx
+            .update(sessions)
+            .set({ revokedAt: new Date(), revokedReason: "password_reset" })
+            .where(eq(sessions.principalId, account.id));
+        },
+      );
+
+      expect(landingOf(response).fragment.get("error")).toBe("UNAUTHENTICATED");
+      expect(await identityBySubject("sub-link-waits")).toBeUndefined();
+    });
+
+    it("refuses at the exchange a Google handoff minted before a reset of the account", async () => {
+      // `D19.5`'s `security-reviewer`: a sixty-second handoff is a session
+      // not yet issued, and the reset's session sweep cannot see it — so the
+      // reset supersedes it, or the person it recovers the account from signs
+      // in a moment after the recovery.
+      const email = "handoff.before.reset@gmail.test";
+
+      await linkedPasswordAccount(email, "sub-handoff-before-reset");
+
+      const landing = await signIn(hosted("sub-handoff-before-reset", email));
+
+      expect(landing.fragment.get("token")).not.toBeNull();
+
+      await request().post(FORGOT).send({ email }).expect(202);
+      await consume(tokenFromMail(lastMailTo(harness, email)));
+
+      const refused = await redeem(landing).expect(401);
+
+      expect(refused.body.error.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("refuses a sign-in by subject that waits on a reset removing its identity", async () => {
+      // The reset holds the row and removes the identity the sign-in found a
+      // moment before; the sign-in that comes second finds it gone and mints
+      // nothing (`D19.5`'s `security-reviewer`).
+      const email = "signin.waits@gmail.test";
+      const account = await linkedPasswordAccount(email, "sub-signin-waits");
+      const { authorizationUrl, cookie } = await start();
+      const { code, state } = harness.oidc.consent(
+        authorizationUrl,
+        hosted("sub-signin-waits", email),
+      );
+
+      const response = await whileTheRowIsHeld(
+        account.id,
+        () =>
+          callback({ code, state }, cookie)
+            .expect(302)
+            .then((answer) => answer),
+        async (tx) => {
+          await tx
+            .delete(federatedIdentities)
+            .where(eq(federatedIdentities.userId, account.id));
+        },
+      );
+
+      const landing = landingOf(response);
+
+      expect(landing.fragment.get("token")).toBeNull();
+      expect(landing.fragment.get("error")).toBe("UNAUTHENTICATED");
+    });
+
+    it("leaves no identity behind when a reset waits on a link to the account", async () => {
+      // The link holds the row and commits its identity; the reset that waits
+      // on it sees the identity, and removes it.
+      const email = "reset.waits@example.test";
+      const account = await passwordAccount(email);
+
+      await request().post(FORGOT).send({ email }).expect(202);
+
+      const token = tokenFromMail(lastMailTo(harness, email));
+
+      await whileTheRowIsHeld(
+        account.id,
+        () => consume(token).then((answer) => answer),
+        // What the link commits while it holds the row.
+        async (tx) => {
+          await tx.insert(federatedIdentities).values({
+            userId: account.id,
+            provider: "google",
+            subject: "sub-reset-waits",
+            email: "reset.waits@gmail.test",
+          });
+        },
+      );
+
+      expect(await identityBySubject("sub-reset-waits")).toBeUndefined();
+      expect(await trailOf(account.id, "account.identity_unlinked")).toEqual([
+        { data: { provider: "google", via: "reset" }, actorId: account.id },
+      ]);
     });
   });
 

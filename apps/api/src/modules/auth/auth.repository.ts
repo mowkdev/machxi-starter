@@ -170,6 +170,41 @@ export const createSessionsRepository = (db: DbExecutor) =>
       return row;
     },
 
+    /**
+     * When a session began, and whose it is — revoked or not, because a
+     * revoked row still says when it started (ADR-0072 §3, amended after
+     * `D19.4`).
+     *
+     * The session-minted reset's one question: its link sealed the asking
+     * session's id, and the consume keeps only the identities older than that
+     * session. A narrow probe of its own rather than a column on
+     * {@link SessionRecord}, which every other read would then carry for this
+     * one reader.
+     */
+    findStartedAt: async (
+      id: string,
+      tx: DbExecutor = db,
+    ): Promise<
+      | {
+          readonly principalType: Population;
+          readonly principalId: string;
+          readonly createdAt: Date;
+        }
+      | undefined
+    > => {
+      const [row] = await tx
+        .select({
+          principalType: sessions.principalType,
+          principalId: sessions.principalId,
+          createdAt: sessions.createdAt,
+        })
+        .from(sessions)
+        .where(eq(sessions.id, id))
+        .limit(1);
+
+      return row;
+    },
+
     /** Indexed equality on the unique current hash. */
     findByRefreshTokenHash: async (
       hash: string,

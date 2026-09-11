@@ -13,6 +13,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient, useSession } from "@/shared/api/context";
 
+import { takeRedirect } from "./redirect-memory";
+
 /**
  * What the `/auth/google` screen has to say while it says it (ADR-0072 §2,
  * §4).
@@ -28,7 +30,10 @@ import { useApiClient, useSession } from "@/shared/api/context";
  * - `#linked=google` — a link finished (§3): `linking` for the instant it
  *   takes to move on to the security section.
  * - `#error=<code>` — the callback refused: `failed`, rendering the
- *   catalogue's sentence for the code.
+ *   catalogue's sentence for the code — or, in a browser that holds a
+ *   session, `returning` for the instant it takes to carry the code to the
+ *   security section, because the only flow a signed-in browser reaches the
+ *   callback from is a link (§4, amended after `D19.3`).
  *
  * `refused` is a spent, expired or unbound handoff — the exchange's one
  * indistinguishable `401` — and also the callback's own `UNAUTHENTICATED`,
@@ -38,7 +43,13 @@ import { useApiClient, useSession } from "@/shared/api/context";
  * is an arrival with nothing to finish.
  */
 export type GoogleLandingStatus =
-  "pending" | "signedIn" | "linking" | "refused" | "failed" | "missing";
+  | "pending"
+  | "signedIn"
+  | "linking"
+  | "returning"
+  | "refused"
+  | "failed"
+  | "missing";
 
 /** What the screen renders from. */
 export interface GoogleLanding {
@@ -73,8 +84,23 @@ declare module "@tanstack/react-router" {
    */
   interface HistoryState {
     identityLinked?: { readonly provider: FederatedProvider };
+    /**
+     * A link the callback refused, carried to the security section as the
+     * code it sent (§4, amended after `D19.3`) and rendered there as the
+     * catalogue's sentence for it. Plantable like the hint above, and
+     * harmless for the reason it is only ever words: nothing is read from it
+     * but which sentence to show, and an unknown code shows the fallback.
+     */
+    identityLinkRefused?: { readonly code: string };
   }
 }
+
+/** A refused link's code, as a navigation to the security section carries it. */
+export const identityLinkRefused = (
+  code: string,
+): HistoryState & {
+  readonly identityLinkRefused: { readonly code: string };
+} => ({ identityLinkRefused: { code } });
 
 /** What a navigation to the security section spreads into its `state`. */
 export const identityLinked = (
@@ -134,6 +160,8 @@ const initialStatus = (
     case "token":
       return signedIn ? "signedIn" : "pending";
     case "error":
+      if (signedIn) return "returning";
+
       return fragment.code === "UNAUTHENTICATED" ? "refused" : "failed";
     case "linked":
       return "linking";
@@ -191,28 +219,36 @@ export const useGoogleLanding = (): GoogleLanding => {
   });
   const [status, setStatus] = useState<GoogleLandingStatus>(arrival.status);
   const attempted = useRef(false);
-  /** The handoff waiting for a click, on the `signedIn` branch and nowhere else. */
-  const held = useRef<string | undefined>(undefined);
+  /**
+   * The handoff waiting for a click, and where it lands, on the `signedIn`
+   * branch and nowhere else.
+   */
+  const held = useRef<
+    | { readonly token: string; readonly destination: string | undefined }
+    | undefined
+  >(undefined);
 
   const spend = useCallback(
-    (token: string) => {
+    (token: string, destination: string | undefined) => {
       held.current = undefined;
 
       client.exchangeGoogleSignIn(token).then(
         () => {
           /*
-           * Home, `replace` so Back does not land on a screen whose job is
-           * done — the `/verify-email` landing, and the plan's "landing
-           * home". **The sign-in screen's `redirect` is not carried**
-           * (`D19.3`'s `code-reviewer`): a person turned away by the guard, or
-           * sent from the invitation screen to `/login?redirect=…`, who then
-           * continues with Google lands on `/` rather than where a password
-           * sign-in would have taken them. Carrying it means holding a
-           * location across a round trip to another origin, which is a
-           * decision of its own rather than something this hook should grow
-           * quietly; the notes log it.
+           * `replace` so Back does not land on a screen whose job is done —
+           * the `/verify-email` landing. **Where the sign-in screen was
+           * sending the person, when it was sending them anywhere** (ADR-0072
+           * §4, amended after `D19.3`): the location "Continue with Google"
+           * remembered before leaving, taken once and fenced to a path on this
+           * origin by `takeRedirect`; home otherwise. Never a value from the
+           * fragment, which an attacker's link could set.
            */
-          void navigate({ to: "/", replace: true }).catch(() => undefined);
+          const landing =
+            destination === undefined
+              ? navigate({ to: "/", replace: true })
+              : navigate({ href: destination, replace: true });
+
+          void landing.catch(() => undefined);
         },
         () => {
           setStatus("refused");
@@ -223,6 +259,8 @@ export const useGoogleLanding = (): GoogleLanding => {
   );
 
   const signedIn = arrival.status === "signedIn";
+  /** A refusal read at mount in a browser that held a session (§4). */
+  const returning = arrival.status === "returning";
 
   useEffect(() => {
     if (attempted.current) return;
@@ -243,6 +281,24 @@ export const useGoogleLanding = (): GoogleLanding => {
     const fragment = readFragment(hash);
 
     if (fragment.kind === "none") return;
+
+    /*
+     * A refusal in a browser that holds a session is a **link** that did not
+     * happen (§4, amended after `D19.3`): a signed-in browser reaches the
+     * callback only from the security section's link start, so the code goes
+     * back there as the section's notice, and "sign in again" — the right
+     * sentence for a sign-in — is never shown to somebody who is signed in.
+     * `replace` takes the fragment-bearing entry out of the history in the
+     * same move, as the link branch below does.
+     */
+    if (fragment.kind === "error" && returning) {
+      void navigate({
+        to: "/account/security",
+        replace: true,
+        state: identityLinkRefused(fragment.code),
+      }).catch(() => undefined);
+      return;
+    }
 
     /*
      * A link lands on the security section, where the new way in is listed
@@ -268,28 +324,32 @@ export const useGoogleLanding = (): GoogleLanding => {
 
     if (fragment.kind === "error") return;
 
+    // Taken once, here, beside the token: the latch above makes this the one
+    // read, so `StrictMode`'s second run cannot find the value gone.
+    const destination = takeRedirect();
+
     if (signedIn) {
-      held.current = fragment.token;
+      held.current = { token: fragment.token, destination };
       return;
     }
 
-    spend(fragment.token);
+    spend(fragment.token, destination);
     /*
      * `hash` is a dependency and the strike changes it, so this runs a second
      * time and returns on the latch — which releases the first closure and,
      * with it, the only reference to the token that outlives the request.
      */
-  }, [navigate, hash, signedIn, spend]);
+  }, [navigate, hash, signedIn, returning, spend]);
 
   const confirm = useCallback(() => {
-    const token = held.current;
+    const waiting = held.current;
 
-    if (token === undefined) return;
+    if (waiting === undefined) return;
 
     // An event handler, so the screen may move to `pending` here — which takes
     // the button away before a second click can post a token in flight.
     setStatus("pending");
-    spend(token);
+    spend(waiting.token, waiting.destination);
   }, [spend]);
 
   const failure =

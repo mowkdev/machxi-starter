@@ -338,8 +338,8 @@ export const buildContainer = ({
     ...authDeps,
     population: "user",
     principals: userPrincipals,
-    // Narrowed by the service's own type to `identitiesOf` and `unlinkAll`,
-    // and wired on this service alone: staff get no federated login
+    // Narrowed by the service's own type to the read, the lock and the two
+    // removals, and wired on this service alone: staff get no federated login
     // (ADR-0072 §5), so the staff reset has no identity to remove.
     federated: federatedAccounts,
     // The staff adapter, narrowed by the service's own type to `findById`: it

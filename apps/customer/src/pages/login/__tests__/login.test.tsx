@@ -5,12 +5,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   GOOGLE_AUTHORIZATION_URL,
+  GOOGLE_HANDOFF_TOKEN,
   PUBLIC_API,
   createAuthHandlers,
   createAuthMockState,
   type AuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
 import { fail, ok } from "@/test/msw/handlers/envelope";
+import {
+  createOrganizationsHandlers,
+  createOrganizationsMockState,
+} from "@/test/msw/handlers/organizations.handlers";
+import {
+  createProfileHandlers,
+  createProfileMockState,
+} from "@/test/msw/handlers/profile.handlers";
 import { server } from "@repo/app-kit/testing";
 import { createSessionStore } from "@/shared/api/session-store";
 import type { AppFeatures } from "@/shared/config";
@@ -152,6 +161,97 @@ describe("continue with Google on the sign-in screen", () => {
     );
     expect(window.open).not.toHaveBeenCalled();
     expect(googleButton()).toBeEnabled();
+  });
+
+  describe("carrying the screen's redirect through Google", () => {
+    /*
+     * ADR-0072 §4, amended after `D19.3`: the location the guard or an
+     * invitation was sending the person to survives the round trip — carried
+     * by this app under its device key, never by the API, and fenced to a
+     * path on this origin when it is read back.
+     */
+    const KEY = "machxi.user.googleRedirect";
+
+    beforeEach(() => {
+      server.use(
+        ...createProfileHandlers(createProfileMockState()),
+        ...createOrganizationsHandlers(createOrganizationsMockState()),
+      );
+      window.sessionStorage.clear();
+    });
+
+    const land = () =>
+      renderApp({
+        initialPath: `/auth/google#${new URLSearchParams({ token: GOOGLE_HANDOFF_TOKEN }).toString()}`,
+        store: createSessionStore(),
+      });
+
+    it("stores /login's redirect before leaving, and lands there after the exchange", async () => {
+      const user = userEvent.setup();
+      const { unmount } = renderApp({
+        initialPath: "/login?redirect=/orgs/acme",
+        store: createSessionStore(),
+        features: GOOGLE_ON,
+      });
+
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with Google" }),
+      );
+      await waitFor(() => {
+        expect(window.open).toHaveBeenCalledTimes(1);
+      });
+
+      expect(window.sessionStorage.getItem(KEY)).toBe("/orgs/acme");
+
+      unmount();
+
+      // Back from Google, in the same tab.
+      const { router } = land();
+
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe("/orgs/acme");
+      });
+      // Read once: nothing is left for a later sign-in to inherit.
+      expect(window.sessionStorage.getItem(KEY)).toBeNull();
+    });
+
+    it("clears what an abandoned attempt left when this screen has no redirect", async () => {
+      window.sessionStorage.setItem(KEY, "/orgs/acme");
+
+      const { user } = setup(GOOGLE_ON);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with Google" }),
+      );
+      await waitFor(() => {
+        expect(window.open).toHaveBeenCalledTimes(1);
+      });
+
+      expect(window.sessionStorage.getItem(KEY)).toBeNull();
+    });
+
+    it.each([
+      ["another origin", "https://elsewhere.test/orgs/acme"],
+      ["a protocol-relative address", "//elsewhere.test"],
+    ])("lands on / when what was stored is %s", async (_name, stored) => {
+      window.sessionStorage.setItem(KEY, stored);
+
+      const { router } = land();
+
+      expect(
+        await screen.findByRole("heading", { name: "Your account" }),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/");
+    });
+
+    it("lands on / when nothing was stored", async () => {
+      const { router } = land();
+
+      expect(
+        await screen.findByRole("heading", { name: "Your account" }),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/");
+    });
   });
 
   it("goes nowhere that is not an https address", async () => {

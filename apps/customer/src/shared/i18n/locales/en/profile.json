@@ -37,7 +37,6 @@
   },
   "password": {
     "title": "Password",
-    "description": "Changing it signs you out everywhere else and leaves this device signed in.",
     "action": "Change password",
     "note": "You will be asked for your current password, even though you are signed in. Your other devices stay signed out until you use the new password on them.",
     "dialog": {
@@ -53,6 +52,41 @@
       "newPassword": {
         "label": "New password",
         "description": "Every other device is signed out. This one stays signed in."
+      }
+    }
+  },
+  "methods": {
+    "title": "Sign-in methods",
+    "description": "The ways you can sign in to this account.",
+    "password": {
+      "on": "You sign in with your email address and password.",
+      "off": "No password yet — you sign in with Google.",
+      "set": "Set a password",
+      "sent": "Check your inbox: a link for choosing a password is on its way to {{email}}. It can be used once and expires."
+    },
+    "google": {
+      "label": "Google",
+      "on": "Linked",
+      "onAs": "Linked to {{email}}",
+      "off": "Not linked",
+      "link": "Link Google",
+      "unlink": "Unlink",
+      "onlyWay": "Google is the only way into this account. Set a password before you unlink it."
+    },
+    "notice": {
+      "linked": "Google is linked. You can sign in with it from now on.",
+      "linkFailed": "Linking Google did not finish. It may have taken too long, or been finished in a different browser. Try again."
+    },
+    "passwordFirst": "This asks for your current password, and your account does not have one yet. Set a password first.",
+    "unlink": {
+      "title": "Unlink Google",
+      "description": "You will no longer be able to sign in with this Google account. Your password stays, and nobody is signed out.",
+      "submit": "Unlink Google",
+      "fields": {
+        "currentPassword": {
+          "label": "Current password",
+          "description": "Required even though you are signed in — unlinking removes a way into your account."
+        }
       }
     }
   },
@@ -83,6 +117,7 @@
     "updated": "Your details were saved.",
     "passwordChanged": "Your password was changed. Every other device was signed out; this one stays.",
     "deleted": "Your account is closed. You have been signed out on every device.",
-    "emailChangeRequested": "A confirmation link is on its way to the new address. Nothing changes until you follow it."
+    "emailChangeRequested": "A confirmation link is on its way to the new address. Nothing changes until you follow it.",
+    "identityUnlinked": "Google is unlinked. Sign in with your password from now on."
   }
 }

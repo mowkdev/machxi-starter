@@ -18,10 +18,27 @@ export {
   useVerifyEmail,
   type VerificationStatus,
 } from "./verify-email/use-verify-email";
-export { ContinueWithGoogle } from "./google-sign-in/continue-with-google";
 export {
+  ContinueWithGoogle,
+  type ContinueWithGoogleProps,
+} from "./google-sign-in/continue-with-google";
+export {
+  identityLinkRefused,
   identityLinked,
   useGoogleLanding,
   type GoogleLanding,
   type GoogleLandingStatus,
 } from "./google-sign-in/use-google-landing";
+export {
+  SignInMethodsCard,
+  type SignInMethodsCardProps,
+} from "./sign-in-methods/sign-in-methods-card";
+export {
+  SetPasswordControl,
+  SetPasswordFirst,
+  type SetPasswordControlProps,
+} from "./sign-in-methods/set-password-control";
+export {
+  UnlinkGoogleDialog,
+  unlinkGoogleFields,
+} from "./sign-in-methods/unlink-google-dialog";

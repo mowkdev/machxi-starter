@@ -37,14 +37,17 @@
     "**Operator-visible**: this is the number to look at if D19 (Google sign-in) or anything after it goes over again. Entry headroom is ~3% (3.4 kB) against an unchanged 114000, which is tighter than js and is what the next customer-app step should expect to be measured against; the 60%-of-js rule `size.mjs` enforces is nowhere near binding at 317000.",
     "NOT RAISED at D19.3, and the number is recorded as the plan asks whether or not it moved. Measured in the bytes this file stores against the D18.9 baseline: js 302218 -> 305932 (+3.6 kB across D19.1-D19.3, of which D19.3 is about +3.1 kB; D19.2 recorded 295.7 kB printed), css 14004 -> 14004, entry 110565 -> 111318 (+753 bytes, about +320 of them this step). The three vendor chunks are unmoved to the byte: the route tree gained /auth/google and the router chunk did not notice.",
     "What D19.3 bought: \"Continue with Google\" under the sign-in and sign-up cards (the button, Google's inline mark, the start call and its refusal line), the /auth/google landing route and its hook, the two api-client calls, and nine strings in two locales. The route and the hook are lazy; the entry's few hundred bytes are the eager en `auth` catalogue growing by those sentences (the D12.8 trade) plus the api-client's two functions, which live with the client above the router.",
-    "**Operator-visible, as D18.9 said it would be**: entry headroom is now 2.7 kB (2.4%) against an unchanged 114000, and js 10.8 kB (3.5%) against 317000. D19.5 (the Sign-in methods card) lands behind the guard, so its cost is js and the eager en `account` copy; entry is the row to watch."
+    "**Operator-visible, as D18.9 said it would be**: entry headroom is now 2.7 kB (2.4%) against an unchanged 114000, and js 10.8 kB (3.5%) against 317000. D19.5 (the Sign-in methods card) lands behind the guard, so its cost is js and the eager en `account` copy; entry is the row to watch.",
+    "NOT RAISED at D19.5, and the number is recorded as the plan asks. Measured in the bytes this file stores against the D19.3 baseline (D19.4 touched no SPA): js 305932 -> 309767 (+3.8 kB), css 14004 -> 14026 (+22 bytes), entry 111318 -> 111879 (+561 bytes). The three vendor chunks are unmoved to the byte.",
+    "What D19.5 bought: the Sign-in methods card on /account/security (the password and Google rows, the set-password link, the link start, the unlink dialog, the two notices the landing route carries there), the set-a-password-first sentence in place of three ceremonies, the sign-in screen's redirect carried through Google, and the reset's outcome sentence — about thirty strings in two locales. The card is behind the guard, in the account route's chunk; the entry's +561 bytes are the eager `en` catalogues growing by that copy (the D12.8 trade).",
+    "**Operator-visible**: entry headroom is now 2.1 kB (1.9%) against an unchanged 114000, and js 7.1 kB (2.3%) against 317000. D19.6 adds no SPA code; the next customer-app step after D19 should expect to raise one or the other and say why."
   ],
   "baseline": {
-    "measuredAt": "2026-09-11",
-    "step": "D19.3",
-    "js": 305932,
-    "css": 14004,
-    "entry": 111318,
+    "measuredAt": "2026-09-12",
+    "step": "D19.5",
+    "js": 309767,
+    "css": 14026,
+    "entry": 111879,
     "chunks": {
       "query": 10591,
       "react": 60419,

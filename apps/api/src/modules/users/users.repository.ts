@@ -15,6 +15,7 @@ import {
   asc,
   count,
   eq,
+  gt,
   inArray,
   isNull,
   notExists,
@@ -912,7 +913,11 @@ export const createUsersRepository = (db: DbExecutor) =>
           provider: input.provider,
           subject: input.subject,
           email: input.email,
-          linkedAt: input.at,
+          // `linked_at` is the **database's** `now()`, not `input.at`
+          // (`D19.5`'s `security-reviewer`): a session-minted reset compares
+          // it with `sessions.created_at`, which the database stamps too
+          // (ADR-0072 §3, amended after `D19.4`), and two clocks would let
+          // a skewed API host misorder a link and a session.
           createdAt: input.at,
           updatedAt: input.at,
         })
@@ -952,6 +957,11 @@ export const createUsersRepository = (db: DbExecutor) =>
      * password written without the account's own authority does (ADR-0072 §3,
      * amended): the reset by mail and the administrative reset.
      *
+     * **`linkedAfter` narrows it to the identities linked later than that
+     * instant** — the session-minted reset's rule (§3, amended after `D19.4`):
+     * whatever joined the account after the session that asked for the link
+     * began goes, and what is older stays. Omitted, every identity goes.
+     *
      * Returns the providers removed, one per row, so the caller writes one
      * `account.identity_unlinked` row each; the subjects never leave this
      * layer. `softDelete` above is the other statement that removes them all.
@@ -959,25 +969,62 @@ export const createUsersRepository = (db: DbExecutor) =>
     unlinkIdentities: async (
       userId: string,
       tx: DbExecutor = db,
+      linkedAfter?: Date,
     ): Promise<readonly FederatedProvider[]> => {
       const removed = await tx
         .delete(federatedIdentities)
-        .where(eq(federatedIdentities.userId, userId))
+        .where(
+          and(
+            eq(federatedIdentities.userId, userId),
+            linkedAfter === undefined
+              ? undefined
+              : gt(federatedIdentities.linkedAt, linkedAfter),
+          ),
+        )
         .returning({ provider: federatedIdentities.provider });
 
       return removed.map((row) => row.provider);
     },
 
-    /** A sign-in through an identity that was already linked (ADR-0072 §1). */
+    /**
+     * Takes the account row's lock for the rest of the caller's transaction
+     * (ADR-0072 §3, amended after `D19.4`) — deleted or not, because the lock
+     * is about ordering and not about what the row says.
+     *
+     * The link callback and both resets take it **before they act**, so a
+     * link and a reset of one account serialise: the link that waits reads
+     * the session the reset revoked and refuses, and the reset that waits
+     * sees, and removes, the identity the link committed. Without it a link
+     * that read its session as live before a reset committed could insert
+     * after the reset's removal, and the identity would outlive the recovery.
+     */
+    lockById: async (id: string, tx: DbExecutor): Promise<void> => {
+      await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, id))
+        .for("update");
+    },
+
+    /**
+     * A sign-in through an identity that was already linked (ADR-0072 §1).
+     *
+     * @returns `false` when the row is gone — removed by a reset that
+     * committed after the sign-in found it (`D19.5`'s `security-reviewer`),
+     * which the caller refuses rather than minting a way in the reset took.
+     */
     touchIdentityLogin: async (
       id: string,
       at: Date,
       tx: DbExecutor = db,
-    ): Promise<void> => {
-      await tx
+    ): Promise<boolean> => {
+      const touched = await tx
         .update(federatedIdentities)
         .set({ lastLoginAt: at, updatedAt: at })
-        .where(eq(federatedIdentities.id, id));
+        .where(eq(federatedIdentities.id, id))
+        .returning({ id: federatedIdentities.id });
+
+      return touched.length > 0;
     },
 
     // No standalone `rolesOf` — see the note in `staff.repository.ts`.

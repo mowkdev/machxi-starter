@@ -14,6 +14,7 @@ import {
 } from "@/test/msw/handlers/auth.handlers";
 import { ok } from "@/test/msw/handlers/envelope";
 import {
+  bothWaysProfile,
   createProfileHandlers,
   createProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
@@ -206,6 +207,82 @@ describe("a link to finish", () => {
       provider: "google",
     });
     expect(auth.googleExchangeCalls).toEqual([]);
+  });
+
+  it("shows the notice there when the server lists the provider", async () => {
+    server.use(
+      ...createProfileHandlers(createProfileMockState(bothWaysProfile())),
+    );
+
+    renderApp({
+      initialPath: landing({ linked: "google" }),
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByText(
+        "Google is linked. You can sign in with it from now on.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("draws no notice when the server does not list the provider, whatever the fragment said", async () => {
+    /*
+     * ADR-0072 §4, amended after `D19.3`: `#linked=google` can be planted —
+     * anybody can send a signed-in person to that address — and the history
+     * state it becomes is a hint. The server's list is the fact, and here it
+     * is empty.
+     */
+    renderApp({
+      initialPath: landing({ linked: "google" }),
+      store: authenticated(),
+    });
+
+    // The section has arrived once its card shows the account's methods.
+    expect(
+      await screen.findByRole("button", { name: "Change password" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Google is linked/)).toBeNull();
+  });
+});
+
+describe("a link the callback refused", () => {
+  it("goes back to the security section with the code's sentence as a notice", async () => {
+    /*
+     * ADR-0072 §4, amended after `D19.3`: a signed-in browser reaches the
+     * callback only from the link start, so a refusal there is a link that
+     * did not happen — and "sign in again" is the wrong sentence for somebody
+     * who is signed in.
+     */
+    const { router } = renderApp({
+      initialPath: landing({ error: "AUTH_IDENTITY_TAKEN" }),
+      store: authenticated(),
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/account/security");
+    });
+
+    expect(
+      await screen.findByText(
+        "That Google account is already linked to another account here. Unlink it there first, or choose a different Google account.",
+      ),
+    ).toBeInTheDocument();
+    expect(router.state.location.hash).toBe("");
+    expect(router.history.length).toBe(1);
+    expect(screen.queryByRole("link", { name: "Go to sign in" })).toBeNull();
+  });
+
+  it("reads the link's UNAUTHENTICATED as an attempt that did not finish", async () => {
+    renderApp({
+      initialPath: landing({ error: "UNAUTHENTICATED" }),
+      store: authenticated(),
+    });
+
+    expect(
+      await screen.findByText(/Linking Google did not finish/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Your session has ended/)).toBeNull();
   });
 });
 

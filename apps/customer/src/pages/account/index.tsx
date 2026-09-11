@@ -1,8 +1,9 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouteContext } from "@tanstack/react-router";
 import { LockIcon, MailIcon, SettingsIcon, UserIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useProfile } from "@/entities/profile";
+import { SetPasswordFirst, SignInMethodsCard } from "@/features/auth";
 import { GridDensityCards } from "@/features/density";
 import { InvitationInbox } from "@/features/invitation-inbox";
 import { LocaleRows } from "@/features/locale";
@@ -218,17 +219,24 @@ export const AccountProfileSection = () => {
          * `outline`, which is the security section's spelling for "opens a
          * ceremony": the destructive variant is reserved for the one control
          * on this whole area that cannot be undone.
+         *
+         * **Offered only once `hasPassword` says there is a current password
+         * to ask for** (ADR-0072 §3, amended between `D19.2` and `D19.3`):
+         * a passwordless account reads "set a password first" in the card
+         * instead, and nothing is offered while the account is still loading.
          */}
-        <CardAction>
-          <Button
-            onClick={() => {
-              setChangingEmail(true);
-            }}
-            variant="outline"
-          >
-            {t("email.action")}
-          </Button>
-        </CardAction>
+        {profile.data?.hasPassword === true ? (
+          <CardAction>
+            <Button
+              onClick={() => {
+                setChangingEmail(true);
+              }}
+              variant="outline"
+            >
+              {t("email.action")}
+            </Button>
+          </CardAction>
+        ) : null}
       </CardHeader>
 
       <CardContent>
@@ -271,6 +279,12 @@ export const AccountProfileSection = () => {
               </AccountSummary>
             </dl>
 
+            {profile.data.hasPassword ? null : (
+              <div className="mt-6">
+                <SetPasswordFirst email={profile.data.email} />
+              </div>
+            )}
+
             <Separator className="my-6" />
 
             <ProfileDetailsForm profile={profile.data} />
@@ -292,84 +306,66 @@ export const AccountProfileSection = () => {
 /**
  * `/account/security` — how you prove it is you (ADR-0053 §1).
  *
- * The password card and its dialog, and since `D12.8` the deletion card and
- * its own. ADR-0053 §1 names sessions, 2FA and step-up as this section's future
- * neighbours and ADR-0055 §3 named the nearer one: **account deletion lands
- * here**, which is the whole reason this app's security section was known to
- * differ from the admin's before either existed — and the argument for giving a
- * single card its own address, since a password is an action with side effects
- * on every device the person owns and the things that sit beside it are all of
- * that kind.
+ * **Sign-in methods first, then deletion** — two cards, in the order of how far
+ * they go. The first is ADR-0072 §4's: the password and Google, each a row
+ * with the one control that fits the account (`SignInMethodsCard`), which
+ * since `D19.5` is where "Change password" lives — the password card it
+ * replaced said the same thing about the same dialog. The second is `D12.8`'s,
+ * and it is the first one's consequences taken all the way — every session
+ * including this one, and nothing in this app that can undo it. Deletion last
+ * is not decoration: a customer arriving here because they cannot get into
+ * their account should meet the ways in first.
  *
- * **Two cards, in the order of how far they go.** Both are credential
- * ceremonies over the same re-authentication rule, and the second is the first
- * one's consequences taken all the way — every session including this one, and
- * nothing in this app that can undo it. Deletion last is not decoration: a
- * customer arriving here because they cannot get into their account should meet
- * the password card first.
+ * **Deletion asks for the current password, so an account with none reads
+ * "set a password first" in its place** (ADR-0072 §3, amended between `D19.2`
+ * and `D19.3`): the API would answer the dialog `403` whatever was typed,
+ * because a null hash never verifies.
  */
 export const AccountSecuritySection = () => {
   const { t } = useT("profile");
+  const profile = useProfile();
+  const { features } = useRouteContext({
+    from: "/_dashboard/account/security",
+  });
   const [changingPassword, setChangingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("password.title")}</CardTitle>
-          <CardDescription>{t("password.description")}</CardDescription>
-          <CardAction>
-            <Button
-              onClick={() => {
-                setChangingPassword(true);
-              }}
-              variant="outline"
-            >
-              {t("password.action")}
-            </Button>
-          </CardAction>
-        </CardHeader>
+      <SignInMethodsCard
+        canLinkGoogle={features.googleSignIn}
+        onChangePassword={() => {
+          setChangingPassword(true);
+        }}
+      />
 
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            {/*
-             * ADR-0027's consequences stated where they are felt rather than
-             * left for a customer to discover: the current password is required
-             * even though this browser holds a valid session, the other
-             * sessions end because ending them is what a password change is
-             * for, and this one survives because it is the one already proven
-             * to belong to whoever is typing.
-             */}
-            {t("password.note")}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
+      <Card aria-labelledby="delete-account-title" role="region">
         <CardHeader>
-          <CardTitle>{t("delete.title")}</CardTitle>
+          <CardTitle id="delete-account-title">{t("delete.title")}</CardTitle>
           <CardDescription>{t("delete.description")}</CardDescription>
-          <CardAction>
-            {/*
-             * The one destructive control on this screen, and the only place
-             * the style is available to say so: `AppFormActions` gives the
-             * dialog's submit a single appearance (the plan's finding 11), so
-             * the warning is carried by the button that opens the ceremony and
-             * by the dialog's own copy.
-             */}
-            <Button
-              onClick={() => {
-                setDeletingAccount(true);
-              }}
-              variant="destructive"
-            >
-              {t("delete.action")}
-            </Button>
-          </CardAction>
+          {/*
+           * The one destructive control on this screen, and the only place
+           * the style is available to say so: `AppFormDialog` gives the
+           * dialog's submit a single appearance (the plan's finding 11), so
+           * the warning is carried by the button that opens the ceremony and
+           * by the dialog's own copy. Offered only once the profile says there
+           * is a current password to ask for.
+           */}
+          {profile.data?.hasPassword === true ? (
+            <CardAction>
+              <Button
+                onClick={() => {
+                  setDeletingAccount(true);
+                }}
+                variant="destructive"
+              >
+                {t("delete.action")}
+              </Button>
+            </CardAction>
+          ) : null}
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             {/*
              * ADR-0028's user semantics, stated where the decision is made
@@ -380,6 +376,9 @@ export const AccountSecuritySection = () => {
              */}
             {t("delete.note")}
           </p>
+          {profile.data?.hasPassword === false ? (
+            <SetPasswordFirst email={profile.data.email} />
+          ) : null}
         </CardContent>
       </Card>
 

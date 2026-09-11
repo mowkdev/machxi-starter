@@ -156,7 +156,7 @@ Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/src/modules
 
 ## Requirement: A reset recovers the account from every way in
 
-A password written without the account's own authority removes every federated identity of the account, in the transaction that writes it, with one `account.identity_unlinked` row each saying `via: "reset"`: the reset by mail (`POST /api/v1/user/auth/password/reset` consuming a link `forgot` sent) and the administrative reset (`POST /api/v1/admin/users/:id/password`). A change of password made with the current one removes nothing. `POST /api/v1/user/profile/password/set-link` — for any signed-in account, with a password or without — answers `202 { accepted: true }` and mails the reset link to the account's own address; the `reset` that consumes **that** link sets the password and keeps the identities. Asking for one is limited to `RATE_LIMIT_PASSWORD_RESET_MAX` an hour per account, in a counter of its own.
+A password written without the account's own authority removes every federated identity of the account, in the transaction that writes it, with one `account.identity_unlinked` row each saying `via: "reset"`: the reset by mail (`POST /api/v1/user/auth/password/reset` consuming a link `forgot` sent) and the administrative reset (`POST /api/v1/admin/users/:id/password`). A change of password made with the current one removes nothing. `POST /api/v1/user/profile/password/set-link` is for a signed-in account **without a password**: it answers `202 { accepted: true }` and mails the reset link to the account's own address, and an account that has a password is answered `409 CONFLICT` and mailed nothing. The `reset` that consumes **that** link sets the password and keeps the identities **linked before the session that asked for it began**, removing any linked after it — and all of them when that session's row no longer exists. The reset by mail's `account.password_reset` row says `{ requestedBy: "mailbox" | "session", unlinked: [<provider>…] }`. Both resets also spend any Google handoff of the account not yet exchanged. A link callback, a sign-in through an identity already linked, and a reset of one account serialise on the account's row: whichever comes second sees what the first committed, so no identity — and no handoff — outlives a reset it raced. Asking for a set-password link is limited to `RATE_LIMIT_PASSWORD_RESET_MAX` an hour per account, in a counter of its own.
 Records: [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
 Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
 
@@ -178,7 +178,37 @@ Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/test/rate-l
 ### Scenario: Setting a password from the account
 
 - **WHEN** a signed-in account with no password asks for the set-password link and the link is consumed by `reset`
-- **THEN** `set-link` answered `202 { accepted: true }`, one message carried a `…/reset-password#token=…` link, the new password signs in, and the Google identity is still there with no `account.identity_unlinked` row
+- **THEN** `set-link` answered `202 { accepted: true }`, one message carried a `…/reset-password#token=…` link, the new password signs in, the Google identity the account was made with — older than the session that asked — is still there with no `account.identity_unlinked` row, and the `account.password_reset` row says `{ requestedBy: "session", unlinked: [] }`
+
+### Scenario: An account that already has a password
+
+- **WHEN** a signed-in account with a password asks for the set-password link
+- **THEN** the answer is `409 CONFLICT` and nothing is mailed — it changes its password with the current one
+
+### Scenario: An identity younger than the session that asked
+
+- **WHEN** a set-password link is consumed and an identity of the account was linked after the session that asked for the link began
+- **THEN** that identity is removed with an `account.identity_unlinked { provider, via: "reset" }` row, and the `account.password_reset` row says `{ requestedBy: "session", unlinked: ["google"] }` — a session in the wrong hands cannot keep its own Google account through the owner's click
+
+### Scenario: The session that asked is gone
+
+- **WHEN** a set-password link is consumed after the row of the session that asked for it has been removed
+- **THEN** every identity of the account is removed — nothing is kept on the word of a session that cannot say when it began
+
+### Scenario: A reset by mail, on the trail
+
+- **WHEN** an account with a Google identity resets its password from a link `forgot` sent
+- **THEN** the `account.password_reset` row says `{ requestedBy: "mailbox", unlinked: ["google"] }`
+
+### Scenario: A link and a reset at the same moment
+
+- **WHEN** a link callback and a reset of the same account run at once
+- **THEN** they take turns on the account's row: a link that waits on a reset finds its session revoked and links nothing, and a reset that waits on a link removes the identity the link committed
+
+### Scenario: A Google sign-in at the moment of a reset
+
+- **WHEN** a sign-in through the account's Google identity runs beside a reset of the account, or has left a handoff not yet exchanged when the reset commits
+- **THEN** a sign-in that waits on the reset finds its identity gone and answers `#error=UNAUTHENTICATED` with no token, and a handoff minted before the reset answers the exchange `401 UNAUTHENTICATED`
 
 ### Scenario: Asking for set-password links repeatedly
 

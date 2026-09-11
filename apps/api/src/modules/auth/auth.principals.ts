@@ -256,5 +256,8 @@ export const createFederatedAccounts = (
       toFederatedIdentityResource,
     ),
 
-  unlinkAll: repository.unlinkIdentities,
+  unlinkAll: (userId, tx) => repository.unlinkIdentities(userId, tx),
+  unlinkLinkedAfter: (userId, after, tx) =>
+    repository.unlinkIdentities(userId, tx, after),
+  lockAccount: repository.lockById,
 });

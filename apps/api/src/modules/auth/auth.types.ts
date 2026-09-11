@@ -282,12 +282,15 @@ export interface FederatedAccounts {
     input: LinkFederatedIdentityInput,
     tx: DbExecutor,
   ) => Promise<boolean>;
-  /** `last_login_at` on a sign-in through an identity already linked. */
+  /**
+   * `last_login_at` on a sign-in through an identity already linked;
+   * `false` when the row is gone — a reset removed it after it was found.
+   */
   readonly touchLogin: (
     identityId: string,
     at: Date,
     tx: DbExecutor,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   /** The account's identities as `me` and `/user/profile` carry them (ADR-0072 §3). */
   readonly identitiesOf: (
     userId: string,
@@ -304,4 +307,21 @@ export interface FederatedAccounts {
     userId: string,
     tx: DbExecutor,
   ) => Promise<readonly FederatedProvider[]>;
+  /**
+   * Removes the identities of the account linked **later than** `after`, and
+   * resolves to the providers removed — the session-minted reset's half
+   * (ADR-0072 §3, amended after `D19.4`): what joined the account after the
+   * session that asked for the link began goes, and what is older stays.
+   */
+  readonly unlinkLinkedAfter: (
+    userId: string,
+    after: Date,
+    tx: DbExecutor,
+  ) => Promise<readonly FederatedProvider[]>;
+  /**
+   * Takes the account row's lock for the rest of `tx` (ADR-0072 §3, amended
+   * after `D19.4`), so a link and a reset of one account serialise rather
+   * than interleave. Taken before either acts.
+   */
+  readonly lockAccount: (userId: string, tx: DbExecutor) => Promise<void>;
 }

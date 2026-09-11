@@ -6,5 +6,8 @@ export {
   useChangePassword,
   useDeleteProfile,
   useProfile,
+  useRequestPasswordSetLink,
+  useStartGoogleLink,
+  useUnlinkIdentity,
   useUpdateProfile,
 } from "./profile.queries";

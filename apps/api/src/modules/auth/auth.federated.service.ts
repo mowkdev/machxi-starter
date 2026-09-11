@@ -268,7 +268,18 @@ export const createFederatedSignInService = ({
         throw refuse(ctx, inactive(principal), "account is not active");
       }
 
-      await accounts.touchLogin(known.identityId, at, tx);
+      // The account row's lock, then proof the identity is still there
+      // (`D19.5`'s `security-reviewer`; ADR-0072 §3, amended after `D19.4`).
+      // A reset that committed after the read above removed it, and a
+      // handoff minted anyway would be a session the recovery did not see;
+      // a reset that starts after this lock waits for this commit and then
+      // supersedes the handoff it mints. Refused as a sign-in that did not
+      // work — the next attempt resolves afresh.
+      await accounts.lockAccount(principal.id, tx);
+
+      if (!(await accounts.touchLogin(known.identityId, at, tx))) {
+        throw refuse(ctx, unauthenticated(), "identity removed meanwhile");
+      }
 
       ctx.logger.info(
         { provider: provider.id, principalId: principal.id },
@@ -321,6 +332,11 @@ export const createFederatedSignInService = ({
       if (!holder.active) {
         throw refuse(ctx, inactive(holder), "address holder is not active");
       }
+
+      // The link callback's lock, for its reason (§3, amended after
+      // `D19.4`): this inserts an identity into an existing account, and a
+      // reset of that account must see it or come after it — never between.
+      await accounts.lockAccount(holder.id, tx);
 
       const linked = await accounts.link(
         {
@@ -464,6 +480,16 @@ export const createFederatedSignInService = ({
     tx: DbExecutor,
   ): Promise<void> => {
     const { userId, sessionId } = asked;
+
+    // **The account row's lock first** (§3, amended after `D19.4`; built at
+    // `D19.5`), before the session is read. A reset of this account holds the
+    // same lock from before it removes the identities until it commits, so
+    // this either runs wholly before it — and the reset sees, and removes,
+    // what is linked here — or wholly after, when the session read below
+    // finds the reset's revocation. Without it the two interleave: the session
+    // reads live, the reset commits, and the insert lands after the removal.
+    await accounts.lockAccount(userId, tx);
+
     const session = await sessions.findById(sessionId, tx);
 
     if (

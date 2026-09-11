@@ -2,6 +2,7 @@ import type {
   AcceptOnboardingBody,
   ConfirmEmailBody,
   FederatedExchangeBody,
+  FederatedProvider,
   ForgotPasswordBody,
   ImpersonatorResource,
   LoginBody,
@@ -267,13 +268,19 @@ export interface AuthServiceDeps {
   /**
    * The account's linked identities, wired on the **user** service only
    * (ADR-0072 §3): `me` answers which ways in an account has, and the reset
-   * by mail removes them all (§3, amended — built at `D19.4`). The staff
-   * population has no federated login to answer about (§5), so its reset has
-   * nothing to remove. Narrowed to the read and the removal, so this service
-   * cannot reach the linking half of the seam.
+   * by mail removes them all (§3, amended — built at `D19.4`) or, for a
+   * session-minted link, those younger than the session that asked (built at
+   * `D19.5`), under the account row's lock. The staff population has no
+   * federated login to answer about (§5), so its reset has nothing to remove.
+   * Narrowed to the read, the lock and the removals, so this service cannot
+   * reach the linking half of the seam.
    */
   readonly federated?:
-    Pick<FederatedAccounts, "identitiesOf" | "unlinkAll"> | undefined;
+    | Pick<
+        FederatedAccounts,
+        "identitiesOf" | "unlinkAll" | "unlinkLinkedAfter" | "lockAccount"
+      >
+    | undefined;
   /**
    * ADR-0071 §1's mint and consume, wired on both populations.
    *
@@ -319,19 +326,49 @@ export interface EmailChangePayload {
 }
 
 /**
- * Whether a claimed `reset_password` token was minted by a **session** — the
- * set-password link of ADR-0072 §3 — rather than by the anonymous `forgot`.
- *
- * The one fact that decides whether a reset keeps the account's federated
- * identities: the session asked and the mailbox confirmed, which is the
- * account's own authority twice over. Anything else — no payload, which is
- * every link `forgot` mints, or a payload that does not say exactly this —
- * reads as the mailbox alone, and the identities go. The safe direction for
- * a malformed row to fall.
+ * Who asked for a claimed `reset_password` link (ADR-0072 §3, amended after
+ * `D19.4`): the anonymous `forgot` — the **mailbox** — or a signed-in
+ * **session**, through the set-password link, which also sealed that
+ * session's id.
  */
-export const requestedBySession = (
+export type ResetRequest =
+  | { readonly requestedBy: "mailbox" }
+  | {
+      readonly requestedBy: "session";
+      /** `undefined` when the payload names none — read as a session that is gone. */
+      readonly sessionId: string | undefined;
+    };
+
+/** A session id as the `sessions` table spells one. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Reads {@link ResetRequest} back out of a claimed row.
+ *
+ * The one fact that decides what a reset does to the account's federated
+ * identities. Anything but exactly `requestedBy: "session"` — no payload,
+ * which is every link `forgot` mints, or a payload that says something else —
+ * reads as the mailbox alone, and the identities go: the safe direction for a
+ * malformed row to fall. A session-minted payload whose session id is not a
+ * UUID — absent, or written before `D19.5` sealed one — reads as a session
+ * whose row is gone, which keeps nothing either; and it never reaches a
+ * `uuid` column as a value Postgres would refuse with a fault.
+ */
+export const readResetRequest = (
   payload: Record<string, unknown> | null,
-): boolean => payload?.["requestedBy"] === "session";
+): ResetRequest => {
+  if (payload?.["requestedBy"] !== "session") return { requestedBy: "mailbox" };
+
+  const sessionId = payload["sessionId"];
+
+  return {
+    requestedBy: "session",
+    sessionId:
+      typeof sessionId === "string" && UUID.test(sessionId)
+        ? sessionId
+        : undefined,
+  };
+};
 
 /** Type guard over `LOCALES`, so a stored value that is no longer one is dropped. */
 const isLocale = (value: unknown): value is Locale =>
@@ -473,6 +510,44 @@ export const createAuthService = ({
     }
 
     return { revoked, impersonated: ended.length };
+  };
+
+  /**
+   * What a consumed reset link removes of the account's federated identities
+   * (ADR-0072 §3 as amended after `D19.4`), on the reset's own executor.
+   *
+   * - **The mailbox asked** (`forgot`): every identity — the reset recovers
+   *   the account from every way in.
+   * - **A session asked** (the set-password link): only the identities linked
+   *   **later than that session's `created_at`**. The row is read revoked or
+   *   not — a revoked session still says when it began — and it must be this
+   *   account's session of this population; a row that is gone, or names
+   *   somebody else, keeps nothing.
+   *
+   * Only the user service holds the seam; without it — the staff service —
+   * there is nothing to remove.
+   */
+  const removeIdentitiesFor = async (
+    principalId: string,
+    request: ResetRequest,
+    tx: DbExecutor,
+  ): Promise<readonly FederatedProvider[]> => {
+    if (federated === undefined) return [];
+
+    if (request.requestedBy === "mailbox") {
+      return federated.unlinkAll(principalId, tx);
+    }
+
+    const asking =
+      request.sessionId === undefined
+        ? undefined
+        : await sessions.findStartedAt(request.sessionId, tx);
+
+    return asking === undefined ||
+      asking.principalType !== population ||
+      asking.principalId !== principalId
+      ? federated.unlinkAll(principalId, tx)
+      : federated.unlinkLinkedAfter(principalId, asking.createdAt, tx);
   };
 
   /**
@@ -1873,8 +1948,9 @@ export const createAuthService = ({
      * `POST /api/v1/{admin,user}/auth/password/reset` (ADR-0071 §4).
      *
      * The link's whole effect, in one transaction: claim the token, write the
-     * new hash, **remove every federated identity** unless the session itself
-     * asked for the link (ADR-0072 §3, amended at `D19.4`), record it, and
+     * new hash, **remove every federated identity** — or, when a session asked
+     * for the link, every one younger than that session (ADR-0072 §3, amended
+     * at `D19.4` and after it) — under the account row's lock, record it, and
      * **revoke every session of the account** — the person may well be
      * recovering it from somebody, and a reset that left the thief's session
      * or the thief's Google account in place would be a reset in name only.
@@ -1914,6 +1990,37 @@ export const createAuthService = ({
 
         if (claimed === undefined) throw passwordResetLinkInvalid();
 
+        // In the same commit as the new hash, beside the session sweep below
+        // and for its reason (`D18.9`'s `security-reviewer`): a pending
+        // `change_email` link is a credential the account did not choose,
+        // mailed to an address somebody else typed, and the session sweep
+        // cannot see it. Recovery is the flow a person reaches when the
+        // account is already in somebody else's hands, so a link that outlived
+        // it would hand the account back an hour later.
+        //
+        // **Before the account row's lock** (`D19.5`'s `security-reviewer`):
+        // the address change's confirm claims its `change_email` row and then
+        // writes the account, so a reset that held the account and then
+        // reached for that row would be the other half of a deadlock. Token
+        // rows of this purpose first, then the account — the confirm's order.
+        await accountTokens.supersede(
+          ctx,
+          {
+            purpose: "change_email",
+            principal: { type: population, id: claimed.principalId },
+          },
+          tx,
+        );
+
+        // **The account row's lock, before anything is read or written**
+        // (ADR-0072 §3, amended after `D19.4`): a link callback for this
+        // account either committed before this point — and its identity is
+        // seen, and removed, below — or waits for this commit and then finds
+        // its session revoked. Users only; staff hold no identities.
+        if (federated !== undefined) {
+          await federated.lockAccount(claimed.principalId, tx);
+        }
+
         const principal = await principals.findById(claimed.principalId, tx);
 
         // The token was live but the account is not one a link may act on any
@@ -1936,12 +2043,19 @@ export const createAuthService = ({
         // reason the session sweep below exists: the account may be being
         // recovered from somebody, and a Google account attached to it is a
         // way in that sweep cannot see. One row each, the provider named and
-        // the subject never. **Kept** only when the link was the session's
-        // own set-password link — the session asked, the mailbox confirmed.
-        const removed =
-          federated === undefined || requestedBySession(claimed.payload)
-            ? []
-            : await federated.unlinkAll(principal.id, tx);
+        // the subject never.
+        //
+        // **A session-minted link keeps only what is older than the session
+        // that asked** (§3, amended after `D19.4`; built at `D19.5`). The
+        // session asked and the mailbox confirmed — but a session can be in
+        // the wrong hands, link its holder's own Google account, and ask; the
+        // owner who follows the mail to secure the account must not be the
+        // click that keeps the intruder's way in. A stolen cookie is the
+        // owner's own session, opened before anything the intruder linked, so
+        // whatever is younger than it goes; a session row that is gone — or a
+        // payload naming none — keeps nothing.
+        const request = readResetRequest(claimed.payload);
+        const removed = await removeIdentitiesFor(principal.id, request, tx);
 
         for (const provider of removed) {
           await audit.record(
@@ -1955,17 +2069,16 @@ export const createAuthService = ({
           );
         }
 
-        // In the same commit as the new hash, beside the session sweep below
-        // and for its reason (`D18.9`'s `security-reviewer`): a pending
-        // `change_email` link is a credential the account did not choose,
-        // mailed to an address somebody else typed, and the session sweep
-        // cannot see it. Recovery is the flow a person reaches when the
-        // account is already in somebody else's hands, so a link that outlived
-        // it would hand the account back an hour later.
+        // **A Google handoff minted before this commit dies with it**
+        // (`D19.5`'s `security-reviewer`): a sixty-second `federated_login`
+        // token is a session not yet issued, and the sweep below cannot see
+        // one that has not been exchanged. After the account row's lock, the
+        // order a sign-in takes too — account, then its handoff — so the two
+        // cannot deadlock.
         await accountTokens.supersede(
           ctx,
           {
-            purpose: "change_email",
+            purpose: "federated_login",
             principal: { type: population, id: principal.id },
           },
           tx,
@@ -1973,12 +2086,17 @@ export const createAuthService = ({
 
         // `identities` rather than the context's principal: the route is
         // anonymous — the token is the credential — so the actor comes off the
-        // row that was claimed (ADR-0058, verification's shape).
+        // row that was claimed (ADR-0058, verification's shape). The data says
+        // which kind of reset it was and what it removed (ADR-0072 §3,
+        // amended after `D19.4`): a mailbox recovery and a session's own
+        // set-password link are one template and one consume, and only this
+        // row tells them apart afterwards. Providers, never subjects.
         await audit.record(
           ctx,
           {
             event: "account.password_reset",
             identities: { actor: { type: population, id: principal.id } },
+            data: { requestedBy: request.requestedBy, unlinked: removed },
           },
           tx,
         );

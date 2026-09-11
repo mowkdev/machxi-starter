@@ -1,4 +1,4 @@
-import { Link, useRouteContext } from "@tanstack/react-router";
+import { Link, useRouteContext, useSearch } from "@tanstack/react-router";
 
 import { ContinueWithGoogle, LoginForm } from "@/features/auth";
 
@@ -30,11 +30,15 @@ import { Card } from "@/shared/ui";
  * **"Continue with Google" sits under the card, not in it** (ADR-0072 §4):
  * the card is the password form and its controls, and Google is a second way
  * in beside it rather than a field of it. Gated on the build's flag, read off
- * the same router context; the API's mount is still the control.
+ * the same router context; the API's mount is still the control. It is
+ * handed the screen's `redirect`, so a person turned away by the guard or sent
+ * from an invitation lands where a password sign-in would have taken them
+ * (ADR-0072 §4, amended after `D19.3`).
  */
 export const LoginPage = () => {
   const { t } = useT("auth");
   const { features } = useRouteContext({ from: "/_auth/login" });
+  const { redirect } = useSearch({ from: "/_auth/login" });
 
   return (
     <>
@@ -43,7 +47,7 @@ export const LoginPage = () => {
       </Card>
       {features.googleSignIn ? (
         <div className="mt-4">
-          <ContinueWithGoogle />
+          <ContinueWithGoogle redirect={redirect} />
         </div>
       ) : null}
       {/*

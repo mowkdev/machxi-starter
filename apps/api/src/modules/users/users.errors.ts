@@ -32,3 +32,17 @@ export const userEmailTaken = (): AppError =>
  */
 export const userDeleted = (): AppError =>
   conflict("This account has been deleted", "USER_DELETED");
+
+/**
+ * `POST /api/v1/user/profile/password/set-link` from an account that already
+ * has a password (ADR-0072 §3, amended after `D19.4`).
+ *
+ * The generic `CONFLICT` and no code of its own: the security section never
+ * offers the control to such an account, so a client meets this only from a
+ * stale screen, and what it conflicts with is the row's state — change the
+ * password with the current one instead.
+ */
+export const passwordAlreadySet = (): AppError =>
+  conflict(
+    "This account already has a password; change it with the current one",
+  );

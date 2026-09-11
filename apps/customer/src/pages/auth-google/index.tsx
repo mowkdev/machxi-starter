@@ -16,6 +16,7 @@ const MESSAGE_KEY = {
   pending: "google.pending",
   signedIn: "google.signedIn",
   linking: "google.linking",
+  returning: "google.returning",
   refused: "google.refused",
   missing: "google.missing",
 } as const satisfies Readonly<
@@ -50,8 +51,10 @@ const AUTH_CONTROL = "h-[38px] text-[13px]";
  * **A refusal is the catalogue's sentence for its code**, and the API's own
  * error body is never what a person sees: every refusal reaches this route as
  * `#error=<code>` and nothing else (§2), so the code is the whole message.
- * The link is to `/login` whatever the code, because every refusal on this
- * route is a sign-in that did not happen.
+ * The link is to `/login` whatever the code, because every refusal this route
+ * renders is a sign-in that did not happen: a refusal in a browser holding a
+ * session is a link's, and goes on to the security section instead (§4,
+ * amended after `D19.3`).
  */
 export const AuthGooglePage = () => {
   const { t } = useT("auth");

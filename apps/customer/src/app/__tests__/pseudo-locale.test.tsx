@@ -10,9 +10,11 @@ import {
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
 import {
+  GOOGLE_IDENTITY,
   PROFILE,
   createProfileHandlers,
   createProfileMockState,
+  googleOnlyProfile,
 } from "@/test/msw/handlers/profile.handlers";
 import {
   INVITATION_ROWS,
@@ -113,6 +115,8 @@ const DATA: readonly string[] = [
       }).format(new Date(value)),
     ),
   PROFILE.email,
+  // The Google identity's address, which the sign-in methods card names.
+  GOOGLE_IDENTITY.email ?? "",
   /*
    * What the organization screens and the switcher render off `GET /user/orgs`
    * and its two sub-lists (`D15.5`). Names, addresses and email addresses are
@@ -360,4 +364,42 @@ describe("the route tree under the pseudo-locale", () => {
 
     unmount();
   });
+});
+
+describe("a passwordless account under the pseudo-locale", () => {
+  /*
+   * `D19.5`: while `hasPassword` is false the account area draws copy no
+   * other state draws — "Set a password", the set-a-password-first sentence
+   * in place of three ceremonies, and Google as the only way in. The walk
+   * above renders the default account, which has a password, so these two
+   * addresses are walked again as a Google-only account.
+   */
+  it.each(["/account/profile", "/account/security"])(
+    "leaves nothing unaccented at %s",
+    async (path) => {
+      server.use(
+        ...createProfileHandlers(createProfileMockState(googleOnlyProfile())),
+      );
+
+      const queryClient = createQueryClient();
+      const { container, unmount } = renderApp({
+        initialPath: path,
+        store: authenticated(),
+        queryClient,
+        pseudo: true,
+        features: ALL_FEATURES,
+      });
+
+      await waitFor(() => {
+        expect(container.textContent ?? "").toContain("[");
+      });
+      await waitFor(() => {
+        expect(queryClient.isFetching()).toBe(0);
+      });
+
+      expect(unaccented(document.body as HTMLElement)).toEqual([]);
+
+      unmount();
+    },
+  );
 });

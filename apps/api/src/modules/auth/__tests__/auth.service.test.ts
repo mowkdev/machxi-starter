@@ -90,6 +90,13 @@ const createFakeSessions = () => {
 
     findById: (id: string) => Promise.resolve(rows.get(id)),
 
+    /*
+     * No account in this file holds a federated identity, so no reset here
+     * reads when its asking session began; the session-minted consume is
+     * proved against Postgres (`federated-identity.int.test.ts`).
+     */
+    findStartedAt: () => Promise.resolve(undefined),
+
     findByRefreshTokenHash: (hash: string) =>
       Promise.resolve(
         [...rows.values()].find((row) => row.refreshTokenHash === hash),

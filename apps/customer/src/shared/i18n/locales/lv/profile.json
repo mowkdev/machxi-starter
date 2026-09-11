@@ -37,7 +37,6 @@
   },
   "password": {
     "title": "Parole",
-    "description": "Tās maiņa atsaka visas pārējās ierīces un atstāj šo pieteiktu.",
     "action": "Mainīt paroli",
     "note": "Jums prasīs pašreizējo paroli, pat ja esat pieteicies. Pārējās ierīces paliek atteiktas, līdz tajās izmantosiet jauno paroli.",
     "dialog": {
@@ -53,6 +52,41 @@
       "newPassword": {
         "label": "Jaunā parole",
         "description": "Visas pārējās ierīces tiek atteiktas. Šī paliek pieteikta."
+      }
+    }
+  },
+  "methods": {
+    "title": "Pieteikšanās veidi",
+    "description": "Veidi, kā varat pieteikties šajā kontā.",
+    "password": {
+      "on": "Jūs piesakāties ar savu e-pasta adresi un paroli.",
+      "off": "Paroles vēl nav — jūs piesakāties ar Google.",
+      "set": "Iestatīt paroli",
+      "sent": "Pārbaudiet iesūtni: saite paroles izvēlei jau ir ceļā uz {{email}}. To var izmantot vienreiz, un tai beidzas derīguma termiņš."
+    },
+    "google": {
+      "label": "Google",
+      "on": "Piesaistīts",
+      "onAs": "Piesaistīts kontam {{email}}",
+      "off": "Nav piesaistīts",
+      "link": "Piesaistīt Google",
+      "unlink": "Atsaistīt",
+      "onlyWay": "Google ir vienīgais veids, kā piekļūt šim kontam. Pirms to atsaistāt, iestatiet paroli."
+    },
+    "notice": {
+      "linked": "Google ir piesaistīts. Turpmāk varat pieteikties ar to.",
+      "linkFailed": "Google piesaistīšana netika pabeigta. Iespējams, tā ilga pārāk ilgi vai tika pabeigta citā pārlūkprogrammā. Mēģiniet vēlreiz."
+    },
+    "passwordFirst": "Šai darbībai nepieciešama pašreizējā parole, bet jūsu kontam tās vēl nav. Vispirms iestatiet paroli.",
+    "unlink": {
+      "title": "Atsaistīt Google",
+      "description": "Ar šo Google kontu vairs nevarēsiet pieteikties. Parole paliek, un neviens netiek izrakstīts.",
+      "submit": "Atsaistīt Google",
+      "fields": {
+        "currentPassword": {
+          "label": "Pašreizējā parole",
+          "description": "Nepieciešama arī tad, ja esat pieteicies — atsaistīšana noņem vienu no veidiem, kā piekļūt kontam."
+        }
       }
     }
   },
@@ -83,6 +117,7 @@
     "updated": "Jūsu dati tika saglabāti.",
     "passwordChanged": "Jūsu parole tika nomainīta. Visas pārējās ierīces tika atteiktas; šī paliek.",
     "deleted": "Jūsu konts ir slēgts. Jūs esat atteikts visās ierīcēs.",
-    "emailChangeRequested": "Apstiprinājuma saite jau ir ceļā uz jauno adresi. Nekas nemainās, kamēr to neatverat."
+    "emailChangeRequested": "Apstiprinājuma saite jau ir ceļā uz jauno adresi. Nekas nemainās, kamēr to neatverat.",
+    "identityUnlinked": "Google ir atsaistīts. Turpmāk piesakieties ar paroli."
   }
 }

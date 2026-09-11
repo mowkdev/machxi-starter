@@ -175,8 +175,10 @@ a run that removed it would fail the next one, and removing it (`204`, one
 accounts the suite links itself. The run's own account then proves the rest of
 the order — the right password on an account with nothing linked is the
 caller's own `404` — posts the link start, which answers either way as the
-public start does, and asks for a set-password link (`202`, the reset link
-`forgot` sends, minted by the session). `Impersonation` adds unlink and the
+public start does, and asks for a set-password link — `409 CONFLICT`, because
+that link is for an account without a password and this one has one; a
+passwordless account exists only through Google, so the `202` and what its
+consume keeps are the integration tier's. `Impersonation` adds unlink and the
 set-password link to the refusals.
 
 **Negative paths are deliberate, not accidental.** `403` for a manager writing to

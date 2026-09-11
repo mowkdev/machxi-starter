@@ -2,16 +2,22 @@ import {
   changeEmailBody,
   changePasswordBody,
   deleteProfileBody,
+  federatedStartBody,
+  identityProviderParams,
+  unlinkIdentityBody,
   updateProfileBody,
   type ChangeEmailBody,
   type ChangePasswordBody,
   type DeleteProfileBody,
+  type FederatedIdentityResource,
+  type FederatedStartBody,
+  type UnlinkIdentityBody,
   type UpdateProfileBody,
-  type UserResource,
+  type UserProfileResource,
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
 
-import { API, PRINCIPAL } from "./auth.handlers";
+import { API, GOOGLE_AUTHORIZATION_URL, PRINCIPAL } from "./auth.handlers";
 import { fail, ok } from "./envelope";
 
 /**
@@ -41,10 +47,19 @@ import { fail, ok } from "./envelope";
  * endpoint answers that way), the current password is verified before any
  * state changes, and success revokes **every** session including the caller's
  * — which is the one line that separates it from `change-password` above.
+ *
+ * **The ways in arrived at `D19.5`** (ADR-0072 §3): `hasPassword` and
+ * `identities` on the resource, and the three endpoints the security section
+ * calls — the set-password link (`409 CONFLICT` with a password on the row),
+ * the link start, and unlink in the API's order: `409 AUTH_LAST_CREDENTIAL`
+ * with no password, `403` for a wrong one, `404` when nothing is linked. A
+ * passwordless account is `password: null`, which no presented password
+ * matches — the null hash that never verifies — so the three current-password
+ * ceremonies refuse it `403` here as the API does.
  */
 
 /** The signed-in customer, as `GET /user/profile` returns them. */
-export const PROFILE: UserResource = {
+export const PROFILE: UserProfileResource = {
   id: PRINCIPAL.id,
   email: PRINCIPAL.email,
   firstName: PRINCIPAL.firstName,
@@ -62,14 +77,23 @@ export const PROFILE: UserResource = {
   deletedAt: null,
   // Nothing linked: the password-only account (ADR-0072 §3).
   identities: [],
+  hasPassword: true,
+};
+
+/** The Google identity a linked account carries (ADR-0072 §3). */
+export const GOOGLE_IDENTITY: FederatedIdentityResource = {
+  provider: "google",
+  email: "cara.customer@gmail.test",
+  linkedAt: "2026-09-01T09:00:00.000Z",
 };
 
 /** The customer's own current password, for the ADR-0027 check. */
 export const CURRENT_PASSWORD = "DevPassword!123";
 
 export interface ProfileMockState {
-  profile: UserResource;
-  password: string;
+  profile: UserProfileResource;
+  /** `null` for an account whose only way in is Google — nothing matches it. */
+  password: string | null;
   /** Sessions ended by the last successful change — the caller's excluded. */
   otherSessionsRevoked: number;
   /**
@@ -108,14 +132,20 @@ export interface ProfileMockState {
      * the flow.
      */
     emailChangeRequests: ChangeEmailBody[];
+    /** How many set-password links were asked for and accepted (`202`). */
+    setLinks: number;
+    /** The bodies the link start was posted with. */
+    linkStarts: FederatedStartBody[];
+    /** Unlinks the endpoint accepted (`204`). */
+    unlinked: UnlinkIdentityBody[];
   };
 }
 
 export const createProfileMockState = (
-  profile: UserResource = PROFILE,
+  profile: UserProfileResource = PROFILE,
 ): ProfileMockState => ({
   profile: { ...profile },
-  password: CURRENT_PASSWORD,
+  password: profile.hasPassword ? CURRENT_PASSWORD : null,
   otherSessionsRevoked: 0,
   allSessionsRevoked: false,
   takenEmails: [],
@@ -126,7 +156,25 @@ export const createProfileMockState = (
     deleted: [],
     refusedDeletes: [],
     emailChangeRequests: [],
+    setLinks: 0,
+    linkStarts: [],
+    unlinked: [],
   },
+});
+
+/**
+ * The three states the security section draws (ADR-0072 §3): a password and
+ * nothing linked (the default), Google and no password, and both.
+ */
+export const googleOnlyProfile = (): UserProfileResource => ({
+  ...PROFILE,
+  hasPassword: false,
+  identities: [GOOGLE_IDENTITY],
+});
+
+export const bothWaysProfile = (): UserProfileResource => ({
+  ...PROFILE,
+  identities: [GOOGLE_IDENTITY],
 });
 
 /**
@@ -279,4 +327,68 @@ export const createProfileHandlers = (state: ProfileMockState) =>
 
       return new Response(null, { status: 204 });
     }),
+
+    http.post(`${API}/profile/password/set-link`, (): Response => {
+      const refusal = gone(state);
+
+      if (refusal !== null) return refusal;
+
+      // For an account without a password alone (ADR-0072 §3, amended
+      // after `D19.4`): one with a password changes it with the current one.
+      if (state.profile.hasPassword) return fail(409, "CONFLICT");
+
+      state.seen.setLinks += 1;
+
+      // `202` and the account untouched: the password is chosen on
+      // `/reset-password`, from the mailed link, and never here.
+      return ok({ accepted: true }, 202);
+    }),
+
+    http.post(
+      `${API}/profile/identities/google/start`,
+      async ({ request }): Promise<Response> => {
+        const body = federatedStartBody.parse(await request.json());
+
+        state.seen.linkStarts.push(body);
+
+        return ok({ authorizationUrl: GOOGLE_AUTHORIZATION_URL });
+      },
+    ),
+
+    http.delete(
+      `${API}/profile/identities/:provider`,
+      async ({ request, params }): Promise<Response> => {
+        const { provider } = identityProviderParams.parse(params);
+        const body = unlinkIdentityBody.parse(await request.json());
+
+        // The API's order (ADR-0072 §3, amended at `D19.4`): the last way in
+        // before any password is asked for, then the password, then whether
+        // anything of that provider is linked at all.
+        if (!state.profile.hasPassword) {
+          return fail(409, "AUTH_LAST_CREDENTIAL");
+        }
+
+        if (body.currentPassword !== state.password) {
+          return fail(403, "AUTH_CURRENT_PASSWORD_INVALID");
+        }
+
+        if (
+          !state.profile.identities.some(
+            (identity) => identity.provider === provider,
+          )
+        ) {
+          return fail(404, "NOT_FOUND");
+        }
+
+        state.seen.unlinked.push(body);
+        state.profile = {
+          ...state.profile,
+          identities: state.profile.identities.filter(
+            (identity) => identity.provider !== provider,
+          ),
+        };
+
+        return new Response(null, { status: 204 });
+      },
+    ),
   ] as const satisfies readonly HttpHandler[];

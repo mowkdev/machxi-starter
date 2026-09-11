@@ -317,9 +317,12 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
     identitiesOf: () => Promise.resolve([]),
     findIdentityBySubject: () => Promise.resolve(undefined),
     linkIdentity: () => Promise.resolve(false),
-    touchIdentityLogin: () => Promise.resolve(),
+    touchIdentityLogin: () => Promise.resolve(false),
     unlinkIdentity: () => Promise.resolve(false),
     unlinkIdentities: () => Promise.resolve([]),
+    // A lock is an ordering between transactions, which a map in memory has
+    // none of; the serialisation it buys is proved against Postgres.
+    lockById: () => Promise.resolve(),
   };
 
   return { repository, rows, calls } as const;

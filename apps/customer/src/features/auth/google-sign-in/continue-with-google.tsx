@@ -6,6 +6,7 @@ import { useMessageForError } from "@/shared/notifications/messages";
 import { Button, FieldError } from "@/shared/ui";
 
 import { GoogleMark } from "./google-mark";
+import { rememberRedirect } from "./redirect-memory";
 
 /**
  * ADR-0054 §7's 38px rung, as every auth card in this app spells it — this
@@ -23,7 +24,7 @@ const AUTH_CONTROL = "h-[38px] w-full text-[13px]";
  * that fails it is treated as a failed start, whose sentence is the
  * catalogue's fallback.
  */
-const safeAuthorizationUrl = (value: string): string => {
+export const safeAuthorizationUrl = (value: string): string => {
   const url = new URL(value);
 
   if (url.protocol !== "https:") {
@@ -62,8 +63,18 @@ const safeAuthorizationUrl = (value: string): string => {
  * The locale travels in the body because nobody is known to be acting yet:
  * it rides the transaction cookie to the callback, which has no account whose
  * stored locale it could read (ADR-0072 §2).
+ *
+ * **`redirect` is remembered before leaving** (ADR-0072 §4, amended after
+ * `D19.3`): the sign-in screen's own, already fenced by its route, left under
+ * the app's device key for the landing route to take once — and cleared when
+ * this screen has none, so an abandoned attempt's value is never inherited.
  */
-export const ContinueWithGoogle = () => {
+export interface ContinueWithGoogleProps {
+  /** The sign-in screen's `redirect`, when the guard or a link set one. */
+  readonly redirect?: string | undefined;
+}
+
+export const ContinueWithGoogle = ({ redirect }: ContinueWithGoogleProps) => {
   const { t } = useT("auth");
   const client = useApiClient();
   const { locale } = useLocale();
@@ -98,8 +109,10 @@ export const ContinueWithGoogle = () => {
 
     try {
       const { authorizationUrl } = await client.startGoogleSignIn({ locale });
+      const destination = safeAuthorizationUrl(authorizationUrl);
 
-      window.open(safeAuthorizationUrl(authorizationUrl), "_self");
+      rememberRedirect(redirect);
+      window.open(destination, "_self");
     } catch (failure) {
       setError(messageForError(failure));
       setPending(false);

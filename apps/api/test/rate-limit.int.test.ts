@@ -1,5 +1,7 @@
 import { declaredErrorEnvelopeSchema } from "@repo/contracts";
+import { users } from "@repo/db";
 import type { AppConfig } from "../src/core/config/index.js";
+import { eq } from "drizzle-orm";
 import supertest from "supertest";
 import {
   afterAll,
@@ -557,6 +559,15 @@ describe("the set-password link limit", () => {
       email: FIXTURE_USERS.active,
       password: FIXTURE_PASSWORD,
     });
+
+    // The link is for an account without a password (amended after
+    // `D19.4`), so the signed-in fixture sheds its hash: the session stays,
+    // and each ask below reaches the mint rather than the `409`.
+    await harness.db.db
+      .update(users)
+      .set({ passwordHash: null })
+      .where(eq(users.email, FIXTURE_USERS.active));
+
     const setLink = () =>
       supertest(harness.app)
         .post("/api/v1/user/profile/password/set-link")

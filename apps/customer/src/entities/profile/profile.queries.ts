@@ -2,7 +2,10 @@ import type {
   ChangeEmailBody,
   ChangePasswordBody,
   DeleteProfileBody,
+  FederatedProvider,
+  FederatedStartBody,
   ImpersonatorResource,
+  UnlinkIdentityBody,
   UpdateProfileBody,
   UserPrincipalResource,
   UserResource,
@@ -222,6 +225,70 @@ export const useDeleteProfile = () => {
     meta: { ...FORM_MUTATION_META, success: "profile:outcomes.deleted" },
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: profileKeys.all });
+    },
+  });
+};
+
+/**
+ * `POST /user/profile/password/set-link` (ADR-0072 §3) — "Set a password".
+ *
+ * **It invalidates nothing**, `useChangeEmail`'s shape for `useChangeEmail`'s
+ * reason: the account is untouched until the mailed link is followed on
+ * `/reset-password`, and `hasPassword` changes then, on another screen.
+ * `errorToast: false` because the control renders its own refusal beside
+ * itself, and no success toast because the control swaps to the
+ * check-your-mail sentence — a toast repeating it would say it twice.
+ */
+export const useRequestPasswordSetLink = () => {
+  const api = useApi();
+
+  return useMutation({
+    mutationFn: () => api.requestPasswordSetLink(),
+    meta: FORM_MUTATION_META,
+  });
+};
+
+/**
+ * `POST /user/profile/identities/google/start` (ADR-0072 §3) — the link
+ * start. A mutation for its pending state and nothing else: the answer is a
+ * URL the caller navigates to, and nothing cached changes until the callback
+ * lands back on the security section, which reads the profile afresh.
+ */
+export const useStartGoogleLink = () => {
+  const api = useApi();
+
+  return useMutation({
+    mutationFn: (body: FederatedStartBody) => api.startGoogleLink(body),
+    meta: FORM_MUTATION_META,
+  });
+};
+
+/**
+ * `DELETE /user/profile/identities/:provider` (ADR-0072 §3) — unlink.
+ *
+ * `CREDENTIAL_MUTATION` for its neighbours' reason: the current password is
+ * this mutation's `variables`. It invalidates the profile, whose `identities`
+ * is exactly what this write changed.
+ */
+export const useUnlinkIdentity = () => {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: ({
+      provider,
+      body,
+    }: {
+      readonly provider: FederatedProvider;
+      readonly body: UnlinkIdentityBody;
+    }) => api.unlinkIdentity(provider, body),
+    meta: {
+      ...FORM_MUTATION_META,
+      success: "profile:outcomes.identityUnlinked",
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: profileKeys.all });
     },
   });
 };

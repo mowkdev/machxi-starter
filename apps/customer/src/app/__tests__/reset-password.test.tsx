@@ -85,6 +85,28 @@ describe("choosing a new password from the link", () => {
     ]);
   });
 
+  it("says on the sign-in screen that the password is saved and Google may have been unlinked", async () => {
+    /*
+     * ADR-0072 §3 and §4: a reset by mail removes every federated identity,
+     * and a set-password link removes those younger than the session that
+     * asked — so the one sentence a reset leaves behind says both what
+     * happened and where Google is linked again. Read on `/login`, the screen
+     * the reset lands on, because the `<Toaster>` is the root route's.
+     */
+    const { user, router } = setup(link(RESET_TOKEN));
+
+    await choose(user, NEW_PASSWORD);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(
+      await screen.findByText(
+        "Your new password is saved — sign in with it. If Google was linked to this account, a password reset may have unlinked it; you can link it again from Security.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("ends the session this browser was holding, and still lands on sign-in", async () => {
     /*
      * The case `/reset-password` sits outside both layout routes to allow: a

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { LoginPage } from "@/pages/login";
+import { relativePath } from "@/shared/lib/relative-path";
 
 /**
  * `/login`, inside the `_auth` shell. A route file is wiring (ADR-0049): a
@@ -13,27 +14,10 @@ import { LoginPage } from "@/pages/login";
  * is not bookkeeping: an unvalidated value that later feeds a navigation is an
  * open redirect, and the fence belongs on the route that receives it rather
  * than in the code that consumes it — so it lands with the route rather than
- * with its first reader.
+ * with its first reader. The fence itself is `shared/lib`'s since `D19.5`,
+ * because the Google landing route applies it to the same value a second
+ * time, after the round trip (ADR-0072 §4).
  */
-
-/**
- * A path on this origin, and nothing that can be read as another one.
- *
- * Each clause closes a bypass that was verified against
- * `new URL(value, "https://account.example.com/login")` rather than reasoned
- * about, because a leading-slash regex looks sufficient and is not:
- *
- * - `//evil.com` — the obvious one.
- * - `/\evil.com` — the WHATWG parser treats `\` as `/` in special schemes, so
- *   this resolves to `https://evil.com`.
- * - `/<TAB>/evil.com`, and the same with LF or CR — the parser strips those
- *   characters *before* parsing, so they resolve off-origin too.
- */
-const relativePath = (value: string): boolean =>
-  /^\/(?![/\\])/.test(value) &&
-  !value.includes("\\") &&
-  // eslint-disable-next-line no-control-regex -- stripped by the URL parser, which is the bypass
-  !/[\u0000-\u001f]/.test(value);
 
 const searchSchema = z.object({
   redirect: z

@@ -91,9 +91,11 @@ const build = (provider: Partial<OidcProvider> = {}) => {
     findBySubject: vi.fn(() => Promise.resolve(undefined)),
     createFederated: vi.fn(() => Promise.resolve(undefined)),
     link: vi.fn(() => Promise.resolve(false)),
-    touchLogin: vi.fn(() => Promise.resolve()),
+    touchLogin: vi.fn(() => Promise.resolve(true)),
     identitiesOf: vi.fn(() => Promise.resolve([])),
     unlinkAll: vi.fn(() => Promise.resolve([])),
+    unlinkLinkedAfter: vi.fn(() => Promise.resolve([])),
+    lockAccount: vi.fn(() => Promise.resolve()),
   };
   const principals = {
     findByEmail: vi.fn<(email: string) => Promise<PrincipalRecord | undefined>>(
@@ -411,6 +413,27 @@ describe("createFederatedSignInService", () => {
         data: { provider: "google", via: "link" },
       }),
       built.transaction.executor,
+    );
+  });
+
+  it("locks the account row before it reads the session that asked", async () => {
+    // ADR-0072 §3, amended after `D19.4`: a reset of the account holds the
+    // same lock, so a link that reads its session only once it has the lock
+    // reads the reset's revocation rather than the moment before it.
+    const built = build({
+      exchangeCode: () =>
+        Promise.resolve({ ok: true, identity: GOOGLE_HOSTED }),
+    });
+
+    vi.mocked(built.accounts.link).mockResolvedValueOnce(true);
+
+    await built.service.callback(ctx, await callbackWith(await sealedLink()));
+
+    const lock = vi.mocked(built.accounts.lockAccount).mock;
+
+    expect(lock.calls).toEqual([["the-caller", built.transaction.executor]]);
+    expect(lock.invocationCallOrder[0]).toBeLessThan(
+      built.sessions.findById.mock.invocationCallOrder[0] ?? 0,
     );
   });
 

@@ -1,9 +1,11 @@
-import { resetPasswordBody } from "@repo/contracts";
+import { resetPasswordBody, type ResetPasswordBody } from "@repo/contracts";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isApiClientError } from "@/shared/api/api-error";
 import { useApiClient } from "@/shared/api/context";
+import { CREDENTIAL_MUTATION } from "@/shared/api/credential-mutation";
 import { useMessageForError } from "@/shared/notifications/messages";
 
 /**
@@ -106,6 +108,24 @@ export const useResetPassword = (): PasswordReset => {
   const hash = useRouterState({ select: (state) => state.location.hash });
 
   /*
+   * The request, as a mutation for its **outcome sentence** and nothing else
+   * (ADR-0072 §4, amended between `D19.2` and `D19.3`). A reset lands on
+   * `/login` with no session, and what it did to the account — a new password,
+   * and possibly Google unlinked, since a reset by mail removes every
+   * federated identity — has to be said on the screen it lands on. ADR-0034's
+   * one global handler delivers `meta.success` to the `<Toaster>` on the root
+   * route, which survives that navigation; the screen's refusals stay its own,
+   * so `errorToast: false`. `CREDENTIAL_MUTATION` because the new password is
+   * this mutation's `variables`.
+   */
+  const reset = useMutation({
+    ...CREDENTIAL_MUTATION,
+    mutationFn: (body: ResetPasswordBody) => client.resetPassword(body),
+    meta: { errorToast: false, success: "auth:reset.done" },
+  });
+  const spend = reset.mutateAsync;
+
+  /*
    * A boolean, not the value. The initializer runs on the first render only,
    * so this answers "did a link arrive" about the *arriving* address rather
    * than about whatever the bar holds after the effect empties it — and it
@@ -197,7 +217,7 @@ export const useResetPassword = (): PasswordReset => {
 
       setPending(true);
 
-      client.resetPassword(parsed.data).then(
+      spend(parsed.data).then(
         () => {
           held.current = undefined;
           /*
@@ -241,7 +261,7 @@ export const useResetPassword = (): PasswordReset => {
         },
       );
     },
-    [client, messageForError, navigate],
+    [spend, messageForError, navigate],
   );
 
   return { status, pending, formError, fieldError, submit };

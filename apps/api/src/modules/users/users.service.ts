@@ -36,7 +36,12 @@ import {
 import type { OrganizationsService } from "../organizations/index.js";
 import type { SettingsService } from "../settings/index.js";
 import type { StaffService } from "../staff/index.js";
-import { userDeleted, userEmailTaken, userNotFound } from "./users.errors.js";
+import {
+  passwordAlreadySet,
+  userDeleted,
+  userEmailTaken,
+  userNotFound,
+} from "./users.errors.js";
 import { toUserProfileResource, toUserResource } from "./users.mapper.js";
 import type { UserRecord, UsersRepository } from "./users.repository.js";
 
@@ -549,6 +554,27 @@ export const createUsersService = ({
       const passwordHash = await hasher.hash(body.password);
 
       const { revoked, unlinked } = await transaction(async (tx) => {
+        // The administrative twin of `changePassword`'s sweep, and it belongs
+        // here more than there: the plausible reason for a staff reset is that
+        // the account is compromised, so a `change_email` link the attacker
+        // asked for is exactly what must not survive it. **Before the account
+        // row's lock** (`D19.5`'s `security-reviewer`): the address change's
+        // confirm claims that row and then writes the account, and the
+        // opposite order here would be a deadlock with it.
+        await accountTokens.supersede(
+          ctx,
+          {
+            purpose: "change_email",
+            principal: { type: "user", id: record.id },
+          },
+          tx,
+        );
+
+        // The account row's lock before anything is written (ADR-0072 §3,
+        // amended after `D19.4`), for the reset by mail's reason: a link
+        // callback for this account serialises behind it — and then finds its
+        // session revoked — or ahead of it, and its identity is removed below.
+        await repository.lockById(record.id, tx);
         await repository.updatePasswordHash(record.id, passwordHash, at, tx);
 
         // **Every federated identity goes with the old password** (ADR-0072
@@ -577,14 +603,14 @@ export const createUsersService = ({
           );
         }
 
-        // The administrative twin of `changePassword`'s sweep, and it belongs
-        // here more than there: the plausible reason for a staff reset is that
-        // the account is compromised, so a `change_email` link the attacker
-        // asked for is exactly what must not survive it.
+        // A Google handoff minted before this commit dies with it, for the
+        // reset by mail's reason (`D19.5`'s `security-reviewer`): it is a
+        // session not yet issued, which the sweep below cannot see. After
+        // the lock, the order a sign-in takes — account, then its handoff.
         await accountTokens.supersede(
           ctx,
           {
-            purpose: "change_email",
+            purpose: "federated_login",
             principal: { type: "user", id: record.id },
           },
           tx,
@@ -958,24 +984,28 @@ export const createUsersService = ({
 
     /**
      * `POST /api/v1/user/profile/password/set-link` — "Set a password"
-     * (ADR-0072 §3, amended at `D19.4`).
+     * (ADR-0072 §3, amended at `D19.4` and after it).
      *
      * **A link, not a password field.** It mints the caller's own
      * `reset_password` token — ADR-0071 §4's purpose, template, screen and
-     * consume, none of them new — carrying `requestedBy: "session"` in its
-     * payload, and mails it to the account's proven address. The `reset` that
-     * consumes such a token **keeps** the federated identities where the
-     * anonymous `forgot`'s removes them: the session asked and the mailbox
-     * confirmed, which is the account's own authority twice over. A stolen
-     * session alone therefore cannot mint itself a permanent credential,
-     * which is why §Alternatives turned down a set-password endpoint on the
-     * session.
+     * consume, none of them new — carrying `requestedBy: "session"` and **the
+     * asking session's id** in its payload, and mails it to the account's
+     * proven address. The `reset` that consumes such a token keeps the
+     * federated identities **linked before that session began** and removes
+     * the rest (`resetPassword`, the auth service): the session asked and the
+     * mailbox confirmed, but a session in the wrong hands can link its
+     * holder's own Google account first, and the owner following the mail to
+     * secure the account must not be the click that keeps it.
      *
-     * Any account may ask, with a password or without; the mint supersedes
-     * the live `reset_password` link for the account, so one link works
-     * (ADR-0071 §1). The route refuses an impersonated session (ADR-0057 §5,
-     * a delta of 0072) and carries the recovery limiter's number keyed on
-     * the caller, in a counter of its own.
+     * **For an account without a password alone** (amended after `D19.4`):
+     * one that has a password changes it with the current one, and answers
+     * `409 CONFLICT` here — the second door is what a stolen session would
+     * need, and the security section never offers it there.
+     *
+     * The mint supersedes the live `reset_password` link for the account, so
+     * one link works (ADR-0071 §1). The route refuses an impersonated session
+     * (ADR-0057 §5, a delta of 0072) and carries the recovery limiter's number
+     * keyed on the caller, in a counter of its own.
      *
      * The locale is the account's, read through the settings service, for
      * `requestEmailChange`'s reason: the caller is an account, and its row
@@ -984,12 +1014,17 @@ export const createUsersService = ({
     requestPasswordSetLink: async (ctx: RequestContext): Promise<void> => {
       const principal = self(ctx);
       const record = await readSelf(principal.id);
+
+      if (record.passwordHash !== null) throw passwordAlreadySet();
+
       const { locale } = await locales.get(ctx);
 
       const { token } = await accountTokens.mint(ctx, {
         purpose: "reset_password",
         principal: { type: "user", id: principal.id },
-        payload: { requestedBy: "session" },
+        // Server-written, read back off the consumed row and never off a
+        // request: the one fact that decides what the consume may keep.
+        payload: { requestedBy: "session", sessionId: principal.sessionId },
       });
 
       deliverDetached(

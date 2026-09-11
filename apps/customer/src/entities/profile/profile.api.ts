@@ -2,9 +2,13 @@ import type {
   ChangeEmailBody,
   ChangePasswordBody,
   DeleteProfileBody,
+  FederatedProvider,
+  FederatedStartBody,
+  FederatedStartResource,
   SuccessEnvelope,
+  UnlinkIdentityBody,
   UpdateProfileBody,
-  UserResource,
+  UserProfileResource,
 } from "@repo/contracts";
 
 import type { ApiClient } from "@/shared/api/client";
@@ -17,10 +21,11 @@ import type { ApiClient } from "@/shared/api/client";
  * That is the structural fact this whole slice is shaped by — no list, no
  * detail-by-id, one cache entry.
  *
- * The resource it returns is a `UserResource`, the same shape
+ * The resource it returns is a `UserProfileResource` — the `UserResource`
  * `/admin/users` emits, because it is the same aggregate seen from the other
- * side (ADR-0012). This app will never see the admin's view of it, and reusing
- * the type rather than declaring a second one is what keeps that true.
+ * side (ADR-0012), and one fact only the owner acts on: `hasPassword`
+ * (ADR-0072 §3), which decides whether the security section offers "Change
+ * password" or "Set a password". This app will never see the admin's view.
  *
  * **The paths are the ones the API shipped at D2.3/D2.4, not the ones ADR-0055
  * §4 first spelled.** That record said `POST /profile/password`; the shipped
@@ -30,9 +35,11 @@ import type { ApiClient } from "@/shared/api/client";
  */
 export const createProfileApi = (client: ApiClient) =>
   ({
-    get: async (): Promise<UserResource> => {
+    get: async (): Promise<UserProfileResource> => {
       const { data } =
-        await client.instance.get<SuccessEnvelope<UserResource>>("/profile");
+        await client.instance.get<SuccessEnvelope<UserProfileResource>>(
+          "/profile",
+        );
 
       return data.data;
     },
@@ -50,9 +57,9 @@ export const createProfileApi = (client: ApiClient) =>
      * `users.first_name` is nullable and the staff table's is not (ADR-0017):
      * "clear it" is a legal request on this segment and has to be expressible.
      */
-    update: async (body: UpdateProfileBody): Promise<UserResource> => {
+    update: async (body: UpdateProfileBody): Promise<UserProfileResource> => {
       const { data } = await client.instance.patch<
-        SuccessEnvelope<UserResource>
+        SuccessEnvelope<UserProfileResource>
       >("/profile", body);
 
       return data.data;
@@ -117,6 +124,60 @@ export const createProfileApi = (client: ApiClient) =>
      */
     remove: async (body: DeleteProfileBody): Promise<void> => {
       await client.instance.delete("/profile", { data: body });
+    },
+
+    /**
+     * `POST /user/profile/password/set-link` — "Set a password" (ADR-0072 §3).
+     * `202`, and nothing has changed when it resolves.
+     *
+     * **A link, not a password field**: the API mails the account's own
+     * `/reset-password` link to its own address, and the password is chosen
+     * there. It is for an account without a password alone — one with a
+     * password is answered `409 CONFLICT` — so the security section offers it
+     * only while `hasPassword` is false. No body: the account is the session's,
+     * the address its own and the locale its row's.
+     */
+    requestPasswordSetLink: async (): Promise<void> => {
+      await client.instance.post("/profile/password/set-link");
+    },
+
+    /**
+     * `POST /user/profile/identities/google/start` — the link start
+     * (ADR-0072 §3). The sign-in start's twin for an account already signed in:
+     * the answer is the provider's authorization URL, and the response sets the
+     * transaction cookie that carries this account and this session to the
+     * callback. It navigates nowhere; the caller assigns the URL.
+     *
+     * The locale travels as the sign-in's does, though the callback of a link
+     * lands on a screen that already knows the account's language.
+     */
+    startGoogleLink: async (
+      body: FederatedStartBody,
+    ): Promise<FederatedStartResource> => {
+      const { data } = await client.instance.post<
+        SuccessEnvelope<FederatedStartResource>
+      >("/profile/identities/google/start", body);
+
+      return data.data;
+    },
+
+    /**
+     * `DELETE /user/profile/identities/:provider` — unlink (ADR-0072 §3).
+     * `204`.
+     *
+     * A body on a `DELETE`, for `remove`'s reason: the current password is
+     * the proof, and a credential does not travel in a query string. The API
+     * answers in a fixed order — `409 AUTH_LAST_CREDENTIAL` for an account with
+     * no password, `403 AUTH_CURRENT_PASSWORD_INVALID`, then `404` — and the
+     * dialog renders each where it belongs.
+     */
+    unlinkIdentity: async (
+      provider: FederatedProvider,
+      body: UnlinkIdentityBody,
+    ): Promise<void> => {
+      await client.instance.delete(`/profile/identities/${provider}`, {
+        data: body,
+      });
     },
   }) as const;
 

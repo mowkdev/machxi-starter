@@ -94,12 +94,12 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int
 ### Scenario: An account that had linked Google
 
 - **WHEN** a user-segment account with a Google identity resets its password from a link `forgot` sent
-- **THEN** the identity is removed in the same commit with an `account.identity_unlinked { provider, via: "reset" }` row — the mailbox recovers the account from every way in ([`federated-identity.md`](federated-identity.md))
+- **THEN** the identity is removed in the same commit with an `account.identity_unlinked { provider, via: "reset" }` row, and the `account.password_reset` row says `{ requestedBy: "mailbox", unlinked: ["google"] }` — the mailbox recovers the account from every way in ([`federated-identity.md`](federated-identity.md))
 
 ### Scenario: A link the account's own session asked for
 
 - **WHEN** the reset consumes a link minted by `POST /user/profile/password/set-link` rather than by `forgot`
-- **THEN** the password is set and the account's identities are kept — the session asked and the mailbox confirmed
+- **THEN** the password is set, the identities linked **before the session that asked began** are kept and any linked after it are removed, and the `account.password_reset` row says `requestedBy: "session"` with what it removed ([`federated-identity.md`](federated-identity.md))
 
 ### Scenario: The sessions that existed before
 
