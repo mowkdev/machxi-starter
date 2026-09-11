@@ -15,6 +15,7 @@ import type {
   revokeUserSessionsSchema,
   setUserEmailSchema,
   setUserPasswordSchema,
+  unlinkIdentitySchema,
   updateProfileSchema,
   updateUserSchema,
 } from "./users.schemas.js";
@@ -182,6 +183,32 @@ export const createUserProfileController = ({
     ): Promise<void> => {
       await service.requestEmailChange(req.ctx, req.valid.body);
       respond.accepted<AcceptedResource>(res, { accepted: true });
+    },
+
+    /**
+     * `202`: a set-password link is on its way to the account's own address
+     * and nothing has changed yet (ADR-0072 §3) — `forgot`'s answer, because
+     * it is `forgot`'s link, minted by the session instead of by an address.
+     */
+    passwordSetLink: async (req: Request, res: Response): Promise<void> => {
+      await service.requestPasswordSetLink(req.ctx);
+      respond.accepted<AcceptedResource>(res, { accepted: true });
+    },
+
+    /**
+     * `204`: the identity is gone and nothing else changed — no session ends
+     * (ADR-0072 §3). The account's remaining ways in are one `GET /` away.
+     */
+    unlinkIdentity: async (
+      req: ValidatedRequest<typeof unlinkIdentitySchema>,
+      res: Response,
+    ): Promise<void> => {
+      await service.unlinkIdentity(
+        req.ctx,
+        req.valid.params.provider,
+        req.valid.body,
+      );
+      respond.noContent(res);
     },
 
     /**

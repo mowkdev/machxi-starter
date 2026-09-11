@@ -25,6 +25,8 @@
   "AUTH_IMPERSONATION_REFUSED": "That is not allowed on an impersonated session.",
   "AUTH_FEDERATED_SIGNUP_CLOSED": "New accounts cannot be created here.",
   "AUTH_FEDERATED_LINK_REQUIRED": "Google cannot confirm this address. Link Google from the account's own settings.",
+  "AUTH_IDENTITY_TAKEN": "That Google account is already linked to another account.",
+  "AUTH_LAST_CREDENTIAL": "This is the account's only way to sign in. Set a password first.",
   "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",
 
   "USER_EMAIL_TAKEN": "Another user already uses that email address.",

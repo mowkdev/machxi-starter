@@ -2,7 +2,9 @@ import { Router, type RequestHandler } from "express";
 
 import { authorize, noStore, validate } from "../../core/middleware/index.js";
 import {
+  federatedStartSchema,
   mintImpersonationSchema,
+  type FederatedController,
   type ImpersonationController,
 } from "../auth/index.js";
 import type {
@@ -20,6 +22,7 @@ import {
   revokeUserSessionsSchema,
   setUserEmailSchema,
   setUserPasswordSchema,
+  unlinkIdentitySchema,
   updateProfileSchema,
   updateUserSchema,
 } from "./users.schemas.js";
@@ -185,7 +188,10 @@ export const createUsersRouter = ({
  * called at most once per account, since it ends the session that called it.
  * The accepted risk is unchanged in kind and smaller in degree; the missing
  * category is still a per-principal budget for expensive routes, recorded in
- * ADR-0020 §Residual risks rather than half-built here.
+ * ADR-0020 §Residual risks rather than half-built here. `DELETE
+ * /identities/:provider` (`D19.4`, ADR-0072 §3) is a third of the same kind —
+ * one hash per call, refused before any hash for an account with no password —
+ * and sits under the same accepted risk rather than a budget of its own.
  *
  * Accepted for now: reaching it at all requires a valid session per client, the
  * global limiter caps each one, and the shedding is a `503` with `Retry-After`
@@ -207,7 +213,7 @@ export interface UserProfileRouterDeps {
    */
   readonly mailboxRateLimiter: RequestHandler;
   /**
-   * ADR-0057 §5's exclusion guard, on the two operations here that would let an
+   * ADR-0057 §5's exclusion guard, on the operations here that would let an
    * impersonator take the account over (ADR-0019's declarative style).
    *
    * `PATCH /` is deliberately **not** guarded: a profile edit is what support
@@ -216,12 +222,31 @@ export interface UserProfileRouterDeps {
    * both identities on it.
    */
   readonly refuseImpersonated: RequestHandler;
+  /**
+   * The set-password link's budget (ADR-0072 §3, amended at `D19.4`) — the
+   * recovery limiter's number keyed on the caller's account, in a counter of
+   * its own. Mounted after `refuseImpersonated` for `mailboxRateLimiter`'s
+   * reason: a caller who is about to be refused must not spend the mailbox's
+   * budget.
+   */
+  readonly setPasswordLinkRateLimiter: RequestHandler;
+  /**
+   * The link start's handler (ADR-0072 §3), **present only when the Google
+   * client is configured** — the federated controller exists then and not
+   * otherwise — so without one the path answers `404 ROUTE_NOT_FOUND`, the
+   * public start's shape. Unlinking is mounted whatever this says: an account
+   * may hold an identity on a deployment that has since dropped its client,
+   * and removing a way in needs nothing from Google.
+   */
+  readonly federated?: Pick<FederatedController, "startLink"> | undefined;
 }
 
 export const createUserProfileRouter = ({
   controller,
   refuseImpersonated,
   mailboxRateLimiter,
+  setPasswordLinkRateLimiter,
+  federated,
 }: UserProfileRouterDeps): Router => {
   const router = Router();
 
@@ -262,6 +287,51 @@ export const createUserProfileRouter = ({
     mailboxRateLimiter,
     validate(changeEmailSchema),
     controller.changeEmail,
+  );
+
+  /*
+   * The credentials an account keeps (ADR-0072 §3) — three more entries on
+   * ADR-0057 §5's list from this router, each `refuseImpersonated` first, and
+   * each for the list's own test: linking attaches a way in that outlives the
+   * impersonated session, unlinking severs the owner's, and a set-password
+   * link is a credential mailed on the session's say-so.
+   *
+   * **No CSRF guard here, and none is missing.** ADR-0072 §3 calls the link
+   * start "CSRF-guarded", and on this router that is what the bearer token
+   * already is (ADR-0029 §Decision: an access token in memory is never
+   * attached to a request the person did not make, so no bearer route needs
+   * the double-submit check). The double-submit guard fires only on a request
+   * leaning on the refresh cookie, which is scoped to `/user/auth` and never
+   * reaches `/user/profile` — mounted here it would be inert.
+   *
+   * `password/set-link` takes no body and so no `validate`: the account is
+   * `ctx.principal`, the address is its own and the locale its row's.
+   */
+  router.post(
+    "/password/set-link",
+    refuseImpersonated,
+    setPasswordLinkRateLimiter,
+    controller.passwordSetLink,
+  );
+
+  // No limiter of its own: a start costs a signature, the session is the
+  // credential, and the callback — the half that costs Google a request —
+  // carries the budget it has always carried (ADR-0072 §2, amended at
+  // `D19.2`). The global limiter covers the rest.
+  if (federated !== undefined) {
+    router.post(
+      "/identities/google/start",
+      refuseImpersonated,
+      validate(federatedStartSchema),
+      federated.startLink,
+    );
+  }
+
+  router.delete(
+    "/identities/:provider",
+    refuseImpersonated,
+    validate(unlinkIdentitySchema),
+    controller.unlinkIdentity,
   );
 
   // Self-service deletion (ADR-0055 §4), on ADR-0028's user semantics: the row

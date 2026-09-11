@@ -256,20 +256,54 @@ export const federatedSignupClosed = (): AppError =>
   );
 
 /**
- * A sign-in with Google whose address Google does not host (ADR-0072 §1,
- * amended at `D19.1` for linking and at `D19.2` for creation).
+ * A sign-in with Google whose address Google does not host, held by a live
+ * account (ADR-0072 §1, amended at `D19.1`).
  *
  * Google's "verified" means "controls it now" only for an address it hosts;
- * for any other it means "controlled it once". Linking on that would hand an
- * existing account to whoever held the mailbox then, and creating on it would
- * let them make an account the rightful owner's password reset could not take
- * back. One answer whether or not an account holds the address, so it tells
- * nobody which. The person signs in with a password — or registers with one —
- * and links Google from the security section, which proves both sides at
- * once. Redirect-only, like its neighbour.
+ * for any other it means "controlled it once", and linking on that would hand
+ * an existing account to whoever held the mailbox then. The person signs in
+ * with the password and links Google from the security section, which proves
+ * both sides at once. Redirect-only, like its neighbour.
+ *
+ * `D19.2` answered it for an address **nobody** holds as well; the operator
+ * withdrew that at `D19.4` (§1's last amendment), because a reset now removes
+ * every identity, so creation on such an address is recovered by its mailbox.
  */
 export const federatedLinkRequired = (): AppError =>
   forbidden(
-    "Google cannot confirm this address; sign in or register with a password, then link Google from the account's security settings",
+    "Google cannot confirm this address for an existing account; sign in with the password, then link Google from the account's security settings",
     "AUTH_FEDERATED_LINK_REQUIRED",
+  );
+
+/**
+ * A link whose Google account another account already signs in with
+ * (ADR-0072 §3).
+ *
+ * `409`, `USER_EMAIL_TAKEN`'s reasoning for a subject: the caller may link,
+ * and what the request conflicts with is another account's state. Telling the
+ * caller is safe where it would not be on the sign-in — they have just proven
+ * control of the Google account at the provider, so "it is linked elsewhere"
+ * is a fact about something they hold. Redirect-only: it reaches the customer
+ * app as `#error=AUTH_IDENTITY_TAKEN` (§2).
+ */
+export const identityTaken = (): AppError =>
+  conflict(
+    "This identity is already linked to another account",
+    "AUTH_IDENTITY_TAKEN",
+  );
+
+/**
+ * An unlink that would leave the account with no way in (ADR-0072 §3): the
+ * account has no password, so this identity is its last credential.
+ *
+ * Checked **before** the current password, and that order is the only one
+ * that means anything — a passwordless account has no current password to
+ * present, so asking for one would answer `AUTH_CURRENT_PASSWORD_INVALID`
+ * about a password that does not exist. The customer app offers the
+ * set-password link instead.
+ */
+export const lastCredential = (): AppError =>
+  conflict(
+    "This is the account's only way to sign in; set a password first",
+    "AUTH_LAST_CREDENTIAL",
   );

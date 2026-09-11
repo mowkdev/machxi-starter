@@ -534,3 +534,48 @@ describe("the Google start limit", () => {
     expect(response.body.error.code).toBe("RATE_LIMITED");
   });
 });
+
+describe("the set-password link limit", () => {
+  let harness: TestApp;
+
+  beforeAll(async () => {
+    harness = createTestApp(
+      withLimits({ passwordResetMax: 2, mailboxMax: 100_000 }),
+    );
+    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  it("refuses the third ask from one account in the hour, in a counter of its own", async () => {
+    // ADR-0072 §3, amended at `D19.4`: the recovery budget's number, keyed on
+    // the account — whose own address is the only recipient — and counted
+    // apart from `forgot`'s, so neither spends the other.
+    const { accessToken } = await login(harness.app, "user", {
+      email: FIXTURE_USERS.active,
+      password: FIXTURE_PASSWORD,
+    });
+    const setLink = () =>
+      supertest(harness.app)
+        .post("/api/v1/user/profile/password/set-link")
+        .set("Authorization", `Bearer ${accessToken}`);
+
+    await setLink().expect(202);
+    await setLink().expect(202);
+
+    const response = await setLink().expect(429);
+
+    expect(response.body.error.code).toBe("RATE_LIMITED");
+
+    const retryAfter = Number(response.headers["retry-after"]);
+
+    expect(retryAfter).toBeGreaterThan(AN_HOUR - 120);
+
+    await supertest(harness.app)
+      .post(FORGOT)
+      .send({ email: FIXTURE_USERS.active })
+      .expect(202);
+  });
+});

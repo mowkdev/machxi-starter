@@ -318,6 +318,8 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
     findIdentityBySubject: () => Promise.resolve(undefined),
     linkIdentity: () => Promise.resolve(false),
     touchIdentityLogin: () => Promise.resolve(),
+    unlinkIdentity: () => Promise.resolve(false),
+    unlinkIdentities: () => Promise.resolve([]),
   };
 
   return { repository, rows, calls } as const;

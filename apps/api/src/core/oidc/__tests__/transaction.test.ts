@@ -43,6 +43,41 @@ describe("createOidcTransactionCodec", () => {
     expect(await codec().open(value)).toEqual(sealed);
   });
 
+  it("opens a link's account and session back, field for field (ADR-0072 §3)", async () => {
+    const sealed = {
+      ...createAuthorizationRequest(),
+      intent: "link" as const,
+      userId: "0199a000-0000-7000-8000-000000000001",
+      sessionId: "0199a000-0000-7000-8000-000000000002",
+      locale: undefined,
+    };
+
+    expect(await codec().open(await codec().seal(sealed))).toEqual(sealed);
+  });
+
+  it("opens nothing that says it links but names no account or session", async () => {
+    // A link transaction without its account would be a link to nobody the
+    // callback could name; the schema refuses it rather than guessing.
+    const [, payload] = (
+      await codec().seal({
+        ...createAuthorizationRequest(),
+        intent: "link",
+        userId: "u",
+        sessionId: "s",
+        locale: undefined,
+      })
+    ).split(".");
+    const claims = JSON.parse(
+      Buffer.from(payload ?? "", "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+    const { uid: _uid, sid: _sid, ...withoutThem } = claims;
+    const reSigned = await new SignJWT(withoutThem)
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .sign(new TextEncoder().encode(SECRET));
+
+    expect(await codec().open(reSigned)).toBeUndefined();
+  });
+
   it("carries an absent locale as absent", async () => {
     const sealed = { ...transaction(), locale: undefined };
 

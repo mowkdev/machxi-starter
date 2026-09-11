@@ -70,15 +70,24 @@ const GENERIC_ERROR_CODES = [
  * | `CSRF_TOKEN_INVALID` | 403 | a cookie-driven `refresh`, `logout` or `logout-all` arrived without an `X-CSRF-Token` matching that population's `machxi.csrf.{admin,user}` cookie (ADR-0029; ADR-0056 for the per-population name) | re-read the cookie and retry; if it persists, re-login |
  * | `AUTH_IMPERSONATION_REFUSED` | 403 | the session is impersonated (ADR-0057) and the operation is one of the takeover-enabling ones it is not allowed | tell the operator the account's owner must do it |
  * | `AUTH_FEDERATED_SIGNUP_CLOSED` | 403 | a Google sign-in found no account and `FEATURE_USER_REGISTRATION` is off, so none may be created (ADR-0072 §1) | say that new accounts are not being made here |
- * | `AUTH_FEDERATED_LINK_REQUIRED` | 403 | a Google sign-in's address is one Google does not host, so its "verified" proves nothing about the mailbox today — answered the same whether or not an account holds it (ADR-0072 §1) | ask the person to sign in or register with a password and link Google from their account |
+ * | `AUTH_FEDERATED_LINK_REQUIRED` | 403 | a Google sign-in's address is one Google does not host, so its "verified" proves nothing about the mailbox today, and a live account holds it (ADR-0072 §1) | ask the person to sign in with their password and link Google from their account |
+ * | `AUTH_IDENTITY_TAKEN` | 409 | linking a Google account that another account already signs in with (ADR-0072 §3) | say which Google account to unlink there first, or use another |
+ * | `AUTH_LAST_CREDENTIAL` | 409 | unlinking the only way into an account that has no password (ADR-0072 §3) | offer to set a password first |
  *
- * The two `AUTH_FEDERATED_*` codes never travel in an envelope. The Google
- * callback is a top-level navigation, so every refusal it makes is a `302` to
- * the customer app with the code in the URL fragment (`#error=<code>`,
- * ADR-0072 §2), and the app renders the catalogue's sentence for it. They are
- * codes rather than prose because that fragment is all the app is told, and
- * they are `403` in spirit for the reason their neighbours are: the provider
- * vouched for the person, and it is the operation that is refused.
+ * The two `AUTH_FEDERATED_*` codes and `AUTH_IDENTITY_TAKEN` never travel in
+ * an envelope. The Google callback is a top-level navigation, so every refusal
+ * it makes is a `302` to the customer app with the code in the URL fragment
+ * (`#error=<code>`, ADR-0072 §2), and the app renders the catalogue's sentence
+ * for it. They are codes rather than prose because that fragment is all the
+ * app is told. The two federated ones are `403` in spirit for the reason their
+ * neighbours are — the provider vouched for the person, and it is the
+ * operation that is refused — and `AUTH_IDENTITY_TAKEN` is `409` in spirit for
+ * `USER_EMAIL_TAKEN`'s: the request conflicts with another account's state.
+ *
+ * `AUTH_LAST_CREDENTIAL` does travel in an envelope — unlink is an ordinary
+ * authenticated `DELETE` — and is `409` rather than `403` for the same reason:
+ * the caller may unlink their own identities, and what the request conflicts
+ * with is the account having no other way in.
  *
  * `AUTH_CURRENT_PASSWORD_INVALID` is `403` and not `401` on purpose. The caller
  * *is* authenticated — their session is fine and stays fine — so a `401` would
@@ -132,6 +141,8 @@ const AUTH_ERROR_CODES = [
   "AUTH_IMPERSONATION_REFUSED",
   "AUTH_FEDERATED_SIGNUP_CLOSED",
   "AUTH_FEDERATED_LINK_REQUIRED",
+  "AUTH_IDENTITY_TAKEN",
+  "AUTH_LAST_CREDENTIAL",
   "CSRF_TOKEN_INVALID",
 ] as const;
 

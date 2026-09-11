@@ -232,3 +232,91 @@ Beside the gate: `pnpm check` green; `pnpm docs:check` clean (13 spec files). `p
 - **Browser-only, not machine-verified**: the button's look (outline, 38px, the colour mark in light and dark), a real Back from Google's account chooser restoring the page with the button live again, and the whole round trip with real credentials — definition of done item 8.
 - **Google's branding for the mark**: drawn in Google's colours as its sign-in guidelines ask; if the design would rather a monochrome mark, that is a one-file change and a decision against Google's guidance.
 - **The `redirect` logged above**: whether a Google sign-in should return a person to where the guard or the invitation screen was sending them.
+
+## `D19.4` — Credentials: link, unlink, set a password — the API
+
+**The head.** Three records moved to `superseded by` 0072, each a delta with its status line, a paragraph of its own, its index row and the topic table updated, and the ledger's §The window recording it:
+
+- [ADR-0057](../adr/0057-impersonation-sessions.md) — its **fifth** partial successor. §5's list grows the link start, unlink and the set-password link.
+- [ADR-0071](../adr/0071-mail-flows.md) — its **first**. §4's reset by mail removes every federated identity, and the reset link gains a session-minted form that keeps them.
+- [ADR-0027](../adr/0027-credential-self-service-and-reset.md) — its **second**. The administrative reset removes the identities too.
+
+All five of 0072's parents have now moved. The index diff is again mostly whitespace: 0057's status cell became the widest, so prettier re-padded the table (the `D19.1` precedent).
+
+**Built.**
+
+- **The link.**
+  - `POST /user/profile/identities/google/start` (`startLink`) is authenticated and `refuseImpersonated`. It takes JSON only, and it is mounted only when the Google client is configured.
+  - It seals `intent: "link"` with the caller's **account and session** into `__Host-<APP_ID>.oidc`. The transaction codec's claims are now a discriminated union, and a link without `uid` and `sid` opens to nothing.
+  - The callback's `linkTo` handles the link intent. It refuses with `UNAUTHENTICATED` when the sealed session has been revoked or has expired, is another account's, or was minted by impersonation, and when the account is not `active`.
+  - A subject held by another account is `AUTH_IDENTITY_TAKEN`. One the caller already holds is a no-op that still answers `#linked=google`. A second Google account is `CONFLICT`.
+  - A successful link writes `account.identity_linked { provider, via: "link" }` and redirects to `302 …/auth/google#linked=google` with the cookie cleared and no token.
+- **The resolution (a).** The authority check moved from the head of the resolution to the address match alone. A verified claim nobody holds now creates the account whether or not Google hosts the address, and a held non-authoritative address is still `AUTH_FEDERATED_LINK_REQUIRED`.
+  - The API message and the customer app's sentences (`en`/`lv`) are back to offering sign-in and linking.
+- **Unlink.** `DELETE /user/profile/identities/:provider { currentPassword }` (users service) is `refuseImpersonated` and mounted whether or not the client is configured. It answers:
+  - `409 AUTH_LAST_CREDENTIAL` for an account with no password, before any password is asked for;
+  - `403 AUTH_CURRENT_PASSWORD_INVALID` for a wrong password;
+  - `404 NOT_FOUND` when nothing of that provider is linked;
+  - `204` otherwise, with `account.identity_unlinked { provider, via: "unlink" }`. No session changes.
+- **The resets (b).**
+  - `resetPassword` (the reset by mail) calls `federated.unlinkAll` in the hash's transaction and writes one `account.identity_unlinked { provider, via: "reset" }` row each, with the account as actor. It keeps the identities only when the claimed token's payload says `requestedBy: "session"` (`requestedBySession`). The staff service has no `federated` dependency, so its reset removes nothing.
+  - The administrative `setPassword` calls `repository.unlinkIdentities`. Its rows are in `setEmail`'s shape: the operator is the actor, and `subjectId` is in the data.
+  - `change-password` is untouched and removes nothing.
+- **The set-password link (c).** `POST /user/profile/password/set-link` is `refuseImpersonated` and answers `202 { accepted: true }`.
+  - It mints the caller's own `reset_password` token with `payload: { requestedBy: "session" }` and mails `passwordReset` in the account's locale to its own address.
+  - Its limiter is `createSetPasswordLinkRateLimiter`: `RATE_LIMIT_PASSWORD_RESET_MAX` per password-reset window, keyed on the principal, in its own counter (`set-password-link`).
+- **Contracts and catalogues.**
+  - `@repo/contracts` gains `AUTH_IDENTITY_TAKEN` and `AUTH_LAST_CREDENTIAL`, `identityProviderParams` and `unlinkIdentityBody`.
+  - Both apps' catalogues gain the two sentences in `en` and `lv`.
+- **Tests.**
+  - `federated-identity.int.test.ts` gains the link start and the link intent (including the no-op, `CONFLICT`, `IDENTITY_TAKEN`, and the ended session). It also covers the three unlink answers plus the `404`, and impersonation refusing all three routes while the owner's own session succeeds.
+  - It covers the anonymous reset, the administrative reset, `change-password` keeping the identity, and `set-link` keeping it, plus the link start `404` without a client while unlink still answers. The `D19.2` "creates nothing for a non-hosted address" case is inverted.
+  - `rate-limit.int.test.ts` gains the set-link limiter.
+  - The unit tier covers the link intent's edges and the moved authority check (`auth.federated.service.test.ts`), and the codec's link round trip and its refusal of a link without an account (`transaction.test.ts`).
+  - Isolation runs confirmed that the "session ended" and "set-link keeps" integration cases each fail when their check is removed.
+- **Specs.**
+  - `federated-identity.md`: the creation clause is rewritten, the non-hosted scenario is split in two, and two requirements are new — "An account keeps its ways in under its owner's control" and "A reset recovers the account from every way in".
+  - `mail-flows.md` gains two recovery scenarios.
+  - `users-and-profile.md`: the administrative reset removes identities, and a change of password keeps them.
+- **Postman**: 207 requests and 631 assertions, 0 failed, run twice. Both READMEs are updated; the global-limiter figure is now 191.
+
+**Amendments.**
+
+- **ADR-0072 §3, `Amended 2026-09-11 (D19.4)`** — one rule and four precisions:
+  1. **A link completes only while the session that asked is live.** Without this, a link started by a session in somebody else's hands could complete after the owner's reset had ended that session and removed every identity — reopening the class the operator's decision closed.
+  2. "CSRF-guarded" on a bearer route is the bearer token (ADR-0029). The double-submit guard would be inert on `/user/profile`, so it is not mounted, and the link start has no limiter of its own.
+  3. Unlink's order of answers, and unlink mounted without a client.
+  4. The administrative reset's audit shape. It writes no row of its own, so the record's "beside the row it already writes" was inexact.
+  5. The set-password link's budget.
+- **The plan's step 4, Postman.** The collection never changes a fixture's credentials, and only Google can restore an identity. So the fixture's identity is only read and refused: `me`, a wrong-password unlink, and a read showing it stayed. The run's own account covers the `404`, the link start (either answer) and `set-link`. The `204` unlink and the resets' removal are the integration tier's.
+
+**Review.** The step asks for `security-reviewer` plus one bounded diff review. Both were launched as agents, but their results never reached this session: the agent calls returned asynchronously and the session could not wait on them. On the coordinator's instruction, the bounded pass was **done by the builder over the diff, not by an independent reviewer**. The operator may want an independent `security-reviewer` pass before `/ship`. Findings:
+
+- **Fixed — two spec claims had no test.** The requirement named `#error=CONFLICT` for a second Google account and the no-op re-link; there are now integration cases for both, with matching scenarios.
+- **Logged, pending the operator — a stolen session can pre-empt a recovery with `set-link`.** A session in somebody else's hands can link their Google account; that is §3's design, since link needs only the session. The owner then asks `forgot`. Before the owner follows that link, the same session calls `set-link`, whose mint supersedes the owner's anonymous link (ADR-0071 §1's rule). If the owner then follows the newest message, the reset keeps the identities, and the other person keeps signing in by subject.
+  - It needs a live stolen session and an owner who follows the second of two identical-looking mails.
+  - Closing it is a decision on 0071 §1's supersession rule. For example, `set-link` could decline to supersede a live mailbox-minted link, or a session-minted consume could keep only when no anonymous link was superseded. That is not a build step's to make.
+- **Logged — a narrow race between a link callback and a reset.** The link's transaction reads the session as live, and a reset committing in the same milliseconds deletes the identities before the link's insert commits (READ COMMITTED), so the identity survives. Closing it means locking the account row in both transactions, or having the reset revoke sessions before it unlinks.
+- **Carried to `D19.5`, from `D19.3`'s log.** Link refusals now reach `/auth/google#error=…`, which renders the sign-in's "that did not work" sentence and a `/login` link. For a signed-in person whose link failed (`AUTH_IDENTITY_TAKEN`, `CONFLICT`, an ended session), the landing route should offer the way back to Security instead. Draw the `#linked` notice only when `identities` lists the provider, as `D19.3` noted.
+
+**The gate — `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`.**
+
+- **The first run failed once**, on `apps/admin` `users-manage.test.tsx`, "keeps the operator where they are when the mint is refused". It is a `findByText` that took 4.9 s under the parallel load. This step does not touch the file, and it passed alone (39/39).
+- **The second run, and a third after the review's tests, exited `0`.** Figures are from the third:
+
+| Link           | Result                                                                                                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lint`         | 17/17                                                                                                                                                                                           |
+| `check-types`  | 16/16                                                                                                                                                                                           |
+| `test`         | 15/15 at **0 cached**. api **766** unit (755 at `D19.3`) and **805** integration (789); `@repo/contracts` **246** (245); customer 257; admin 534; `@repo/api-client` 55; `@repo/db` 101 and 104 |
+| `size`         | 4/4, no budget raised. Customer `js` 298.9 of 309.6 kB, `entry` 108.8 of 111.3 kB; admin `js` 353.9 of 371.1 kB                                                                                 |
+| `format:check` | "All matched files use Prettier code style!"                                                                                                                                                    |
+
+Beside the gate: `pnpm check` green; `pnpm docs:check` clean (13 spec files); `pnpm test:postman` 207 requests, 631 assertions, 0 failed, against the dev stack with no Google client.
+
+**Pending the operator.**
+
+- **An independent review.** The bounded pass was the builder's own, as above.
+- **The `set-link` supersession finding above**, which is a decision on ADR-0071 §1.
+- **Existence signal on a non-hosted address.** Now that creation is open again, a verified but non-hosted claim answers `LINK_REQUIRED` when an account holds the address and creates one when nobody does. This is what the operator's decision accepted; the `D19.2` amendment's "no existence signal" no longer holds, which §1's last amendment implies but does not spell out.
+- **Browser-only**: nothing in this step. The SPA half is `D19.5`.

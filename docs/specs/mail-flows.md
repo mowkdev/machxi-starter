@@ -68,8 +68,8 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/auth-register.
 ## Requirement: A password is recovered by mail on both segments
 
 `POST /api/v1/{admin,user}/auth/password/forgot { email }` answers `202 { accepted: true }` for every address and mails a link only to an account of that segment that is `active`. The link lands on the app the account signs into — the admin app for staff, the customer app for users — with its token in the fragment. `POST /api/v1/{admin,user}/auth/password/reset { token, newPassword }` consumes the token, sets the new hash, writes an `account.password_reset` audit row, **revokes every session of the account** and answers `204` with no session of its own. A token minted on one segment is not redeemable on the other. `forgot` carries three budgets over an hour: `RATE_LIMIT_PASSWORD_RESET_MAX` per caller and address together, `RATE_LIMIT_MAILBOX_MAX` per address alone, and `RATE_LIMIT_MAIL_SOURCE_MAX` per caller alone — the last shared with `resend-verification` and `register`, so it bounds one source's total mail to strangers however many addresses it names.
-Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
-Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`, `apps/api/src/core/middleware/__tests__/rate-limit.test.ts`
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
+Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`, `apps/api/src/core/middleware/__tests__/rate-limit.test.ts`
 
 ### Scenario: Asking for a link as an account holder
 
@@ -90,6 +90,16 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/rate-limit.int
 
 - **WHEN** the token from the message is posted to `reset` with a new password
 - **THEN** the answer is `204` with no body and no `Set-Cookie`, the old password answers `401 AUTH_INVALID_CREDENTIALS` at login, the new one signs in, and an `account.password_reset` audit row names the account as actor with no acting-as
+
+### Scenario: An account that had linked Google
+
+- **WHEN** a user-segment account with a Google identity resets its password from a link `forgot` sent
+- **THEN** the identity is removed in the same commit with an `account.identity_unlinked { provider, via: "reset" }` row — the mailbox recovers the account from every way in ([`federated-identity.md`](federated-identity.md))
+
+### Scenario: A link the account's own session asked for
+
+- **WHEN** the reset consumes a link minted by `POST /user/profile/password/set-link` rather than by `forgot`
+- **THEN** the password is set and the account's identities are kept — the session asked and the mailbox confirmed
 
 ### Scenario: The sessions that existed before
 

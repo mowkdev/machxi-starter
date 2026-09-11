@@ -24,7 +24,9 @@
   "AUTH_CURRENT_PASSWORD_INVALID": "That is not your current password.",
   "AUTH_IMPERSONATION_REFUSED": "That cannot be done while impersonating this account. The account holder has to do it themselves.",
   "AUTH_FEDERATED_SIGNUP_CLOSED": "New accounts cannot be created here right now. If you already have an account, sign in with your email and password.",
-  "AUTH_FEDERATED_LINK_REQUIRED": "Google can't confirm this email address for us. Sign in with your password, or create an account with one, then link Google from your account's security settings.",
+  "AUTH_FEDERATED_LINK_REQUIRED": "Google can't confirm this email address for us, and an account already uses it. Sign in with your password, then link Google from your account's security settings.",
+  "AUTH_IDENTITY_TAKEN": "That Google account is already linked to another account here. Unlink it there first, or choose a different Google account.",
+  "AUTH_LAST_CREDENTIAL": "Google is the only way into this account. Set a password first, then you can unlink it.",
   "CSRF_TOKEN_INVALID": "That request could not be verified. Try again.",
 
   "USER_EMAIL_TAKEN": "That email address is already in use.",

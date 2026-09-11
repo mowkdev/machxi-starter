@@ -63,6 +63,15 @@ describe("ERROR_CODES", () => {
     ).toHaveLength(2);
   });
 
+  it("names the two conflicts an account's own ways in can meet (ADR-0072 §3)", () => {
+    // A Google account another account signs in with, and the last way into
+    // a passwordless account — both `409`s, both about state rather than who
+    // is asking.
+    expect(ERROR_CODES).toEqual(
+      expect.arrayContaining(["AUTH_IDENTITY_TAKEN", "AUTH_LAST_CREDENTIAL"]),
+    );
+  });
+
   it("covers the domain conflicts the modules own", () => {
     expect(ERROR_CODES).toEqual(
       expect.arrayContaining([

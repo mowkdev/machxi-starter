@@ -1,10 +1,10 @@
 # Federated identity
 
-A customer signs in to the customer app, or creates an account there, through Google: plain OpenID Connect with PKCE, the transaction between the start and the callback held in one signed cookie, and the callback handing the app a sixty-second single-use token in a URL fragment, exchanged for a session the way the verification link's is ([`mail-flows.md`](mail-flows.md)). Staff have no federated sign-in. Where the refresh token travels afterwards is [`csrf-and-cookies.md`](csrf-and-cookies.md); which ways into an account exist is on `me` ([`auth-sessions.md`](auth-sessions.md)) and on the profile ([`users-and-profile.md`](users-and-profile.md)).
+A customer signs in to the customer app, or creates an account there, through Google: plain OpenID Connect with PKCE, the transaction between the start and the callback held in one signed cookie, and the callback handing the app a sixty-second single-use token in a URL fragment, exchanged for a session the way the verification link's is ([`mail-flows.md`](mail-flows.md)). Staff have no federated sign-in. Where the refresh token travels afterwards is [`csrf-and-cookies.md`](csrf-and-cookies.md); which ways into an account exist is on `me` ([`auth-sessions.md`](auth-sessions.md)) and on the profile ([`users-and-profile.md`](users-and-profile.md)). An account links and unlinks Google itself, sets a password by a mailed link, and loses every identity to a reset it did not ask for from a session.
 
 ## Requirement: A person signs in through Google
 
-`POST /api/v1/public/auth/google/start` takes a JSON body — anything else is `400 VALIDATION_ERROR` — and answers `200 { authorizationUrl }`: Google's authorization endpoint carrying a fresh `state`, `nonce` and PKCE `S256` challenge. It sets `__Host-machxi.oidc` (`HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, ten minutes), whose value is the signed transaction. `GET /api/v1/public/auth/google/callback` spends that transaction on every outcome and answers `302` to `${CUSTOMER_APP_URL}/auth/google` with either `#token=<handoff>` or `#error=<code>` and nothing else in the fragment. On a refusal it clears the cookie; on a sign-in it replaces it with the **handoff binding**, which names the token and lives as long as it does. It resolves the person Google vouched for in this order: **by subject**, whatever address either side now carries; **by address**, only when Google says the address is verified, Google hosts the mailbox, and a live `active` account holds it — which links the identity to that account; **by creation**, only when Google says the address is verified and hosts it, no account holds it, and `FEATURE_USER_REGISTRATION` is on — an `active` account with no password, its address stamped proven, its personal organization and the identity, in one commit. `POST /api/v1/public/auth/google/exchange { token }` answers only in the browser holding the binding for that token: it spends the handoff once and answers `200` with login's body on whichever transport the caller asked for, and clears the cookie. A spent, expired, unknown or unbound token, or one whose account is no longer `active`, answers `401 UNAUTHENTICATED`.
+`POST /api/v1/public/auth/google/start` takes a JSON body — anything else is `400 VALIDATION_ERROR` — and answers `200 { authorizationUrl }`: Google's authorization endpoint carrying a fresh `state`, `nonce` and PKCE `S256` challenge. It sets `__Host-machxi.oidc` (`HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, ten minutes), whose value is the signed transaction. `GET /api/v1/public/auth/google/callback` spends that transaction on every outcome and answers `302` to `${CUSTOMER_APP_URL}/auth/google` with either `#token=<handoff>` or `#error=<code>` and nothing else in the fragment. On a refusal it clears the cookie; on a sign-in it replaces it with the **handoff binding**, which names the token and lives as long as it does. It resolves the person Google vouched for in this order: **by subject**, whatever address either side now carries; **by address**, only when Google says the address is verified, Google hosts the mailbox, and a live `active` account holds it — which links the identity to that account; **by creation**, only when Google says the address is verified — whether or not Google hosts it — no account holds it, and `FEATURE_USER_REGISTRATION` is on — an `active` account with no password, its address stamped proven, its personal organization and the identity, in one commit. `POST /api/v1/public/auth/google/exchange { token }` answers only in the browser holding the binding for that token: it spends the handoff once and answers `200` with login's body on whichever transport the caller asked for, and clears the cookie. A spent, expired, unknown or unbound token, or one whose account is no longer `active`, answers `401 UNAUTHENTICATED`.
 Records: [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0029](../adr/0029-browser-token-transport.md), [ADR-0071](../adr/0071-mail-flows.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0020](../adr/0020-security-baseline.md)
 Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/src/modules/auth/__tests__/auth.federated.service.test.ts`, `apps/api/src/core/oidc/__tests__/transaction.test.ts`
 
@@ -53,10 +53,15 @@ Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/src/modules
 - **WHEN** Google vouches for a verified address it hosts, and an `active` account with a password holds it
 - **THEN** the identity is linked to that account with an `account.identity_linked` row, the answer is `#token=…` for that account, and its password still signs in
 
-### Scenario: An address Google does not host
+### Scenario: An address Google does not host, held by an account
 
-- **WHEN** Google says a verified address it does not host belongs to the person, whether or not a live account holds it
-- **THEN** the answer is `#error=AUTH_FEDERATED_LINK_REQUIRED` in both cases, and nothing is linked or created — the person signs in or registers with a password and links Google from the account
+- **WHEN** Google says a verified address it does not host belongs to the person, and a live account holds it
+- **THEN** the answer is `#error=AUTH_FEDERATED_LINK_REQUIRED` and nothing is linked — the person signs in with the password and links Google from the account
+
+### Scenario: An address Google does not host, held by nobody
+
+- **WHEN** Google says a verified address it does not host belongs to the person, nobody holds it, and registration is on
+- **THEN** an `active` account with no password and one Google identity is created, and the answer is `#token=…` — the mailbox can still recover it, because a reset removes every identity
 
 ### Scenario: The holder never proved the address
 
@@ -87,6 +92,98 @@ Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/src/modules
 
 - **WHEN** the provider does not answer the code exchange
 - **THEN** the answer is `#error=SERVICE_UNAVAILABLE`, and a start that cannot load Google's metadata answers `503 SERVICE_UNAVAILABLE`
+
+## Requirement: An account keeps its ways in under its owner's control
+
+`POST /api/v1/user/profile/identities/google/start` is the sign-in's start for an account that is signed in: a JSON body or nothing, answering `200 { authorizationUrl }` and setting the same transaction cookie, which now carries the account and the session that asked. Its callback **links** instead of signing in: the Google account joins the caller's account — its address need not match — with an `account.identity_linked { provider, via: "link" }` row, and the answer is `302 …/auth/google#linked=google` with no token and the cookie cleared. It links only while the session that asked is still live and not impersonated; a Google account another account signs in with is `#error=AUTH_IDENTITY_TAKEN`; one the caller already holds is linked again as a no-op; a second Google account on an account that has one is `#error=CONFLICT`. `DELETE /api/v1/user/profile/identities/:provider { currentPassword }` answers `409 AUTH_LAST_CREDENTIAL` when the account has no password, `403 AUTH_CURRENT_PASSWORD_INVALID` when the password does not verify, `404 NOT_FOUND` when nothing of that provider is linked, and otherwise `204`, removing the identity with an `account.identity_unlinked { provider, via: "unlink" }` row and leaving every session as it was. Both routes, and the set-password link below, answer `403 AUTH_IMPERSONATION_REFUSED` on an impersonated session. The link start exists only where the Google client is configured; unlink is mounted everywhere.
+Records: [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/src/modules/auth/__tests__/auth.federated.service.test.ts`, `apps/api/src/core/oidc/__tests__/transaction.test.ts`
+
+### Scenario: The link start
+
+- **WHEN** a signed-in account posts the link start
+- **THEN** the answer is `200 { authorizationUrl }` and the transaction cookie is set `SameSite=Lax`
+
+### Scenario: Linking Google from the account
+
+- **WHEN** the callback for a link start carries a Google account nobody here signs in with
+- **THEN** exactly one identity is written for the caller, an `account.identity_linked` row says `via: "link"`, and the answer is `302 …/auth/google#linked=google` with no token and no binding
+
+### Scenario: A Google account another account uses
+
+- **WHEN** the callback for a link start carries a Google account already linked to somebody else
+- **THEN** the answer is `#error=AUTH_IDENTITY_TAKEN` and nothing is written
+
+### Scenario: A second Google account
+
+- **WHEN** an account that already has a Google identity links a different Google account
+- **THEN** the answer is `#error=CONFLICT`, the first identity stays and the second is not written — the owner unlinks the old one first
+
+### Scenario: The same Google account again
+
+- **WHEN** an account links the Google account it already holds
+- **THEN** the answer is `#linked=google` and nothing new is written
+
+### Scenario: The session ended before the callback
+
+- **WHEN** the session that started a link is revoked before Google sends the browser back
+- **THEN** the answer is `#error=UNAUTHENTICATED` and nothing is linked — a reset that ends the session is not followed by the link it started
+
+### Scenario: The last way in
+
+- **WHEN** an account with no password unlinks Google
+- **THEN** the answer is `409 AUTH_LAST_CREDENTIAL` and the identity stays
+
+### Scenario: Unlinking with the wrong password
+
+- **WHEN** an account with a password unlinks Google with a `currentPassword` that does not verify
+- **THEN** the answer is `403 AUTH_CURRENT_PASSWORD_INVALID` and the identity stays
+
+### Scenario: Unlinking
+
+- **WHEN** an account with a password unlinks Google with the right `currentPassword`
+- **THEN** the answer is `204`, the identity is gone, an `account.identity_unlinked` row names the account as actor with `via: "unlink"`, the caller's session still answers, and a second unlink is `404 NOT_FOUND`
+
+### Scenario: Support opens the account
+
+- **WHEN** an impersonated session posts the link start, unlinks, or asks for a set-password link
+- **THEN** each answers `403 AUTH_IMPERSONATION_REFUSED` and nothing changes, while the account's own session may do all three
+
+### Scenario: No client, still a way out
+
+- **WHEN** the API runs without the Google client
+- **THEN** the link start answers `404 ROUTE_NOT_FOUND`, and unlink still answers as above
+
+## Requirement: A reset recovers the account from every way in
+
+A password written without the account's own authority removes every federated identity of the account, in the transaction that writes it, with one `account.identity_unlinked` row each saying `via: "reset"`: the reset by mail (`POST /api/v1/user/auth/password/reset` consuming a link `forgot` sent) and the administrative reset (`POST /api/v1/admin/users/:id/password`). A change of password made with the current one removes nothing. `POST /api/v1/user/profile/password/set-link` — for any signed-in account, with a password or without — answers `202 { accepted: true }` and mails the reset link to the account's own address; the `reset` that consumes **that** link sets the password and keeps the identities. Asking for one is limited to `RATE_LIMIT_PASSWORD_RESET_MAX` an hour per account, in a counter of its own.
+Records: [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
+Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
+
+### Scenario: A reset by mail
+
+- **WHEN** an account with a password and a Google identity resets its password from a link `forgot` sent
+- **THEN** the answer is `204`, the identity is gone, an `account.identity_unlinked` row names the account as actor with `via: "reset"`, and the Google account no longer resolves to anybody
+
+### Scenario: A reset by an operator
+
+- **WHEN** an admin resets the password of an account with a Google identity
+- **THEN** the answer is `204`, the identity is gone, and an `account.identity_unlinked` row carries the account as its subject with `via: "reset"`
+
+### Scenario: A change with the current password
+
+- **WHEN** an account with a Google identity changes its password with the current one
+- **THEN** the identity stays
+
+### Scenario: Setting a password from the account
+
+- **WHEN** a signed-in account with no password asks for the set-password link and the link is consumed by `reset`
+- **THEN** `set-link` answered `202 { accepted: true }`, one message carried a `…/reset-password#token=…` link, the new password signs in, and the Google identity is still there with no `account.identity_unlinked` row
+
+### Scenario: Asking for set-password links repeatedly
+
+- **WHEN** one account asks for the set-password link more than `RATE_LIMIT_PASSWORD_RESET_MAX` times in an hour
+- **THEN** the next ask answers `429 RATE_LIMITED`, while `forgot` for the same address answers on its own budget
 
 ## Requirement: The start and the callback are rationed per source
 

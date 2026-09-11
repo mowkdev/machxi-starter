@@ -90,6 +90,12 @@ export const createUserRouter = (container: Container): Router => {
       // and a counter of its own keeps that from spending the recovery budget
       // for the same mailbox.
       mailboxRateLimiter: container.rateLimiters.emailChangeMailbox,
+      // The set-password link's budget (ADR-0072 §3, amended at `D19.4`),
+      // keyed on the account, whose own address is the only recipient.
+      setPasswordLinkRateLimiter: container.rateLimiters.setPasswordLink,
+      // The link start (ADR-0072 §3), mounted only where the Google client is
+      // configured — `undefined` otherwise, which leaves the path a `404`.
+      federated: container.controllers.federated,
     }),
   );
 

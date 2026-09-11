@@ -485,6 +485,41 @@ export const createVerificationRateLimiter = (
   });
 
 /**
+ * `RATE_LIMIT_PASSWORD_RESET_MAX / RATE_LIMIT_PASSWORD_RESET_WINDOW /
+ * **principal**` on `POST /user/profile/password/set-link` (ADR-0072 §3,
+ * amended at `D19.4`) — `3 / hour` by default, the recovery budget's number
+ * in a counter of its own.
+ *
+ * **The caller's account is the key**, and on this route it is the mailbox's
+ * key too: the link goes to the account's own address and nowhere else, so
+ * "how many of these may one account ask for" and "how many may that mailbox
+ * receive" are one question. The source address would be the wrong axis — an
+ * account signed in from two networks is still one inbox. The number is
+ * `forgot`'s because the message is `forgot`'s; the counter is its own so
+ * asking from the security section never spends the budget the same address
+ * needs to recover a password anonymously, or the other way round.
+ *
+ * Keyed on `ctx.principal`, so it mounts **after** `authenticate` —
+ * {@link createImpersonationRateLimiter}'s refinement of ADR-0011's order,
+ * with its unreachable per-address fallback for the same reason.
+ */
+export const createSetPasswordLinkRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
+    limit: config.rateLimit.passwordResetMax,
+    keyGenerator: (req) => {
+      const { principal } = req.ctx;
+
+      return principal === null
+        ? `anon:${ipKey(req)}`
+        : `${principal.kind}:${principal.id}`;
+    },
+  });
+
+/**
  * The email from a login body, normalised for use in a key.
  *
  * This reads `req.body` directly, which no controller may do (ADR-0011) — the

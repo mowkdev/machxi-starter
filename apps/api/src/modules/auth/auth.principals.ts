@@ -255,4 +255,6 @@ export const createFederatedAccounts = (
     (await repository.identitiesOf([userId], tx)).map(
       toFederatedIdentityResource,
     ),
+
+  unlinkAll: repository.unlinkIdentities,
 });

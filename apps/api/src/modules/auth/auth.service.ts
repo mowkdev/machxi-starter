@@ -266,11 +266,14 @@ export interface AuthServiceDeps {
     Pick<OrganizationsService, "ensurePersonalOrganizationFor"> | undefined;
   /**
    * The account's linked identities, wired on the **user** service only
-   * (ADR-0072 §3): `me` answers which ways in an account has, and the staff
-   * population has no federated login to answer about (§5). Narrowed to the
-   * one read, so this service cannot reach the linking half of the seam.
+   * (ADR-0072 §3): `me` answers which ways in an account has, and the reset
+   * by mail removes them all (§3, amended — built at `D19.4`). The staff
+   * population has no federated login to answer about (§5), so its reset has
+   * nothing to remove. Narrowed to the read and the removal, so this service
+   * cannot reach the linking half of the seam.
    */
-  readonly federated?: Pick<FederatedAccounts, "identitiesOf"> | undefined;
+  readonly federated?:
+    Pick<FederatedAccounts, "identitiesOf" | "unlinkAll"> | undefined;
   /**
    * ADR-0071 §1's mint and consume, wired on both populations.
    *
@@ -314,6 +317,21 @@ export interface EmailChangePayload {
   readonly newEmail: string;
   readonly locale: Locale;
 }
+
+/**
+ * Whether a claimed `reset_password` token was minted by a **session** — the
+ * set-password link of ADR-0072 §3 — rather than by the anonymous `forgot`.
+ *
+ * The one fact that decides whether a reset keeps the account's federated
+ * identities: the session asked and the mailbox confirmed, which is the
+ * account's own authority twice over. Anything else — no payload, which is
+ * every link `forgot` mints, or a payload that does not say exactly this —
+ * reads as the mailbox alone, and the identities go. The safe direction for
+ * a malformed row to fall.
+ */
+export const requestedBySession = (
+  payload: Record<string, unknown> | null,
+): boolean => payload?.["requestedBy"] === "session";
 
 /** Type guard over `LOCALES`, so a stored value that is no longer one is dropped. */
 const isLocale = (value: unknown): value is Locale =>
@@ -1855,9 +1873,11 @@ export const createAuthService = ({
      * `POST /api/v1/{admin,user}/auth/password/reset` (ADR-0071 §4).
      *
      * The link's whole effect, in one transaction: claim the token, write the
-     * new hash, record it, and **revoke every session of the account** — the
-     * person may well be recovering it from somebody, and a reset that left
-     * the thief's session alive would be a reset in name only.
+     * new hash, **remove every federated identity** unless the session itself
+     * asked for the link (ADR-0072 §3, amended at `D19.4`), record it, and
+     * **revoke every session of the account** — the person may well be
+     * recovering it from somebody, and a reset that left the thief's session
+     * or the thief's Google account in place would be a reset in name only.
      *
      * **No session is issued**, and that is the decision ADR-0071 §4 states
      * against the common shortcut: the link proved the mailbox, not the
@@ -1885,7 +1905,7 @@ export const createAuthService = ({
         hasher.hash(newPassword),
       );
 
-      const { principalId, revoked } = await transaction(async (tx) => {
+      const reset = await transaction(async (tx) => {
         const claimed = await accountTokens.consume(
           ctx,
           { purpose: "reset_password", principalType: population, token },
@@ -1910,6 +1930,30 @@ export const createAuthService = ({
         }
 
         await principals.updatePasswordHash(principal.id, passwordHash, at, tx);
+
+        // **Every federated identity goes with the old password** (ADR-0072
+        // §3, amended — the delta on ADR-0071 §4 built at `D19.4`), for the
+        // reason the session sweep below exists: the account may be being
+        // recovered from somebody, and a Google account attached to it is a
+        // way in that sweep cannot see. One row each, the provider named and
+        // the subject never. **Kept** only when the link was the session's
+        // own set-password link — the session asked, the mailbox confirmed.
+        const removed =
+          federated === undefined || requestedBySession(claimed.payload)
+            ? []
+            : await federated.unlinkAll(principal.id, tx);
+
+        for (const provider of removed) {
+          await audit.record(
+            ctx,
+            {
+              event: "account.identity_unlinked",
+              identities: { actor: { type: population, id: principal.id } },
+              data: { provider, via: "reset" },
+            },
+            tx,
+          );
+        }
 
         // In the same commit as the new hash, beside the session sweep below
         // and for its reason (`D18.9`'s `security-reviewer`): a pending
@@ -1953,11 +1997,15 @@ export const createAuthService = ({
           tx,
         );
 
-        return { principalId: principal.id, revoked: ended.revoked } as const;
+        return {
+          principalId: principal.id,
+          revoked: ended.revoked,
+          unlinked: removed.length,
+        } as const;
       });
 
       ctx.logger.info(
-        { population, principalId, revoked },
+        { population, ...reset },
         "password reset from a mailed link",
       );
     },

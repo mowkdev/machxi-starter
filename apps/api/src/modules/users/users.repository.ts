@@ -922,6 +922,52 @@ export const createUsersRepository = (db: DbExecutor) =>
       return inserted.length > 0;
     },
 
+    /**
+     * `DELETE /api/v1/user/profile/identities/:provider` — the owner removing
+     * one way in (ADR-0072 §3). By (`user_id`, `provider`), which is the
+     * second unique constraint and so at most one row.
+     *
+     * @returns `false` when the account had no identity of that provider.
+     */
+    unlinkIdentity: async (
+      userId: string,
+      provider: FederatedProvider,
+      tx: DbExecutor = db,
+    ): Promise<boolean> => {
+      const removed = await tx
+        .delete(federatedIdentities)
+        .where(
+          and(
+            eq(federatedIdentities.userId, userId),
+            eq(federatedIdentities.provider, provider),
+          ),
+        )
+        .returning({ id: federatedIdentities.id });
+
+      return removed.length > 0;
+    },
+
+    /**
+     * Every identity of the account, removed on the caller's executor — what a
+     * password written without the account's own authority does (ADR-0072 §3,
+     * amended): the reset by mail and the administrative reset.
+     *
+     * Returns the providers removed, one per row, so the caller writes one
+     * `account.identity_unlinked` row each; the subjects never leave this
+     * layer. `softDelete` above is the other statement that removes them all.
+     */
+    unlinkIdentities: async (
+      userId: string,
+      tx: DbExecutor = db,
+    ): Promise<readonly FederatedProvider[]> => {
+      const removed = await tx
+        .delete(federatedIdentities)
+        .where(eq(federatedIdentities.userId, userId))
+        .returning({ provider: federatedIdentities.provider });
+
+      return removed.map((row) => row.provider);
+    },
+
     /** A sign-in through an identity that was already linked (ADR-0072 §1). */
     touchIdentityLogin: async (
       id: string,

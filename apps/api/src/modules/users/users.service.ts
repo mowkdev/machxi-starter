@@ -3,10 +3,12 @@ import type {
   ChangePasswordBody,
   CreateUserBody,
   DeleteProfileBody,
+  FederatedProvider,
   ListUsersQuery,
   Page,
   SetEmailBody,
   SetPasswordBody,
+  UnlinkIdentityBody,
   UpdateProfileBody,
   UpdateUserBody,
   UserProfileResource,
@@ -20,12 +22,14 @@ import type { LimitedHasher } from "../../core/auth/index.js";
 import { requirePopulation } from "../../core/auth/index.js";
 import type { Audit } from "../../core/audit/index.js";
 import type { RequestContext } from "../../core/context/index.js";
+import { notFound } from "../../core/errors/index.js";
 import { toPage } from "../../core/http/index.js";
 import { createMailDelivery } from "../../core/mail/index.js";
 import type { MailSender, MailTemplates } from "../../core/mail/index.js";
 import type { AccountTokens } from "../../core/tokens/index.js";
 import {
   currentPasswordInvalid,
+  lastCredential,
   REVOKE_REASONS,
   type AuthService,
 } from "../auth/index.js";
@@ -526,7 +530,8 @@ export const createUsersService = ({
      *
      * Every session of the subject ends, with no exception: the self-service
      * case below spares the caller because the caller proved ownership, and
-     * here the subject proved nothing.
+     * here the subject proved nothing. Every federated identity goes too
+     * (ADR-0072 §3, amended at `D19.4`), for the same reason.
      */
     setPassword: async (
       ctx: RequestContext,
@@ -543,8 +548,34 @@ export const createUsersService = ({
       const record = await readWritable(id);
       const passwordHash = await hasher.hash(body.password);
 
-      const revoked = await transaction(async (tx) => {
+      const { revoked, unlinked } = await transaction(async (tx) => {
         await repository.updatePasswordHash(record.id, passwordHash, at, tx);
+
+        // **Every federated identity goes with the old password** (ADR-0072
+        // §3, amended — the delta on ADR-0027 built at `D19.4`), for the
+        // reason every session does below: the plausible cause of a staff
+        // reset is an account in somebody else's hands, and a Google account
+        // attached to it is a way in no session sweep can see. One row each,
+        // `setEmail`'s shape — the operator is the actor on the context and
+        // the subject rides in the data — and the subject's Google `sub`
+        // never.
+        const removed = await repository.unlinkIdentities(record.id, tx);
+
+        for (const provider of removed) {
+          await audit.record(
+            ctx,
+            {
+              event: "account.identity_unlinked",
+              data: {
+                subjectType: "user",
+                subjectId: record.id,
+                provider,
+                via: "reset",
+              },
+            },
+            tx,
+          );
+        }
 
         // The administrative twin of `changePassword`'s sweep, and it belongs
         // here more than there: the plausible reason for a staff reset is that
@@ -559,15 +590,18 @@ export const createUsersService = ({
           tx,
         );
 
-        return sessions.revokeSessionsFor(ctx, {
-          principalId: record.id,
-          reason: REVOKE_REASONS.passwordReset,
-          tx,
-        });
+        return {
+          revoked: await sessions.revokeSessionsFor(ctx, {
+            principalId: record.id,
+            reason: REVOKE_REASONS.passwordReset,
+            tx,
+          }),
+          unlinked: removed.length,
+        } as const;
       });
 
       ctx.logger.info(
-        { userId: record.id, revoked },
+        { userId: record.id, revoked, unlinked },
         "user password reset by staff",
       );
     },
@@ -920,6 +954,123 @@ export const createUsersService = ({
         { userId: principal.id },
         "address change requested, confirmation link sent",
       );
+    },
+
+    /**
+     * `POST /api/v1/user/profile/password/set-link` — "Set a password"
+     * (ADR-0072 §3, amended at `D19.4`).
+     *
+     * **A link, not a password field.** It mints the caller's own
+     * `reset_password` token — ADR-0071 §4's purpose, template, screen and
+     * consume, none of them new — carrying `requestedBy: "session"` in its
+     * payload, and mails it to the account's proven address. The `reset` that
+     * consumes such a token **keeps** the federated identities where the
+     * anonymous `forgot`'s removes them: the session asked and the mailbox
+     * confirmed, which is the account's own authority twice over. A stolen
+     * session alone therefore cannot mint itself a permanent credential,
+     * which is why §Alternatives turned down a set-password endpoint on the
+     * session.
+     *
+     * Any account may ask, with a password or without; the mint supersedes
+     * the live `reset_password` link for the account, so one link works
+     * (ADR-0071 §1). The route refuses an impersonated session (ADR-0057 §5,
+     * a delta of 0072) and carries the recovery limiter's number keyed on
+     * the caller, in a counter of its own.
+     *
+     * The locale is the account's, read through the settings service, for
+     * `requestEmailChange`'s reason: the caller is an account, and its row
+     * already states the language.
+     */
+    requestPasswordSetLink: async (ctx: RequestContext): Promise<void> => {
+      const principal = self(ctx);
+      const record = await readSelf(principal.id);
+      const { locale } = await locales.get(ctx);
+
+      const { token } = await accountTokens.mint(ctx, {
+        purpose: "reset_password",
+        principal: { type: "user", id: principal.id },
+        payload: { requestedBy: "session" },
+      });
+
+      deliverDetached(
+        ctx,
+        record.email,
+        { population: "user", purpose: "reset_password" },
+        mailTemplates.passwordReset({ token, locale, population: "user" }),
+      );
+
+      ctx.logger.info(
+        { userId: principal.id },
+        "set-password link sent at the session's request",
+      );
+    },
+
+    /**
+     * `DELETE /api/v1/user/profile/identities/:provider` — the owner removing
+     * one way in (ADR-0072 §3).
+     *
+     * The order is the decision. **No password first**: an account whose
+     * `password_hash` is null would be left with no way in, and it has no
+     * current password to present, so it is refused `409
+     * AUTH_LAST_CREDENTIAL` before one is asked for. Then **the current
+     * password**, ADR-0027's rule wherever a credential is removed — severing
+     * the owner's own way back in is takeover-adjacent — refused with the
+     * `403` a wrong one gets everywhere. Only then is an unlinked provider a
+     * `404`, which by that point tells the caller nothing about anybody but
+     * themselves.
+     *
+     * **No session changes**, the caller's or any other: an identity is a
+     * way in, not a session, and the record leaves the sessions alone. The
+     * route refuses an impersonated session (ADR-0057 §5, a delta of 0072).
+     */
+    unlinkIdentity: async (
+      ctx: RequestContext,
+      provider: FederatedProvider,
+      body: UnlinkIdentityBody,
+    ): Promise<void> => {
+      const principal = self(ctx);
+      const record = await readSelf(principal.id);
+
+      if (record.passwordHash === null) {
+        ctx.logger.warn(
+          { userId: principal.id, provider },
+          "unlink refused, it is the account's last credential",
+        );
+
+        throw lastCredential();
+      }
+
+      if (!(await hasher.verify(record.passwordHash, body.currentPassword))) {
+        ctx.logger.warn(
+          { userId: principal.id, provider },
+          "unlink refused, current password did not verify",
+        );
+
+        throw currentPasswordInvalid();
+      }
+
+      const removed = await transaction(async (tx) => {
+        if (!(await repository.unlinkIdentity(principal.id, provider, tx))) {
+          return false;
+        }
+
+        // The actor is the account, off the context: the route refuses an
+        // impersonated session, so there is no second identity to record.
+        await audit.record(
+          ctx,
+          {
+            event: "account.identity_unlinked",
+            data: { provider, via: "unlink" },
+          },
+          tx,
+        );
+
+        return true;
+      });
+
+      if (!removed) throw notFound("No identity of that provider is linked");
+
+      ctx.logger.info({ userId: principal.id, provider }, "identity unlinked");
     },
 
     /**

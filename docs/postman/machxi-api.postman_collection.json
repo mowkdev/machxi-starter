@@ -4525,6 +4525,266 @@
             },
             "description": "`403` and not `401`: the session is valid and stays valid — it is the *operation* that is refused (ADR-0027). The credential is verified before anything is minted or mailed, so a wrong password cannot spend a stranger's inbox."
           }
+        },
+        {
+          "name": "Which ways into the seeded customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with hasPassword and the fixture's Google identity\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const me = pm.response.json().data;",
+                  "  pm.expect(me.hasPassword).to.eql(true);",
+                  "  pm.expect(me.identities.map(function (i) { return i.provider; })).to.include(\"google\");",
+                  "});",
+                  "",
+                  "pm.test(\"no subject anywhere in the body\", function () {",
+                  "  pm.expect(pm.response.text()).to.not.include(\"dev-fixture-google-subject\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "auth", "me"]
+            },
+            "description": "`me` carries `hasPassword` and `identities` (ADR-0072 §3). The `--dev` seeds give the customer fixture one Google identity with a synthetic subject, so this is the one account a collection can read an identity on. The subject is the key a sign-in resolves by and never leaves the API."
+          }
+        },
+        {
+          "name": "Unlink Google with the wrong password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_CURRENT_PASSWORD_INVALID\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_CURRENT_PASSWORD_INVALID\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"not-the-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/identities/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "identities", "google"]
+            },
+            "description": "Unlink asks the current password (ADR-0072 §3, ADR-0027's rule wherever a credential is removed): severing the owner's own way back in is takeover-adjacent. The fixture's identity is only ever refused here — the collection never removes it, because nothing but Google could put it back, and the next run reads it again."
+          }
+        },
+        {
+          "name": "The fixture's Google identity is still there",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and the identity stayed\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.identities.filter(function (i) { return i.provider === \"google\"; })).to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile"]
+            },
+            "description": "A refused unlink writes nothing (ADR-0072 §3). Removing an identity with the right password — `204` and an `account.identity_unlinked` row — is proved in `apps/api/test/federated-identity.int.test.ts`, against an account the suite links itself."
+          }
+        },
+        {
+          "name": "Unlink Google from an account that never linked it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND once the password has verified\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/identities/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "identities", "google"]
+            },
+            "description": "The account this run created has a password and no identity. The order is the decision (ADR-0072 §3): no password is `409 AUTH_LAST_CREDENTIAL` before anything is asked, a wrong one `403`, and only then is an unlinked provider a `404` — by which point it tells the caller nothing about anybody but themselves."
+          }
+        },
+        {
+          "name": "Start linking Google",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Two honest answers, as on the public start (ADR-0072 §3): the link start",
+                  "// exists only where GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set.",
+                  "if (pm.response.code === 404) {",
+                  "  pm.test(\"no Google client configured: 404 ROUTE_NOT_FOUND\", function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"ROUTE_NOT_FOUND\");",
+                  "  });",
+                  "} else {",
+                  "  pm.test(\"200 with the provider's authorization URL and the transaction cookie\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.authorizationUrl).to.include(\"code_challenge_method=S256\");",
+                  "    const cookie = pm.response.headers",
+                  "      .all()",
+                  "      .filter(function (h) { return h.key.toLowerCase() === \"set-cookie\"; })",
+                  "      .map(function (h) { return h.value; })",
+                  "      .find(function (v) { return v.indexOf(\".oidc=\") !== -1; });",
+                  "    pm.expect(cookie, \"a Set-Cookie for the transaction\").to.be.a(\"string\");",
+                  "    pm.expect(cookie).to.match(/SameSite=Lax/i);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locale\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/identities/google/start",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "profile",
+                "identities",
+                "google",
+                "start"
+              ]
+            },
+            "description": "The link start (ADR-0072 §3): the sign-in's start for a signed-in account, sealing the account and its session into `__Host-machxi.oidc` with the link intent. Its callback — a navigation from Google — links the identity and lands on `#linked=google`; the integration tier drives it against a fake provider, including a link whose session ended before the callback, which is refused. Refused on an impersonated session."
+          }
+        },
+        {
+          "name": "Ask for a set-password link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 { accepted: true } and nothing changed yet\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(pm.response.json().data).to.eql({ accepted: true });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{profileAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/password/set-link",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "password", "set-link"]
+            },
+            "description": "\"Set a password\" (ADR-0072 §3): the account's own reset link, minted by the session with `requestedBy: \"session\"` and mailed to the account's address — `forgot`'s template and `/reset-password` screen. The reset that consumes it keeps the account's federated identities, where the one `forgot` sends removes them. On this run's own account, because the limit is three an hour per account."
+          }
         }
       ]
     },
@@ -7952,6 +8212,83 @@
               "path": ["api", "v1", "user", "auth", "logout-all"]
             },
             "description": "Ending the customer's real sessions on every device they own locks the owner out while the impersonator stays in, which is a takeover step and not support work."
+          }
+        },
+        {
+          "name": "An impersonator may not unlink Google",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_IMPERSONATION_REFUSED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_IMPERSONATION_REFUSED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{qaPasswordRotated}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/identities/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "identities", "google"]
+            },
+            "description": "Linking and unlinking a federated identity join ADR-0057 §5's list (ADR-0072 §3): support may read the identities, and may not reshape them."
+          }
+        },
+        {
+          "name": "An impersonator may not ask for a set-password link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 AUTH_IMPERSONATION_REFUSED\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"AUTH_IMPERSONATION_REFUSED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{impersonatedAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/profile/password/set-link",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "user", "profile", "password", "set-link"]
+            },
+            "description": "A set-password link is a credential mailed on the session's say-so, so it is on ADR-0057 §5's list as well (ADR-0072 §3)."
           }
         },
         {

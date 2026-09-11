@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { USER_ROLES, USER_STATUSES } from "../enums.js";
+import { FEDERATED_PROVIDERS, USER_ROLES, USER_STATUSES } from "../enums.js";
 import { listQuerySchema, type FilterSpec } from "../list-query.js";
 import { customRule } from "../locales/source.js";
 import {
@@ -136,6 +136,31 @@ export const changeEmailBody = z.strictObject({
   currentPassword: presentedPasswordSchema,
 });
 export type ChangeEmailBody = z.infer<typeof changeEmailBody>;
+
+/**
+ * `DELETE /api/v1/user/profile/identities/:provider` — which external
+ * identity the account is unlinking (ADR-0072 §3).
+ *
+ * `FEDERATED_PROVIDERS` and nothing else, so an unknown provider is a `400`
+ * from the schema rather than a `404` the service has to reason about.
+ */
+export const identityProviderParams = z.strictObject({
+  provider: z.enum(FEDERATED_PROVIDERS),
+});
+export type IdentityProviderParams = z.infer<typeof identityProviderParams>;
+
+/**
+ * The body of that `DELETE` — the current password, for ADR-0027's rule
+ * wherever a credential is removed (ADR-0072 §3): severing the owner's own way
+ * back in is takeover-adjacent, so a session alone is not enough.
+ *
+ * A body on a `DELETE` for {@link deleteProfileBody}'s reason, and
+ * `presentedPasswordSchema` for its reason too.
+ */
+export const unlinkIdentityBody = z.strictObject({
+  currentPassword: presentedPasswordSchema,
+});
+export type UnlinkIdentityBody = z.infer<typeof unlinkIdentityBody>;
 
 /**
  * `GET /api/v1/admin/users` (ADR-0014). `q` searches email and name.

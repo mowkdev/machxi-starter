@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 199 requests in 18 folders: `Health`, `Metrics`,
+- `machxi-api.postman_collection.json` — 207 requests in 18 folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
   `User › Settings`, `Public`, `User › Organizations`, `User › Invitations`,
@@ -164,6 +164,21 @@ with the transaction cookie; the test accepts either and asserts the shape of
 whichever it got. The count above is the default clone's — a configured API
 runs one assertion more.
 
+**The ways into an account are read and refused, never removed** (ADR-0072 §3).
+`User › Profile` reads the customer fixture's Google identity on `me` — the
+`--dev` seeds give it one, with a synthetic subject that must never appear in a
+body — and asks to unlink it with the wrong password, which is `403` and leaves
+it there. It never unlinks it with the right one, and the administrative reset
+never touches the fixture either: an identity can only be put back by Google, so
+a run that removed it would fail the next one, and removing it (`204`, one
+`account.identity_unlinked` row) is proved in the integration tier against
+accounts the suite links itself. The run's own account then proves the rest of
+the order — the right password on an account with nothing linked is the
+caller's own `404` — posts the link start, which answers either way as the
+public start does, and asks for a set-password link (`202`, the reset link
+`forgot` sends, minted by the session). `Impersonation` adds unlink and the
+set-password link to the refusals.
+
 **Negative paths are deliberate, not accidental.** `403` for a manager writing to
 `/admin/users`, `409 CONFLICT` (never `USER_EMAIL_TAKEN`) for a duplicate public
 registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Each
@@ -175,7 +190,7 @@ verification limiter's `3 / hour / IP + email` — and only ever against
 **per-run** addresses, which is why both `resend-verification` requests generate
 one rather than using a fixture: a fixed address there would answer `429` on the
 fourth run of the hour and the assertion is that the two answers are identical —
-and, since the mail flows joined `Public` and recovery joined both auth folders, 183 of the global
+and, since the mail flows joined `Public` and recovery joined both auth folders, 191 of the global
 `RATE_LIMIT_GLOBAL_MAX` per 15 minutes (the three health probes and the metrics scrape sit outside every
 limiter). On the committed development profile that is a small share of the
 window, which is the point of ADR-0069: one window holds this collection, the

@@ -9,6 +9,7 @@ import { federatedHandoffInvalid } from "./auth.errors.js";
 import type {
   FederatedCallbackOutcome,
   FederatedSignInService,
+  FederatedStart,
 } from "./auth.federated.service.js";
 import type { AuthService } from "./auth.service.js";
 import type {
@@ -65,45 +66,67 @@ export const createFederatedController = ({
   const landing = (fragment: string): string =>
     `${customerAppUrl}${FEDERATED_LANDING_PATH}#${fragment}`;
 
+  /**
+   * Both starts' HTTP half: a JSON body or nothing, then the transaction
+   * cookie and `{ authorizationUrl }`.
+   *
+   * A JSON body or nothing (`D19.2`'s `security-reviewer`). ADR-0072 §2's
+   * reason for a `POST` is that the customer app's request is forced through
+   * a preflight; a cross-site form can post `text/plain`, which no parser
+   * reads and the schema would accept as `{}`, overwriting a victim's
+   * in-flight transaction and spending their start budget. A form cannot send
+   * `application/json`, and a script elsewhere cannot send it without the
+   * preflight CORS refuses. The link start leans on its bearer token as well,
+   * which no cross-site form can carry, and takes the same rule anyway: one
+   * shape for the one cookie.
+   *
+   * A fresh cookie on every start, replacing any earlier one: the attempt the
+   * person is about to make is the only one the callback should finish.
+   */
+  const answerStart = async (
+    req: ValidatedRequest<typeof federatedStartSchema>,
+    res: Response,
+    begin: () => Promise<FederatedStart>,
+  ): Promise<void> => {
+    if (!req.is("application/json")) {
+      throw validation("The start takes a JSON body", [
+        {
+          message: "Content-Type must be application/json",
+          code: "content_type",
+        },
+      ]);
+    }
+
+    const started = await begin();
+
+    cookies.setOidcCookie(res, started.transaction, service.transactionTtlSec);
+
+    respond.ok<FederatedStartResource>(res, {
+      authorizationUrl: started.authorizationUrl,
+    });
+  };
+
   return {
-    /**
-     * `200 { authorizationUrl }` and the transaction cookie (ADR-0072 §2).
-     *
-     * A fresh cookie on every start, replacing any earlier one: the attempt
-     * the person is about to make is the only one the callback should finish.
-     */
-    start: async (
+    /** `200 { authorizationUrl }` and the transaction cookie (ADR-0072 §2). */
+    start: (
       req: ValidatedRequest<typeof federatedStartSchema>,
       res: Response,
-    ): Promise<void> => {
-      // A JSON body or nothing (`D19.2`'s `security-reviewer`). ADR-0072 §2's
-      // reason for a `POST` is that the customer app's request is forced
-      // through a preflight; a cross-site form can post `text/plain`, which
-      // no parser reads and the schema would accept as `{}`, overwriting a
-      // victim's in-flight transaction and spending their start budget. A
-      // form cannot send `application/json`, and a script elsewhere cannot
-      // send it without the preflight CORS refuses.
-      if (!req.is("application/json")) {
-        throw validation("The start takes a JSON body", [
-          {
-            message: "Content-Type must be application/json",
-            code: "content_type",
-          },
-        ]);
-      }
+    ): Promise<void> =>
+      answerStart(req, res, () => service.start(req.ctx, req.valid.body)),
 
-      const started = await service.start(req.ctx, req.valid.body);
-
-      cookies.setOidcCookie(
-        res,
-        started.transaction,
-        service.transactionTtlSec,
-      );
-
-      respond.ok<FederatedStartResource>(res, {
-        authorizationUrl: started.authorizationUrl,
-      });
-    },
+    /**
+     * `POST /api/v1/user/profile/identities/google/start` — the same answer,
+     * with the link intent and the caller's account and session sealed into
+     * the cookie (ADR-0072 §3). Mounted on the profile router, behind
+     * `authenticate("user")` and `refuseImpersonated`, and only where the
+     * Google client is configured — this controller exists then and not
+     * otherwise.
+     */
+    startLink: (
+      req: ValidatedRequest<typeof federatedStartSchema>,
+      res: Response,
+    ): Promise<void> =>
+      answerStart(req, res, () => service.startLink(req.ctx, req.valid.body)),
 
     /**
      * `302` to the customer app, whatever happened (ADR-0072 §2).
@@ -142,6 +165,15 @@ export const createFederatedController = ({
       if (!outcome.ok) {
         cookies.clearOidcCookie(res);
         respond.redirect(res, landing(`error=${outcome.code}`));
+
+        return;
+      }
+
+      // A link hands nothing over: the browser that asked holds the session
+      // it asked from, so the transaction is simply spent (ADR-0072 §3).
+      if (outcome.kind === "linked") {
+        cookies.clearOidcCookie(res);
+        respond.redirect(res, landing(`linked=${outcome.provider}`));
 
         return;
       }

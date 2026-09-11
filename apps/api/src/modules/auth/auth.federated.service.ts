@@ -4,10 +4,12 @@ import {
   emailSchema,
   nameSchema,
   type ErrorCode,
+  type FederatedProvider,
   type FederatedStartBody,
 } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
+import { requirePopulation } from "../../core/auth/index.js";
 import type { Audit } from "../../core/audit/index.js";
 import type { RequestContext } from "../../core/context/index.js";
 import {
@@ -22,6 +24,7 @@ import {
   type OidcAuthorizationRequest,
   type OidcIdentity,
   type OidcProvider,
+  type OidcTransaction,
   type OidcTransactionCodec,
 } from "../../core/oidc/index.js";
 import type { AccountTokens } from "../../core/tokens/index.js";
@@ -31,7 +34,9 @@ import {
   emailUnverified,
   federatedLinkRequired,
   federatedSignupClosed,
+  identityTaken,
 } from "./auth.errors.js";
+import type { SessionsRepository } from "./auth.repository.js";
 import type {
   FederatedAccounts,
   PrincipalAdapter,
@@ -39,7 +44,9 @@ import type {
 } from "./auth.types.js";
 
 /**
- * Sign in with Google — the start and the callback (ADR-0072 §1, §2).
+ * Sign in with Google — the start and the callback (ADR-0072 §1, §2) — and,
+ * since `D19.4`, the link: an authenticated start whose callback attaches the
+ * identity to the account that asked (§3).
  *
  * The third half, the exchange, is the auth service's (`exchangeFederated
  * Handoff`), because it issues a session and `sessions` is that service's
@@ -83,6 +90,7 @@ export interface FederatedCallbackInput {
 export type FederatedCallbackOutcome =
   | {
       readonly ok: true;
+      readonly kind: "signin";
       readonly token: string;
       /**
        * The sealed handoff binding for the transaction cookie's place — the
@@ -91,14 +99,35 @@ export type FederatedCallbackOutcome =
        */
       readonly binding: string;
     }
+  | {
+      /**
+       * A link completed (ADR-0072 §3): `#linked=<provider>`, and no token —
+       * the browser that asked already holds the session it asked from.
+       */
+      readonly ok: true;
+      readonly kind: "linked";
+      readonly provider: FederatedProvider;
+    }
   | { readonly ok: false; readonly code: ErrorCode };
 
 export interface FederatedSignInServiceDeps {
   /** ADR-0072 §2's port — the Google adapter, or the fake the suite hands the container. */
   readonly provider: OidcProvider;
   readonly transactions: OidcTransactionCodec;
-  /** The user adapter narrowed to the address lookup the second rule reads. */
-  readonly principals: Pick<PrincipalAdapter<"user">, "findByEmail">;
+  /**
+   * The user adapter narrowed to the address lookup the second rule reads,
+   * and the account read a link re-checks at the callback.
+   */
+  readonly principals: Pick<
+    PrincipalAdapter<"user">,
+    "findByEmail" | "findById"
+  >;
+  /**
+   * The sessions table narrowed to one probe, for the link's callback
+   * (ADR-0072 §3, amended at `D19.4`): the identity joins the account only
+   * while the session that asked for it is still live.
+   */
+  readonly sessions: Pick<SessionsRepository, "findById">;
   readonly accounts: FederatedAccounts;
   /**
    * The third path that brings a user into existence (ADR-0067 §2), so the
@@ -162,6 +191,7 @@ export const createFederatedSignInService = ({
   provider,
   transactions,
   principals,
+  sessions,
   accounts,
   organizations,
   accountTokens,
@@ -259,24 +289,32 @@ export const createFederatedSignInService = ({
       throw refuse(ctx, unauthenticated(), "no verified address");
     }
 
-    // A verified address the provider does not host proves that somebody
-    // controlled the mailbox once, not that this person controls it now —
-    // so it neither links nor creates (§1, amended at `D19.1` for linking and
-    // at `D19.2` for creation, on that step's `security-reviewer`). Creating
-    // on it would be the federated pre-hijack: the mailbox's previous holder
-    // makes the account, the rightful owner later resets its password, and
-    // the identity keeps the previous holder signing in by subject. Checked
-    // before the address lookup, so the answer is the same whether or not an
-    // account holds the address — no existence signal either way.
-    if (!identity.emailAuthoritative) {
-      throw refuse(ctx, federatedLinkRequired(), "address not authoritative");
-    }
-
     // 2. By address — verified, the provider authoritative for it, a live
     // holder, and that holder `active` (§1, amended at `D19.1`).
     const holder = await principals.findByEmail(email, tx);
 
     if (holder !== undefined) {
+      // A verified address the provider does not host proves that somebody
+      // controlled the mailbox once, not that this person controls it now, so
+      // it does not attach to an account that already exists — whatever that
+      // account's status (§1, amended at `D19.1`). The person signs in with
+      // the password and links from the security section, which proves both
+      // sides at once.
+      //
+      // **Only here**, and no longer at the head of the resolution: `D19.2`
+      // made creation read authority too, and the operator withdrew that at
+      // `D19.4` (§1's last amendment), because a reset now removes every
+      // identity (§3) — so an account made on a mailbox whose previous holder
+      // made it is recovered by the mailbox, as a pre-registered password
+      // account is.
+      if (!identity.emailAuthoritative) {
+        throw refuse(
+          ctx,
+          federatedLinkRequired(),
+          "address not authoritative for its holder",
+        );
+      }
+
       // A `pending_verification` holder's password belongs to whoever
       // registered the address — the pre-registration takeover ADR-0071
       // §Alternatives names — so nothing is linked and nothing is activated.
@@ -320,7 +358,9 @@ export const createFederatedSignInService = ({
       return mintHandoff(ctx, holder.id, tx);
     }
 
-    // 3. By creation — only where new accounts may be made at all.
+    // 3. By creation — only where new accounts may be made at all, and on a
+    // verified claim whether or not the provider hosts the mailbox (§1, the
+    // `D19.2` narrowing withdrawn at `D19.4`).
     if (!registrationOpen) {
       throw refuse(ctx, federatedSignupClosed(), "registration is off");
     }
@@ -400,6 +440,129 @@ export const createFederatedSignInService = ({
     return mintHandoff(ctx, created.id, tx);
   };
 
+  /**
+   * ADR-0072 §3's link, at the callback: the identity joins the account the
+   * transaction names, **only while the session that asked is still live**,
+   * and only when no other account signs in with it.
+   *
+   * The session check is the amendment `D19.4` made to §3. The transaction
+   * lives ten minutes and carries the account's id sealed, so without it a
+   * link started from a session that has since been ended — by a password
+   * reset recovering the account from somebody, which removes every identity
+   * (§3's reset rule) — would attach a way in *after* the recovery, from the
+   * very session the recovery ended. A session impersonation minted is
+   * refused here too, beside the start's route guard (ADR-0057 §5).
+   *
+   * The address the provider reports is informational and need not match the
+   * account's: the person has proven control of both sides (§3).
+   */
+  const linkTo = async (
+    ctx: RequestContext,
+    identity: OidcIdentity,
+    asked: Extract<OidcTransaction, { intent: "link" }>,
+    at: Date,
+    tx: DbExecutor,
+  ): Promise<void> => {
+    const { userId, sessionId } = asked;
+    const session = await sessions.findById(sessionId, tx);
+
+    if (
+      session === undefined ||
+      session.principalType !== "user" ||
+      session.principalId !== userId ||
+      session.revokedAt !== null ||
+      session.refreshTokenExpiresAt.getTime() <= at.getTime() ||
+      session.impersonatedByStaffId !== null
+    ) {
+      throw refuse(ctx, unauthenticated(), "the linking session is not live");
+    }
+
+    const account = await principals.findById(userId, tx);
+
+    if (account === undefined || !account.active) {
+      throw refuse(ctx, unauthenticated(), "the linking account is not active");
+    }
+
+    const known = await accounts.findBySubject(
+      provider.id,
+      identity.subject,
+      tx,
+    );
+
+    if (known !== undefined) {
+      // Already this account's: the honest answer is that it is linked, and
+      // there is nothing to write or to record twice.
+      if (known.principal?.id === userId) return;
+
+      throw refuse(ctx, identityTaken(), "subject linked to another account");
+    }
+
+    const linked = await accounts.link(
+      {
+        userId,
+        provider: provider.id,
+        subject: identity.subject,
+        email: normalisedEmail(identity.email) ?? null,
+        at,
+      },
+      tx,
+    );
+
+    // The account already holds a *different* identity of this provider, or
+    // the subject was linked by a concurrent callback since the read above.
+    // The owner unlinks the old one first; nothing is swapped on a link's
+    // authority.
+    if (!linked) {
+      throw refuse(ctx, conflict(), "account already has an identity");
+    }
+
+    await audit.record(
+      ctx,
+      {
+        event: "account.identity_linked",
+        identities: { actor: { type: "user", id: userId } },
+        data: { provider: provider.id, via: "link" },
+      },
+      tx,
+    );
+
+    ctx.logger.info(
+      { provider: provider.id, principalId: userId },
+      "federated identity linked from the account",
+    );
+  };
+
+  /**
+   * A fresh `state`, `nonce` and PKCE verifier, sealed with what the callback
+   * must know about the attempt, and the provider's authorization URL carrying
+   * their public halves. Rejects only when the provider's metadata cannot be
+   * loaded — both starts are XHRs, and their caller can be told so.
+   */
+  const begin = async (
+    ctx: RequestContext,
+    seal: (request: OidcAuthorizationRequest) => OidcTransaction,
+  ): Promise<FederatedStart> => {
+    const request = newAuthorizationRequest();
+
+    let authorizationUrl: string;
+
+    try {
+      authorizationUrl = await provider.authorizationUrl(ctx, request);
+    } catch {
+      ctx.logger.warn(
+        { provider: provider.id },
+        "federated sign-in could not start: provider metadata unavailable",
+      );
+
+      throw unavailable();
+    }
+
+    return {
+      authorizationUrl,
+      transaction: await transactions.seal(seal(request)),
+    };
+  };
+
   return {
     /** How long a started sign-in stays finishable — the cookie's `Max-Age`. */
     transactionTtlSec: transactions.ttlSec,
@@ -417,40 +580,34 @@ export const createFederatedSignInService = ({
     bindsHandoff: (cookie: string | undefined, token: string) =>
       transactions.bindsHandoff(cookie, token),
 
+    /** `POST /api/v1/public/auth/google/start` (ADR-0072 §2). */
+    start: (
+      ctx: RequestContext,
+      { locale }: FederatedStartBody,
+    ): Promise<FederatedStart> =>
+      begin(ctx, (request) => ({ ...request, intent: "signin", locale })),
+
     /**
-     * `POST /api/v1/public/auth/google/start` (ADR-0072 §2).
+     * `POST /api/v1/user/profile/identities/google/start` (ADR-0072 §3).
      *
-     * A fresh `state`, `nonce` and PKCE verifier, sealed into the transaction
-     * the controller puts in the cookie, and the provider's authorization URL
-     * carrying their public halves. Rejects only when the provider's metadata
-     * cannot be loaded — this is an XHR, and its caller can be told so.
+     * The sign-in's start, with the caller's account and session sealed into
+     * the transaction beside the intent. The route is behind `authenticate`
+     * and `refuseImpersonated`, so the principal here is an account acting as
+     * itself.
      */
-    start: async (
+    startLink: (
       ctx: RequestContext,
       { locale }: FederatedStartBody,
     ): Promise<FederatedStart> => {
-      const request = newAuthorizationRequest();
+      const principal = requirePopulation(ctx, "user");
 
-      let authorizationUrl: string;
-
-      try {
-        authorizationUrl = await provider.authorizationUrl(ctx, request);
-      } catch {
-        ctx.logger.warn(
-          { provider: provider.id },
-          "federated sign-in could not start: provider metadata unavailable",
-        );
-
-        throw unavailable();
-      }
-
-      const sealed = await transactions.seal({
+      return begin(ctx, (request) => ({
         ...request,
-        intent: "signin",
+        intent: "link",
+        userId: principal.id,
+        sessionId: principal.sessionId,
         locale,
-      });
-
-      return { authorizationUrl, transaction: sealed };
+      }));
     },
 
     /**
@@ -501,12 +658,22 @@ export const createFederatedSignInService = ({
         }
 
         const at = now();
+
+        if (opened.intent === "link") {
+          await transaction((tx) =>
+            linkTo(ctx, exchanged.identity, opened, at, tx),
+          );
+
+          return { ok: true, kind: "linked", provider: provider.id };
+        }
+
         const token = await transaction((tx) =>
           resolve(ctx, exchanged.identity, at, tx),
         );
 
         return {
           ok: true,
+          kind: "signin",
           token,
           binding: await transactions.sealHandoff(token, handoffTtlSec),
         };

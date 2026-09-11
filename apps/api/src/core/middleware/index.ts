@@ -25,6 +25,7 @@ export {
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
   createRefreshRateLimiter,
+  createSetPasswordLinkRateLimiter,
   createTokenRouteRateLimiter,
   createVerificationRateLimiter,
 } from "./rate-limit.js";

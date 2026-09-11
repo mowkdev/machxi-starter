@@ -3,9 +3,11 @@ import {
   changePasswordBody,
   createUserBody,
   deleteProfileBody,
+  identityProviderParams,
   listUsersQuery,
   setEmailBody,
   setPasswordBody,
+  unlinkIdentityBody,
   updateProfileBody,
   updateUserBody,
   userIdParams,
@@ -87,3 +89,12 @@ export const changePasswordSchema = { body: changePasswordBody } as const;
  * actor is staff acting on somebody else, already fenced by the role guard.
  */
 export const deleteProfileSchema = { body: deleteProfileBody } as const;
+
+/**
+ * `DELETE /api/v1/user/profile/identities/:provider` (ADR-0072 §3): which
+ * provider, and the current password that proves the owner is asking.
+ */
+export const unlinkIdentitySchema = {
+  params: identityProviderParams,
+  body: unlinkIdentityBody,
+} as const;

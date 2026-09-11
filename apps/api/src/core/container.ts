@@ -30,6 +30,7 @@ import {
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
   createRefreshRateLimiter,
+  createSetPasswordLinkRateLimiter,
   createTokenRouteRateLimiter,
   createVerificationRateLimiter,
 } from "./middleware/index.js";
@@ -337,8 +338,9 @@ export const buildContainer = ({
     ...authDeps,
     population: "user",
     principals: userPrincipals,
-    // Narrowed by the service's own type to `identitiesOf`, and wired on this
-    // service alone: staff get no federated login (ADR-0072 §5).
+    // Narrowed by the service's own type to `identitiesOf` and `unlinkAll`,
+    // and wired on this service alone: staff get no federated login
+    // (ADR-0072 §5), so the staff reset has no identity to remove.
     federated: federatedAccounts,
     // The staff adapter, narrowed by the service's own type to `findById`: it
     // is what turns `sessions.impersonated_by_staff_id` into the
@@ -466,6 +468,10 @@ export const buildContainer = ({
             issuer: config.auth.issuer,
           }),
           principals: userPrincipals,
+          // One probe, for the link's callback: the identity joins the account
+          // only while the session that asked is live (ADR-0072 §3, amended at
+          // `D19.4`).
+          sessions,
           accounts: federatedAccounts,
           // The third path that creates a user, so the personal organization
           // lands in the same commit (ADR-0067 §2).
@@ -720,6 +726,20 @@ export const buildContainer = ({
      * address needs to recover a password. And keyed on `newEmail`, which is
      * what this body calls the recipient.
      */
+    /**
+     * `POST /user/profile/password/set-link` — the set-password link
+     * (ADR-0072 §3, amended at `D19.4`): the recovery budget's number, keyed
+     * on the caller's account, in a counter of its own.
+     *
+     * The account is the key because the link goes to the account's own
+     * address and nowhere else, so the caller and the mailbox are one budget.
+     * Its own counter, so asking from the security section never spends the
+     * budget `forgot` needs for the same address, or the other way round.
+     */
+    setPasswordLink: createSetPasswordLinkRateLimiter(
+      config,
+      rateLimitStore("set-password-link"),
+    ),
     emailChangeMailbox: createMailboxRateLimiter(
       config,
       rateLimitStore("email-change-mailbox"),

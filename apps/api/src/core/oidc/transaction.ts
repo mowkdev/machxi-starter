@@ -40,16 +40,14 @@ export const OIDC_TRANSACTION_TTL_SEC = 10 * 60;
 const ALGORITHM = "HS256";
 
 /**
- * What a sign-in is for. `signin` is the only intent the start route mints
- * today; ADR-0072 §3's link intent joins with its own authenticated start
- * route, and the schema below widens with it rather than accepting a value no
- * route can produce.
+ * What a round trip is for: a **sign-in** from the public start (ADR-0072
+ * §2), or a **link** from the authenticated one on the profile (§3, built at
+ * `D19.4`).
  */
-export type OidcIntent = "signin";
+export type OidcIntent = "signin" | "link";
 
-/** What the start wrote and the callback reads back. */
-export interface OidcTransaction extends OidcAuthorizationRequest {
-  readonly intent: OidcIntent;
+/** What every transaction carries, whichever start sealed it. */
+interface OidcTransactionBase extends OidcAuthorizationRequest {
   /**
    * The SPA's language at the start, when it said (ADR-0072 §2). Carried for
    * whatever the callback needs to write in the reader's language; absent
@@ -59,18 +57,49 @@ export interface OidcTransaction extends OidcAuthorizationRequest {
 }
 
 /**
+ * What the start wrote and the callback reads back — discriminated on the
+ * intent, so a link's account and session exist exactly when the intent says
+ * the callback is linking.
+ *
+ * A **link** carries the account that asked and the **session** it asked
+ * from (ADR-0072 §3, amended at `D19.4`): the callback is a navigation from
+ * Google with no bearer token on it, so the transaction is the only thing that
+ * can say whose account the identity joins — and the session is what lets the
+ * callback refuse a link whose session was ended in the minutes between,
+ * which is exactly what a password reset does to an account being recovered
+ * from somebody.
+ */
+export type OidcTransaction =
+  | (OidcTransactionBase & { readonly intent: "signin" })
+  | (OidcTransactionBase & {
+      readonly intent: "link";
+      readonly userId: string;
+      readonly sessionId: string;
+    });
+
+/**
  * The claims, read back after the signature, issuer, audience and expiry have
  * verified. Short names because the whole thing rides in a cookie on every
  * request to this host for ten minutes.
  */
-const claimsSchema = z.object({
+const claimsBase = {
   k: z.literal("tx"),
   st: z.string().min(1),
   nn: z.string().min(1),
   cv: z.string().min(1),
-  in: z.literal("signin"),
   lc: z.enum(LOCALES).optional(),
-});
+} as const;
+
+const claimsSchema = z.discriminatedUnion("in", [
+  z.object({ ...claimsBase, in: z.literal("signin") }),
+  z.object({
+    ...claimsBase,
+    in: z.literal("link"),
+    // The account and the session a link was asked from (ADR-0072 §3).
+    uid: z.string().min(1),
+    sid: z.string().min(1),
+  }),
+]);
 
 /**
  * The **handoff binding** the callback leaves in the same cookie after a
@@ -192,6 +221,9 @@ export const createOidcTransactionCodec = ({
           nn: transaction.nonce,
           cv: transaction.codeVerifier,
           in: transaction.intent,
+          ...(transaction.intent === "link"
+            ? { uid: transaction.userId, sid: transaction.sessionId }
+            : {}),
           ...(transaction.locale === undefined
             ? {}
             : { lc: transaction.locale }),
@@ -204,13 +236,21 @@ export const createOidcTransactionCodec = ({
 
       if (!claims.success) return undefined;
 
-      return {
+      const base = {
         state: claims.data.st,
         nonce: claims.data.nn,
         codeVerifier: claims.data.cv,
-        intent: claims.data.in,
         locale: claims.data.lc,
       };
+
+      return claims.data.in === "link"
+        ? {
+            ...base,
+            intent: "link",
+            userId: claims.data.uid,
+            sessionId: claims.data.sid,
+          }
+        : { ...base, intent: "signin" };
     },
 
     sealHandoff: (token, lifetimeSec) =>

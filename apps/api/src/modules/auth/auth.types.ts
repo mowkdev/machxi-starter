@@ -293,4 +293,15 @@ export interface FederatedAccounts {
     userId: string,
     tx?: DbExecutor,
   ) => Promise<readonly FederatedIdentityResource[]>;
+  /**
+   * Removes every identity of the account and resolves to the providers
+   * removed (ADR-0072 §3, amended) — the reset by mail's half of "a password
+   * written without the account's own authority recovers it from every way
+   * in". On the caller's executor, so the identities go in the commit that
+   * writes the hash or not at all.
+   */
+  readonly unlinkAll: (
+    userId: string,
+    tx: DbExecutor,
+  ) => Promise<readonly FederatedProvider[]>;
 }

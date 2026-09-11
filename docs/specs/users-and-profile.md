@@ -62,9 +62,9 @@ Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/modules/users/
 
 ## Requirement: Staff set a customer's password with their own
 
-`POST /admin/users/:id/password` takes the subject's new `password` and the acting staff member's `currentPassword`; the actor's password is verified first, before the subject is read, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. On success every session of the subject is revoked and the answer is `204`.
-Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md)
-Proved by: `apps/api/test/users-admin.int.test.ts`
+`POST /admin/users/:id/password` takes the subject's new `password` and the acting staff member's `currentPassword`; the actor's password is verified first, before the subject is read, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. On success every session of the subject is revoked, **every federated identity of the account is removed** with one `account.identity_unlinked { subjectType, subjectId, provider, via: "reset" }` row each naming the operator as actor, and the answer is `204`.
+Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
+Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`
 
 ### Scenario: The actor's password is wrong
 
@@ -75,6 +75,11 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 - **WHEN** the actor's password verifies
 - **THEN** the subject can sign in with the new password, and their previous sessions answer `401 AUTH_SESSION_REVOKED` on refresh
+
+### Scenario: The subject had linked Google
+
+- **WHEN** the actor resets the password of an account with a Google identity
+- **THEN** the answer is `204`, the identity is gone, and an `account.identity_unlinked` row names the account as its subject with `via: "reset"`
 
 ## Requirement: A super admin sets a customer's address
 
@@ -141,9 +146,9 @@ Proved by: `apps/api/test/user-profile.int.test.ts`
 
 ## Requirement: Changing one's own password keeps this session and ends the others
 
-`POST /user/profile/change-password` takes `currentPassword` and `newPassword`, which must differ; the current password must verify (`403 AUTH_CURRENT_PASSWORD_INVALID`), an account with no password cannot use it, and on success every other session of the account is revoked while the caller's own survives. `204`.
-Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md)
-Proved by: `apps/api/test/user-profile.int.test.ts`
+`POST /user/profile/change-password` takes `currentPassword` and `newPassword`, which must differ; the current password must verify (`403 AUTH_CURRENT_PASSWORD_INVALID`), an account with no password cannot use it, and on success every other session of the account is revoked while the caller's own survives. The account's federated identities are **kept** — the change was made with the account's own authority. `204`.
+Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
+Proved by: `apps/api/test/user-profile.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`
 
 ### Scenario: Two devices
 
