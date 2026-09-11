@@ -390,3 +390,55 @@ The full gate run before the review was green on all five links; the stray file 
 ## Between `D19.5` and `D19.6` — the operator's answers to `D19.5`
 
 Taken on the desktop 2026-09-12. **§3's "keeps it sufficient when a second provider arrives" is withdrawn**, as a labelled amendment to ADR-0072 §3 on `D19.5`'s reviewer: the second rule is defence in depth today and the keep must trace which identity a session was minted through before a second provider lands — the second provider's record decides how. **The password-path race** (a sign-in verifying the old password just before a reset commits) is older than D19 and joins `D19.6`'s accepted list. The plan's header now names all five parents. The stray `Claude outputs/` folder is the operator's to move out of the tree; it is not the deliverable's. The browser-only items — the card in the 720px pane and on a phone, the mark's size, the banners in both themes, and the link, unlink and set-a-password walk with real credentials — stand for the definition of done's item 8.
+
+## `D19.6` — Close-out
+
+**No record moved at this head and no step is gated**; 0072 was accepted at `D19.1` and all five parents have moved. What this step owed is the plan's step 6 and its `D19.4` amendment: the digests regenerated with `pnpm test:scripts` green **before** the definition of done, the residuals recorded in §Consequences as accepted, the browser tier's floors re-measured, the Postman counts in both READMEs, `docs/deploy.md`'s Google section read as a stranger would, and then the definition of done top to bottom.
+
+**Written.**
+
+- **ADR-0072 §Consequences, `Amended 2026-09-12 (D19.6)`** — the eleven residuals D19's steps logged, each accepted in one sentence: the ask-first switch leaving the previous session live server-side; the `https:` fence accepting any host; the existence signal an open creation carries; the pending pre-registration door; the shared signing key under a pinned audience; unlink's argon2 verify under the global limiter alone; the Google round trip spent before the link's session check; a link completed by a browser whose bearer is not the sealed session; the administrative address change leaving identities in place; §3's keep as defence in depth rather than sufficiency, **cited** to §3's `Amended 2026-09-12` withdrawal rather than restated; and the password-path race older than D19.
+- **ADR-0072 §4, `Amended 2026-09-12 (D19.6)`** — "beside the existing cards" was stale against its own build: **Sign-in methods replaces the password card**, since that card carries the password's own row and a second one would offer the same dialog twice. Found by the review, and by the browser tier before it (below).
+- **The ledger's §The window** gains the two 2026-09-12 amendments — the §3 withdrawal committed at `87bb5c1` and this close-out's two — and **the ADR index row for 0072** gains `D19.5`'s build, the withdrawal and this step. Both were a deliverable behind.
+- **`docs/postman/README.md`** now states the assertion count beside the request count, so "the counts in both READMEs" is a claim that can be checked in both.
+- **`docs/rules/api-and-data.md` and `docs/rules/process.md`** regenerated: 0072 joins two carry chains. This is the drift `D19.3` logged and `D19.5` deferred here; `pnpm test:scripts` is **28/28 green**, including "the committed digests are what the generator produces", and a second `pnpm rules:digest` writes 0 of 3.
+
+**The one defect the close-out found, and it was the browser tier that found it.** `apps/customer/e2e/account.spec.ts` asserted the `/account/security` lead card is "Password"; `D19.5` renamed it to "Sign-in methods" when the card absorbed the password row, and the browser tier is not in the gate, so nothing caught it until this run: `expect(leadCard).toHaveText("Password")` received "Sign-in methods". The expectation is corrected with the reason beside it. **The record was wrong in the same place**, which is finding 2 above — the spec was right about the app and the ADR was describing a shape that had not been built since `D19.5`.
+
+**The floors — re-measured, and unchanged.** Each suite alone, the reading `before − after` minus one, as `D18.12` set it:
+
+| Suite                     | Cost now            | `D18.12` | Floor |
+| ------------------------- | ------------------- | -------- | ----- |
+| `apps/admin`, 38 specs    | **195** (987 → 791) | 194      | 206   |
+| `apps/customer`, 12 specs | **157** (625 → 467) | 154      | 167   |
+
+The pair is **352** measured separately and **356** as one `pnpm test:e2e` run (466 → 109). No request was added by D19 — the tier drives no Google flow (ADR-0072 §2, the operator's decision at planning) — and the three and one requests of drift are inside the margin each floor carries for exactly this: `impersonation.spec.ts` alone measures 50 to 54 depending on what a refocused tab refetches. **Neither floor moves**, and both numbers sit under them with 11 and 10 to spare.
+
+**`docs/deploy.md`'s Google section, read as a stranger would.** Four steps: create the client (Web application, default scopes), register **exactly one** redirect URI, give the API both halves, and turn the button on in the customer app with a rebuild. The redirect URI is stated once and the API composed the same string under test — `http://localhost:4000/api/v1/public/auth/google/callback` on the local client, `${API_PUBLIC_URL}` + the path in a deployment — and step 4 names the SPA flag's twin and says the API is still the control. Nothing to change.
+
+**The definition of done, item by item.**
+
+1. **The gate green, every task cold** — `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`, exit `0`, `test` at **0 cached, 15/15**: api **767** unit and **813** integration; customer 284; admin 534; `@repo/contracts` 246; `@repo/db` 101 and 104; `@repo/ui` 100; `@repo/grid` 101; `@repo/api-client` 55; `@repo/crypto` 39; `@repo/resource` 31; `@repo/app-kit` 20; `@repo/i18n` 19; `@repo/logger` 19; `@repo/app-services` 13; `@repo/form` 7. Every figure is `D19.5`'s — a docs step moves none of them. Re-run whole after the review's fixes.
+2. **`pnpm test:unit` twice** — the second **`15 cached, 15 total`, 48 ms, FULL TURBO**.
+3. **`pnpm test:postman`** — **207 requests, 631 assertions, 0 failed**, which is what `README.md` and `docs/postman/README.md` now both state. **It failed twice first, and neither failure was the collection**: the browser tier had just spent the window (106 of 1000 left, then 0), so the run met `429` from the middle out. The number above is from a restarted API on a clear window — and a restart is what clears the counters, since they are in memory.
+4. **`pnpm test:e2e` with `MAIL_TRANSPORT=smtp` against the local compose** — green in both apps: **admin 38 passed, customer 12 passed**, and green again as the one command turbo runs (`2 successful, 2 total`). Floors above.
+5. **`pnpm rules:digest` writes nothing on a second run** (0 of 3) and **`pnpm docs:check`** reports the inherited documents clean and the behaviour specs clean (**13 files**).
+6. **`pnpm db:seed -- --dev` twice** against the dev database, **identical output** (timings aside), ending `104-dev-federated-identities: google identity present for customer@machxi.local (synthetic subject)`; the table holds that identity **once** — one row, `google` / `dev-fixture-google-subject-customer` / `customer@machxi.local`.
+7. **The mount is the control.** With the client absent, `POST …/google/start`, `GET …/google/callback` and `POST …/google/exchange` each answer **`404 ROUTE_NOT_FOUND`** in the envelope. Started with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` set, `start` answers **`200 { authorizationUrl }`** and sets `__Host-machxi.oidc` — `Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax` — with the URL carrying `code_challenge_method=S256`, `state`, `nonce`, the configured client id and the redirect URI `docs/deploy.md` states. Google's discovery document was fetched for real to compose it; nothing beyond it was exercised without credentials.
+8. **Pending the operator** — the browser walk with real Google credentials, below.
+
+**Review — `adr-reviewer`, one pass over the diff, waited on directly; no re-review.** Seven findings, **all seven fixed**, and the pass called the §Consequences amendment complete against the plan's enumeration with none invented and none missing.
+
+- **Fixed (major) — no `D19.6` section in these notes.** The checkbox was ticked with the step's evidence nowhere in the tree. This section is the fix.
+- **Fixed (major) — §4 was stale against its own build** ("beside the existing cards"). Amended in place, labelled; the last step that could do it without a supersession.
+- **Fixed (major) — the citation did not resolve.** "That section's last amendment" points at §3's textually last paragraph, which is `D19.4`'s and says nothing about a second provider. It now names the date: §3's `Amended 2026-09-12` withdrawal.
+- **Fixed (major) — the ledger's window paragraph stopped at `D19.4`.** The 2026-09-12 withdrawal and this close-out's two amendments are recorded there, which is the one place window state is written.
+- **Fixed (major) — the ADR index row for 0072 stopped at `D19.4`'s head.** It now carries `D19.5`'s build, the withdrawal and `D19.6`.
+- **Fixed (minor) — `docs/postman/README.md` carried no assertion count**, so "the counts in both READMEs" could only be half-checked there.
+- **Fixed (minor) — one framing clause in the amendment read as journal rather than record** (ADR-0050 §Altitude). Dropped; the bullets stand on their own.
+
+**Pending the operator.**
+
+- **Definition of done item 8, the browser walk with real Google credentials** — a stranger creating an account and landing with a personal organization, the same account on a second sign-in, Security showing Google with no password, a password set from the mail, unlink and re-link, the refusal with `FEATURE_USER_REGISTRATION=false`, the ask-first on a signed-in browser, an account created on an address Google does not host, a reset by mail showing Google disconnected against a set-password link keeping it, an invitation's link landing on the invitation rather than home, the `AUTH_IDENTITY_TAKEN` refusal on Security, and every sentence in both locales. **Not attempted here**, and the only place Google itself is exercised end to end.
+- **Browser-only geometry still standing from `D19.5`**: the Sign-in methods card in the 720px pane and on a phone, the Google mark's size in the row, and the two banners in light and dark.
+- **The dev stack was stopped** when the close-out finished; the machine is left as it was found, and the dev database carries whatever `pnpm test:e2e` and the collection left, which is what `--dev` re-seeds.

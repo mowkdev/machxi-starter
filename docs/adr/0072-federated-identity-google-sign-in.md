@@ -84,6 +84,8 @@ Audit ([ADR-0058](0058-append-only-audit-log.md)): `account.identity_linked` and
 
 **Amended 2026-09-11 (the operator, after `D19.3` and `D19.4`; built at `D19.5`): three things the first build of the landing route left open.** The sign-in screen's **`redirect` survives the round trip**, carried by the SPA and never by the API: the button stores it under the app's device key before leaving, the landing route reads it once and lands there when it is an app-relative path, on `/` otherwise — a location in the fragment would be a value an attacker's link could set. **A link refusal lands on Security**: when the browser holds a session and the fragment carries `#error=`, the landing route goes to `/account/security` and shows the code's sentence as a notice, because the only flow a signed-in browser reaches the callback from is a link, and "sign in again" is the wrong sentence for it; the `#linked` notice is drawn only when the server's `identities` list the provider, since the history state that requests it can be planted and the list cannot. And **the mark is Google's**, in its four colours — the provider's guidelines ask for it, and a brand mark is the exception to [ADR-0054](0054-design-language-instrument.md)'s one palette, stated once so nobody tidies it.
 
+**Amended 2026-09-12 (D19.6): Sign-in methods replaces the password card rather than standing beside it.** "Beside the existing cards" above described a section with a password card in it, and `D19.5` built the card that carries the password's own row — "Change password", or "Set a password" where there is none — so a second card would offer the same dialog twice. The section's lead card is this one, which is what the browser tier reads from a cold URL, and the cards it does stand beside are the section's others.
+
 ### 5. What stands
 
 Sessions, rotation, reuse detection, the cookie transport and both CSRF cookies; the mint, the handoff and every other rule of impersonation; `account_tokens` and its mechanism; the invariant that every `active` user has a proven address; the registration flag's meaning; the current-password rule wherever a credential is removed; every rule about staff, who get no federated login here.
@@ -97,6 +99,20 @@ Sessions, rotation, reuse detection, the cookie transport and both CSRF cookies;
 - The browser tier gains no request, so [ADR-0069](0069-development-rate-limit-profile.md)'s spent headroom is not spent further; the operator's browser walk with real credentials is the only place Google itself is exercised, and the definition of done says so.
 - A person who holds both credentials and recovers the password by mail finds Google disconnected afterwards and re-links it in one click; the reset screen says so. That is the price of the mailbox recovering the account from everyone, and it is paid by the rare path rather than by every sign-up on a non-Google address.
 - A person who links Google and sets a password in the same session finds that identity removed when the link is consumed — it is younger than the session that asked — and re-links it in one click. The rule cannot tell that person from an intruder, and it is the intruder it is for.
+
+**Amended 2026-09-12 (D19.6): the residuals the build logged, accepted, one sentence each.** They are written here rather than left in the plan's notes, because a residual nobody restates is a residual nobody re-reads.
+
+- A signed-in browser that switches accounts through §2's ask-first confirmation leaves the previous session live server-side — here and on `/verify-email` — since the new refresh cookie overwrites the old one rather than revoking it ([ADR-0057](0057-impersonation-sessions.md) §3's rule is impersonation's alone).
+- The `https:` fence the customer app puts on the start's answer accepts any host rather than the provider's own authorization origin, so it bounds the scheme and not the destination.
+- A verified claim on an address Google does not host tells its holder whether an account exists here — `AUTH_FEDERATED_LINK_REQUIRED` when a live account holds it, a created account when none does — which is the signal registration's `409 USER_EMAIL_TAKEN` already gives, accepted on [ADR-0071](0071-mail-flows.md) §6's terms.
+- The pre-registration door stands open behind `AUTH_EMAIL_UNVERIFIED`: the rightful owner of a pending address is sent toward a verification mail that activates the password whoever registered it chose (0071 §Alternatives), and closing it is a record of its own rather than a condition on this flow.
+- The transaction cookie and the handoff binding are signed with `JWT_ACCESS_SECRET`, kept apart from an access token by a pinned audience alone rather than by a derived key.
+- Unlink spends one argon2 verify per call under the global limiter alone, which is the gap [ADR-0020](0020-security-baseline.md) accepts for change-password, arriving on a third route.
+- The callback spends the round trip to Google before it reads the link's sealed session, so a refused link costs the API a token exchange — a cost bounded by the callback's own limiter and not a correctness problem.
+- A link is completed by whatever browser follows the callback, whose current bearer need not be the session sealed into the transaction; that is inherent to a navigation, and the transaction's ten-minute life is the mitigation.
+- An administrative change of an account's address (0071 §7) leaves the identities in place, because a subject names the person rather than the mailbox.
+- §3's session-minted keep is defence in depth today rather than sufficiency, and what must be true before a second provider arrives is stated in §3's `Amended 2026-09-12` withdrawal rather than restated here.
+- A password sign-in that verified the old password a moment before a reset commits still issues its session after it — the handoff finding's shape on the password path, older than this record and untouched by it.
 
 ## Alternatives considered
 

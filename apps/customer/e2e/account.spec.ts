@@ -55,7 +55,15 @@ import {
  */
 const SECTIONS = [
   { path: "/account/profile", nav: "Profile", card: "Your details" },
-  { path: "/account/security", nav: "Security", card: "Password" },
+  /*
+   * **"Sign-in methods" since `D19.5`**, where the card that led this section
+   * stopped being the password's alone: it now carries the password row and
+   * the Google row together (ADR-0072 §4), and the old "Password" card went
+   * with it. The browser tier is where that rename surfaced — `D19.6` ran the
+   * suite the step that made it could not — which is the case this constant
+   * exists for: a section's lead card is the one thing a cold URL proves.
+   */
+  { path: "/account/security", nav: "Security", card: "Sign-in methods" },
   { path: "/account/preferences", nav: "Preferences", card: "Appearance" },
   { path: "/account/invitations", nav: "Invitations", card: "Invitations" },
 ] as const;
