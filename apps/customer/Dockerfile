@@ -36,10 +36,15 @@ ARG VITE_I18N_PSEUDO=false
 # an API deployed without it. The API's flag is still the control — this one
 # only decides whether the screen is in the bundle.
 ARG VITE_FEATURE_USER_REGISTRATION=true
+# "Continue with Google" (ADR-0072 §4). Defaulted OFF, because an API deployed
+# without GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET does not mount the routes;
+# the API is the control and this only puts the button in the bundle.
+ARG VITE_FEATURE_GOOGLE_SIGN_IN=false
 ENV VITE_API_URL=$VITE_API_URL \
     VITE_APP_ID=$VITE_APP_ID \
     VITE_I18N_PSEUDO=$VITE_I18N_PSEUDO \
-    VITE_FEATURE_USER_REGISTRATION=$VITE_FEATURE_USER_REGISTRATION
+    VITE_FEATURE_USER_REGISTRATION=$VITE_FEATURE_USER_REGISTRATION \
+    VITE_FEATURE_GOOGLE_SIGN_IN=$VITE_FEATURE_GOOGLE_SIGN_IN
 
 COPY . .
 

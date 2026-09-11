@@ -206,6 +206,12 @@ services:
         # because Vite inlines it — see this app's Dockerfile on why that makes
         # the image environment-specific.
         VITE_FEATURE_USER_REGISTRATION: ${FEATURE_USER_REGISTRATION:-true}
+        # "Continue with Google" (ADR-0072 §4). A variable of its own rather
+        # than one derived from the API's client id, because that pair lives
+        # in the platform's secret store and not in the file this compose
+        # interpolates — so it is set here beside the SPAs' other build
+        # arguments, and set true only where the API has both halves.
+        VITE_FEATURE_GOOGLE_SIGN_IN: ${VITE_FEATURE_GOOGLE_SIGN_IN:-false}
     container_name: machxi-customer
     restart: unless-stopped
     # Loopback, for the reason the API's is.

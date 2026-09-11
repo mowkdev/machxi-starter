@@ -1,5 +1,7 @@
 import {
   confirmEmailBody,
+  federatedExchangeBody,
+  federatedStartBody,
   forgotPasswordBody,
   impersonateBody,
   loginBody,
@@ -10,6 +12,7 @@ import {
   type AuthResource,
   type ConfirmEmailBody,
   type ErrorCode,
+  type FederatedStartBody,
   type ForgotPasswordBody,
   type ImpersonatorResource,
   type RegisterBody,
@@ -128,6 +131,17 @@ export const RESET_TOKEN = "reset-token-from-the-fragment";
 /** The address change's link, as `/confirm-email` receives it (`D18.9`). */
 export const EMAIL_CHANGE_TOKEN = "email-change-token-from-the-fragment";
 
+/** The Google callback's handoff, as `/auth/google` receives it (`D19.3`). */
+export const GOOGLE_HANDOFF_TOKEN = "google-handoff-token-from-the-fragment";
+
+/**
+ * Where `start` sends the browser (ADR-0072 §2). Google's own authorization
+ * endpoint, because the address is the API's to compose and the SPA's only to
+ * follow — a test asserting the button follows it needs a real-looking one.
+ */
+export const GOOGLE_AUTHORIZATION_URL =
+  "https://accounts.google.com/o/oauth2/v2/auth?state=s&nonce=n&code_challenge_method=S256";
+
 export const CREDENTIALS = {
   email: "customer@machxi.local",
   password: "DevPassword!123",
@@ -168,6 +182,33 @@ export interface AuthMockState {
   impersonateAskedForCookies: boolean;
   /** How many times `GET /auth/csrf` has been called. */
   csrfCalls: number;
+  /**
+   * The bodies `POST /public/auth/google/start` has been offered (`D19.3`).
+   *
+   * Bodies rather than a count, because the locale is the only thing in one
+   * and it is the point: it travels in the transaction cookie to the callback,
+   * which has nobody to read a stored locale from yet (ADR-0072 §2).
+   */
+  googleStartCalls: FederatedStartBody[];
+  /**
+   * The tokens `POST /public/auth/google/exchange` has been offered, in order
+   * (`D19.3`) — `impersonateCalls`'s reason: which value left the address bar.
+   */
+  googleExchangeCalls: string[];
+  /** Whether the exchange asked for cookie transport (ADR-0029 §Opt-in). */
+  googleExchangeAskedForCookies: boolean;
+  /**
+   * Whether the exchange carried this browser's cookies (ADR-0072 §2 as
+   * amended at `D19.2`).
+   *
+   * **Enforced as well as recorded**, unlike the transport header: the real
+   * endpoint refuses, with its one `401`, a token the handoff binding in
+   * `__Host-<APP_ID>.oidc` does not name, and a request sent without
+   * credentials carries no cookie at all. So this mock refuses such a request
+   * the same way, and a client that stopped sending them fails here rather
+   * than in production on every sign-in.
+   */
+  googleExchangeCarriedCredentials: boolean;
   /** How many times `POST /auth/logout` has been called. */
   logoutCalls: number;
   /**
@@ -282,6 +323,10 @@ export const createAuthMockState = (): AuthMockState => ({
   refreshCalls: 0,
   csrfCalls: 0,
   logoutCalls: 0,
+  googleStartCalls: [],
+  googleExchangeCalls: [],
+  googleExchangeAskedForCookies: false,
+  googleExchangeCarriedCredentials: false,
   impersonateCalls: [],
   impersonateAskedForCookies: false,
   registerCalls: [],
@@ -515,6 +560,66 @@ export const createAuthHandlers = (state: AuthMockState) =>
         }
 
         return new Response(null, { status: 204 });
+      },
+    ),
+
+    /*
+     * Sign in with Google, the start (`D19.3`, ADR-0072 §2).
+     *
+     * **On `PUBLIC_API`**, like registration: the flow is for somebody with no
+     * population yet. The body is parsed with the API's own schema, which is
+     * strict — a field the API does not know throws here rather than being
+     * quietly accepted. The real endpoint also sets the transaction cookie,
+     * which MSW cannot show and this app cannot read; the API's integration
+     * tier asserts it.
+     */
+    http.post(
+      `${PUBLIC_API}/auth/google/start`,
+      async ({ request }): Promise<Response> => {
+        // The API refuses a start that is not JSON (ADR-0072 §2 as amended at
+        // `D19.2`), so the mock does too.
+        if (
+          !(request.headers.get("content-type") ?? "").startsWith(
+            "application/json",
+          )
+        )
+          return fail(400, "VALIDATION_ERROR");
+
+        const body = federatedStartBody.parse(await request.json());
+
+        state.googleStartCalls.push(body);
+
+        return ok({ authorizationUrl: GOOGLE_AUTHORIZATION_URL });
+      },
+    ),
+
+    /*
+     * Sign in with Google, the exchange (`D19.3`, ADR-0072 §2).
+     *
+     * `verify-email`'s shape — login's body, one indistinguishable `401` for
+     * every refusal — and one refusal of its own that a mock *can* see: a
+     * request without credentials carries no handoff binding, so it is refused
+     * like any other unbound token (see `googleExchangeCarriedCredentials`).
+     */
+    http.post(
+      `${PUBLIC_API}/auth/google/exchange`,
+      async ({ request }): Promise<Response> => {
+        state.googleExchangeAskedForCookies =
+          request.headers.get(TRANSPORT_HEADER) === "cookie";
+        state.googleExchangeCarriedCredentials =
+          request.credentials === "include";
+
+        const body = federatedExchangeBody.parse(await request.json());
+
+        state.googleExchangeCalls.push(body.token);
+
+        if (
+          body.token !== GOOGLE_HANDOFF_TOKEN ||
+          !state.googleExchangeCarriedCredentials
+        )
+          return fail(401, "UNAUTHENTICATED");
+
+        return ok(authResource("access-google"));
       },
     ),
 

@@ -89,6 +89,23 @@ const envSchema = z.object({
    * is the deliberate act.
    */
   VITE_FEATURE_USER_REGISTRATION: z.stringbool().default(true),
+  /**
+   * Whether this build offers "Continue with Google" (ADR-0072 §4).
+   *
+   * `VITE_FEATURE_USER_REGISTRATION`'s twin, and **the API's mount is the
+   * control** in exactly the same way: the three routes exist only where the
+   * API is given a Google client, so a build with this on against an API
+   * without one reaches `404 ROUTE_NOT_FOUND` and renders the catalogue's
+   * sentence for it. This decides whether the button is in the bundle and
+   * nothing more.
+   *
+   * **Defaulted off, where registration's twin is defaulted on**, and the
+   * asymmetry is the API's: registration is on unless a deployment turns it
+   * off, while Google is off until a deployment registers a client with
+   * Google's console and hands the API both halves of it. A button that is on
+   * by default would be a button that answers not-found by default.
+   */
+  VITE_FEATURE_GOOGLE_SIGN_IN: z.stringbool().default(false),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;
@@ -130,7 +147,7 @@ export const DEVICE_KEY_PREFIX = `${config.VITE_APP_ID}.${API_SEGMENT}`;
  * cannot reach a provider, so the one seam a flag can travel through to a
  * guard is the context `createAppRouter` builds. Passing the whole `config`
  * there would put every variable in reach of every route; this names exactly
- * what a route may ask about, which today is one thing.
+ * what a route may ask about, which since `D19.3` is two things.
  *
  * The shape is what makes it testable at all, and it is `PseudoNoticeProvider`'s
  * lesson one layer down: `vitest.config.ts` pins the environment for the whole
@@ -141,10 +158,19 @@ export const DEVICE_KEY_PREFIX = `${config.VITE_APP_ID}.${API_SEGMENT}`;
 export interface AppFeatures {
   /** `/register` and the sign-in screen's link to it (ADR-0067 §6). */
   readonly userRegistration: boolean;
+  /**
+   * "Continue with Google" under the sign-in card and, with
+   * {@link userRegistration}, under the sign-up card (ADR-0072 §4). No guard
+   * reads it — `/auth/google` exists in every build, because a callback can
+   * land there whatever this build offers — so its readers are the two pages,
+   * through the same router context the registration flag travels on.
+   */
+  readonly googleSignIn: boolean;
 }
 
 export const FEATURES: AppFeatures = Object.freeze({
   userRegistration: config.VITE_FEATURE_USER_REGISTRATION,
+  googleSignIn: config.VITE_FEATURE_GOOGLE_SIGN_IN,
 });
 
 /**

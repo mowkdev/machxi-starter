@@ -1,6 +1,6 @@
 import { Link, useRouteContext } from "@tanstack/react-router";
 
-import { LoginForm } from "@/features/auth";
+import { ContinueWithGoogle, LoginForm } from "@/features/auth";
 
 import { useT } from "@/shared/i18n";
 import { Card } from "@/shared/ui";
@@ -26,6 +26,11 @@ import { Card } from "@/shared/ui";
  * so a build with registration off cannot offer a way into an address that
  * answers not-found. Two readers of one value rather than two values that have
  * to be kept in agreement.
+ *
+ * **"Continue with Google" sits under the card, not in it** (ADR-0072 §4):
+ * the card is the password form and its controls, and Google is a second way
+ * in beside it rather than a field of it. Gated on the build's flag, read off
+ * the same router context; the API's mount is still the control.
  */
 export const LoginPage = () => {
   const { t } = useT("auth");
@@ -36,6 +41,11 @@ export const LoginPage = () => {
       <Card className="p-5">
         <LoginForm />
       </Card>
+      {features.googleSignIn ? (
+        <div className="mt-4">
+          <ContinueWithGoogle />
+        </div>
+      ) : null}
       {/*
        * Recovery, under the card with the other way out (ADR-0071 §4). It is
        * ungated where the sign-up link is gated, and the asymmetry is the

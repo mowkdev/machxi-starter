@@ -324,7 +324,7 @@ describe("following an invitation link", () => {
      * changes.
      */
     renderApp({
-      features: { userRegistration: false },
+      features: { userRegistration: false, googleSignIn: false },
       initialPath: link(INVITATION_TOKEN),
       store: createSessionStore(),
     });

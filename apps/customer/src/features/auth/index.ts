@@ -18,3 +18,10 @@ export {
   useVerifyEmail,
   type VerificationStatus,
 } from "./verify-email/use-verify-email";
+export { ContinueWithGoogle } from "./google-sign-in/continue-with-google";
+export {
+  identityLinked,
+  useGoogleLanding,
+  type GoogleLanding,
+  type GoogleLandingStatus,
+} from "./google-sign-in/use-google-landing";

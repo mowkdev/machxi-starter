@@ -34,14 +34,17 @@
     "What D18 spent, since a raise has to say. The D15.5 baseline below was 286047 and nothing raised it through D18.1–D18.8: address verification (the check-your-mail screen, /verify-email and its resend), password recovery (/forgot-password and /reset-password), and the invitation landing (/invitations/accept with its three states) all arrived inside the 301000 this file already carried, leaving 0.7 kB of headroom at D18.8. This step is the smallest of the four screens and the one that went over: the change-address dialog on /account/profile, the /confirm-email screen the mailed link lands on, and their copy in both locales — about 2.0 kB of the 16.2 kB D18 has added in total.",
     "Nothing here was fixable by moving bytes, and it is worth saying why rather than leaving it to be re-litigated. `js` is every JavaScript byte the build emits, so a lazy route or a shared chunk changes which file a byte lives in and not whether it is counted — the house patterns that fix an `entry` breach do nothing for this row. What the step adds is a form over primitives this app already draws and a page over `AuthLayout`, both behind the code split already; the only lever left was copy, and the copy is the flow (ADR-0071 §6's screen has to say that nothing has changed yet, which is the one thing a reader could otherwise get wrong).",
     "317000 rather than a rounder number: ~5% over the new baseline, which is the rule the D15.5 note above set and the headroom this file has run at since D12.6. Measured in the bytes this file stores: js 286047 -> 302218 (+16.2 kB across all of D18), css 14001 -> 14004 (+3 bytes), entry 107950 -> 110565 (+2.6 kB, the eager `en` catalogues ADR-0046 §3 bundles before any lazy import resolves — the trade D12.8's note records). The three vendor chunks are unmoved but for router 27351 -> 27382, which is the route tree gaining four entries.",
-    "**Operator-visible**: this is the number to look at if D19 (Google sign-in) or anything after it goes over again. Entry headroom is ~3% (3.4 kB) against an unchanged 114000, which is tighter than js and is what the next customer-app step should expect to be measured against; the 60%-of-js rule `size.mjs` enforces is nowhere near binding at 317000."
+    "**Operator-visible**: this is the number to look at if D19 (Google sign-in) or anything after it goes over again. Entry headroom is ~3% (3.4 kB) against an unchanged 114000, which is tighter than js and is what the next customer-app step should expect to be measured against; the 60%-of-js rule `size.mjs` enforces is nowhere near binding at 317000.",
+    "NOT RAISED at D19.3, and the number is recorded as the plan asks whether or not it moved. Measured in the bytes this file stores against the D18.9 baseline: js 302218 -> 305932 (+3.6 kB across D19.1-D19.3, of which D19.3 is about +3.1 kB; D19.2 recorded 295.7 kB printed), css 14004 -> 14004, entry 110565 -> 111318 (+753 bytes, about +320 of them this step). The three vendor chunks are unmoved to the byte: the route tree gained /auth/google and the router chunk did not notice.",
+    "What D19.3 bought: \"Continue with Google\" under the sign-in and sign-up cards (the button, Google's inline mark, the start call and its refusal line), the /auth/google landing route and its hook, the two api-client calls, and nine strings in two locales. The route and the hook are lazy; the entry's few hundred bytes are the eager en `auth` catalogue growing by those sentences (the D12.8 trade) plus the api-client's two functions, which live with the client above the router.",
+    "**Operator-visible, as D18.9 said it would be**: entry headroom is now 2.7 kB (2.4%) against an unchanged 114000, and js 10.8 kB (3.5%) against 317000. D19.5 (the Sign-in methods card) lands behind the guard, so its cost is js and the eager en `account` copy; entry is the row to watch."
   ],
   "baseline": {
-    "measuredAt": "2026-09-10",
-    "step": "D18.9",
-    "js": 302218,
+    "measuredAt": "2026-09-11",
+    "step": "D19.3",
+    "js": 305932,
     "css": 14004,
-    "entry": 110565,
+    "entry": 111318,
     "chunks": {
       "query": 10591,
       "react": 60419,

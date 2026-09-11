@@ -73,6 +73,13 @@ export default mergeConfig(
          * suite that wants it off asks `renderApp` for it.
          */
         VITE_FEATURE_USER_REGISTRATION: "true",
+        /*
+         * Pinned off, the schema's own default, for the reason every pin here
+         * exists (ADR-0072 §4): a developer with it set in their shell would
+         * otherwise change what `/login` draws in every suite that visits it.
+         * The cases that want the button ask `renderApp` for it.
+         */
+        VITE_FEATURE_GOOGLE_SIGN_IN: "false",
       },
     },
   }),

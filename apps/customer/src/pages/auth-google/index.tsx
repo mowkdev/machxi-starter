@@ -1,0 +1,112 @@
+import { Link } from "@tanstack/react-router";
+
+import { useGoogleLanding, type GoogleLandingStatus } from "@/features/auth";
+
+import { useT } from "@/shared/i18n";
+import { useRouteTitle } from "@/shared/lib/route-meta";
+import { AuthLayout, Button, Card } from "@/shared/ui";
+
+/**
+ * The sentence per state, as a table rather than an interpolated key — the
+ * compiler checks a table, and a template literal would stop resolving the
+ * moment a state's key stopped matching its name. `failed` is not in it: its
+ * sentence is the errors catalogue's, for the code the callback sent.
+ */
+const MESSAGE_KEY = {
+  pending: "google.pending",
+  signedIn: "google.signedIn",
+  linking: "google.linking",
+  refused: "google.refused",
+  missing: "google.missing",
+} as const satisfies Readonly<
+  Record<Exclude<GoogleLandingStatus, "failed">, string>
+>;
+
+/** The states a person is left sitting on, which are the ones with a way out. */
+const STRANDED: ReadonlySet<GoogleLandingStatus> = new Set([
+  "refused",
+  "failed",
+  "missing",
+]);
+
+/** ADR-0054 §7's 38px rung, as the auth cards spell it. */
+const AUTH_CONTROL = "h-[38px] text-[13px]";
+
+/**
+ * `/auth/google` — where Google's callback hands the person back to this app
+ * (ADR-0072 §2, §4).
+ *
+ * A page is thin composition (ADR-0049): the feature reads the fragment and
+ * acts on it, and this renders the one sentence there is to say while it
+ * does, the confirmation on the one state that holds a live handoff, and the
+ * way back to sign in on the states a person is left sitting on.
+ *
+ * **It composes `AuthLayout` itself rather than sitting under `_auth`** — the
+ * `/impersonate` and `/verify-email` screens' constraint exactly. `_auth`
+ * sends a visitor who already has a session home, and a person may finish a
+ * Google sign-in in a browser that holds one; under that guard the handoff
+ * would be redirected away before the screen could ask them about it.
+ *
+ * **A refusal is the catalogue's sentence for its code**, and the API's own
+ * error body is never what a person sees: every refusal reaches this route as
+ * `#error=<code>` and nothing else (§2), so the code is the whole message.
+ * The link is to `/login` whatever the code, because every refusal on this
+ * route is a sign-in that did not happen.
+ */
+export const AuthGooglePage = () => {
+  const { t } = useT("auth");
+  const { t: tErrors } = useT("errors");
+  const { status, failure, confirm } = useGoogleLanding();
+  /*
+   * The fallback is the key the route declares: a screen that is its own
+   * shell always matches a route that declares one, so it is unreachable
+   * rather than a second place the copy lives (`/verify-email`'s shape).
+   */
+  const title = useRouteTitle("auth:google.title");
+
+  /*
+   * `defaultValue` is ADR-0034's degrade rule, as `createMessageForError`
+   * applies it: a code this bundle knows but whose sentence is missing still
+   * reads as a sentence rather than as a raw `SCREAMING_SNAKE`.
+   */
+  const sentence =
+    status === "failed"
+      ? tErrors(failure ?? "fallback", { defaultValue: tErrors("fallback") })
+      : t(MESSAGE_KEY[status]);
+
+  return (
+    <AuthLayout description={undefined} title={title}>
+      <Card className="flex flex-col gap-4 p-5">
+        <p className="text-[14px] leading-5 text-muted-foreground">
+          {sentence}
+        </p>
+        {/*
+         * The confirmation the ask-first rule asks for, on the one state that
+         * holds a live handoff and has not spent it (ADR-0071 §3 as amended at
+         * `D18.4`, inherited by ADR-0072 §2).
+         */}
+        {status === "signedIn" ? (
+          <Button className={AUTH_CONTROL} onClick={confirm} type="button">
+            {t("google.confirm")}
+          </Button>
+        ) : null}
+      </Card>
+      {STRANDED.has(status) ? (
+        <p className="mt-4 text-center text-[13px] text-muted-foreground">
+          {/*
+           * Under the card rather than in it, `/verify-email`'s shape: a
+           * card's contents are its controls (ADR-0054 §7), and "go back to
+           * sign in" is navigation.
+           */}
+          <Link
+            className="underline underline-offset-4"
+            search={{}}
+            to="/login"
+          >
+            {t("google.signIn")}
+          </Link>
+        </p>
+      ) : null}
+    </AuthLayout>
+  );
+};

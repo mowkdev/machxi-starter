@@ -20,6 +20,7 @@ import { Route as AuthLoginRouteImport } from './routes/_auth.login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth.register'
 import { Route as DashboardIndexRouteImport } from './routes/_dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/_dashboard.account'
+import { Route as AuthGoogleRouteImport } from './routes/auth.google'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
 import { Route as DashboardAccountIndexRouteImport } from './routes/_dashboard.account.index'
 import { Route as DashboardAccountInvitationsRouteImport } from './routes/_dashboard.account.invitations'
@@ -85,6 +86,11 @@ const DashboardAccountRoute = DashboardAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => DashboardRoute,
+} as any)
+const AuthGoogleRoute = AuthGoogleRouteImport.update({
+  id: '/auth/google',
+  path: '/auth/google',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   id: '/invitations/accept',
@@ -166,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/account': typeof DashboardAccountRouteWithChildren
+  '/auth/google': typeof AuthGoogleRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/account/invitations': typeof DashboardAccountInvitationsRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/auth/google': typeof AuthGoogleRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/account/invitations': typeof DashboardAccountInvitationsRoute
   '/account/preferences': typeof DashboardAccountPreferencesRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
   '/_dashboard/account': typeof DashboardAccountRouteWithChildren
+  '/auth/google': typeof AuthGoogleRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/_dashboard/': typeof DashboardIndexRoute
   '/_dashboard/account/invitations': typeof DashboardAccountInvitationsRoute
@@ -238,6 +247,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/account'
+    | '/auth/google'
     | '/invitations/accept'
     | '/account/invitations'
     | '/account/preferences'
@@ -260,6 +270,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/register'
+    | '/auth/google'
     | '/invitations/accept'
     | '/account/invitations'
     | '/account/preferences'
@@ -283,6 +294,7 @@ export interface FileRouteTypes {
     | '/_auth/login'
     | '/_auth/register'
     | '/_dashboard/account'
+    | '/auth/google'
     | '/invitations/accept'
     | '/_dashboard/'
     | '/_dashboard/account/invitations'
@@ -305,6 +317,7 @@ export interface RootRouteChildren {
   ImpersonateRoute: typeof ImpersonateRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  AuthGoogleRoute: typeof AuthGoogleRoute
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
 }
 
@@ -386,6 +399,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/account'
       preLoaderRoute: typeof DashboardAccountRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/auth/google': {
+      id: '/auth/google'
+      path: '/auth/google'
+      fullPath: '/auth/google'
+      preLoaderRoute: typeof AuthGoogleRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/invitations/accept': {
       id: '/invitations/accept'
@@ -557,6 +577,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImpersonateRoute: ImpersonateRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  AuthGoogleRoute: AuthGoogleRoute,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
 }
 export const routeTree = rootRouteImport

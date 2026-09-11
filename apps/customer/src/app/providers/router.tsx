@@ -99,8 +99,9 @@ export const createAppRouter = ({
      * app's routes can truthfully read. The admin's context also carries
      * `queryClient` and `client`, because its loaders prime the cache
      * (ADR-0043) — this app has no loader, and a context field with no reader
-     * is a claim the compiler cannot check. `features` has two: `/register`'s
-     * guard and the sign-in screen's link.
+     * is a claim the compiler cannot check. `features` has its readers:
+     * `/register`'s guard, and the sign-in and sign-up screens' links and
+     * Google buttons (`D19.3`).
      */
     context: { session: store, features },
     defaultPreload: "intent",

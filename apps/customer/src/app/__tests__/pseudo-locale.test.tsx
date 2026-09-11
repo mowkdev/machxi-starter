@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "@/shared/api/query-client";
 import { createAppRouter } from "@/app/providers/router";
 import { createSessionStore } from "@/shared/api/session-store";
+import type { AppFeatures } from "@/shared/config";
 import {
   createAuthHandlers,
   createAuthMockState,
@@ -214,8 +215,32 @@ const ROUTE_PATHS: readonly string[] = [
  * reported two green. Every other address is behind the `_dashboard` guard and
  * needs the opposite, or — `/verify-email`, `/impersonate` and
  * `/reset-password` — wears its own shell and is happy either way.
+ *
+ * **`/auth/google` is visited anonymous although it wears its own shell too**
+ * (`D19.3`): an arrival from Google's callback is ordinarily somebody with no
+ * session yet, so that is the screen worth walking — and with a session and
+ * nothing in the fragment it would render the same sentence anyway.
  */
-const ANONYMOUS_PATHS = ["/login", "/register", "/forgot-password"];
+const ANONYMOUS_PATHS = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/auth/google",
+];
+
+/**
+ * Every optional surface on (`D19.3`).
+ *
+ * The walk's job is to find copy nobody moved into a catalogue, and a surface
+ * a build flag hides is copy the walk would otherwise never see —
+ * "Continue with Google" is off in the suite's pinned environment, which is
+ * the schema's default. Registration is already on there; it is named here so
+ * the object says what the walk renders rather than what a pin happens to be.
+ */
+const ALL_FEATURES: AppFeatures = {
+  userRegistration: true,
+  googleSignIn: true,
+};
 
 const storeFor = (path: string) =>
   ANONYMOUS_PATHS.includes(path) ? createSessionStore() : authenticated();
@@ -263,6 +288,9 @@ describe("the route tree under the pseudo-locale", () => {
      * guard, not the file — so this line is true in both builds.
      */
     expect(ROUTE_PATHS).toContain("/register");
+    // Named because `ANONYMOUS_PATHS` names it: a list that names an address
+    // the tree no longer has would quietly walk it signed in (`D19.3`).
+    expect(ROUTE_PATHS).toContain("/auth/google");
     /*
      * **The two homes** (`D15.9`, ADR-0067 §6 as amended): the one page a
      * tenant screen is exists at `/` acting as the personal organization and at
@@ -312,6 +340,7 @@ describe("the route tree under the pseudo-locale", () => {
       store: storeFor(path),
       queryClient,
       pseudo: true,
+      features: ALL_FEATURES,
     });
 
     /*

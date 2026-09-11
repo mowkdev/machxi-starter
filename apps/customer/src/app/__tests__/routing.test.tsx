@@ -177,7 +177,7 @@ describe("route guards", () => {
     const { router } = renderApp({
       initialPath: "/login",
       store: createSessionStore(),
-      features: { userRegistration: false },
+      features: { userRegistration: false, googleSignIn: false },
     });
 
     await screen.findByRole("heading", { name: "Sign in" });

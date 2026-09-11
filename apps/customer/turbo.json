@@ -8,6 +8,7 @@
         "VITE_APP_ID",
         "VITE_I18N_PSEUDO",
         "VITE_FEATURE_USER_REGISTRATION",
+        "VITE_FEATURE_GOOGLE_SIGN_IN",
         "VITE_ERROR_REPORTING_DSN"
       ]
     },
@@ -17,6 +18,7 @@
         "VITE_APP_ID",
         "VITE_I18N_PSEUDO",
         "VITE_FEATURE_USER_REGISTRATION",
+        "VITE_FEATURE_GOOGLE_SIGN_IN",
         "VITE_ERROR_REPORTING_DSN"
       ]
     }
