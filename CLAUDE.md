@@ -47,6 +47,10 @@ pnpm test:scripts              # the repo-level script tests
 - The **platform packages** both SPAs are built from: `api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`, `app-kit`. Each app keeps its dictionary, policy data, config, route tree and size budget
 - `docker/` — local compose and the reference production compose; `docs/` — records, plans, specs, rules, Postman; `scripts/` — repo-level tooling outside the workspaces; `turbo/generators` — the two scaffolds
 
+## The running stack is the operator's
+
+The operator keeps the whole dev stack running — `pnpm docker:up`, the API on 4000, the admin app on 3001, the customer app on 3002, Mailpit on 8025 — and it stays up across sessions. **Attach to it; never start, stop, kill or restart it.** Probe the port (`GET /health` on 4000) and use what answers; `.claude/launch.json`'s url-only entries attach the Browser pane the same way. A change that needs a restart — an `.env` edit, a port change — is reported to the operator, who performs it. The `*:spawn` entries in `launch.json` exist for a machine where nothing is running, not for replacing what is. Measurements that need a clean rate-limit window (`test:e2e`, `test:postman` back to back) ask the operator for the restart rather than taking it.
+
 ## Search
 
 Search with the Grep/Glob tools — including inside a single known file. Through Bash, `grep -r`, `find` and `rg` are denied outright (they walk `node_modules` and `.turbo`), and even a one-file `grep` is unapproved, so it stalls an unattended run; `cat` on a known path is fine.
