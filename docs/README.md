@@ -11,6 +11,7 @@
 | [`rules/`](rules/)                                             | The current-rules digests — one per area, generated from the records by `pnpm rules:digest` and regenerated at ship. Each line names the record it comes from; a session loads the digest for its area rather than the whole chain.          |
 | [`forking.md`](forking.md), [`upstreaming.md`](upstreaming.md) | How this repository becomes a project, and how a generic feature comes back (ADR-0065).                                                                                                                                                      |
 | [`CHANGELOG.md`](CHANGELOG.md)                                 | One entry per shipped deliverable, with its `starter-D<n>` tag.                                                                                                                                                                              |
+| [`reviews/`](reviews/)                                         | Dated whole-repository reviews — findings with ids, severities, evidence and the smallest fix, written to be cited from a step that closes them. Not a record: a review observes, a record decides.                                          |
 
 ## Where to look for what
 
