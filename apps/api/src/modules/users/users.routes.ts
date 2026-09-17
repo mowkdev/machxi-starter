@@ -63,11 +63,24 @@ export interface UsersRouterDeps {
     /** Keyed on the staff principal's id, so it mounts after `authenticate` (ADR-0057 §1). */
     readonly rateLimiter: RequestHandler;
   };
+  /**
+   * The per-principal budget on every route that verifies a password under a
+   * session (ADR-0073 §1), from the composition root.
+   *
+   * One instance across all of its mounts, and this router carries two:
+   * `POST /:id/password` and `POST /:id/email` both verify the **actor's own**
+   * current password before the subject is read, so each `403` is a guessing
+   * oracle against the credential ADR-0027 rule 1 leans on — until `D20.4`
+   * bounded by nothing but the global per-address limit. Keyed on the actor,
+   * so both mount after `authorize`.
+   */
+  readonly principalHashRateLimiter: RequestHandler;
 }
 
 export const createUsersRouter = ({
   controller,
   impersonation,
+  principalHashRateLimiter,
 }: UsersRouterDeps): Router => {
   const router = Router();
 
@@ -100,9 +113,16 @@ export const createUsersRouter = ({
   // and rewriting a customer's credential is not. A sub-resource rather than a
   // field on `PATCH /:id`, so no code path exists where a profile edit can
   // silently rotate a password (ADR-0027).
+  //
+  // The limiter is ADR-0073 §1's, and it mounts **after** `authorize` for
+  // `impersonate`'s reason below: its key is `ctx.principal`, and a `manager`
+  // refused here should spend nothing. What it bounds is the actor's own
+  // guessing at their own password — the `403` this route answers when
+  // `currentPassword` is wrong — and the argon2 operation each attempt buys.
   router.post(
     "/:id/password",
     authorize("admin"),
+    principalHashRateLimiter,
     validate(setUserPasswordSchema),
     controller.setPassword,
   );
@@ -122,9 +142,16 @@ export const createUsersRouter = ({
    * the same thing: the guard is the record's sentence, and a reader must not
    * have to know that an empty list is a lock to see which role this is.
    */
+  //
+  // The limiter is `/:id/password`'s, and this route is on §1's list for
+  // exactly its reason (`D20.4`'s `security-reviewer`): `setEmail` verifies
+  // the **actor's own** password before it reads the subject, so its `403` is
+  // the same oracle — on the super admin's credential, which is the worst one
+  // to leave unbounded.
   router.post(
     "/:id/email",
     authorize("super_admin"),
+    principalHashRateLimiter,
     validate(setUserEmailSchema),
     controller.setEmail,
   );
@@ -173,31 +200,22 @@ export const createUsersRouter = ({
  * change-password request carries two passwords in its body; neither belongs
  * in a shared proxy's cache or on its disk (ADR-0020).
  *
- * `change-password` gets no limiter of its own beyond the global one, and the
- * open question there is cost rather than guessing. Nothing is left to
- * brute-force — the caller already holds a valid session for the account whose
- * password they are "guessing" — but each call still buys up to two argon2
- * operations from a pool of `AUTH_MAX_CONCURRENT_HASHES` that login shares, and
- * the global `300 / 15 min / IP` is a per-IP budget rather than a per-account
- * one. A determined set of authenticated clients can therefore make the hash
+ * **Four routes here spend an argon2 operation under a session**, and since
+ * `D20.4` they share a budget keyed on the account that spends it (ADR-0073
+ * §1). `change-password` buys up to two hashes, the `DELETE` below buys one —
+ * there is no new credential to store — `DELETE /identities/:provider`
+ * (`D19.4`, ADR-0072 §3) buys one, refused before any hash for an account with
+ * no password, and `change-email` (ADR-0071 §6) buys one too, which is the
+ * fourth that §1's first list missed. What was never bounded is what they buy
+ * it *from*: a pool of
+ * `AUTH_MAX_CONCURRENT_HASHES` that login shares, behind a global `300 / 15
+ * min / **IP**` that is a per-address budget rather than a per-account one. A
+ * determined set of authenticated clients could therefore make the hash
  * limiter shed, and what it sheds is *login*, for everybody.
  *
- * **Two endpoints now, not one** (`D12.4`): the `DELETE` below verifies a
- * password too, so it draws on the same pool for the same reason. It buys one
- * hash rather than two — there is no new credential to store — and it can be
- * called at most once per account, since it ends the session that called it.
- * The accepted risk is unchanged in kind and smaller in degree; the missing
- * category is still a per-principal budget for expensive routes, recorded in
- * ADR-0020 §Residual risks rather than half-built here. `DELETE
- * /identities/:provider` (`D19.4`, ADR-0072 §3) is a third of the same kind —
- * one hash per call, refused before any hash for an account with no password —
- * and sits under the same accepted risk rather than a budget of its own.
- *
- * Accepted for now: reaching it at all requires a valid session per client, the
- * global limiter caps each one, and the shedding is a `503` with `Retry-After`
- * rather than a failure (ADR-0020 §Residual risks). A per-principal budget for
- * expensive routes is the missing category, and it is recorded there rather
- * than half-built here.
+ * That is the fifth limiter category ADR-0020 §Residual risks named as missing
+ * from D1 onwards, and it is now mounted rather than accepted: `10 / 15 min`
+ * per principal, one counter across all five of its routes.
  */
 export interface UserProfileRouterDeps {
   readonly controller: UserProfileController;
@@ -231,6 +249,17 @@ export interface UserProfileRouterDeps {
    */
   readonly setPasswordLinkRateLimiter: RequestHandler;
   /**
+   * ADR-0073 §1's per-principal budget on the four routes here that spend an
+   * argon2 operation, from the composition root — one instance shared with the
+   * administrative credential and address resets, because what it rations is
+   * the caller's share of one process-wide hash pool rather than any one route.
+   *
+   * Mounted **after** `refuseImpersonated` for `mailboxRateLimiter`'s reason
+   * and one of its own: a request the guard is going to refuse buys no hash at
+   * all, and its budget would be charged to the impersonated **customer**.
+   */
+  readonly principalHashRateLimiter: RequestHandler;
+  /**
    * The link start's handler (ADR-0072 §3), **present only when the Google
    * client is configured** — the federated controller exists then and not
    * otherwise — so without one the path answers `404 ROUTE_NOT_FOUND`, the
@@ -245,6 +274,7 @@ export const createUserProfileRouter = ({
   controller,
   refuseImpersonated,
   mailboxRateLimiter,
+  principalHashRateLimiter,
   setPasswordLinkRateLimiter,
   federated,
 }: UserProfileRouterDeps): Router => {
@@ -260,6 +290,7 @@ export const createUserProfileRouter = ({
   router.post(
     "/change-password",
     refuseImpersonated,
+    principalHashRateLimiter,
     validate(changePasswordSchema),
     controller.changePassword,
   );
@@ -284,6 +315,15 @@ export const createUserProfileRouter = ({
   router.post(
     "/change-email",
     refuseImpersonated,
+    // Before `mailboxRateLimiter`, and it is a second budget rather than a
+    // duplicate of it (`D20.4`'s `security-reviewer`). That one is keyed on
+    // the address the caller typed and **refunds every refusal**, for the
+    // reason its own docblock gives — so a wrong `currentPassword` here used
+    // to buy an argon2 operation from login's pool and spend no budget at all.
+    // This one is keyed on the account and counts refusals, which is what the
+    // hash is protected by; running it first also keeps a caller who is over
+    // their own budget away from the mailbox's counter entirely.
+    principalHashRateLimiter,
     mailboxRateLimiter,
     validate(changeEmailSchema),
     controller.changeEmail,
@@ -330,6 +370,7 @@ export const createUserProfileRouter = ({
   router.delete(
     "/identities/:provider",
     refuseImpersonated,
+    principalHashRateLimiter,
     validate(unlinkIdentitySchema),
     controller.unlinkIdentity,
   );
@@ -345,6 +386,7 @@ export const createUserProfileRouter = ({
   router.delete(
     "/",
     refuseImpersonated,
+    principalHashRateLimiter,
     validate(deleteProfileSchema),
     controller.remove,
   );

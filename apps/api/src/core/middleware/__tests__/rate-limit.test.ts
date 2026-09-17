@@ -4,18 +4,20 @@ import express, {
   type RequestHandler,
 } from "express";
 import supertest from "supertest";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadConfig, type AppConfig } from "../../config/index.js";
 import { createRequestContext } from "../../context/index.js";
 import { isAppError } from "../../errors/index.js";
 import {
+  createGlobalRateLimiter,
   createLoginRateLimiter,
   createMailboxRateLimiter,
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
   createTokenRouteRateLimiter,
   createVerificationRateLimiter,
+  resetRateLimitKeyWarning,
 } from "../rate-limit.js";
 
 /**
@@ -430,5 +432,124 @@ describe("the limiters that were here first", () => {
 
     expect(retryAfter).toBeGreaterThan(FIFTEEN_MINUTES - 60);
     expect(retryAfter).toBeLessThanOrEqual(FIFTEEN_MINUTES);
+  });
+});
+
+/**
+ * The key that must never become one shared bucket (ADR-0073 §2).
+ *
+ * `TRUST_PROXY` stated one hop too many, together with a client sending a
+ * forwarded header that is not an address, leaves the context middleware with
+ * no validated address at all — and every limiter in the file then derived its
+ * key from `""`. That is not a loose limit: it is one counter for every such
+ * caller, so the global limiter refuses the whole world at 300 and nothing in
+ * a response says why. The socket's own peer address is coarse behind a proxy
+ * and cannot be spoofed by a header, which is the right trade.
+ *
+ * Tested here rather than in the integration tier because the condition cannot
+ * be produced through a mounted app without a proxy this suite would have to
+ * trust: what is needed is a context with `ip` absent, which is exactly what
+ * the real middleware leaves behind when `node:net` refuses the value.
+ */
+describe("the limiter key with no validated address", () => {
+  const warn = vi.fn();
+
+  /**
+   * A context with **no** `ip`, as `createContextMiddleware` leaves it when
+   * `req.ip` was not an address, and a logger whose `warn` can be counted.
+   */
+  const contextWithoutIp: RequestHandler = (req, _res, next) => {
+    const ctx = createRequestContext({
+      requestId: "01J0000000000000000000000B",
+      logger: createLogger({ level: "silent", name: "rate-limit-test" }),
+    });
+
+    req.ctx = { ...ctx, logger: { ...ctx.logger, warn } as typeof ctx.logger };
+
+    next();
+  };
+
+  const appWithoutIp = (limiter: RequestHandler) => {
+    const app = express();
+
+    app.use(express.json());
+    app.use(contextWithoutIp);
+    app.post("/0", limiter, (_req, res) => {
+      res.status(202).end();
+    });
+    app.use(errorHandler);
+
+    return app;
+  };
+
+  beforeEach(() => {
+    warn.mockClear();
+    resetRateLimitKeyWarning();
+  });
+
+  it("keys on the socket address, so two clients do not share one budget", async () => {
+    const app = appWithoutIp(
+      createGlobalRateLimiter(
+        { ...config, rateLimit: { ...config.rateLimit, globalMax: 1 } },
+        undefined,
+      ),
+    );
+
+    // Both requests arrive over loopback, so both key on the *same* socket
+    // address and the second is refused — which is the point: a real key was
+    // derived, and it was not the empty string. Were it `""`, this would pass
+    // for the wrong reason, so the claim that separates them is below.
+    await supertest(app).post("/0").send({}).expect(202);
+    await supertest(app).post("/0").send({}).expect(429);
+  });
+
+  it("never keys on the empty string", async () => {
+    // The distinguishing case: `ipKeyGenerator("")` and
+    // `ipKeyGenerator("127.0.0.1")` are different keys, so a limiter whose
+    // budget is spent by a caller **with** an address must still admit one
+    // without — and vice versa. One app, one limiter, two contexts.
+    const limiter = createLoginRateLimiter(
+      { ...config, rateLimit: { ...config.rateLimit, loginMax: 1 } },
+      undefined,
+    );
+    const app = express();
+
+    app.use(express.json());
+    app.post("/with", context, limiter, (_req, res) => {
+      res.status(202).end();
+    });
+    app.post("/without", contextWithoutIp, limiter, (_req, res) => {
+      res.status(202).end();
+    });
+    app.use(errorHandler);
+
+    const email = "person@machxi.local";
+
+    await post(app, "/with", email).expect(202);
+    await post(app, "/with", email).expect(429);
+
+    // A different key, not a shared bucket.
+    await post(app, "/without", email).expect(202);
+  });
+
+  it("says so once per process and not once per request", async () => {
+    // The condition holds for *every* request while it holds at all, so a line
+    // per request buries the deployment's traffic under the warning about it.
+    const app = appWithoutIp(createGlobalRateLimiter(config, undefined));
+
+    await supertest(app).post("/0").send({}).expect(202);
+    await supertest(app).post("/0").send({}).expect(202);
+    await supertest(app).post("/0").send({}).expect(202);
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({ setting: "TRUST_PROXY" });
+  });
+
+  it("stays quiet when the address is there", async () => {
+    const app = appWith(createGlobalRateLimiter(config, undefined));
+
+    await post(app, "/0", "person@machxi.local").expect(202);
+
+    expect(warn).not.toHaveBeenCalled();
   });
 });

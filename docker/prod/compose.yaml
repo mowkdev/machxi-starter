@@ -80,6 +80,17 @@ services:
       # `req.ip` is what the login limiter, the refresh limiter and the audit
       # trail key on. Behind one reverse proxy that is `1`.
       - TRUST_PROXY=${TRUST_PROXY}
+      # The three socket deadlines (ADR-0073 §4). Bare keys: unset means the
+      # schema's 30s / 10s / 65s. The keep-alive is the one an operator
+      # actually sets — it must be **above** the proxy's idle timeout, or the
+      # API closes connections the proxy is about to reuse and the result is
+      # intermittent 502s in front of a healthy process.
+      - HTTP_REQUEST_TIMEOUT
+      - HTTP_HEADERS_TIMEOUT
+      - HTTP_KEEP_ALIVE_TIMEOUT
+      # How many live sessions one account may hold (ADR-0073 §3). A bare key:
+      # unset means the schema's 10, and `0` turns the cap off.
+      - AUTH_MAX_SESSIONS_PER_PRINCIPAL
       # The **application** role: table privileges and nothing else, and no
       # UPDATE or DELETE on audit_events, which the database refuses twice over
       # (ADR-0061). The owner's URL is not injected here — the API has no use
@@ -133,6 +144,11 @@ services:
       # §4, amended at `D18.7`) — the only one of the three whose default is a
       # capacity number, so the first a deployment with real traffic raises.
       - RATE_LIMIT_MAIL_SOURCE_MAX
+      # The per-principal budget on every authenticated route that verifies a
+      # password (ADR-0073 §1). Bare keys, so unset means the schema's
+      # 10 / 15m — an anti-abuse number, keyed on one account.
+      - RATE_LIMIT_PRINCIPAL_HASH_MAX
+      - RATE_LIMIT_PRINCIPAL_HASH_WINDOW
       - VERIFICATION_TOKEN_TTL
       - PASSWORD_RESET_TOKEN_TTL
       - EMAIL_CHANGE_TOKEN_TTL

@@ -29,6 +29,7 @@ import {
   createMailboxRateLimiter,
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
+  createPrincipalHashRateLimiter,
   createRefreshRateLimiter,
   createSetPasswordLinkRateLimiter,
   createTokenRouteRateLimiter,
@@ -304,6 +305,9 @@ export const buildContainer = ({
     hashLimiter,
     refreshTtlSec: config.auth.refreshTtlSec,
     rotationGraceSec: config.auth.refreshRotationGraceSec,
+    // ADR-0073 §3's cap, on both populations: an operator accumulates sessions
+    // exactly as a customer does.
+    maxSessionsPerPrincipal: config.auth.maxSessionsPerPrincipal,
     impersonationSessionTtlSec: config.auth.impersonationSessionTtlSec,
     // ADR-0071 §1's mechanism and ADR-0066 §1's port, on both populations:
     // verification is the user segment's (§3) and the reset is both (§4).
@@ -750,6 +754,24 @@ export const buildContainer = ({
       // would otherwise lock a person out of moving to that address for the
       // rest of the hour (`D18.9`'s `code-reviewer`).
       { recipientField: "newEmail", skipFailedRequests: true },
+    ),
+    /**
+     * The fifth category ADR-0020 §Residual risks named as missing, spent by
+     * ADR-0073 §1: `10 / 15 min / **principal**` on every authenticated route
+     * that verifies a password through the hash limiter.
+     *
+     * **One instance, mounted seven times** — the admin segment's four
+     * credential and address sub-resources and the four self-service routes on
+     * `/user/profile` (`change-password`, the delete, the unlink and
+     * `change-email`). The sharing is the decision here, where `verification`
+     * and `passwordReset` separated for the opposite one: what those ration is
+     * a mailbox, which differs per flow, and what this rations is the caller's
+     * share of one process-wide hash pool, which does not. A counter per route
+     * would be seven times the decided number for one account to spend in turn.
+     */
+    principalHash: createPrincipalHashRateLimiter(
+      config,
+      rateLimitStore("principal-hash"),
     ),
   } as const;
 

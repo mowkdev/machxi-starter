@@ -111,6 +111,11 @@ export const createAdminRouter = (container: Container): Router => {
       // that section's senders from one instance — they mail one message to
       // one mailbox, so a counter each would be two budgets for one flow.
       onboardingMailRateLimiter: container.rateLimiters.staffOnboardingMailbox,
+      // ADR-0073 §1's per-principal budget on `POST /staff/:id/password` and
+      // `POST /staff/:id/email`, where the actor presents their own credential
+      // and each `403` is otherwise an unbounded oracle. One instance, shared
+      // with the users router below and with `/user/profile`.
+      principalHashRateLimiter: container.rateLimiters.principalHash,
     }),
   );
 
@@ -126,6 +131,9 @@ export const createAdminRouter = (container: Container): Router => {
         controller: container.controllers.impersonation,
         rateLimiter: container.rateLimiters.impersonation,
       },
+      // The same instance the staff router takes (ADR-0073 §1): the budget is
+      // one account's share of one hash pool, not a per-route allowance.
+      principalHashRateLimiter: container.rateLimiters.principalHash,
     }),
   );
 

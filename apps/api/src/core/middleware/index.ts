@@ -24,6 +24,7 @@ export {
   createMailboxRateLimiter,
   createMailSourceRateLimiter,
   createPasswordResetRateLimiter,
+  createPrincipalHashRateLimiter,
   createRefreshRateLimiter,
   createSetPasswordLinkRateLimiter,
   createTokenRouteRateLimiter,

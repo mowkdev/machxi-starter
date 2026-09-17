@@ -22,6 +22,7 @@ import type {
   NewSessionInput,
   RevokeAllImpersonatedByInput,
   RevokeAllInput,
+  RevokeBeyondCapInput,
   RevokeInput,
   RotateSessionInput,
   SessionRecord,
@@ -46,6 +47,15 @@ const REFRESH_TTL_SEC = 3600;
 const GRACE_SEC = 30;
 /** `IMPERSONATION_SESSION_TTL`, and deliberately unlike the two above (ADR-0057 §4). */
 const IMPERSONATION_TTL_SEC = 1800;
+/**
+ * `AUTH_MAX_SESSIONS_PER_PRINCIPAL` (ADR-0073 §3) — the schema's own default.
+ *
+ * High enough that no flow in this file reaches it: what the cap does at its
+ * edge is `auth-sessions.int.test.ts`'s subject, against a real table with a
+ * real `created_at`, and what belongs here is that an ordinary mint is
+ * unchanged by its presence.
+ */
+const MAX_SESSIONS_PER_PRINCIPAL = 10;
 
 /* ── clock ────────────────────────────────────────────────────────────────── */
 
@@ -178,6 +188,44 @@ const createFakeSessions = () => {
       }
 
       return Promise.resolve(ended);
+    },
+
+    /**
+     * The per-principal cap (ADR-0073 §3), reproducing the three properties
+     * the service leans on: oldest first, an impersonated row counted and
+     * never chosen, and the session just minted never chosen.
+     *
+     * "Oldest" is insertion order here, which the `Map` preserves and the
+     * sequential ids make visible; the real repository orders by `created_at`.
+     */
+    revokeOldestBeyondCap: (input: RevokeBeyondCapInput) => {
+      if (input.max <= 0) return Promise.resolve(0);
+
+      const live = [...rows.values()].filter(
+        (row) =>
+          row.principalType === input.principalType &&
+          row.principalId === input.principalId &&
+          row.revokedAt === null &&
+          row.refreshTokenExpiresAt > input.at,
+      );
+
+      const excess = live.length - input.max;
+
+      if (excess <= 0) return Promise.resolve(0);
+
+      const doomed = live
+        .filter(
+          (row) =>
+            row.id !== input.exceptSessionId &&
+            row.impersonatedByStaffId === null,
+        )
+        .slice(0, excess);
+
+      for (const row of doomed) {
+        rows.set(row.id, { ...row, revokedAt: input.at });
+      }
+
+      return Promise.resolve(doomed.length);
     },
   };
 
@@ -648,6 +696,7 @@ const build = (
     hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
     refreshTtlSec: REFRESH_TTL_SEC,
     rotationGraceSec: GRACE_SEC,
+    maxSessionsPerPrincipal: MAX_SESSIONS_PER_PRINCIPAL,
     impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
     accountTokens: accountTokens.tokens,
     mail: mail.mail,
@@ -946,6 +995,7 @@ describe("refresh", () => {
       hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
+      maxSessionsPerPrincipal: MAX_SESSIONS_PER_PRINCIPAL,
       impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
       // Neither of the flows under test here mints or mails anything;
       // the dependencies are required so a wiring mistake cannot be silent.
@@ -1032,6 +1082,7 @@ describe("refresh", () => {
       hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
+      maxSessionsPerPrincipal: MAX_SESSIONS_PER_PRINCIPAL,
       impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
       // Neither of the flows under test here mints or mails anything;
       // the dependencies are required so a wiring mistake cannot be silent.
@@ -1788,6 +1839,7 @@ describe("revoking a staff member's sessions", () => {
       hashLimiter: createHashLimiter({ maxConcurrent: 4 }),
       refreshTtlSec: REFRESH_TTL_SEC,
       rotationGraceSec: GRACE_SEC,
+      maxSessionsPerPrincipal: MAX_SESSIONS_PER_PRINCIPAL,
       impersonationSessionTtlSec: IMPERSONATION_TTL_SEC,
       // Neither of the flows under test here mints or mails anything;
       // the dependencies are required so a wiring mistake cannot be silent.

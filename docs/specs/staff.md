@@ -162,20 +162,25 @@ Proved by: `apps/api/test/staff-delete.int.test.ts`
 
 ## Requirement: Staff set a colleague's password with their own
 
-`POST /admin/staff/:id/password` verifies the caller's `currentPassword` first, then sets the subject's password and revokes every session of the subject. `204`.
-Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md)
-Proved by: `apps/api/test/staff-admin.int.test.ts`
+`POST /admin/staff/:id/password` verifies the caller's `currentPassword` first, then sets the subject's password and revokes every session of the subject. `204`. The route is budgeted per **acting account**: beyond `RATE_LIMIT_PRINCIPAL_HASH_MAX` requests per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW` it answers `429 RATE_LIMITED`, so the `403` below cannot be used to guess the caller's own password without limit.
+Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0073](../adr/0073-review-hardening.md)
+Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
 
 ### Scenario: Wrong own password
 
 - **WHEN** the caller's `currentPassword` does not verify
 - **THEN** the answer is `403 AUTH_CURRENT_PASSWORD_INVALID`, the same whether or not `:id` exists
 
+### Scenario: The caller keeps guessing
+
+- **WHEN** one operator sends more than `RATE_LIMIT_PRINCIPAL_HASH_MAX` of these requests inside `RATE_LIMIT_PRINCIPAL_HASH_WINDOW`
+- **THEN** the next one answers `429 RATE_LIMITED` with `Retry-After`, and another operator from the same address is unaffected
+
 ## Requirement: A super admin sets an operator's address
 
-`POST /admin/staff/:id/email` is the one route under `/admin/staff` that narrows the mount's guard: it admits `super_admin` alone, so a plain `admin` answers `403 FORBIDDEN`. It takes the subject's new `email` and the acting operator's own `currentPassword`, verified first — a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not `:id` exists. The address is set immediately with no confirmation link, because the operator is the authority a link would be asking. An address any staff account already holds — the subject's own included — answers `409 STAFF_EMAIL_TAKEN`. Success answers `204`, writes an `account.email_changed` audit row naming the acting operator, the subject and both addresses, spends every live mailed link the operator holds — recovery and onboarding alike, because each was addressed to the mailbox being replaced — and revokes **no** session: an address is not a credential. A super admin may name their own id.
-Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
-Proved by: `apps/api/test/staff-admin.int.test.ts`
+`POST /admin/staff/:id/email` is the one route under `/admin/staff` that narrows the mount's guard: it admits `super_admin` alone, so a plain `admin` answers `403 FORBIDDEN`. It takes the subject's new `email` and the acting operator's own `currentPassword`, verified first — a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not `:id` exists. The address is set immediately with no confirmation link, because the operator is the authority a link would be asking. The route carries the same per-acting-account budget as `POST /admin/staff/:id/password`, for the same reason: beyond `RATE_LIMIT_PRINCIPAL_HASH_MAX` requests per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW` it answers `429 RATE_LIMITED`, so its `403` is not an unbounded guess at the super admin's own password. An address any staff account already holds — the subject's own included — answers `409 STAFF_EMAIL_TAKEN`. Success answers `204`, writes an `account.email_changed` audit row naming the acting operator, the subject and both addresses, spends every live mailed link the operator holds — recovery and onboarding alike, because each was addressed to the mailbox being replaced — and revokes **no** session: an address is not a credential. A super admin may name their own id.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0058](../adr/0058-append-only-audit-log.md), [ADR-0073](../adr/0073-review-hardening.md)
+Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
 
 ### Scenario: A plain admin tries
 

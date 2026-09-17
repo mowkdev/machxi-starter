@@ -187,8 +187,21 @@ set-password link to the refusals.
 registration, `401 UNAUTHENTICATED` for an unknown path in a guarded segment. Each
 of those requests carries a description saying which ADR decided it.
 
-**Rate limits bound how often it runs** (ADR-0020, as carried by ADR-0069). One
-pass spends 1 of the 5 failed refreshes per 15 minutes per IP, 2 of the
+**Rate limits bound how often it runs** (ADR-0020, as carried by ADR-0069 and
+ADR-0073). One pass spends **11 of the per-principal hash budget as the seeded
+super admin** — the two password resets on each of `staff` and `users`, the
+three address changes on each, and the invited operator's — which is why the
+committed development profile states a `RATE_LIMIT_PRINCIPAL_HASH_MAX` far
+above the schema's 10 and a deployment's number is left alone. That budget is
+keyed on an **account** rather than on an address, and the super admin is a
+fixture, so unlike every other limiter here it does not reset between runs: a
+number sized to one run only would refuse the second run of the quarter hour in
+`Admin › Staff`, which has nothing to do with rate limiting. It also means the
+collection deliberately **never asserts that budget's `429`** — a request that
+tripped it would spend the fixture's whole window for every run after it. The
+refusal is proved in `apps/api/test/rate-limit.int.test.ts`, where a limiter's
+counter lives inside one app and cannot leak (ADR-0066 §4). One pass also
+spends 1 of the 5 failed refreshes per 15 minutes per IP, 2 of the
 verification limiter's `3 / hour / IP + email` — and only ever against
 **per-run** addresses, which is why both `resend-verification` requests generate
 one rather than using a fixture: a fixed address there would answer `429` on the

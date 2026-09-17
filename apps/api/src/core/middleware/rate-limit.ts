@@ -8,14 +8,16 @@ import type { RateLimitStore } from "../rate-limit/index.js";
 /**
  * Rate limiting (ADR-0020 §Rate limiting).
  *
- * Nine limiters and one failure shape: the global one on `/api`, a strict one
+ * Ten limiters and one failure shape: the global one on `/api`, a strict one
  * on login and registration, one on *failed* refreshes, one on the
  * impersonation mint since `D13.4` — the only one keyed on a principal rather
  * than on an address (ADR-0057 §1) — and, since `D18.2`, one each on the two
  * endpoints that mail a link to an address a stranger typed (ADR-0071 §3, §4),
  * joined at `D18.5` by the one keyed on the **mailbox alone** and at `D18.7`
  * by the one keyed on the **source alone** and by the one for routes whose
- * credential is an opaque token. `/health` is deliberately outside all of them
+ * credential is an opaque token, and at `D20.4` by the one keyed on the
+ * **caller's account** for the authenticated routes that spend an argon2
+ * operation (ADR-0073 §1). `/health` is deliberately outside all of them
  * — a probe that gets rate-limited takes a healthy instance out of rotation
  * (ADR-0016).
  *
@@ -86,14 +88,70 @@ const retryAfterSeconds = (req: Request, windowMs: number): number => {
  * other failure.
  */
 /**
- * The client address, as the context middleware validated it.
+ * Whether this process has already said that its limiter keys are degraded.
+ *
+ * Module state, which nothing else here has, and the alternative is worse: the
+ * condition below holds for *every* request while it holds at all, so a log
+ * line per request would bury the deployment's real traffic under the warning
+ * about it. One line names the cause; the metrics say how much of it there is.
+ */
+let socketFallbackWarned = false;
+
+/** Reset between tests, which are the only callers with more than one process-lifetime. */
+export const resetRateLimitKeyWarning = (): void => {
+  socketFallbackWarned = false;
+};
+
+/**
+ * The client address, as the context middleware validated it — or the socket's
+ * own, saying so once (ADR-0073 §2).
  *
  * Not `req.ip` directly: behind a proxy that value can be an arbitrary string
  * (see `context.ts`), and an unbounded attacker-chosen string is a poor key for
  * an in-memory store. `ipKeyGenerator` then groups IPv6 addresses by /64, so
  * one client cannot rotate through its own subnet for a fresh budget.
+ *
+ * **What `""` would mean is the whole of this function's second half.** A
+ * `TRUST_PROXY` stated one hop too many, together with a client sending a
+ * forwarded header that is not an address, leaves `ctx.ip` undefined — and the
+ * key every limiter here derives from it then becomes the *same* empty string
+ * for every such caller. One shared bucket is not a loose limit, it is an
+ * outage with a counter: the global limiter refuses the whole world at 300.
+ * `req.socket.remoteAddress` is the connection's own peer and cannot be
+ * spoofed by a header; behind a proxy it is the proxy, which is a coarse key
+ * and an honest one.
+ *
+ * The **warning is emitted here rather than by the context middleware**, and
+ * that is deliberate: this is where the degradation is actually taken, so the
+ * sentence and the behaviour cannot drift apart, and `clientIp` has no
+ * configuration to name. Once per process (see {@link socketFallbackWarned}).
+ *
+ * The fallback address is a **key only**. It is never written to `sessions.ip`
+ * — that column stays null, because a proxy's address recorded as a person's
+ * is worse than no address at all (ADR-0073 §2).
+ *
+ * One residual, stated rather than papered over (`D20.4`'s
+ * `security-reviewer`): a request whose socket has no `remoteAddress` at all —
+ * a connection already gone by the time the limiter runs — still lands in the
+ * `""` bucket this function exists to avoid. There is nothing left to key on
+ * at that point, and a request with no peer is not a caller anybody is
+ * rationing.
  */
-const ipKey = (req: Request): string => ipKeyGenerator(req.ctx.ip ?? "");
+const ipKey = (req: Request): string => {
+  const validated = req.ctx.ip;
+
+  if (validated !== undefined) return ipKeyGenerator(validated);
+
+  if (!socketFallbackWarned) {
+    socketFallbackWarned = true;
+    req.ctx.logger.warn(
+      { setting: "TRUST_PROXY", key: "socket" },
+      "no validated client address; rate-limit keys fall back to the socket address",
+    );
+  }
+
+  return ipKeyGenerator(req.socket.remoteAddress ?? "");
+};
 
 const baseOptions = (windowMs: number, store: RateLimitStore) =>
   ({
@@ -510,6 +568,64 @@ export const createSetPasswordLinkRateLimiter = (
   rateLimit({
     ...baseOptions(config.rateLimit.passwordResetWindowSec * 1000, store),
     limit: config.rateLimit.passwordResetMax,
+    keyGenerator: (req) => {
+      const { principal } = req.ctx;
+
+      return principal === null
+        ? `anon:${ipKey(req)}`
+        : `${principal.kind}:${principal.id}`;
+    },
+  });
+
+/**
+ * `RATE_LIMIT_PRINCIPAL_HASH_MAX / RATE_LIMIT_PRINCIPAL_HASH_WINDOW /
+ * **principal**` on the authenticated routes that spend an argon2 operation
+ * (ADR-0073 §1) — `10 / 15 min` by default.
+ *
+ * **The fifth category, and the one ADR-0020 §Residual risks has been naming
+ * as missing since D1.** The rule is a criterion rather than a list (§1,
+ * amended at `D20.4`): **every authenticated route that verifies a password
+ * through the hash limiter**. Seven today — `POST
+ * /user/profile/change-password`, `DELETE /user/profile`, `DELETE
+ * /user/profile/identities/:provider`, `POST /user/profile/change-email`, and
+ * `POST /admin/{staff,users}/:id/{password,email}` — each one a place where a
+ * caller who already holds a session buys a hash from the pool
+ * `AUTH_MAX_CONCURRENT_HASHES` bounds.
+ *
+ * It closes two different things with one budget, which is why it is one
+ * limiter and not two:
+ *
+ * - **Liveness.** Each of those calls costs up to two argon2 operations, and
+ *   the pool they come from is login's. A handful of authenticated clients
+ *   could make the hash limiter shed, and what it sheds is login, for
+ *   everybody. The global `300 / 15 min / IP` never bounded that, being
+ *   per-address rather than per-account.
+ * - **The oracle on the two administrative resets.** There the actor presents
+ *   their *own* current password, which they may well not know, so the `403`
+ *   is a guessing oracle against the one credential ADR-0027 rule 1 leans on
+ *   — bounded, until now, only by that same global limit. An actor is now
+ *   bounded by their own budget rather than by everybody's.
+ *
+ * Keyed on `ctx.principal`, so it mounts **after** `authenticate` — the
+ * refinement of ADR-0011's rate-limit-first order that
+ * {@link createImpersonationRateLimiter} states and that ADR-0057 §1 names.
+ * Its unauthenticated fallback is the address and is unreachable by
+ * construction on all five mounts; it is written for that limiter's reason, so
+ * a mount that got the order wrong degrades to a per-IP budget rather than to
+ * one bucket for every anonymous caller.
+ *
+ * **One instance across all of them**, handed down from the composition root.
+ * The budget is the account's share of one process-wide hash pool, not a
+ * per-route allowance: a counter each would be seven times the number ADR-0073
+ * §1 decided for one caller to spend in turn.
+ */
+export const createPrincipalHashRateLimiter = (
+  config: AppConfig,
+  store: RateLimitStore,
+): RequestHandler =>
+  rateLimit({
+    ...baseOptions(config.rateLimit.principalHashWindowSec * 1000, store),
+    limit: config.rateLimit.principalHashMax,
     keyGenerator: (req) => {
       const { principal } = req.ctx;
 

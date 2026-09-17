@@ -1,6 +1,6 @@
 import type { Population } from "@repo/contracts";
 import { sessions, type DbExecutor } from "@repo/db";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
 import { internal } from "../../core/errors/index.js";
 
@@ -91,6 +91,21 @@ export interface RevokeAllInput {
    * is what `logout-all` and the admin forced logout want.
    */
   readonly exceptSessionId?: string | undefined;
+}
+
+/** What {@link SessionsRepository.revokeOldestBeyondCap} acts on (ADR-0073 §3). */
+export interface RevokeBeyondCapInput {
+  readonly principalType: Population;
+  readonly principalId: string;
+  /** `AUTH_MAX_SESSIONS_PER_PRINCIPAL`; `0` means uncapped and revokes nothing. */
+  readonly max: number;
+  readonly reason: string;
+  readonly at: Date;
+  /**
+   * The session just minted, which is never a candidate however the counting
+   * comes out — the caller is the one person here we know is present.
+   */
+  readonly exceptSessionId: string;
 }
 
 /**
@@ -314,6 +329,86 @@ export const createSessionsRepository = (db: DbExecutor) =>
               : [ne(sessions.id, input.exceptSessionId)]),
           ),
         )
+        .returning({ id: sessions.id });
+
+      return revoked.length;
+    },
+
+    /**
+     * Keeps a principal to `max` live sessions by revoking its **oldest**
+     * (ADR-0073 §3).
+     *
+     * Called by the mint, inside the mint's transaction, so the new session and
+     * the revocation it caused land together or not at all. It does **not**
+     * serialise two mints of the same principal — see `issueSession`, where
+     * the trade is written down.
+     *
+     * Three decisions are in the query rather than in the caller:
+     *
+     * - **Live means unrevoked and unexpired.** A session whose refresh token
+     *   has passed its expiry is not a device anybody is signed in on, and
+     *   counting one would end a real session on a dead one's behalf. The
+     *   prune job deletes those rows eventually; the cap must not wait for it.
+     * - **Impersonated sessions are counted and never chosen.** They belong to
+     *   the impersonated customer, so they are part of "how many sessions does
+     *   this account have"; but they end on their own fixed clock (ADR-0057
+     *   §4) and a support operator's session is not the thing to reclaim when
+     *   a customer signs in on an eleventh device. The consequence is stated
+     *   rather than hidden: a principal whose oldest sessions are all
+     *   impersonated stays over the cap until they are not.
+     * - **The new session is excluded by id**, not merely by being newest.
+     *   Ordering is by `created_at`, which has a resolution and can tie.
+     *
+     * @returns how many sessions were revoked — `0` whenever `max` is `0`.
+     */
+    revokeOldestBeyondCap: async (
+      input: RevokeBeyondCapInput,
+      tx: DbExecutor = db,
+    ): Promise<number> => {
+      if (input.max <= 0) return 0;
+
+      const live = await tx
+        .select({
+          id: sessions.id,
+          impersonatedByStaffId: sessions.impersonatedByStaffId,
+        })
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.principalType, input.principalType),
+            eq(sessions.principalId, input.principalId),
+            isNull(sessions.revokedAt),
+            gt(sessions.refreshTokenExpiresAt, input.at),
+          ),
+        )
+        // Oldest first: that is the end the excess is taken from. `id` breaks
+        // a tie, so two sessions created in the same millisecond order
+        // deterministically instead of by whatever the plan returns.
+        .orderBy(asc(sessions.createdAt), asc(sessions.id));
+
+      const excess = live.length - input.max;
+
+      if (excess <= 0) return 0;
+
+      const doomed = live
+        .filter(
+          (row) =>
+            row.id !== input.exceptSessionId &&
+            row.impersonatedByStaffId === null,
+        )
+        .slice(0, excess)
+        .map((row) => row.id);
+
+      if (doomed.length === 0) return 0;
+
+      const revoked = await tx
+        .update(sessions)
+        .set({
+          revokedAt: input.at,
+          revokedReason: input.reason,
+          updatedAt: input.at,
+        })
+        .where(and(inArray(sessions.id, doomed), isNull(sessions.revokedAt)))
         .returning({ id: sessions.id });
 
       return revoked.length;

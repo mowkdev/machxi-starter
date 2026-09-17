@@ -233,6 +233,11 @@ export interface AuthServiceDeps {
   /** `REFRESH_ROTATION_GRACE_SEC` (ADR-0004). */
   readonly rotationGraceSec: number;
   /**
+   * `AUTH_MAX_SESSIONS_PER_PRINCIPAL` (ADR-0073 §3) — how many live sessions
+   * one principal may hold before a mint revokes its oldest. `0` is uncapped.
+   */
+  readonly maxSessionsPerPrincipal: number;
+  /**
    * `IMPERSONATION_SESSION_TTL` (ADR-0004, ADR-0057 §4) — the **fixed** life of
    * a session minted by impersonation, anchored at the exchange and never
    * extended by a rotation.
@@ -407,6 +412,7 @@ export const createAuthService = ({
   hashLimiter,
   refreshTtlSec,
   rotationGraceSec,
+  maxSessionsPerPrincipal,
   impersonationSessionTtlSec,
   impersonators,
   organizations,
@@ -610,11 +616,20 @@ export const createAuthService = ({
    * can produce a usable credential (ADR-0018).
    *
    * `impersonation` is the one thing that makes a session different, and it
-   * makes it different in three places at once (ADR-0057 §4): the row carries
-   * the actor column, the expiry is a **fixed** end rather than the sliding
-   * `REFRESH_TOKEN_TTL`, and the access token is both capped at that end and
-   * stamped with the RFC 8693 `act` claim. Absent — every login, every
-   * registration — nothing below changes at all.
+   * makes it different in four places now (ADR-0057 §4, ADR-0073 §3): the row
+   * carries the actor column, the expiry is a **fixed** end rather than the
+   * sliding `REFRESH_TOKEN_TTL`, the access token is both capped at that end
+   * and stamped with the RFC 8693 `act` claim — and the mint does **not**
+   * enforce the session cap. Absent — every login, every registration, every
+   * mailed link that ends in a session, the federated exchange — nothing below
+   * changes except that the cap runs.
+   *
+   * **The cap is here rather than in `login`**, which is the one design
+   * decision in this function worth stating. Every path in this service that
+   * puts a person into a session comes through here: login, registration's
+   * verify, the password reset, the staff onboarding accept and the federated
+   * exchange. A cap written at `login` would be a cap five callers could be
+   * added without, and the sixth would be the one nobody noticed.
    */
   const issueSession = async (
     ctx: RequestContext,
@@ -629,20 +644,82 @@ export const createAuthService = ({
         ? refreshExpiryFrom(at)
         : new Date(at.getTime() + impersonationSessionTtlSec * 1000);
 
-    const session = await sessions.create(
-      {
-        principalType: population,
-        principalId: principal.id,
-        refreshTokenHash: sha256Base64url(refreshToken),
-        refreshTokenExpiresAt,
-        ip: ctx.ip,
-        userAgent: ctx.userAgent?.slice(0, MAX_USER_AGENT_LENGTH),
-        ...(impersonation === undefined
-          ? {}
-          : { impersonatedByStaffId: impersonation.id }),
-      },
-      tx,
-    );
+    /*
+     * An impersonated mint is exempt (ADR-0073 §3): those sessions are
+     * counted against the customer but are never the ones revoked, and a
+     * support operator opening an account must not end the customer's oldest
+     * device to make room for themselves.
+     */
+    const capped = impersonation === undefined && maxSessionsPerPrincipal > 0;
+
+    const mint = async (executor: DbExecutor | undefined) => {
+      const created = await sessions.create(
+        {
+          principalType: population,
+          principalId: principal.id,
+          refreshTokenHash: sha256Base64url(refreshToken),
+          refreshTokenExpiresAt,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent?.slice(0, MAX_USER_AGENT_LENGTH),
+          ...(impersonation === undefined
+            ? {}
+            : { impersonatedByStaffId: impersonation.id }),
+        },
+        executor,
+      );
+
+      if (!capped) return created;
+
+      const revoked = await sessions.revokeOldestBeyondCap(
+        {
+          principalType: population,
+          principalId: principal.id,
+          max: maxSessionsPerPrincipal,
+          reason: "session_cap",
+          at,
+          exceptSessionId: created.id,
+        },
+        executor,
+      );
+
+      if (revoked > 0) {
+        // `info`, not `warn`: this is the cap working, and a person with
+        // eleven devices is not an incident. It is logged at all because the
+        // effect a client sees — a session that was live a moment ago is gone
+        // — otherwise has no explanation anywhere.
+        ctx.logger.info(
+          { population, principalId: principal.id, revoked },
+          "oldest sessions revoked by the per-principal cap",
+        );
+      }
+
+      return created;
+    };
+
+    /*
+     * The insert and the revoke are **one transaction** (ADR-0073 §3), so a
+     * mint never half-lands: either the new session and the revocation it
+     * caused are both there, or neither is. `tx` is the caller's wherever
+     * there is one — registration's verify, the reset, the onboarding accept
+     * and the federated exchange all mint inside a transaction of their own.
+     * `login` has none, so one is opened here, and only when there is cap work
+     * to do: an uncapped deployment keeps login's single insert.
+     *
+     * **What the transaction does not buy is serialisation between two mints**
+     * (`D20.4`'s `security-reviewer`). Two logins for one principal racing at
+     * READ COMMITTED both read the same count and both aim at the same oldest
+     * row; the `revoked_at is null` guard on the update means the loser
+     * revokes nothing, so the account sits at one over the cap until its next
+     * mint, which corrects it. A `SELECT … FOR UPDATE` would close it, and it
+     * is deliberately not taken: it puts a row lock on every login in exchange
+     * for a transient extra session, and it would make a login deadlock-able
+     * against `revokeAllForPrincipal`, which ends every session of the same
+     * principal in one unordered statement. A cap that is eventually exact is
+     * the right trade for a sign-in path; the alternative is on the record in
+     * this comment rather than in nobody's head.
+     */
+    const session =
+      capped && tx === undefined ? await transaction(mint) : await mint(tx);
 
     const access = await tokens.issue({
       principalId: principal.id,

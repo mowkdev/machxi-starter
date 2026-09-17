@@ -58,11 +58,24 @@ export interface StaffRouterDeps {
    * not be able to spend it.
    */
   readonly onboardingMailRateLimiter: RequestHandler;
+  /**
+   * ADR-0073 §1's per-principal budget, from the composition root — one
+   * instance shared with the two `POST /admin/users/:id/{password,email}`
+   * routes and the four `/user/profile` routes that spend a hash.
+   *
+   * This router carries two mounts, `POST /:id/password` and `POST /:id/email`,
+   * and the reason is the sharper of the two §1 gives: the caller presents
+   * their **own** current password on both, so each `403` is a guessing oracle
+   * against the credential ADR-0027 rule 1 leans on. Keyed on the actor, so
+   * they sit inside the mount, after `authenticate` and `authorize("admin")`.
+   */
+  readonly principalHashRateLimiter: RequestHandler;
 }
 
 export const createStaffRouter = ({
   controller,
   onboardingMailRateLimiter,
+  principalHashRateLimiter,
 }: StaffRouterDeps): Router => {
   const router = Router();
 
@@ -102,8 +115,13 @@ export const createStaffRouter = ({
   // attribute of the account. Keeping it off `PATCH /:id` is also what keeps
   // `updateStaffBody` free of a password field, so no code path exists where a
   // profile edit can silently rotate a credential (ADR-0027).
+  //
+  // The limiter is ADR-0073 §1's, keyed on the acting staff member: what it
+  // bounds is their guessing at their own `currentPassword` and the argon2
+  // operation each guess buys.
   router.post(
     "/:id/password",
+    principalHashRateLimiter,
     validate(setStaffPasswordSchema),
     controller.setPassword,
   );
@@ -126,11 +144,16 @@ export const createStaffRouter = ({
    * lock in order to see which role this route is for.
    *
    * It carries **no mailbox limiter**, unlike the two §8 senders: nothing is
-   * mailed here at all (§7).
+   * mailed here at all (§7). It does carry ADR-0073 §1's per-principal budget,
+   * and for `/:id/password`'s reason rather than for a mailbox's: this route
+   * verifies the **actor's own** password before it reads the subject, so its
+   * `403` is the same oracle — on the super admin's credential (`D20.4`'s
+   * `security-reviewer`).
    */
   router.post(
     "/:id/email",
     authorize("super_admin"),
+    principalHashRateLimiter,
     validate(setStaffEmailSchema),
     controller.setEmail,
   );
@@ -180,21 +203,25 @@ export const createStaffRouter = ({
  * neither belongs in a shared proxy's cache or on its disk (ADR-0020).
  *
  * `change-password` gets no limiter of its own beyond the global one, for the
- * reason `/user/profile/change-password` gives: the caller already holds a
- * valid session for the account whose password they are "guessing", so what a
- * successful guess buys is the plaintext rather than the account. Each call
- * still buys argon2 operations from the `AUTH_MAX_CONCURRENT_HASHES` pool that
- * login shares, and ADR-0027 §Consequences adds this route to the list the
- * missing per-principal budget for expensive routes will cover.
+ * reason `/user/profile/change-password` gave before `D20.4`: the caller
+ * already holds a valid session for the account whose password they are
+ * "guessing", so what a successful guess buys is the plaintext rather than the
+ * account. **It is deliberately not on ADR-0073 §1's list of five**, which
+ * this router's `POST /:id/password` is: a staff member changing their own
+ * password is the one route of this shape where the actor and the subject are
+ * the same account, so there is no oracle, and its hashes are bounded by the
+ * fact that a staff population is small and authenticated. The number of
+ * routes on that list is the record's, and this file does not extend it.
  *
- * **That reasoning does not extend to `POST /admin/{staff,users}/:id/password`,
- * and the D2.3 security review is where that was noticed.** There the caller
- * presents a password they may well not know, so the `403` those endpoints
- * answer is a guessing oracle against the one credential ADR-0027 rule 1 leans
- * on, bounded only by the global `300 / 15 min / IP`. It is recorded in
- * ADR-0027 §Consequences, amended D2.3, rather than half-closed with a fifth
- * limiter here: rate limiting is ADR-0020's, and ADR-0020 belongs to shipped
- * D1.
+ * **That reasoning never extended to `POST /admin/{staff,users}/:id/password`
+ * or to the `:id/email` pair beside them, and the D2.3 security review is
+ * where that was noticed.** There the caller presents a password they may well
+ * not know, so the `403` those endpoints answer is a guessing oracle against
+ * the one credential ADR-0027 rule 1 leans on — bounded, until `D20.4`, only
+ * by the global `300 / 15 min / IP`. It was
+ * recorded in ADR-0027 §Consequences, amended D2.3, rather than half-closed
+ * with a fifth limiter here, because rate limiting is ADR-0020's; ADR-0073 §1
+ * is where that record's successor takes it, and the limiter is mounted above.
  */
 export const createStaffProfileRouter = (
   controller: StaffProfileController,

@@ -93,6 +93,12 @@ export const createUserRouter = (container: Container): Router => {
       // The set-password link's budget (ADR-0072 §3, amended at `D19.4`),
       // keyed on the account, whose own address is the only recipient.
       setPasswordLinkRateLimiter: container.rateLimiters.setPasswordLink,
+      // ADR-0073 §1's per-principal budget on the four routes here that spend
+      // an argon2 operation under a session — `change-password`, the
+      // self-service delete, the unlink and `change-email`. The same instance
+      // the administrative resets take: what it rations is the caller's share
+      // of one process-wide hash pool.
+      principalHashRateLimiter: container.rateLimiters.principalHash,
       // The link start (ADR-0072 §3), mounted only where the Google client is
       // configured — `undefined` otherwise, which leaves the path a `404`.
       federated: container.controllers.federated,

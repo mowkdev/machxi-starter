@@ -108,6 +108,14 @@ const main = async (): Promise<void> => {
     app: createApp(container),
     port: config.http.port,
     logger,
+    // The three socket deadlines beside the drain deadline (ADR-0073 §4).
+    // Stated rather than inherited: Node's request and header defaults are a
+    // slow-loris budget, and its five-second keep-alive is shorter than the
+    // sixty a reverse proxy holds — which is the one that surfaces as
+    // intermittent `502`s in front of a healthy process.
+    requestTimeoutMs: config.http.requestTimeoutSec * 1000,
+    headersTimeoutMs: config.http.headersTimeoutSec * 1000,
+    keepAliveTimeoutMs: config.http.keepAliveTimeoutSec * 1000,
     // Both, in the order they were opened: in-flight queries finish first,
     // then the rate-limit client goes. `close` is a no-op when there is no
     // Redis.

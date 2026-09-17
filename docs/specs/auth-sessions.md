@@ -153,10 +153,31 @@ Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/test/mail-flows.
 - **WHEN** `FEATURE_USER_REGISTRATION=false`
 - **THEN** the path answers `404 ROUTE_NOT_FOUND`, not `403` — while `verify-email` and `resend-verification` stay mounted
 
+## Requirement: A person holds a bounded number of sessions
+
+An account holds at most `AUTH_MAX_SESSIONS_PER_PRINCIPAL` live sessions. A sign-in beyond that number is **accepted**, and the account's oldest live sessions are revoked in the same transaction with `revoked_reason = 'session_cap'` — the refresh token of a revoked session stops rotating immediately. An impersonated session counts towards the number and is never one of the revoked; it ends on its own fixed clock. `0` means uncapped.
+Records: [ADR-0073](../adr/0073-review-hardening.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0057](../adr/0057-impersonation-sessions.md)
+Proved by: `apps/api/test/auth-sessions.int.test.ts`
+
+### Scenario: One device too many
+
+- **WHEN** an account already holding the maximum number of live sessions signs in again
+- **THEN** the sign-in answers `200` with a usable session, the count of live sessions is unchanged, and the oldest one is revoked as `session_cap`
+
+### Scenario: The support session is not the one reclaimed
+
+- **WHEN** the account's oldest live session is an impersonated one and an ordinary sign-in takes the account over the maximum
+- **THEN** the impersonated session stays live and the oldest **ordinary** session is revoked instead
+
+### Scenario: The cap is off
+
+- **WHEN** `AUTH_MAX_SESSIONS_PER_PRINCIPAL=0`
+- **THEN** no sign-in revokes anything, however many live sessions the account holds
+
 ## Requirement: Credential endpoints are rate limited per address and per account
 
-Login and registration share one budget of `RATE_LIMIT_LOGIN_MAX` per fifteen minutes keyed on the client address **and** the presented email; a refresh answered `401` spends `RATE_LIMIT_REFRESH_MAX` per fifteen minutes per address, and any other answer — a successful rotation, a `403` CSRF refusal, a `400` — spends nothing; every `/api` request counts against a global `RATE_LIMIT_GLOBAL_MAX` per address. A tripped limit answers `429 RATE_LIMITED` with a `Retry-After` header and a `retryAfter` detail. A request the schema rejects still counts.
-Records: [ADR-0020](../adr/0020-security-baseline.md), [ADR-0066](../adr/0066-infrastructure-seams.md)
+Login and registration share one budget of `RATE_LIMIT_LOGIN_MAX` per fifteen minutes keyed on the client address **and** the presented email; a refresh answered `401` spends `RATE_LIMIT_REFRESH_MAX` per fifteen minutes per address, and any other answer — a successful rotation, a `403` CSRF refusal, a `400` — spends nothing; every `/api` request counts against a global `RATE_LIMIT_GLOBAL_MAX` per address. Every authenticated route that verifies a password — `POST /user/profile/change-password`, `DELETE /user/profile`, `DELETE /user/profile/identities/:provider`, `POST /user/profile/change-email` and both `POST /admin/{staff,users}/:id/{password,email}` — shares one budget of `RATE_LIMIT_PRINCIPAL_HASH_MAX` per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW` keyed on the **calling account**. A tripped limit answers `429 RATE_LIMITED` with a `Retry-After` header and a `retryAfter` detail. A request the schema rejects still counts.
+Records: [ADR-0020](../adr/0020-security-baseline.md), [ADR-0066](../adr/0066-infrastructure-seams.md), [ADR-0073](../adr/0073-review-hardening.md)
 Proved by: `apps/api/test/rate-limit.int.test.ts`
 
 ### Scenario: Guessing one account's password
@@ -168,6 +189,11 @@ Proved by: `apps/api/test/rate-limit.int.test.ts`
 
 - **WHEN** a client refreshes successfully many times inside fifteen minutes
 - **THEN** none of them spends the refresh budget
+
+### Scenario: One account's password attempts, whoever they are
+
+- **WHEN** one signed-in account sends more requests to those routes than `RATE_LIMIT_PRINCIPAL_HASH_MAX` allows inside `RATE_LIMIT_PRINCIPAL_HASH_WINDOW`, counted across all of them together
+- **THEN** the next one answers `429 RATE_LIMITED`, and a different account calling from the same address is unaffected
 
 ### Scenario: The shared store fails closed
 

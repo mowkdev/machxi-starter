@@ -313,6 +313,31 @@ export const envSchema = z
     // are startup failures.
     TRUST_PROXY: z.string().default("false"),
 
+    /**
+     * The three socket deadlines `server.ts` sets beside the drain deadline
+     * (ADR-0073 §4).
+     *
+     * Node's own defaults are `requestTimeout: 300s`, `headersTimeout: 60s`
+     * and `keepAliveTimeout: 5s`, and each of the three is wrong here in a
+     * different direction. Five minutes for a whole request is a slow-loris
+     * budget on an API whose slowest handler is an argon2 hash; a minute of
+     * headers is the same hole one layer up; and **five seconds of keep-alive
+     * is shorter than the sixty a typical proxy holds**, which is the one that
+     * shows up as intermittent `502`s in front of a perfectly healthy process
+     * — the proxy reuses a connection the API closed in the same instant. The
+     * default below is therefore deliberately *above* a proxy's sixty rather
+     * than a round number.
+     *
+     * Durations for the reason every TTL here is one: an operator sizing a
+     * deadline against a proxy's writes `65s`, not `65000`. Node reads `0` on
+     * any of the three as "no deadline", and `durationSchema` cannot express
+     * it — which is the right way round here, since a deadline turned off by a
+     * typo is exactly the misconfiguration these three exist to prevent.
+     */
+    HTTP_REQUEST_TIMEOUT: durationSchema.default(30),
+    HTTP_HEADERS_TIMEOUT: durationSchema.default(10),
+    HTTP_KEEP_ALIVE_TIMEOUT: durationSchema.default(65),
+
     // The **application** role (ADR-0061 §1). `DATABASE_URL_OWNER` is
     // deliberately absent from this schema, exactly as `DATABASE_URL_TEST` is:
     // DDL belongs to `packages/db`'s tooling, and the API must not be able to
@@ -364,6 +389,20 @@ export const envSchema = z
      * limit. Raise it together with `UV_THREADPOOL_SIZE`, never alone.
      */
     AUTH_MAX_CONCURRENT_HASHES: z.coerce.number().int().positive().default(4),
+    /**
+     * How many live sessions one principal may hold (ADR-0073 §3).
+     *
+     * A mint beyond it revokes that principal's **oldest** live sessions
+     * rather than refusing the new one: a person whose device was stolen is
+     * signing in from the replacement, and refusing them is punishing the
+     * wrong end of the incident.
+     *
+     * `0` means uncapped, which is why this is `.min(0)` where every other
+     * count here is `.positive()`. A deployment that wants the growth
+     * `db:sessions:prune` used to be the only answer to can still have it, and
+     * has to state it.
+     */
+    AUTH_MAX_SESSIONS_PER_PRINCIPAL: z.coerce.number().int().min(0).default(10),
 
     // Defaults and the floor both come from `@repo/crypto`, so the OWASP
     // parameters are stated once (ADR-0018). `createArgon2Hasher` rejects
@@ -487,6 +526,40 @@ export const envSchema = z
      * browser tier and Postman collection being legitimate senders (ADR-0069).
      */
     RATE_LIMIT_MAIL_SOURCE_MAX: z.coerce.number().int().positive().default(20),
+
+    /**
+     * The fifth category ADR-0020 §Residual risks reserved and ADR-0073 §1
+     * spends: `10 / 15 min / **principal**` on the routes that spend an argon2
+     * operation under a session.
+     *
+     * Keyed on the caller's account rather than on an address, because every
+     * route it covers is authenticated and the thing being rationed is the
+     * hash pool `AUTH_MAX_CONCURRENT_HASHES` bounds — which login shares. A
+     * per-address budget would be either loose enough to bound nothing behind
+     * a shared egress or tight enough to lock out an office.
+     *
+     * Ten per window is generous against every honest case: nobody changes
+     * their password ten times in a quarter of an hour. What it stops is a few
+     * authenticated clients making the hash limiter shed *login* for
+     * everybody, and an administrator's `403` on
+     * `POST /admin/{staff,users}/:id/password` being an unbounded guessing
+     * oracle against their own credential.
+     */
+    RATE_LIMIT_PRINCIPAL_HASH_MAX: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10),
+    /**
+     * The window that ten is *per*, a variable for the reason
+     * `RATE_LIMIT_PASSWORD_RESET_WINDOW` is one: a number with no stated
+     * window is a number the next reader has to find a constant for.
+     *
+     * Fifteen minutes, so it is the shared window of ADR-0020's four rather
+     * than the recovery limiters' hour — what it rations is a caller's
+     * attempts and the work they buy, not a stranger's inbox.
+     */
+    RATE_LIMIT_PRINCIPAL_HASH_WINDOW: durationSchema.default(15 * 60),
 
     /**
      * How long an impersonated session may live, from the exchange (ADR-0057

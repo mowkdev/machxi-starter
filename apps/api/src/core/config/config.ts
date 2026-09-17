@@ -34,6 +34,18 @@ export interface AppConfig {
     readonly port: number;
     readonly corsOrigins: readonly string[];
     readonly trustProxy: TrustProxy;
+    /**
+     * The three socket deadlines `startServer` sets, in seconds (ADR-0073 §4).
+     *
+     * Grouped with the port because they are properties of this process's
+     * listener rather than of a flow: what a client may take to send a whole
+     * request, to send its headers, and how long an idle connection is kept —
+     * the last deliberately above a typical proxy's sixty seconds, so the
+     * proxy is always the end that closes.
+     */
+    readonly requestTimeoutSec: number;
+    readonly headersTimeoutSec: number;
+    readonly keepAliveTimeoutSec: number;
   };
   readonly db: {
     readonly url: string;
@@ -57,6 +69,11 @@ export interface AppConfig {
     readonly refreshTtlSec: number;
     readonly refreshRotationGraceSec: number;
     readonly maxConcurrentHashes: number;
+    /**
+     * How many live sessions one principal may hold; `0` is uncapped
+     * (ADR-0073 §3). A mint beyond it revokes the oldest, never the new one.
+     */
+    readonly maxSessionsPerPrincipal: number;
     readonly argon2: Argon2Params;
     /**
      * The fixed lifetime of an impersonated session, in seconds, parsed from
@@ -158,6 +175,19 @@ export interface AppConfig {
      */
     readonly mailSourceMax: number;
     /**
+     * Per {@link principalHashWindowSec}, keyed on **`ctx.principal.id`**
+     * (ADR-0073 §1) — the budget on the authenticated routes that spend an
+     * argon2 operation, which is the fifth category ADR-0020 §Residual risks
+     * reserved and the only one here whose key is an account rather than an
+     * address or a mailbox.
+     */
+    readonly principalHashMax: number;
+    /**
+     * That window, in seconds — the shared fifteen minutes, carried beside the
+     * count for {@link passwordResetWindowSec}'s reason.
+     */
+    readonly principalHashWindowSec: number;
+    /**
      * Where the counters live (ADR-0066 §4). `undefined` is the in-memory
      * store, which counts per process; a URL makes one budget out of N
      * instances. None of the limits above change with it.
@@ -218,6 +248,9 @@ export const toAppConfig = (env: Env): AppConfig =>
       port: env.PORT,
       corsOrigins: Object.freeze(env.CORS_ORIGINS),
       trustProxy: toTrustProxy(env.TRUST_PROXY),
+      requestTimeoutSec: env.HTTP_REQUEST_TIMEOUT,
+      headersTimeoutSec: env.HTTP_HEADERS_TIMEOUT,
+      keepAliveTimeoutSec: env.HTTP_KEEP_ALIVE_TIMEOUT,
     }),
     db: Object.freeze({
       url: env.DATABASE_URL,
@@ -235,6 +268,7 @@ export const toAppConfig = (env: Env): AppConfig =>
       refreshTtlSec: env.REFRESH_TOKEN_TTL,
       refreshRotationGraceSec: env.REFRESH_ROTATION_GRACE_SEC,
       maxConcurrentHashes: env.AUTH_MAX_CONCURRENT_HASHES,
+      maxSessionsPerPrincipal: env.AUTH_MAX_SESSIONS_PER_PRINCIPAL,
       argon2: Object.freeze({
         memoryKib: env.ARGON2_MEMORY_KIB,
         timeCost: env.ARGON2_TIME_COST,
@@ -279,6 +313,8 @@ export const toAppConfig = (env: Env): AppConfig =>
       passwordResetWindowSec: env.RATE_LIMIT_PASSWORD_RESET_WINDOW,
       mailboxMax: env.RATE_LIMIT_MAILBOX_MAX,
       mailSourceMax: env.RATE_LIMIT_MAIL_SOURCE_MAX,
+      principalHashMax: env.RATE_LIMIT_PRINCIPAL_HASH_MAX,
+      principalHashWindowSec: env.RATE_LIMIT_PRINCIPAL_HASH_WINDOW,
       redisUrl: env.REDIS_URL,
     }),
     mail: Object.freeze({

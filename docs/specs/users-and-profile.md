@@ -62,9 +62,9 @@ Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/modules/users/
 
 ## Requirement: Staff set a customer's password with their own
 
-`POST /admin/users/:id/password` takes the subject's new `password` and the acting staff member's `currentPassword`; the actor's password is verified first, before the subject is read, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. On success every session of the subject is revoked, **every federated identity of the account is removed** with one `account.identity_unlinked { subjectType, subjectId, provider, via: "reset" }` row each naming the operator as actor, and the answer is `204`.
-Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
-Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`
+`POST /admin/users/:id/password` takes the subject's new `password` and the acting staff member's `currentPassword`; the actor's password is verified first, before the subject is read, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. On success every session of the subject is revoked, **every federated identity of the account is removed** with one `account.identity_unlinked { subjectType, subjectId, provider, via: "reset" }` row each naming the operator as actor, and the answer is `204`. The route is budgeted per **acting account**: beyond `RATE_LIMIT_PRINCIPAL_HASH_MAX` requests per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW` it answers `429 RATE_LIMITED`, so the `403` cannot be used to guess the actor's own password without limit.
+Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0073](../adr/0073-review-hardening.md)
+Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
 
 ### Scenario: The actor's password is wrong
 
@@ -81,11 +81,16 @@ Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/test/federated-ide
 - **WHEN** the actor resets the password of an account with a Google identity
 - **THEN** the answer is `204`, the identity is gone, and an `account.identity_unlinked` row names the account as its subject with `via: "reset"`
 
+### Scenario: The actor keeps guessing
+
+- **WHEN** one operator sends more than `RATE_LIMIT_PRINCIPAL_HASH_MAX` of these requests inside `RATE_LIMIT_PRINCIPAL_HASH_WINDOW`, whatever they answer
+- **THEN** the next one answers `429 RATE_LIMITED` with `Retry-After`, and another operator from the same address is unaffected
+
 ## Requirement: A super admin sets a customer's address
 
-`POST /admin/users/:id/email` takes the subject's new `email` and the acting operator's `currentPassword`, and admits `super_admin` alone — a plain `admin` answers `403 FORBIDDEN` at the guard. The actor's password is verified first, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. The address is set immediately with no confirmation link and counts as **asserted**: `email_verified_at` is written with the address, stamped on any status but `pending_verification`, where it is cleared. An address a live account already holds — the subject's own included — answers `409 USER_EMAIL_TAKEN`; a soft-deleted subject answers `409 USER_DELETED`. Success answers `204`, writes an `account.email_changed` audit row naming the acting operator, the subject and both addresses, revokes no session, and **spends every live mailed link the account holds** — verification, recovery and a pending address change alike, because each was addressed to the mailbox being replaced.
-Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
-Proved by: `apps/api/test/users-admin.int.test.ts`
+`POST /admin/users/:id/email` takes the subject's new `email` and the acting operator's `currentPassword`, and admits `super_admin` alone — a plain `admin` answers `403 FORBIDDEN` at the guard. The actor's password is verified first, so a wrong one answers `403 AUTH_CURRENT_PASSWORD_INVALID` whether or not the id exists. The address is set immediately with no confirmation link and counts as **asserted**: `email_verified_at` is written with the address, stamped on any status but `pending_verification`, where it is cleared. The route carries the same per-acting-account budget as `POST /admin/users/:id/password`, for the same reason: beyond `RATE_LIMIT_PRINCIPAL_HASH_MAX` requests per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW` it answers `429 RATE_LIMITED`, so its `403` is not an unbounded guess at the super admin's own password. An address a live account already holds — the subject's own included — answers `409 USER_EMAIL_TAKEN`; a soft-deleted subject answers `409 USER_DELETED`. Success answers `204`, writes an `account.email_changed` audit row naming the acting operator, the subject and both addresses, revokes no session, and **spends every live mailed link the account holds** — verification, recovery and a pending address change alike, because each was addressed to the mailbox being replaced.
+Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0019](../adr/0019-authorization-guards.md), [ADR-0058](../adr/0058-append-only-audit-log.md), [ADR-0073](../adr/0073-review-hardening.md)
+Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
 
 ### Scenario: A plain admin tries
 
@@ -146,14 +151,19 @@ Proved by: `apps/api/test/user-profile.int.test.ts`
 
 ## Requirement: Changing one's own password keeps this session and ends the others
 
-`POST /user/profile/change-password` takes `currentPassword` and `newPassword`, which must differ; the current password must verify (`403 AUTH_CURRENT_PASSWORD_INVALID`), an account with no password cannot use it, and on success every other session of the account is revoked while the caller's own survives. The account's federated identities are **kept** — the change was made with the account's own authority. `204`.
-Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
-Proved by: `apps/api/test/user-profile.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`
+`POST /user/profile/change-password` takes `currentPassword` and `newPassword`, which must differ; the current password must verify (`403 AUTH_CURRENT_PASSWORD_INVALID`), an account with no password cannot use it, and on success every other session of the account is revoked while the caller's own survives. The account's federated identities are **kept** — the change was made with the account's own authority. `204`. This route, `DELETE /user/profile`, `DELETE /user/profile/identities/:provider` and `POST /user/profile/change-email` share one budget of `RATE_LIMIT_PRINCIPAL_HASH_MAX` per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW` keyed on the **calling account**; beyond it they answer `429 RATE_LIMITED`.
+Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0073](../adr/0073-review-hardening.md)
+Proved by: `apps/api/test/user-profile.int.test.ts`, `apps/api/test/federated-identity.int.test.ts`, `apps/api/test/rate-limit.int.test.ts`
 
 ### Scenario: Two devices
 
 - **WHEN** an account signed in on two devices changes its password from one
 - **THEN** that device keeps working and the other's next refresh answers `401 AUTH_SESSION_REVOKED`
+
+### Scenario: The budget is one counter, not three
+
+- **WHEN** one account spends its budget on `change-password` and then calls `DELETE /user/profile` or `change-email`
+- **THEN** that request answers `429 RATE_LIMITED` on the strength of requests it never saw
 
 ## Requirement: An account may close itself, with its password
 

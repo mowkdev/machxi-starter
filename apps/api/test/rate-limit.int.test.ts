@@ -45,6 +45,7 @@ const withLimits = (limits: Partial<AppConfig["rateLimit"]>) => ({
 
 const LOGIN = "/api/v1/admin/auth/login";
 const REFRESH = "/api/v1/admin/auth/refresh";
+const FIFTEEN_MINUTES = 900;
 
 describe("login rate limit", () => {
   let harness: TestApp;
@@ -588,5 +589,210 @@ describe("the set-password link limit", () => {
       .post(FORGOT)
       .send({ email: FIXTURE_USERS.active })
       .expect(202);
+  });
+});
+
+/**
+ * The fifth category (ADR-0073 §1): `10 / 15 min / **principal**` on the five
+ * routes that spend an argon2 operation under a session.
+ *
+ * ADR-0020 §Residual risks has named this as missing since D1, and the two
+ * things it closes are different enough that both are proved here. The routes
+ * are mounted behind `authenticate`, so the key is an account rather than an
+ * address — which is also what makes the second test below meaningful: the
+ * whole suite drives one loopback address, so a per-address limiter could not
+ * tell these two callers apart at all.
+ */
+describe("the per-principal hash budget", () => {
+  let harness: TestApp;
+
+  /*
+   * A fresh app per test, like the per-source block above and for the same
+   * structural reason: every case here signs in as one of two seeded accounts,
+   * so a shared app would be one continuing budget and the second test would
+   * start already refused. The counter lives in the limiter instance, which
+   * lives in the app (ADR-0066 §4), so a new app is a new budget. The seed is
+   * done once, from an app of its own, because truncating between cases would
+   * throw away nothing these tests changed.
+   */
+  beforeAll(async () => {
+    const seeder = createTestApp();
+
+    await resetAndSeed({ db: seeder.db, hasher: seeder.container.hasher });
+    await seeder.close();
+  });
+
+  beforeEach(() => {
+    harness = createTestApp(withLimits({ principalHashMax: 2 }));
+  });
+
+  afterEach(async () => {
+    await harness.close();
+  });
+
+  const changePassword = (token: string) =>
+    supertest(harness.app)
+      .post("/api/v1/user/profile/change-password")
+      .set("Authorization", `Bearer ${token}`)
+      // Wrong on purpose: a successful change would end the other sessions and
+      // invalidate the token, and what is under test is the budget rather than
+      // the flow. A refusal costs the same argon2 operation.
+      .send({
+        currentPassword: "not-the-password",
+        newPassword: "Str0ng!Rep1acement",
+      });
+
+  it("refuses the third change-password from one account, and leaves another alone", async () => {
+    const customer = await login(harness.app, "user", {
+      email: FIXTURE_USERS.active,
+      password: FIXTURE_PASSWORD,
+    });
+
+    await changePassword(customer.accessToken).expect(403);
+    await changePassword(customer.accessToken).expect(403);
+
+    const refused = await changePassword(customer.accessToken).expect(429);
+
+    expect(declaredErrorEnvelopeSchema.safeParse(refused.body).success).toBe(
+      true,
+    );
+    expect(refused.body.error.code).toBe("RATE_LIMITED");
+    expect(Number(refused.headers["retry-after"])).toBeGreaterThan(0);
+
+    // ADR-0020's fifteen minutes, not ADR-0071 §4's hour: what is rationed is
+    // the caller's attempts and the work they buy, not a stranger's inbox.
+    const retryAfter = Number(refused.headers["retry-after"]);
+
+    expect(retryAfter).toBeGreaterThan(FIFTEEN_MINUTES - 120);
+    expect(retryAfter).toBeLessThanOrEqual(FIFTEEN_MINUTES);
+
+    // The claim the key is for: a second account from the **same** address is
+    // untouched — and it has to be asserted against a route this limiter is
+    // actually mounted on, or a per-address key, or a global one, or a
+    // constant would pass it just as well (`D20.4`'s `security-reviewer`).
+    const other = await login(harness.app, "staff", superAdmin());
+
+    const users = await supertest(harness.app)
+      .get("/api/v1/admin/users")
+      .set("Authorization", `Bearer ${other.accessToken}`)
+      .expect(200);
+
+    await supertest(harness.app)
+      .post(
+        `/api/v1/admin/users/${(users.body.data as { id: string }[])[0]!.id}/password`,
+      )
+      .set("Authorization", `Bearer ${other.accessToken}`)
+      .send({
+        password: "Str0ng!Rep1acement",
+        currentPassword: "not-the-actors-password",
+      })
+      .expect(403);
+  });
+
+  it("bounds the administrative reset's oracle at the eleventh guess", async () => {
+    // `POST /admin/users/:id/password` verifies the **actor's own** current
+    // password, so its `403` is a guessing oracle against the credential
+    // ADR-0027 rule 1 leans on — until now bounded only by the global per-
+    // address limit (the D2.3 security review's finding, closed here).
+    const actor = await login(harness.app, "staff", superAdmin());
+
+    const target = await supertest(harness.app)
+      .get("/api/v1/admin/users")
+      .set("Authorization", `Bearer ${actor.accessToken}`)
+      .expect(200);
+
+    const subjectId = (target.body.data as { id: string }[])[0]!.id;
+
+    const guess = () =>
+      supertest(harness.app)
+        .post(`/api/v1/admin/users/${subjectId}/password`)
+        .set("Authorization", `Bearer ${actor.accessToken}`)
+        .send({
+          password: "Str0ng!Rep1acement",
+          currentPassword: "not-the-actors-password",
+        });
+
+    await guess().expect(403);
+    await guess().expect(403);
+
+    const refused = await guess().expect(429);
+
+    expect(refused.body.error.code).toBe("RATE_LIMITED");
+  });
+
+  it("is one counter across its routes, not a budget each", async () => {
+    // The sharing is the decision (ADR-0073 §1): what is rationed is the
+    // caller's share of one process-wide hash pool, so a counter per route
+    // would be one budget per route for an account to spend in turn.
+    const customer = await login(harness.app, "user", {
+      email: FIXTURE_USERS.active,
+      password: FIXTURE_PASSWORD,
+    });
+
+    await changePassword(customer.accessToken).expect(403);
+    await changePassword(customer.accessToken).expect(403);
+
+    // A different route, the same budget — already spent.
+    const refused = await supertest(harness.app)
+      .delete("/api/v1/user/profile")
+      .set("Authorization", `Bearer ${customer.accessToken}`)
+      .send({ currentPassword: "not-the-password" })
+      .expect(429);
+
+    expect(refused.body.error.code).toBe("RATE_LIMITED");
+  });
+
+  it("covers `change-email`, whose own limiter refunds every refusal", async () => {
+    // The route §1's first list missed (`D20.4`'s `security-reviewer`): it
+    // verifies a password through the same hash limiter, and its mailbox
+    // budget is keyed on an address the caller types **and** carries
+    // `skipFailedRequests`, so a wrong `currentPassword` used to cost an
+    // argon2 operation and no budget at all.
+    const customer = await login(harness.app, "user", {
+      email: FIXTURE_USERS.active,
+      password: FIXTURE_PASSWORD,
+    });
+
+    const changeEmail = (to: string) =>
+      supertest(harness.app)
+        .post("/api/v1/user/profile/change-email")
+        .set("Authorization", `Bearer ${customer.accessToken}`)
+        // A fresh address each time, so the mailbox limiter — which keys on it
+        // — cannot be the one refusing below.
+        .send({ newEmail: to, currentPassword: "not-the-password" });
+
+    await changeEmail("first.move@machxi.local").expect(403);
+    await changeEmail("second.move@machxi.local").expect(403);
+
+    const refused = await changeEmail("third.move@machxi.local").expect(429);
+
+    expect(refused.body.error.code).toBe("RATE_LIMITED");
+  });
+
+  it("covers the `:id/email` pair, the same oracle on a super admin's password", async () => {
+    // ADR-0071 §7's two routes verify the **actor's own** password before the
+    // subject is read, exactly as `:id/password` does, so each `403` is the
+    // same guess (`D20.4`'s `security-reviewer`). One counter across both.
+    const actor = await login(harness.app, "staff", superAdmin());
+
+    const staff = await supertest(harness.app)
+      .get("/api/v1/admin/staff")
+      .set("Authorization", `Bearer ${actor.accessToken}`)
+      .expect(200);
+
+    const subjectId = (staff.body.data as { id: string }[])[0]!.id;
+
+    const setEmail = (to: string) =>
+      supertest(harness.app)
+        .post(`/api/v1/admin/staff/${subjectId}/email`)
+        .set("Authorization", `Bearer ${actor.accessToken}`)
+        .send({ email: to, currentPassword: "not-the-actors-password" });
+
+    await setEmail("first.operator@machxi.local").expect(403);
+    await setEmail("second.operator@machxi.local").expect(403);
+
+    const refused = await setEmail("third.operator@machxi.local").expect(429);
+
+    expect(refused.body.error.code).toBe("RATE_LIMITED");
   });
 });
