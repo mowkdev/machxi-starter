@@ -697,19 +697,23 @@ export const createUsersService = ({
       }
 
       await transaction(async (tx) => {
-        // Inside, because two things are read off it that the write depends
-        // on: the status that decides the stamp, and the address the audit row
-        // records as the previous one. Read on the pooled client, a `PATCH` or
-        // a §6 confirmation committing in between would make the trail name an
+        // Inside, because the address the audit row records as the previous
+        // one is read off it. Read on the pooled client, a `PATCH` or a §6
+        // confirmation committing in between would make the trail name an
         // address the account had already left.
+        //
+        // The **stamp** is deliberately not read off it (`D20.5`'s
+        // `security-reviewer`): this read takes no lock, so a `PATCH …
+        // {status:"active"}` committing between it and the write would make a
+        // stamp decided here disagree with the row it landed on — which since
+        // `D20.5` is a constraint violation rather than a silent one. The
+        // statement derives it from the row's own `status` instead, keeping
+        // `create`'s split (ADR-0071 §3) where it cannot go stale.
         const record = await readWritable(id, tx);
 
         const updated = await repository.setEmail(
           record.id,
           body.email,
-          // `create`'s split (ADR-0071 §3): asserted for a row that is usable,
-          // null for one that has proven nothing.
-          record.status === "pending_verification" ? null : at,
           at,
           tx,
         );

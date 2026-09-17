@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { sql as raw } from "drizzle-orm";
+import { eq, sql as raw } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDb, type DbClient } from "../client.js";
+import { users } from "../index.js";
 import { MIGRATION_LOCK_KEY, runMigrations } from "../migrate.js";
 import { resetSchema } from "../reset.js";
 import { assertTestDatabase } from "../testing.js";
@@ -112,5 +113,122 @@ describe("runMigrations", () => {
     await client.db.execute(
       raw`select pg_advisory_unlock(${MIGRATION_LOCK_KEY}::bigint)`,
     );
+  });
+});
+
+/**
+ * The `0017` migration's backfill assertion (ADR-0073 §8, `D20.5`).
+ *
+ * `ADD CONSTRAINT … CHECK` validates the rows that are already there, so on a
+ * database holding a violating row it fails on its own. The `DO $$ … $$` block
+ * above it exists to fail *differently*: with a count and an example id, so an
+ * operator is sent to the rows rather than to the schema. Neither the block
+ * nor the `ALTER` is exercised by the replay in `schema.int.test.ts`, which
+ * only ever sees a database migrated from empty — the case this file is for is
+ * the one a fork upgrading a live database will meet.
+ *
+ * The SQL is **read from the committed file** rather than restated, and
+ * replayed inside one transaction, which is what Drizzle's runner does with a
+ * migration's statements. A copy would pass while the file it stands for was
+ * broken.
+ */
+describe("0017_users_active_email_verified_check", () => {
+  const CONSTRAINT = "users_active_email_verified_check";
+
+  const statements = (): string[] =>
+    readFileSync(
+      join(migrationsFolder, "0017_users_active_email_verified_check.sql"),
+      "utf8",
+    )
+      .split("--> statement-breakpoint")
+      .map((statement) => statement.trim())
+      .filter((statement) => statement !== "");
+
+  /** Replays the file the way the runner would: every statement, one commit. */
+  const replay = async (): Promise<void> => {
+    await client.db.transaction(async (tx) => {
+      for (const statement of statements()) {
+        await tx.execute(raw.raw(statement));
+      }
+    });
+  };
+
+  const constraintExists = async (): Promise<boolean> => {
+    const rows = await client.db.execute<{ conname: string }>(
+      raw`select conname from pg_constraint where conname = ${CONSTRAINT}`,
+    );
+
+    return rows.length === 1;
+  };
+
+  beforeAll(async () => {
+    // The database this file leaves behind is fully migrated, so the
+    // constraint is already there; dropping it is what puts the tree back in
+    // the state the migration meets.
+    await client.db.execute(
+      raw`alter table users drop constraint if exists ${raw.identifier(CONSTRAINT)}`,
+    );
+    await client.db.delete(users);
+  });
+
+  it("is two statements, so the split below is not a no-op", () => {
+    // The guard: a mis-split would replay nothing and every assertion under it
+    // would pass against a file that says anything at all.
+    expect(statements()).toHaveLength(2);
+  });
+
+  it("refuses to apply while an active user has no proven address", async () => {
+    await client.db.insert(users).values({
+      email: "legacy-unproven@machxi.test",
+      status: "active",
+      emailVerifiedAt: null,
+    });
+
+    await expect(replay()).rejects.toThrow();
+
+    /*
+     * The *cause*, not the thrown message. Drizzle wraps a driver error in one
+     * whose message is the failed SQL, so `rejects.toThrow(/…/)` against the
+     * wrapper would match the migration's own text and pass however the
+     * statement failed — the same trap `expectUniqueViolation` in
+     * `schema.int.test.ts` is written around. What is asserted here is the
+     * thing the `DO` block exists for: the operator is told how many rows and
+     * shown one, rather than being handed Postgres's constraint name.
+     */
+    const error = await replay().catch((caught: unknown) => caught);
+    const cause = (error as { cause?: { code?: string; message?: string } })
+      .cause;
+
+    expect(cause?.code).toBe("23514");
+    expect(cause?.message).toMatch(
+      /1 active user\(s\) have no email_verified_at \(for example [0-9a-f-]{36}\)/,
+    );
+
+    // And it left nothing behind: the release gate stops with the database
+    // exactly as it was, and the old API still running.
+    expect(await constraintExists()).toBe(false);
+  });
+
+  it("applies once the row is repaired, and holds afterwards", async () => {
+    // The repair the migration's comment names, and deliberately does not
+    // perform: stamping an address nobody proved would make the invariant true
+    // and the claim it stands for false.
+    await client.db
+      .update(users)
+      .set({ emailVerifiedAt: new Date() })
+      .where(eq(users.email, "legacy-unproven@machxi.test"));
+
+    await expect(replay()).resolves.toBeUndefined();
+    expect(await constraintExists()).toBe(true);
+
+    await expect(
+      client.db.insert(users).values({
+        email: "after-the-fact@machxi.test",
+        status: "active",
+        emailVerifiedAt: null,
+      }),
+    ).rejects.toThrow();
+
+    await client.db.delete(users);
   });
 });

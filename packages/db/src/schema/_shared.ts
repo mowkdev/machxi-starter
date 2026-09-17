@@ -51,13 +51,36 @@ export const primaryId = () => uuid().primaryKey().$defaultFn(uuidv7);
 /**
  * `created_at` / `updated_at`, both `timestamptz not null default now()`.
  *
- * `updated_at` is written by the repository on every update (ADR-0006) — no
- * trigger, so the schema stays portable and the mutation is visible in the
- * query rather than hidden in the database.
+ * `updated_at` is stamped by **the column** on every update (ADR-0073 §8,
+ * `D20.5`), through Drizzle's `$onUpdate`. Until then it was written by the
+ * repository on every update (ADR-0006) — no trigger, so the schema stayed
+ * portable and the mutation stayed visible in the query — and the 2026-09-13
+ * review's `DB-03` is what that costs: an invariant kept only by whoever
+ * remembers it, on every `update` in every repository, forever.
+ *
+ * `$onUpdate` is neither a trigger nor a database default. It runs in the
+ * driver, so the schema is as portable as it was and the value still travels
+ * in the statement where a reader can see it; what changes is that a
+ * repository can no longer *omit* it. A repository that sets `updatedAt`
+ * explicitly keeps working and wins — Drizzle only fills the column when the
+ * `set` object does not name it — which is why the existing writes were left
+ * alone rather than swept: several of them deliberately stamp a row and one
+ * of its neighbours with the *same* instant.
+ *
+ * It fires on `db.update(...)` and nowhere else. A raw `UPDATE` through
+ * `db.execute` bypasses it exactly as it bypasses every other Drizzle
+ * behaviour, and a database-side trigger would be the only way to cover that.
+ * No repository here updates a row that way, and the door to a
+ * trigger stays open: nothing depends on the value being computed in the
+ * driver, so moving it into the database later is a migration and not a
+ * change of meaning.
  */
 export const timestamps = () => ({
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp({ withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 /**

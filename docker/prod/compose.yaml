@@ -16,6 +16,11 @@
 # auto-migrates (ADR-0008) — the ordering lives here, where an operator can see
 # it, rather than inside `main.ts` where every replica would race.
 #
+# **`prune` is the one long-lived job.** Five services, three images: `migrate`,
+# `api` and `prune` are the same artefact with three commands. Without it the
+# retention sweep is a CLI somebody has to remember, which is what the
+# 2026-09-13 review's `DB-02` found (ADR-0073 §3).
+#
 #   docker compose -f docker/prod/compose.yaml build
 #   docker compose -f docker/prod/compose.yaml up -d
 #
@@ -186,6 +191,83 @@ services:
     # the images on the host itself.
     ports:
       - "127.0.0.1:${API_PORT:-4000}:4000"
+    networks: [machxi]
+
+  prune:
+    <<: *api-image
+    container_name: machxi-prune
+    # The third command on the one image (ADR-0073 §3), and the answer to "a
+    # production database grows until somebody remembers a CLI". `sessions`,
+    # `impersonation_handoffs` and `account_tokens` lose the rows that have
+    # been unusable for `RETENTION_DAYS`; nothing redeemable is ever touched.
+    #
+    # **A sleep loop rather than a cron container or a `depends_on` one-shot.**
+    # There is no scheduler in the blueprint yet (ADR-0066's seam shape is a
+    # later row's decision), and this is the smallest thing that is not one:
+    # no crontab to mount, no second base image, and the interval readable in
+    # the file an operator is already editing. A platform with its own
+    # scheduled jobs should run `node dist/prune-sessions.js` that way instead
+    # and delete this service — `docs/deploy.md` says so where an operator
+    # reads it.
+    #
+    # It prunes **first and sleeps after**, so a release prunes once on the way
+    # up instead of an hour-old container having never run. `|| true` keeps a
+    # failed pass — an unreachable database during a managed-Postgres failover
+    # — from ending the loop: the CLI has already written the reason to
+    # stderr, and the next pass is the retry. `restart: unless-stopped` is
+    # therefore about the process dying, not about the prune failing.
+    #
+    # **The `trap` and the backgrounded `sleep` are not decoration.** A plain
+    # `sleep` in the foreground makes `sh` — which is PID 1 here — wait for a
+    # child that ignores nothing, so `docker stop` gets no response and spends
+    # its full ten-second grace period before `SIGKILL` on a container that is
+    # doing nothing at all. Backgrounded and waited on, `SIGTERM` interrupts
+    # the `wait`, the trap runs, and the container is gone in milliseconds —
+    # **while it is sleeping**, which is all but always. A stop that lands
+    # mid-sweep still waits out the grace period, because a POSIX shell defers
+    # a trap until the foreground job returns and Docker signals PID 1 alone;
+    # that is safe rather than tidy, since every batch is its own statement and
+    # every row it deletes was already unusable.
+    #
+    # **`|| sleep 86400` is the floor under a mis-stated interval**
+    # (`D20.5`'s `security-reviewer`). `:-` below defends against *unset*;
+    # nothing defends against `1 day` or `daily`, which `sleep` refuses in
+    # under a millisecond — and a refused sleep in this loop is a sweep of
+    # three tables running continuously against production, with `|| true`
+    # swallowing the exit code and the healthcheck off, so nothing says so. A
+    # day is the same default the variable has, so the floor is "behave as if
+    # it were unset".
+    #
+    # `$$` is compose's escape for a literal `$`: these are the shell's
+    # variables, not compose's.
+    command:
+      - sh
+      - -c
+      - 'trap "exit 0" TERM INT; while true; do node dist/prune-sessions.js || true; { sleep "$$PRUNE_INTERVAL" || sleep 86400; } & wait $$!; done'
+    restart: unless-stopped
+    # **Off, because the image's own is the API's.** One image means this
+    # container inherits a `HEALTHCHECK` that polls `/health/live` on port
+    # 4000, and nothing here listens — so the container would sit permanently
+    # `unhealthy` on every dashboard while doing its job correctly, which is
+    # worse than no signal at all. `migrate` escapes it only by exiting inside
+    # the start period. There is no liveness question to ask a sleep loop: if
+    # the process is gone, `restart: unless-stopped` is the answer.
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      - NODE_ENV=production
+      # The **application** role, like the API and unlike `migrate`
+      # (ADR-0061 §1): this deletes rows that are already unusable and runs no
+      # DDL, so a long-lived scheduled process never holds a connection that
+      # could drop a table.
+      - DATABASE_URL=${DATABASE_URL}
+      # How long the loop waits between passes (ADR-0073 §3). A `sleep`
+      # duration, so `24h`, `6h` and `900` are all valid; the default is a day,
+      # which is a retention sweep and not a queue drain.
+      - PRUNE_INTERVAL=${PRUNE_INTERVAL:-24h}
     networks: [machxi]
 
   admin:

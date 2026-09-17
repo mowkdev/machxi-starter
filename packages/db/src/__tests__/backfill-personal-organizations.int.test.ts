@@ -59,6 +59,15 @@ afterAll(async () => {
   await client.close();
 });
 
+/**
+ * The stamp `users_active_email_verified_check` asks of every `active` row
+ * (ADR-0073 §8, migration `0017`). Fixture furniture here — this file is about
+ * the backfill of `0012`, and the backfill reads `deleted_at` and the two name
+ * columns and nothing else — but a fixture that could not be inserted would
+ * make the whole file vacuous, so it is spelled rather than defaulted.
+ */
+const VERIFIED_AT = new Date();
+
 describe("0012_backfill_personal_organizations", () => {
   it("is more than one statement, so the split below is not a no-op", () => {
     // The guard: a mis-split would run nothing and every assertion under it
@@ -76,6 +85,7 @@ describe("0012_backfill_personal_organizations", () => {
         email: "backfill@machxi.test",
         firstName: "Bea",
         lastName: "Backfill",
+        emailVerifiedAt: VERIFIED_AT,
       })
       .returning({ id: users.id });
 
@@ -116,7 +126,9 @@ describe("0012_backfill_personal_organizations", () => {
   });
 
   it("falls back to the address when the account has no name", async () => {
-    await client.db.insert(users).values({ email: "nameless@machxi.test" });
+    await client.db
+      .insert(users)
+      .values({ email: "nameless@machxi.test", emailVerifiedAt: VERIFIED_AT });
 
     await runBackfill();
 
@@ -148,7 +160,11 @@ describe("0012_backfill_personal_organizations", () => {
     // soft-deleted the organization beside it.
     const [deleted] = await client.db
       .insert(users)
-      .values({ email: "gone@machxi.test", deletedAt: new Date() })
+      .values({
+        email: "gone@machxi.test",
+        deletedAt: new Date(),
+        emailVerifiedAt: VERIFIED_AT,
+      })
       .returning({ id: users.id });
 
     await runBackfill();
@@ -170,7 +186,7 @@ describe("0012_backfill_personal_organizations", () => {
     // soft-deleted row does not reserve its slug.
     const [user] = await client.db
       .insert(users)
-      .values({ email: "orphaned@machxi.test" })
+      .values({ email: "orphaned@machxi.test", emailVerifiedAt: VERIFIED_AT })
       .returning({ id: users.id });
 
     await runBackfill();
@@ -199,7 +215,10 @@ describe("0012_backfill_personal_organizations", () => {
     // beside the account (ADR-0067 §2). A replay must not undo half of that.
     const [user] = await client.db
       .insert(users)
-      .values({ email: "deleted-both@machxi.test" })
+      .values({
+        email: "deleted-both@machxi.test",
+        emailVerifiedAt: VERIFIED_AT,
+      })
       .returning({ id: users.id });
 
     await runBackfill();

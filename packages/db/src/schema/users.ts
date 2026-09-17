@@ -1,5 +1,6 @@
-import { isNotNull, isNull, relations } from "drizzle-orm";
+import { isNotNull, isNull, relations, sql } from "drizzle-orm";
 import {
+  check,
   index,
   pgTable,
   primaryKey,
@@ -61,14 +62,17 @@ export const users = pgTable(
      * re-checks this column as a flag — it is the record of the fact, not the
      * gate.
      *
-     * **It does not hold yet, and nothing may lean on it before `D18.3`**
-     * (`D18.1`'s `security-reviewer`). The column and its backfill arrive at
-     * `D18.1`; the paths that keep it true arrive at `D18.3`, when
-     * registration starts creating `pending_verification` and the two staff
-     * paths that assert an address start stamping. Between the two, every
-     * account created is `active` with a null stamp. Reading the invariant as
-     * already true is exactly how an unenforced claim becomes an
-     * account-takeover primitive, so the sentence carries its date.
+     * **It did not hold before `D18.3`** (`D18.1`'s `security-reviewer`): the
+     * column and its backfill arrived at `D18.1` and the paths that keep it
+     * true at `D18.3`, when registration started creating
+     * `pending_verification` and the two staff paths that assert an address
+     * started stamping. Between the two, every account created was `active`
+     * with a null stamp, and reading the invariant as already true is exactly
+     * how an unenforced claim becomes an account-takeover primitive — which
+     * is why the sentence carried its date.
+     *
+     * **Since `D20.5` the database holds it** rather than the three paths
+     * remembering: `users_active_email_verified_check` below (ADR-0073 §8).
      *
      * Deliberately not `not null` with a default: the whole point is that a
      * `pending_verification` row has nothing here.
@@ -104,6 +108,36 @@ export const users = pgTable(
     uniqueIndex("users_email_active_unique")
       .on(table.email)
       .where(isNull(table.deletedAt)),
+    /**
+     * **Every `active` user has a proven address** — the invariant of
+     * {@link users.emailVerifiedAt}, held by the database since `D20.5`
+     * (ADR-0073 §8, closing the review's `DB-04`).
+     *
+     * It was a code-only rule from `D18.3`: registration creates
+     * `pending_verification`, the two staff paths that assert an address
+     * stamp it, and the activation update `coalesce`s a stamp in. Three paths
+     * that each remember, and everything downstream leaning on the result —
+     * invitation acceptance by address (ADR-0067 §5) and federated linking by
+     * `status` alone (ADR-0072 §1) both read the invariant rather than the
+     * column. A fourth path that forgot would not fail; it would quietly hand
+     * somebody else's mailbox an account.
+     *
+     * Written as `status <> 'active' OR …` rather than as an implication
+     * because SQL has no implication operator; it is the same statement. Note
+     * what it deliberately does **not** say: a `disabled` or a
+     * `pending_verification` row may carry a stamp or not — `disabled` is a
+     * decision about the account and not about the mailbox — and a
+     * soft-deleted row is bound by its `status` like any other, because
+     * `deleted_at` does not clear it.
+     *
+     * `CHECK` and not a trigger: it is a row-local predicate, Postgres
+     * enforces it on every write including a raw one, and it appears in the
+     * table definition where the next person reads the column.
+     */
+    check(
+      "users_active_email_verified_check",
+      sql`${table.status} <> 'active' or ${table.emailVerifiedAt} is not null`,
+    ),
     /*
      * One btree index per sortable column, composite with `id`
      * (ADR-0060 §3).

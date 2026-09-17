@@ -1,6 +1,6 @@
 # Deploying
 
-The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.yaml) — four services built from three images, with Postgres and Redis **external** ([ADR-0059](adr/0059-ci-containers-and-deployment.md) §6). This page walks it on [Coolify](https://coolify.io), which is what the starter's own deployment runs on. Nothing here is Coolify-specific except the click path: the compose file is the description, and any platform that reads one will take it.
+The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.yaml) — five services built from three images, with Postgres and Redis **external** ([ADR-0059](adr/0059-ci-containers-and-deployment.md) §6). This page walks it on [Coolify](https://coolify.io), which is what the starter's own deployment runs on. Nothing here is Coolify-specific except the click path: the compose file is the description, and any platform that reads one will take it.
 
 ## What gets deployed
 
@@ -8,6 +8,7 @@ The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.
 | ---------- | -------------------------- | ------------------------------------------------------------------------ |
 | `migrate`  | `apps/api/Dockerfile`      | One-shot. Applies the committed migrations and exits. The release gate.  |
 | `api`      | `apps/api/Dockerfile`      | Express 5 on Node 24, port 4000. Starts only after `migrate` exits zero. |
+| `prune`    | `apps/api/Dockerfile`      | The retention sweep, on a loop. Deletes rows nothing can use any more.   |
 | `admin`    | `apps/admin/Dockerfile`    | Static SPA on nginx, port 80. Built per environment.                     |
 | `customer` | `apps/customer/Dockerfile` | Static SPA on nginx, port 80. Built per environment.                     |
 
@@ -90,7 +91,13 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 5. **Deploy.** The order is enforced by the compose file, not by you: `migrate` runs `node dist/migrate.js`, takes a `pg_advisory_lock` so two overlapping releases serialise, applies whatever is pending and exits; `api` starts only once it has exited zero. A failed migration therefore fails the deploy with the old API still running.
 
-6. **Seed the first super admin, once.** The image deliberately carries only the migration runner: seeding is not a release step, it is a first-run one, and `SEED_SUPER_ADMIN_*` never reaches the API's request path (ADR-0008). Run it from a checkout against the managed database, once, with the two variables set for that command only:
+   **A migration can lock a table, and the old API is what waits** — worth knowing before the first release against a database with real rows in it. `0017_users_active_email_verified_check.sql` is the example in the tree: it adds a validated `CHECK` to `users`, which holds `ACCESS EXCLUSIVE` while Postgres scans the table, and every login blocks for that scan. Milliseconds on a small table, longer on a large one. If that is not acceptable for your deployment, apply such a migration in a maintenance window rather than in the release.
+
+   **`prune` comes up beside `api` and is the one long-lived job** (ADR-0073 §3). It is the same image with a third command — `node dist/prune-sessions.js` in a `sleep` loop — connecting as the application role, and it deletes the rows that have been unusable for thirty days: revoked and expired `sessions`, spent `impersonation_handoffs`, spent and expired `account_tokens`. A row that is still redeemable is never touched, which is why the service can restart mid-sweep and why it is safe to run against a live database. `PRUNE_INTERVAL` is how long it waits between passes, a `sleep` duration defaulting to `24h`; it prunes once on the way up rather than waiting out the first interval, so a redeploy is also how you force a sweep. The line it writes names the three counts separately, so a table that is growing is visible without a query. **If your platform runs scheduled jobs**, run the same command on its scheduler and delete this service — that is the better shape, and the reason it is a service here is that a compose file is the one description every platform accepts. Nothing bad happens if you drop it and run nothing: the database grows, which is exactly the finding this service closes.
+
+   **Do not mistake it for a queue drain or a scheduler.** It sweeps three tables on a fixed interval and does nothing else; invitation expiry is a state read from `expires_at` and is never swept, audit retention is a reviewed migration and never a job ([ADR-0058](adr/0058-append-only-audit-log.md) — the table refuses `DELETE` twice over), and an in-process scheduler is a later decision ([ADR-0066](adr/0066-infrastructure-seams.md)'s seam shape).
+
+6. **Seed the first super admin, once.** The image carries the migration runner and the prune, and deliberately not the seeder: seeding is not a release step or a recurring one, it is a first-run one, and `SEED_SUPER_ADMIN_*` never reaches the API's request path (ADR-0008). Run it from a checkout against the managed database, once, with the two variables set for that command only:
 
    ```sh
    DATABASE_URL_OWNER='postgres://machxi_owner:…' NODE_ENV=production \
@@ -142,4 +149,4 @@ Point both `DATABASE_URL*` values at the local compose Postgres with `host.docke
 
 ## What this does not decide
 
-Image registry and tagging, secret storage, log shipping, and running `db:sessions:prune` on a schedule. Each is a deployment's own choice and none of them is in the repository; ADR-0059 §Consequences lists them so their absence is deliberate rather than forgotten.
+Image registry and tagging, secret storage and log shipping. Each is a deployment's own choice and none of them is in the repository; ADR-0059 §Consequences lists them so their absence is deliberate rather than forgotten. **Running the prune on a schedule was on this list until `D20.5`** and is now the `prune` service above — what is still a deployment's own choice is whether to keep that service or hand the same command to the platform's scheduler.

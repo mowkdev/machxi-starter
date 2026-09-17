@@ -643,12 +643,23 @@ export const createUsersRepository = (db: DbExecutor) =>
      * for. What both refuse is a **deleted** row, which is ADR-0028's rule for
      * every write on this resource and the service's `409 USER_DELETED`.
      *
-     * `verifiedAt` is passed rather than derived, because the two halves of
-     * §3's invariant are the caller's to decide: an `active` row is stamped —
-     * the operator is the authority a link would be asking — and a
-     * `pending_verification` one is passed `null`, the same split `create`
-     * makes and the same one the backfill migration made. Nothing here writes
-     * `status`: setting an address is not an activation.
+     * **The stamp is derived in the statement, from the row's own `status`**
+     * (`D20.5`'s `security-reviewer`), the same shape and for the same stated
+     * reason as {@link UsersRepository.updateColumns}' `coalesce` above. It
+     * used to be a `verifiedAt` parameter the service computed from a read it
+     * took inside the transaction but did not lock, and under `read committed`
+     * a `PATCH … {status:"active"}` committing in between made this statement
+     * write `null` onto a row that was `active` by the time it landed — which
+     * is the active-with-unproven-address row `users_active_email_verified_check`
+     * now refuses, reaching the caller as a `500`. A rule the statement
+     * evaluates cannot disagree with the row it writes.
+     *
+     * The split itself is unchanged and is §3's: a `pending_verification` row
+     * has proven nothing and is passed `null`, and every other status is
+     * stamped — the operator typing the address is the authority a link would
+     * be asking, and `disabled` is a decision about the account rather than a
+     * statement about the mailbox. Nothing here writes `status`: setting an
+     * address is not an activation.
      *
      * **The column is written unconditionally, `null` included** (`D18.10`'s
      * `security-reviewer`). Skipping the write when `verifiedAt` is `null`
@@ -672,13 +683,19 @@ export const createUsersRepository = (db: DbExecutor) =>
     setEmail: async (
       id: string,
       email: string,
-      verifiedAt: Date | null,
       at: Date,
       tx: DbExecutor = db,
     ): Promise<UserRecord | undefined> => {
       const [updated] = await tx
         .update(users)
-        .set({ email, emailVerifiedAt: verifiedAt, updatedAt: at })
+        .set({
+          email,
+          // The cast is not decoration, for `updateColumns`' reason: an
+          // untyped bind parameter gives Postgres nothing to infer the branch
+          // type from and the statement is refused outright.
+          emailVerifiedAt: sql`case when ${users.status} = 'pending_verification' then null else ${at.toISOString()}::timestamptz end`,
+          updatedAt: at,
+        })
         .where(
           and(
             eq(users.id, id),

@@ -54,6 +54,23 @@ const expectUniqueViolation = async (action: Promise<unknown>) => {
   expect(cause?.code).toBe("23505");
 };
 
+/**
+ * A `users` row that satisfies `users_active_email_verified_check` — the
+ * `0017` constraint that makes "every `active` user has a proven address" a
+ * database rule (ADR-0073 §8).
+ *
+ * Every fixture in this file is an `active` account by default and none of
+ * them is *about* verification, so the stamp is furniture: spelled once here
+ * rather than at a dozen call sites, and overridable by any caller that means
+ * something by it. A test that wants an unproven address states
+ * `emailVerifiedAt: null` with a `status` the constraint permits — which is
+ * exactly what the two cases in `migration 0017` below do.
+ */
+const userRow = <T extends { readonly email: string }>(values: T) =>
+  ({ emailVerifiedAt: new Date(), ...values }) as T & {
+    emailVerifiedAt: Date;
+  };
+
 describe("migration 0000", () => {
   it("installs citext from the migration, not from the container init script", async () => {
     // ADR-0008: the extension lives in a migration so the local database, the
@@ -374,11 +391,11 @@ describe("migration 0002", () => {
 
     const [deleted] = await client.db
       .insert(users)
-      .values({ email, deletedAt: new Date() })
+      .values(userRow({ email, deletedAt: new Date() }))
       .returning({ id: users.id });
 
     await expect(
-      client.db.insert(users).values({ email }),
+      client.db.insert(users).values(userRow({ email })),
     ).resolves.not.toThrow();
 
     expect(deleted?.id).toEqual(expect.any(String));
@@ -389,9 +406,11 @@ describe("migration 0002", () => {
     // address must not release a live one.
     const email = "still.unique@machxi.test";
 
-    await client.db.insert(users).values({ email });
+    await client.db.insert(users).values(userRow({ email }));
 
-    await expectUniqueViolation(client.db.insert(users).values({ email }));
+    await expectUniqueViolation(
+      client.db.insert(users).values(userRow({ email })),
+    );
   });
 
   it("refuses a second *deleted* row only when a live one exists", async () => {
@@ -401,10 +420,10 @@ describe("migration 0002", () => {
     const email = "twice.deleted@machxi.test";
     const deletedAt = new Date();
 
-    await client.db.insert(users).values({ email, deletedAt });
+    await client.db.insert(users).values(userRow({ email, deletedAt }));
 
     await expect(
-      client.db.insert(users).values({ email, deletedAt }),
+      client.db.insert(users).values(userRow({ email, deletedAt })),
     ).resolves.not.toThrow();
   });
 });
@@ -441,7 +460,9 @@ describe("citext", () => {
     // The same person may be both a staff member and a customer; uniqueness is
     // within a population, not across it.
     await expect(
-      client.db.insert(users).values({ email: "ada.lovelace@machxi.test" }),
+      client.db
+        .insert(users)
+        .values(userRow({ email: "ada.lovelace@machxi.test" })),
     ).resolves.not.toThrow();
   });
 });
@@ -450,7 +471,7 @@ describe("defaults", () => {
   it("fills id, status and the timestamps without the caller saying so", async () => {
     const [row] = await client.db
       .insert(users)
-      .values({ email: "defaults@machxi.test" })
+      .values(userRow({ email: "defaults@machxi.test" }))
       .returning();
 
     expect(row?.id).toMatch(
@@ -470,7 +491,7 @@ describe("sessions", () => {
   it("accepts a session for a principal it has no foreign key to", async () => {
     const [account] = await client.db
       .insert(users)
-      .values({ email: "session-owner@machxi.test" })
+      .values(userRow({ email: "session-owner@machxi.test" }))
       .returning({ id: users.id });
 
     const [session] = await client.db
@@ -602,7 +623,7 @@ describe("migration 0003 — settings", () => {
   const addUser = async (email: string) => {
     const [row] = await client.db
       .insert(users)
-      .values({ email })
+      .values(userRow({ email }))
       .returning({ id: users.id });
 
     return row?.id ?? "";
@@ -742,7 +763,7 @@ describe("migration 0013 — the invitation's single-use token", () => {
   const invitation = async (email: string, tokenHash: string) => {
     const [owner] = await client.db
       .insert(users)
-      .values({ email: `owner-${email}` })
+      .values(userRow({ email: `owner-${email}` }))
       .returning({ id: users.id });
 
     const [organization] = await client.db
@@ -916,7 +937,7 @@ describe("migration 0016 — federated identities", () => {
   const addUser = async (email: string) => {
     const [row] = await client.db
       .insert(users)
-      .values({ email })
+      .values(userRow({ email }))
       .returning({ id: users.id });
 
     return row?.id ?? "";
@@ -979,6 +1000,137 @@ describe("migration 0016 — federated identities", () => {
     const error = await insert().catch((caught: unknown) => caught);
 
     expect((error as { cause?: { code?: string } }).cause?.code).toBe("23503");
+  });
+});
+
+describe("migration 0017 — the two invariants in the database", () => {
+  /**
+   * Asserts a check-constraint violation by SQLSTATE and by name.
+   *
+   * `23514` alone would pass for *any* check on the table, and the name is
+   * what a migration that silently failed to apply cannot produce — the same
+   * reasoning `expectUniqueViolation` above is written for.
+   */
+  const expectCheckViolation = async (
+    action: Promise<unknown>,
+    constraint: string,
+  ) => {
+    await expect(action).rejects.toThrow();
+
+    const error = await action.catch((caught: unknown) => caught);
+    const cause = (
+      error as {
+        cause?: { code?: string; constraint_name?: string };
+      }
+    ).cause;
+
+    expect(cause?.code).toBe("23514");
+    expect(cause?.constraint_name).toBe(constraint);
+  };
+
+  it("refuses an active user with no proven address (ADR-0073 §8)", async () => {
+    // `DB-04`: the invariant every downstream rule leans on — invitation
+    // acceptance by address, federated linking by `status` alone — used to be
+    // held by three code paths remembering. This is the fourth path, the one
+    // that forgets, and the database is what stops it.
+    await expectCheckViolation(
+      client.db.insert(users).values({
+        email: "unproven-active@machxi.test",
+        status: "active",
+        emailVerifiedAt: null,
+      }),
+      "users_active_email_verified_check",
+    );
+  });
+
+  it("refuses an existing row being activated without one", async () => {
+    // The other half, and the one a repository can reach: `pending_verification`
+    // is legal with a null stamp, so the constraint has to fire on the UPDATE
+    // that moves such a row to `active` rather than only on an INSERT.
+    const email = "activated-unproven@machxi.test";
+
+    await client.db
+      .insert(users)
+      .values({ email, status: "pending_verification", emailVerifiedAt: null });
+
+    await expectCheckViolation(
+      client.db
+        .update(users)
+        .set({ status: "active" })
+        .where(eq(users.email, email)),
+      "users_active_email_verified_check",
+    );
+  });
+
+  it("permits an unproven address on the statuses that are not active", async () => {
+    // What the constraint deliberately does not say. `pending_verification` is
+    // the row the verification flow exists to move, and `disabled` is a
+    // decision about the account rather than a statement about the mailbox.
+    await expect(
+      client.db.insert(users).values([
+        {
+          email: "still-pending@machxi.test",
+          status: "pending_verification",
+          emailVerifiedAt: null,
+        },
+        {
+          email: "disabled-unproven@machxi.test",
+          status: "disabled",
+          emailVerifiedAt: null,
+        },
+      ]),
+    ).resolves.not.toThrow();
+  });
+
+  it("moves updated_at on an update that never names it (ADR-0073 §8)", async () => {
+    // `DB-03`: `timestamps()` gained `$onUpdate`, so a repository that forgets
+    // the column can no longer ship a stale one. The `set` below names one
+    // column and it is not this one.
+    const [created] = await client.db
+      .insert(users)
+      .values(userRow({ email: "touched@machxi.test" }))
+      .returning({ id: users.id, updatedAt: users.updatedAt });
+
+    // Postgres timestamps have microsecond resolution and the stamp comes from
+    // the driver's clock, so two writes in the same millisecond would be
+    // indistinguishable — and a test that could pass on an unchanged value is
+    // the one failure mode this assertion exists to rule out.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const [updated] = await client.db
+      .update(users)
+      .set({ firstName: "Touched" })
+      .where(eq(users.id, created?.id ?? ""))
+      .returning({ updatedAt: users.updatedAt, createdAt: users.createdAt });
+
+    expect(updated?.updatedAt.getTime()).toBeGreaterThan(
+      created?.updatedAt.getTime() ?? 0,
+    );
+    // `created_at` is not an `$onUpdate` column and must not have moved with it.
+    expect(updated?.createdAt.getTime()).toBeLessThan(
+      updated?.updatedAt.getTime() ?? 0,
+    );
+  });
+
+  it("lets a caller that states updated_at keep winning", async () => {
+    // The compatibility half: every repository that stamps the column
+    // explicitly — several of them stamping a row and one of its neighbours
+    // with the *same* instant — is untouched, because Drizzle only fills a
+    // column the `set` object does not name.
+    const stated = new Date("2030-01-01T00:00:00.000Z");
+
+    const [created] = await client.db
+      .insert(users)
+      .values(userRow({ email: "stated@machxi.test" }))
+      .returning({ id: users.id });
+
+    const [updated] = await client.db
+      .update(users)
+      .set({ firstName: "Stated", updatedAt: stated })
+      .where(eq(users.id, created?.id ?? ""))
+      .returning({ updatedAt: users.updatedAt });
+
+    expect(updated?.updatedAt.toISOString()).toBe(stated.toISOString());
   });
 });
 

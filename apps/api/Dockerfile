@@ -1,4 +1,5 @@
-# The API image (ADR-0059 §4), and the migration runner with it (§5).
+# The API image (ADR-0059 §4), the migration runner with it (§5) and the
+# session prune beside them (ADR-0073 §3).
 #
 # Built from the repository root — `docker build -f apps/api/Dockerfile .` —
 # because a pnpm workspace installs from the top: the lockfile, the workspace
@@ -53,7 +54,17 @@ RUN pnpm turbo run build --filter=api --filter=@repo/db
 # The two `dist/` directories are copied explicitly afterwards because `deploy`
 # packs a workspace package the way npm would pack it, and `dist` is
 # git-ignored — so what lands in `/out` is the source tree, and the bundles
-# this image actually runs have to be put there by hand. The `find` sweeps the
+# this image actually runs have to be put there by hand.
+#
+# `@repo/db`'s is copied **whole** rather than by entry name (`D20.5`): with a
+# second entry beside the migration runner, rolldown emits the code they share
+# as a chunk both import, and naming the two entry files would ship two
+# bundles whose only import is missing. The names are still load-bearing —
+# `compose.yaml` runs `dist/migrate.js` and `dist/prune-sessions.js` — and the
+# two trees merge rather than collide because every other file on both sides
+# is a content-hashed chunk.
+#
+# The `find` sweeps the
 # top-level config files that came with it (tsconfig, eslint, the two vitest
 # configs, this Dockerfile): none is read at run time, and a deployed artefact
 # that still carries its own build configuration invites someone to trust it.
@@ -61,7 +72,7 @@ RUN pnpm deploy --filter=api --prod /out \
     && rm -rf /out/src /out/test /out/e2e /out/dist \
     && find /out -maxdepth 1 -type f ! -name package.json -delete \
     && cp -R /repo/apps/api/dist /out/dist \
-    && cp /repo/packages/db/dist/migrate.js /out/dist/migrate.js \
+    && cp -R /repo/packages/db/dist/. /out/dist/ \
     && cp -R /repo/packages/db/migrations /out/migrations
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
@@ -92,6 +103,8 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["node", "-e", "fetch(`http://127.0.0.1:${process.env.PORT}/health/live`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
-# The migrate service overrides this with `node dist/migrate.js`
-# (`docker/prod/compose.yaml`). The API itself never migrates (ADR-0008).
+# The migrate service overrides this with `node dist/migrate.js`, and the prune
+# service loops `node dist/prune-sessions.js` (`docker/prod/compose.yaml`). The
+# API itself never migrates (ADR-0008) and never prunes — one image, three
+# commands, which is what keeps the three from ever being different versions.
 CMD ["node", "dist/main.js"]

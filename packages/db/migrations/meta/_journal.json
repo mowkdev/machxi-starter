@@ -120,6 +120,13 @@
       "when": 1789130471204,
       "tag": "0016_federated_identities",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789675338192,
+      "tag": "0017_users_active_email_verified_check",
+      "breakpoints": true
     }
   ]
 }

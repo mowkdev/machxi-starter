@@ -279,9 +279,12 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
      * stamp written **unconditionally** so it always describes the address now
      * on the row, and refused when a live row already holds the address — the
      * fake's version of the statement's `NOT EXISTS`. Unlike
-     * `updateEmailVerified` above, `status` is not in the predicate.
+     * `updateEmailVerified` above, `status` is not in the *predicate* — but
+     * since `D20.5` it decides the stamp, which the statement now derives from
+     * the row rather than taking from the caller, so the fake reads it off the
+     * row for the same reason.
      */
-    setEmail: (id: string, email: string, verifiedAt: Date | null) => {
+    setEmail: (id: string, email: string, at: Date) => {
       const row = rows.get(id);
 
       if (row === undefined || row.deleted) return Promise.resolve(undefined);
@@ -295,7 +298,7 @@ const createFakeRepository = (seed: FakeUserRow[]) => {
       }
 
       row.email = email;
-      row.emailVerifiedAt = verifiedAt;
+      row.emailVerifiedAt = row.status === "pending_verification" ? null : at;
 
       return Promise.resolve(toRecord(row));
     },

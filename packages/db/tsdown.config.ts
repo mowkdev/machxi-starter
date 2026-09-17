@@ -1,7 +1,8 @@
 import { defineConfig } from "tsdown";
 
 /**
- * The migration runner as a deployable bundle (ADR-0059 §5, `D14.3`).
+ * The two deployable bundles: the migration runner (ADR-0059 §5, `D14.3`) and
+ * the session prune (ADR-0073 §3, `D20.5`).
  *
  * Until this existed, applying a migration in production meant shipping this
  * package's TypeScript source **and** a TypeScript runtime to read it —
@@ -13,16 +14,31 @@ import { defineConfig } from "tsdown";
  * Built the way the API's bundle is built (`apps/api/tsdown.config.ts`) with
  * one deliberate difference: **the runtime dependencies are inlined too**.
  * The API's bundle keeps them external because it is installed beside a
- * `node_modules` it owns; this file is copied to `/app/dist/migrate.js` next
+ * `node_modules` it owns; these files are copied into `/app/dist` next
  * to a tree deployed for `apps/api`, where `postgres` — a dependency of this
- * package and not of that app — is not resolvable. A one-shot process that
- * carries its own closure cannot be broken by the image's layout.
+ * package and not of that app — is not resolvable. A process that carries its
+ * own closure cannot be broken by the image's layout.
+ *
+ * With two entries that closure is **three files, not two**: rolldown emits
+ * the code they share as a chunk both import, which is why
+ * `apps/api/Dockerfile` copies this directory whole rather than naming the
+ * entries. The entry names themselves stay fixed — `docker/prod/compose.yaml`
+ * runs both by name.
  *
  * `migrations/` is not bundled — it is committed SQL, copied beside the file
  * and found by `tooling/env.ts`'s walk for `migrations/meta/_journal.json`.
+ *
+ * **`dist/prune-sessions.js` is here for the same reason and on the same
+ * terms** (ADR-0073 §3): the reference deployment's `prune` service runs it in
+ * a loop out of the API image, and a scheduled job that needed a TypeScript
+ * runtime and this package's source tree would be a second deployable
+ * artefact to keep in step with the first. It is bundled exactly
+ * as the runner is, and — unlike the runner — it connects as the
+ * **application** role, so the image gains a long-lived process that still
+ * cannot run DDL (ADR-0061 §1).
  */
 export default defineConfig({
-  entry: ["src/migrate.ts"],
+  entry: ["src/migrate.ts", "src/prune-sessions.ts"],
   format: ["esm"],
   platform: "node",
   target: "node24",
