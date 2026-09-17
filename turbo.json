@@ -70,8 +70,10 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^lint", "//#test:scripts", "//#docs:check"]
     },
+    "//#test:scripts": {},
+    "//#docs:check": {},
     "check-types": {
       "dependsOn": ["^check-types"],
       "outputs": ["dist-types/**"]

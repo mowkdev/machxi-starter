@@ -11,6 +11,9 @@
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc -b"
   },
+  "dependencies": {
+    "@vitest/coverage-v8": "4.1.10"
+  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",

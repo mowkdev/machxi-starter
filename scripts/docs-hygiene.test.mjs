@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -75,6 +83,51 @@ test("the scan skips a git worktree parked under .claude", async () => {
   const files = (await inheritedDocuments(root)).map((f) => f.rel);
   assert.deepEqual(files, [".claude/README.md", "CLAUDE.md"]);
   await rm(root, { recursive: true, force: true });
+});
+
+/**
+ * The prose and the source under a repo-relative directory, minus the excluded
+ * paths. The extension list is the point rather than a filter for speed: the
+ * scan has to be a pure function of tracked repository content or the task
+ * around it cannot be cached (ADR-0026 §The rule). `.claude/` also holds
+ * `settings.local.json`, which is git-ignored and per-machine — reading it
+ * would red this test on one developer's clone and nowhere else.
+ */
+const SCANNED = new Set([".md", ".ts", ".tsx"]);
+
+async function filesUnder(dir) {
+  const out = [];
+  const walk = async (full) => {
+    for (const entry of await readdir(full, { withFileTypes: true })) {
+      const child = path.join(full, entry.name);
+      const rel = path.relative(repoRoot, child).split(path.sep).join("/");
+      if (isExcluded(rel) || entry.name === "node_modules") continue;
+      if (entry.isDirectory()) await walk(child);
+      else if (SCANNED.has(path.extname(entry.name)))
+        out.push({ full: child, rel });
+    }
+  };
+  await walk(path.join(repoRoot, dir));
+  return out;
+}
+
+test("nothing a fork inherits states the marketing app as present", async () => {
+  // The Next.js app left this tree before either SPA shipped, and the
+  // marketing site is a planned deliverable that scaffolds fresh. A skill or a
+  // source comment that names its path in the present tense sends the reader
+  // to a directory that is not there, and a fork inherits the claim. Both
+  // trees travel: `.claude/` as the machinery that applies the records, and
+  // `packages/ui/src` as code.
+  const offenders = [];
+  for (const dir of [".claude", "packages/ui/src"]) {
+    for (const { full, rel } of await filesUnder(dir)) {
+      const text = await readFile(full, "utf8");
+      text.split(/\r?\n/).forEach((line, index) => {
+        if (line.includes("apps/web")) offenders.push(`${rel}:${index + 1}`);
+      });
+    }
+  }
+  assert.deepEqual(offenders, []);
 });
 
 // The behaviour specs (ADR-0068 §1): the real ones are clean, the scan

@@ -6,6 +6,14 @@ const alwaysExclude = ["**/node_modules/**", "**/dist/**", "**/.turbo/**"];
  * Unit tests (ADR-0021): pure functions and fake repositories, no I/O.
  * Fully parallel. `*.int.test.ts` files are excluded — they belong to
  * `integrationConfig` and the separate `test:int` script.
+ *
+ * **Coverage is reported and never gated** (ADR-0073 §6). A text summary on
+ * every unit run is what says which slices are thin; a threshold chosen before
+ * the number is measured is a number that gets edited on the first red run, so
+ * a floor stays a later decision taken on a measurement. The block is written
+ * out here and in `react.ts` rather than shared through a constant: inside
+ * `defineConfig` the literal gets its contextual type, and a hoisted object
+ * would have to be hand-typed against Vitest's options to keep it.
  */
 export const nodeConfig = defineConfig({
   test: {
@@ -15,12 +23,18 @@ export const nodeConfig = defineConfig({
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,
+    coverage: {
+      enabled: true,
+      provider: "v8",
+      reporter: ["text-summary"],
+    },
   },
 });
 
 /**
  * Integration tests (ADR-0021): real Postgres via `DATABASE_URL_TEST`.
- * Serial per file so that truncation between files cannot race.
+ * Serial per file so that truncation between files cannot race. No coverage:
+ * instrumenting a suite that talks to a database measures the harness.
  */
 export const integrationConfig = defineConfig({
   test: {

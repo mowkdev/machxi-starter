@@ -28,8 +28,9 @@ import { useUiStrings } from "@repo/ui/ui-strings";
  *
  * `"use client"` because it reads `UiStrings`, which is a context read, and
  * ADR-0047 rules that a composition with micro-copy is a client component by
- * construction — `apps/web` compiles this package through `transpilePackages`
- * and a Next server component must be able to import any export.
+ * construction — the marketing site D16 will add compiles this package through
+ * `transpilePackages`, and a Next server component must be able to import any
+ * export.
  *
  * **`action` arrived at `D13.7`, exactly as ADR-0048 §3 said it would.** That
  * record left the slot out of the v1 API and gave it the disposal

@@ -6,6 +6,13 @@
 # CI-only script: a green pipeline and a green terminal have to mean the same
 # thing, or the pipeline is a second, weaker gate.
 #
+# The first link carries more than eslint. `lint` depends on the repo-level
+# script tests and on `docs:check` through the task graph (ADR-0026 as carried
+# by ADR-0073 §6), so `pnpm lint` below runs both here and on a developer's
+# machine: the two checks that could go red with nothing watching them now fail
+# the gate at its first step. Listing them as `run:` steps of their own is
+# exactly the CI-only script the paragraph above refuses.
+#
 # The browser tier stays out (ADR-0052 §The browser tier, carried by ADR-0059
 # §1): it needs a running stack and a seeded database, and it runs nightly in
 # `e2e.yml`.

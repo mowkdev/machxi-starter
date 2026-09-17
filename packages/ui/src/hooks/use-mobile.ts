@@ -8,7 +8,7 @@ const MOBILE_BREAKPOINT = 768
  * — a cascading render on every mount. `useSyncExternalStore` is the primitive
  * for exactly this shape: subscribe to the media query, read the answer
  * synchronously, and hand a server snapshot to any consumer that renders
- * outside a browser (`apps/web`).
+ * outside a browser (the marketing site D16 will add).
  */
 export function useIsMobile() {
   const subscribe = React.useCallback((onStoreChange: () => void) => {

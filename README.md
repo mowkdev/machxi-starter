@@ -115,7 +115,8 @@ it does, and the ones that turn on a decision name the ADR.
 ```sh
 pnpm dev --filter api        # the API alone, in watch mode
 pnpm build                   # all apps; the API bundles to a single dist/main.js
-pnpm check                   # the fast inner loop: lint + check-types + test:unit + i18n:check, cached
+pnpm check                   # the fast inner loop: lint (carrying the repo-level script
+                             # tests and docs:check) + check-types + test:unit + i18n:check, cached
 pnpm test:unit               # unit suites alone, no database required
 pnpm test:int                # the API's supertest suite and @repo/db's, against DATABASE_URL_TEST
 pnpm test:e2e                # Playwright over the dev stack — beside the gate, never in it
@@ -136,6 +137,11 @@ pnpm turbo gen resource-screen  # its admin screen: entity, feature, page, route
 ```sh
 pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check
 ```
+
+The first link carries more than eslint: `lint` depends on `pnpm test:scripts`
+and `pnpm docs:check` through the task graph (ADR-0073 §6), so the two checks
+that used to go red with nothing watching them now fail the gate at its first
+step, here and in CI, without a CI-only script.
 
 `test` includes the API's integration tier, so it needs Docker up; `size` builds
 each SPA and weighs the gzipped output against its own `size-budget.json`; and

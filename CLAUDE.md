@@ -13,39 +13,28 @@ A blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin 
 
 ## Commands
 
-```
-pnpm i                         # Node 22, pnpm 10 (corepack enable)
-cp .env.example .env
-cp apps/admin/.env.example apps/admin/.env       # each SPA reads its own
-cp apps/customer/.env.example apps/customer/.env
-pnpm docker:up                 # Postgres 16 + Mailpit; first start creates both database roles
-pnpm db:setup                  # migrate + seed the super admin from .env
-pnpm db:seed -- --dev          # dev fixtures (staff and customer users)
-pnpm dev --filter api          # http://localhost:4000
-pnpm dev --filter admin        # http://localhost:3001 (needs the API up)
-pnpm dev --filter customer     # http://localhost:3002 (needs the API up)
+Setup is `README.md` §Quick start; these are the ones a session reaches for:
 
-pnpm check                     # the fast inner loop: lint + check-types + test:unit + i18n:check, cached
+```
+pnpm check                   # the inner loop, cached: lint (carrying the script
+                             # tests and docs:check), check-types, test:unit, i18n:check
+pnpm dev --filter api        # 4000 · admin 3001 · customer 3002
+pnpm test:int --filter api   # the integration tier alone, against DATABASE_URL_TEST
+pnpm test:e2e                # Playwright over the dev stack — beside the gate, never in it
+pnpm test:postman            # newman over docs/postman
+pnpm rules:digest            # regenerate docs/rules
 
 # THE GATE — defined here, referenced by name everywhere else:
 pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check
-
-pnpm test:int --filter api     # integration tier alone, against DATABASE_URL_TEST
-pnpm test:e2e                  # Playwright over the dev stack — beside the gate, never in it
-pnpm test:postman              # newman over docs/postman
-pnpm rules:digest              # regenerate docs/rules (pnpm docs:check audits .claude/**)
-pnpm test:scripts              # the repo-level script tests
 ```
 
-`pnpm test` includes the integration tier, so it needs Postgres up and runs serialised; `size` weighs each SPA's build against its own `size-budget.json`.
+`pnpm test` includes the integration tier, so it needs Postgres up and runs serialised; `size` weighs each SPA's build against its `size-budget.json`.
 
 ## Repo map
 
-- `apps/api` — Express 5 API: `src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, and `src/core/container.ts` as the composition root
-- `apps/admin` — staff SPA (Vite + React, 3001) over `/admin`; `apps/customer` — user SPA (3002) over `/user`. Both are `src/{app,pages,widgets,features,entities,shared}`; a resource is an entity slice, a feature slice and a thin page, and every platform package is reached through a `shared/` door
-- `packages/db` (Drizzle schema, migrations, seeds), `packages/contracts`, `packages/crypto`, `packages/logger`, `packages/config-*`, `packages/ui`
-- The **platform packages** both SPAs are built from: `api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`, `app-kit`. Each app keeps its dictionary, policy data, config, route tree and size budget
-- `docker/` — local compose and the reference production compose; `docs/` — records, plans, specs, rules, Postman; `scripts/` — repo-level tooling outside the workspaces; `turbo/generators` — the two scaffolds
+- `apps/` — `api` (Express 5: `src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, `src/core/container.ts` the composition root), `admin` (staff SPA over `/admin`) and `customer` (user SPA over `/user`); both SPAs are `src/{app,pages,widgets,features,entities,shared}` and reach every package through a `shared/` door
+- `packages/` — `db`, `contracts`, `crypto`, `logger`, `config-*`, `ui`, and the platform packages both SPAs are built from: `api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`, `app-kit`
+- `docker/` local and reference-production compose · `docs/` records, plans, specs, rules, Postman · `scripts/` repo-level tooling · `turbo/generators` the two scaffolds
 
 ## The running stack is the operator's
 
@@ -66,4 +55,4 @@ Search with the Grep/Glob tools — including inside a single known file. Throug
 
 ## Subagents
 
-`.claude/agents/`: `adr-reviewer` and `security-reviewer` (read-only), `module-builder`, `ui-builder`, `db-migrator`, `test-engineer`, `adr-author`, `code-reviewer`, `gate-runner`. There are **no orchestration workflows**: machines are the gate, review is one bounded pass over a diff.
+The roster is `.claude/agents/`, one file each, and `.claude/README.md` says what each is for — three read-only reviewers, the builders, and `gate-runner`. There are **no orchestration workflows**: machines are the gate, review is one bounded pass over a diff.

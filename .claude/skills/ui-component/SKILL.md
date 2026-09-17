@@ -37,7 +37,7 @@ Read [`docs/rules/frontend-and-platform.md`](../../../docs/rules/frontend-and-pl
 
 No CLI generates one. Write `packages/ui/src/compositions/<name>.tsx` by hand, prettier applies (the `.prettierignore` carve-out covers `components/` and `hooks/` only, and **does not widen**), and it is reviewed like app code. Then:
 
-1. **Add `"use client"`** if it holds state, reads context — reading `UiStrings` counts — or composes a primitive that does (`sidebar`, `pagination`, `breadcrumb`, `sonner` carry no directive of their own). `apps/web` transpiles this package and a Next server component must be able to import any export.
+1. **Add `"use client"`** if it holds state, reads context — reading `UiStrings` counts — or composes a primitive that does (`sidebar`, `pagination`, `breadcrumb`, `sonner` carry no directive of their own).
 2. **Add no dependency.** Compositions use what the package already declares — radix through the primitives, `cn`, `class-variance-authority`. `react-hook-form` and `@tanstack/react-router` do not enter this package; a surface that needs one stays in the app as a thin wrapper over the geometry-only composition.
 3. **Operator-facing copy goes through `UiStrings`** (ADR-0046 §12, interface localization) — never an i18n dependency, never a bare literal. Nothing in `packages/ui` lints for one, so this is review-enforced. A new key costs the `UiStrings` field, the `DEFAULT_UI_STRINGS` entry, **all three** hand-maintained lists in `UiStringsProvider`, the consuming app's provider line, and both catalogues.
 4. **Open the door and write the suite**, per steps 5 and 6 above.
