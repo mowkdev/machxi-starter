@@ -22,3 +22,4 @@ export {
   type SettingsService,
   type SettingsServiceDeps,
 } from "./settings.service.js";
+export { wireSettings, type WireSettingsDeps } from "./wire.js";

@@ -71,3 +71,4 @@ export {
   type OrganizationsService,
   type OrganizationsServiceDeps,
 } from "./organizations.service.js";
+export { wireOrganizations, type WireOrganizationsDeps } from "./wire.js";

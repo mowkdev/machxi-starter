@@ -42,3 +42,4 @@ export {
   type UsersService,
   type UsersServiceDeps,
 } from "./users.service.js";
+export { wireUsers, type WireUsersDeps } from "./wire.js";

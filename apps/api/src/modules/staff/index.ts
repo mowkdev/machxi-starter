@@ -37,3 +37,4 @@ export {
   type StaffService,
   type StaffServiceDeps,
 } from "./staff.service.js";
+export { wireStaff, type WireStaffDeps } from "./wire.js";

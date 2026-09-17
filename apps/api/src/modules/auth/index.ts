@@ -148,3 +148,4 @@ export type {
   PrincipalAdapter,
   PrincipalRecord,
 } from "./auth.types.js";
+export { wireAuth, type WireAuthDeps } from "./wire.js";

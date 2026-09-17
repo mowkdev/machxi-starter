@@ -12,3 +12,4 @@ export {
   type HealthServiceDeps,
 } from "./health.service.js";
 export type { HealthCheckOutcome, HealthIndicator } from "./health.types.js";
+export { wireHealth, type WireHealthDeps } from "./wire.js";

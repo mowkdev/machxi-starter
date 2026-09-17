@@ -5,69 +5,23 @@ import type { Logger } from "@repo/logger";
 import type { AppConfig } from "./config/index.js";
 import type { DbClient } from "./db/index.js";
 import {
-  createAuthController,
   createAuthCookies,
   createAuthenticate,
-  createAuthService,
-  createFederatedAccounts,
-  createFederatedController,
-  createFederatedSignInService,
-  createHandoffsRepository,
   createHashLimiter,
-  createImpersonationController,
-  createImpersonationService,
   createRefuseImpersonated,
-  createSessionsRepository,
-  createStaffPrincipalAdapter,
   createTokenService,
-  createUserPrincipalAdapter,
+  wireAuth,
+  type AuthService,
 } from "../modules/auth/index.js";
+import { createRateLimiters } from "./middleware/index.js";
+import { wireHealth } from "../modules/health/index.js";
 import {
-  createGlobalRateLimiter,
-  createImpersonationRateLimiter,
-  createLoginRateLimiter,
-  createMailboxRateLimiter,
-  createMailSourceRateLimiter,
-  createPasswordResetRateLimiter,
-  createPrincipalHashRateLimiter,
-  createRefreshRateLimiter,
-  createSetPasswordLinkRateLimiter,
-  createTokenRouteRateLimiter,
-  createVerificationRateLimiter,
-} from "./middleware/index.js";
-import {
-  createDbIndicator,
-  createHealthController,
-  createHealthService,
-} from "../modules/health/index.js";
-import {
-  createInvitationsRepository,
-  createMembershipsRepository,
-  createOrganizationsController,
-  createOrganizationsRepository,
-  createOrganizationsService,
-  createPublicInvitationsController,
   createRequireMembership,
-  createUserInvitationsController,
-  createUserOrganizationsController,
+  wireOrganizations,
 } from "../modules/organizations/index.js";
-import {
-  createSettingsController,
-  createSettingsRepository,
-  createSettingsService,
-} from "../modules/settings/index.js";
-import {
-  createStaffController,
-  createStaffProfileController,
-  createStaffRepository,
-  createStaffService,
-} from "../modules/staff/index.js";
-import {
-  createUserProfileController,
-  createUsersController,
-  createUsersRepository,
-  createUsersService,
-} from "../modules/users/index.js";
+import { wireSettings } from "../modules/settings/index.js";
+import { wireStaff } from "../modules/staff/index.js";
+import { wireUsers } from "../modules/users/index.js";
 import { createAudit, createAuditRepository } from "./audit/index.js";
 import { createCookieNames } from "./http/index.js";
 import { createLimitedHasher } from "./auth/index.js";
@@ -77,12 +31,7 @@ import {
   type MailSender,
 } from "./mail/index.js";
 import { createMetrics } from "./metrics/index.js";
-import {
-  createGoogleOidcProvider,
-  createOidcTransactionCodec,
-  oidcRedirectUri,
-  type OidcProvider,
-} from "./oidc/index.js";
+import { type OidcProvider } from "./oidc/index.js";
 import {
   createAccountTokens,
   createAccountTokensRepository,
@@ -91,12 +40,19 @@ import type { RateLimitStoreFactory } from "./rate-limit/index.js";
 import { createErrorReporter, type ErrorReporter } from "./reporting/index.js";
 
 /**
- * The composition root (ADR-0009).
+ * The composition root (ADR-0009, ADR-0073 §10).
  *
- * Everything is built once, here, in dependency order, by calling the module
- * factories — no DI container, no decorators, no service locator. Reading this
- * file top to bottom tells you the whole dependency graph of the process, and
- * `createApp` needs nothing but the object it returns.
+ * **Construction order and nothing else.** The process-wide singletons are
+ * built at the top, then one `wire<Module>` per module in dependency order,
+ * then the guards that hold a repository. What each module builds out of what
+ * it is handed lives in that module's own `wire.ts`, so a fork that adds a
+ * service changes a file of its own rather than this one — which is where
+ * every fork's merge conflict used to land (ADR-0073 §10).
+ *
+ * There is still no DI container, no decorator and no service locator: reading
+ * this file top to bottom tells you the order, and reading one `wire.ts` tells
+ * you one module's graph. `createApp` needs nothing but the object returned
+ * here.
  *
  * Tests build a container against a test database and get the real wiring
  * (ADR-0021); a unit test skips it entirely and calls one `create*Service`
@@ -113,11 +69,10 @@ export interface ContainerDeps {
    * factory is not.
    *
    * A **factory taking the limiter's name**, not one store: `rate-limit-redis`
-   * keys on `prefix + key`, and three of the four limiters key on the address
-   * alone, so one shared instance would merge the global and refresh counters.
-   * Absent — the default, and what the whole test suite uses — every limiter
-   * gets `express-rate-limit`'s own in-memory store, which is per instance
-   * already.
+   * keys on `prefix + key`, and several of the limiters key on the address
+   * alone, so one shared instance would merge their counters. Absent — the
+   * default, and what the whole test suite uses — every limiter gets
+   * `express-rate-limit`'s own in-memory store, which is per instance already.
    */
   readonly rateLimitStore?: RateLimitStoreFactory;
   /**
@@ -142,19 +97,39 @@ export interface ContainerDeps {
   /**
    * The ADR-0072 §2 identity-provider port, used **only when the Google
    * client is configured** — and then normally the Google adapter, built
-   * here from `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+   * inside `wireAuth` from `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
    * `API_PUBLIC_URL`.
    *
    * Overridable for {@link ContainerDeps.mail}'s reason: the integration
    * tier drives the callback against the fake, because the one thing no test
    * may reach is Google. **The fake is never chosen from configuration**
-   * (`D19.1`'s `security-reviewer`): this file does not import it, and the
-   * lint rule on `src/` refuses any file outside the tests that does. The
-   * only way to run the flow against it is to be a test that built a
-   * container.
+   * (`D19.1`'s `security-reviewer`): no file under `src/` imports it, and the
+   * lint rule refuses any that does. The only way to run the flow against it
+   * is to be a test that built a container.
    */
   readonly oidc?: OidcProvider | undefined;
 }
+
+/**
+ * One module's view of another module's session revocation, resolved when it
+ * is called rather than when it is wired (ADR-0009's service-to-service edge).
+ *
+ * The module graph has one cycle in it and always has: the staff and users
+ * services end an account's sessions through the auth service of their
+ * population, and the auth module's impersonation mint reads its target
+ * through the users service. Something has to be late, and this is the
+ * smallest thing that can be — the *narrowing* those two services already
+ * declare (`Pick<AuthService, "revokeSessionsFor">`), written out instead of
+ * inferred from a whole service handed over early.
+ *
+ * It changes no call: the forwarded arguments and the returned promise are the
+ * auth service's own.
+ */
+const revocationOf = (
+  service: () => Pick<AuthService, "revokeSessionsFor">,
+): Pick<AuthService, "revokeSessionsFor"> => ({
+  revokeSessionsFor: (...args) => service().revokeSessionsFor(...args),
+});
 
 export const buildContainer = ({
   config,
@@ -165,13 +140,6 @@ export const buildContainer = ({
   mail: mailOverride,
   oidc: oidcOverride,
 }: ContainerDeps) => {
-  const health = createHealthService({
-    // The database is the only registered indicator in the first deliverable
-    // (ADR-0016); a cache or a queue is one more entry in this array.
-    indicators: [createDbIndicator(db)],
-    config,
-  });
-
   // One hasher for the process, built from the validated `ARGON2_*` values.
   // The seeders build their own from the same variables (ADR-0008), which is
   // what makes a seeded password verify against what the API expects.
@@ -183,6 +151,12 @@ export const buildContainer = ({
   const hashLimiter = createHashLimiter({
     maxConcurrent: config.auth.maxConcurrentHashes,
   });
+
+  // Hashing with the ADR-0020 cap already applied. The feature modules get
+  // *this* and never the raw hasher, so they cannot bypass the cap by
+  // forgetting to wrap a call; the auth module keeps the raw one because
+  // login also needs `needsRehash` and `dummyHash`.
+  const limitedHasher = createLimitedHasher({ hasher, limiter: hashLimiter });
 
   // Every browser-visible name this deployment answers to, derived once from
   // `APP_ID` (ADR-0064 §1). One object, so the controller that writes a cookie
@@ -197,15 +171,6 @@ export const buildContainer = ({
     issuer: config.auth.issuer,
     accessTtlSec: config.auth.accessTtlSec,
   });
-
-  const staffRepository = createStaffRepository(db.db);
-  const usersRepository = createUsersRepository(db.db);
-  const sessions = createSessionsRepository(db.db);
-  const handoffs = createHandoffsRepository(db.db);
-  const settingsRepository = createSettingsRepository(db.db);
-  const organizationsRepository = createOrganizationsRepository(db.db);
-  const memberships = createMembershipsRepository(db.db);
-  const invitations = createInvitationsRepository(db.db);
 
   // The one place that knows how to open a transaction. Repositories take a
   // `DbExecutor` (ADR-0006), so a service composes them without ever importing
@@ -223,6 +188,24 @@ export const buildContainer = ({
   const audit = createAudit({ repository: createAuditRepository(db.db) });
 
   /**
+   * ADR-0066 §1's port and ADR-0071 §2's messages, built here for the reason
+   * everything else stateful is — a transporter holds a connection pool — and
+   * built **before** the modules, because both are dependencies of three of
+   * them.
+   *
+   * `createMailSender` returns the log transport in a default clone, so a
+   * fresh checkout runs with no mail server and every flow below still
+   * completes; the templates take the two SPA origins once, because a template
+   * that took an origin per call would let a caller choose where a single-use
+   * credential is delivered.
+   */
+  const mail = mailOverride ?? createMailSender(config);
+  const mailTemplates = createMailTemplates({
+    customerUrl: config.apps.customerUrl,
+    adminUrl: config.apps.adminUrl,
+  });
+
+  /**
    * The one mint and the one consume behind every mail flow (ADR-0071 §1),
    * built here for the audit writer's reason: the mechanism is infrastructure
    * the feature modules borrow, and the purposes belong to the features.
@@ -237,28 +220,7 @@ export const buildContainer = ({
    * Not `tokens` — that name is taken by the access-token service above, and
    * an *account* token is the opposite kind of credential: opaque, stored as a
    * hash, single-use, and redeemed rather than presented.
-   *
-   * Its first callers are ADR-0071 §3's registration and verification; the
-   * flows that follow mint and consume through the same two functions.
    */
-  /**
-   * ADR-0066 §1's port and ADR-0071 §2's messages, built here for the reason
-   * everything else stateful is — a transporter holds a connection pool — and
-   * built **before** the auth services because both are dependencies of them
-   * (ADR-0071 §3 mounts the first flow that sends).
-   *
-   * `createMailSender` returns the log transport in a default clone, so a
-   * fresh checkout runs with no mail server and every flow below still
-   * completes; the templates take the two SPA origins once, because a template
-   * that took an origin per call would let a caller choose where a single-use
-   * credential is delivered.
-   */
-  const mail = mailOverride ?? createMailSender(config);
-  const mailTemplates = createMailTemplates({
-    customerUrl: config.apps.customerUrl,
-    adminUrl: config.apps.adminUrl,
-  });
-
   const accountTokens = createAccountTokens({
     repository: createAccountTokensRepository(db.db),
     ttlSecByPurpose: {
@@ -274,517 +236,108 @@ export const buildContainer = ({
     transaction,
   });
 
-  // Built before the auth and users services, because both depend on it and
-  // it depends on neither: it owns the personal organization's lifecycle, and
-  // every path that creates or deletes a user runs it inside that path's own
-  // transaction (ADR-0067 §2, ADR-0009's service-to-service edge).
-  const organizationsService = createOrganizationsService({
-    repository: organizationsRepository,
-    memberships,
-    invitations,
-    // `ORGANIZATION_INVITATION_TTL` (ADR-0004), threaded rather than read: a
-    // service reads no environment (ADR-0004's one-place rule).
-    invitationTtlSec: config.organizations.invitationTtlSec,
-    transaction,
-    // ADR-0066 §1's port and ADR-0071 §2's messages, the same two instances
-    // the auth services take: §2's marked call is a real send from `D18.7` on.
-    mail,
-    mailTemplates,
-  });
-
-  // The third guard (ADR-0067 §4, a delta on ADR-0019). A factory over the
-  // memberships repository, so it is built here rather than in a router file
-  // for the reason `authenticate` is.
-  const requireMembership = createRequireMembership({ memberships });
-
-  const authDeps = {
-    sessions,
-    audit,
-    hasher,
-    tokens,
-    hashLimiter,
-    refreshTtlSec: config.auth.refreshTtlSec,
-    rotationGraceSec: config.auth.refreshRotationGraceSec,
-    // ADR-0073 §3's cap, on both populations: an operator accumulates sessions
-    // exactly as a customer does.
-    maxSessionsPerPrincipal: config.auth.maxSessionsPerPrincipal,
-    impersonationSessionTtlSec: config.auth.impersonationSessionTtlSec,
-    // ADR-0071 §1's mechanism and ADR-0066 §1's port, on both populations:
-    // verification is the user segment's (§3) and the reset is both (§4).
-    accountTokens,
-    mail,
-    mailTemplates,
-    transaction,
-  } as const;
-
-  // The same service, twice. Everything population-specific is behind the
-  // adapter (ADR-0017 §Principal abstraction in code), so login, rotation,
-  // reuse detection and revocation exist once.
-  const staffPrincipals = createStaffPrincipalAdapter(staffRepository);
-
-  const staffAuth = createAuthService({
-    ...authDeps,
-    population: "staff",
-    principals: staffPrincipals,
-    // No `impersonators`, and the absence is the decision: a staff session is
-    // never impersonated, because the mint is `/admin/users/:id` only
-    // (ADR-0057 §4). A service that cannot look a staff member up is a service
-    // that cannot accidentally attribute one.
-  });
-
-  // The user population's identity table as the auth module consumes it
-  // (ADR-0072 §1): the sign-in's resolution below, and `me`'s answer to
-  // "which ways in does this account have".
-  const federatedAccounts = createFederatedAccounts(usersRepository);
-  const userPrincipals = createUserPrincipalAdapter(usersRepository);
-
-  const userAuth = createAuthService({
-    ...authDeps,
-    population: "user",
-    principals: userPrincipals,
-    // Narrowed by the service's own type to the read, the lock and the two
-    // removals, and wired on this service alone: staff get no federated login
-    // (ADR-0072 §5), so the staff reset has no identity to remove.
-    federated: federatedAccounts,
-    // The staff adapter, narrowed by the service's own type to `findById`: it
-    // is what turns `sessions.impersonated_by_staff_id` into the
-    // `impersonatedBy: { id, email }` the banner renders from (ADR-0057 §4).
-    impersonators: staffPrincipals,
-    // Wired on this service alone: `register` is the user segment's, and staff
-    // cannot self-register (ADR-0017). Narrowed to the one function, so the
-    // auth module cannot reach the rest of the organizations service.
-    organizations: organizationsService,
-  });
-
-  const authenticate = createAuthenticate({ tokens, sessions });
-
-  // ADR-0057 §5's exclusion list, as one guard named in the router files that
-  // mount it (ADR-0019). Built here because it holds the audit writer: an
-  // excluded operation attempted is itself an audit event.
-  const refuseImpersonated = createRefuseImpersonated({ audit });
-
-  // Hashing with the ADR-0020 cap already applied. The feature services get
-  // *this* and never the raw hasher, so they cannot bypass the cap by
-  // forgetting to wrap a call; the auth service keeps the raw one because
-  // login also needs `needsRehash` and `dummyHash`.
-  const limitedHasher = createLimitedHasher({ hasher, limiter: hashLimiter });
-
-  // Each takes the auth service of its own population, narrowed to
-  // `revokeSessionsFor`: `sessions` is the auth module's aggregate, so
-  // "disable this account and end its sessions" crosses modules through a
-  // service rather than through a repository (ADR-0009).
-  const staffService = createStaffService({
-    repository: staffRepository,
-    hasher: limitedHasher,
-    sessions: staffAuth,
-    // The one row this module writes for itself (ADR-0058, ADR-0071 §7), and
-    // the token service that flow supersedes a live `change_email` link
-    // through (ADR-0071 §1).
-    audit,
-    accountTokens,
-    // ADR-0066 §1's port and ADR-0071 §2's messages, for the flow this module
-    // owns end to end but for the consume: a staff member created without a
-    // password is `invited` and is mailed an onboarding link (§8). The link
-    // lands on the **admin** app, which is why `mailTemplates` is built from
-    // both origins above.
-    mail,
-    mailTemplates,
-    transaction,
-  });
-
-  // One service for both segments and both tables (ADR-0045). It takes no
-  // hasher and no session dependency: a settings row holds display state and
-  // nothing a credential or a session could be reached through.
-  const settingsService = createSettingsService({
-    repository: settingsRepository,
-    transaction,
-  });
-
-  const usersService = createUsersService({
-    repository: usersRepository,
-    hasher: limitedHasher,
-    sessions: userAuth,
-    // The account's own language, for the one message this module sends
-    // (ADR-0071 §2, §6): a locale is an account fact, and which of the two
-    // settings tables holds it is the settings service's business rather than
-    // this module's. Narrowed to `get`, like every other edge here.
-    locales: settingsService,
-    // ADR-0071 §1's mint and ADR-0066 §1's port: `change-email` mails a
-    // confirmation link to an address nobody has proven yet, and the address
-    // waits in the token's payload until somebody does (§6). The *consume* is
-    // the auth module's, because the link is followed without a session.
-    accountTokens,
-    mail,
-    mailTemplates,
-    // Built above, and the only dependency between two *feature* modules in
-    // this file — the `sessions` lines are feature-to-auth, which is the edge
-    // ADR-0009 was amended about. `POST /api/v1/admin/users/:id/password` has a
-    // *staff* member acting, so the actor's own password is verified by the
-    // module that owns the staff aggregate (ADR-0027 rule 1, ADR-0009).
-    // `account.email_changed` for the administrative half of the flow
-    // (ADR-0071 §7): the actor is the super admin on the context and the
-    // subject rides in the row's data.
-    audit,
-    actors: staffService,
-    // The three writes ADR-0067 §2 requires to be transactional with the
-    // account they are about: `POST /admin/users` creates the personal
-    // organization, and both deletion paths soft-delete it.
-    organizations: organizationsService,
-    transaction,
-  });
-
-  // The mint and the exchange (ADR-0057). It takes the **user** auth service,
-  // because the session it opens is a customer's, and the users service
-  // narrowed to one read, because the target is a customer account: both are
-  // service-to-service edges of the kind ADR-0009 permits, and neither reaches
-  // a table it does not own. The audit writer is passed whole — both lifecycle
-  // rows are written on `record`'s transactional discipline (ADR-0058).
-  /*
-   * Sign in with Google (ADR-0072 §1, §2) — **built only when the client is
-   * configured**, and `undefined` otherwise, which is what the public router
-   * reads to leave the three routes unmounted. `config.federated.google` is
-   * present only when both halves are set (the schema refuses half a pair),
-   * so there is no state in which the flow exists without a client.
-   *
-   * The provider is the Google adapter unless a test handed the container
-   * another one (see `ContainerDeps.oidc`); the redirect URI is composed once,
-   * here, from `API_PUBLIC_URL`, and is the string the console must hold.
-   *
-   * The transaction codec signs under the access tokens' key with its own
-   * audience, `<APP_ID>-oidc`, so the two kinds of token can never be taken
-   * for each other (`core/oidc/transaction.ts`).
-   */
-  const google = config.federated.google;
-  const federatedSignIn =
-    google === undefined
-      ? undefined
-      : createFederatedSignInService({
-          provider:
-            oidcOverride ??
-            createGoogleOidcProvider({
-              clientId: google.clientId,
-              clientSecret: google.clientSecret,
-              redirectUri: oidcRedirectUri(config.federated.apiPublicUrl),
-            }),
-          transactions: createOidcTransactionCodec({
-            secret: config.auth.accessSecret,
-            appId: config.app.id,
-            issuer: config.auth.issuer,
-          }),
-          principals: userPrincipals,
-          // One probe, for the link's callback: the identity joins the account
-          // only while the session that asked is live (ADR-0072 §3, amended at
-          // `D19.4`).
-          sessions,
-          accounts: federatedAccounts,
-          // The third path that creates a user, so the personal organization
-          // lands in the same commit (ADR-0067 §2).
-          organizations: organizationsService,
-          accountTokens,
-          audit,
-          // The flag's meaning, read for the second door as the first reads
-          // it (ADR-0072 §1): with it off, a stranger is refused and nothing
-          // is written.
-          registrationOpen: config.features.userRegistration,
-          // The handoff binding the callback leaves in the cookie lives as
-          // long as the token it binds (ADR-0072 §2, amended at `D19.2`).
-          handoffTtlSec: config.tokens.federatedHandoffTtlSec,
-          transaction,
-        });
-
-  const impersonationService = createImpersonationService({
-    handoffs,
-    targets: usersService,
-    sessions: userAuth,
-    audit,
-    handoffTtlSec: config.auth.impersonationHandoffTtlSec,
-    transaction,
-  });
-
-  // Built **here**, not in the route factories, because a limiter holds the
-  // counter: constructing one per mount would give the same IP+email a fresh
-  // budget on every segment, so ADR-0020's "10 per 15 minutes on login" would
-  // really be ten per login endpoint. Stateful components belong to the
-  // composition root (ADR-0009), and this is why.
-  const rateLimiters = {
-    global: createGlobalRateLimiter(config, rateLimitStore("global")),
-    /** Shared by both segments' `login` and by `register` (ADR-0018). */
-    login: createLoginRateLimiter(config, rateLimitStore("login")),
-    refresh: createRefreshRateLimiter(config, rateLimitStore("refresh")),
-    /**
-     * The mint's own budget, and the only limiter here keyed on a principal
-     * rather than an address (ADR-0057 §1). Built here for the reason all the
-     * others are — one instance holds one counter — and mounted inside the
-     * admin segment, after `authenticate`, because its key does not exist
-     * before that.
-     */
-    impersonation: createImpersonationRateLimiter(
-      config,
-      rateLimitStore("impersonation"),
-    ),
-    /**
-     * The two that ration messages rather than attempts (ADR-0071 §3, §4) —
-     * `3 / hour / IP + email` each, mounted by `D18.3` and `D18.5`.
-     *
-     * Two instances of one budget, and the two prefixes are the decision: a
-     * person stuck on verification must not spend the recovery budget for the
-     * same mailbox and find themselves unable to reset the password they came
-     * to reset.
-     */
-    passwordReset: createPasswordResetRateLimiter(
-      config,
-      rateLimitStore("password-reset"),
-    ),
-    verification: createVerificationRateLimiter(
-      config,
-      rateLimitStore("verification"),
-    ),
-    /**
-     * The third of them, and the only limiter in the container with no source
-     * address in its key (ADR-0071 §4, amended at `D18.5`).
-     *
-     * Mounted **beside** `passwordReset` on both segments' `forgot` rather
-     * than instead of it: the pair is the decision. That one bounds what a
-     * single sender may mail one mailbox; this one bounds what the mailbox
-     * receives from everybody, which nothing did — every other limiter here,
-     * the global one included, keys on the caller's address and so varies with
-     * the cheapest thing an attacker can change.
-     */
-    mailbox: createMailboxRateLimiter(config, rateLimitStore("mailbox")),
-    /**
-     * The third of §4's keys and the only one that does not move when the
-     * address does (ADR-0071 §4, amended at `D18.7` on the operator's
-     * decision).
-     *
-     * **One instance, mounted on every unauthenticated endpoint that mails an
-     * address a caller typed** — both segments' `forgot`, `resend-verification`
-     * and `register`. The sharing is the decision: the pair above bounds what
-     * one source may mail *one* mailbox and what one mailbox receives from
-     * everybody, and neither can see one source walking a list of strangers,
-     * because both keys vary with the address the request names. A counter per
-     * endpoint would be three budgets for that walk to spend in turn.
-     */
-    mailSource: createMailSourceRateLimiter(
-      config,
-      rateLimitStore("mail-source"),
-    ),
-    /**
-     * The argon2 budget on `password/reset` — the login limiter's numbers in a
-     * **counter of its own** (`D18.5`'s `security-reviewer`).
-     *
-     * The route hashes a password before it can know whether the token is any
-     * good, so it needs the liveness control ADR-0020 §Hashing cost describes
-     * and `register` already shares. What it must not share is the count:
-     * `resetPasswordBody` carries no `email`, so one instance would let ten
-     * malformed `POST /login` bodies from an IP block password-reset
-     * **completion** for everybody behind it, which is a denial of the one
-     * flow a person reaches when nothing else works.
-     *
-     * **`createTokenRouteRateLimiter`, not `createLoginRateLimiter`**
-     * (`D18.7`'s `security-reviewer`, correcting `D18.5`). This body has no
-     * `email` *field*, but the limiter runs above `validate` and would read
-     * one out of it anyway — so a caller could hand every request a fresh key
-     * by inventing the field, and the budget would exist in the docblock only.
-     * The replacement reads no body at all.
-     */
-    passwordResetSubmit: createTokenRouteRateLimiter(
-      config,
-      rateLimitStore("password-reset-submit"),
-    ),
-    /**
-     * The start of a sign-in with Google (ADR-0072 §2): the login limiter's
-     * number, keyed on the source address alone, in a **counter of its own**
-     * — the `D18.2` precedent for a second counter on one number.
-     *
-     * `createTokenRouteRateLimiter` for the reason `passwordResetSubmit` takes
-     * it: there is no address in this body to key on — the person is not
-     * known until Google says who they are — and a factory that read one
-     * would let a caller mint a fresh key per request by inventing the field.
-     * Its own instance, so starting a sign-in never spends the budget a
-     * password login from the same office needs, or the other way round.
-     */
-    federatedStart: createTokenRouteRateLimiter(
-      config,
-      rateLimitStore("federated-start"),
-    ),
-    /**
-     * The callback's budget (ADR-0072 §2, amended at `D19.2` on that step's
-     * `security-reviewer`): the same number and key as the start's, in a
-     * counter of its own.
-     *
-     * The transaction cookie is single-use only in an honest browser — the
-     * sealed value carries no server-side spend — so its holder can replay it
-     * for ten minutes with invented codes, and every replay is a request from
-     * this API to Google's token endpoint. PKCE and Google's one-time codes
-     * keep that harmless for authentication; this keeps it from spending the
-     * client's quota for everybody. A person makes one callback per start, so
-     * the honest path never meets it.
-     */
-    federatedCallback: createTokenRouteRateLimiter(
-      config,
-      rateLimitStore("federated-callback"),
-    ),
-    /**
-     * The argon2 budget on `POST /admin/auth/onboarding/accept` (ADR-0071 §8).
-     *
-     * `passwordResetSubmit`'s twin in every respect, which is the argument for
-     * it: an opaque token in the body, no address to key on, and a password
-     * hashed before the token can be judged — so it needs the liveness control
-     * ADR-0020 §Hashing cost describes, and it must not share a counter with
-     * any endpoint whose key a caller can vary. Its own instance for
-     * `invitationLookup`'s reason: a new colleague following the one link they
-     * were sent must not be refused because somebody in the same office has
-     * been mistyping a password all afternoon.
-     */
-    onboardingAccept: createTokenRouteRateLimiter(
-      config,
-      rateLimitStore("onboarding-accept"),
-    ),
-    /**
-     * The mailbox's budget on §8's two senders — `POST /admin/staff` when it
-     * invites, and the resend beside it (ADR-0071 §8, amended at `D18.11` on
-     * that step's `security-reviewer`).
-     *
-     * §8's first draft gave them none, on two arguments the reviewer took
-     * apart. "The create mails an address at most once, ever" is false: the
-     * delete is **hard** (ADR-0028) and is the same caller's right, so
-     * create-delete-create re-mails the same stranger at two requests a
-     * message — §5's own defeat read one flow along. And "the resend goes to
-     * the address on the row, which nothing can redirect" is true and bounds
-     * the wrong axis: it closes redirection and says nothing at all about
-     * repetition, which is what a mailbox budget is for.
-     *
-     * One instance for both, because they mail **the same message to the same
-     * mailbox** and a counter each would be two budgets for one flow. What
-     * they cannot share is the **key**, and the reason is structural rather
-     * than a choice: at the create there is no row to name, and at the resend
-     * there is no address in the request. So one mailbox is reached under two
-     * keys — its address, and `subject:<id>` — and the honest ceiling is
-     * `RATE_LIMIT_MAILBOX_MAX` **per key**, not per mailbox. That is a bound
-     * where there was none, and it is stated here rather than rounded down in
-     * the record: closing the gap would mean reading the row's address before
-     * the limiter runs, which is a database read on the refused path and the
-     * thing every key in this file is shaped to avoid.
-     */
-    staffOnboardingMailbox: createMailboxRateLimiter(
-      config,
-      rateLimitStore("staff-onboarding-mailbox"),
-    ),
-    /**
-     * `POST /public/invitations/lookup` — ADR-0067 §5's first condition, which
-     * ADR-0071 §5 inherits: a read scoped by nothing but a secret is limited
-     * **as an authentication route is**, guessing being the only attack on it.
-     *
-     * The same factory and the same reason as `passwordResetSubmit` above: an
-     * opaque token in the body and no address to key on, so the key is the
-     * source and nothing a caller writes. Its own instance, so ten malformed
-     * sign-in attempts from an office cannot stop its invitees reading the
-     * link they were sent.
-     */
-    invitationLookup: createTokenRouteRateLimiter(
-      config,
-      rateLimitStore("invitation-lookup"),
-    ),
-    /**
-     * `POST /user/orgs/:orgId/invitations` — the mailbox's own budget on the
-     * one sender an *authenticated* caller drives (ADR-0071 §5, amended at
-     * `D18.7` on that step's `security-reviewer`).
-     *
-     * §5 first said this send needed no budget, on the ground that ADR-0067
-     * §2 refuses a second outstanding offer to one address in one
-     * organization. That bound does not hold: an offer is revoked and made
-     * again in two requests, and nothing caps how many organizations an
-     * account may create — so "one per organization" is a bound the same
-     * caller mints more of. The ceiling left was the global limiter, which is
-     * hundreds an hour into a stranger's inbox from an address they never
-     * gave anyone, carrying a subject line the sender chose.
-     *
-     * The mailbox key, because that is whose inbox it is, and a **counter of
-     * its own**, because being invited must not spend the recovery budget for
-     * the same address (`verification`'s reason exactly). Team onboarding is
-     * untouched: the key is the recipient, so thirty invitations to thirty
-     * people are thirty budgets.
-     */
-    invitationMailbox: createMailboxRateLimiter(
-      config,
-      rateLimitStore("invitation-mailbox"),
-    ),
-    /**
-     * `POST /user/profile/change-email` — the mailbox's budget on the second
-     * authenticated sender (ADR-0071 §6, amended at `D18.9`).
-     *
-     * §4 leaves each authenticated sender's budget to the step that builds it,
-     * and this one lands where the invitation's did, for the same reason read
-     * one flow along: the address is a **stranger's**, typed by the caller, and
-     * the message that goes to it names it. A session, a password and the
-     * supersession of the previous token bound nothing about how many
-     * different mailboxes one account can reach, or how often it can re-reach
-     * one — so without this the only ceiling would be ADR-0020's global
-     * limiter, which is the ceiling §5's amendment refused to accept for the
-     * invitation.
-     *
-     * The **recipient** key rather than the actor's, which is what keeps the
-     * honest case whole: a person who mistypes an address and asks again
-     * spends a second mailbox's budget rather than their own. A counter of its
-     * own, so being asked to confirm an address never spends the budget that
-     * address needs to recover a password. And keyed on `newEmail`, which is
-     * what this body calls the recipient.
-     */
-    /**
-     * `POST /user/profile/password/set-link` — the set-password link
-     * (ADR-0072 §3, amended at `D19.4`): the recovery budget's number, keyed
-     * on the caller's account, in a counter of its own.
-     *
-     * The account is the key because the link goes to the account's own
-     * address and nowhere else, so the caller and the mailbox are one budget.
-     * Its own counter, so asking from the security section never spends the
-     * budget `forgot` needs for the same address, or the other way round.
-     */
-    setPasswordLink: createSetPasswordLinkRateLimiter(
-      config,
-      rateLimitStore("set-password-link"),
-    ),
-    emailChangeMailbox: createMailboxRateLimiter(
-      config,
-      rateLimitStore("email-change-mailbox"),
-      // `skipFailedRequests` is the one place this endpoint's budget parts
-      // company with §4's, and the route is why: it demands a credential and
-      // refuses for reasons that mail nothing, while the limiter runs above
-      // both the schema and the credential check. Five mistyped passwords
-      // would otherwise lock a person out of moving to that address for the
-      // rest of the hour (`D18.9`'s `code-reviewer`).
-      { recipientField: "newEmail", skipFailedRequests: true },
-    ),
-    /**
-     * The fifth category ADR-0020 §Residual risks named as missing, spent by
-     * ADR-0073 §1: `10 / 15 min / **principal**` on every authenticated route
-     * that verifies a password through the hash limiter.
-     *
-     * **One instance, mounted seven times** — the admin segment's four
-     * credential and address sub-resources and the four self-service routes on
-     * `/user/profile` (`change-password`, the delete, the unlink and
-     * `change-email`). The sharing is the decision here, where `verification`
-     * and `passwordReset` separated for the opposite one: what those ration is
-     * a mailbox, which differs per flow, and what this rations is the caller's
-     * share of one process-wide hash pool, which does not. A counter per route
-     * would be seven times the decided number for one account to spend in turn.
-     */
-    principalHash: createPrincipalHashRateLimiter(
-      config,
-      rateLimitStore("principal-hash"),
-    ),
-  } as const;
-
-  // The remaining two ADR-0066 seams (the mail port is built above, where the
-  // auth services can take it), both here for the reason everything else
-  // stateful is: a metrics registry and a memoised adapter promise belong to
-  // the composition root.
+  // The remaining two ADR-0066 seams (the mail port is built above), both here
+  // for the reason everything else stateful is: a metrics registry and a
+  // memoised adapter promise belong to the composition root.
   //
   // `createErrorReporter` returns `undefined` in a default clone, while the
   // registry is always built, because the registry *is* the endpoint.
   const metrics = createMetrics();
   const errorReporter =
     reporter ?? createErrorReporter({ dsn: config.reporting.dsn, logger });
+
+  // Every limiter this process mounts, built once from the configuration and
+  // the store factory (ADR-0073 §10). A limiter holds the counter, so one
+  // instance per budget and never one per mount — the argument is in
+  // `core/middleware/rate-limiters.ts`, beside the factories it calls.
+  const rateLimiters = createRateLimiters(config, rateLimitStore);
+
+  // ---------------------------------------------------------------------
+  // The modules, in dependency order (ADR-0073 §10).
+  // ---------------------------------------------------------------------
+
+  const health = wireHealth({ config, db });
+
+  const settings = wireSettings({ db: db.db, transaction });
+
+  // Before staff, users and auth: it owns the personal organization's
+  // lifecycle, and every path that creates or deletes a user runs it inside
+  // that path's own transaction (ADR-0067 §2).
+  const organizations = wireOrganizations({
+    config,
+    db: db.db,
+    mail,
+    mailTemplates,
+    transaction,
+  });
+
+  const staff = wireStaff({
+    db: db.db,
+    hasher: limitedHasher,
+    sessions: revocationOf(() => auth.services.staffAuth),
+    audit,
+    accountTokens,
+    mail,
+    mailTemplates,
+    transaction,
+  });
+
+  const users = wireUsers({
+    db: db.db,
+    hasher: limitedHasher,
+    sessions: revocationOf(() => auth.services.userAuth),
+    // `POST /api/v1/admin/users/:id/password` has a *staff* member acting, so
+    // the actor's own password is verified by the module that owns the staff
+    // aggregate (ADR-0027 rule 1, ADR-0009).
+    actors: staff.services.staff,
+    organizations: organizations.services.organizations,
+    locales: settings.services.settings,
+    accountTokens,
+    audit,
+    mail,
+    mailTemplates,
+    cookies: authCookies,
+    transaction,
+  });
+
+  // Last, because it reads both identity tables through its own adapters and
+  // mints impersonated sessions against the users service.
+  const auth = wireAuth({
+    config,
+    db: db.db,
+    staffRepository: staff.repositories.staff,
+    usersRepository: users.repositories.users,
+    hasher,
+    hashLimiter,
+    tokens,
+    cookies: authCookies,
+    audit,
+    accountTokens,
+    mail,
+    mailTemplates,
+    organizations: organizations.services.organizations,
+    targets: users.services.users,
+    oidc: oidcOverride,
+    transaction,
+  });
+
+  // The guards the segment routers mount. Each holds a repository or the audit
+  // writer, so it is built here rather than in a router file (ADR-0019).
+  const authenticate = createAuthenticate({
+    tokens,
+    sessions: auth.repositories.sessions,
+  });
+
+  // ADR-0057 §5's exclusion list, as one guard named in the router files that
+  // mount it. Built here because it holds the audit writer: an excluded
+  // operation attempted is itself an audit event.
+  const refuseImpersonated = createRefuseImpersonated({ audit });
+
+  // The third guard (ADR-0067 §4, a delta on ADR-0019), over the memberships
+  // repository.
+  const requireMembership = createRequireMembership({
+    memberships: organizations.repositories.memberships,
+  });
 
   return {
     config,
@@ -807,109 +360,42 @@ export const buildContainer = ({
     /** ADR-0071 §1's mechanism, mounted by the flows from `D18.3` on. */
     accountTokens,
     repositories: {
-      staff: staffRepository,
-      users: usersRepository,
-      sessions,
-      handoffs,
-      settings: settingsRepository,
-      organizations: organizationsRepository,
-      memberships,
-      invitations,
+      staff: staff.repositories.staff,
+      users: users.repositories.users,
+      sessions: auth.repositories.sessions,
+      handoffs: auth.repositories.handoffs,
+      settings: settings.repositories.settings,
+      organizations: organizations.repositories.organizations,
+      memberships: organizations.repositories.memberships,
+      invitations: organizations.repositories.invitations,
     } as const,
     services: {
-      health,
-      staffAuth,
-      userAuth,
-      staff: staffService,
-      users: usersService,
-      settings: settingsService,
-      impersonation: impersonationService,
-      organizations: organizationsService,
+      health: health.services.health,
+      staffAuth: auth.services.staffAuth,
+      userAuth: auth.services.userAuth,
+      staff: staff.services.staff,
+      users: users.services.users,
+      settings: settings.services.settings,
+      impersonation: auth.services.impersonation,
+      organizations: organizations.services.organizations,
       /** `undefined` unless the Google client is configured (ADR-0072 §2). */
-      federatedSignIn,
+      federatedSignIn: auth.services.federatedSignIn,
     } as const,
     controllers: {
-      health: createHealthController(health),
-      // The population and the TTL are what the controller needs to place a
-      // refresh cookie: the segment decides its `Path`, so a browser signed
-      // into both populations never sends one's token to the other's
-      // endpoints, and `REFRESH_TOKEN_TTL` is its `Max-Age` (ADR-0029).
-      staffAuth: createAuthController({
-        service: staffAuth,
-        cookies: authCookies,
-        population: "staff",
-        refreshTtlSec: config.auth.refreshTtlSec,
-      }),
-      userAuth: createAuthController({
-        service: userAuth,
-        cookies: authCookies,
-        population: "user",
-        refreshTtlSec: config.auth.refreshTtlSec,
-      }),
-      staff: createStaffController(staffService),
-      users: createUsersController(usersService),
-      // The same service behind a second controller: `/api/v1/user/profile`
-      // exposes only the functions that read their subject from
-      // `ctx.principal`, so the admin handlers are not reachable from the user
-      // segment even by a routing mistake (ADR-0019).
-      userProfile: createUserProfileController({
-        service: usersService,
-        cookies: authCookies,
-      }),
-      // The same pairing on the staff side since D2.3: `/api/v1/admin/profile`
-      // exposes only the functions that read their subject from
-      // `ctx.principal`, so no handler taking an `:id` is reachable from it
-      // (ADR-0027).
-      staffProfile: createStaffProfileController(staffService),
-      // **One** controller for both segments, unlike the profile pairs above:
-      // neither of its handlers takes an id, so there is nothing a second
-      // factory would withhold from the other mount (ADR-0045).
-      settings: createSettingsController(settingsService),
-      // **One** controller for both segments as well, and for a stronger
-      // reason than the settings pair: neither handler can reach the wrong
-      // segment. `mint` requires a staff principal, and `exchange` is
-      // registered by the auth router only where the population is `user`
-      // (ADR-0057 §3).
-      /**
-       * Sign in with Google (ADR-0072 §2), present exactly when the service
-       * is — the public router mounts the three routes when this is defined
-       * and not otherwise. It takes the **user** auth service for the
-       * exchange, because the session it issues is a customer's and
-       * `sessions` is that service's aggregate.
-       */
-      federated:
-        federatedSignIn === undefined
-          ? undefined
-          : createFederatedController({
-              service: federatedSignIn,
-              auth: userAuth,
-              cookies: authCookies,
-              refreshTtlSec: config.auth.refreshTtlSec,
-              customerAppUrl: config.apps.customerUrl,
-            }),
-      impersonation: createImpersonationController({
-        service: impersonationService,
-        cookies: authCookies,
-        refreshTtlSec: config.auth.refreshTtlSec,
-      }),
-      /*
-       * **Three** controllers over one organizations service, one per mount
-       * (ADR-0067 §3, §4) — the users module's pairing taken one further,
-       * and for its reason: a factory can only expose what its segment is
-       * allowed to reach. `createForOwner` names an owner by id and exists
-       * only on the admin controller; the invitee's accept and decline exist
-       * only on the self-scoped one; and neither of those two can reach a
-       * handler that takes an organization from the URL.
-       */
-      userOrganizations:
-        createUserOrganizationsController(organizationsService),
-      userInvitations: createUserInvitationsController(organizationsService),
-      // The fourth mount of the same service, and the only one outside every
-      // guard: the holder of an invitation link has no account yet
-      // (ADR-0071 §5).
-      publicInvitations:
-        createPublicInvitationsController(organizationsService),
-      organizations: createOrganizationsController(organizationsService),
+      health: health.controllers.health,
+      staffAuth: auth.controllers.staffAuth,
+      userAuth: auth.controllers.userAuth,
+      staff: staff.controllers.staff,
+      users: users.controllers.users,
+      userProfile: users.controllers.userProfile,
+      staffProfile: staff.controllers.staffProfile,
+      settings: settings.controllers.settings,
+      federated: auth.controllers.federated,
+      impersonation: auth.controllers.impersonation,
+      userOrganizations: organizations.controllers.userOrganizations,
+      userInvitations: organizations.controllers.userInvitations,
+      publicInvitations: organizations.controllers.publicInvitations,
+      organizations: organizations.controllers.organizations,
     } as const,
 
     /**

@@ -176,6 +176,23 @@ export const apiConfig = ({ tsconfigRootDir }) =>
         "no-restricted-imports": ["error", { patterns: noSchemaTables }],
       },
     },
+
+    {
+      // ADR-0073 §10: a module's `wire*` file is its share of the composition
+      // root — it calls the module's own factories and hands them what the
+      // root gave it. It is not a layer, which is exactly why it needs the
+      // service's two restrictions: the file that constructs every layer of a
+      // module is the easiest place to smuggle a query or a handler in beside
+      // them, and a root that reached a table would make the layering
+      // uncheckable from the one file no layer rule covers.
+      files: ["src/modules/**/wire*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          { patterns: [...noExpress, ...noSchemaTables] },
+        ],
+      },
+    },
   );
 
 /** @type {import("eslint").Linter.RuleEntry[]} */

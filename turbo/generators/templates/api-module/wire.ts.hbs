@@ -1,0 +1,36 @@
+import type { DbExecutor } from "@repo/db";
+
+import { create{{pascalCase plural}}Controller } from "./{{kebabCase plural}}.controller.js";
+import { create{{pascalCase plural}}Repository } from "./{{kebabCase plural}}.repository.js";
+import { create{{pascalCase plural}}Service } from "./{{kebabCase plural}}.service.js";
+
+/** What the composition root hands this module (ADR-0073 §10). */
+export interface Wire{{pascalCase plural}}Deps {
+  readonly db: DbExecutor;
+}
+
+/**
+ * This module's wiring (ADR-0073 §10).
+ *
+ * One `wire<Module>` per module, so the composition root stays construction
+ * order: `core/container.ts` calls this once and reads the three maps it
+ * returns. Everything this module needs from outside — another module's
+ * service, the audit writer, the mail port, a transaction runner — arrives as
+ * a field of {@link Wire{{pascalCase plural}}Deps} and never as an import of
+ * the root's own file.
+ *
+ * It is composition, not a layer, and the ESLint rule on `wire*` files keeps
+ * it that way: no Express here, and no schema tables (ADR-0009).
+ */
+export const wire{{pascalCase plural}} = ({ db }: Wire{{pascalCase plural}}Deps) => {
+  const repository = create{{pascalCase plural}}Repository(db);
+  const {{camelCase plural}} = create{{pascalCase plural}}Service({ repository });
+
+  return {
+    repositories: { {{camelCase plural}}: repository } as const,
+    services: { {{camelCase plural}} } as const,
+    controllers: {
+      {{camelCase plural}}: create{{pascalCase plural}}Controller({{camelCase plural}}),
+    } as const,
+  } as const;
+};

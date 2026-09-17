@@ -17,7 +17,7 @@ modules/<m>/<m>.mapper.ts      toXResource(row) pure
 modules/<m>/<m>.errors.ts      domain error factories, e.g. emailTaken()
 ```
 
-Types: `export type XService = ReturnType<typeof createXService>`. Wire in `core/container.ts`. No classes/`this`/decorators.
+Types: `export type XService = ReturnType<typeof createXService>`. Wire in the module's own `wire.ts` — `wireX(deps)` returning `{ repositories, services, controllers }`, which `core/container.ts` calls in construction order (ADR-0073, review hardening — the composition root wired per module). No classes/`this`/decorators.
 
 ## Envelope (ADR-0012)
 

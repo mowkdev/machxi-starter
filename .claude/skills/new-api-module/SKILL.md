@@ -38,11 +38,12 @@ The table is generated; the SQL is not. `pnpm db:generate`, review, `pnpm db:mig
 - [ ] `<m>.service.ts` — `create<X>Service({ repo, db, ... })`: `(ctx, ...)` functions; ownership/role policies via `core/auth/policies`; transactions via `db.transaction`.
 - [ ] `<m>.controller.ts` — `create<X>Controller(svc)`: one function per endpoint; `respond.*` only.
 - [ ] `<m>.routes.ts` — `create<X>Router(c)`: `validate(schema)` per route; no logic.
-- [ ] `index.ts` (optional) exporting factories + types.
+- [ ] `wire.ts` — **generated**: `wireX(deps)` returning `{ repositories, services, controllers }`; grow its deps as the module takes on another module's service, the audit writer or the mail port. No Express and no schema tables — the lint rule treats it as a service (ADR-0073, review hardening — the composition root wired per module).
+- [ ] `index.ts` (optional) exporting factories + types, `wireX` included.
 
 ## 4. Wiring
 
-- [ ] `core/container.ts`: repo → service → controller in dependency order; add to `services`/`controllers`.
+- [ ] `core/container.ts`: one `const x = wireX(...)` line in construction order, then its entries in the returned `repositories`/`services`/`controllers` maps. The repo → service → controller order lives in `wire.ts`, not here.
 - [ ] Mount in `routes/admin.router.ts` (`r.use('/<plural>', authorize('admin', ...), create<X>Router(c.controllers.<x>))`) and/or `user.router.ts` / `public.router.ts`.
 
 ## 5. Tests (ADR-0021)
