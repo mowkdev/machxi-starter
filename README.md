@@ -3,7 +3,7 @@
 Blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin
 panel and a customer app.
 
-All three are complete and runnable: an Express 5 API on Node 22 with PostgreSQL
+All three are complete and runnable: an Express 5 API on Node 24 with PostgreSQL
 via Drizzle, two authenticated populations (staff and users) with roles, a
 unified response envelope and a Postman collection that proves the whole surface
 works; `apps/admin` and `apps/customer`, two Vite + React SPAs built from the
@@ -27,8 +27,11 @@ which starter a fork is on.
 
 ## Requirements
 
-- Node 22 (`.nvmrc`)
-- pnpm 10 — `corepack enable`
+- Node 24 (`.nvmrc`; `engines` states the floor the dependency tree actually
+  needs, which is a patch line rather than a major)
+- pnpm 12 — `corepack enable`, and corepack rather than an older standalone
+  pnpm: 12 ships as a native binary, and a pnpm 10 or 11 on the path cannot
+  launch it through the `packageManager` field
 - Docker (local Postgres)
 
 ## Quick start

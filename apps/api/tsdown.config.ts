@@ -11,7 +11,7 @@ export default defineConfig({
   entry: ["src/main.ts"],
   format: ["esm"],
   platform: "node",
-  target: "node22",
+  target: "node24",
   // tsdown defaults to a fixed `.mjs` extension on `platform: "node"` since
   // 0.13. This package is `"type": "module"`, so `.js` is already ESM to node,
   // and the name is load-bearing: the Dockerfile's `CMD`, the compose file's

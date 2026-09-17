@@ -7,7 +7,7 @@ The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.
 | Service    | Image                      | What it is                                                               |
 | ---------- | -------------------------- | ------------------------------------------------------------------------ |
 | `migrate`  | `apps/api/Dockerfile`      | One-shot. Applies the committed migrations and exits. The release gate.  |
-| `api`      | `apps/api/Dockerfile`      | Express 5 on Node 22, port 4000. Starts only after `migrate` exits zero. |
+| `api`      | `apps/api/Dockerfile`      | Express 5 on Node 24, port 4000. Starts only after `migrate` exits zero. |
 | `admin`    | `apps/admin/Dockerfile`    | Static SPA on nginx, port 80. Built per environment.                     |
 | `customer` | `apps/customer/Dockerfile` | Static SPA on nginx, port 80. Built per environment.                     |
 

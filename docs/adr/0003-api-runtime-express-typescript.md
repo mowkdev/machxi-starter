@@ -1,7 +1,9 @@
 # ADR-0003: API runtime — Express 5 on Node 22, TypeScript ESM
 
-- Status: accepted
+- Status: superseded by [ADR-0073](0073-review-hardening.md) (delta: the runtime floor moves to Node 24, and the server states its request, header and keep-alive timeouts)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-17 by [ADR-0073](0073-review-hardening.md)**, at the head of `D20.3`, the step that makes the floor half of the delta true. This record said **Node 22 LTS** when Node 22 was in Active support; it has since left it, and the floor moves to **Node 24** in `.nvmrc`, the root `engines`, both workflows and the three Dockerfiles together, with the package manager to **pnpm 12** beside it ([ADR-0002](0002-monorepo-layout-and-tooling.md) stated both versions first and is inherited and frozen, so 0073 §4 carries them rather than editing it). **Everything else in this record stands**: Express 5 and its native promise forwarding, native ESM with `NodeNext`, `tsx watch` in development, the `tsdown` bundle to `dist/main.js`, the built-in body parsers, the file layout and the startup and shutdown sequences. The second half of the delta — the three server timeouts beside the drain deadline — is `D20.4`'s and has not happened yet.
 
 ## Context
 

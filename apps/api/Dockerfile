@@ -22,7 +22,7 @@
 # Debian rather than Alpine: `argon2` is a native addon, and glibc is the
 # platform its prebuilt binaries target. The saving from musl is not worth
 # discovering the difference in production.
-FROM node:22-bookworm-slim AS base
+FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm" \
     PATH="/pnpm:$PATH" \
     CI=true
@@ -40,9 +40,15 @@ RUN pnpm install --frozen-lockfile
 # builds each package's dependencies first, so one command covers the graph.
 RUN pnpm turbo run build --filter=api --filter=@repo/db
 
-# The runtime closure of `apps/api`, production dependencies only. `--legacy`
-# is pnpm 10's flag for a workspace that does not inject its internal packages;
-# without it `deploy` refuses rather than guessing.
+# The runtime closure of `apps/api`, production dependencies only.
+#
+# **`--legacy` is gone, re-verified on pnpm 12** (ADR-0073 §4): it was pnpm
+# 10's flag for a workspace that does not inject its internal packages, where
+# `deploy` refused rather than guessing. pnpm 12 does not refuse — it links the
+# four `@repo/*` packages out of the virtual store — and what the image needs
+# from this command is unchanged: one `pino`, and `argon2`'s prebuilt binary
+# for this platform. A flag whose only job was to answer a question the tool no
+# longer asks is a flag that outlives its reason.
 #
 # The two `dist/` directories are copied explicitly afterwards because `deploy`
 # packs a workspace package the way npm would pack it, and `dist` is
@@ -51,7 +57,7 @@ RUN pnpm turbo run build --filter=api --filter=@repo/db
 # top-level config files that came with it (tsconfig, eslint, the two vitest
 # configs, this Dockerfile): none is read at run time, and a deployed artefact
 # that still carries its own build configuration invites someone to trust it.
-RUN pnpm deploy --filter=api --prod --legacy /out \
+RUN pnpm deploy --filter=api --prod /out \
     && rm -rf /out/src /out/test /out/e2e /out/dist \
     && find /out -maxdepth 1 -type f ! -name package.json -delete \
     && cp -R /repo/apps/api/dist /out/dist \

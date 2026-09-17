@@ -13,7 +13,7 @@
 # One argument fewer than the admin image: `VITE_CUSTOMER_APP_URL` points *at*
 # this app and is the admin's to know (ADR-0057 §7).
 
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 ENV PNPM_HOME="/pnpm" \
     PATH="/pnpm:$PATH" \
     CI=true

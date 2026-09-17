@@ -24,3 +24,45 @@ catalog:
   eslint: ^9.39.5
   typescript: 5.9.3
   vitest: ^4.1.11
+
+# ─── pnpm's own settings ──────────────────────────────────────────────────────
+# pnpm 12 no longer reads the `pnpm` field of `package.json` (ADR-0073 §4 as
+# amended at `D20.3`); every setting below used to live there or in a default.
+
+# Which dependencies may run an install script, one answer each — pnpm 12's
+# `allowBuilds` in place of 10's `onlyBuiltDependencies` list, and it refuses
+# the install rather than warning when a package it has no answer for wants to
+# run one. `argon2` is a native addon and has to build or link its binary, and
+# `esbuild` fetches its platform binary. The two `false`s are the decisions
+# this tree has been running with since before they had to be written down:
+# `msw`'s script copies a service worker into a public directory each app
+# already commits, and `unrs-resolver`'s fetches a binding its own optional
+# dependencies already resolve.
+allowBuilds:
+  argon2: true
+  esbuild: true
+  msw: false
+  unrs-resolver: false
+
+# Peers are installed rather than warned about. Stated here because pnpm 12
+# does not read `.npmrc` — the file carried this one line and nothing else, so
+# it is gone rather than left behind saying something no tool reads. The rule
+# it holds up is `renovate.json`'s: a provider left on an unsatisfiable exact
+# peer is answered by a second copy of the peer instead of by a loud failure,
+# which is why `@vitest/coverage-v8` is pinned with vitest.
+autoInstallPeers: true
+
+# The supply-chain cooldown, stated rather than inherited: a version has to
+# have been on the registry for a day before a resolution may choose it.
+#
+# It guards the *choice* of a version and not the install of one already
+# chosen. pnpm 12 also re-checks it against every entry of the lockfile on
+# every install — so a lockfile committed the day a dependency moved refuses to
+# install anywhere, the image builds and CI included, until the clock catches
+# up. That is a check on the wrong event: by the time a version is in
+# `pnpm-lock.yaml` it has been through a pull request and the gate. The
+# cooldown therefore stays on for resolution (`pnpm add`, `pnpm update`, a
+# Renovate branch) and the committed lockfile is trusted; `--no-trust-lockfile`
+# re-checks it on demand.
+minimumReleaseAge: 1440
+trustLockfile: true

@@ -40,14 +40,8 @@
     "prettier": "^3.9.7",
     "turbo": "^2.10.13"
   },
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@12.4.2",
   "engines": {
-    "node": ">=22"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "argon2",
-      "esbuild"
-    ]
+    "node": ">=24.15.0"
   }
 }

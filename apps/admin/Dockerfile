@@ -10,7 +10,7 @@
 # once per environment. That is a property of the tool, not an oversight — see
 # `apps/admin/.env.example` on why everything here is compile-time public.
 
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 ENV PNPM_HOME="/pnpm" \
     PATH="/pnpm:$PATH" \
     CI=true

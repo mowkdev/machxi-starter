@@ -157,6 +157,57 @@ test("every workflow action is pinned to a commit digest", async () => {
   assert.deepEqual(offenders, []);
 });
 
+test("one Node major, stated in every place that states one", async () => {
+  // `.nvmrc`, the root `engines`, both workflows and the three Dockerfiles are
+  // the runtime floor written down seven times, and the failure is always the
+  // same one: a bump lands in some of them (ADR-0073 §4). The major is what is
+  // compared, because each file states it at its own precision — `.nvmrc` and
+  // the workflows a bare major, `engines` the patch line the dependency tree
+  // actually needs, the images a tag.
+  const major = (v) => /(\d+)/.exec(v)?.[1];
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+
+  const found = { ".nvmrc": major(await read(".nvmrc")) };
+
+  const pkg = JSON.parse(await read("package.json"));
+  found["package.json engines.node"] = major(pkg.engines.node);
+
+  // Every occurrence, not the first: a workflow grows a second job and an
+  // image a second build stage, and a floor that moved in one of them is the
+  // drift this case exists to catch.
+  const all = (text, pattern, label) => {
+    const matches = [...text.matchAll(pattern)];
+    assert.ok(matches.length > 0, `no Node version in ${label}`);
+    matches.forEach((m, i) => {
+      found[`${label}[${i}]`] = major(m[1]);
+    });
+  };
+
+  for (const file of ["gate.yml", "e2e.yml"]) {
+    all(
+      await read(`.github/workflows/${file}`),
+      /^\s*node-version:\s*(\S+)/gm,
+      file,
+    );
+  }
+
+  for (const app of ["api", "admin", "customer"]) {
+    all(
+      await read(`apps/${app}/Dockerfile`),
+      /^FROM node:(\S+?)-/gm,
+      `apps/${app}/Dockerfile`,
+    );
+  }
+
+  const majors = new Set(Object.values(found));
+  assert.equal(
+    majors.size,
+    1,
+    `the Node major disagrees: ${JSON.stringify(found)}`,
+  );
+  assert.ok([...majors][0], "no Node version found");
+});
+
 // The behaviour specs (ADR-0068 §1): the real ones are clean, the scan
 // reaches them, and each shape rule fires on the text it exists for.
 test("the behaviour specs are clean", async () => {
