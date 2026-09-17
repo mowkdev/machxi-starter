@@ -17,15 +17,15 @@
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@repo/vitest-config": "workspace:*",
-    "@tanstack/react-router": "^1.170.31",
-    "@types/node": "^22.15.3",
-    "@types/react": "^19.2.18",
-    "eslint": "^9.39.0",
-    "jsdom": "^30.0.1",
+    "@tanstack/react-router": "^1.170.38",
+    "@types/node": "catalog:",
+    "@types/react": "^19.3.0",
+    "eslint": "catalog:",
+    "jsdom": "30.0.1",
     "msw": "^2.15.0",
-    "react": "^19.2.0",
-    "typescript": "5.9.3",
-    "vitest": "^4.1.10"
+    "react": "^19.3.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@tanstack/react-router": ">=1.170",
@@ -34,6 +34,6 @@
   },
   "dependencies": {
     "@repo/contracts": "workspace:*",
-    "axios": "^1.19.0"
+    "axios": "^1.20.0"
   }
 }

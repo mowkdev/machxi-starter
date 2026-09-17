@@ -1,6 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
+  ],
   "timezone": "Etc/UTC",
   "schedule": ["before 6am on monday"],
   "lockFileMaintenance": {
@@ -18,6 +23,29 @@
       "description": "ADR-0059 §3: majors stay one per dependency, so a breaking change is read on its own and reverted on its own. Deliberately not behind dashboard approval — nothing merges because it is newer, and the gate on the PR is the whole argument, which a PR that never opens never reaches.",
       "matchUpdateTypes": ["major"],
       "groupName": null
+    },
+    {
+      "description": "ADR-0059 §3 as carried by ADR-0073 §7, the pinning rule: exact for the runtime framework and the compiler, caret for everything else. `express` and its `@types` move together or the type surface describes a version that is not installed; `typescript` is exact because `tsc -b` writes the declaration output every other package type-checks against (ADR-0062 §3), and a patch that changes inference would move seventeen packages at once. `@vitest/coverage-v8` is exact for a reason the package itself states: its peer on `vitest` is an exact version rather than a range, so the pair has to arrive in one pull request — and with `auto-install-peers` on in `.npmrc`, a provider left behind on an unsatisfiable peer is answered by a second copy of vitest rather than by a loud failure. Nothing else is pinned — this rule is the answer to \"why these and not the rest\", and a new exact pin belongs here with its reason or not at all. `rangeStrategy: pin` keeps Renovate proposing the next exact version rather than widening the range.",
+      "matchPackageNames": [
+        "express",
+        "@types/express",
+        "typescript",
+        "@vitest/coverage-v8"
+      ],
+      "rangeStrategy": "pin"
+    },
+    {
+      "description": "ADR-0073 §7, the one exception to the caret rule and the register of why it exists: `jsdom` is held below 30.1.0. That release rewrote the DOM tree, CSS and HTML-collection internals, and under it a Radix dropdown opened in a second `renderApp` of the same customer test file never mounts its menu — fourteen tests in four files time out on `findByRole(\"menu\")`, each of them green on 30.0.1 and green on 30.1.0 when run alone. It is an upstream incompatibility rather than a defect in this tree, so the version is held with its reproduction rather than the suites rewritten around it. Lift the hold by taking a later jsdom and running `pnpm test:unit --filter customer` whole.",
+      "matchPackageNames": ["jsdom"],
+      "allowedVersions": "<30.1.0"
+    },
+    {
+      "description": "ADR-0073 §7: the base images the Dockerfiles and the compose files pin — `node` (three Dockerfiles), `nginx` (both SPA images), `postgres` (both compose files and the two workflows' service container) and `axllent/mailpit` (local compose and the e2e workflow). The default managers detect them; without this rule they arrive ungrouped and unlabelled, which is how a base image quietly stops being read. A major here is a runtime floor move (ADR-0073 §4) and stays its own pull request — which is why this rule names its update types rather than matching everything: Renovate applies `packageRules` in order and the last match wins per field, so an unrestricted rule here would have re-grouped the majors the rule above deliberately un-groups.",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "matchPackageNames": ["node", "nginx", "postgres", "axllent/mailpit"],
+      "groupName": "base images",
+      "groupSlug": "base-images"
     }
   ]
 }

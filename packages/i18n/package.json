@@ -17,13 +17,13 @@
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@repo/vitest-config": "workspace:*",
-    "@types/node": "^22.15.3",
-    "@types/react": "^19.2.18",
-    "eslint": "^9.39.0",
-    "jsdom": "^30.0.1",
-    "react": "^19.2.0",
-    "typescript": "5.9.3",
-    "vitest": "^4.1.10"
+    "@types/node": "catalog:",
+    "@types/react": "^19.3.0",
+    "eslint": "catalog:",
+    "jsdom": "30.0.1",
+    "react": "^19.3.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@types/react": ">=19",
@@ -31,9 +31,9 @@
   },
   "dependencies": {
     "@repo/contracts": "workspace:*",
-    "i18next": "^26.4.0",
+    "i18next": "^26.4.2",
     "i18next-pseudo": "^2.2.1",
     "i18next-resources-to-backend": "^1.2.3",
-    "react-i18next": "^17.0.12"
+    "react-i18next": "^17.0.14"
   }
 }

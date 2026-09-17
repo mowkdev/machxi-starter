@@ -130,6 +130,33 @@ test("nothing a fork inherits states the marketing app as present", async () => 
   assert.deepEqual(offenders, []);
 });
 
+test("every workflow action is pinned to a commit digest", async () => {
+  // A `uses:` on a moving tag (`actions/checkout@v4`) runs whatever that tag
+  // points at on the day the job starts, with the workspace and the job's
+  // token. Only a 40-hex commit digest is a reference the action's owner
+  // cannot repoint (ADR-0073 §7); `helpers:pinGitHubActionDigests` in
+  // `renovate.json` is what keeps the pin moving. Local composite steps
+  // (`uses: ./…`) and container steps (`uses: docker://…`) are not tags and
+  // are not pinned this way.
+  const dir = path.join(repoRoot, ".github", "workflows");
+  const files = (await readdir(dir)).filter((f) => /[.]ya?ml$/.test(f));
+  assert.ok(files.length > 0, "no workflows found");
+
+  const offenders = [];
+  for (const file of files) {
+    const text = await readFile(path.join(dir, file), "utf8");
+    text.split(/\r?\n/).forEach((line, index) => {
+      const match = /^\s*(?:-\s*)?uses:\s*(\S+)/.exec(line);
+      if (!match) return;
+      const ref = match[1];
+      if (ref.startsWith("./") || ref.startsWith("docker://")) return;
+      if (!/@[0-9a-f]{40}$/.test(ref))
+        offenders.push(`.github/workflows/${file}:${index + 1} ${ref}`);
+    });
+  }
+  assert.deepEqual(offenders, []);
+});
+
 // The behaviour specs (ADR-0068 §1): the real ones are clean, the scan
 // reaches them, and each shape rule fires on the text it exists for.
 test("the behaviour specs are clean", async () => {

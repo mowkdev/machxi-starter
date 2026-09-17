@@ -40,28 +40,33 @@
     "**Operator-visible, as D18.9 said it would be**: entry headroom is now 2.7 kB (2.4%) against an unchanged 114000, and js 10.8 kB (3.5%) against 317000. D19.5 (the Sign-in methods card) lands behind the guard, so its cost is js and the eager en `account` copy; entry is the row to watch.",
     "NOT RAISED at D19.5, and the number is recorded as the plan asks. Measured in the bytes this file stores against the D19.3 baseline (D19.4 touched no SPA): js 305932 -> 309767 (+3.8 kB), css 14004 -> 14026 (+22 bytes), entry 111318 -> 111879 (+561 bytes). The three vendor chunks are unmoved to the byte.",
     "What D19.5 bought: the Sign-in methods card on /account/security (the password and Google rows, the set-password link, the link start, the unlink dialog, the two notices the landing route carries there), the set-a-password-first sentence in place of three ceremonies, the sign-in screen's redirect carried through Google, and the reset's outcome sentence — about thirty strings in two locales. The card is behind the guard, in the account route's chunk; the entry's +561 bytes are the eager `en` catalogues growing by that copy (the D12.8 trade).",
-    "**Operator-visible**: entry headroom is now 2.1 kB (1.9%) against an unchanged 114000, and js 7.1 kB (2.3%) against 317000. D19.6 adds no SPA code; the next customer-app step after D19 should expect to raise one or the other and say why."
+    "**Operator-visible**: entry headroom is now 2.1 kB (1.9%) against an unchanged 114000, and js 7.1 kB (2.3%) against 317000. D19.6 adds no SPA code; the next customer-app step after D19 should expect to raise one or the other and say why.",
+    "RAISED at D20.2 — the wave of minor and patch updates ADR-0073 §7 asks for, and the raise is the mechanism working rather than a concession. Nothing about either app changed in this step: what moved is the versions under it, taken to the latest each manifest's range already allowed so `pnpm outdated -r` is left with only D21's four majors.",
+    "The one row worth naming is `react`, which is the same chunk in both apps: 60419 -> 69054 (+8.6 kB, +14%). React 19.2.8 -> 19.3.0 is the whole of it, and it is why both budget files are being edited in a step that touched no component. The rest of the growth is spread across zod 4.4.3 -> 4.6.5, lucide-react 1.33 -> 1.47, the three @tanstack packages and react-hook-form 7.85 -> 7.88 — each a few kilobytes, none of them a decision this repository makes.",
+    "Every new ceiling is ~5% over the measurement beside it, which is the headroom rule both files have run at since D14.9 and which ADR-0073 §5 is about to make `scripts/size.mjs` enforce at D20.9 (ceiling at most 15% over baseline, re-measured in the diff that raises it). Nothing here is near that cap, and the 60%-of-js rule on the entry is nowhere near binding.",
+    "Measured in the bytes this file stores, against the D19.5 baseline: js 309767 -> 327012 (+17.2 kB), css 14026 -> 14026 (to the byte), entry 111879 -> 120324 (+8.4 kB), and the chunks query 10591 -> 10376, react 60419 -> 69054, router 27382 -> 27491. css did not move at all, which is what \"no component changed\" looks like from here; the entry's +8.4 kB is React and the query client, both of which this app pays above the router.",
+    "**Operator-visible**: the headroom D19.5's note said was down to 2% is restored — js 5.2%, entry 5.5%, react 5.7%. The next customer-app step is D20.9, which lowers the entry ceiling rather than raising it: the `lv` catalogue moves behind the i18next backend there, and the baseline below is what that step re-measures against."
   ],
   "baseline": {
-    "measuredAt": "2026-09-12",
-    "step": "D19.5",
-    "js": 309767,
+    "measuredAt": "2026-09-17",
+    "step": "D20.2",
+    "js": 327012,
     "css": 14026,
-    "entry": 111879,
+    "entry": 120324,
     "chunks": {
-      "query": 10591,
-      "react": 60419,
-      "router": 27382
+      "query": 10376,
+      "react": 69054,
+      "router": 27491
     }
   },
   "budgets": {
-    "js": 317000,
+    "js": 344000,
     "css": 15100,
-    "entry": 114000
+    "entry": 127000
   },
   "chunks": {
     "query": 11500,
-    "react": 65000,
+    "react": 73000,
     "router": 29600
   }
 }

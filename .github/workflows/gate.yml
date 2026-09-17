@@ -13,6 +13,16 @@
 # the gate at its first step. Listing them as `run:` steps of their own is
 # exactly the CI-only script the paragraph above refuses.
 #
+# Every `uses:` is pinned to a commit digest with its tag in a trailing
+# comment (ADR-0073 §7). A moving major tag is a write-access-shaped hole: the
+# owner of the action — or anyone who takes that account — can repoint `v4` at
+# a commit this repository never read, and it runs with the workspace, the
+# lockfile and whatever the job's token can reach. The digest is the only
+# reference GitHub cannot repoint. `helpers:pinGitHubActionDigests` in
+# `renovate.json` proposes the next digest weekly, so the pin is maintained
+# rather than frozen, and `scripts/docs-hygiene.test.mjs` refuses a `uses:`
+# that has no digest — including in `e2e.yml`, which is pinned the same way.
+#
 # The browser tier stays out (ADR-0052 §The browser tier, carried by ADR-0059
 # §1): it needs a running stack and a seeded database, and it runs nightly in
 # `e2e.yml`.
@@ -70,11 +80,11 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -86,7 +96,7 @@ jobs:
       # may be cached is that record's decision, not this file's: `test` and
       # `test:int` declare `cache: false` because they talk to Postgres.
       - name: Restore the turbo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           # `.turbo/cache` and not `.turbo`: the parent also holds the daemon's
           # sockets and logs, `runs/` and `cookies/`, which would grow the cache

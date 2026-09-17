@@ -29,13 +29,13 @@
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@repo/vitest-config": "workspace:*",
-    "@types/node": "^22.15.3",
+    "@types/node": "catalog:",
     "drizzle-kit": "^0.31.10",
-    "eslint": "^9.39.0",
-    "tsdown": "0.12.0",
-    "tsx": "^4.23.12",
-    "typescript": "5.9.3",
-    "vitest": "^4.1.10"
+    "eslint": "catalog:",
+    "tsdown": "^0.23.0",
+    "tsx": "^4.23.13",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "dependencies": {
     "@repo/contracts": "workspace:*",

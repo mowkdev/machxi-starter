@@ -1,3 +1,26 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# One version per shared dependency, declared once (ADR-0059 §3 as carried by
+# ADR-0073 §7). The rule for what lives here is a threshold rather than taste:
+# a version **ten or more workspaces declare** moves into the catalog, because
+# at that count a bump is a sweep and a drift is invisible — `typescript` was
+# already `5.9.3` in sixteen manifests and `^5.9.3` in the seventeenth, which
+# is exactly the failure the catalog removes. Below the threshold the version
+# stays in the manifest that needs it, where a workspace that must diverge can
+# say so without a second catalog entry.
+#
+# Pinning follows the same rule as the manifests: **exact for the runtime
+# framework and the compiler, caret for everything else** — so `typescript` is
+# exact here and `eslint`, `vitest` and `@types/node` are carets.
+#
+# `@repo/vitest-config` keeps its own `vitest` **peer** range (`^4`) rather
+# than `catalog:`: a peer is a compatibility statement to consumers, and
+# narrowing it to the version this repository happens to run would make the
+# package lie about what it works with.
+catalog:
+  "@types/node": ^22.20.3
+  eslint: ^9.39.5
+  typescript: 5.9.3
+  vitest: ^4.1.11

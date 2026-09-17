@@ -15,29 +15,34 @@
     "The chunk ceilings carry roughly the same headroom the totals do, and `baseline.chunks` records what each one measured on the day it was set — without that, a chunk drifting toward its ceiling is invisible until the day it trips, which is the opposite of what ADR-0052's raise-by-review mechanism is for. react is 59.0 kB and is expected to move only when React does; table is the one to watch, because it is @tanstack/react-table and only the grid uses it.",
     "RE-BASELINED 2026-09-11, after D18 shipped and outside any step, and the first raise of js since D14.9. The reason is that the file had stopped being true: the baseline below still said D14.9's numbers while a cold build measured js 342362 -> 361873 (+19.5 kB), css 14843 -> 14862 (+19 bytes) and entry 162773 -> 166837 (+4.1 kB), the four vendor chunks unmoved to the byte. D18 spent that in this app across D18.6 (the recovery screens), D18.10 (the change-address dialog on both record surfaces) and D18.11 (/onboarding and the passwordless staff create) with no raise and no baseline update, and the ~5% headroom this file is meant to run at had quietly become 0.03% — 353.4 against 353.5 kB as the script prints it. That is not the mechanism failing: nothing went over, so nothing asked anyone to look. It is the baseline going stale, which the D14.9 note above says is exactly what makes drift invisible.",
     "The raise is js 362000 -> 380000 and nothing else: ~5% over the new baseline, the rule the customer file's D15.5 note set and this file has run at since D14.9. css (15600) and entry (176000) are left where they were, both still ~5% over what they measure; the chunk ceilings are untouched because the chunks did not move. The 60%-of-js rule size.mjs enforces is nowhere near binding at 380000.",
-    "The lever named at D18.11 is still unpulled: /onboarding and /reset-password are one screen with different copy. This re-baseline buys room; it does not cash that. The +4.1 kB on entry is the eager `en` catalogues ADR-0046 §3 bundles before any lazy import resolves, the same trade the customer file records at D12.8 and D15.5, and entry is the number to watch here too — 5.5% of headroom against 176000."
+    "The lever named at D18.11 is still unpulled: /onboarding and /reset-password are one screen with different copy. This re-baseline buys room; it does not cash that. The +4.1 kB on entry is the eager `en` catalogues ADR-0046 §3 bundles before any lazy import resolves, the same trade the customer file records at D12.8 and D15.5, and entry is the number to watch here too — 5.5% of headroom against 176000.",
+    "RAISED at D20.2 — the wave of minor and patch updates ADR-0073 §7 asks for, and the raise is the mechanism working rather than a concession. Nothing about either app changed in this step: what moved is the versions under it, taken to the latest each manifest's range already allowed so `pnpm outdated -r` is left with only D21's four majors.",
+    "The one row worth naming is `react`, which is the same chunk in both apps: 60419 -> 69054 (+8.6 kB, +14%). React 19.2.8 -> 19.3.0 is the whole of it, and it is why both budget files are being edited in a step that touched no component. The rest of the growth is spread across zod 4.4.3 -> 4.6.5, lucide-react 1.33 -> 1.47, the three @tanstack packages and react-hook-form 7.85 -> 7.88 — each a few kilobytes, none of them a decision this repository makes.",
+    "Every new ceiling is ~5% over the measurement beside it, which is the headroom rule both files have run at since D14.9 and which ADR-0073 §5 is about to make `scripts/size.mjs` enforce at D20.9 (ceiling at most 15% over baseline, re-measured in the diff that raises it). Nothing here is near that cap, and the 60%-of-js rule on the entry is nowhere near binding.",
+    "Measured in the bytes this file stores, against the 2026-09-11 re-baseline: js 361873 -> 379434 (+17.6 kB), css 14862 -> 14862 (to the byte), entry 166837 -> 175684 (+8.9 kB), and the chunks query 10598 -> 10386, react 60419 -> 69054, router 28602 -> 28333, table 14039 -> 14041. Two chunks got smaller; react is the whole of the growth.",
+    "**Operator-visible**: this app was 566 bytes under its js ceiling and 142 bytes under its entry ceiling before the raise — both would have tripped on the next line of code, which is the drift the 2026-09-11 note says a stale baseline hides. The raise restores ~5% on all three totals. The lever named at D18.11 is still unpulled: /onboarding and /reset-password are one screen with different copy."
   ],
   "baseline": {
-    "measuredAt": "2026-09-11",
-    "step": "D18 shipped (re-baselined outside a step)",
-    "js": 361873,
+    "measuredAt": "2026-09-17",
+    "step": "D20.2",
+    "js": 379434,
     "css": 14862,
-    "entry": 166837,
+    "entry": 175684,
     "chunks": {
-      "query": 10598,
-      "react": 60419,
-      "router": 28602,
-      "table": 14039
+      "query": 10386,
+      "react": 69054,
+      "router": 28333,
+      "table": 14041
     }
   },
   "budgets": {
-    "js": 380000,
+    "js": 399000,
     "css": 15600,
-    "entry": 176000
+    "entry": 185000
   },
   "chunks": {
     "query": 11500,
-    "react": 65000,
+    "react": 73000,
     "router": 31000,
     "table": 15200
   }

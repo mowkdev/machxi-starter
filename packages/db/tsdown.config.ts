@@ -26,16 +26,31 @@ export default defineConfig({
   format: ["esm"],
   platform: "node",
   target: "node22",
-  // Everything, including `@repo/*` (TypeScript source, ADR-0002) and the
-  // third-party runtime deps. Node's own builtins stay external via
-  // `platform: "node"`.
-  noExternal: [/./],
-  // `argon2` is a native CJS addon whose `.node` binary cannot be inlined (the
-  // same constraint `apps/api` records). Nothing on the migrate path reaches
-  // it — `readArgon2Params` moved to `tooling/argon2.ts` at this step for
-  // exactly that reason — but naming it here keeps a future import a build
-  // error rather than a container that cannot start.
-  external: ["argon2"],
+  // tsdown defaults to a fixed `.mjs` extension on `platform: "node"` since
+  // 0.13. This package is `"type": "module"`, so `.js` is already ESM to node,
+  // and the name is load-bearing: `apps/api/Dockerfile` copies
+  // `dist/migrate.js` and `docker/prod/compose.yaml` runs it by that name.
+  fixedExtension: false,
+  // Declarations for a one-shot process nothing imports would be three files
+  // in the image for no reader; 0.23 turns them on by default for a package
+  // that declares `exports`.
+  dts: false,
+  deps: {
+    // Everything, including `@repo/*` (TypeScript source, ADR-0002) and the
+    // third-party runtime deps. Node's own builtins stay external via
+    // `platform: "node"`.
+    alwaysBundle: [/./],
+    // `argon2` is a native CJS addon whose `.node` binary cannot be inlined
+    // (the same constraint `apps/api` records). Nothing on the migrate path
+    // reaches it — `readArgon2Params` moved to `tooling/argon2.ts` for exactly
+    // that reason — but naming it here keeps a future import a build error
+    // rather than a container that cannot start.
+    neverBundle: ["argon2"],
+    // Bundling the runtime closure is this file's whole point, so the hint
+    // that a `node_modules` dependency reached the bundle has nothing to warn
+    // about here.
+    onlyBundle: false,
+  },
   outDir: "dist",
   clean: true,
 });
