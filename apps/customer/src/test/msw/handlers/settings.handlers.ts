@@ -10,7 +10,7 @@ import {
 import { http, type HttpHandler } from "msw";
 
 import { API } from "./auth.handlers";
-import { fail, ok } from "./envelope";
+import { fail, ok } from "@repo/app-kit/testing";
 
 /**
  * `/api/v1/user/settings`, as MSW answers it (`D12.7`; ADR-0036 §The

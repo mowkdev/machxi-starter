@@ -24,7 +24,8 @@
  *   crash surface the boundary falls back to.
  * - **`i18n/`** — the app i18n factory of ADR-0046 §13.
  * - **`testing/`**, reached separately as `@repo/app-kit/testing` — the MSW
- *   server and the jsdom setup file.
+ *   server, the jsdom setup file, and (`D20.10`) the envelope builders and
+ *   the list-query reader every handler in both apps goes through.
  *
  * **What is deliberately *not* here** (ADR-0062 §1, amended at `D14.8`): the
  * settings, session and principal-cache providers, the router itself and the

@@ -26,7 +26,7 @@ import { CSRF_HEADER, TRANSPORT_HEADER } from "@/shared/api/client";
 
 import { impersonator } from "@/test/principals";
 
-import { fail, ok } from "./envelope";
+import { fail, ok } from "@repo/app-kit/testing";
 
 /**
  * The `/user` segment's auth endpoints, as MSW answers them (ADR-0036 §The

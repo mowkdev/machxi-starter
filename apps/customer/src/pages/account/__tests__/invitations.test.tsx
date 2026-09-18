@@ -8,7 +8,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   RECEIVED_INVITATION,
   createOrganizationsHandlers,
@@ -19,7 +19,6 @@ import {
   createProfileHandlers,
   createProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
 

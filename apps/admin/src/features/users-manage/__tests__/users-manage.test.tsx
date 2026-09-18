@@ -15,7 +15,7 @@ import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   HANDOFF_TOKEN,
   USER_ROWS,
@@ -23,7 +23,6 @@ import {
   createUsersMockState,
   type UsersMockState,
 } from "@/test/msw/handlers/users.handlers";
-import { server } from "@repo/app-kit/testing";
 import { userResourceConfig } from "@/entities/user";
 import {
   createSessionStore,

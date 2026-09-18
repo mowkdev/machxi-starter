@@ -12,7 +12,7 @@ import {
 } from "@repo/contracts";
 import { http, type HttpHandler } from "msw";
 
-import { fail, ok } from "./envelope";
+import { fail, ok } from "@repo/app-kit/testing";
 
 /**
  * The auth endpoints, as MSW answers them (ADR-0036 §The load-bearing rule).

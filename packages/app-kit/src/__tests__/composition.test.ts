@@ -69,12 +69,18 @@ export const missingSourceDeclarations = (
     );
 
 /**
- * The files `@repo/app-kit` took ownership of at `D14.8`.
+ * The files `@repo/app-kit` took ownership of at `D14.8`, and the two
+ * `D20.10` added.
  *
  * Paths under an app's `src/`, and the assertion is that **no app has one**:
  * a file that reappeared in one app is a fork of the kit's copy that nothing
  * else would notice, and a file that reappeared in both is the drift this
  * package was created to end.
+ *
+ * The two MSW handler helpers are the list's first *proof* rather than its
+ * first guard: they were already the drift, copied from `apps/admin` into
+ * `apps/customer` at `D15.5` with a comment in each copy saying so, and the
+ * only reason nothing caught it is that neither path was in this list.
  */
 const EXTRACTED = [
   "app/providers/i18n.tsx",
@@ -84,6 +90,8 @@ const EXTRACTED = [
   "shared/i18n/create-app-i18n.ts",
   "shared/ui/app-loader.tsx",
   "shared/ui/settings-options.tsx",
+  "test/msw/handlers/envelope.ts",
+  "test/msw/handlers/list-query.ts",
   "test/msw/server.ts",
   "test/setup.ts",
   "widgets/auth-layout/index.tsx",

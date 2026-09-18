@@ -5,7 +5,7 @@ import { delay, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   ACTOR_PASSWORD,
   STAFF_ROWS,
@@ -17,7 +17,6 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { server } from "@repo/app-kit/testing";
 import { renderApp, renderWithProviders } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { staffResourceConfig } from "@/entities/staff";
 import { userResourceConfig } from "@/entities/user";
 import { gridStorageKey } from "@/shared/grid/preferences";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import { API } from "@/test/msw/handlers/auth.handlers";
 import {
   createSessionStore,
@@ -19,7 +19,6 @@ import {
   createStaffMockState,
   type StaffMockState,
 } from "@/test/msw/handlers/staff.handlers";
-import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 import { staffPrincipal } from "@/test/principals";
 

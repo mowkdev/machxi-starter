@@ -9,9 +9,25 @@
  * nesting has to be rebuilt before the endpoint's own `listQuerySchema` can
  * judge it.
  *
- * The result is that a config declaring a sort field or an operator the
- * contract does not allow-list makes the *handler* throw, in the test that
- * renders the grid, rather than reaching an operator as a `VALIDATION_ERROR`.
+ * The result is that a caller asking to sort by a field, or filter with an
+ * operator, that its endpoint's contract does not allow-list makes the
+ * *handler* throw, in the test that renders the screen, rather than reaching a
+ * person as a `VALIDATION_ERROR`.
+ *
+ * **How far the `qs` fidelity goes**, stated because two suites now stand on
+ * it: over the form `stringifyListSearch` emits — bracket nesting, and a
+ * multi-valued operator as one comma list — this agrees with `qs`. It does
+ * **not** agree on a *repeated* key: `?sort=a&sort=b` is `{ sort: "b" }` here
+ * and `["a", "b"]` under `qs`. Nothing in this repository emits that form, and
+ * last-wins is what `URLSearchParams` hands over; the divergence is recorded
+ * rather than closed, because closing it would mean building the array shape
+ * no contract accepts.
+ *
+ * **Moved here at `D20.10`** (ADR-0062 §1, the harness third of the review's
+ * FE-04), beside `envelope.ts` and on the same argument the copy in
+ * `apps/customer` had been carrying since `D15.5`: it holds no app knowledge
+ * at all — no segment, no fixture, no route — and "the step that promotes one
+ * should promote both" is what that comment asked for.
  */
 
 /** `filter[createdAt][gte]` → `["filter", "createdAt", "gte"]`. */

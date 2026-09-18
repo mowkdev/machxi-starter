@@ -10,12 +10,11 @@ import {
   createAuthMockState,
   type AuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   createOrganizationsHandlers,
   createOrganizationsMockState,
 } from "@/test/msw/handlers/organizations.handlers";
-import { server } from "@repo/app-kit/testing";
 import { createSessionStore } from "@/shared/api/session-store";
 import { renderApp } from "@/test/render";
 

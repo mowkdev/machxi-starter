@@ -9,8 +9,7 @@ import { createQueryClient } from "@/shared/api/query-client";
 import { createApiClient } from "@/shared/api/client";
 import { ApiProvider } from "@/shared/api/context";
 import { createSessionStore } from "@/shared/api/session-store";
-import { listOk } from "@/test/msw/handlers/envelope";
-import { server } from "@repo/app-kit/testing";
+import { listOk, server } from "@repo/app-kit/testing";
 
 import { staffKeys } from "../staff.keys";
 import { useStaffList } from "../staff.queries";

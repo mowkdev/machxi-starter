@@ -11,8 +11,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
-import { server } from "@repo/app-kit/testing";
+import { fail, server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 
 /**

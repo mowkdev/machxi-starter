@@ -8,7 +8,7 @@ import {
   type SessionStore,
 } from "@/shared/api/session-store";
 import { API, PRINCIPAL } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   CURRENT_PASSWORD,
   PROFILE,
@@ -16,7 +16,6 @@ import {
   createProfileMockState,
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { server } from "@repo/app-kit/testing";
 import { renderApp } from "@/test/render";
 
 /**

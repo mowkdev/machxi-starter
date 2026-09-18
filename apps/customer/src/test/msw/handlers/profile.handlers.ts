@@ -18,7 +18,7 @@ import {
 import { http, type HttpHandler } from "msw";
 
 import { API, GOOGLE_AUTHORIZATION_URL, PRINCIPAL } from "./auth.handlers";
-import { fail, ok } from "./envelope";
+import { fail, ok } from "@repo/app-kit/testing";
 
 /**
  * `/api/v1/user/profile`, as MSW answers it (ADR-0036 §The load-bearing rule).

@@ -9,7 +9,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   createOrganizationsHandlers,
   createOrganizationsMockState,
@@ -23,7 +23,6 @@ import {
   googleOnlyProfile,
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { server } from "@repo/app-kit/testing";
 import type { AppFeatures } from "@/shared/config";
 import type { UserProfileResource } from "@repo/contracts";
 import { authenticated } from "@/test/principals";

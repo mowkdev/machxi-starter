@@ -9,7 +9,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   ORGANIZATION_ROWS,
   SECOND_TEAM_ORGANIZATION,
@@ -22,7 +22,6 @@ import {
   createProfileHandlers,
   createProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { server } from "@repo/app-kit/testing";
 import { authenticated, userPrincipal } from "@/test/principals";
 import { renderApp } from "@/test/render";
 

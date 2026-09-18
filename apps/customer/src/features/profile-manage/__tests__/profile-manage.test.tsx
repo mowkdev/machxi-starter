@@ -22,12 +22,11 @@ import {
   createProfileMockState,
   type ProfileMockState,
 } from "@/test/msw/handlers/profile.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   createOrganizationsHandlers,
   createOrganizationsMockState,
 } from "@/test/msw/handlers/organizations.handlers";
-import { server } from "@repo/app-kit/testing";
 import { authenticated } from "@/test/principals";
 import { renderApp, renderWithProviders } from "@/test/render";
 

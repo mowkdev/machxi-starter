@@ -8,7 +8,7 @@ import {
   createAuthHandlers,
   createAuthMockState,
 } from "@/test/msw/handlers/auth.handlers";
-import { fail } from "@/test/msw/handlers/envelope";
+import { fail, server } from "@repo/app-kit/testing";
 import {
   createProfileHandlers,
   createProfileMockState,
@@ -20,7 +20,6 @@ import {
   createOrganizationsMockState,
   type OrganizationsMockState,
 } from "@/test/msw/handlers/organizations.handlers";
-import { server } from "@repo/app-kit/testing";
 import { createSessionStore } from "@/shared/api/session-store";
 import { authenticated } from "@/test/principals";
 import { renderApp } from "@/test/render";
