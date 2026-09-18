@@ -38,7 +38,7 @@ Proved by: `apps/api/test/users-admin.int.test.ts`
 
 Every user resource on the admin segment carries the account's **`identities`** — `{ provider, email, linkedAt }`, read-only, empty for an account with none — and nothing about its password. `POST /admin/users` answers `201` with the resource; the address must be free among live accounts (`409 USER_EMAIL_TAKEN`), the role defaults to `customer`, the status to `active`, and the account's personal organization is created in the same transaction ([`organizations.md`](organizations.md)). `PATCH /admin/users/:id` changes names, status and roles in one transaction; a status leaving `active`, or a change to the role set, revokes every session of the account in the same commit.
 Records: [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0028](../adr/0028-account-deletion.md)
-Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`
+Proved by: `apps/api/test/users-admin.int.test.ts`, `apps/api/src/modules/users/__tests__/users.lifecycle.service.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`
 
 ### Scenario: A taken address
 

@@ -79,7 +79,9 @@ function StaffRecordRoute() {
   return <EditStaffSurface staff={staff} />;
 }
 
-function StaffRecordError({ error }: { readonly error: Error }) {
+// `unknown`, as router-core types an error boundary's `error` — see the users
+// route (`D20.7`).
+function StaffRecordError({ error }: { readonly error: unknown }) {
   /*
    * Even a record that failed to load has a way back to the view it was opened
    * from, because the carrier is the navigation rather than the record

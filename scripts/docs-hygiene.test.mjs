@@ -130,6 +130,60 @@ test("nothing a fork inherits states the marketing app as present", async () => 
   assert.deepEqual(offenders, []);
 });
 
+/**
+ * The three trees the thousand-line ceiling covers: the API's feature modules
+ * and the two platform packages whose entry files had grown into everything at
+ * once. They are named rather than globbed because the ceiling is a claim
+ * about *these* trees — a package that has never had the problem does not
+ * silently inherit a rule nobody argued for.
+ */
+const LINE_CEILING_ROOTS = [
+  "apps/api/src/modules",
+  "packages/api-client/src",
+  "packages/grid/src",
+];
+
+const LINE_CEILING = 1000;
+
+test("no source file in the split trees runs past a thousand lines", async () => {
+  // A file cohesive by aggregate stops being cohesive by reader somewhere
+  // around here: `auth.service.ts` held login, refresh, registration,
+  // verification, recovery, onboarding, email change, impersonation and the
+  // federated exchange at 2,264 lines, `client.ts` the axios instance, the
+  // interceptors, the session lifecycle and twelve flows, `app-grid.tsx` state
+  // wiring, header, body, selection and density. The number is a smell
+  // detector rather than a law — nothing goes wrong at 1,001 lines — but it is
+  // the only mechanical guard against the drift coming straight back, which is
+  // what happened between the file being split once by hand and reviewed again.
+  //
+  // `__tests__` is deliberately out of scope. A table-driven suite is long by
+  // construction and its length says nothing about whether a reader can hold
+  // it; the finding this case closes listed source files only.
+  const offenders = [];
+  const read = [];
+  for (const root of LINE_CEILING_ROOTS) {
+    const files = await filesUnder(root);
+    // A renamed or moved directory would make the walk find nothing and the
+    // assertion below pass by checking nothing at all.
+    assert.ok(files.length > 0, `no files under ${root}`);
+    for (const { full, rel } of files) {
+      if (path.extname(rel) === ".md") continue;
+      if (rel.split("/").includes("__tests__")) continue;
+      read.push(rel);
+      // The trailing newline is not a line. Splitting the raw text counts the
+      // empty string after it, which would make the guard fire at 1,000 and
+      // report every file one line longer than an editor and `wc -l` do — a
+      // ceiling whose number disagrees with its own name is the kind of thing
+      // somebody later "fixes" in the wrong direction.
+      const text = await readFile(full, "utf8");
+      const lines = text ? text.replace(/\r?\n$/, "").split(/\r?\n/).length : 0;
+      if (lines > LINE_CEILING) offenders.push(`${rel} — ${lines} lines`);
+    }
+  }
+  assert.ok(read.length > 0, "the ceiling read no source files");
+  assert.deepEqual(offenders, []);
+});
+
 test("every workflow action is pinned to a commit digest", async () => {
   // A `uses:` on a moving tag (`actions/checkout@v4`) runs whatever that tag
   // points at on the day the job starts, with the workspace and the job's

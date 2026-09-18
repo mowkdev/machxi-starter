@@ -17,7 +17,7 @@ Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/core/middlewar
 
 `POST /admin/staff` takes email, both names, at least one role and — optionally — a password. With one, the account is created `active` and answers `201`; without one it is created `invited` with no password at all, and an onboarding link is mailed to the address. A taken address answers `409 STAFF_EMAIL_TAKEN`. Emails are unique within staff, not across populations.
 Records: [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0071](../adr/0071-mail-flows.md)
-Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.service.test.ts`
+Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.onboarding.service.test.ts`
 
 ### Scenario: No role
 
@@ -43,7 +43,7 @@ Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/
 
 `POST /admin/auth/onboarding/accept { token, password }` consumes the link, writes the operator's first password, moves the row to `active`, writes an `account.onboarded` audit row and answers `200` with login's body on whichever transport the caller asked for — the device that opened the invitation is signed in. Every refusal is one indistinguishable `401 UNAUTHENTICATED`, and a refused consumption spends nothing. The route is registered on the admin segment alone. `POST /admin/staff/:id/onboarding/resend` re-mints and re-sends for an `invited` row, retiring the previous link; any other status answers `409 STAFF_NOT_INVITED` and an unknown id `404 NOT_FOUND`.
 Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
-Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.service.test.ts`
+Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.onboarding.service.test.ts`
 
 ### Scenario: Signing in before the link is followed
 

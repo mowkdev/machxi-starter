@@ -8,7 +8,7 @@ This file is the wire behaviour of those flows. The session a link ends in is [`
 
 Self-registration creates a `pending_verification` account and mails a confirmation link, answering `202 { accepted: true }` with no session. `POST /api/v1/public/auth/verify-email { token }` consumes the link, makes the account `active` with its address stamped proven, writes an `account.verified` audit row, and answers `200` with login's body on whichever transport the caller asked for. Login on such an account with the **right** password answers `403 AUTH_EMAIL_UNVERIFIED`, and with the wrong one the usual `401 AUTH_INVALID_CREDENTIALS`. `POST /api/v1/public/auth/resend-verification { email }` answers `202 { accepted: true }` for every address, whether or not one exists. Both verification endpoints are mounted even where `FEATURE_USER_REGISTRATION` is off.
 Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
-Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/auth-register.int.test.ts`, `apps/api/src/modules/auth/__tests__/auth.service.test.ts`
+Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/auth-register.int.test.ts`, `apps/api/src/modules/auth/__tests__/auth.mail-flows.service.test.ts`, `apps/api/src/modules/auth/__tests__/auth.service.test.ts`
 
 ### Scenario: Registering an unused address
 
@@ -191,7 +191,7 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/impersonation-
 
 `POST /api/v1/admin/staff` with **no** `password` creates the operator `invited` with no password hash at all and mails an onboarding link into the **admin** app — the only one of these links that lands there besides a staff recovery. `POST /api/v1/admin/auth/onboarding/accept { token, password }` consumes it, writes that first password with `status: "active"`, writes an `account.onboarded` audit row and answers `200` with login's body: unlike the recovery above, this link **does** sign the device in, because it is the only way the account has ever been reachable and the person at the other end has just chosen its credential. The link lives `STAFF_ONBOARDING_TOKEN_TTL` — seven days, the longest of the four — and the route carries the login limiter's argon2 budget in a counter of its own. The message's language travels in the request body, because an invited account has no stored locale of its own yet. `POST /api/v1/admin/staff/:id/onboarding/resend` sends another and retires the previous one. Both senders share `RATE_LIMIT_MAILBOX_MAX` over the hour — the create keyed on the address in its body, the resend on the operator it names, because that request carries no address at all.
 Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md), [ADR-0020](../adr/0020-security-baseline.md), [ADR-0058](../adr/0058-append-only-audit-log.md)
-Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.service.test.ts`, `apps/api/src/core/mail/__tests__/templates.test.ts`
+Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/__tests__/staff.onboarding.service.test.ts`, `apps/api/src/core/mail/__tests__/templates.test.ts`
 
 ### Scenario: Inviting an operator
 
@@ -227,7 +227,7 @@ Proved by: `apps/api/test/staff-admin.int.test.ts`, `apps/api/src/modules/staff/
 
 `POST /api/v1/admin/users` stamps `email_verified_at` on the account it creates, because the operator who typed the address is the authority a confirmation link would be asking, and no link is sent; `PATCH /api/v1/admin/users/:id` stamps it the same way when it moves an account to `active`, without disturbing a stamp the account already had. An admin who deliberately asks for `status: "pending_verification"` gets an account with no stamp, which is the one row the verification flow above has something to do to. Those two paths and the link are **every** way a user becomes `active`, which is what makes **every `active` user an account whose address is proven**.
 Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0017](../adr/0017-identity-model-populations-and-roles.md)
-Proved by: `apps/api/src/modules/users/__tests__/users.service.test.ts`, `apps/api/test/users-admin.int.test.ts`
+Proved by: `apps/api/src/modules/users/__tests__/users.lifecycle.service.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`, `apps/api/test/users-admin.int.test.ts`
 
 ### Scenario: Staff create an account
 

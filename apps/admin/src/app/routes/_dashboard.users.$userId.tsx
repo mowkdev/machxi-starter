@@ -48,7 +48,12 @@ function UserRecordRoute() {
   return <EditUserSurface user={user} />;
 }
 
-function UserRecordError({ error }: { readonly error: Error }) {
+// `unknown`, as router-core types an error boundary's `error` (`D20.7`): the
+// narrower `Error` stopped matching `ErrorComponentProps` and, one property
+// being enough to sink the route-options inference, took `useLoaderData()`'s
+// type with it. Registering `ErrorBoundaryTypes` is the faithful fix and needs
+// `@tanstack/router-core` as a dependency of this app — D21's.
+function UserRecordError({ error }: { readonly error: unknown }) {
   // The way back survives a failed load too (ADR-0044, `D5.3`).
   const { t } = useT("users");
   const { closeSearch } = useRecordNavigation();
