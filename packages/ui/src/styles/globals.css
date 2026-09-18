@@ -248,8 +248,10 @@
  * The runner is a third of the track wide and travels a track's width plus its
  * own, so the bar is never at rest and never says how far along a navigation
  * is — which is the truth about a router that has not resolved yet. The
- * reduced-motion answer is the consumer's, not this file's: `animate-none`
- * with a full-width runner keeps the feedback and drops the movement.
+ * reduced-motion answer that keeps the *feedback* is the consumer's:
+ * `animate-none` with a full-width runner, in the shell. The global rule at
+ * the end of this file only guarantees that nothing moves; it cannot know
+ * what a stopped animation should look like.
  */
 @theme {
   --animate-navigation-indeterminate: navigation-indeterminate 1.1s
@@ -316,5 +318,39 @@
 
   &::-webkit-scrollbar-corner {
     background: transparent;
+  }
+}
+
+/*
+ * The motion rule (ADR-0073 §9's companion, the 2026-09-13 review's FE-06).
+ *
+ * `tw-animate-css` runs every `animate-in` / `animate-out` unconditionally and
+ * every `transition-*` utility likewise, and a person who has asked their
+ * operating system for less motion gets all of it. This is the one place that
+ * can answer for every surface at once: durations collapse under the media
+ * query, so what was a slide is a swap and what was a fade is a cut.
+ *
+ * **`0.01ms`, not `0`.** The point is that the *events* still fire: Radix's
+ * `Presence` unmounts a closing dialog on `animationend`, and a browser that
+ * skips a zero-length animation entirely would leave every closed overlay in
+ * the tree. A hundredth of a millisecond ends in the same frame it starts in
+ * and still reports that it ended. `animation-iteration-count: 1` is what
+ * ends an `infinite` one.
+ *
+ * What this rule cannot do is decide what a stopped animation should *show*:
+ * the shell's navigation indicator answers that itself with `motion-reduce:`
+ * utilities, because a third of a bar frozen at the left edge says nothing.
+ * `!important` because the utilities this overrides are themselves in the
+ * `utilities` layer with a higher-specificity selector than `*`, and the
+ * preference has to win over every one of them.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

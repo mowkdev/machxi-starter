@@ -60,4 +60,27 @@ FROM nginx:1.29-alpine AS runtime
 COPY apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /web /usr/share/nginx/html
 
+# The policy's `connect-src` names the API origin, and nginx cannot read what
+# Vite inlined — so the same build argument is read a second time, here, and
+# written into the server config (ADR-0073 §9). **The same argument, not a
+# second one named for the header**: the origin the bundle fetches from and
+# the origin the policy allows are one fact, and two variables for one fact is
+# how a deployment ends up with a bundle that is refused by its own policy.
+# An `ARG` is per stage, so it is declared again; `--build-arg` still fills it.
+#
+# The build refuses anything but an origin — scheme, host, optional port and
+# nothing after it — because an image that passed one silently would answer
+# every request with a policy that blocks its own API, a broken app that looks
+# like a deployed one (`D20.8`'s `security-reviewer`). A path is the case that
+# matters: `https://example.com/api` is a URL the bundle happily builds on and
+# a CSP source that matches that exact path and no other, so every request the
+# app makes is refused. The same check keeps `;` and whitespace out of the
+# policy, where either would widen it, and every character `sed` treats as
+# its own. The placeholder is then checked gone, and nginx checks the result.
+ARG VITE_API_URL
+RUN printf '%s' "$VITE_API_URL" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$' \
+    && sed -i "s|__API_ORIGIN__|$VITE_API_URL|" /etc/nginx/conf.d/default.conf \
+    && ! grep -q "__API_ORIGIN__" /etc/nginx/conf.d/default.conf \
+    && nginx -t
+
 EXPOSE 80

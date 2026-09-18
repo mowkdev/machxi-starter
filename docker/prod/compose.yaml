@@ -277,6 +277,11 @@ services:
       dockerfile: apps/admin/Dockerfile
       # Build arguments, not environment: Vite inlines them, so this image is
       # built per environment (ADR-0059 §4).
+      #
+      # `VITE_API_URL` is read twice by the Dockerfile: once by Vite, into the
+      # bundle, and once by the runtime stage, into the policy header's
+      # `connect-src` (ADR-0073 §9). One name on purpose — the origin the app
+      # fetches from and the origin the policy allows are one fact.
       args:
         VITE_API_URL: ${VITE_ADMIN_API_URL}
         VITE_APP_ID: ${APP_ID:-machxi}
@@ -294,6 +299,8 @@ services:
       context: ../..
       dockerfile: apps/customer/Dockerfile
       args:
+        # Read twice by the Dockerfile, like the admin's: by Vite into the
+        # bundle and by the runtime stage into the policy header (ADR-0073 §9).
         VITE_API_URL: ${VITE_CUSTOMER_API_URL}
         VITE_APP_ID: ${APP_ID:-machxi}
         # The API's own variable, read a second time (ADR-0067 §6). Not a

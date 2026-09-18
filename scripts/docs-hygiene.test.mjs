@@ -262,6 +262,89 @@ test("one Node major, stated in every place that states one", async () => {
   assert.ok([...majors][0], "no Node version found");
 });
 
+/** A Content-Security-Policy string as a directive → sources map. */
+const directivesOf = (policy) =>
+  Object.fromEntries(
+    policy
+      .split(";")
+      .map((directive) => directive.trim())
+      .filter(Boolean)
+      .map((directive) => {
+        const [name, ...sources] = directive.split(/\s+/);
+        return [name, sources.join(" ")];
+      }),
+  );
+
+test("both SPA images send the policy, and the same one", async () => {
+  // The two nginx configurations are copies of each other by construction
+  // (ADR-0059 §4), and the policy (ADR-0073 §9) is the one line where a
+  // loosening in one file and not the other would be invisible — a build
+  // succeeds, the app works, and one origin quietly runs without the
+  // directive that stops script injection. What the policy must say is read
+  // rather than diffed: `script-src 'self'` and `frame-ancestors 'none'` are
+  // the two directives the finding was about, the header is `always` so an
+  // error page carries it too, and `connect-src` names the placeholder the
+  // Dockerfile fills in from `VITE_API_URL` — a file that stopped naming it
+  // would ship an image whose policy blocks its own API.
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const policies = {};
+
+  for (const app of ["admin", "customer"]) {
+    const conf = await read(`apps/${app}/nginx.conf`);
+    const lines = conf
+      .split(/\r?\n/)
+      .filter((line) =>
+        /^\s*add_header\s+Content-Security-Policy\s/.test(line),
+      );
+    assert.equal(
+      lines.length,
+      1,
+      `apps/${app}/nginx.conf: one Content-Security-Policy, found ${lines.length}`,
+    );
+
+    const match =
+      /^\s*add_header\s+Content-Security-Policy\s+"([^"]+)"\s+always;\s*$/.exec(
+        lines[0],
+      );
+    assert.ok(
+      match,
+      `apps/${app}/nginx.conf: the policy is one quoted value sent \`always\``,
+    );
+
+    const directives = directivesOf(match[1]);
+    assert.equal(directives["script-src"], "'self'", `apps/${app}: script-src`);
+    assert.equal(
+      directives["frame-ancestors"],
+      "'none'",
+      `apps/${app}: frame-ancestors`,
+    );
+    assert.equal(
+      directives["default-src"],
+      "'self'",
+      `apps/${app}: default-src`,
+    );
+    assert.equal(directives["object-src"], "'none'", `apps/${app}: object-src`);
+    assert.ok(
+      directives["connect-src"]?.split(" ").includes("__API_ORIGIN__"),
+      `apps/${app}: connect-src carries the placeholder the Dockerfile fills`,
+    );
+
+    const dockerfile = await read(`apps/${app}/Dockerfile`);
+    assert.ok(
+      dockerfile.includes("__API_ORIGIN__"),
+      `apps/${app}/Dockerfile: substitutes the placeholder`,
+    );
+
+    policies[app] = match[1];
+  }
+
+  assert.equal(
+    policies.admin,
+    policies.customer,
+    "the two images' policies have drifted apart",
+  );
+});
+
 // The behaviour specs (ADR-0068 §1): the real ones are clean, the scan
 // reaches them, and each shape rule fires on the text it exists for.
 test("the behaviour specs are clean", async () => {

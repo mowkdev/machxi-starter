@@ -16,6 +16,7 @@ Three facts to have in mind before the click path:
 
 - **Postgres and Redis are not in the compose file.** They are managed resources on the platform, so their backups, restores, upgrades and monitoring are the platform's; the deployment is handed `DATABASE_URL`, `DATABASE_URL_OWNER` and `REDIS_URL`. Since `D14.6` the last of those is read: it is the rate limiters' shared store (ADR-0066 §4).
 - **The two SPA images are environment-specific.** Vite inlines `VITE_*` at build time, so they are build arguments, not environment variables. Changing an API URL means rebuilding, and an image built for staging cannot be promoted to production. That is a property of the tool.
+- **Both SPA images send a `Content-Security-Policy`** (ADR-0073 §9): `script-src 'self'`, `frame-ancestors 'none'`, and a `connect-src` that names the API origin — the same `VITE_*_API_URL` the bundle was built with, read a second time by the image's runtime stage, so there is nothing extra to set. An origin the bundle must reach beyond the API — an error reporter's ingest address, if you wire one (ADR-0066 §3) — is added to `connect-src` in that app's `nginx.conf`, and the build refuses an image whose origin is empty.
 - **Rolling back means rolling back the image.** It does not mean rolling back a migration: migrations are forward-only and hand-written (ADR-0008). A release that has to be undone is undone by deploying the previous commit, and by writing a new migration if the schema has to move back.
 
 ## Before the first deploy
@@ -143,6 +144,7 @@ cp docker/prod/.env.example docker/prod/.env     # then edit the two DATABASE_UR
 docker compose -f docker/prod/compose.yaml build
 docker compose -f docker/prod/compose.yaml up -d
 curl -s localhost:4000/health/ready
+curl -sI localhost:3002/ | grep -i content-security-policy   # the policy, with your API origin in connect-src
 ```
 
 Point both `DATABASE_URL*` values at the local compose Postgres with `host.docker.internal` rather than `localhost` — the API is in a container now, and `localhost` is the container. The published ports bind to `127.0.0.1`, so the stack is reachable from the host and from nowhere else; a platform routes to it over the compose network instead and needs no published port at all.
