@@ -162,3 +162,46 @@ describe("every app's styles.css", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * A rendering package's barrel costs the entry nothing it does not use
+ * (`D20.9`, ADR-0073 §5).
+ *
+ * Each app's composition root imports `@repo/grid` and `@repo/form` through
+ * their barrels for a namespace name, a catalogue loader and the zod
+ * installer — three exports — and until `D20.9` every module the barrel
+ * re-exports travelled with them: without a `sideEffects` declaration Rollup
+ * keeps each module's top-level `forwardRef`/`createContext` calls as
+ * possible side effects, which put `@dnd-kit` and Radix's select in the
+ * admin's entry and react-hook-form in both. The declaration is honest —
+ * nothing in either package runs anything on import — and it is what let the
+ * two entry ceilings fall. It is asserted here because it is a manifest field
+ * nothing else reads, and the failure it prevents is a bigger first paint
+ * that `pnpm size` reports as a number without naming the cause.
+ *
+ * Two of the three rendering packages, and the third is left out on purpose:
+ * this package's `testing/setup` entry registers jsdom stubs and MSW hooks
+ * *by being imported*, which is a side effect a false declaration would deny.
+ * `@repo/ui` lists `**\/*.css` for the same reason — a stylesheet import
+ * must not be shaken.
+ */
+const SHAKEABLE = ["form", "grid"] as const;
+
+const packageManifest = (
+  dir: string,
+): { sideEffects?: boolean | readonly string[] } =>
+  JSON.parse(
+    readFileSync(join(REPO, "packages", dir, "package.json"), "utf8"),
+  ) as { sideEffects?: boolean | readonly string[] };
+
+describe("the rendering packages the composition roots import by barrel", () => {
+  it.each(SHAKEABLE)(
+    "declares sideEffects: false in packages/%s (ADR-0073 §5)",
+    (dir) => {
+      expect(
+        packageManifest(dir).sideEffects,
+        `packages/${dir}/package.json must declare "sideEffects": false, or a barrel import of one export carries every module in the package into the importer's entry chunk`,
+      ).toBe(false);
+    },
+  );
+});

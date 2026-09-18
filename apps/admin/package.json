@@ -12,7 +12,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "shots": "node scripts/reference-shots.mjs",
-    "size": "node scripts/size.mjs",
+    "size": "node ../../scripts/size.mjs",
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "test:watch": "vitest"

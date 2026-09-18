@@ -20,14 +20,18 @@
     "The one row worth naming is `react`, which is the same chunk in both apps: 60419 -> 69054 (+8.6 kB, +14%). React 19.2.8 -> 19.3.0 is the whole of it, and it is why both budget files are being edited in a step that touched no component. The rest of the growth is spread across zod 4.4.3 -> 4.6.5, lucide-react 1.33 -> 1.47, the three @tanstack packages and react-hook-form 7.85 -> 7.88 — each a few kilobytes, none of them a decision this repository makes.",
     "Every new ceiling is ~5% over the measurement beside it, which is the headroom rule both files have run at since D14.9 and which ADR-0073 §5 is about to make `scripts/size.mjs` enforce at D20.9 (ceiling at most 15% over baseline, re-measured in the diff that raises it). Nothing here is near that cap, and the 60%-of-js rule on the entry is nowhere near binding.",
     "Measured in the bytes this file stores, against the 2026-09-11 re-baseline: js 361873 -> 379434 (+17.6 kB), css 14862 -> 14862 (to the byte), entry 166837 -> 175684 (+8.9 kB), and the chunks query 10598 -> 10386, react 60419 -> 69054, router 28602 -> 28333, table 14039 -> 14041. Two chunks got smaller; react is the whole of the growth.",
-    "**Operator-visible**: this app was 566 bytes under its js ceiling and 142 bytes under its entry ceiling before the raise — both would have tripped on the next line of code, which is the drift the 2026-09-11 note says a stale baseline hides. The raise restores ~5% on all three totals. The lever named at D18.11 is still unpulled: /onboarding and /reset-password are one screen with different copy."
+    "**Operator-visible**: this app was 566 bytes under its js ceiling and 142 bytes under its entry ceiling before the raise — both would have tripped on the next line of code, which is the drift the 2026-09-11 note says a stale baseline hides. The raise restores ~5% on all three totals. The lever named at D18.11 is still unpulled: /onboarding and /reset-password are one screen with different copy.",
+    "RE-BASELINED at D20.9 (ADR-0073 §5), and the first time a ceiling in this file has gone DOWN. Measured in the bytes this file stores, against the D20.2 baseline: js 379434 -> 380323 (+889), css 14862 -> 14911 (+49 bytes, D20.8's reduced-motion rule), entry 175684 -> 160915 (-14.8 kB, -8.4%), the four vendor chunks unmoved to the byte. The entry ceiling is 185000 -> 169000, ~5% over the new measurement; js and css keep their ceilings, both still ~5% over what they measure.",
+    "What left the entry, since a lowering has to say as much as a raise: the whole of @dnd-kit (core, sortable, utilities, accessibility — 48 kB of source). Nothing above the routes ever rendered a column menu; the composition root imports `@repo/grid` for its namespace and its lazy catalogue loader, the routes import `list-state` for `validateSearch`, the settings storage imports `preferences` — and every one of those is a barrel import, which until this step dragged every module the barrel re-exports into the entry's graph and kept each one's top-level `createContext`/`forwardRef` calls as side effects. `@repo/grid` and `@repo/form` now declare `sideEffects: false` in their manifests (no module in either runs anything on import — `packages/app-kit`'s composition test asserts the declaration), so Rollup drops the modules nothing reaches. The grid's table itself (`app-grid-<hash>.js`) was already behind the three list routes since D14.9's split and is not what moved.",
+    "What did NOT leave, stated so it is not re-litigated: react-hook-form, Radix's select and the floating-ui stack under it (~55 kB of source, ~15 kB gzipped) are still in the entry. The three list route files read their resource config for `editSurfaceOf`, and a typed resource config carries its field adapters (ADR-0063 §1) — the form machinery arrives through the config, not through a barrel, and moving it is a decision about what a route file may read (ADR-0040) rather than a budget setting. It is the next lever on this row and belongs with D22's shared-composition wave. And the `lv` catalogue was never here: ADR-0046 §3 has loaded every non-source locale through `resourcesToBackend` since D7.1, one chunk per `<locale>/<namespace>.json` (`account-<hash>.js`, `common-<hash>.js` and their siblings in dist/assets/), so that half of FE-03's evidence was false when it was written.",
+    "The rule this file now runs under (ADR-0073 §5): every ceiling is at most 15% over the baseline beside it, and `scripts/size.mjs` — one script at the repository root since this step, addressed by the directory Turbo runs it in, in place of the copy each app carried — refuses the file otherwise. `scripts/size.test.mjs` reads this file and asserts the rule holds on the committed numbers. A raise past the line is therefore a diff that shows both numbers, which is what the review asked for by name (FE-02)."
   ],
   "baseline": {
-    "measuredAt": "2026-09-17",
-    "step": "D20.2",
-    "js": 379434,
-    "css": 14862,
-    "entry": 175684,
+    "measuredAt": "2026-09-18",
+    "step": "D20.9",
+    "js": 380323,
+    "css": 14911,
+    "entry": 160915,
     "chunks": {
       "query": 10386,
       "react": 69054,
@@ -38,7 +42,7 @@
   "budgets": {
     "js": 399000,
     "css": 15600,
-    "entry": 185000
+    "entry": 169000
   },
   "chunks": {
     "query": 11500,

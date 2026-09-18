@@ -20,8 +20,10 @@ import { readFileSync } from "node:fs";
  * eighteen lines of a constant each app owns: the two versions are meant to
  * move independently, and the reason the value is a tracked file at all is that
  * it belongs to one buildable thing. The same reasoning covers the copied
- * `scripts/size.mjs` and `scripts/i18n.mjs`, each of which says so in its own
- * header.
+ * `scripts/i18n.mjs`, which says so in its own header. (`scripts/size.mjs`
+ * was the other copy until `D20.9` moved it to the repository root: its one
+ * per-app line was a fact `package.json` already states, and a rule that lived
+ * in two copies could not be tested — ADR-0073 §5.)
  *
  * The obligation the record names comes with it: **bump the field or the
  * version lies.** It says `0.0.0` until the first release does.

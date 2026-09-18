@@ -1,4 +1,4 @@
-import { waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createQueryClient } from "@/shared/api/query-client";
@@ -276,6 +276,45 @@ describe("the route tree under the pseudo-locale", () => {
     });
 
     expect(unaccented(document.body as HTMLElement)).toEqual([]);
+
+    unmount();
+  });
+});
+
+/**
+ * The other locale arrives lazily, and arrives (`D20.9`, ADR-0046 §3 as
+ * carried by ADR-0073 §5).
+ *
+ * Every suite above renders in `en`, which the harness hands to the instance
+ * eagerly; nothing in the tier ever needed `lv` to resolve. The app's `lv` is
+ * a different path entirely — one dynamic `import()` per namespace through
+ * `resourcesToBackend`, a chunk the entry does not carry — and a path no test
+ * walks is a path that can break unnoticed: a loader whose specifier no longer
+ * matches the tree is a Latvian operator reading English with no error
+ * anywhere (the failure mode `createI18n`'s `partialBundledLanguages` comment
+ * names). So one screen switches, and the sentence asserted is a Latvian one
+ * that only the lazy catalogue could have supplied.
+ */
+describe("the lazy catalogue", () => {
+  it("renders an lv sentence after the switch, so the chunk resolved", async () => {
+    const queryClient = createQueryClient();
+    const { i18n, unmount } = renderApp({
+      initialPath: "/",
+      store: storeFor("/"),
+      queryClient,
+    });
+
+    // The dashboard, in the eagerly bundled source language.
+    await screen.findByRole("heading", { name: "Dashboard" });
+    expect(i18n.instance.hasResourceBundle("lv", "dashboard")).toBe(false);
+
+    await i18n.changeLocale("lv");
+
+    // Not in any eager catalogue: it is `dashboard:title` from
+    // `locales/lv/dashboard.json`, which only the backend's `import()` loads.
+    await screen.findByRole("heading", { name: "Vadības panelis" });
+    expect(i18n.instance.hasResourceBundle("lv", "dashboard")).toBe(true);
+    expect(document.documentElement.lang).toBe("lv-LV");
 
     unmount();
   });

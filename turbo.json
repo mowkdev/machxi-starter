@@ -36,6 +36,7 @@
     },
     "size": {
       "dependsOn": ["build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/size.mjs"],
       "outputs": []
     },
     "test:e2e": {

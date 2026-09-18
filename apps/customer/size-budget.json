@@ -45,14 +45,18 @@
     "The one row worth naming is `react`, which is the same chunk in both apps: 60419 -> 69054 (+8.6 kB, +14%). React 19.2.8 -> 19.3.0 is the whole of it, and it is why both budget files are being edited in a step that touched no component. The rest of the growth is spread across zod 4.4.3 -> 4.6.5, lucide-react 1.33 -> 1.47, the three @tanstack packages and react-hook-form 7.85 -> 7.88 — each a few kilobytes, none of them a decision this repository makes.",
     "Every new ceiling is ~5% over the measurement beside it, which is the headroom rule both files have run at since D14.9 and which ADR-0073 §5 is about to make `scripts/size.mjs` enforce at D20.9 (ceiling at most 15% over baseline, re-measured in the diff that raises it). Nothing here is near that cap, and the 60%-of-js rule on the entry is nowhere near binding.",
     "Measured in the bytes this file stores, against the D19.5 baseline: js 309767 -> 327012 (+17.2 kB), css 14026 -> 14026 (to the byte), entry 111879 -> 120324 (+8.4 kB), and the chunks query 10591 -> 10376, react 60419 -> 69054, router 27382 -> 27491. css did not move at all, which is what \"no component changed\" looks like from here; the entry's +8.4 kB is React and the query client, both of which this app pays above the router.",
-    "**Operator-visible**: the headroom D19.5's note said was down to 2% is restored — js 5.2%, entry 5.5%, react 5.7%. The next customer-app step is D20.9, which lowers the entry ceiling rather than raising it: the `lv` catalogue moves behind the i18next backend there, and the baseline below is what that step re-measures against."
+    "**Operator-visible**: the headroom D19.5's note said was down to 2% is restored — js 5.2%, entry 5.5%, react 5.7%. The next customer-app step is D20.9, which lowers the entry ceiling rather than raising it: the `lv` catalogue moves behind the i18next backend there, and the baseline below is what that step re-measures against.",
+    "RE-BASELINED at D20.9 (ADR-0073 §5), and the first time a ceiling in this file has gone DOWN — the lowering the D20.2 note above said this step would bring. Measured in the bytes this file stores, against the D20.2 baseline: js 327012 -> 327635 (+623), css 14026 -> 14075 (+49 bytes, D20.8's reduced-motion rule), entry 120324 -> 107600 (-12.7 kB, -10.6%), the three vendor chunks unmoved to the byte. The entry ceiling is 127000 -> 113000, ~5% over the new measurement; js and css keep their ceilings, ~5% and ~7% over what they measure.",
+    "What left the entry: react-hook-form (35 kB of source) and `@repo/form`'s field adapters with the Radix primitives they draw. This app's composition root imports `@repo/form` for three things — the namespace, the zod installer and its readiness gate — through the package's barrel, and until this step the barrel's other exports travelled with them: a barrel import keeps every re-exported module in the graph, and each one's top-level `forwardRef`/`createContext` calls counted as side effects. `@repo/form` and `@repo/grid` now declare `sideEffects: false` (nothing in either runs anything on import — `packages/app-kit`'s composition test asserts the declaration), so Rollup keeps the three exports and drops the rest. The form machinery is still paid, once, behind the guard, in the account routes' chunk where D12.6 said it lands.",
+    "What is still in the entry is the list the D12.6 note wrote: zod, axios, i18next, sonner and tailwind-merge, plus the eager `en` catalogues — every one an app-root decision (ADR-0034's one query client and root `<Toaster>`, ADR-0046 §13's zod locale bound at init, ADR-0046 §3's eager source locale). None moves without moving a decision, and this step moves none. The `lv` catalogue was never here: it has loaded through `resourcesToBackend` since D12.1 inherited the admin's factory, one chunk per `<locale>/<namespace>.json` (`account-<hash>.js`, `home-<hash>.js` and their siblings beside `lv-<hash>.js`, zod's own map).",
+    "The rule this file now runs under (ADR-0073 §5): every ceiling is at most 15% over the baseline beside it, and `scripts/size.mjs` — one script at the repository root since this step, addressed by the directory Turbo runs it in, in place of the copy this app carried — refuses the file otherwise. `scripts/size.test.mjs` reads this file and asserts the rule holds on the committed numbers."
   ],
   "baseline": {
-    "measuredAt": "2026-09-17",
-    "step": "D20.2",
-    "js": 327012,
-    "css": 14026,
-    "entry": 120324,
+    "measuredAt": "2026-09-18",
+    "step": "D20.9",
+    "js": 327635,
+    "css": 14075,
+    "entry": 107600,
     "chunks": {
       "query": 10376,
       "react": 69054,
@@ -62,7 +66,7 @@
   "budgets": {
     "js": 344000,
     "css": 15100,
-    "entry": 127000
+    "entry": 113000
   },
   "chunks": {
     "query": 11500,

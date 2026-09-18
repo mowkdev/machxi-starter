@@ -19,8 +19,10 @@ import { chromium } from "@playwright/test";
  * **A tool, not a spec.** It writes files and asserts nothing, so it has no
  * business in a tier that is supposed to go red on a defect — and it drives
  * the account's own theme and density, which ADR-0052's data rules keep out
- * of a suite that runs unattended. It sits beside `size.mjs` and `i18n.mjs`
- * for the same reason those do: app-level tooling that produces evidence.
+ * of a suite that runs unattended. It sits beside `i18n.mjs` for the same
+ * reason that does: app-level tooling that produces evidence. (`size.mjs` sat
+ * here too until `D20.9` moved it to the repository root, one copy for both
+ * apps — ADR-0073 §5.)
  *
  *   pnpm --filter admin shots
  *

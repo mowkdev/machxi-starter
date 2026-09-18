@@ -10,7 +10,7 @@
     "i18n:check": "node scripts/i18n.mjs",
     "i18n:extract": "node scripts/i18n.mjs --write",
     "lint": "eslint . --max-warnings 0",
-    "size": "node scripts/size.mjs",
+    "size": "node ../../scripts/size.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
