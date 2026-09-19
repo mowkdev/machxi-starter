@@ -4,7 +4,7 @@ The manual/smoke tier of ADR-0021, and the API's living documentation until
 OpenAPI is generated. Built in implementation step 10 (see
 `../plan/0001-api-foundation.md`).
 
-- `machxi-api.postman_collection.json` — 207 requests and 631 assertions in 18
+- `machxi-api.postman_collection.json` — 212 requests and 646 assertions in 18
   folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
@@ -98,7 +98,24 @@ two refusals — `404` for a non-member, `403` for a member whose role is too lo
 address without, whose **responses are compared field for field**. That
 comparison is the enumeration property of ADR-0067 §2 asserted rather than
 described. `User › Invitations` then signs in as the invited account, accepts,
-leaves, and deletes the organization the run made.
+leaves, is invited again so that there is an offer to **decline** — the other
+consume, over `declinedAt` instead of `acceptedAt`, and the one write on an
+invitation an impersonated session may make (ADR-0067 §8) — and deletes the
+organization the run made.
+
+The decline is proved by the request **after** it rather than by its own `204`,
+which a route that stamped nothing would also answer: declining the same offer
+twice gets `409 CONFLICT`, the one-answer-for-five-refusals `That invitation is
+no longer pending`, which is the same shape as `Accepting it again is refused`
+above. It is `409` and not `404` because the row is still addressed to the
+caller — the invitee's read finds it and the guarded consume is what declines
+to write a second stamp.
+
+The second invitation is what makes the decline provable in a run that must be
+repeatable: §2 refuses a second _outstanding_ offer to one address in one
+organization, not a second offer after the first was consumed and the member
+left, and the invited address is a per-run one, so its `RATE_LIMIT_MAILBOX_MAX`
+counter starts fresh on every run rather than accumulating across them.
 
 **The invitation's link is the mailbox again** (ADR-0071 §5). Creating one now
 sends it, with a single-use token in the link's fragment, and newman can no more
@@ -154,16 +171,27 @@ swap itself needs the link, which arrives in a mailbox: the browser tier reads
 it from Mailpit and the integration tier proves the transaction, exactly as they
 do for `register` above.
 
-**Sign in with Google is one request, and it has two right answers** (ADR-0072
-§2). `Public` posts the start, which is the only step of the flow a collection
-can reach: the callback is a navigation carrying a code only Google mints, and
-the exchange needs the token that callback puts in a fragment — the integration
-tier drives both against a fake provider. The routes exist only where
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so a default clone
-answers `404 ROUTE_NOT_FOUND` and a configured one `200 { authorizationUrl }`
-with the transaction cookie; the test accepts either and asserts the shape of
-whichever it got. The count above is the default clone's — a configured API
-runs one assertion more.
+**Sign in with Google is three requests, and every one of them has two right
+answers** (ADR-0072 §2). `Public` posts the start, which is the only step of the
+flow that can succeed here — a sign-in needs a code only Google mints — so the
+other two are driven as negatives: a callback this browser never started, which
+still proves the `302` and the fragment it carries, and a handoff nobody minted,
+which is the one `401 UNAUTHENTICATED` that spent, expired, unknown and unbound
+all share. What needs a live transaction is the integration tier's, against a
+fake provider. All three routes exist only where `GOOGLE_CLIENT_ID` and
+`GOOGLE_CLIENT_SECRET` are both set, so a default clone answers
+`404 ROUTE_NOT_FOUND` and a configured one answers for real; each test accepts
+either and asserts the shape of whichever it got. The count above is the default
+clone's — a configured API runs one assertion more, on the start.
+
+The callback is also **the one request here that does not follow its redirect,
+and the other response that is not the envelope**, beside the metrics scrape.
+Every outcome of it is a `302`
+to the customer app with the result in the URL fragment, so there is no envelope
+to assert: the collection-level test exempts a `302` the way it exempts the
+metrics scrape and asserts a `Location` instead, and the request turns redirects
+off, because what is under test is this API's answer rather than the page at the
+other end of it. The no-store invariant still covers it.
 
 **The ways into an account are read and refused, never removed** (ADR-0072 §3).
 `User › Profile` reads the customer fixture's Google identity on `me` — the
@@ -206,7 +234,7 @@ verification limiter's `3 / hour / IP + email` — and only ever against
 **per-run** addresses, which is why both `resend-verification` requests generate
 one rather than using a fixture: a fixed address there would answer `429` on the
 fourth run of the hour and the assertion is that the two answers are identical —
-and, since the mail flows joined `Public` and recovery joined both auth folders, 191 of the global
+and, since the mail flows joined `Public` and recovery joined both auth folders, 196 of the global
 `RATE_LIMIT_GLOBAL_MAX` per 15 minutes (the three health probes and the metrics scrape sit outside every
 limiter). On the committed development profile that is a small share of the
 window, which is the point of ADR-0069: one window holds this collection, the

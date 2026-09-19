@@ -94,10 +94,15 @@ describe("following an invitation link", () => {
     expect(email).toHaveValue(RECEIVED_INVITATION.email);
     expect(email).toHaveAttribute("readonly");
 
-    // And the other way in, for somebody who does have an account.
+    /*
+     * And the other way in, for somebody who does have an account — which
+     * carries them to their own invitation list rather than back to this
+     * address, where the token has already been struck and the offer would
+     * read as a dead link.
+     */
     expect(
       screen.getByRole("link", { name: "Already have an account? Sign in" }),
-    ).toBeInTheDocument();
+    ).toHaveAttribute("href", "/login?redirect=%2Faccount%2Finvitations");
 
     // Nothing was spent: the lookup is a read, and joining needs a session.
     expect(organizations.seen.lookedUp).toEqual([INVITATION_TOKEN]);
@@ -333,8 +338,9 @@ describe("following an invitation link", () => {
     ).toBeInTheDocument();
 
     expect(screen.queryByLabelText("Password")).toBeNull();
+    // The only way forward left, and it carries the same destination.
     expect(
       screen.getByRole("link", { name: "Already have an account? Sign in" }),
-    ).toBeInTheDocument();
+    ).toHaveAttribute("href", "/login?redirect=%2Faccount%2Finvitations");
   });
 });

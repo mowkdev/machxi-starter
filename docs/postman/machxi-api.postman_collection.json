@@ -20,12 +20,21 @@
           "// below hold for all of them, and a new request inherits them for free.",
           "const status = pm.response.code;",
           "",
-          "// `GET /metrics` is the one response in this API that is not the envelope",
+          "// `GET /metrics` is one of the two responses in this API that are not the",
+          "// envelope — the Google callback's redirect below is the other",
           "// (ADR-0066 §2, the delta on ADR-0012): a Prometheus exposition is a wire",
           "// format a scraper defined, and wrapping it would make it unparseable by",
           "// every client that exists. Its own request asserts its shape; the no-store",
           "// invariant below still applies to it.",
           "const isMetricsScrape = pm.request.url.getPath() === \"/metrics\";",
+          "",
+          "// Keyed on the **path** and not on the status, for the reason the scrape",
+          "// above is: an exemption written as `status === 302` would excuse the next",
+          "// request that ever redirects, and the invariant this file advertises is",
+          "// the envelope on every response of every route but these two.",
+          "const isGoogleCallback = pm.request.url",
+          "  .getPath()",
+          "  .endsWith(\"/auth/google/callback\");",
           "",
           "pm.test(\"envelope: the response has the documented shape\", function () {",
           "  if (isMetricsScrape) {",
@@ -33,6 +42,15 @@
           "      pm.response.headers.get(\"Content-Type\") || \"\",",
           "      \"Content-Type\",",
           "    ).to.include(\"text/plain\");",
+          "    return;",
+          "  }",
+          "",
+          "  // The Google callback is the one answer in this API that is a navigation",
+          "  // rather than a resource (ADR-0072 §2): a `302` whose whole result is in",
+          "  // the URL fragment, with no envelope to carry it. Its own request asserts",
+          "  // the fragment; the no-store invariant below still applies to it.",
+          "  if (isGoogleCallback && status === 302) {",
+          "    pm.expect(pm.response.headers.get(\"Location\"), \"Location\").to.be.a(\"string\");",
           "    return;",
           "  }",
           "",
@@ -5619,7 +5637,125 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "public", "auth", "google", "start"]
             },
-            "description": "The start of a sign-in with Google (ADR-0072 §2): a `POST` from the customer app's own client, never a navigation, answering the authorization URL and setting `__Host-machxi.oidc` — the signed transaction that binds the callback to this browser. Behind a limiter of its own on `RATE_LIMIT_LOGIN_MAX`'s number, keyed on the source address alone.\n\nThe one request of the flow the collection can reach. The callback is a navigation from Google carrying a code only Google can mint, and the exchange needs the token that callback puts in a fragment; the integration tier drives both against a fake provider, and the operator's walk with real credentials drives Google itself.\n\nA default clone has no Google client, so this answers `404 ROUTE_NOT_FOUND` — the routes are mounted only when both halves of the client are set — and the test accepts that answer as well as the configured one."
+            "description": "The start of a sign-in with Google (ADR-0072 §2): a `POST` from the customer app's own client, never a navigation, answering the authorization URL and setting `__Host-machxi.oidc` — the signed transaction that binds the callback to this browser. Behind a limiter of its own on `RATE_LIMIT_LOGIN_MAX`'s number, keyed on the source address alone.\n\nThe one request of the flow that can succeed here, and the two below it are negatives for the reason it is: the callback is a navigation from Google carrying a code only Google can mint, and the exchange needs the token that callback puts in a fragment. The integration tier drives both against a fake provider, and the operator's walk with real credentials drives Google itself.\n\nA default clone has no Google client, so this answers `404 ROUTE_NOT_FOUND` — the routes are mounted only when both halves of the client are set — and the test accepts that answer as well as the configured one."
+          }
+        },
+        {
+          "name": "Finish a sign-in this browser did not start",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Two honest answers, and this accepts either (ADR-0072 §2): the routes",
+                  "// exist only where GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set.",
+                  "if (pm.response.code === 404) {",
+                  "  pm.test(\"no Google client configured: 404 ROUTE_NOT_FOUND\", function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"ROUTE_NOT_FOUND\");",
+                  "  });",
+                  "} else {",
+                  "  pm.test(\"302 to the customer app with #error and nothing else\", function () {",
+                  "    pm.response.to.have.status(302);",
+                  "",
+                  "    const location = pm.response.headers.get(\"Location\") || \"\";",
+                  "    const hash = location.indexOf(\"#\");",
+                  "",
+                  "    pm.expect(hash, \"the result rides in the fragment\").to.be.above(-1);",
+                  "",
+                  "    // `and nothing else in the fragment` asserted as the whole of it,",
+                  "    // which is also how no credential leaves on a refusal.",
+                  "    pm.expect(location.slice(hash + 1)).to.eql(\"error=UNAUTHENTICATED\");",
+                  "    pm.expect(location.slice(0, hash)).to.match(/\\/auth\\/google$/);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/google/callback?state=a-state-this-browser-never-held&code=a-code-google-never-minted",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "google", "callback"],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "a-state-this-browser-never-held"
+                },
+                {
+                  "key": "code",
+                  "value": "a-code-google-never-minted"
+                }
+              ]
+            },
+            "description": "The one navigation in this API, and the one answer that is not an envelope (ADR-0072 §2): every outcome of the callback is a `302` to `CUSTOMER_APP_URL/auth/google` carrying `#token=…` or `#error=…` and nothing else, because a fragment reaches no server log and no `Referer` header.\n\nA negative is all a collection can drive — a sign-in needs a code only Google mints — and it still proves the shape the customer app parses. With no transaction cookie there is nothing for this `state` to match, so the callback refuses before it spends a request on Google, clears the cookie it did not get and answers the generic `UNAUTHENTICATED` that a declined consent, a mismatched `state` and a refused code all share.\n\nRedirects are **not followed** here: what is under test is this API's answer, not the page at the other end of it.\n\nA default clone has no Google client, so this answers `404 ROUTE_NOT_FOUND` — the routes are mounted only when both halves of the client are set — and the test accepts that answer as well as the configured one."
+          }
+        },
+        {
+          "name": "Exchange a handoff nobody minted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Two honest answers, and this accepts either (ADR-0072 §2): the routes",
+                  "// exist only where GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set.",
+                  "if (pm.response.code === 404) {",
+                  "  pm.test(\"no Google client configured: 404 ROUTE_NOT_FOUND\", function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"ROUTE_NOT_FOUND\");",
+                  "  });",
+                  "} else {",
+                  "  pm.test(\"401 UNAUTHENTICATED, and no session cookie of any kind\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\");",
+                  "",
+                  "    // The transaction cookie is cleared on every exchange, refusal",
+                  "    // included; nothing else may be written on one.",
+                  "    const written = pm.response.headers",
+                  "      .all()",
+                  "      .filter(function (h) { return h.key.toLowerCase() === \"set-cookie\"; })",
+                  "      .map(function (h) { return h.value; });",
+                  "",
+                  "    pm.expect(",
+                  "      written.every(function (v) { return v.indexOf(\".oidc=\") !== -1; }),",
+                  "      \"only the transaction cookie is touched: \" + written.join(\" | \"),",
+                  "    ).to.be.true;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this-handoff-was-never-minted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/auth/google/exchange",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "public", "auth", "google", "exchange"]
+            },
+            "description": "The last step of the flow, driven from the only end a collection has (ADR-0072 §2). A handoff that is **spent, expired, unknown or unbound** is one indistinguishable `401 UNAUTHENTICATED` — the same posture the mail flows' tokens have (ADR-0071 §3) — so the token below stands for all four, and a spent one in particular: this run never holds a live handoff, because the callback that mints one carries a code only Google can issue.\n\nThat single answer is the property worth asserting here. Which refusal it was, and the binding that makes a relayed token one of them, are the integration tier's against a fake provider."
           }
         },
         {
@@ -6993,6 +7129,141 @@
           }
         },
         {
+          "name": "Invite the account again, so there is an offer to decline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201, pending again for the same address\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "",
+                  "  const invitation = pm.response.json().data;",
+                  "",
+                  "  pm.expect(invitation.status).to.eql(\"pending\");",
+                  "  pm.expect(invitation.email).to.eql(pm.environment.get(\"newUserEmail\"));",
+                  "});",
+                  "",
+                  "pm.environment.set(\"declinedInviteId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUserEmail}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/orgs/{{newOrgId}}/invitations",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "orgs",
+                "{{newOrgId}}",
+                "invitations"
+              ]
+            },
+            "description": "The owner's request again, and it is allowed only because the first offer has been consumed: ADR-0067 §2 refuses a *second outstanding* offer to one address in one organization, not a second offer after the first was accepted and the member left.\n\nIt is here rather than in the folder above because the decline below needs an offer that nothing else in the run is asserting about, and because the invited address is a per-run one — so the second message costs `RATE_LIMIT_MAILBOX_MAX` nothing that a second run would inherit (ADR-0071 §5)."
+          }
+        },
+        {
+          "name": "Decline the invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations/{{declinedInviteId}}/decline",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "invitations",
+                "{{declinedInviteId}}",
+                "decline"
+              ]
+            },
+            "description": "The other half of the invitee's surface (ADR-0067 §4): the same atomic consume acceptance makes, over `declinedAt` instead of `acceptedAt`, so an offer declined is spent and a decline racing an accept has exactly one winner (ADR-0067 §2).\n\nIt is the one write on an invitation an **impersonated** session may make, and the route says so: ADR-0067 §8 excludes joining somebody's tenant, and declining ends an offer without creating a membership.\n\nScoped by the caller's own address rather than by anything in the request — an id addressed to somebody else is the invitee's `404`, which is `Another invitee's invitation is not mine to accept`, at the top of this folder.\n\nThat it spent the offer is the request after it; that it created no membership is the switcher's list below that."
+          }
+        },
+        {
+          "name": "Declining it again is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 CONFLICT\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"CONFLICT\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{inviteeAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/user/invitations/{{declinedInviteId}}/decline",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "invitations",
+                "{{declinedInviteId}}",
+                "decline"
+              ]
+            },
+            "description": "What makes the `204` above provable, and the mirror of `Accepting it again is refused` further up: a decline that stamped nothing would answer `204` twice and the run would not notice.\n\n`409` rather than `404` because the row is still **addressed to the caller** — the invitee's read finds it, and the guarded consume is what declines to write a second stamp. That is the same one-answer-for-five-refusals `That invitation is no longer pending` an accepted, revoked, expired or organization-deleted offer gets (ADR-0067 §2)."
+          }
+        },
+        {
           "name": "And the organization is gone from my switcher",
           "event": [
             {
@@ -7024,7 +7295,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "user", "orgs"]
             },
-            "description": "A membership is the one relation here that is hard-deleted: 'was a member and is not any more' is the row's absence."
+            "description": "A membership is the one relation here that is hard-deleted: \"was a member and is not any more\" is the row's absence.\n\nIt sits after the decline rather than after the leave because it answers for both: an invitation declined creates no membership, and this list is where a decline that quietly joined the caller — the acceptance one copy-paste away — would show up."
           }
         },
         {
