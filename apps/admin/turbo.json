@@ -1,6 +1,14 @@
 {
   "extends": ["//"],
   "tasks": {
+    // No cached output: this app type-checks without emitting (ADR-0062
+    // §3), and `tsc -b`'s incremental state is deliberately kept outside
+    // `dist-types/` (ADR-0073 §6, and `tsconfig.json` beside this file), so
+    // there is nothing here for the cache to restore — least of all the note
+    // that would tell the compiler the check had already been done.
+    "check-types": {
+      "outputs": []
+    },
     "build": {
       "outputs": ["dist/**"],
       "env": [

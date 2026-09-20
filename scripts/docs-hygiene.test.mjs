@@ -262,6 +262,225 @@ test("one Node major, stated in every place that states one", async () => {
   assert.ok([...majors][0], "no Node version found");
 });
 
+/**
+ * A JSON file that may carry comments. `turbo.json` and the workspace
+ * `tsconfig.json` files hold the reasoning for the settings this case is
+ * about; `JSON.parse` refuses a `//` line, and the two parsers that actually
+ * read these files — turbo's and TypeScript's — do not.
+ */
+const parseJsonc = (text) => {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") i += 1;
+      out += "\n";
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/"))
+        i += 1;
+      i += 1;
+      continue;
+    }
+    out += ch;
+  }
+  return JSON.parse(out);
+};
+
+/** A repo path as the manifests write it: forward slashes, no `./`, no tail. */
+const posix = (p) =>
+  p
+    .split(path.sep)
+    .join("/")
+    .replace(/^[.]\//, "")
+    .replace(/\/$/, "");
+
+/** A Turborepo `outputs` glob reduced to the directory the cache restores. */
+const cachedDir = (glob) => posix(glob.replace(/\/\*\*?$/, ""));
+
+const under = (file, dir) => file === dir || file.startsWith(`${dir}/`);
+
+/** `extends` as a list, whichever of its two shapes the file uses. */
+const extendsOf = (config) =>
+  config.extends === undefined
+    ? []
+    : [config.extends].flat().map((preset) => posix(preset));
+
+/**
+ * Whether the project emits the artifact its `outDir` is for. Every emitting
+ * workspace here takes the shared `composite.json` preset, which is where
+ * `declaration`, `emitDeclarationOnly` and the `noEmit: false` that undoes the
+ * base live; the two local spellings are accepted beside it so a project that
+ * stops extending the preset still answers truthfully.
+ */
+const emits = (config) =>
+  config.compilerOptions?.composite === true ||
+  config.compilerOptions?.emitDeclarationOnly === true ||
+  extendsOf(config).some((preset) => preset.endsWith("/composite.json"));
+
+/**
+ * Where `tsc` keeps a project's incremental state: the declared file, or
+ * TypeScript's own default — `<outDir>/<config>.tsbuildinfo` where there is an
+ * `outDir`, and `<config>.tsbuildinfo` beside the config where there is not.
+ * A `rootDir` moves that default; nothing here sets one, and the case asserts
+ * that rather than letting this guess at a shape it has never seen.
+ */
+const buildInfoOf = (rel, options) =>
+  options.tsBuildInfoFile
+    ? posix(options.tsBuildInfoFile)
+    : `${options.outDir ? `${posix(options.outDir)}/` : ""}${path.basename(rel, ".json")}.tsbuildinfo`;
+
+/**
+ * The offence, as one string, or `null`. A buildinfo under a cached output is
+ * restored by the very task whose result it decides — unless the project emits
+ * into that same directory, in which case the cache restores the artifact the
+ * compile produced and not merely a note saying it happened. A declared
+ * `outDir` is not enough on its own: a `noEmit` project can name one, and then
+ * the directory holds the note and nothing else, which is this case's subject.
+ */
+const decidesItsOwnResult = (rel, config, cached) => {
+  const options = config.compilerOptions ?? {};
+  const info = buildInfoOf(rel, options);
+  const dir = cached.find((d) => under(info, d));
+  if (!dir) return null;
+  if (options.outDir && under(posix(options.outDir), dir) && emits(config))
+    return null;
+  return `${rel} — ${info} under the cached ${dir}/`;
+};
+
+test("no tsconfig writes its buildinfo into a cached output", async () => {
+  // CI-07, and the same species as CI-01 and CI-02: a link of the gate that
+  // ran without checking anything. `check-types` caches `dist-types/**`, and
+  // the three apps kept `tsc -b`'s incremental state inside it. An app emits
+  // no declarations (ADR-0062 §3), so that directory held the marker and
+  // nothing else — restore it and the compiler reads "nothing to do" and exits
+  // `0`, which Turborepo then caches as a green. `apps/admin` sat red on seven
+  // errors under a replayed green until a dependency invalidated the cache.
+  // The rule (ADR-0073 §6): a cached task's restored outputs must not be able
+  // to decide the task's own result.
+  //
+  // A package is the exception the rule states rather than an oversight. Its
+  // `dist-types/` is the declaration emit, and ADR-0062 §3 requires a consumer
+  // to find every reference already up to date — `tsc -b` treats a composite
+  // project whose buildinfo is missing as out of date and rebuilds it, which
+  // would be one package's task writing into another's directory. So a
+  // buildinfo may sit under a cached output only where the emit sits with it.
+  const turboFiles = ["turbo.json"];
+  const configs = [];
+  for (const group of ["apps", "packages"]) {
+    for (const entry of await readdir(path.join(repoRoot, group), {
+      withFileTypes: true,
+    })) {
+      if (!entry.isDirectory()) continue;
+      const read = (name) =>
+        readFile(path.join(repoRoot, group, entry.name, name), "utf8").catch(
+          () => null,
+        );
+      if ((await read("turbo.json")) !== null)
+        turboFiles.push(`${group}/${entry.name}/turbo.json`);
+      const text = await read("tsconfig.json");
+      if (text === null) continue;
+      configs.push({
+        rel: `${group}/${entry.name}/tsconfig.json`,
+        config: parseJsonc(text),
+      });
+    }
+  }
+
+  // Every directory the task's cache restores anywhere in the repository: the
+  // root task table and each workspace's own `turbo.json`, which is where this
+  // repository puts per-package task configuration. The union rather than the
+  // entry that governs one workspace — a project that opts out of caching
+  // outputs today is one edit away from opting back in, and the place a
+  // compiler keeps its memory should not depend on that.
+  const cached = [
+    ...new Set(
+      (
+        await Promise.all(
+          turboFiles.map(async (rel) =>
+            parseJsonc(await readFile(path.join(repoRoot, rel), "utf8")),
+          ),
+        )
+      ).flatMap((turbo) =>
+        Object.entries(turbo.tasks ?? {})
+          .filter(([task]) => task.replace(/^.*#/, "") === "check-types")
+          .flatMap(([, task]) => task.outputs ?? [])
+          .filter((glob) => !glob.startsWith("!"))
+          .map(cachedDir),
+      ),
+    ),
+  ];
+  assert.ok(cached.length > 0, "`check-types` declares no cached outputs");
+  assert.ok(
+    turboFiles.length > 1,
+    "no workspace `turbo.json` read — per-package outputs would be invisible",
+  );
+
+  // A renamed workspace root, or a `tsconfig.json` this walk cannot parse,
+  // would make the assertions below pass by reading nothing at all.
+  assert.ok(configs.length > 10, `only ${configs.length} tsconfigs read`);
+  assert.ok(
+    configs.some(({ config }) => !config.compilerOptions?.outDir),
+    "no project checks without emitting — the shape the rule exists for",
+  );
+
+  // `rootDir` moves TypeScript's default buildinfo path out of `outDir`, and
+  // `buildInfoOf` does not model that. Nothing sets one; the day something
+  // does, this fails loudly rather than excusing a path it computed wrongly.
+  assert.deepEqual(
+    configs
+      .filter(({ config }) => config.compilerOptions?.rootDir !== undefined)
+      .map(({ rel }) => rel),
+    [],
+  );
+
+  assert.deepEqual(
+    configs
+      .map(({ rel, config }) => decidesItsOwnResult(rel, config, cached))
+      .filter(Boolean),
+    [],
+  );
+
+  // And the rule fires on the shapes it exists for, or "clean" above means
+  // only that nothing was checked.
+  const fires = (config) =>
+    decidesItsOwnResult("apps/x/tsconfig.json", config, ["dist-types"]);
+  const composite = "@repo/typescript-config/composite.json";
+  assert.ok(
+    fires({ compilerOptions: { tsBuildInfoFile: "dist-types/x.tsbuildinfo" } }),
+  );
+  // An `outDir` named by a project that emits nothing is the same defect
+  // spelled differently: the cache restores the marker and nothing else.
+  assert.ok(fires({ compilerOptions: { outDir: "dist-types" } }));
+  assert.equal(
+    fires({
+      extends: ["@repo/typescript-config/node.json", composite],
+      compilerOptions: { outDir: "dist-types" },
+    }),
+    null,
+  );
+  assert.equal(
+    fires({ compilerOptions: { tsBuildInfoFile: "tsconfig.tsbuildinfo" } }),
+    null,
+  );
+});
+
 /** A Content-Security-Policy string as a directive → sources map. */
 const directivesOf = (policy) =>
   Object.fromEntries(

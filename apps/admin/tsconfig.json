@@ -5,7 +5,13 @@
       "@/*": ["./src/*"]
     },
     "incremental": true,
-    "tsBuildInfoFile": "dist-types/tsconfig.tsbuildinfo"
+    // Beside the cached output, never inside it (ADR-0073 §6). `check-types`
+    // caches `dist-types/**`, so a buildinfo kept there is restored by the
+    // task whose result it decides: `tsc -b` reads "nothing to do" and exits
+    // `0` having checked nothing, and Turborepo caches that green. Here the
+    // compiler's memory is machine-local and gitignored (`*.tsbuildinfo`), so
+    // a restored cache can never answer for a run.
+    "tsBuildInfoFile": "tsconfig.tsbuildinfo"
   },
   "include": [
     "src",
