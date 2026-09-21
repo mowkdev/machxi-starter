@@ -741,19 +741,19 @@ export const createAuthMailFlows = ({
         // mailed to an address somebody else typed, and the session sweep
         // cannot see it. Recovery is the flow a person reaches when the
         // account is already in somebody else's hands, so a link that outlived
-        // it would hand the account back an hour later.
+        // it would hand the account back an hour later. **Every** outstanding
+        // link since ADR-0074 §5 — a reset is a credential event, and a second
+        // `reset_password` link or an onboarding one is the same way back in.
         //
         // **Before the account row's lock** (`D19.5`'s `security-reviewer`):
-        // the address change's confirm claims its `change_email` row and then
-        // writes the account, so a reset that held the account and then
-        // reached for that row would be the other half of a deadlock. Token
-        // rows of this purpose first, then the account — the confirm's order.
-        await accountTokens.supersede(
+        // every consume claims its token row and then writes the account, so
+        // a reset that held the account and then reached for those rows would
+        // be the other half of a deadlock. Token rows first, then the account
+        // — a consume's order. The one this request claimed above is already
+        // stamped, so the sweep does not count it.
+        await accountTokens.supersedeAll(
           ctx,
-          {
-            purpose: "change_email",
-            principal: { type: population, id: claimed.principalId },
-          },
+          { type: population, id: claimed.principalId },
           tx,
         );
 
@@ -817,9 +817,10 @@ export const createAuthMailFlows = ({
         // **A Google handoff minted before this commit dies with it**
         // (`D19.5`'s `security-reviewer`): a sixty-second `federated_login`
         // token is a session not yet issued, and the sweep below cannot see
-        // one that has not been exchanged. After the account row's lock, the
-        // order a sign-in takes too — account, then its handoff — so the two
-        // cannot deadlock.
+        // one that has not been exchanged. Swept again here although the
+        // sweep above covered the purpose: the callback mints behind the
+        // account row's lock — account, then its handoff — so one minted
+        // while this request waited for that lock is only visible after it.
         await accountTokens.supersede(
           ctx,
           {

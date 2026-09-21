@@ -8,6 +8,7 @@ import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
 import type { Principal, RequestContext } from "../../core/context/index.js";
+import type { AccountTokens } from "../../core/tokens/index.js";
 import {
   currentPasswordInvalid,
   REVOKE_REASONS,
@@ -55,6 +56,11 @@ export interface UsersLifecycleServiceDeps {
     OrganizationsService,
     "ensurePersonalOrganizationFor" | "deletePersonalOrganizationFor"
   >;
+  /**
+   * ADR-0074 §5's one sweep, narrowed to it: an account deletion is a
+   * credential event, so it spends every link the account holds.
+   */
+  readonly accountTokens: Pick<AccountTokens, "supersedeAll" | "supersede">;
   /** Runs `fn` inside one database transaction (ADR-0006). */
   readonly transaction: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly now: () => Date;
@@ -81,14 +87,47 @@ export const createUsersLifecycleService = ({
   hasher,
   sessions,
   organizations,
+  accountTokens,
   transaction,
   now,
   self,
   readWritable,
   readSelf,
   presentOne,
-}: UsersLifecycleServiceDeps) =>
-  ({
+}: UsersLifecycleServiceDeps) => {
+  /**
+   * **Nothing of a deleted account stays redeemable** (ADR-0074 §5, additive
+   * on ADR-0028; `DB-11`). The sessions are revoked and the federated
+   * identities go with the row; the account's mailed links are the third
+   * credential table, and every consume re-checking the principal is a
+   * defence behind this rather than a reason to skip it.
+   *
+   * Swept **before and after** the account row is written, the reset's shape
+   * (`D28.5`'s `security-reviewer`). Before, because every consume claims its
+   * token row and then writes the account, and the opposite order here would
+   * be a deadlock with it. After, for the federated handoff alone: the Google
+   * callback mints it behind the account row's lock, so one minted while this
+   * delete waited for that lock is only visible from here.
+   */
+  const spendEveryLink = (
+    ctx: RequestContext,
+    userId: string,
+    tx: DbExecutor,
+  ): Promise<number> =>
+    accountTokens.supersedeAll(ctx, { type: "user", id: userId }, tx);
+
+  const spendLateHandoff = (
+    ctx: RequestContext,
+    userId: string,
+    tx: DbExecutor,
+  ): Promise<number> =>
+    accountTokens.supersede(
+      ctx,
+      { purpose: "federated_login", principal: { type: "user", id: userId } },
+      tx,
+    );
+
+  return {
     /**
      * `POST /api/v1/admin/users` — staff create an account directly, with an
      * initial password.
@@ -204,6 +243,8 @@ export const createUsersLifecycleService = ({
       const record = await readWritable(id);
 
       const revoked = await transaction(async (tx) => {
+        await spendEveryLink(ctx, record.id, tx);
+
         // `softDelete` only matches a *live* row, and its boolean is the one
         // thing that sees a concurrent delete: the read above happened outside
         // this transaction, so two callers can both pass it and the loser
@@ -224,6 +265,8 @@ export const createUsersLifecycleService = ({
           at,
           tx,
         );
+
+        await spendLateHandoff(ctx, record.id, tx);
 
         return sessions.revokeSessionsFor(ctx, {
           principalId: record.id,
@@ -304,6 +347,8 @@ export const createUsersLifecycleService = ({
       }
 
       const revoked = await transaction(async (tx) => {
+        await spendEveryLink(ctx, record.id, tx);
+
         // The boolean is what sees a concurrent delete: `readSelf` ran outside
         // this transaction, so the same account deleting itself from two
         // devices can pass it twice, and the loser would otherwise update
@@ -321,6 +366,8 @@ export const createUsersLifecycleService = ({
           at,
           tx,
         );
+
+        await spendLateHandoff(ctx, record.id, tx);
 
         return sessions.revokeSessionsFor(ctx, {
           principalId: record.id,
@@ -343,7 +390,8 @@ export const createUsersLifecycleService = ({
         "user account deleted by its owner",
       );
     },
-  }) as const;
+  } as const;
+};
 
 export type UsersLifecycleService = ReturnType<
   typeof createUsersLifecycleService

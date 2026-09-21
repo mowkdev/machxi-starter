@@ -13,7 +13,6 @@ import type {
   UserResource,
   UserRole,
 } from "@repo/contracts";
-import { TOKEN_PURPOSES } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
@@ -253,6 +252,7 @@ export const createUsersService = ({
     hasher,
     sessions,
     organizations,
+    accountTokens,
     transaction,
     now,
     self,
@@ -414,19 +414,18 @@ export const createUsersService = ({
       const passwordHash = await hasher.hash(body.password);
 
       const { revoked, unlinked } = await transaction(async (tx) => {
-        // The administrative twin of `changePassword`'s sweep, and it belongs
-        // here more than there: the plausible reason for a staff reset is that
-        // the account is compromised, so a `change_email` link the attacker
-        // asked for is exactly what must not survive it. **Before the account
-        // row's lock** (`D19.5`'s `security-reviewer`): the address change's
-        // confirm claims that row and then writes the account, and the
-        // opposite order here would be a deadlock with it.
-        await accountTokens.supersede(
+        // **Every outstanding link dies with the password** (ADR-0074 §5;
+        // `API-09`): the plausible reason for a staff reset is that the
+        // account is compromised, and a `change_email` link the attacker asked
+        // for, a `reset_password` link they requested to a mailbox they read
+        // or a `verify_email` link are each a way back in that the session
+        // sweep below cannot see. **Before the account row's lock** (`D19.5`'s
+        // `security-reviewer`): every consume claims its token row and then
+        // writes the account, and the opposite order here would be a deadlock
+        // with it.
+        await accountTokens.supersedeAll(
           ctx,
-          {
-            purpose: "change_email",
-            principal: { type: "user", id: record.id },
-          },
+          { type: "user", id: record.id },
           tx,
         );
 
@@ -465,8 +464,10 @@ export const createUsersService = ({
 
         // A Google handoff minted before this commit dies with it, for the
         // reset by mail's reason (`D19.5`'s `security-reviewer`): it is a
-        // session not yet issued, which the sweep below cannot see. After
-        // the lock, the order a sign-in takes — account, then its handoff.
+        // session not yet issued, which the sweep below cannot see. Swept
+        // **again** after the lock, which the sweep above could not do: the
+        // callback mints behind this same lock — account, then its handoff —
+        // so one minted while this request waited is only visible from here.
         await accountTokens.supersede(
           ctx,
           {
@@ -571,18 +572,6 @@ export const createUsersService = ({
         // `create`'s split (ADR-0071 §3) where it cannot go stale.
         const record = await readWritable(id, tx);
 
-        const updated = await repository.setEmail(
-          record.id,
-          body.email,
-          at,
-          tx,
-        );
-
-        // The statement's own uniqueness clause found what the read above did
-        // not — an address claimed in between. The throw is what rolls the
-        // write back.
-        if (updated === undefined) throw userEmailTaken();
-
         /*
          * **Every live link this account holds dies with the old address**
          * (`D18.10`'s `security-reviewer`; ADR-0071 §7, amended).
@@ -598,19 +587,29 @@ export const createUsersService = ({
          * a link is about to be resent to"); `reset_password` sets a password
          * on an account whose sessions this endpoint deliberately leaves alone.
          *
-         * Iterated over `TOKEN_PURPOSES` rather than listed, so the rule is
-         * "an address change spends every link" and a fifth purpose is covered
-         * on the day it is declared. A purpose that should *survive* an
-         * address change has to say so here, which is the safe direction for
-         * the omission to point.
+         * `supersedeAll` rather than a list (ADR-0074 §5), so the rule is
+         * "an address change spends every link" and a purpose is covered on
+         * the day it is declared. Before the write, in a consume's order —
+         * token rows, then the account (`D28.5`'s `security-reviewer`); a
+         * refused write rolls the sweep back.
          */
-        for (const purpose of TOKEN_PURPOSES) {
-          await accountTokens.supersede(
-            ctx,
-            { purpose, principal: { type: "user", id: record.id } },
-            tx,
-          );
-        }
+        await accountTokens.supersedeAll(
+          ctx,
+          { type: "user", id: record.id },
+          tx,
+        );
+
+        const updated = await repository.setEmail(
+          record.id,
+          body.email,
+          at,
+          tx,
+        );
+
+        // The statement's own uniqueness clause found what the read above did
+        // not — an address claimed in between. The throw is what rolls the
+        // write back.
+        if (updated === undefined) throw userEmailTaken();
 
         // Both addresses, because ADR-0071 §7 requires the trail to name them,
         // and the subject, because the actor here is somebody else — the
@@ -716,23 +715,24 @@ export const createUsersService = ({
       const passwordHash = await hasher.hash(body.newPassword);
 
       const revoked = await transaction(async (tx) => {
-        await repository.updatePasswordHash(principal.id, passwordHash, at, tx);
-
         // In the same commit as the new hash, and for the reason the session
         // sweep beside it is (`D18.9`'s `security-reviewer`): a pending
         // `change_email` link is a credential this account did not choose and
         // this sweep cannot see, mailed to an address somebody else typed. An
         // attacker who briefly held the password would otherwise still own the
         // account an hour after it was taken back — the link confirms, the
-        // address moves, and the next `forgot` goes to their mailbox.
-        await accountTokens.supersede(
+        // address moves, and the next `forgot` goes to their mailbox. Every
+        // purpose rather than that one since ADR-0074 §5: a password change is
+        // a credential event, and a reset link requested before it is a
+        // second way round the password just chosen. Before the write, in a
+        // consume's order — token rows, then the account.
+        await accountTokens.supersedeAll(
           ctx,
-          {
-            purpose: "change_email",
-            principal: { type: "user", id: principal.id },
-          },
+          { type: "user", id: principal.id },
           tx,
         );
+
+        await repository.updatePasswordHash(principal.id, passwordHash, at, tx);
 
         return sessions.revokeSessionsFor(ctx, {
           principalId: principal.id,

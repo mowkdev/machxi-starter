@@ -227,10 +227,10 @@ export const createAuthSessions = ({
         : new Date(at.getTime() + impersonationSessionTtlSec * 1000);
 
     /*
-     * An impersonated mint is exempt (ADR-0073 §3): those sessions are
-     * counted against the customer but are never the ones revoked, and a
-     * support operator opening an account must not end the customer's oldest
-     * device to make room for themselves.
+     * An impersonated mint is exempt (ADR-0074 §4, the delta on ADR-0073 §3):
+     * those sessions are neither counted against the customer nor revoked by
+     * the cap, and a support operator opening an account must not end the
+     * customer's oldest device to make room for themselves.
      */
     const capped = impersonation === undefined && maxSessionsPerPrincipal > 0;
 

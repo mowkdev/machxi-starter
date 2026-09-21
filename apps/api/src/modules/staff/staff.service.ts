@@ -9,7 +9,7 @@ import type {
   UpdateStaffBody,
   UpdateStaffProfileBody,
 } from "@repo/contracts";
-import { SUPER_ADMIN_ROLE, TOKEN_PURPOSES } from "@repo/contracts";
+import { SUPER_ADMIN_ROLE } from "@repo/contracts";
 import type { DbExecutor } from "@repo/db";
 
 import type { LimitedHasher } from "../../core/auth/index.js";
@@ -559,8 +559,6 @@ export const createStaffService = ({
         assertMayActOnSuperAdmin(ctx, target);
         assertHasOnboarded(ctx, target);
 
-        await repository.updatePasswordHash(target.id, passwordHash, at, tx);
-
         // Every live link this operator holds dies with the password they did
         // not choose — §6's rule as `D18.9` set it down and §7 restates: a
         // password is written when the account may be in somebody else's
@@ -568,14 +566,17 @@ export const createStaffService = ({
         // cannot see. Unreachable for `staff_onboarding` while the guard above
         // stands, and written anyway, because the guard is a rule somebody may
         // relax and this is the property that has to survive it
-        // (`D18.11`'s `security-reviewer`).
-        for (const purpose of TOKEN_PURPOSES) {
-          await accountTokens.supersede(
-            ctx,
-            { purpose, principal: { type: "staff", id: target.id } },
-            tx,
-          );
-        }
+        // (`D18.11`'s `security-reviewer`). One call rather than a loop since
+        // ADR-0074 §5, so this path and its users twin cannot drift again;
+        // before the write, in a consume's order — token rows, then the
+        // account (`D28.5`'s `security-reviewer`).
+        await accountTokens.supersedeAll(
+          ctx,
+          { type: "staff", id: target.id },
+          tx,
+        );
+
+        await repository.updatePasswordHash(target.id, passwordHash, at, tx);
 
         return {
           targetId: target.id,
@@ -655,25 +656,25 @@ export const createStaffService = ({
         // between would make the trail name an address the row had left.
         const target = await read(id, tx);
 
-        // The statement's own uniqueness clause sees what the read above could
-        // not: an address claimed in between. The throw rolls the audit row
-        // back with it.
-        if (!(await repository.updateEmail(target.id, body.email, at, tx))) {
-          throw staffEmailTaken();
-        }
-
         // Every live link this operator holds dies with the old address — the
         // users twin carries the argument in full (`D18.10`'s
         // `security-reviewer`; ADR-0071 §7, amended). Two of these purposes are
         // reachable for staff today: `reset_password`, which §4 mints on the
         // admin segment, and `staff_onboarding`, whose link lives seven days
         // and whose `accept` sets a password and signs the device in (§8).
-        for (const purpose of TOKEN_PURPOSES) {
-          await accountTokens.supersede(
-            ctx,
-            { purpose, principal: { type: "staff", id: target.id } },
-            tx,
-          );
+        // Before the write, in a consume's order (`D28.5`'s
+        // `security-reviewer`); a refused write rolls the sweep back.
+        await accountTokens.supersedeAll(
+          ctx,
+          { type: "staff", id: target.id },
+          tx,
+        );
+
+        // The statement's own uniqueness clause sees what the read above could
+        // not: an address claimed in between. The throw rolls the audit row
+        // back with it.
+        if (!(await repository.updateEmail(target.id, body.email, at, tx))) {
+          throw staffEmailTaken();
         }
 
         // The actor is read off `ctx.principal` — the acting super admin — and
@@ -777,6 +778,17 @@ export const createStaffService = ({
           throw lastSuperAdmin();
         }
 
+        // Every link the operator holds is spent before the row goes
+        // (ADR-0074 §5): `account_tokens` has no foreign key to `staff` any
+        // more than `sessions` has, so a hard delete would otherwise leave a
+        // `reset_password` or `staff_onboarding` row naming nobody — refused
+        // today only because every consume re-reads the principal.
+        await accountTokens.supersedeAll(
+          ctx,
+          { type: "staff", id: target.id },
+          tx,
+        );
+
         const count = await sessions.revokeSessionsFor(ctx, {
           principalId: target.id,
           reason: REVOKE_REASONS.accountDeleted,
@@ -868,6 +880,15 @@ export const createStaffService = ({
       const passwordHash = await hasher.hash(body.newPassword);
 
       const revoked = await transaction(async (tx) => {
+        // A credential event spends every outstanding link (ADR-0074 §5) — a
+        // `reset_password` link requested before the change is a way round
+        // the password just chosen. Before the write, in a consume's order.
+        await accountTokens.supersedeAll(
+          ctx,
+          { type: "staff", id: principal.id },
+          tx,
+        );
+
         await repository.updatePasswordHash(principal.id, passwordHash, at, tx);
 
         return sessions.revokeSessionsFor(ctx, {

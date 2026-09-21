@@ -110,3 +110,47 @@ No record changed.
 **Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`: `lint` 21/21, `check-types` 16/16, `test` 15/15 (`@repo/db` 6+6 files, 103 unit and 113 integration tests), `size` 4/4, and "All matched files use Prettier code style!". After the review fixes, which touched only the compose command, one regex and comments, `pnpm check` passed 52/52, `format:check` was clean, and `docker compose … config` rendered the new branch.
 
 **Pending the operator.** Nothing needs a restart. `0018` is already applied to the dev database, and the API reads nothing new.
+
+## D28.5 — The cap counts the customer's own sessions; every link is spent in one place (2026-09-21)
+
+**Built.** This step closes `SEC-09`, `API-09` and `DB-11`. [ADR-0071](../adr/0071-mail-flows.md) moved to `superseded by` [ADR-0074](../adr/0074-review-follow-ups.md) at this head, and ADR-0073 §3's delta is now true. The index rows, the topic table (mail flows, sessions, account deletion) and the ledger's window section record both.
+
+- **`SEC-09`.** `revokeOldestBeyondCap` now filters out rows with `impersonated_by_staff_id` in the query itself, so they are neither counted nor candidates for eviction. The harness fake mirrors the change.
+  - New file `auth.sessions.service.test.ts`, case "impersonated sessions neither count toward the cap nor are evicted by it".
+  - The integration case in `auth-sessions.int.test.ts` is rewritten as "is neither counted toward the cap nor the one revoked": one impersonated session, three ordinary sessions, a cap of two, and exactly one revocation (the oldest ordinary session). The old rule would have revoked two.
+- **`API-09`, `DB-11`.**
+  - `core/tokens` gains `supersedeAll(ctx, principal, tx)`. It runs every `TOKEN_PURPOSES` entry on the caller's transaction, with `reset_password` swept first, and logs one line when anything was spent.
+  - Callers:
+    - users: `setPassword`, `setEmail`, `changePassword`, and both deletion paths (`remove`, `deleteProfile`, in `users.lifecycle.service.ts`)
+    - staff: `setPassword`, `setEmail`, `changePassword`, `remove`
+    - `resetPassword`, the reset by mail
+  - Lock order: every sweep runs **before** the account row is written or locked, which is the order a consume takes. The `federated_login` supersede stays **after** the lock in the two resets, and deletion gains the same second sweep, because the Google callback mints behind that lock.
+  - Tests:
+    - `tokens.test.ts`, case "spends every purpose of the principal, on the caller's transaction"
+    - `users.service.test.ts`, case "an administrative reset spends every outstanding link"
+    - `users.lifecycle.service.test.ts`, case "deletion leaves no redeemable token", covering both actors
+    - `mail-flows.int.test.ts`, case "an administrative reset spends every outstanding link": live `change_email` and `reset_password` links both answer `401` after the reset, and no row of the account is redeemable
+- **Specs.** `auth-sessions.md`: the cap requirement now counts only the account's own sessions, and its impersonation scenario is rewritten. `mail-flows.md`: new requirement "A credential event spends every outstanding link", with two scenarios. Both name the tests above. `docs/rules/api-and-data.md` was regenerated for 0071's new status (`rules:digest` wrote 1 of 3).
+
+**Amendments.** The plan's step 5 is amended in place, labelled. Its call-site list is read from ADR-0074 §5, and the unit file the done-when named is created. No record text was amended.
+
+**Review: one `security-reviewer` pass.** It found no link that survives a credential event. It made four findings, all about lock order:
+
+- **[medium, fixed]** Deletion wrote the account row before sweeping, which inverts against every consume and can deadlock. It now sweeps first and sweeps `federated_login` again after the write.
+- **[low, fixed]** `supersedeAll` inside the reset by mail could deadlock with a concurrent sweep through a `verify_email` row. `reset_password`, the row the reset already holds, is now swept first.
+- **[low, fixed; predates the step]** Staff `setPassword`, staff `setEmail` and users `setEmail` wrote before sweeping. All three now sweep before the write.
+- **[low, not taken; predates the step]** The `federated_login` re-sweep after the lock inverts against the exchange, which consumes its token and then writes the account. The abort is harmless and the window is sixty seconds. The fix would be for the exchange to take `lockAccount` before consuming. Logged for the next step that touches the federated exchange.
+- **Residuals, for a future record:**
+  - A mint that takes no lock, such as `requestEmailChange`, can commit after a credential event that has already swept. A per-account credential epoch refused at consume would close this whatever the lock order.
+  - Nothing retries SQLSTATE `40P01`.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`, both before the review fixes and after them:
+
+- `lint` 21/21, `check-types` 16/16, `test` 15/15, `size` 4/4
+- API: 48 unit files (784 tests) and 28 integration files (823 tests)
+- Prettier: "All matched files use Prettier code style!"
+
+**Pending the operator.**
+
+- The running API on 4000 still serves the old code until it next reloads. The cap and the sweeps change behaviour only; there is no migration and no new variable.
+- Separate from this step: `D28.3` did not move [ADR-0065](../adr/0065-starter-lifecycle.md) to `superseded by` for its §5 digest delta, which is true since that step. The ledger's window section still lists it as pending.

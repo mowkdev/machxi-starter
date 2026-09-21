@@ -1,4 +1,8 @@
-import type { Population, TokenPurpose } from "@repo/contracts";
+import {
+  TOKEN_PURPOSES,
+  type Population,
+  type TokenPurpose,
+} from "@repo/contracts";
 import { randomToken, sha256Base64url } from "@repo/crypto";
 
 import type { RequestContext } from "../context/index.js";
@@ -119,6 +123,34 @@ export interface AccountTokens {
     tx: DbExecutor,
   ) => Promise<number>;
   /**
+   * Spends every live token of this principal, **of every purpose**, without
+   * minting a replacement (ADR-0074 §5, the delta on ADR-0071 §6 and §7).
+   *
+   * The one function every credential event calls — an administrative or
+   * staff reset, a password change, an administrative address change, an
+   * account deletion — so the rule "a credential event spends every link" has
+   * one name rather than a loop copied into each service, where the fourth
+   * copy was the one left short (`API-09`, `DB-11`). Iterated over
+   * `TOKEN_PURPOSES`, so a purpose is covered on the day it is declared; one
+   * that should survive a credential event has to say so there, which is the
+   * safe direction for an omission to point.
+   *
+   * **Where a caller puts it is the caller's lock order.** Every consume
+   * claims its token row and then writes the account, so a caller that also
+   * locks the account row calls this first where it can; the one purpose
+   * minted *behind* the account's lock — the federated handoff — is swept
+   * again after it by the flows that take that lock.
+   *
+   * `tx` is required, for {@link AccountTokens.supersede}'s reason.
+   *
+   * @returns how many live rows were stamped, across every purpose.
+   */
+  readonly supersedeAll: (
+    ctx: RequestContext,
+    principal: TokenPrincipal,
+    tx: DbExecutor,
+  ) => Promise<number>;
+  /**
    * Claims the token for this purpose and population, once.
    *
    * @returns the row, or `undefined` when the token is unknown, of another
@@ -141,6 +173,19 @@ export interface AccountTokens {
  * an IP — the `inet` column would otherwise turn a hostile header into a 500.
  */
 export const MAX_TOKEN_USER_AGENT_LENGTH = 512;
+
+/**
+ * The order {@link AccountTokens.supersedeAll} sweeps in: every purpose, with
+ * `reset_password` **first**. The reset by mail sweeps while already holding
+ * the `reset_password` row it claimed, so any other sweep of the same account
+ * must queue on that row before it locks anything else — otherwise it could
+ * stamp a `verify_email` row the reset then waits on, while waiting on the
+ * reset's row itself (`D28.5`'s `security-reviewer`).
+ */
+const SWEEP_ORDER: readonly TokenPurpose[] = [
+  "reset_password",
+  ...TOKEN_PURPOSES.filter((purpose) => purpose !== "reset_password"),
+];
 
 export interface CreateAccountTokensDeps {
   readonly repository: AccountTokensRepository;
@@ -264,6 +309,42 @@ export const createAccountTokens = ({
             superseded,
           },
           "account tokens superseded without replacement",
+        );
+      }
+
+      return superseded;
+    },
+
+    supersedeAll: async (ctx, principal, tx) => {
+      const at = now();
+      let superseded = 0;
+
+      // One statement per purpose rather than one without a purpose filter:
+      // it is the statement the mint and `supersede` already run, so there is
+      // one supersession in the repository and not two. Sequential, on one
+      // executor — a transaction is one connection.
+      for (const purpose of SWEEP_ORDER) {
+        superseded += await repository.supersedeLive(
+          {
+            purpose,
+            principalType: principal.type,
+            principalId: principal.id,
+            at,
+          },
+          tx,
+        );
+      }
+
+      if (superseded > 0) {
+        // One line for the event rather than one per purpose, and only when
+        // something was spent — `supersede`'s reason.
+        ctx.logger.info(
+          {
+            principalType: principal.type,
+            principalId: principal.id,
+            superseded,
+          },
+          "every account token superseded without replacement",
         );
       }
 

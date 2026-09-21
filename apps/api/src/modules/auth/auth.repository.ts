@@ -351,13 +351,13 @@ export const createSessionsRepository = (db: DbExecutor) =>
      *   has passed its expiry is not a device anybody is signed in on, and
      *   counting one would end a real session on a dead one's behalf. The
      *   prune job deletes those rows eventually; the cap must not wait for it.
-     * - **Impersonated sessions are counted and never chosen.** They belong to
-     *   the impersonated customer, so they are part of "how many sessions does
-     *   this account have"; but they end on their own fixed clock (ADR-0057
-     *   §4) and a support operator's session is not the thing to reclaim when
-     *   a customer signs in on an eleventh device. The consequence is stated
-     *   rather than hidden: a principal whose oldest sessions are all
-     *   impersonated stays over the cap until they are not.
+     * - **Impersonated sessions are neither counted nor chosen** (ADR-0074
+     *   §4, the delta on ADR-0073 §3; `SEC-09`). The cap bounds what a person
+     *   holds, and a session a support operator opened is not one the
+     *   customer holds: counted, it was a budget somebody else filled — the
+     *   impersonation mint's budget is the staff member's — and the eviction
+     *   it forced fell on the customer's own devices. It ends on its own fixed
+     *   clock (ADR-0057 §4), so it is out of this query altogether.
      * - **The new session is excluded by id**, not merely by being newest.
      *   Ordering is by `created_at`, which has a resolution and can tie.
      *
@@ -370,10 +370,7 @@ export const createSessionsRepository = (db: DbExecutor) =>
       if (input.max <= 0) return 0;
 
       const live = await tx
-        .select({
-          id: sessions.id,
-          impersonatedByStaffId: sessions.impersonatedByStaffId,
-        })
+        .select({ id: sessions.id })
         .from(sessions)
         .where(
           and(
@@ -381,6 +378,7 @@ export const createSessionsRepository = (db: DbExecutor) =>
             eq(sessions.principalId, input.principalId),
             isNull(sessions.revokedAt),
             gt(sessions.refreshTokenExpiresAt, input.at),
+            isNull(sessions.impersonatedByStaffId),
           ),
         )
         // Oldest first: that is the end the excess is taken from. `id` breaks
@@ -393,11 +391,7 @@ export const createSessionsRepository = (db: DbExecutor) =>
       if (excess <= 0) return 0;
 
       const doomed = live
-        .filter(
-          (row) =>
-            row.id !== input.exceptSessionId &&
-            row.impersonatedByStaffId === null,
-        )
+        .filter((row) => row.id !== input.exceptSessionId)
         .slice(0, excess)
         .map((row) => row.id);
 

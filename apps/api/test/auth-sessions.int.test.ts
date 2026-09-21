@@ -27,8 +27,8 @@ import {
  * Only this file can prove it. The unit suite's fake `sessions` has no
  * `created_at` and no transaction, and all three properties that matter are
  * properties of the real table: the **order** the excess is taken in, that an
- * impersonated row is counted and never chosen, and that `0` means what it
- * says.
+ * impersonated row is neither counted nor chosen (ADR-0074 §4, the delta on
+ * ADR-0073 §3), and that `0` means what it says.
  *
  * `apps/api/.env.test` sets `AUTH_MAX_SESSIONS_PER_PRINCIPAL=0`, so the rest
  * of the suite — which signs one fixture in dozens of times — is uncapped;
@@ -171,8 +171,10 @@ describe("an impersonated session under the cap", () => {
       .send({ token: minted.body.data.token })
       .expect(200);
 
-    // Two ordinary sign-ins. The second takes the account to three live
-    // sessions against a cap of two, which is what forces a choice.
+    // Three ordinary sign-ins. Counting only the customer's own, the third is
+    // the one that takes the account over a cap of two; counting the
+    // impersonated row as well, the second would already have.
+    await login(harness.app, "user", CUSTOMER);
     await login(harness.app, "user", CUSTOMER);
     await login(harness.app, "user", CUSTOMER);
   });
@@ -181,10 +183,10 @@ describe("an impersonated session under the cap", () => {
     await harness.close();
   });
 
-  it("is counted against the cap and is never the one revoked", async () => {
+  it("is neither counted toward the cap nor the one revoked", async () => {
     const rows = await rowsFor(harness, principalId);
 
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
 
     const impersonated = rows.filter(
       (row) => row.impersonatedByStaffId !== null,
@@ -192,16 +194,18 @@ describe("an impersonated session under the cap", () => {
 
     expect(impersonated).toHaveLength(1);
 
-    // Counted: with two ordinary sessions and a cap of two, nothing would have
-    // been revoked at all. The impersonated row is what took the account over
-    // the line, which is ADR-0073 §3's "counted against the impersonated
-    // user".
+    // Not counted (`SEC-09`): one revocation, not two. Had the impersonated
+    // row counted, the second sign-in would have taken the account over the
+    // line and the third over it again — two of the customer's own devices
+    // signed out to make room for a session a support operator opened.
+    const revoked = rows.filter((row) => row.revokedAt !== null);
+
+    expect(revoked).toHaveLength(1);
     expect(rows[1]?.revokedAt).not.toBeNull();
     expect(rows[1]?.revokedReason).toBe("session_cap");
 
     // Never chosen: it is the oldest live row and it survives. A support
-    // operator's session ends on its own fixed clock, and a customer signing
-    // in on a third device is not a reason to end it early.
+    // operator's session ends on its own fixed clock (ADR-0057 §4).
     expect(impersonated[0]?.revokedAt).toBeNull();
   });
 });

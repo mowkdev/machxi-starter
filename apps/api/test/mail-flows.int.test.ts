@@ -1,5 +1,5 @@
 import { accountTokens, auditEvents, staff, users } from "@repo/db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -11,6 +11,7 @@ import {
   FIXTURE_STAFF,
   FIXTURE_USERS,
   resetAndSeed,
+  superAdmin,
 } from "./support/seed.js";
 import { REFRESH_COOKIE, TRANSPORT_HEADER } from "./support/transport.js";
 
@@ -1183,5 +1184,58 @@ describe("address change", () => {
     expect((await accountRow())?.email).toBe("moved.second@machxi.local");
 
     await restoreAddress();
+  });
+
+  it("an administrative reset spends every outstanding link", async () => {
+    /*
+     * ADR-0074 §5 (`API-09`). The reset a support operator performs because
+     * the account is in somebody else's hands used to spend two purposes by
+     * name, so a recovery link the intruder asked for — mailed to the
+     * account's own address, which the intruder may be reading — outlived it.
+     * Two links of two purposes, then the reset, then neither redeems.
+     */
+    const changeLink = await requestAndReadLink("moved.intruder@machxi.local");
+    const { email } = await holder();
+
+    await request()
+      .post("/api/v1/user/auth/password/forgot")
+      .send({ email })
+      .expect(202);
+
+    const resetLink = tokenFromMail(lastMailTo(harness, email));
+    const admin = await login(harness.app, "staff", superAdmin());
+
+    // The fixture's own password, so the reset leaves the account as the
+    // cases before it found it.
+    await request()
+      .post(`/api/v1/admin/users/${holderId}/password`)
+      .set("Authorization", bearer(admin.accessToken))
+      .send({
+        password: FIXTURE_PASSWORD,
+        currentPassword: superAdmin().password,
+      })
+      .expect(204);
+
+    await confirm(changeLink).expect(401);
+    await request()
+      .post("/api/v1/user/auth/password/reset")
+      .send({ token: resetLink, newPassword: "NotTheOwnersChoice!2026" })
+      .expect(401);
+
+    // And the table agrees, whatever purpose a future flow adds: no row of
+    // this account is redeemable.
+    const live = await harness.db.db
+      .select({ id: accountTokens.id })
+      .from(accountTokens)
+      .where(
+        and(
+          eq(accountTokens.principalId, holderId),
+          isNull(accountTokens.consumedAt),
+          gt(accountTokens.expiresAt, new Date()),
+        ),
+      );
+
+    expect(live).toEqual([]);
+    expect((await accountRow())?.email).toBe(email);
   });
 });

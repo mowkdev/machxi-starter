@@ -1,8 +1,9 @@
-import type {
-  ListUsersQuery,
-  Locale,
-  UserRole,
-  UserStatus,
+import {
+  TOKEN_PURPOSES,
+  type ListUsersQuery,
+  type Locale,
+  type UserRole,
+  type UserStatus,
 } from "@repo/contracts";
 import { createLogger } from "@repo/logger";
 import { expect } from "vitest";
@@ -549,6 +550,14 @@ export const createFakeAccountTokens = () => {
           purpose: input.purpose,
           principalId: input.principal.id,
         });
+
+        return Promise.resolve(0);
+      },
+      /** Recorded per purpose, so a case can ask which links an event spent. */
+      supersedeAll: (_ctx: RequestContext, principal: { id: string }) => {
+        for (const purpose of TOKEN_PURPOSES) {
+          superseded.push({ purpose, principalId: principal.id });
+        }
 
         return Promise.resolve(0);
       },

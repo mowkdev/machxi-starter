@@ -187,6 +187,22 @@ Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/test/impersonation-
 - **WHEN** the account's password is changed, reset from a mailed link, or set by staff while a `change_email` token is live
 - **THEN** that token is spent in the same transaction and the link answers `401 UNAUTHENTICATED` — a password change ends the pending address change as it ends every other session
 
+## Requirement: A credential event spends every outstanding link
+
+A staff reset of a customer's or an operator's password, a password change or a reset from a mailed link, a staff member setting an account's address, and the deletion of an account — by staff or by its owner — spend **every** live token the account holds, of every purpose, in the transaction that performs the event. None is replaced; a link spent this way answers as a link already used. A refused event spends nothing.
+Records: [ADR-0074](../adr/0074-review-follow-ups.md), [ADR-0071](../adr/0071-mail-flows.md), [ADR-0028](../adr/0028-account-deletion.md)
+Proved by: `apps/api/test/mail-flows.int.test.ts`, `apps/api/src/core/tokens/__tests__/tokens.test.ts`, `apps/api/src/modules/users/__tests__/users.service.test.ts`, `apps/api/src/modules/users/__tests__/users.lifecycle.service.test.ts`
+
+### Scenario: Staff reset a customer's password
+
+- **WHEN** a staff member sets a customer's password while the customer holds a live `change_email` link and a live `reset_password` link
+- **THEN** both links answer `401 UNAUTHENTICATED` afterwards, and the account holds no redeemable token of any purpose
+
+### Scenario: The account is deleted
+
+- **WHEN** an account holding live links is deleted, by staff or by its owner
+- **THEN** every link it held is spent in the delete's transaction, whatever its purpose
+
 ## Requirement: An operator joins from an invitation rather than from a password somebody typed
 
 `POST /api/v1/admin/staff` with **no** `password` creates the operator `invited` with no password hash at all and mails an onboarding link into the **admin** app — the only one of these links that lands there besides a staff recovery. `POST /api/v1/admin/auth/onboarding/accept { token, password }` consumes it, writes that first password with `status: "active"`, writes an `account.onboarded` audit row and answers `200` with login's body: unlike the recovery above, this link **does** sign the device in, because it is the only way the account has ever been reachable and the person at the other end has just chosen its credential. The link lives `STAFF_ONBOARDING_TOKEN_TTL` — seven days, the longest of the four — and the route carries the login limiter's argon2 budget in a counter of its own. The message's language travels in the request body, because an invited account has no stored locale of its own yet. `POST /api/v1/admin/staff/:id/onboarding/resend` sends another and retires the previous one. Both senders share `RATE_LIMIT_MAILBOX_MAX` over the hour — the create keyed on the address in its body, the resend on the operator it names, because that request carries no address at all.

@@ -1,3 +1,4 @@
+import { TOKEN_PURPOSES } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
 import { REVOKE_REASONS } from "../../auth/index.js";
@@ -340,5 +341,39 @@ describe("createUsersService — the user segment", () => {
       );
       expect(sessions.revocations).toEqual([]);
     });
+  });
+});
+
+/* -- D28.5: nothing of a deleted account stays redeemable (ADR-0074 §5) ---- */
+
+describe("createUsersService — both deletion paths", () => {
+  it("deletion leaves no redeemable token", async () => {
+    // `DB-11`: the sessions were revoked and the identities removed, and the
+    // account's mailed links — the third credential table — were left live.
+    // Both actors, because which of them closed the account does not change
+    // what it leaves behind.
+    const everyPurpose = [...TOKEN_PURPOSES].sort();
+
+    const byStaff = build([userRow()]);
+
+    await byStaff.service.remove(adminCtx(), USER_ID);
+
+    const bySelf = build([userRow()]);
+
+    await bySelf.service.deleteProfile(selfCtx(), {
+      currentPassword: "CurrentPassword!1",
+    });
+
+    for (const { tokens } of [byStaff, bySelf]) {
+      expect(
+        [
+          ...new Set(
+            tokens.superseded
+              .filter((entry) => entry.principalId === USER_ID)
+              .map((entry) => entry.purpose),
+          ),
+        ].sort(),
+      ).toEqual(everyPurpose);
+    }
   });
 });

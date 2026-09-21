@@ -155,19 +155,19 @@ Proved by: `apps/api/test/auth-register.int.test.ts`, `apps/api/test/mail-flows.
 
 ## Requirement: A person holds a bounded number of sessions
 
-An account holds at most `AUTH_MAX_SESSIONS_PER_PRINCIPAL` live sessions. A sign-in beyond that number is **accepted**, and the account's oldest live sessions are revoked in the same transaction with `revoked_reason = 'session_cap'` — the refresh token of a revoked session stops rotating immediately. An impersonated session counts towards the number and is never one of the revoked; it ends on its own fixed clock. `0` means uncapped.
-Records: [ADR-0073](../adr/0073-review-hardening.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0057](../adr/0057-impersonation-sessions.md)
-Proved by: `apps/api/test/auth-sessions.int.test.ts`
+An account holds at most `AUTH_MAX_SESSIONS_PER_PRINCIPAL` live sessions. A sign-in beyond that number is **accepted**, and the account's oldest live sessions are revoked in the same transaction with `revoked_reason = 'session_cap'` — the refresh token of a revoked session stops rotating immediately. The number counts the account's **own** sessions: an impersonated session neither counts towards it nor is ever one of the revoked — the person did not open it — and it ends on its own fixed clock. `0` means uncapped.
+Records: [ADR-0073](../adr/0073-review-hardening.md), [ADR-0074](../adr/0074-review-follow-ups.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0057](../adr/0057-impersonation-sessions.md)
+Proved by: `apps/api/test/auth-sessions.int.test.ts`, `apps/api/src/modules/auth/__tests__/auth.sessions.service.test.ts`
 
 ### Scenario: One device too many
 
 - **WHEN** an account already holding the maximum number of live sessions signs in again
 - **THEN** the sign-in answers `200` with a usable session, the count of live sessions is unchanged, and the oldest one is revoked as `session_cap`
 
-### Scenario: The support session is not the one reclaimed
+### Scenario: The support session is neither counted nor reclaimed
 
-- **WHEN** the account's oldest live session is an impersonated one and an ordinary sign-in takes the account over the maximum
-- **THEN** the impersonated session stays live and the oldest **ordinary** session is revoked instead
+- **WHEN** the account holds live impersonated sessions and its own sessions reach the maximum
+- **THEN** no sign-in is revoked until the account's **own** sessions exceed the maximum, and then the oldest ordinary session is revoked — every impersonated session stays live, however old
 
 ### Scenario: The cap is off
 

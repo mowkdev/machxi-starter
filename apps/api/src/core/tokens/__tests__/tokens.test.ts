@@ -1,4 +1,4 @@
-import type { TokenPurpose } from "@repo/contracts";
+import { TOKEN_PURPOSES, type TokenPurpose } from "@repo/contracts";
 import { sha256Base64url } from "@repo/crypto";
 import { createLogger } from "@repo/logger";
 import { describe, expect, it, vi } from "vitest";
@@ -295,5 +295,49 @@ describe("consume", () => {
       expect.any(String),
     );
     expect(JSON.stringify(warn.mock.calls)).not.toContain("a-dead-token");
+  });
+});
+
+describe("supersedeAll", () => {
+  it("spends every purpose of the principal, on the caller's transaction", async () => {
+    const { repository, calls } = createFakeRepository();
+    const { ctx, info } = createContext();
+
+    const superseded = await build(repository).supersedeAll(
+      ctx,
+      principal,
+      CALLER_TX,
+    );
+
+    // Every purpose the enum declares, and only supersessions: a credential
+    // event spends links and mints none (ADR-0074 §5). Asserted against the
+    // enum rather than a list, so a sixth purpose is covered here the day it
+    // is declared — or this case says which one was left out.
+    expect(calls.map((call) => call.name)).toEqual(
+      TOKEN_PURPOSES.map(() => "supersedeLive"),
+    );
+    const swept = calls.map((call) => call.input.purpose as string);
+
+    expect([...swept].sort()).toEqual([...TOKEN_PURPOSES].sort());
+    // `reset_password` first: the reset by mail sweeps while holding the row
+    // it claimed, and a concurrent sweep must queue on that row before it
+    // locks any other (`D28.5`'s `security-reviewer`).
+    expect(swept[0]).toBe("reset_password");
+    expect(
+      calls.every(
+        (call) =>
+          call.tx === CALLER_TX &&
+          call.input.principalType === "user" &&
+          call.input.principalId === "user-1" &&
+          call.input.at === NOW,
+      ),
+    ).toBe(true);
+
+    // The fake stamps one row per statement, so the count is the sum.
+    expect(superseded).toBe(TOKEN_PURPOSES.length);
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ superseded: TOKEN_PURPOSES.length }),
+      expect.any(String),
+    );
   });
 });

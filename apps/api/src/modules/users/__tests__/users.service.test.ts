@@ -1,3 +1,4 @@
+import { TOKEN_PURPOSES } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
 import { REVOKE_REASONS } from "../../auth/index.js";
@@ -545,6 +546,24 @@ describe("createUsersService — the user segment", () => {
           exceptSessionId: undefined,
         },
       ]);
+    });
+
+    it("an administrative reset spends every outstanding link", async () => {
+      // ADR-0074 §5 (`API-09`): a reset whose premise is a compromised account
+      // spends every purpose, not the two it used to name — a `reset_password`
+      // or `verify_email` link left live is a way back in that the session
+      // sweep cannot see.
+      const { service, tokens } = build([userRow()]);
+
+      await service.setPassword(adminCtx(), USER_ID, body);
+
+      const spent = new Set(
+        tokens.superseded
+          .filter((entry) => entry.principalId === USER_ID)
+          .map((entry) => entry.purpose),
+      );
+
+      expect([...spent].sort()).toEqual([...TOKEN_PURPOSES].sort());
     });
 
     it("requires the acting staff member's own password", async () => {

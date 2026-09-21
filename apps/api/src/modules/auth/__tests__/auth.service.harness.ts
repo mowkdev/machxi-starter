@@ -191,8 +191,8 @@ const createFakeSessions = () => {
 
     /**
      * The per-principal cap (ADR-0073 §3), reproducing the three properties
-     * the service leans on: oldest first, an impersonated row counted and
-     * never chosen, and the session just minted never chosen.
+     * the service leans on: oldest first, an impersonated row neither counted
+     * nor chosen (ADR-0074 §4), and the session just minted never chosen.
      *
      * "Oldest" is insertion order here, which the `Map` preserves and the
      * sequential ids make visible; the real repository orders by `created_at`.
@@ -205,7 +205,8 @@ const createFakeSessions = () => {
           row.principalType === input.principalType &&
           row.principalId === input.principalId &&
           row.revokedAt === null &&
-          row.refreshTokenExpiresAt > input.at,
+          row.refreshTokenExpiresAt > input.at &&
+          row.impersonatedByStaffId === null,
       );
 
       const excess = live.length - input.max;
@@ -213,11 +214,7 @@ const createFakeSessions = () => {
       if (excess <= 0) return Promise.resolve(0);
 
       const doomed = live
-        .filter(
-          (row) =>
-            row.id !== input.exceptSessionId &&
-            row.impersonatedByStaffId === null,
-        )
+        .filter((row) => row.id !== input.exceptSessionId)
         .slice(0, excess);
 
       for (const row of doomed) {
@@ -544,6 +541,23 @@ const createFakeAccountTokens = () => {
       for (const row of minted) {
         if (
           row.purpose === purpose &&
+          row.principalType === principal.type &&
+          row.principalId === principal.id &&
+          !row.consumed
+        ) {
+          row.consumed = true;
+          superseded += 1;
+        }
+      }
+
+      return Promise.resolve(superseded);
+    },
+    /** Every purpose at once (ADR-0074 §5). */
+    supersedeAll: (_ctx, principal) => {
+      let superseded = 0;
+
+      for (const row of minted) {
+        if (
           row.principalType === principal.type &&
           row.principalId === principal.id &&
           !row.consumed
