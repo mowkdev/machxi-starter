@@ -57,3 +57,28 @@ The per-step build record of [D28](0028-review-follow-ups.md) — what was built
 **Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`: `lint` 21/21, `check-types` 16/16, `test` 15/15 (6m36s), `size` 4/4, then `format:check` red on three files' Prettier layout. After `prettier --write` (whitespace only) and the review fixes (comments, `renovate.json`'s `allowedVersions`, none of them read by `test` or `size`): `pnpm lint` and `pnpm format:check` green. `pnpm check` exit `0` (52/52). `pnpm test:unit --filter customer --force`: 32 files, 284 tests passed.
 
 **Pending the operator.** `main`'s `node_modules` still holds `jsdom@30.1.0` until the next `pnpm install` there, which the operator runs at their convenience (nothing the dev servers load changes, so no restart is needed for it). The side worktree `.claude/worktrees/d28-2` can be removed with `git worktree remove`.
+
+## D28.3 — The digests carry every decision, and the generator refuses a record with none (2026-09-21)
+
+**Built.** Closes `PRO-08` and `API-13`.
+
+- **`scripts/rules-digest.mjs` gains its lines.** ADR-0073's decisions now have lines of their own. In api-and-data: the per-principal hash budget (§1), limiter keys (§2), the session cap and the prune (§3, with ADR-0074 §4's count), server timeouts and the runtime floor (§4), invariants in the database (§8), and the composition root and line ceiling (§10, with ADR-0074 §8). In frontend-and-platform: budget headroom (§5) and the content policy (§9, with ADR-0074 §6). In process: the first link runs every check (§6, with ADR-0074 §1 and the nightly audit) and pinning, holds and the cooldown (§7, with ADR-0074 §2). ADR-0074 is also named in its own right on the new credential-events line (§5, with ADR-0071), on "Generated versus written UI" (§7, no client directive) and on "The digests" (§3). Some of ADR-0074's decisions are built at later D28 steps. They are stated here as the rule in force, because the record is accepted.
+- **ADR-0066's line stops counting limiters** (`API-13`). It now reads "every rate limiter shares one store", and "All four seams are inert".
+- **The generator refuses.** `uncitedRecords(areas, records)` returns the accepted records (`/^accepted\b/`) that no line names in its own `records`. `generate()` throws on a non-empty result before it formats or writes anything, and it now takes `areas` so the refusal can be tested. The file header states the rule.
+- **`scripts/rules-digest.test.mjs`** adds two cases:
+  - "every accepted record is the primary citation of a line". It is green on the tree. With one accepted record stripped from every line, the same case gets exactly `[id]` back and `generate` rejects naming that record.
+  - "a record cited only as a carrier is not cited as its own".
+- **`.claude/skills/new-adr/SKILL.md` step 5**: accepting a record means writing its rule lines, because the generator refuses otherwise.
+- `pnpm rules:digest` wrote **3 of 3**, then **0 of 3**. After the review fixes it wrote 2 of 3, then 0 of 3.
+
+**Amendments.** The plan's step 3 is amended in place, labelled. "Primary citation" is taken to mean that a line names the record in its own `records`, not only in an "as carried by" suffix, which is how the review's evidence reads it. Under that reading, four more accepted records had no line: ADR-0028, 0069, 0070 and 0072. Their lines are written here: account deletion, the development rate-limit profile, impersonation in a new tab together with the exchange that ends what it replaces, and federated identity. No record changed.
+
+**Review: one `adr-reviewer` pass over the diff, which conforms. Three minor findings, all fixed.**
+
+- **[minor, fixed]** The ADR-0070 line had the order wrong. The opener is disowned after the mint and before navigation, not before the mint.
+- **[minor, fixed]** ADR-0070 §4's exchange rule is an API rule, but it was only in frontend-and-platform. It now has its own api-and-data line.
+- **[minor, fixed, partly]** "before the first accept" had no source in ADR-0073 §4. The line now says "beside the drain deadline". The reviewer's optional point stays as the plan placed it: the runtime floor sits in api-and-data (§4 in api-and-data), not in process.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`. The links reported: `lint` 21/21, `check-types` 16/16, `test` 15/15, `size` 4/4, and "All matched files use Prettier code style!". After the review fixes, which touched only digest text: `pnpm check` exited `0` (52/52), the script tests passed 49/49, and `format:check` was clean.
+
+**Pending the operator.** Nothing. No running server's sources changed.

@@ -5,7 +5,9 @@
 // every citation. For each cited record the generator reads the record's own
 // title and `- Status:` line, renders the citation with a topic gloss taken
 // from the title, and refuses to emit a digest that cites a record which is out
-// of force. `/ship` runs it as part of the sweep; `docs/rules/*.md` is never
+// of force. It also refuses to run while an accepted record is cited by no
+// line as its own, so accepting a record means writing its lines (ADR-0074
+// §3). `/ship` runs it as part of the sweep; `docs/rules/*.md` is never
 // edited by hand.
 //
 // Usage:
@@ -100,7 +102,62 @@ export const AREAS = [
       {
         topic: "Infrastructure seams",
         records: ["0066"],
-        text: "Mail goes through the `MailSender` port in `core/mail` and never through a client a service imports; `GET /metrics` lives in `core/metrics` beside `/health`, above every limiter, labelled by route pattern and behind a token; the reporter in `core/reporting` fires on 5xx only and is given the request id, route, status and principal — never the body; the four limiters share one store, Redis when configured and memory otherwise, failing closed. All four are inert in a default clone.",
+        text: "Mail goes through the `MailSender` port in `core/mail` and never through a client a service imports; `GET /metrics` lives in `core/metrics` beside `/health`, above every limiter, labelled by route pattern and behind a token; the reporter in `core/reporting` fires on 5xx only and is given the request id, route, status and principal — never the body; every rate limiter shares one store, Redis when configured and memory otherwise, failing closed. All four seams are inert in a default clone.",
+      },
+      {
+        topic: "The development rate-limit profile",
+        records: ["0069"],
+        text: "The committed development template, `.env.example`, raises `RATE_LIMIT_GLOBAL_MAX` to hold a failed verification run and its retry; the schema default stays the security baseline's number, and the production template does not carry the variable, so a deployment that states nothing inherits the baseline. A development value is kept off the deployment's path by separation, not refused at startup.",
+      },
+      {
+        topic: "A per-principal hash budget",
+        records: ["0073"],
+        text: "Every authenticated route that verifies a password through the hash limiter also carries the per-principal limiter, keyed on `ctx.principal.id` (`RATE_LIMIT_PRINCIPAL_HASH_MAX` per `RATE_LIMIT_PRINCIPAL_HASH_WINDOW`), so a few sessions cannot shed login for everyone and an actor guessing their own password spends their own budget. The rule is the criterion — a new route that verifies a password joins it — and the roster lives in the specs and the integration tier.",
+      },
+      {
+        topic: "Limiter keys",
+        records: ["0073"],
+        text: "A limiter key never degrades to one shared bucket: without a validated address the key generator falls back to the socket's remote address and warns once per process naming the proxy configuration. The fallback keys the limiter only and is never written to `sessions.ip`.",
+      },
+      {
+        topic: "The session cap and the prune",
+        records: ["0073", "0074"],
+        text: "Login and the federated exchange revoke the principal's oldest live sessions beyond `AUTH_MAX_SESSIONS_PER_PRINCIPAL` (`0` uncapped) inside the mint's transaction, reason `session_cap`. An impersonated session neither counts toward the cap nor is evicted by it — it ends on its own clock. The reference deployment runs the `prune` service on `PRUNE_INTERVAL`, so a production database stops growing by default.",
+      },
+      {
+        topic: "Credential events spend every link",
+        records: ["0074", "0071"],
+        text: "One `supersedeAll(ctx, principal, tx)` in `core/tokens` spends every outstanding account link, and every credential event calls it — an administrative or staff reset, a password or address change, an account deletion — rather than a per-purpose loop copied into a service. A purpose that should survive a credential event says so where it is declared.",
+      },
+      {
+        topic: "The impersonation exchange ends what it replaces",
+        records: ["0070"],
+        text: "When `POST /user/auth/impersonate` arrives with a refresh cookie that resolves to a live impersonated session, the exchange revokes that session and writes its `impersonation.ended` row, marked replaced, in the transaction that mints the new one. A cookie resolving to a real customer session is left alive in the database, and one resolving to nothing is ignored.",
+      },
+      {
+        topic: "Account deletion",
+        records: ["0028", "0072"],
+        text: "A user is soft-deleted — `deleted_at`, `status = 'disabled'`, every live session revoked `account_deleted` and every federated identity hard-deleted, in one transaction — and the address is released by a partial unique index, so every `on conflict` on `users.email`, seeds included, carries the `deleted_at is null` predicate. A deleted account stays readable and refuses writes with `409 USER_DELETED`; there is no restore. Staff are hard-deleted, never by themselves, under the rank rule and the last-super-admin invariant behind its advisory lock, their sessions revoked before the row goes.",
+      },
+      {
+        topic: "Federated identity",
+        records: ["0072"],
+        text: "A sign-in resolves by `(provider, subject)` first and by address only when the claim is verified, the provider is authoritative for the address, and a live `active` user holds it. The Google routes mount only when both client settings are set; the provider is a port with a fake the integration tier drives. The callback hands off through a sixty-second `federated_login` account token bound to the browser the callback answered, and a password written without the account's own authority removes every federated identity. Link and unlink are refused to an impersonated session, and unlinking the last credential is refused.",
+      },
+      {
+        topic: "Server timeouts and the runtime floor",
+        records: ["0073"],
+        text: "`server.ts` sets the request, headers and keep-alive timeouts from `HTTP_REQUEST_TIMEOUT`, `HTTP_HEADERS_TIMEOUT` and `HTTP_KEEP_ALIVE_TIMEOUT` beside the drain deadline, keep-alive above a proxy's. The runtime floor is Node 24 at the patch the dependency tree requires (`engines.node`), with `.nvmrc`, the workflows and the Dockerfiles moving together; pnpm 12 through Corepack, its settings in `pnpm-workspace.yaml`.",
+      },
+      {
+        topic: "Invariants in the database",
+        records: ["0073"],
+        text: "`updated_at` is written by the column's `$onUpdate`, not by a repository remembering it, and `users` carries `CHECK (status <> 'active' OR email_verified_at IS NOT NULL)` — an invariant the code leans on is a database error, not a review finding.",
+      },
+      {
+        topic: "The composition root and the line ceiling",
+        records: ["0073", "0074"],
+        text: "`core/container.ts` is ordering only: `createRateLimiters(config, store)` returns the named set and each module exports one `wire<Module>(deps)` returning its repositories, services and controllers. No source file in the trees the hygiene test's `LINE_CEILING_ROOTS` names — the API's modules and `core` among them — runs past a thousand lines.",
       },
       {
         topic: "Logging",
@@ -157,8 +214,8 @@ export const AREAS = [
       },
       {
         topic: "Generated versus written UI",
-        records: ["0047"],
-        text: "Primitives under `packages/ui/src/components/` and `src/hooks/` stay byte-identical to the CLI output and are prettier-exempt; an edit to one earns itself with a comment naming the rule that forced it. Hand-written compositions live in `src/compositions/` under the ordinary regime and are presentation-only: no contracts import, no routing, no forms, no session.",
+        records: ["0047", "0074"],
+        text: 'Primitives under `packages/ui/src/components/` and `src/hooks/` stay byte-identical to the CLI output and are prettier-exempt; an edit to one earns itself with a comment naming the rule that forced it. Hand-written compositions live in `src/compositions/` under the ordinary regime and are presentation-only: no contracts import, no routing, no forms, no session — and no `"use client"` directive, which a consumer that needs one reintroduces by its own record.',
       },
       {
         topic: "Architecture",
@@ -216,6 +273,21 @@ export const AREAS = [
         text: "Packages stay source-only and Vite consumes `src`; project references add a declarations-only build for type-checking, emitted where nothing resolves to it at runtime. Vendor groups are explicit chunks, sourcemaps are hidden, and each SPA's budget carries per-chunk ceilings beside its totals.",
       },
       {
+        topic: "Budget headroom",
+        records: ["0073"],
+        text: "Every ceiling in a `size-budget.json` is at most 15% over its committed baseline, enforced by `scripts/size.mjs`, and a diff that raises a ceiling re-measures its baseline, so a raise always shows both numbers. The entry stays lean by declaration rather than by a raise: a rendering package the composition root imports by barrel declares `sideEffects: false` when nothing in it acts on import.",
+      },
+      {
+        topic: "The content policy",
+        records: ["0073", "0074"],
+        text: "Both SPA images send a Content-Security-Policy from `nginx.conf`: scripts from `'self'` only, styles from `'self'` plus `'unsafe-inline'` (Tailwind's stated price), `connect-src` the API origin substituted from `VITE_API_URL` and refused unless it is `scheme://host[:port]`, `object-src 'none'`, `frame-ancestors 'none'`. A built `index.html` carries no inline script, inline style element or event-handler attribute, checked after `size`'s build; an origin a fork adds goes in `nginx.conf`.",
+      },
+      {
+        topic: "Impersonation in a new tab",
+        records: ["0070", "0057"],
+        text: "The confirm opens a blank tab synchronously inside the click, mints, then disowns the tab's `opener` before navigating it to the handoff; a refused mint closes the tab and keeps the confirm with its toast, and a browser that refuses the open falls back to the same tab.",
+      },
+      {
         topic: "Invalidation",
         records: ["0043"],
         text: "A mutation invalidates its own entity's keys; the feature invalidates whatever else the interaction touched.",
@@ -264,6 +336,16 @@ export const AREAS = [
         text: "The gate command is defined once, in `CLAUDE.md` §Commands, and referenced by name everywhere else. `pnpm check` is the cached inner loop; a task whose result depends on anything outside the repository is never cached and declares its `env`.",
       },
       {
+        topic: "The first link runs every check",
+        records: ["0073", "0074"],
+        text: "`lint`'s `dependsOn` carries every root and app check the repository defines — `test:scripts`, `docs:check`, `i18n:check` — and a hygiene case refuses a check it does not name, so a new one joins by predicate. A cached task's restored outputs must not decide its own result: a buildinfo sits under a cached output only beside the emit it belongs to. Coverage is reported with no threshold; `pnpm audit --prod` runs nightly beside the browser tier, reported and never gating.",
+      },
+      {
+        topic: "Pinning, holds and the cooldown",
+        records: ["0073", "0074"],
+        text: "Caret ranges by default and exact for the runtime framework and the compiler; any other exact pin is named with its reason in `renovate.json`'s pinning register. A version many workspaces declare lives in the `catalog:`; GitHub Actions are pinned by digest and the base images carry a named Renovate rule. A dependency held below a version is one `overrides` entry in `pnpm-workspace.yaml`, not a pin per workspace. `minimumReleaseAge` is one day for pnpm and for Renovate alike, with the one-install override for a younger security fix written beside pnpm's setting, and a lockfile through review installs under `trustLockfile`.",
+      },
+      {
         topic: "Forking",
         records: ["0065"],
         text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` is this repository's journal and resets.",
@@ -285,8 +367,8 @@ export const AREAS = [
       },
       {
         topic: "The digests",
-        records: ["0065"],
-        text: "`docs/rules/<area>.md` states the rules currently in force, each line naming its record; the rule files and the skills load the digest for their area. The records remain the source of truth, and the digest is generated at ship rather than edited.",
+        records: ["0065", "0074"],
+        text: "`docs/rules/<area>.md` states the rules currently in force, each line naming its record; the rule files and the skills load the digest for their area. The records remain the source of truth, and the digest is generated at ship rather than edited. The rule lines live in `scripts/rules-digest.mjs`, and the generator refuses an accepted record that no line cites as its own — accepting a record means writing its lines.",
       },
       {
         topic: "Specs and notes",
@@ -389,11 +471,43 @@ export function renderArea(area, records) {
   return lines.join("\n");
 }
 
-export async function generate({ root = repoRoot, check = false } = {}) {
+/**
+ * The accepted records no rule line cites as its own (ADR-0074 §3).
+ *
+ * A record is a line's primary citation when it is named in that line's
+ * `records` — rendered with its own link — as opposed to appearing only in the
+ * "as carried by" suffix of a parent it supersedes. That suffix is how ADR-0073
+ * reached a session and nothing more: its decisions had no line, and a
+ * regeneration writing nothing looked the same as one with nothing to write.
+ * A superseded record is out of this check's scope — its successor is the one
+ * accepted — and so is a `proposed` one, which a step accepts at its head.
+ */
+export function uncitedRecords(areas, records) {
+  const cited = new Set(
+    areas.flatMap((area) => area.rules.flatMap((rule) => rule.records)),
+  );
+  return Object.values(records)
+    .filter((record) => /^accepted\b/i.test(record.status))
+    .filter((record) => !cited.has(record.id))
+    .map((record) => record.id)
+    .sort();
+}
+
+export async function generate({
+  root = repoRoot,
+  check = false,
+  areas = AREAS,
+} = {}) {
   const records = await readRecords(root);
+  const uncited = uncitedRecords(areas, records);
+  if (uncited.length > 0) {
+    throw new Error(
+      `accepted record${uncited.length > 1 ? "s" : ""} with no digest line of ${uncited.length > 1 ? "their" : "its"} own: ${uncited.map((id) => `ADR-${id}`).join(", ")} — add the rule lines to scripts/rules-digest.mjs`,
+    );
+  }
   const { default: prettier } = await import("prettier");
   const results = [];
-  for (const area of AREAS) {
+  for (const area of areas) {
     const target = path.join(root, "docs", "rules", `${area.slug}.md`);
     const options = await prettier.resolveConfig(target, {
       editorconfig: false,

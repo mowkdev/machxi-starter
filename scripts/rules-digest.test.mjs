@@ -7,6 +7,7 @@ import {
   readRecords,
   renderArea,
   successorsOf,
+  uncitedRecords,
 } from "./rules-digest.mjs";
 
 test("the committed digests are what the generator produces", async () => {
@@ -108,4 +109,46 @@ test("a rule whose records the corpus does not hold renders no line", () => {
       `${area.slug} rendered a rule line from an empty corpus`,
     );
   }
+});
+
+test("every accepted record is the primary citation of a line", async () => {
+  const records = await readRecords();
+  assert.deepEqual(
+    uncitedRecords(AREAS, records),
+    [],
+    "add a rule line naming each record in scripts/rules-digest.mjs",
+  );
+
+  // Red with one record's lines removed: take an accepted record out of every
+  // line's `records`, and the check names it and the generator refuses.
+  const victim = Object.values(records).find(
+    (r) => /^accepted\b/i.test(r.status) && !r.superseded,
+  );
+  assert.ok(victim, "the corpus has an accepted record to remove");
+  const stripped = AREAS.map((area) => ({
+    ...area,
+    rules: area.rules
+      .map((rule) => ({
+        ...rule,
+        records: rule.records.filter((id) => id !== victim.id),
+      }))
+      .filter((rule) => rule.records.length > 0),
+  }));
+  assert.deepEqual(uncitedRecords(stripped, records), [victim.id]);
+  await assert.rejects(
+    generate({ check: true, areas: stripped }),
+    new RegExp(`ADR-${victim.id}`),
+  );
+});
+
+test("a record cited only as a carrier is not cited as its own", () => {
+  // The suffix `as carried by` is rendered from the parent's status line, not
+  // from a line's `records`, so a successor named only there stays uncited.
+  const records = {
+    "0001": { id: "0001", status: "superseded by [ADR-0002](x) (delta)" },
+    "0002": { id: "0002", status: "accepted" },
+    "0003": { id: "0003", status: "proposed" },
+  };
+  const areas = [{ rules: [{ records: ["0001"] }] }];
+  assert.deepEqual(uncitedRecords(areas, records), ["0002"]);
 });
