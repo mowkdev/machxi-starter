@@ -200,7 +200,12 @@ export const AppFormActions = ({
         {t("actions.cancel")}
       </Button>
       <Button type="submit" disabled={!canSubmit}>
-        {isPending ? <Spinner /> : null}
+        {/*
+         * The spinner's name from this package's catalogue (`D28.8`, the
+         * review's `FE-10`): the primitive hard-codes `aria-label="Loading"`
+         * and stays byte-identical, so the name is supplied at the call.
+         */}
+        {isPending ? <Spinner aria-label={t("actions.pending")} /> : null}
         {submitLabel}
       </Button>
     </>

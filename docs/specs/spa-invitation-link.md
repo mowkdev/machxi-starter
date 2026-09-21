@@ -32,7 +32,7 @@ Proved by: `apps/customer/src/app/__tests__/accept-invitation.test.tsx`, `apps/c
 
 ## Requirement: A link the lookup cannot read says one thing, and a check that fails says another
 
-Unknown, accepted, declined, revoked, expired and organization-deleted are one indistinguishable `404` on the wire, so this screen offers one sentence for all of them rather than inventing a distinction the API declines to make — and no control, because nothing here can mint another offer. An address carrying no link at all reads the same way and asks the API nothing. A check that failed for a reason that is **not** the link's — the lookup's source-keyed budget answering `429` above all, which behind one office egress is a colleague's request rather than the reader's — is a different sentence with a control that asks again, because the link is still held and still good.
+Unknown, accepted, declined, revoked, expired and organization-deleted are one indistinguishable `404` on the wire, so this screen offers one sentence for all of them rather than inventing a distinction the API declines to make — and no control, because nothing here can mint another offer. An address carrying no link at all reads the same way and asks the API nothing. A check that failed for a reason that is **not** the link's — the lookup's source-keyed budget answering `429` above all, which behind one office egress is a colleague's request rather than the reader's — is a different sentence with a control that asks again, because the link is still held and still good. Both are alerts, because each replaces the pending sentence — itself a status — with no navigation; the failed check is one alert carrying the screen's sentence and the code's, and the spinner beside the pending sentence is hidden from a screen reader so the status is not read twice.
 Records: [ADR-0071](../adr/0071-mail-flows.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0034](../adr/0034-server-state-and-notifications.md)
 Proved by: `apps/customer/src/app/__tests__/accept-invitation.test.tsx`
 
@@ -50,6 +50,11 @@ Proved by: `apps/customer/src/app/__tests__/accept-invitation.test.tsx`
 
 - **WHEN** the lookup answers something that is not a refusal of the link
 - **THEN** the screen says so, keeps the link, and offers a control that asks again
+
+### Scenario: What a screen reader hears
+
+- **WHEN** the lookup is in flight, and then when it answers a refusal or fails
+- **THEN** the pending sentence is the one status on the screen, and the refusal or the failed check is one alert
 
 ## Requirement: A stranger is offered the way in the deployment has
 

@@ -383,3 +383,73 @@ describe("an arrival with nothing to finish", () => {
     expect(screen.getByText(/There is nothing to finish here/)).toBeVisible();
   });
 });
+
+describe("what a screen reader hears", () => {
+  /*
+   * `D28.8`, the review's `FE-11`: the sentence changes under the reader with
+   * no navigation, so the node has to say what kind of change it is — a
+   * status while the screen works or waits, an alert when it has failed.
+   */
+  it("reads the pending sentence as a status", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // Held, then passed through to the default handler.
+    server.use(
+      http.post(`${PUBLIC_API}/auth/google/exchange`, async () => {
+        await held;
+        return undefined;
+      }),
+    );
+
+    renderApp({
+      initialPath: landing({ token: GOOGLE_HANDOFF_TOKEN }),
+      store: createSessionStore(),
+    });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Signing you in…",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    release();
+
+    expect(
+      await screen.findByRole("heading", { name: "Your account" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reads a refused exchange as an alert", async () => {
+    renderApp({
+      initialPath: landing({ token: "a-spent-handoff" }),
+      store: createSessionStore(),
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /That sign-in did not work/,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("reads a refusal from the callback as an alert", async () => {
+    renderApp({
+      initialPath: landing({ error: "AUTH_SOMETHING_FROM_A_NEWER_API" }),
+      store: createSessionStore(),
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Something went wrong. Try again.",
+    );
+  });
+
+  it("reads nothing to finish as a status, not an alert", async () => {
+    renderApp({ initialPath: "/auth/google", store: createSessionStore() });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /There is nothing to finish here/,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

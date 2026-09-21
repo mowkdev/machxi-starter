@@ -344,3 +344,75 @@ describe("following an invitation link", () => {
     ).toHaveAttribute("href", "/login?redirect=%2Faccount%2Finvitations");
   });
 });
+
+describe("what a screen reader hears", () => {
+  /*
+   * `D28.8`, the review's `FE-11`: each state replaces the last with no
+   * navigation, so the node has to say what kind of change it is.
+   */
+  it("reads the pending sentence as a status, and its spinner not twice", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // Held, then passed through to the default handler.
+    server.use(
+      http.post(`${PUBLIC_API}/invitations/lookup`, async () => {
+        await held;
+        return undefined;
+      }),
+    );
+
+    renderApp({
+      initialPath: link(INVITATION_TOKEN),
+      store: createSessionStore(),
+    });
+
+    /*
+     * One status, not two: the spinner inside the sentence is hidden, because
+     * a status nested in a status is read twice.
+     */
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Checking the invitation…",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    release();
+
+    expect(await screen.findByLabelText("Email")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("reads a link it cannot read as an alert", async () => {
+    renderApp({
+      initialPath: link("a-withdrawn-link"),
+      store: createSessionStore(),
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /This invitation link cannot be used/,
+    );
+  });
+
+  it("reads a failed check as one alert carrying both sentences", async () => {
+    server.use(
+      http.post(`${PUBLIC_API}/invitations/lookup`, () =>
+        fail(429, "RATE_LIMITED"),
+      ),
+    );
+
+    renderApp({
+      initialPath: link(INVITATION_TOKEN),
+      store: authenticated(),
+    });
+
+    const alert = await screen.findByRole("alert");
+
+    expect(alert).toHaveTextContent(/could not be checked just now/);
+    expect(alert).toHaveTextContent(
+      "Too many attempts. Wait a moment and try again.",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+});

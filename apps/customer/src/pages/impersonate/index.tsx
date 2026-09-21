@@ -63,7 +63,18 @@ export const ImpersonatePage = () => {
   return (
     <AuthLayout description={undefined} title={title}>
       <Card className="flex flex-col items-start gap-4 p-5">
-        <p className="text-[14px] leading-5 text-muted-foreground">
+        {/*
+         * A live region (`D28.8`, the review's `FE-11`): `pending` becomes a
+         * refusal without a navigation, so a screen reader hears the change
+         * only if the sentence says it is one. The refusal is an `alert`; the
+         * other two are a status. Keyed on the role, so the refusal arrives as
+         * a new node rather than as a role rewritten in place.
+         */}
+        <p
+          className="text-[14px] leading-5 text-muted-foreground"
+          key={status === "refused" ? "alert" : "status"}
+          role={status === "refused" ? "alert" : "status"}
+        >
           {t(MESSAGE_KEY[status])}
         </p>
         {/*

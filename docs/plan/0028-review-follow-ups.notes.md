@@ -225,3 +225,47 @@ The first run was killed partway through `pnpm test` for low memory. This retry 
 - `pnpm size` on the tree: admin js 371.4 / 389.6 kB, entry 157.1 / 165.0 kB; customer js 320.0 / 335.9 kB, entry 105.1 / 110.4 kB, all `ok`, and no drift warning.
 
 **Pending the operator.** Nothing. The running stack serves no script here.
+
+## D28.8 — What a screen reader hears (2026-09-21)
+
+**Built.**
+
+- **`FE-10`.** Each app now has a `shared/ui/spinner.tsx` that renders the `@repo/ui` primitive with `aria-label={t("common:loading.label")}`. The primitive itself is unchanged and stays byte-identical.
+  - Both doors export this spinner in place of the primitive.
+  - The admin's `confirm-dialog.tsx`, which imported the primitive directly, now imports `./spinner`.
+  - `loading.label` is in both apps' `en` and `lv` catalogues ("Loading", "Notiek ielāde").
+  - The one other place the English name reached a screen was the submit button in `@repo/form`'s `AppFormActions`. It now takes `form:actions.pending` from the package's own catalogue.
+  - `pseudo-locale.test.tsx` case "the spinner's label is a catalogue string" renders the door's spinner under the lens and asserts that its name is accented. A second case asserts the English accessible name "Loading". Exporting the primitive again turns the first case red.
+- **`FE-11`.** The sentence on each of the three fragment landings is now a live region:
+  - A pending or waiting sentence is `role="status"`.
+  - A failure is `role="alert"`.
+  - On `auth-google` and `impersonate` the node is keyed on its role. A failure therefore arrives as a new node, instead of a role being rewritten in place.
+  - On `accept-invitation`, the pending sentence's spinner is `aria-hidden`, so there is one status rather than a status nested in a status. The failed check is one alert holding both the screen's sentence and the code's sentence. The code's sentence is a plain paragraph, not a `FieldError`, because a `FieldError` would carry its own nested `role="alert"`.
+  - Each landing suite gains a "what a screen reader hears" describe that asserts the roles with `findByRole("status")` and `findByRole("alert")`. The pending case holds the request open with a pass-through handler.
+  - The three `spa-*.md` specs gain a "What a screen reader hears" scenario. Their requirements' `Proved by:` already named these suites.
+  - `impersonation-exchange.test.tsx`'s "overwrites a real customer session" case now waits for home before reading the banner's `status`, because the landing's own sentence is a status too.
+
+**Amendments.** One labelled amendment to the plan's step 8, recording three readings:
+
+- the key is `common:loading.label`, because `common:loading` is already a group;
+- `@repo/form` takes the fix from its own namespace;
+- the nested-status and one-alert choices on the invitation screen.
+
+No record changed.
+
+**Review: one `code-reviewer` pass.** No confirmed defects, and three low-severity findings:
+
+1. **[logged]** No test sees `@repo/form`'s new spinner label, because its English value is the primitive's "Loading". Adding one would mean a pending-submit render under the lens or in `lv`. The done-when does not ask for it, and it waits for D22, when the form suites move into the package.
+2. **[logged, uncertain]** Moving from pending to an offer, and from retry back to pending, on the invitation screen may be silent in some screen readers. The status node mounts and unmounts rather than persisting, and the offer sentence is not a live region. The spec promises the roles, and it holds. A persistent status wrapper would close this and is left for a later a11y pass.
+3. **[fixed]** The three pending cases asserted `toHaveTextContent(/.+/)`. They now match the pending sentence itself.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`:
+
+- `lint` 21/21, `check-types` 16/16, `test` 15/15 cold, `size` 4/4
+- customer 296 tests, admin 537, `@repo/form` 7, API 786 unit and 823 integration
+- Prettier: "All matched files use Prettier code style!"
+- `pnpm size`: customer js 320.5 / 335.9 kB, entry 105.1 / 110.4 kB; admin js 371.5 / 389.6 kB, entry 157.1 / 165.0 kB, all `ok`.
+
+Finding 3's fix touched only three test files. After it, those three suites were re-run green (41 tests) and `prettier --check` was clean.
+
+**Pending the operator.** Hearing the landings through a real screen reader. The roles are proved in jsdom, and how NVDA or VoiceOver announces them is a browser-only observation.

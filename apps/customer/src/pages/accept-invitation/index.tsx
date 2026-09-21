@@ -90,15 +90,29 @@ export const AcceptInvitationPage = () => {
   return (
     <AuthLayout description={undefined} title={title}>
       <Card className="flex flex-col gap-4 p-5">
+        {/*
+         * The pending sentence is a status and the two failures below are
+         * alerts (`D28.8`, the review's `FE-11`): each replaces the last
+         * without a navigation, so a screen reader hears the change only if
+         * the node says what kind of change it is. The spinner is hidden from
+         * it here — the sentence beside it already says the same thing, and a
+         * second status inside the first would be read twice.
+         */}
         {status === "pending" ? (
-          <p className="flex items-center gap-2 text-[14px] leading-5 text-muted-foreground">
-            <Spinner />
+          <p
+            className="flex items-center gap-2 text-[14px] leading-5 text-muted-foreground"
+            role="status"
+          >
+            <Spinner aria-hidden="true" />
             {t("link.pending")}
           </p>
         ) : null}
 
         {status === "refused" ? (
-          <p className="text-[14px] leading-5 text-muted-foreground">
+          <p
+            className="text-[14px] leading-5 text-muted-foreground"
+            role="alert"
+          >
             {t("link.refused")}
           </p>
         ) : null}
@@ -112,12 +126,21 @@ export const AcceptInvitationPage = () => {
          */}
         {status === "unavailable" ? (
           <>
-            <p className="text-[14px] leading-5 text-muted-foreground">
-              {t("link.unavailable")}
-            </p>
-            {formError === null ? null : (
-              <FieldError role="alert">{formError}</FieldError>
-            )}
+            {/*
+             * One alert holding both sentences, the screen's and the
+             * catalogue's for the code, rather than two alerts read in
+             * whichever order the reader reaches them. So the code's sentence
+             * is a plain paragraph in `FieldError`'s colour rather than a
+             * `FieldError`, whose own `role="alert"` would nest a second one.
+             */}
+            <div className="flex flex-col gap-2" role="alert">
+              <p className="text-[14px] leading-5 text-muted-foreground">
+                {t("link.unavailable")}
+              </p>
+              {formError === null ? null : (
+                <p className="text-sm text-destructive">{formError}</p>
+              )}
+            </div>
             <Button
               className={AUTH_CONTROL}
               onClick={retry}

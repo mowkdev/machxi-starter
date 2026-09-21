@@ -20,6 +20,7 @@
     "unreachable": "Neizdodas sasniegt pakalpojumu. Pārbaudiet savienojumu vai mēģiniet pēc brīža."
   },
   "loading": {
+    "label": "Notiek ielāde",
     "starting": "Notiek startēšana…"
   },
   "nav": {

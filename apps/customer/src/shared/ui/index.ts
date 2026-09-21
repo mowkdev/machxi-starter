@@ -10,8 +10,9 @@
  *
  * Re-exports only, and deliberately so: a component with app-specific
  * behaviour is not a re-export, it is a `shared/ui` component of its own, and
- * it goes in a file beside this one — `query-error.tsx` is the one left,
- * everything else having moved into `@repo/app-kit` at `D14.8`.
+ * it goes in a file beside this one — `query-error.tsx` was the one left,
+ * everything else having moved into `@repo/app-kit` at `D14.8`, and
+ * `spinner.tsx` joined it at `D28.8`.
  *
  * Named rather than `export *` because the door is also the inventory: what
  * this app uses from the design system is readable in one screen, and adding to
@@ -138,7 +139,6 @@ export {
   TableHeader,
   TableRow,
 } from "@repo/ui/components/table";
-export { Spinner } from "@repo/ui/components/spinner";
 /*
  * ADR-0034's one delivery surface for mutation outcomes (`D12.6`). `toast` is
  * called from exactly one place — `@repo/app-kit`'s query client and its global
@@ -182,6 +182,12 @@ export {
 
 /** The components in this slice with behaviour of their own. */
 export { QueryError } from "./query-error";
+/*
+ * The primitive with its accessible name from the catalogue (`D28.8`,
+ * ADR-0046 §12): exported in the primitive's place, so no screen can reach the
+ * English `aria-label` the generated file hard-codes.
+ */
+export { Spinner } from "./spinner";
 /*
  * The shared composition, through this door (`D14.8`, ADR-0062 §1).
  *

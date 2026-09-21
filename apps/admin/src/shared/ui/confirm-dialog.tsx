@@ -10,9 +10,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@repo/ui/components/alert-dialog";
-import { Spinner } from "@repo/ui/components/spinner";
-
 import { useT } from "@/shared/i18n";
+
+import { Spinner } from "./spinner";
 
 /**
  * "Are you sure?" for an action with no form to host it.

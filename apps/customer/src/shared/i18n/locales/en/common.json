@@ -20,6 +20,7 @@
     "unreachable": "We cannot reach the service. Check your connection, or try again in a moment."
   },
   "loading": {
+    "label": "Loading",
     "starting": "Starting…"
   },
   "nav": {

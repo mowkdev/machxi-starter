@@ -42,7 +42,7 @@ Proved by: `apps/customer/src/pages/login/__tests__/login.test.tsx`
 
 ## Requirement: The landing spends a handoff once, and asks first in a browser that already holds a session
 
-An arrival carrying `#token=…` is exchanged once — the fragment struck before the credential leaves, the exchange asking for cookie transport and carrying the browser's own credentials, and one arrival meaning one exchange even under a double-invoked mount. It then lands the person on the destination the sign-in screen stored, or home. In a browser that already holds a session nothing is spent until the person confirms, because a client that spends a fragment on mount is a forced-login primitive; the fragment is struck while it waits. A refusal renders the catalogue's sentence for the code the callback sent, with the way back to sign in, and starts no session. An address carrying nothing to finish says so and asks for nothing — including when a fragment appears on it afterwards without a reload, which one mount does not act on.
+An arrival carrying `#token=…` is exchanged once — the fragment struck before the credential leaves, the exchange asking for cookie transport and carrying the browser's own credentials, and one arrival meaning one exchange even under a double-invoked mount. It then lands the person on the destination the sign-in screen stored, or home. In a browser that already holds a session nothing is spent until the person confirms, because a client that spends a fragment on mount is a forced-login primitive; the fragment is struck while it waits. A refusal renders the catalogue's sentence for the code the callback sent, with the way back to sign in, and starts no session. An address carrying nothing to finish says so and asks for nothing — including when a fragment appears on it afterwards without a reload, which one mount does not act on. The sentence is a live region, because it changes with no navigation: a status while the screen works, waits or has nothing to finish, and an alert when the sign-in has failed.
 Records: [ADR-0072](../adr/0072-federated-identity-google-sign-in.md), [ADR-0071](../adr/0071-mail-flows.md), [ADR-0029](../adr/0029-browser-token-transport.md), [ADR-0055](../adr/0055-customer-app.md)
 Proved by: `apps/customer/src/pages/auth-google/__tests__/auth-google.test.tsx`, `apps/customer/src/pages/login/__tests__/login.test.tsx`
 
@@ -75,6 +75,11 @@ Proved by: `apps/customer/src/pages/auth-google/__tests__/auth-google.test.tsx`,
 
 - **WHEN** the landing is opened with an empty fragment, and a handoff is then put in the address without a reload
 - **THEN** it says there is nothing to finish, and it spends nothing that arrives after it
+
+### Scenario: What a screen reader hears
+
+- **WHEN** the exchange is in flight, and then when it or the callback is refused
+- **THEN** the pending sentence is a status and the refusal an alert, with no alert while it waits and no status once it has failed
 
 ## Requirement: A link finished, and a link refused, end on the account's security section
 

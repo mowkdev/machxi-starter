@@ -1,7 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
+import { http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  API,
   HANDOFF_TOKEN,
   IMPERSONATOR,
   createAuthHandlers,
@@ -190,6 +192,13 @@ describe("redeeming a handoff", () => {
       store: authenticated({ email: "someone.else@machxi.local" }),
     });
 
+    /*
+     * Home first: the landing's own sentence is a `status` too (`D28.8`), so
+     * the banner's is the one to read only once the landing has gone.
+     */
+    expect(
+      await screen.findByRole("heading", { name: "Your account" }),
+    ).toBeInTheDocument();
     expect(await screen.findByRole("status")).toHaveTextContent(
       IMPERSONATOR.email,
     );
@@ -200,5 +209,57 @@ describe("redeeming a handoff", () => {
     expect(principal?.kind === "user" && principal.impersonatedBy).toEqual(
       IMPERSONATOR,
     );
+  });
+});
+
+describe("what a screen reader hears", () => {
+  /*
+   * `D28.8`, the review's `FE-11`: `pending` becomes a refusal with no
+   * navigation, so the node has to say what kind of change it is.
+   */
+  it("reads the pending sentence as a status", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // Held, then passed through to the default handler.
+    server.use(
+      http.post(`${API}/auth/impersonate`, async () => {
+        await held;
+        return undefined;
+      }),
+    );
+
+    renderApp({ initialPath: link(HANDOFF_TOKEN) });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Opening the account…",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    release();
+
+    expect(
+      await screen.findByRole("heading", { name: "Your account" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reads a refused exchange as an alert", async () => {
+    renderApp({ initialPath: link("a-dead-handoff") });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /This link cannot be used/,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("reads an address with no token as a status, not an alert", async () => {
+    renderApp({ initialPath: "/impersonate" });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /This address needs a link/,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

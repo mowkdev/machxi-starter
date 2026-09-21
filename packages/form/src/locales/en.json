@@ -1,6 +1,7 @@
 {
   "actions": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "pending": "Loading"
   },
   "select": {
     "placeholder": "Select…"

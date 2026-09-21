@@ -126,7 +126,6 @@ export {
   SidebarTrigger,
 } from "@repo/ui/components/sidebar";
 export { Skeleton } from "@repo/ui/components/skeleton";
-export { Spinner } from "@repo/ui/components/spinner";
 export { Switch } from "@repo/ui/components/switch";
 export {
   Table,
@@ -181,6 +180,12 @@ export {
 export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";
 export { QueryError } from "./query-error";
 export { RecordError } from "./record-error";
+/*
+ * The primitive with its accessible name from the catalogue (`D28.8`,
+ * ADR-0046 §12): exported in the primitive's place, so no screen can reach the
+ * English `aria-label` the generated file hard-codes.
+ */
+export { Spinner } from "./spinner";
 
 /*
  * The shared composition, through this door (`D14.8`, ADR-0062 §1).

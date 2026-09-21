@@ -1,6 +1,7 @@
 {
   "actions": {
-    "cancel": "Atcelt"
+    "cancel": "Atcelt",
+    "pending": "Notiek ielāde"
   },
   "select": {
     "placeholder": "Izvēlieties…"

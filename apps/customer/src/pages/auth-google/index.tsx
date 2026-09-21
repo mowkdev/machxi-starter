@@ -30,6 +30,13 @@ const STRANDED: ReadonlySet<GoogleLandingStatus> = new Set([
   "missing",
 ]);
 
+/**
+ * The states that are a failure rather than a step on the way (`D28.8`, the
+ * review's `FE-11`): read out as an alert, where every other state is a status
+ * a screen reader announces when it gets to it.
+ */
+const FAILED: ReadonlySet<GoogleLandingStatus> = new Set(["refused", "failed"]);
+
 /** ADR-0054 §7's 38px rung, as the auth cards spell it. */
 const AUTH_CONTROL = "h-[38px] text-[13px]";
 
@@ -80,7 +87,18 @@ export const AuthGooglePage = () => {
   return (
     <AuthLayout description={undefined} title={title}>
       <Card className="flex flex-col gap-4 p-5">
-        <p className="text-[14px] leading-5 text-muted-foreground">
+        {/*
+         * A live region, because the sentence changes under the reader without
+         * a navigation — `pending` to a refusal is the whole of what this
+         * screen has to say (`D28.8`, `FE-11`). Keyed on the role, so a failure
+         * arrives as a new `alert` node rather than as a role rewritten on the
+         * status node, which assistive technology does not reliably re-read.
+         */}
+        <p
+          className="text-[14px] leading-5 text-muted-foreground"
+          key={FAILED.has(status) ? "alert" : "status"}
+          role={FAILED.has(status) ? "alert" : "status"}
+        >
           {sentence}
         </p>
         {/*

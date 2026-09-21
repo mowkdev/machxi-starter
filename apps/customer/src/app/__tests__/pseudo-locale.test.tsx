@@ -1,4 +1,4 @@
-import { waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createQueryClient } from "@/shared/api/query-client";
@@ -27,7 +27,8 @@ import {
 } from "@/test/msw/handlers/organizations.handlers";
 import { server } from "@repo/app-kit/testing";
 import { authenticated, userPrincipal } from "@/test/principals";
-import { renderApp } from "@/test/render";
+import { renderApp, renderWithProviders } from "@/test/render";
+import { Spinner } from "@/shared/ui";
 
 /**
  * Every route, under the pseudo-locale (ADR-0046 §10, §14) — this app's walk,
@@ -402,4 +403,29 @@ describe("a passwordless account under the pseudo-locale", () => {
       unmount();
     },
   );
+});
+
+describe("what the design system says without showing it", () => {
+  /*
+   * `D28.8`, the review's `FE-10`. The primitive hard-codes
+   * `aria-label="Loading"`, and the walk above cannot see a spinner — one is
+   * on screen only while something is in flight, and the walk waits for
+   * everything to settle before it judges a page. So the door's spinner is
+   * rendered on its own, under the lens, and its name has to come out
+   * accented like every other catalogue string.
+   */
+  it("the spinner's label is a catalogue string", () => {
+    renderWithProviders(<Spinner />, { pseudo: true });
+
+    const label = screen.getByRole("status").getAttribute("aria-label") ?? "";
+
+    expect(isPseudo(label)).toBe(true);
+    expect(label).not.toBe("Loading");
+  });
+
+  it("the spinner says Loading in English, by accessible name", () => {
+    renderWithProviders(<Spinner />);
+
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+  });
 });

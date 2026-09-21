@@ -47,7 +47,7 @@ Proved by: `apps/admin/src/features/users-manage/__tests__/users-manage.test.tsx
 
 ## Requirement: The landing spends the handoff once and says so when it cannot
 
-`/impersonate` is its own shell rather than a guarded one, because the operator's browser may already hold a customer session and that is the design rather than an edge case. It strikes the fragment out of the address, exchanges the handoff asking for cookie transport — without which the session would not survive the first reload — and lands on the customer's home. A real customer session already in that browser is overwritten there, which the API leaves alive elsewhere. A refusal — replayed, expired, unknown, or a target no longer active, all one `401` — says so and offers the way to sign in, and an address carrying no token asks for nothing at all. Neither of those states offers a retry, because a handoff cannot be re-spent.
+`/impersonate` is its own shell rather than a guarded one, because the operator's browser may already hold a customer session and that is the design rather than an edge case. It strikes the fragment out of the address, exchanges the handoff asking for cookie transport — without which the session would not survive the first reload — and lands on the customer's home. A real customer session already in that browser is overwritten there, which the API leaves alive elsewhere. A refusal — replayed, expired, unknown, or a target no longer active, all one `401` — says so and offers the way to sign in, and an address carrying no token asks for nothing at all. Neither of those states offers a retry, because a handoff cannot be re-spent. The sentence is a live region, because it changes with no navigation: a status while the exchange is in flight or when there is nothing to spend, and an alert on a refusal.
 Records: [ADR-0057](../adr/0057-impersonation-sessions.md), [ADR-0070](../adr/0070-impersonation-in-a-new-tab.md), [ADR-0029](../adr/0029-browser-token-transport.md), [ADR-0055](../adr/0055-customer-app.md)
 Proved by: `apps/customer/src/app/__tests__/impersonation-exchange.test.tsx`, `apps/customer/e2e/impersonation.spec.ts`
 
@@ -70,3 +70,8 @@ Proved by: `apps/customer/src/app/__tests__/impersonation-exchange.test.tsx`, `a
 
 - **WHEN** the landing is opened with no token in the address
 - **THEN** it says so and asks the API for nothing
+
+### Scenario: What a screen reader hears
+
+- **WHEN** the exchange is in flight, and then when it is refused
+- **THEN** the pending sentence is a status and the refusal an alert, and an address with no token is a status rather than an alert
