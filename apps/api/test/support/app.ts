@@ -1,3 +1,4 @@
+import { createArgon2Hasher, type PasswordHasher } from "@repo/crypto";
 import { createLogger, type Logger } from "@repo/logger";
 import type { Express } from "express";
 
@@ -28,6 +29,14 @@ export interface TestApp {
   readonly config: AppConfig;
   readonly db: DbClient;
   readonly logger: Logger;
+  /**
+   * The seeders' hasher, built from this app's own `config.auth.argon2` — the
+   * values the container's hasher is built from — so a seeded password
+   * verifies against exactly what the API expects. The container does not
+   * expose its own (`D28.6`, `API-12`): a raw hasher on the root's surface is
+   * a way around the ADR-0020 cap.
+   */
+  readonly hasher: PasswordHasher;
   /**
    * Every message this app sent, newest last (ADR-0066 §1, ADR-0071 §3).
    *
@@ -114,6 +123,7 @@ export const createTestApp = ({
     config,
     db,
     logger,
+    hasher: createArgon2Hasher(config.auth.argon2),
     mail,
     oidc,
     close: db.close,

@@ -199,6 +199,14 @@ describe("buildContainer", () => {
     expect(names(services)).toEqual([...SERVICE_NAMES]);
   });
 
+  it("exposes no raw hasher on its surface", () => {
+    // `D28.6` (`API-12`): the services hold the limited hasher and the auth
+    // module is handed the raw one inside the root. A raw handle on the
+    // surface is one a caller could hash through around the ADR-0020 cap, and
+    // nothing in `src/` read it.
+    expect(names(build())).not.toContain("hasher");
+  });
+
   it("gives each container its own limiter instances", () => {
     // The whole reason the limiters are built at the root (ADR-0009): an
     // instance holds the counter, so two processes — or two integration

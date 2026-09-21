@@ -66,7 +66,7 @@ describe("admin user administration", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     superAdminTokens = await login(harness.app, "staff", superAdmin());
 

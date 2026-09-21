@@ -68,7 +68,7 @@ describe("the organizations repositories", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     const [owner] = await harness.db.db
       .select({ id: users.id })

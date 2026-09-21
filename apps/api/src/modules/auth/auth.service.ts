@@ -32,32 +32,6 @@ import {
 } from "./auth.types.js";
 
 /**
- * The module's own vocabulary, re-exported from where it now lives.
- *
- * The constants, the input shapes and the two payload readers moved to
- * `auth.types.ts` at `D20.7` — the module's type door — so that this file
- * holds flows rather than declarations. They are re-exported here rather than
- * repointed at every call site, because `auth.service.js` is the path
- * `index.ts` and three controllers already import them from: a split that
- * changed the import specifier of a symbol whose definition did not change
- * would be a rename wearing a refactor's clothes.
- */
-export {
-  MAX_USER_AGENT_LENGTH,
-  REVOKE_REASONS,
-  readEmailChangePayload,
-  readResetRequest,
-  type AuthServiceDeps,
-  type EmailChangePayload,
-  type EndReplacedImpersonationInput,
-  type IssueImpersonatedSessionInput,
-  type RefreshInput,
-  type ResetRequest,
-  type RevokeReason,
-  type RevokeSessionsForInput,
-} from "./auth.types.js";
-
-/**
  * The authentication flows of ADR-0018, written once for both populations.
  *
  * What makes one implementation serve `staff` and `users` is the

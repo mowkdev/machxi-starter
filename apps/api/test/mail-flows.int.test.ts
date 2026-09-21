@@ -45,7 +45,7 @@ describe("address verification", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -490,7 +490,7 @@ describe.each(RESET_CASES)(
 
     beforeAll(async () => {
       harness = createTestApp();
-      await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+      await resetAndSeed({ db: harness.db, hasher: harness.hasher });
     });
 
     afterAll(async () => {
@@ -817,7 +817,7 @@ describe("address change", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     const [row] = await harness.db.db
       .select({ id: users.id })

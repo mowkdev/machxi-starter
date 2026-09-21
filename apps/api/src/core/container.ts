@@ -345,7 +345,11 @@ export const buildContainer = ({
     logger,
     /** The cookie names the segment routers hand to their CSRF guards. */
     cookieNames,
-    hasher,
+    // No raw `hasher` here (`D28.6`, `API-12`): every service holds the
+    // limited one, the auth module is handed the raw one above, and a handle
+    // on the root's surface is one a future caller could reach for to hash
+    // around the ADR-0020 cap. The integration harness builds its own from
+    // the same `config.auth.argon2`.
     audit,
     authenticate,
     refuseImpersonated,

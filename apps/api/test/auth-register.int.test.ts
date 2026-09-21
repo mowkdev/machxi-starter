@@ -30,7 +30,7 @@ describe("user self-registration", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
   });
 
   afterAll(async () => {

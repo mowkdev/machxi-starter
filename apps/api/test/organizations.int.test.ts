@@ -66,7 +66,7 @@ describe("organizations on the user segment", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     owner = await login(harness.app, "user", {
       email: FIXTURE_USERS.active,

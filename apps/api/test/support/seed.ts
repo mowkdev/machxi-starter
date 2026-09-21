@@ -73,9 +73,11 @@ export const superAdmin = (): SeededSuperAdmin => ({
 export interface ResetAndSeedOptions {
   readonly db: DbClient;
   /**
-   * The container's hasher, so fixtures are hashed with exactly the parameters
-   * the API verifies against. Building a second hasher here would let the two
-   * drift and turn a config mistake into a passing test.
+   * The harness's hasher (`TestApp.hasher`), built from the same
+   * `config.auth.argon2` as the container's, so fixtures are hashed with
+   * exactly the parameters the API verifies against. Building one here from
+   * anything else would let the two drift and turn a config mistake into a
+   * passing test.
    */
   readonly hasher: PasswordHasher;
 }

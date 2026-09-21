@@ -119,15 +119,14 @@ export {
   resendVerificationSchema,
   verifyEmailSchema,
 } from "./auth.schemas.js";
+export { createAuthService, type AuthService } from "./auth.service.js";
 export {
   MAX_USER_AGENT_LENGTH,
   REVOKE_REASONS,
-  createAuthService,
-  type AuthService,
   type AuthServiceDeps,
   type IssueImpersonatedSessionInput,
   type RefreshInput,
-} from "./auth.service.js";
+} from "./auth.types.js";
 export {
   audienceFor,
   createTokenService,

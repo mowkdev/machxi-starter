@@ -285,14 +285,16 @@ export const createRateLimiters = (
      * ADR-0073 §1: `10 / 15 min / **principal**` on every authenticated route
      * that verifies a password through the hash limiter.
      *
-     * **One instance, mounted seven times** — the admin segment's four
-     * credential and address sub-resources and the four self-service routes on
-     * `/user/profile` (`change-password`, the delete, the unlink and
-     * `change-email`). The sharing is the decision here, where `verification`
-     * and `passwordReset` separated for the opposite one: what those ration is
-     * a mailbox, which differs per flow, and what this rations is the caller's
-     * share of one process-wide hash pool, which does not. A counter per route
-     * would be seven times the decided number for one account to spend in turn.
+     * **One instance, mounted on every such route** — the admin segment's
+     * credential and address sub-resources on staff and users, and the
+     * self-service routes on `/user/profile` that verify the caller's own
+     * password; the roster lives in the specs and the integration tier
+     * (`D28.6`, `SEC-13`). The sharing is the decision here, where
+     * `verification` and `passwordReset` separated for the opposite one: what
+     * those ration is a mailbox, which differs per flow, and what this rations
+     * is the caller's share of one process-wide hash pool, which does not. A
+     * counter per route would multiply the decided number for one account to
+     * spend in turn by the number of routes.
      */
     principalHash: createPrincipalHashRateLimiter(
       config,

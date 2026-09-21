@@ -28,7 +28,7 @@ describe("segment isolation", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     const staffLogin = await supertest(harness.app)
       .post("/api/v1/admin/auth/login")

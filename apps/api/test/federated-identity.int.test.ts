@@ -117,7 +117,7 @@ describe("sign in with Google", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -1342,7 +1342,7 @@ describe("sign in with Google, registration off", () => {
         features: { ...config.features, userRegistration: false },
       }),
     });
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -1447,7 +1447,7 @@ describe("sign in with Google, no client configured", () => {
   it("answers the link start 404 ROUTE_NOT_FOUND too, while unlink is still mounted", async () => {
     // Removing a way in needs nothing from Google, so an account that holds an
     // identity on a deployment that dropped its client can still remove it.
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     const { accessToken } = await login(harness.app, "user", {
       email: FIXTURE_USERS.active,

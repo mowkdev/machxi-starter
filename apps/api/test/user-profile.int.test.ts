@@ -57,7 +57,7 @@ describe("user profile", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
     // The super admin is only here to create the accounts the destructive
     // tests below act on, so that the shared `customer` fixture keeps the

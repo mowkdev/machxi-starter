@@ -76,7 +76,7 @@ const auditRows = () =>
 
 beforeAll(async () => {
   harness = createTestApp();
-  await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+  await resetAndSeed({ db: harness.db, hasher: harness.hasher });
 
   const tokens: Tokens = await login(harness.app, "staff", superAdmin());
 
@@ -679,7 +679,7 @@ describe("the mint's rate limit", () => {
         rateLimit: { ...config.rateLimit, impersonationMax: 2 },
       }),
     });
-    await resetAndSeed({ db: limited.db, hasher: limited.container.hasher });
+    await resetAndSeed({ db: limited.db, hasher: limited.hasher });
   });
 
   afterAll(async () => {

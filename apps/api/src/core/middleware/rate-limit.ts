@@ -456,14 +456,13 @@ export interface MailboxRateLimiterOptions {
  * which behind a shared egress is everybody there.
  *
  * No body is read, so there is no "the caller named no address" branch to
- * write — but "no fallback" would be too strong (`D18.7`'s `code-reviewer`).
- * {@link ipKey} answers `""` for a request whose client address the context
- * middleware refused to accept as an address at all, and every such request
- * then shares one bucket. That is a property of `ipKey` rather than of this
- * limiter — the global and refresh limiters have carried it since ADR-0020 —
- * and reaching it takes a `TRUST_PROXY` set one hop too many together with a
- * client sending a forwarded header that is not an address. It is written down
- * here rather than papered over in one of the nine limiters that share it.
+ * write — the fallback is {@link ipKey}'s, shared with every limiter keyed on
+ * the source. A request whose client address the context middleware refused
+ * to accept as an address keys on the socket's remote address instead, with
+ * one warning per process naming the proxy configuration (ADR-0073 §2), so
+ * such requests do not share one bucket. What remains is `ipKey`'s own stated
+ * residual: a request whose connection is already gone by the time the
+ * limiter runs (`D28.6`, `SEC-13`).
  */
 export const createMailSourceRateLimiter = (
   config: AppConfig,
@@ -610,14 +609,16 @@ export const createSetPasswordLinkRateLimiter = (
  * refinement of ADR-0011's rate-limit-first order that
  * {@link createImpersonationRateLimiter} states and that ADR-0057 §1 names.
  * Its unauthenticated fallback is the address and is unreachable by
- * construction on all five mounts; it is written for that limiter's reason, so
+ * construction on every mount; it is written for that limiter's reason, so
  * a mount that got the order wrong degrades to a per-IP budget rather than to
  * one bucket for every anonymous caller.
  *
  * **One instance across all of them**, handed down from the composition root.
  * The budget is the account's share of one process-wide hash pool, not a
- * per-route allowance: a counter each would be seven times the number ADR-0073
- * §1 decided for one caller to spend in turn.
+ * per-route allowance: a counter per mount would multiply the number ADR-0073
+ * §1 decided for one caller to spend in turn by the number of mounts. The
+ * roster of mounts lives in the specs and the integration tier, not here
+ * (ADR-0073 §1; `D28.6`, `SEC-13`).
  */
 export const createPrincipalHashRateLimiter = (
   config: AppConfig,

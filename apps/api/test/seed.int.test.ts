@@ -21,7 +21,7 @@ describe("seeders", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -43,8 +43,8 @@ describe("seeders", () => {
 
     // Re-seeded, not reset: "running it twice changes nothing" is only a
     // claim worth testing if nothing was truncated in between.
-    await seed({ db: harness.db, hasher: harness.container.hasher });
-    await seed({ db: harness.db, hasher: harness.container.hasher });
+    await seed({ db: harness.db, hasher: harness.hasher });
+    await seed({ db: harness.db, hasher: harness.hasher });
 
     expect(await countStaff(email)).toBe(1);
   });
@@ -68,7 +68,7 @@ describe("seeders", () => {
     // The real regression this guards: a seeder that upserted the password
     // would reset a live super admin's credentials to whatever was in someone
     // else's `.env` (ADR-0008).
-    await seed({ db: harness.db, hasher: harness.container.hasher });
+    await seed({ db: harness.db, hasher: harness.hasher });
 
     await supertest(harness.app)
       .post("/api/v1/admin/auth/login")

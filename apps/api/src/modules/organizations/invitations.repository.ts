@@ -6,6 +6,7 @@ import {
 } from "@repo/db";
 import { and, count, desc, eq, exists, gt, isNull, sql } from "drizzle-orm";
 
+import { internal } from "../../core/errors/index.js";
 import {
   applyListQuery,
   type ColumnMap,
@@ -194,9 +195,13 @@ export const createInvitationsRepository = (db: DbExecutor) => {
       // The insert has no conflict target and no nullable returning path: a
       // failure raises rather than resolving to `undefined`, so this cannot be
       // `undefined` in practice and the assertion documents which invariant
-      // says so rather than hiding a branch.
+      // says so rather than hiding a branch — raised through the factory like
+      // every sibling repository's, because `AppError` is the only error type
+      // this code base has (ADR-0013; `D28.6`, `API-10`).
       if (created === undefined) {
-        throw new Error("insert into organization_invitations returned no row");
+        throw internal(
+          new Error("insert into organization_invitations returned no row"),
+        );
       }
 
       return created;

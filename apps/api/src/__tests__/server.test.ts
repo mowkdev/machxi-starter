@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+
 import { createLogger } from "@repo/logger";
 import express from "express";
 import { describe, expect, it, vi } from "vitest";
@@ -62,15 +64,47 @@ describe("the socket deadlines", () => {
     await shutdown("test");
   });
 
-  it("leaves Node's own values alone when nothing is stated", async () => {
-    // A caller with no configuration — this file's other cases — must not be
-    // handed a zero, which Node reads as "no deadline at all".
+  it("Node's own values stand when config does not set them", async () => {
+    // A caller with no configuration — this file's other cases — keeps what
+    // Node gives a bare server, value for value (`D28.6`, `API-12`). Read from
+    // a server Node built rather than written as numbers, so the case pins
+    // "untouched" and not a Node release; a swapped pair or a zero, which
+    // Node reads as "no deadline at all", fails it either way.
+    const bare = createServer();
     const { server, shutdown } = start();
 
+    expect(server.requestTimeout).toBe(bare.requestTimeout);
+    expect(server.headersTimeout).toBe(bare.headersTimeout);
+    expect(server.keepAliveTimeout).toBe(bare.keepAliveTimeout);
     expect(server.requestTimeout).toBeGreaterThan(0);
     expect(server.headersTimeout).toBeGreaterThan(0);
 
     await shutdown("test");
+  });
+
+  it("the headers timeout is shorter than the request timeout", async () => {
+    // The one relation between the two (`D28.6`, `API-12`): the headers are
+    // a prefix of the request, so a headers deadline at or past the request's
+    // never fires first and slow-headers protection is gone. Held for the
+    // configured defaults and for Node's own.
+    const configured = startServer({
+      app: express(),
+      port: 0,
+      logger,
+      requestTimeoutMs: config.http.requestTimeoutSec * 1000,
+      headersTimeoutMs: config.http.headersTimeoutSec * 1000,
+    });
+    const inherited = start();
+
+    expect(configured.server.headersTimeout).toBeLessThan(
+      configured.server.requestTimeout,
+    );
+    expect(inherited.server.headersTimeout).toBeLessThan(
+      inherited.server.requestTimeout,
+    );
+
+    await configured.shutdown("test");
+    await inherited.shutdown("test");
   });
 });
 

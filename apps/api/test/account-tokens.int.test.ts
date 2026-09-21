@@ -86,7 +86,7 @@ describe("account tokens", () => {
     repository = createAccountTokensRepository(harness.db.db);
     // Not for the fixtures — this file needs none — but so the table starts
     // empty whatever ran before it.
-    await resetAndSeed({ db: harness.db, hasher: harness.container.hasher });
+    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
   });
 
   afterAll(async () => {

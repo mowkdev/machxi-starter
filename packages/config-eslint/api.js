@@ -102,6 +102,28 @@ export const apiConfig = ({ tsconfigRootDir }) =>
     },
 
     {
+      // ADR-0013: one branded `AppError`, thrown through factories. A
+      // repository's "cannot happen" branch is the one place a raw `Error`
+      // kept slipping in beside siblings that write `internal(new Error(…))`
+      // (`D28.6`, `API-10`), so the rule is mechanical here rather than a
+      // review convention. Wrapping — `throw internal(new Error(…))` — is
+      // untouched: the selector matches only an `Error` thrown bare.
+      // Restates the `src/**/*.ts` selectors, because a later block's
+      // `no-restricted-syntax` replaces an earlier one's rather than adding.
+      files: ["src/**/*.repository.ts"],
+      ignores: ["src/**/__tests__/**/*.ts"],
+      rules: {
+        "no-restricted-syntax": [
+          "error",
+          ...functionalStyle,
+          ...noRawResponse,
+          ...noFakeOidcProvider,
+          ...noRawErrorInRepository,
+        ],
+      },
+    },
+
+    {
       files: ["src/**/*.ts"],
       ignores: ["src/core/config/**"],
       rules: {
@@ -216,6 +238,24 @@ const functionalStyle = [
     selector: "Decorator",
     message:
       "No decorators (ADR-0009): wiring is explicit in core/container.ts.",
+  },
+];
+
+/**
+ * A bare `Error` thrown from a repository, with or without `new` (ADR-0013).
+ * The error handler maps anything that is not an `AppError` to a 500 anyway;
+ * the rule exists so the code says what it means rather than relying on that.
+ */
+const noRawErrorInRepository = [
+  {
+    selector: "ThrowStatement > NewExpression[callee.name='Error']",
+    message:
+      "Throw through a factory (ADR-0013): `throw internal(new Error(…))`, never a raw Error.",
+  },
+  {
+    selector: "ThrowStatement > CallExpression[callee.name='Error']",
+    message:
+      "Throw through a factory (ADR-0013): `throw internal(new Error(…))`, never a raw Error.",
   },
 ];
 

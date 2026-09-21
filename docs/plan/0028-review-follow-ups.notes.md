@@ -154,3 +154,34 @@ No record changed.
 
 - The running API on 4000 still serves the old code until it next reloads. The cap and the sweeps change behaviour only; there is no migration and no new variable.
 - Separate from this step: `D28.3` did not move [ADR-0065](../adr/0065-starter-lifecycle.md) to `superseded by` for its §5 digest delta, which is true since that step. The ledger's window section still lists it as pending.
+
+## D28.6 — The API tidy (2026-09-21)
+
+**Built.** This step closes `API-10`, `API-11`, `API-12` and `SEC-13`. There is no behaviour change and no spec edit.
+
+- **`API-10`.** `invitations.repository.ts` now throws `internal(new Error(…))` for its "cannot happen" branch.
+  - `packages/config-eslint/api.js` has a new block for `src/**/*.repository.ts` that refuses `throw new Error(…)` and `throw Error(…)`. A wrapped `internal(new Error(…))` is not affected.
+  - The block restates the `src/**/*.ts` selectors (functional style, raw response, fake provider). A later flat-config block's `no-restricted-syntax` replaces an earlier one's rather than merging with it.
+  - Proved by hand: a temporary `zz-probe.repository.ts` with a bare `throw new Error` is reported by the rule. With `--max-warnings 0`, that makes `pnpm lint --filter api` red. The file was then deleted, and the tree lints green.
+- **`API-11`.** The re-export block in `auth.service.ts` is removed. `index.ts` now imports the constants and input types from `auth.types.js`, and only `createAuthService` and `AuthService` from `auth.service.js`.
+- **`API-12`.**
+  - The container no longer returns the raw `hasher`. `container.test.ts` has a new case, "exposes no raw hasher on its surface".
+  - The review's evidence ("nothing reads the hasher") was partly false. 43 integration call sites read `container.hasher`. They are now served by a hasher in the test harness (`test/support/app.ts`), built from the same `config.auth.argon2`, and `support/seed.ts` and the 24 integration files are repointed to it. Nothing in `src/` read it.
+  - `server.test.ts`: "Node's own values stand when config does not set them" compares against a bare `createServer()` value for value. "the headers timeout is shorter than the request timeout" holds for both the configured defaults and Node's own.
+- **`SEC-13`.** The docblocks in `rate-limit.ts` (the mail-source limiter's fallback, the principal-hash limiter) and `rate-limiters.ts` (`principalHash`) now say what the code does:
+  - `ipKey` falls back to the socket's remote address with one warning per process (ADR-0073 §2), so there is no shared bucket.
+  - The mount roster lives in the specs and the integration tier, not as a count in a comment.
+
+**Amendments.** None to the plan or to any record.
+
+**Review: one `code-reviewer` pass** (in the first attempt at this step). It found no correctness bugs. It made one comment-only finding, **[fixed]**: the `rate-limit.ts` docblock still described the old `ipKey` fallback.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`:
+
+- `lint` 21/21, `check-types` 16/16, `test` 15/15, `size` 4/4
+- API: 48 unit files (786 tests) and 28 integration files (823 tests)
+- Prettier: "All matched files use Prettier code style!"
+
+The first run was killed partway through `pnpm test` for low memory. This retry ran the gate whole.
+
+**Pending the operator.** The running API on 4000 serves the old code until it next reloads. Nothing changes its behaviour; there is no migration and no new variable.
