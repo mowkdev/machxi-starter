@@ -131,13 +131,18 @@ test("nothing a fork inherits states the marketing app as present", async () => 
 });
 
 /**
- * The three trees the thousand-line ceiling covers: the API's feature modules
- * and the two platform packages whose entry files had grown into everything at
- * once. They are named rather than globbed because the ceiling is a claim
- * about *these* trees — a package that has never had the problem does not
- * silently inherit a rule nobody argued for.
+ * The trees the thousand-line ceiling covers: the API's feature modules and
+ * its `core`, and the two platform packages whose entry files had grown into
+ * everything at once. They are named rather than globbed because the ceiling
+ * is a claim about *these* trees — a package that has never had the problem
+ * does not silently inherit a rule nobody argued for.
+ *
+ * `core` joined at `D28.7` (ADR-0074 §8, `API-08`): the ceiling was set on the
+ * trees D20 split, and the largest API file left outside it —
+ * `core/config/schema.ts`, 908 lines — sat in the one tree it did not name.
  */
 const LINE_CEILING_ROOTS = [
+  "apps/api/src/core",
   "apps/api/src/modules",
   "packages/api-client/src",
   "packages/grid/src",

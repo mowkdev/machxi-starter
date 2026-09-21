@@ -1,19 +1,25 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 import {
+  DRIFT_PERCENT,
   ENTRY_SHARE_OF_JS,
   HEADROOM_PERCENT,
   UTILITY_BY_PACKAGE,
   check,
   chunkMeasurements,
+  driftWarnings,
   entryShareViolation,
   headroomViolations,
+  inlinePageViolations,
   maxCeiling,
+  measure,
   missingUtilities,
   requiredUtilities,
 } from "./size.mjs";
@@ -188,6 +194,175 @@ test("a missing build is named as one, rather than thrown as an ENOENT", async (
   } finally {
     await rm(appDir, { recursive: true, force: true });
   }
+});
+
+/** The `<head>` Vite writes today, as `apps/admin/dist/index.html` carries it. */
+const VITE_HEAD = [
+  '<script type="module" crossorigin src="/assets/index-A1b2.js"></script>',
+  '<link rel="modulepreload" crossorigin href="/assets/vendor/react-C3d4.js">',
+  '<link rel="stylesheet" crossorigin href="/assets/index-E5f6.css">',
+].join("\n");
+
+const page = ({ head = "", body = "" } = {}) =>
+  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />\n${VITE_HEAD}\n${head}</head>\n<body>\n<div id="root"></div>\n${body}</body>\n</html>\n`;
+
+/**
+ * A whole app directory `check` can run over: a built page, an entry, a
+ * route chunk, a vendor chunk, the CSS the manifest owes, and a budget set
+ * against what it measures. `staleJs` sets the `js` baseline 12% under the
+ * measurement — past the drift line, inside the headroom rule.
+ */
+const withApp = async ({ html = page(), staleJs = false } = {}, run) => {
+  const appDir = await mkdtemp(path.join(tmpdir(), "size-"));
+  const dist = path.join(appDir, "dist");
+  // Random hex, so gzip cannot fold the chunks into nothing.
+  const noise = (bytes) => randomBytes(bytes).toString("hex");
+
+  try {
+    await mkdir(path.join(dist, "assets", "vendor"), { recursive: true });
+    await writeFile(path.join(dist, "index.html"), html);
+    await writeFile(
+      path.join(dist, "assets", "index-A1b2.js"),
+      `export const a = "${noise(200)}";\n`,
+    );
+    await writeFile(
+      path.join(dist, "assets", "route-G7h8.js"),
+      `export const b = "${noise(2000)}";\n`,
+    );
+    await writeFile(
+      path.join(dist, "assets", "vendor", "react-C3d4.js"),
+      `export const c = "${noise(400)}";\n`,
+    );
+    await writeFile(
+      path.join(dist, "assets", "index-E5f6.css"),
+      ".gap-5{gap:1.25rem}.max-w-\\[400px\\]{max-width:400px}\n",
+    );
+    await writeFile(
+      path.join(appDir, "package.json"),
+      JSON.stringify({
+        dependencies: { "@repo/app-kit": "*", "@repo/form": "*" },
+      }),
+    );
+
+    const { js, css, entry } = measure(dist);
+    const react = gzipSync(
+      await readFile(path.join(dist, "assets", "vendor", "react-C3d4.js")),
+      { level: 9 },
+    ).length;
+
+    await writeFile(
+      path.join(appDir, "size-budget.json"),
+      JSON.stringify({
+        baseline: {
+          measuredAt: "2026-09-21",
+          js: staleJs ? Math.floor(js / 1.12) : js,
+          css,
+          entry,
+          chunks: { react },
+        },
+        budgets: { js, css, entry },
+        chunks: { react },
+      }),
+    );
+
+    return await run(appDir);
+  } finally {
+    await rm(appDir, { recursive: true, force: true });
+  }
+};
+
+test("a built page with an inline script fails the link", async () => {
+  // The page Vite writes today is clean: one module script by `src`, links.
+  assert.deepEqual(inlinePageViolations(page()), []);
+  // Neither a value that reads like a handler nor a comment is code.
+  assert.deepEqual(
+    inlinePageViolations(
+      page({
+        head: '<meta name="description" content="Sign on=now" />\n<!-- <script>old()</script> -->\n',
+      }),
+    ),
+    [],
+  );
+
+  // ADR-0074 §6: an inline script, a style element, an event-handler
+  // attribute — and a script whose `src` sits beside a body, which the
+  // browser ignores and is still inline code somebody wrote.
+  const cases = [
+    [page({ body: "<script>window.boot = 1;</script>\n" }), /inline <script>/],
+    [
+      page({ head: '<script type="module">import "/x.js";</script>\n' }),
+      /inline <script type="module">/,
+    ],
+    [page({ head: '<script src="/a.js">boot()</script>\n' }), /inline <script/],
+    [page({ head: "<style>body{margin:0}</style>\n" }), /a <style> element/],
+    [
+      page({ head: '<link rel="stylesheet" href="/a.css" onload="go()">\n' }),
+      /`onload` on <link>/,
+    ],
+    [
+      page({ body: '<img src="/x.png" ONERROR="x()">\n' }),
+      /`ONERROR` on <img>/,
+    ],
+    [page({ body: "<img/onerror=x()>\n" }), /`onerror` on <img>/],
+  ];
+
+  for (const [html, pattern] of cases) {
+    const found = inlinePageViolations(html);
+    assert.equal(found.length, 1, html);
+    assert.match(found[0], pattern);
+  }
+
+  // Through the link itself: the page is refused before any budget rule runs.
+  await withApp({ html: page() }, (appDir) =>
+    assert.equal(check(appDir).ok, true),
+  );
+  await withApp(
+    { html: page({ body: "<script>window.boot = 1;</script>\n" }) },
+    (appDir) =>
+      assert.throws(
+        () => check(appDir),
+        /dist\/index\.html carries an inline <script>[\s\S]*ADR-0074 §6/,
+      ),
+  );
+});
+
+test("a measurement ten percent over its baseline is reported", async () => {
+  // CI-12: the headroom rule bounds the ceiling, not the build, so a
+  // measurement could climb to its ceiling with nothing said.
+  assert.equal(DRIFT_PERCENT, 10);
+
+  const baseline = { js: 1000, css: 100, chunks: { react: 500 } };
+
+  assert.deepEqual(
+    driftWarnings(baseline, [
+      { key: "js", actual: 1100 }, // exactly ten percent: not reported
+      { key: "css", actual: 111 },
+      { key: "react", actual: 551, chunk: true },
+      { key: "entry", actual: 9999 }, // no baseline: headroom's business
+    ]),
+    [
+      { key: "css", actual: 111, baseline: 100 },
+      { key: "chunks.react", actual: 551, baseline: 500 },
+    ],
+  );
+
+  // Through the link: reported under the table, and the link stays green —
+  // the ceiling is the gate, the warning is the note that the baseline aged.
+  await withApp({ staleJs: true }, (appDir) => {
+    const { lines, ok } = check(appDir);
+    assert.equal(ok, true);
+    assert.equal(
+      lines.filter((line) => line.startsWith("size: warning")).length,
+      1,
+    );
+    assert.match(
+      lines.join("\n"),
+      /size: warning — js measures [\d.]+ kB, more than 10% over its [\d.]+ kB baseline \(measured 2026-09-21\)/,
+    );
+  });
+  await withApp({}, (appDir) =>
+    assert.doesNotMatch(check(appDir).lines.join("\n"), /warning/),
+  );
 });
 
 test("both committed budget files satisfy the headroom rule today", async () => {

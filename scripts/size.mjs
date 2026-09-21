@@ -31,8 +31,26 @@
 // files 2–5% above measurement with nothing bounding a raise — the ratchet
 // could be loosened by editing one number. Now a raise past the bound is
 // refused until the baseline beside it is re-measured, so a raise is always a
-// diff that shows both numbers, and a baseline cannot go stale without this
-// script saying so.
+// diff that shows both numbers.
+//
+// **A measurement drifting away from its baseline is reported** (`D28.7`,
+// `CI-12`). The headroom rule bounds the ceiling, not the build: a
+// measurement may climb to its ceiling one step at a time with nothing said
+// until the day it trips — the 2026-09-11 re-baseline. So a row measuring more
+// than {@link DRIFT_PERCENT}% over its baseline prints a warning under the
+// table. It never fails the link: the ceiling is the gate, and the warning is
+// the note that the baseline has gone stale and the next raise will be larger
+// than it looks.
+//
+// **The built page carries nothing the policy would refuse** (ADR-0074 §6,
+// `D28.7`, `SEC-10`). The Content-Security-Policy lives in each image's
+// `nginx.conf`, and the browser tier runs against dev servers that send none,
+// so a plugin that starts emitting an inline bootstrap would break the app in
+// production and nowhere else. This link already reads `dist/index.html` to
+// find the entry; it also refuses an inline `<script>`, any `<style>` element
+// and any `on*=` attribute there. It is stricter than the policy on styles
+// on purpose — `'unsafe-inline'` is Tailwind's runtime price, and the built
+// page does not spend it.
 //
 // **Every silent-pass path is closed, because this is a cached gate link.** A
 // check that can quietly measure nothing reports "ok" forever. So the entry is
@@ -76,6 +94,84 @@ export const HEADROOM_PERCENT = 15;
  */
 export const maxCeiling = (baseline) =>
   baseline + Math.floor((baseline * HEADROOM_PERCENT) / 100);
+
+/**
+ * A measurement more than this many percent over its baseline is reported
+ * (`D28.7`, `CI-12`) — below the 15% a ceiling may sit at, so the warning
+ * arrives while there is still room under the ceiling.
+ */
+export const DRIFT_PERCENT = 10;
+
+/**
+ * The rows measuring more than {@link DRIFT_PERCENT}% over their baseline.
+ *
+ * `rows` are the `{ key, actual }` pairs `check` measures — the totals by
+ * name, the chunks by their budget name — and each is compared with
+ * `baseline[key]` or `baseline.chunks[key]`. Integer arithmetic, for the
+ * reason {@link maxCeiling} gives. A row with no numeric baseline is not
+ * reported here: {@link headroomViolations} already refuses it.
+ */
+export const driftWarnings = (baseline, rows) =>
+  rows.flatMap(({ key, actual, chunk }) => {
+    const base = chunk ? baseline?.chunks?.[key] : baseline?.[key];
+
+    if (typeof base !== "number" || !(base > 0)) return [];
+
+    return actual * 100 > base * (100 + DRIFT_PERCENT)
+      ? [{ key: chunk ? `chunks.${key}` : key, actual, baseline: base }]
+      : [];
+  });
+
+/**
+ * What a built `index.html` may not carry (ADR-0074 §6): an inline script, a
+ * style element, an event-handler attribute. Returns one sentence per
+ * offence; an empty array is a page the policy's `script-src 'self'` serves
+ * whole.
+ *
+ * A `<script>` is inline when it has no `src` or has a body — a body beside a
+ * `src` is ignored by the browser and is still somebody's inline code. Tags
+ * are read as `<name …>` spans, which is enough for the page a bundler
+ * writes; this is not a general HTML parser and does not need to be. Comments
+ * are dropped first, and a tag's quoted values are blanked before a handler
+ * is looked for, so neither a commented-out tag nor `content="Sign on=now"`
+ * is read as code; `/` separates attributes as whitespace does
+ * (`<img/onerror=…>`), so it may precede a handler name too (`D28.7`'s
+ * review).
+ */
+export const inlinePageViolations = (source) => {
+  const found = [];
+  const html = source.replace(/<!--[\s\S]*?-->/g, "");
+
+  for (const [, attrs, body] of html.matchAll(
+    /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi,
+  )) {
+    if (!/\ssrc\s*=/i.test(` ${attrs}`) || body.trim() !== "") {
+      found.push(
+        `an inline <script${attrs}> — the policy's script-src 'self' refuses it`,
+      );
+    }
+  }
+
+  for (const [tag] of html.matchAll(/<style\b[^>]*>/gi)) {
+    found.push(
+      `a ${tag} element — the built page spends none of the policy's 'unsafe-inline'`,
+    );
+  }
+
+  for (const [tag, name] of html.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)) {
+    const handler = /[\s/](on[a-z]+)\s*=/i.exec(
+      tag.replace(/"[^"]*"|'[^']*'/g, '""'),
+    );
+
+    if (handler !== null) {
+      found.push(
+        `an event-handler attribute \`${handler[1]}\` on <${name}> — inline code the policy refuses`,
+      );
+    }
+  }
+
+  return found;
+};
 
 /**
  * The entry may not be budgeted above 60% of all JavaScript (ADR-0062 §4).
@@ -365,6 +461,21 @@ export const check = (appDir) => {
    */
   const measured = measure(dist);
 
+  // `measure` has proved `index.html` exists; what it carries is the policy's
+  // business before it is the budget's (ADR-0074 §6).
+  const inline = inlinePageViolations(
+    readFileSync(join(dist, "index.html"), "utf8"),
+  );
+
+  if (inline.length > 0) {
+    refuse(
+      [
+        ...inline.map((sentence) => `dist/index.html carries ${sentence}.`),
+        "The Content-Security-Policy in nginx.conf serves scripts from 'self' only, and nothing but the production image sends it — so this page would break there and nowhere else (ADR-0074 §6). Find the plugin or the index.html edit that emitted it and move the code into a module.",
+      ].join("\n"),
+    );
+  }
+
   const missing = missingUtilities(
     walk(dist)
       .filter(({ name }) => name.endsWith(".css"))
@@ -416,7 +527,12 @@ export const check = (appDir) => {
     );
   }
 
-  rows.push(...chunkMeasurements(chunkBudgets, vendorChunkSizes(dist)));
+  rows.push(
+    ...chunkMeasurements(chunkBudgets, vendorChunkSizes(dist)).map((row) => ({
+      ...row,
+      chunk: true,
+    })),
+  );
 
   const share = entryShareViolation(budget.budgets);
 
@@ -459,6 +575,19 @@ export const check = (appDir) => {
       ),
       "",
       "Either make it smaller, or raise the number in size-budget.json — deliberately, in a diff someone reviews (ADR-0052), re-measuring the baseline beside it (ADR-0073 §5).",
+    );
+  }
+
+  const drift = driftWarnings(budget.baseline, rows);
+
+  if (drift.length > 0) {
+    lines.push(
+      "",
+      ...drift.map(
+        ({ key, actual, baseline }) =>
+          `size: warning — ${key} measures ${kb(actual)}, more than ${DRIFT_PERCENT}% over its ${kb(baseline)} baseline (measured ${budget.baseline?.measuredAt ?? "on an unrecorded date"}).`,
+      ),
+      "The baseline has gone stale. Nothing fails for it; re-measure it in the next diff that touches size-budget.json, so the next raise shows what it really moves.",
     );
   }
 

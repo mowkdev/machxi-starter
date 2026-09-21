@@ -185,3 +185,43 @@ No record changed.
 The first run was killed partway through `pnpm test` for low memory. This retry ran the gate whole.
 
 **Pending the operator.** The running API on 4000 serves the old code until it next reloads. Nothing changes its behaviour; there is no migration and no new variable.
+
+## D28.7 — The ceiling covers `core`; the policy is proved on the page (2026-09-21)
+
+**Built.** This step closes `API-08`, `SEC-10` and `CI-12`. It changes only the gate's scripts, so there is no product behaviour change and no spec edit.
+
+- **`API-08`.** `LINE_CEILING_ROOTS` in `scripts/docs-hygiene.test.mjs` now includes `apps/api/src/core`, as ADR-0074 §8 decides.
+  - The largest file under `core` is `core/config/schema.ts` at 908 lines, so the case is green on the tree.
+  - The case's existing `files.length > 0` assertion now covers the new root too, so a renamed directory fails the case instead of passing it with nothing read.
+  - The digest line D28.3 wrote already said "the API's modules and `core` among them". It is now true.
+- **`SEC-10`.** `scripts/size.mjs` gains a pure `inlinePageViolations(html)`, run inside `check` right after `measure` has proved `dist/index.html` exists. It refuses three things, as ADR-0074 §6 decides:
+  - an inline `<script>`, meaning one with no `src` or one with a body;
+  - any `<style>` element;
+  - any `on*=` attribute.
+  - Each offence gets its own sentence, plus a paragraph naming the policy and the production-only failure.
+  - Both built pages pass as they stand.
+  - `scripts/size.test.mjs` case "a built page with an inline script fails the link" has seven offending pages, each producing exactly one violation. It also runs `check` over a whole fixture app twice: the clean page is `ok`, and a page with an inline script throws the refusal.
+- **`CI-12`.** `DRIFT_PERCENT = 10` and a pure `driftWarnings(baseline, rows)` cover the totals and, through a `chunk` flag on the chunk rows, `baseline.chunks`.
+  - A row measuring more than 10% over its baseline prints a `size: warning — …` line under the table. The comparison is strict and uses integer arithmetic.
+  - The warning never fails the link: the ceiling is still the gate.
+  - Case "a measurement ten percent over its baseline is reported" covers the pure function, including that exactly 10% is not reported and that a row with no baseline is left to `headroomViolations`. It then runs `check` over a fixture whose `js` baseline is 12% stale: the link is `ok`, with exactly one warning. A fresh baseline prints none.
+  - The script's header no longer claims that "a baseline cannot go stale without this script saying so" on the strength of the headroom rule alone.
+- **Digest.** The "Budget headroom" line in `scripts/rules-digest.mjs` now states the drift warning. `pnpm rules:digest` wrote 1 of 3 digests, then 0 of 3.
+
+**Amendments.** None to the plan or to any record. ADR-0074 §6 and §8 are this record's own decisions. ADR-0073 moved to `superseded by` at D28.1, so no status changes here.
+
+**Review: one `code-reviewer` pass.** It found no correctness bugs. It made three low-severity notes and one comment correction:
+
+1. **[fixed]** The handler regex ran over quoted attribute values, so `content="Sign on=now"` was refused. It also missed a handler after a `/` separator, as in `<img/onerror=…>`. The quoted values are now blanked before matching, and `[\s/]` may come before the name. Both cases are pinned in the test.
+2. **[fixed]** A commented-out `<script>` in the source `index.html`, which Vite keeps, would have been refused. Comments are now dropped first, and a test pins this.
+3. **[not taken]** The check does not look for `javascript:` URLs. ADR-0074 §6 names three forms, and a bundler emits none of this kind. This is logged here, not built.
+4. **[fixed]** A test comment said "refused before any budget is read". It now says "before any budget rule runs".
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`, after the review fixes:
+
+- `lint` 21/21, `check-types` 16/16, `test` 15/15, `size` 4/4
+- API: 786 unit and 823 integration tests passed
+- Prettier: "All matched files use Prettier code style!"
+- `pnpm size` on the tree: admin js 371.4 / 389.6 kB, entry 157.1 / 165.0 kB; customer js 320.0 / 335.9 kB, entry 105.1 / 110.4 kB, all `ok`, and no drift warning.
+
+**Pending the operator.** Nothing. The running stack serves no script here.

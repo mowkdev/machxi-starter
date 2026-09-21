@@ -275,7 +275,7 @@ export const AREAS = [
       {
         topic: "Budget headroom",
         records: ["0073"],
-        text: "Every ceiling in a `size-budget.json` is at most 15% over its committed baseline, enforced by `scripts/size.mjs`, and a diff that raises a ceiling re-measures its baseline, so a raise always shows both numbers. The entry stays lean by declaration rather than by a raise: a rendering package the composition root imports by barrel declares `sideEffects: false` when nothing in it acts on import.",
+        text: "Every ceiling in a `size-budget.json` is at most 15% over its committed baseline, enforced by `scripts/size.mjs`, and a diff that raises a ceiling re-measures its baseline, so a raise always shows both numbers; a measurement more than ten percent over its baseline is reported beside the table and never fails the link. The entry stays lean by declaration rather than by a raise: a rendering package the composition root imports by barrel declares `sideEffects: false` when nothing in it acts on import.",
       },
       {
         topic: "The content policy",
