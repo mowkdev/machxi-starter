@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "sideEffects": [
+    "./src/locales/source.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./locales/lv": "./src/locales/lv.ts"

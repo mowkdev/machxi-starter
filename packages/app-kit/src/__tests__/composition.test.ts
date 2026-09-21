@@ -172,28 +172,40 @@ describe("every app's styles.css", () => {
 });
 
 /**
- * A rendering package's barrel costs the entry nothing it does not use
- * (`D20.9`, ADR-0073 §5).
+ * A package's barrel costs the entry nothing it does not use (`D20.9`,
+ * ADR-0073 §5; widened at `D28.9`, ADR-0074 §7, `FE-13`).
  *
- * Each app's composition root imports `@repo/grid` and `@repo/form` through
- * their barrels for a namespace name, a catalogue loader and the zod
- * installer — three exports — and until `D20.9` every module the barrel
- * re-exports travelled with them: without a `sideEffects` declaration Rollup
- * keeps each module's top-level `forwardRef`/`createContext` calls as
- * possible side effects, which put `@dnd-kit` and Radix's select in the
- * admin's entry and react-hook-form in both. The declaration is honest —
- * nothing in either package runs anything on import — and it is what let the
- * two entry ceilings fall. It is asserted here because it is a manifest field
- * nothing else reads, and the failure it prevents is a bigger first paint
- * that `pnpm size` reports as a number without naming the cause.
+ * Each app's composition root imports the platform packages through their
+ * barrels for a handful of names, and without a `sideEffects` declaration
+ * Rollup keeps every re-exported module's top-level calls as possible side
+ * effects: until `D20.9` that put `@dnd-kit` and Radix's select in the
+ * admin's entry and react-hook-form in both. It is asserted here because it
+ * is a manifest field nothing else reads, and the failure it prevents is a
+ * bigger first paint that `pnpm size` reports as a number without naming the
+ * cause.
  *
- * Two of the three rendering packages, and the third is left out on purpose:
- * this package's `testing/setup` entry registers jsdom stubs and MSW hooks
- * *by being imported*, which is a side effect a false declaration would deny.
- * `@repo/ui` lists `**\/*.css` for the same reason — a stylesheet import
- * must not be shaken.
+ * The declaration must be honest, so it is not always `false`:
+ *
+ * - `@repo/contracts` names the one module that runs on import —
+ *   `locales/source.ts` installs the keyed custom-message map with
+ *   `z.config`, deliberately, so the API needs no localisation code. A
+ *   `false` would license a bundler to drop that install.
+ * - This package is left out on purpose: its `testing/setup` entry registers
+ *   jsdom stubs and MSW hooks *by being imported*, which is a side effect a
+ *   false declaration would deny.
+ * - `@repo/ui` lists `**\/*.css` for the same reason — a stylesheet import
+ *   must not be shaken — and is priced by its own subpath exports rather than
+ *   a barrel.
  */
-const SHAKEABLE = ["form", "grid"] as const;
+const SHAKEABLE = {
+  "api-client": false,
+  "app-services": false,
+  contracts: ["./src/locales/source.ts"],
+  form: false,
+  grid: false,
+  i18n: false,
+  resource: false,
+} as const satisfies Record<string, false | readonly string[]>;
 
 const packageManifest = (
   dir: string,
@@ -202,14 +214,18 @@ const packageManifest = (
     readFileSync(join(REPO, "packages", dir, "package.json"), "utf8"),
   ) as { sideEffects?: boolean | readonly string[] };
 
-describe("the rendering packages the composition roots import by barrel", () => {
-  it.each(SHAKEABLE)(
-    "declares sideEffects: false in packages/%s (ADR-0073 §5)",
-    (dir) => {
+describe("the packages the composition roots import by barrel", () => {
+  it("are the seven this test names", () => {
+    expect(Object.keys(SHAKEABLE)).toHaveLength(7);
+  });
+
+  it.each(Object.entries(SHAKEABLE))(
+    "declares its side effects honestly in packages/%s (ADR-0073 §5, ADR-0074 §7)",
+    (dir, declared) => {
       expect(
         packageManifest(dir).sideEffects,
-        `packages/${dir}/package.json must declare "sideEffects": false, or a barrel import of one export carries every module in the package into the importer's entry chunk`,
-      ).toBe(false);
+        `packages/${dir}/package.json must declare "sideEffects" — false, or the modules that run on import — or a barrel import of one export carries every module in the package into the importer's entry chunk`,
+      ).toEqual(declared);
     },
   );
 });

@@ -269,3 +269,53 @@ No record changed.
 Finding 3's fix touched only three test files. After it, those three suites were re-run green (41 tests) and `prettier --check` was clean.
 
 **Pending the operator.** Hearing the landings through a real screen reader. The roles are proved in jsdom, and how NVDA or VoiceOver announces them is a browser-only observation.
+
+## D28.9 — No client directive; five packages declare their side effects (2026-09-21)
+
+**Built.** Closes `FE-12` (and with it `UI-02` whole) and `FE-13`.
+
+- `"use client"` left the four compositions (`app-shell`, `banner`, `page-actions`, `record-surface`) and `ui-strings.tsx`, which carried it under the same withdrawn rule. `banner.tsx`'s docblock now says why there is none. Both skills (`ui-component`, `frontend-conventions`) state the rule the other way round: a composition carries no client directive, and a consumer that needs one reintroduces it by its own record.
+- [ADR-0047](../adr/0047-ui-package-scope.md) moved to `superseded by` ADR-0074 at this head (the §7 delta). Its index row, the topic table ("UI package scope" now reads 0047 as carried by 0074), the ledger's window paragraph and the regenerated `frontend-and-platform.md` digest say so.
+- `scripts/docs-hygiene.test.mjs` gains "no client directive under `packages/ui`". It walks `packages/ui/src` minus the CLI-generated `components/` and `hooks/`, and it proves in the same case that it catches both quote styles and ignores the phrase in prose. It went red (`packages/ui/src/compositions/banner.tsx:1`) with the directive put back, then green again after the file was restored.
+- `@repo/api-client`, `@repo/i18n`, `@repo/resource` and `@repo/app-services` declare `"sideEffects": false`. `@repo/contracts` declares `["./src/locales/source.ts"]`, because that module installs the keyed custom-message map with `z.config` on evaluation. `composition.test.ts`'s `SHAKEABLE` is now a map of seven packages to their exact declarations, `form` and `grid` included, so 1 + 7 cases.
+- No lockfile change: `sideEffects` is not a resolution fact.
+
+**`pnpm size`, gzipped bytes, measured with `--force` before and after the manifests changed:**
+
+| app      | js before → after | entry before → after |
+| -------- | ----------------- | -------------------- |
+| admin    | 380460 → 381718   | 160910 → 159941      |
+| customer | 328149 → 328261   | 107627 → 106429      |
+
+- css was unchanged in both apps (admin 14911, customer 14075), and so were the vendor chunks.
+- The entries fell by about 1 kB each. `js` rose slightly because a few shared modules moved out of the entry into lazy chunks, where they are counted once per chunk.
+- No row moved by as much as 1%, so the budget files are not touched.
+
+**Amendments.** One labelled amendment to the plan's step 9, recording two readings:
+
+- "Under `packages/ui`" means its hand-written half. The generated primitives carry the CLI's directive and stay byte-identical to it (ADR-0047 §What-code, untouched by the delta).
+- Contracts declares the one side-effectful file rather than `false`.
+
+**Review: one `code-reviewer` pass.** It found no defects. It confirmed the following:
+
+- **The five declarations are honest.** Contracts' `source.ts:149` is the only top-level call outside the tests. i18next's init runs inside `createI18n`, and no side-effect-only import exists.
+- **The contracts pattern matches**, proved by two scratchpad builds. The API's tsdown/Rolldown bundle (which bundles `@repo/*`) and the customer's Vite bundle both keep the `z.config` install.
+- **The hygiene case cannot pass vacuously.**
+
+One low-value note, **[logged]**: the "are the seven this test names" case counts its own constant and so cannot fail for an outside reason. It stays as the done-when's explicit statement of the seven. A check that the composition roots import no barrel package missing from the map would be the stronger form, and it is left for D22's composition work.
+
+**Loose ends observed, not taken here:**
+
+- [ADR-0048](../adr/0048-app-shell-and-record-surfaces.md) (frozen, not a parent of 0074) still restates "Stateful compositions carry `"use client"`" in its §1 and its tree annotations. 0047 was the rule's source, and 0048 now narrates a withdrawn rule. That is for the operator: either a labelled widening of 0074's parent list while the window is open, or D26's consolidation.
+- [ADR-0065](../adr/0065-starter-lifecycle.md)'s status line still names only 0068. The ledger's window paragraph still says 0065 "moves at the step that makes its delta true", but D28.3 built that delta (the generator's refusal) without flipping it. Step 12's close-out, or the operator, should flip it.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`:
+
+- `lint` 21/21 (`test:scripts` 53 tests), `check-types` 16/16, `test` 15/15, `size` 4/4
+- admin 60 files, customer 32, API 48 unit and 28 integration files
+- Prettier: "All matched files use Prettier code style!"
+- `pnpm size`: admin js 372.8 / 389.6 kB, entry 156.2 / 165.0 kB; customer js 320.6 / 335.9 kB, entry 103.9 / 110.4 kB, all `ok`.
+
+`pnpm check` also passed, 52/52.
+
+**Pending the operator.** Nothing is browser-only. The running dev servers pick up the manifest change through Vite's dependency scan on the next reload, and no restart is needed to observe it.

@@ -1,5 +1,3 @@
-"use client";
-
 import { cva, type VariantProps } from "class-variance-authority";
 import { XIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -26,11 +24,10 @@ import { useUiStrings } from "@repo/ui/ui-strings";
  * checkable rather than asserted: `@repo/contracts` is not among this
  * package's dependencies, so reaching for it is a red `check-types`.
  *
- * `"use client"` because it reads `UiStrings`, which is a context read, and
- * ADR-0047 rules that a composition with micro-copy is a client component by
- * construction — the marketing site D16 will add compiles this package through
- * `transpilePackages`, and a Next server component must be able to import any
- * export.
+ * No client directive, though it reads `UiStrings` through context: none of
+ * this package's consumers is a server-component framework, and a directive
+ * nothing consumes is a claim no suite can refute. A consumer that needs the
+ * boundary reintroduces it by its own record (ADR-0074 §7, `D28.9`).
  *
  * **`action` arrived at `D13.7`, exactly as ADR-0048 §3 said it would.** That
  * record left the slot out of the v1 API and gave it the disposal

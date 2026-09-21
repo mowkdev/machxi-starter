@@ -1,6 +1,6 @@
 # ADR-0047: UI package scope and compositions
 
-- Status: accepted
+- Status: superseded by [ADR-0074](0074-review-follow-ups.md) (delta: §What-code's stateful-compositions bullet — "Stateful compositions carry `"use client"`" — and §Consequences' matching definition-of-done line are withdrawn; a composition carries no client directive until a consumer's own record asks for one. Every other decision stands)
 - Date: 2026-08-22
 - Supersedes: [ADR-0031](0031-ui-design-system.md)
 

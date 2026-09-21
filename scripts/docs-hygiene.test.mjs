@@ -131,6 +131,46 @@ test("nothing a fork inherits states the marketing app as present", async () => 
 });
 
 /**
+ * A `"use client"` line in a module's directive prologue — the only place a
+ * bundler reads one. A function of the text, so the negative case below is a
+ * call rather than a temporarily broken tree.
+ */
+const CLIENT_DIRECTIVE = /^\s*(["'])use client\1;?\s*$/;
+const clientDirectiveLines = (text) =>
+  text
+    .split(/\r?\n/)
+    .flatMap((line, index) => (CLIENT_DIRECTIVE.test(line) ? [index + 1] : []));
+
+/**
+ * The generated regime of `@repo/ui` (ADR-0047 §What-code): byte-identical to
+ * what the shadcn CLI emits, directive included, and upgraded by regenerating
+ * — so a directive there is the CLI's, not a rule of this repository's.
+ */
+const GENERATED_UI = ["packages/ui/src/components/", "packages/ui/src/hooks/"];
+
+test("no client directive under `packages/ui`", async () => {
+  // ADR-0074 §7, `FE-12`: the rule that stateful compositions carry
+  // `"use client"` was kept for a Next consumer no app is, and a directive
+  // nothing consumes is a claim no suite can refute. So the hand-written half
+  // of the package — the compositions, `ui-strings.tsx`, anything added
+  // beside them — carries none, and a consumer that needs the boundary
+  // reintroduces it by its own record, together with this case.
+  const offenders = [];
+  for (const { full, rel } of await filesUnder("packages/ui/src")) {
+    if (GENERATED_UI.some((prefix) => rel.startsWith(prefix))) continue;
+    for (const line of clientDirectiveLines(await readFile(full, "utf8")))
+      offenders.push(`${rel}:${line}`);
+  }
+  assert.deepEqual(offenders, []);
+
+  // The case can see what it refuses, in both quote styles, and not the
+  // phrase in prose.
+  assert.deepEqual(clientDirectiveLines('"use client";\n\nimport x;\n'), [1]);
+  assert.deepEqual(clientDirectiveLines("'use client'\n"), [1]);
+  assert.deepEqual(clientDirectiveLines(' * `"use client"` because…\n'), []);
+});
+
+/**
  * The trees the thousand-line ceiling covers: the API's feature modules and
  * its `core`, and the two platform packages whose entry files had grown into
  * everything at once. They are named rather than globbed because the ceiling
