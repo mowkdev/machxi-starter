@@ -14,8 +14,14 @@ export const config = defineConfig(
    * references write (`D14.9`, ADR-0062 §3). Both are generated and both are
    * gitignored, and linting a `.d.ts` nobody wrote is noise at best — at
    * worst it is the rule set arguing with the compiler about its own output.
+   *
+   * `coverage/` is the test tier's scratch directory, and it is ignored as a
+   * directory so the walk never enters it: `lint` depends on `i18n:check`
+   * (ADR-0074 §1), which moved its start into the window where a sibling
+   * `test:unit` creates and deletes that directory, and eslint listing it
+   * mid-deletion fails with `ENOENT` rather than finding nothing (`D28.1`).
    */
-  globalIgnores(["dist/**", "dist-types/**"]),
+  globalIgnores(["dist/**", "dist-types/**", "coverage/"]),
   js.configs.recommended,
   eslintConfigPrettier,
   tseslint.configs.recommended,

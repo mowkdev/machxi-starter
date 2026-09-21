@@ -1,10 +1,10 @@
 # ADR-0074: Review follow-ups — the gate's remaining twins, one fact per hold, digest coverage, the cap and the customer's own sessions, no client directive (supersedes ADR-0047, 0065, 0071 and 0073 in part — deltas)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-21
 - Supersedes: [ADR-0073](0073-review-hardening.md) (deltas: §3's cap no longer counts an impersonated session; §6's first link gains `i18n:check`, and §7's audit runs nightly beside coverage; §7's holds are one `overrides` fact and the cooldown is stated for both tools; §9's policy is proved on the built page; §10's ceiling covers `core`); [ADR-0071](0071-mail-flows.md) as carried by [ADR-0072](0072-federated-identity-google-sign-in.md) and [ADR-0073](0073-review-hardening.md) (delta: §6's and §7's "spend the links" rules become one — a credential event spends every outstanding link through one function, and account deletion is such an event); [ADR-0065](0065-starter-lifecycle.md) as carried by [ADR-0068](0068-behaviour-specs-and-plan-notes.md) (delta: §5's digest generator refuses an accepted record that is the primary citation of no line); [ADR-0047](0047-ui-package-scope.md) (delta: §What-code's `"use client"` bullet is withdrawn — a composition carries no client directive until a consumer's own record asks for one). Every parent stands for everything not named here.
 
-> Written 2026-09-21 by `/scope` for D28 ([`docs/plan/0028-review-follow-ups.md`](../plan/0028-review-follow-ups.md)), from the findings of [`docs/reviews/2026-09-21-repo-review.md`](../reviews/2026-09-21-repo-review.md) — writing is not opening, opening is not accepting. `proposed` at writing; accepted at the head of `D28.1`, where ADR-0073 moves to `superseded by` (its first delta true there); each other parent moves at the step that makes its delta true.
+> Written 2026-09-21 by `/scope` for D28 ([`docs/plan/0028-review-follow-ups.md`](../plan/0028-review-follow-ups.md)), from the findings of [`docs/reviews/2026-09-21-repo-review.md`](../reviews/2026-09-21-repo-review.md) — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-21 at the head of `D28.1`**, where ADR-0073 moved to `superseded by` (its first delta — §6's first link gains `i18n:check`, with the nightly audit — true there); each other parent moves at the step that makes its delta true.
 
 ## Context
 

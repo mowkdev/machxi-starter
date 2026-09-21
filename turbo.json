@@ -71,7 +71,7 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^lint", "//#test:scripts", "//#docs:check"]
+      "dependsOn": ["^lint", "//#test:scripts", "//#docs:check", "i18n:check"]
     },
     "//#test:scripts": {},
     "//#docs:check": {},

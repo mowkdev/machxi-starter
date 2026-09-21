@@ -17,7 +17,7 @@ Setup is `README.md` §Quick start; these are the ones a session reaches for:
 
 ```
 pnpm check                   # the inner loop, cached: lint (carrying the script
-                             # tests and docs:check), check-types, test:unit, i18n:check
+                             # tests, docs:check and i18n:check), check-types, test:unit
 pnpm dev --filter api        # 4000 · admin 3001 · customer 3002
 pnpm test:int --filter api   # the integration tier alone, against DATABASE_URL_TEST
 pnpm test:e2e                # Playwright over the dev stack — beside the gate, never in it

@@ -364,6 +364,96 @@ const decidesItsOwnResult = (rel, config, cached) => {
   return `${rel} — ${info} under the cached ${dir}/`;
 };
 
+/**
+ * The checks the first link fails to name.
+ *
+ * A check is a script that can go red without writing anything: at the root, a
+ * script that is not a `turbo run` launcher and is named `*:check` or runs
+ * `node --test`; in a workspace, a script named `*:check`. The gate's own links
+ * are excluded — they run as links, not through the first one. A root check is
+ * named in `lint`'s `dependsOn` as `//#<script>`, a workspace one by its bare
+ * task name, which turbo resolves in each package that defines it.
+ */
+const missingFirstLinkChecks = ({ turbo, root, workspaces, gate }) => {
+  const dependsOn = new Set(turbo.tasks?.lint?.dependsOn ?? []);
+  const isCheck = (name) => name.endsWith(":check");
+  const wanted = new Set();
+  for (const [name, command] of Object.entries(root.scripts ?? {})) {
+    if (gate.includes(name) || /\bturbo\s+run\b/.test(command)) continue;
+    if (isCheck(name) || /\bnode\b.*\s--test\b/.test(command))
+      wanted.add(`//#${name}`);
+  }
+  // A bare task name reaches only the packages that run `lint`: a check in a
+  // workspace with no `lint` script is never scheduled by it, so it is named
+  // by its package and the case stays red until something runs it.
+  for (const pkg of workspaces)
+    for (const name of Object.keys(pkg.scripts ?? {}))
+      if (isCheck(name) && !gate.includes(name))
+        wanted.add(pkg.scripts.lint ? name : `${pkg.name}#${name}`);
+  return [...wanted].filter((task) => !dependsOn.has(task)).sort();
+};
+
+test("the first link carries every check that can go red", async () => {
+  // CI-08: `i18n:check` ran in `pnpm check` and in no link of the gate, so a
+  // forgotten key was red in a terminal and green on a pull request — the
+  // promise ADR-0046 §9 made held for one of the two. ADR-0074 §1 puts every
+  // check on the first link and this case keeps it there by predicate rather
+  // than by memory: the next `*:check` a workspace defines is red here until
+  // `lint` depends on it.
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const gate = [
+    .../pnpm lint && pnpm check-types[^\n`]*/
+      .exec(await read("CLAUDE.md"))[0]
+      .split("&&")
+      .map((link) => link.trim().replace(/^pnpm\s+/, "")),
+  ];
+  assert.deepEqual(
+    gate,
+    ["lint", "check-types", "test", "size", "format:check"],
+    "the gate as CLAUDE.md defines it",
+  );
+
+  const workspaces = [];
+  for (const group of ["apps", "packages"])
+    for (const entry of await readdir(path.join(repoRoot, group), {
+      withFileTypes: true,
+    })) {
+      if (!entry.isDirectory()) continue;
+      const text = await read(`${group}/${entry.name}/package.json`).catch(
+        () => null,
+      );
+      if (text !== null) workspaces.push(JSON.parse(text));
+    }
+  // A moved workspace root would make the predicate find nothing to demand.
+  assert.ok(workspaces.length > 10, `only ${workspaces.length} workspaces`);
+
+  const input = {
+    turbo: parseJsonc(await read("turbo.json")),
+    root: JSON.parse(await read("package.json")),
+    workspaces,
+    gate,
+  };
+  assert.deepEqual(missingFirstLinkChecks(input), []);
+
+  // The predicate itself: it finds the three checks this repository defines,
+  // and it reddens when one is dropped from the first link.
+  const dependsOn = input.turbo.tasks.lint.dependsOn;
+  for (const task of ["//#test:scripts", "//#docs:check", "i18n:check"])
+    assert.ok(dependsOn.includes(task), `lint does not depend on ${task}`);
+  const without = (task) => ({
+    ...input,
+    turbo: {
+      tasks: { lint: { dependsOn: dependsOn.filter((t) => t !== task) } },
+    },
+  });
+  assert.deepEqual(missingFirstLinkChecks(without("i18n:check")), [
+    "i18n:check",
+  ]);
+  assert.deepEqual(missingFirstLinkChecks(without("//#docs:check")), [
+    "//#docs:check",
+  ]);
+});
+
 test("no tsconfig writes its buildinfo into a cached output", async () => {
   // CI-07, and the same species as CI-01 and CI-02: a link of the gate that
   // ran without checking anything. `check-types` caches `dist-types/**`, and

@@ -79,6 +79,22 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The advisory check, nightly beside the browser tier and never in the
+      # gate (ADR-0074 §1): a fresh advisory is a fact about the world, not
+      # about the diff, so it must not redden a push that did not cause it.
+      # Reported and never gating — `continue-on-error` shows the step red in
+      # the run's summary while the job goes on to the suite it exists for, and
+      # the annotation puts the advisory on the run's page rather than only in
+      # a step log nobody opens on a green job. `--prod` because the runtime
+      # tree is what ships.
+      - name: Audit the runtime dependencies
+        continue-on-error: true
+        run: |
+          pnpm audit --prod || {
+            echo "::warning title=pnpm audit::runtime advisories found — see this step's log"
+            exit 1
+          }
+
       # The examples carry `MAIL_TRANSPORT=smtp` since `D18.4`, pointed at the
       # `SMTP_*` defaults that are the Mailpit service above — so the tier can
       # read the links it follows without this step overriding anything. One

@@ -7,11 +7,12 @@
 # thing, or the pipeline is a second, weaker gate.
 #
 # The first link carries more than eslint. `lint` depends on the repo-level
-# script tests and on `docs:check` through the task graph (ADR-0026 as carried
-# by ADR-0073 §6), so `pnpm lint` below runs both here and on a developer's
-# machine: the two checks that could go red with nothing watching them now fail
-# the gate at its first step. Listing them as `run:` steps of their own is
-# exactly the CI-only script the paragraph above refuses.
+# script tests, on `docs:check` and on each app's `i18n:check` through the task
+# graph (ADR-0026 as carried by ADR-0073 §6 and ADR-0074 §1), so `pnpm lint`
+# below runs all three here and on a developer's machine: the checks that could
+# go red with nothing watching them fail the gate at its first step. Listing
+# them as `run:` steps of their own is exactly the CI-only script the paragraph
+# above refuses.
 #
 # Every `uses:` is pinned to a commit digest with its tag in a trailing
 # comment (ADR-0073 §7). A moving major tag is a write-access-shaped hole: the

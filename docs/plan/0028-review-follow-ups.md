@@ -1,7 +1,7 @@
 # D28 — Review follow-ups
 
 - Status: **in progress** — **scoped in full 2026-09-21 by `/scope`** from the findings of [`docs/reviews/2026-09-21-repo-review.md`](../reviews/2026-09-21-repo-review.md), the day it was written; **opened 2026-09-21**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D28 opened).
-- Records: [ADR-0074](../adr/0074-review-follow-ups.md) (review follow-ups — the gate's remaining twins, one fact per hold, digest coverage, the cap and the customer's own sessions, no client directive; deltas on ADR-0047, 0065, 0071 and 0073) — written `proposed` at scoping, accepted at the head of `D28.1`.
+- Records: [ADR-0074](../adr/0074-review-follow-ups.md) (review follow-ups — the gate's remaining twins, one fact per hold, digest coverage, the cap and the customer's own sessions, no client directive; deltas on ADR-0047, 0065, 0071 and 0073) — written `proposed` at scoping, **accepted 2026-09-21 at the head of `D28.1`**.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0028-review-follow-ups.notes.md`](0028-review-follow-ups.notes.md)
 
@@ -32,7 +32,7 @@ Close every finding of the 2026-09-21 review that is an hour to close, before D2
 
 Each step: implement, gate green, one bounded diff review, commit (ADR-0050). ADRs listed are what the builder reads first; finding ids are what the step closes.
 
-- [ ] **1. Accept ADR-0074; the first link runs every check.** Accept 0074 at the head, where [ADR-0073](../adr/0073-review-hardening.md) moves to `superseded by` (its §6 delta true here; the index row and the ledger's window section say so). `turbo.json`: `i18n:check` joins `lint`'s `dependsOn`; `.github/workflows/e2e.yml` gains a `pnpm audit --prod` step, reported and never gating; a `scripts/docs-hygiene.test.mjs` case asserts `lint`'s `dependsOn` names every root and app check the repository defines. Closes `CI-08`, `CI-09`.
+- [x] **1. Accept ADR-0074; the first link runs every check.** Accept 0074 at the head, where [ADR-0073](../adr/0073-review-hardening.md) moves to `superseded by` (its §6 delta true here; the index row and the ledger's window section say so). `turbo.json`: `i18n:check` joins `lint`'s `dependsOn`; `.github/workflows/e2e.yml` gains a `pnpm audit --prod` step, reported and never gating; a `scripts/docs-hygiene.test.mjs` case asserts `lint`'s `dependsOn` names every root and app check the repository defines. Closes `CI-08`, `CI-09`.
       **ADRs:** 0074 §1, 0073 §6, 0026 as carried.
       **Done when:** `turbo run lint --dry=json` lists `admin#i18n:check` and `customer#i18n:check` among `lint`'s dependencies; `scripts/docs-hygiene.test.mjs` case "the first link carries every check that can go red" green, and red with `i18n:check` removed; `e2e.yml` parses with the audit step; `pnpm check` green.
 - [ ] **2. One `jsdom` fact, one cooldown.** `pnpm-workspace.yaml` gains `overrides: { jsdom: "30.0.1" }` and the lockfile is refreshed so it carries one `jsdom`; `renovate.json` states `minimumReleaseAge` equal to pnpm's, and the yaml's setting gains the one-install override procedure for a security fix younger than the cooldown; D21's row names `@types/node` and `dotenv`. Closes `STK-08`, `STK-09`, `STK-10`.
