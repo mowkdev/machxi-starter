@@ -33,3 +33,27 @@ The per-step build record of [D28](0028-review-follow-ups.md) — what was built
 - The first `pnpm check` of the step failed once on `@repo/form#test:unit` under load. It passed alone (7/7) and on every run after, so I am recording it as flaky under contention, not a regression.
 
 **Pending the operator.** The audit step runs only on the nightly or dispatched e2e workflow. Its first real run, and whether the annotation shows up on the run page, can be seen only on GitHub. No dev server's sources changed, so nothing needs a restart.
+
+## D28.2 — One `jsdom` fact, one cooldown (2026-09-21)
+
+**Built.** Closes `STK-08`, `STK-09` and `STK-10`.
+
+- **`pnpm-workspace.yaml` holds `jsdom` once**: `overrides: { jsdom: 30.0.1 }`, with a comment saying why an override and not the pins (`autoInstallPeers` answered vitest's open `jsdom` peer with the held release in the seven workspaces that never declared it). The lockfile was refreshed by `pnpm install`: its only change is the override block, vitest's snapshot re-keyed on `jsdom@30.0.1`, and `jsdom@30.1.0` with its two `@asamuzakjp` dependencies gone. `pnpm why -r jsdom` ends "Found 1 version of jsdom".
+- **One cooldown for both tools**: `renovate.json` gains `"minimumReleaseAge": "1 day"` beside pnpm's `1440`. The pnpm setting's comment now carries the one-install procedure for a security fix younger than the cooldown — `pnpm add <pkg>@<version> --config.minimum-release-age=0` or `pnpm update <pkg> …`, the package always named — and says that Renovate's vulnerability-alert pull requests clear the cooldown by default, so such a branch is finished by that procedure. `pnpm config get minimumReleaseAge --config.minimum-release-age=0` prints `0` (the flag is honoured by pnpm 12.4.2).
+- **Renovate's `jsdom` rule states the same version as the override**: `allowedVersions` `"<30.1.0"` → `"30.0.1"` (review finding 3), and its register note names the override as the hold and says to lift both together.
+- **`scripts/docs-hygiene.test.mjs`**: case "a held dependency is one fact", over pure helpers `overrideNames` (quoted, scoped, `@selector` and `parent>child` keys) and `lockfileVersions` (reads the **last** YAML document's `packages:` — pnpm 12 writes its own install as a first document with a `packages:` of its own). Green on the tree; red on the pre-step lockfile (`actual: 2, expected: 1`); the case also injects a second copy and asserts `heldTwice` reports it.
+- **D21's ledger row** names `@types/node` 26 and `dotenv` 18.
+
+**Where it was built.** The lockfile refresh ran in a side worktree (`.claude/worktrees/d28-2`, its own `node_modules`) while the operator's stack kept running, per the operator's rule for installs; the commit was fast-forwarded into `main`. The operator's `.env` files could not be copied into it (permission denied), so the worktree ran on the committed `.env.example` files — the README's quick-start setup — against the running Postgres.
+
+**Amendments.** None to ADR-0074 or the plan.
+
+**Review: one `code-reviewer` pass, three findings, all fixed.**
+
+- **[fixed]** The comment claimed Renovate never proposes what pnpm refuses; Renovate's vulnerability alerts clear `minimumReleaseAge` by default. The comment now names that exception and routes it to the manual procedure (STK-09's "a `vulnerabilityAlerts` PR hits the same wall" is answered by the procedure, not removed).
+- **[fixed]** "`pnpm update` with the same flag" would re-resolve the whole workspace without the cooldown; the procedure now always names the package.
+- **[fixed]** `allowedVersions: "<30.1.0"` let Renovate propose a `30.0.x` the exact override would install back to `30.0.1`; the rule now states `30.0.1`.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`: `lint` 21/21, `check-types` 16/16, `test` 15/15 (6m36s), `size` 4/4, then `format:check` red on three files' Prettier layout. After `prettier --write` (whitespace only) and the review fixes (comments, `renovate.json`'s `allowedVersions`, none of them read by `test` or `size`): `pnpm lint` and `pnpm format:check` green. `pnpm check` exit `0` (52/52). `pnpm test:unit --filter customer --force`: 32 files, 284 tests passed.
+
+**Pending the operator.** `main`'s `node_modules` still holds `jsdom@30.1.0` until the next `pnpm install` there, which the operator runs at their convenience (nothing the dev servers load changes, so no restart is needed for it). The side worktree `.claude/worktrees/d28-2` can be removed with `git worktree remove`.

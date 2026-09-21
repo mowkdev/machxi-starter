@@ -7,6 +7,7 @@
     "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Etc/UTC",
+  "minimumReleaseAge": "1 day",
   "schedule": ["before 6am on monday"],
   "lockFileMaintenance": {
     "enabled": true,
@@ -35,9 +36,9 @@
       "rangeStrategy": "pin"
     },
     {
-      "description": "ADR-0073 §7, the one exception to the caret rule and the register of why it exists: `jsdom` is held below 30.1.0. That release rewrote the DOM tree, CSS and HTML-collection internals, and under it a Radix dropdown opened in a second `renderApp` of the same customer test file never mounts its menu — fourteen tests in four files time out on `findByRole(\"menu\")`, each of them green on 30.0.1 and green on 30.1.0 when run alone. It is an upstream incompatibility rather than a defect in this tree, so the version is held with its reproduction rather than the suites rewritten around it. Lift the hold by taking a later jsdom and running `pnpm test:unit --filter customer` whole.",
+      "description": "ADR-0073 §7, the one exception to the caret rule and the register of why it exists: `jsdom` is held below 30.1.0. That release rewrote the DOM tree, CSS and HTML-collection internals, and under it a Radix dropdown opened in a second `renderApp` of the same customer test file never mounts its menu — fourteen tests in four files time out on `findByRole(\"menu\")`, each of them green on 30.0.1 and green on 30.1.0 when run alone. It is an upstream incompatibility rather than a defect in this tree, so the version is held with its reproduction rather than the suites rewritten around it. The hold itself is `pnpm-workspace.yaml`'s `overrides` entry (ADR-0074 §2), which binds the resolution — vitest's auto-installed peer included — where this rule binds only what Renovate proposes. The two state the same version, exactly — a range here would let Renovate propose a 30.0.x the override then installs back to 30.0.1, a pull request that changes the manifests and nothing that runs. Lift both together by taking a later jsdom and running `pnpm test:unit --filter customer` whole.",
       "matchPackageNames": ["jsdom"],
-      "allowedVersions": "<30.1.0"
+      "allowedVersions": "30.0.1"
     },
     {
       "description": "ADR-0073 §7: the base images the Dockerfiles and the compose files pin — `node` (three Dockerfiles), `nginx` (both SPA images), `postgres` (both compose files and the two workflows' service container) and `axllent/mailpit` (local compose and the e2e workflow). The default managers detect them; without this rule they arrive ungrouped and unlabelled, which is how a base image quietly stops being read. A major here is a runtime floor move (ADR-0073 §4) and stays its own pull request — which is why this rule names its update types rather than matching everything: Renovate applies `packageRules` in order and the last match wins per field, so an unrestricted rule here would have re-grouped the majors the rule above deliberately un-groups.",

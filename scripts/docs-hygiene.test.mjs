@@ -454,6 +454,102 @@ test("the first link carries every check that can go red", async () => {
   ]);
 });
 
+/**
+ * The package names `pnpm-workspace.yaml`'s `overrides` block holds. A key may
+ * be quoted, scoped, carry a version selector (`foo@<2`) or a parent chain
+ * (`parent>foo`); the name returned is the package the override binds.
+ */
+const overrideNames = (workspaceYaml) => {
+  const block = /^overrides:\n((?:[ \t]+.*\n?|\s*#.*\n?|\s*\n)*)/m.exec(
+    workspaceYaml,
+  );
+  if (!block) return [];
+  return block[1]
+    .split("\n")
+    .map((line) => /^\s+(["']?)(.+?)\1\s*:/.exec(line)?.[2])
+    .filter(Boolean)
+    .map((key) =>
+      key
+        .split(">")
+        .pop()
+        .replace(/(.)@.*$/, "$1"),
+    );
+};
+
+/**
+ * Every version of each package the lockfile's `packages:` section resolves,
+ * keyed by name — the section lists a package once per version, whatever
+ * number of peers its snapshots are taken under.
+ */
+const lockfileVersions = (lock) => {
+  // pnpm 12 writes the lockfile as two YAML documents, the first of which (the
+  // tooling's own install) has `packages:` and `snapshots:` of its own; the
+  // workspace's resolution is the last document's.
+  const end = lock.lastIndexOf("\nsnapshots:\n");
+  const start = lock.lastIndexOf("\npackages:\n", end < 0 ? undefined : end);
+  assert.ok(start >= 0, "the lockfile has no packages: section");
+  const versions = new Map();
+  for (const line of lock.slice(start, end < 0 ? undefined : end).split("\n")) {
+    const key = /^ {2}(["']?)(.+?)\1:\s*$/.exec(line)?.[2];
+    if (!key) continue;
+    const at = key.lastIndexOf("@");
+    if (at <= 0) continue;
+    const name = key.slice(0, at);
+    if (!versions.has(name)) versions.set(name, new Set());
+    versions.get(name).add(key.slice(at + 1));
+  }
+  return versions;
+};
+
+/** The held packages the lockfile resolves more than once, as strings. */
+const heldTwice = (workspaceYaml, lock) => {
+  const versions = lockfileVersions(lock);
+  return overrideNames(workspaceYaml)
+    .filter((name) => (versions.get(name)?.size ?? 0) > 1)
+    .map((name) => `${name}: ${[...versions.get(name)].sort().join(", ")}`);
+};
+
+test("a held dependency is one fact", async () => {
+  // STK-08: `jsdom` was held by a pin in nine manifests and a Renovate rule,
+  // and `autoInstallPeers` answered vitest's open peer with the held release
+  // anyway in the seven workspaces that never declared it — two versions in
+  // the lockfile, the broken one waiting for the first jsdom test in a node
+  // package. ADR-0074 §2 moves the hold into `overrides`, which binds the
+  // resolution; this case keeps it bound: every package that block names is
+  // resolved at one version, or the hold is a hope again.
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const workspaceYaml = (await read("pnpm-workspace.yaml")).replace(
+    /\r\n/g,
+    "\n",
+  );
+  const lock = (await read("pnpm-lock.yaml")).replace(/\r\n/g, "\n");
+
+  const held = overrideNames(workspaceYaml);
+  assert.ok(
+    held.includes("jsdom"),
+    "pnpm-workspace.yaml no longer holds jsdom",
+  );
+  assert.equal(lockfileVersions(lock).get("jsdom")?.size, 1);
+  assert.deepEqual(heldTwice(workspaceYaml, lock), []);
+
+  // The predicate itself: a lockfile carrying a second copy of a held package
+  // is caught, and the parser reads the key shapes an override may take.
+  const resolved = [...lockfileVersions(lock).get("jsdom")][0];
+  const twice = lock.replace(
+    `\n  jsdom@${resolved}:\n`,
+    `\n  jsdom@999.0.0:\n    resolution: {integrity: sha512-x}\n\n  jsdom@${resolved}:\n`,
+  );
+  assert.deepEqual(heldTwice(workspaceYaml, twice), [
+    `jsdom: ${resolved}, 999.0.0`,
+  ]);
+  assert.deepEqual(
+    overrideNames(
+      'overrides:\n  jsdom: 30.0.1\n  "@scope/pkg@<2": 1.0.0\n  parent>child: 2.0.0\nnext: x\n',
+    ),
+    ["jsdom", "@scope/pkg", "child"],
+  );
+});
+
 test("no tsconfig writes its buildinfo into a cached output", async () => {
   // CI-07, and the same species as CI-01 and CI-02: a link of the gate that
   // ran without checking anything. `check-types` caches `dist-types/**`, and

@@ -25,6 +25,18 @@ catalog:
   typescript: 5.9.3
   vitest: ^4.1.11
 
+# A dependency held below a version is held here, once (ADR-0074 §2). A pin
+# in a manifest and `renovate.json`'s `allowedVersions` bind what a workspace
+# declares and what Renovate proposes — and nothing else: `autoInstallPeers`
+# answers a peer range no manifest mentions with whatever the registry has,
+# which is how the held `jsdom` arrived a second time, as vitest's peer, in the
+# workspaces that never declared it. An override binds the resolution itself.
+# The reason for each hold stays in `renovate.json`'s register, beside the
+# rule that keeps Renovate from proposing past it; `scripts/docs-hygiene` asks
+# the lockfile for one version of every name listed here.
+overrides:
+  jsdom: 30.0.1
+
 # ─── pnpm's own settings ──────────────────────────────────────────────────────
 # pnpm 12 no longer reads the `pnpm` field of `package.json` (ADR-0073 §4 as
 # amended at `D20.3`); every setting below used to live there or in a default.
@@ -64,5 +76,21 @@ autoInstallPeers: true
 # cooldown therefore stays on for resolution (`pnpm add`, `pnpm update`, a
 # Renovate branch) and the committed lockfile is trusted; `--no-trust-lockfile`
 # re-checks it on demand.
+#
+# Renovate states the same cooldown (`renovate.json`'s `minimumReleaseAge`,
+# "1 day"), so a version pnpm refuses is one Renovate does not propose — the
+# two change together or not at all (ADR-0074 §2). The exception is
+# Renovate's own: its vulnerability-alert pull requests clear the cooldown by
+# default, so a `[SECURITY]` branch for a fix published today opens at once
+# and its lockfile update is refused here. That branch is finished by hand,
+# with the procedure below.
+#
+# A security fix younger than the cooldown is taken by overriding it for that
+# one install, in the branch that takes the fix, naming the package so nothing
+# else is re-resolved without the cooldown — `pnpm add <pkg>@<version>
+# --config.minimum-release-age=0` or `pnpm update <pkg>
+# --config.minimum-release-age=0`, never a bare `pnpm update` — with the
+# advisory named in the pull request. The setting here is never lowered to let
+# one version through.
 minimumReleaseAge: 1440
 trustLockfile: true
