@@ -229,21 +229,26 @@ services:
     # that is safe rather than tidy, since every batch is its own statement and
     # every row it deletes was already unusable.
     #
-    # **`|| sleep 86400` is the floor under a mis-stated interval**
-    # (`D20.5`'s `security-reviewer`). `:-` below defends against *unset*;
-    # nothing defends against `1 day` or `daily`, which `sleep` refuses in
-    # under a millisecond — and a refused sleep in this loop is a sweep of
-    # three tables running continuously against production, with `|| true`
-    # swallowing the exit code and the healthcheck off, so nothing says so. A
-    # day is the same default the variable has, so the floor is "behave as if
-    # it were unset".
+    # **The interval is floored before the loop starts** (`D28.4`, `SEC-11`).
+    # `:-` below defends against *unset*; nothing else did. A value `sleep`
+    # refuses — `1 day`, `daily` — was caught by a `|| sleep 86400` inside the
+    # loop (`D20.5`), but `0` is a value `sleep` accepts, and a zero sleep in
+    # this loop is a sweep of three tables running continuously against
+    # production, with `|| true` swallowing every exit and the healthcheck off,
+    # so nothing says so. So the value is read once, into seconds: a whole
+    # number with an optional `s`, `m`, `h` or `d` is taken and raised to at
+    # least **a minute**; anything else — empty, a phrase, a fraction, a
+    # leading zero the shell's arithmetic would read as octal, ten digits or
+    # more that it could overflow — is **a day**,
+    # the variable's own default, so a mis-stated interval behaves as if it
+    # were unset.
     #
     # `$$` is compose's escape for a literal `$`: these are the shell's
     # variables, not compose's.
     command:
       - sh
       - -c
-      - 'trap "exit 0" TERM INT; while true; do node dist/prune-sessions.js || true; { sleep "$$PRUNE_INTERVAL" || sleep 86400; } & wait $$!; done'
+      - 'i="$$PRUNE_INTERVAL"; n="$${i%[smhd]}"; case "$$i" in *m) u=60;; *h) u=3600;; *d) u=86400;; *) u=1;; esac; case "$$n" in ""|*[!0-9]*|0?*|??????????*) s=86400;; *) s=$$((n * u)); [ "$$s" -ge 60 ] || s=60;; esac; trap "exit 0" TERM INT; while true; do node dist/prune-sessions.js || true; sleep "$$s" & wait $$!; done'
     restart: unless-stopped
     # **Off, because the image's own is the API's.** One image means this
     # container inherits a `HEALTHCHECK` that polls `/health/live` on port
@@ -264,9 +269,11 @@ services:
       # DDL, so a long-lived scheduled process never holds a connection that
       # could drop a table.
       - DATABASE_URL=${DATABASE_URL}
-      # How long the loop waits between passes (ADR-0073 §3). A `sleep`
-      # duration, so `24h`, `6h` and `900` are all valid; the default is a day,
-      # which is a retention sweep and not a queue drain.
+      # How long the loop waits between passes (ADR-0073 §3). Whole seconds
+      # or a whole number of `s`, `m`, `h` or `d`, so `24h`, `6h` and `900`
+      # are all valid; the default is a day, which is a retention sweep and
+      # not a queue drain. Floored at a minute, and a value the loop cannot
+      # read is a day (the command above).
       - PRUNE_INTERVAL=${PRUNE_INTERVAL:-24h}
     networks: [machxi]
 

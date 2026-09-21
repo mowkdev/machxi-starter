@@ -1,3 +1,4 @@
+import { isNotNull } from "drizzle-orm";
 import {
   index,
   inet,
@@ -110,5 +111,11 @@ export const accountTokens = pgTable(
     // `prune-sessions.ts` is it. The index lands with the table so the
     // migration never has to be reopened for it.
     index("account_tokens_expires_at_idx").on(table.expiresAt),
+    // The sweep's other half (`D28.4`, `DB-07`), as on the two sibling
+    // tables: without it `expires_at < cutoff OR consumed_at < cutoff` cannot
+    // be a BitmapOr and every batch scans the table.
+    index("account_tokens_consumed_at_idx")
+      .on(table.consumedAt)
+      .where(isNotNull(table.consumedAt)),
   ],
 );

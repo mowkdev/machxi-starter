@@ -1,6 +1,6 @@
 import { createArgon2Hasher } from "@repo/crypto";
 
-import { createDb } from "../src/index.js";
+import { createDb, type Db } from "../src/index.js";
 import { isEntryPoint } from "../src/tooling/entrypoint.js";
 import { readArgon2Params } from "../src/tooling/argon2.js";
 import {
@@ -79,20 +79,31 @@ export const selectSeeders = (
  * Runs the given seeders against an already-open database, in order, logging
  * each outcome. Exported so the integration suite exercises the real seed path
  * rather than a copy of it (ADR-0021).
+ *
+ * **Each seeder runs in a transaction of its own** (`D28.4`, `DB-09`). The dev
+ * users seeder writes users, their roles, their personal organizations and the
+ * memberships as four statements, and ADR-0067 §2 says every path that creates
+ * a user creates the organization in the same transaction — the seed path was
+ * the one that did not. One transaction per seeder rather than one for the run:
+ * a seeder is the unit of "all or nothing", and a later seeder failing has no
+ * reason to take back the super admin an earlier one created.
  */
 export const runSeeders = async (
   seeders: readonly Seeder[],
-  ctx: Omit<SeedContext, "log">,
+  ctx: Omit<SeedContext, "log" | "db"> & { readonly db: Db },
 ): Promise<void> => {
   for (const seeder of seeders) {
     // Sequential on purpose: seeders are ordered because later ones may depend
     // on earlier ones, and `Promise.all` would throw that away for a saving
     // measured in milliseconds.
-    await seeder.run({
-      ...ctx,
-      log: (message) => {
-        writeLine(`  ${seeder.name}: ${message}`);
-      },
+    await ctx.db.transaction(async (tx) => {
+      await seeder.run({
+        ...ctx,
+        db: tx,
+        log: (message) => {
+          writeLine(`  ${seeder.name}: ${message}`);
+        },
+      });
     });
   }
 };

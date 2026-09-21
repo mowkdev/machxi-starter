@@ -5,7 +5,7 @@ import {
   organizations,
   personalOrganizationName,
   personalOrganizationSlug,
-  type Db,
+  type DbExecutor,
   type PersonalOrganizationOwner,
 } from "../src/index.js";
 
@@ -25,7 +25,7 @@ export {
  * and the membership insert conflicts on the composite primary key.
  */
 export const ensurePersonalOrganizations = async (
-  db: Db,
+  db: DbExecutor,
   owners: readonly PersonalOrganizationOwner[],
 ): Promise<number> => {
   if (owners.length === 0) return 0;

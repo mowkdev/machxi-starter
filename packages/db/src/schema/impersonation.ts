@@ -1,3 +1,4 @@
+import { isNotNull } from "drizzle-orm";
 import {
   index,
   inet,
@@ -73,5 +74,11 @@ export const impersonationHandoffs = pgTable(
     // lookup itself is an equality on the hash, which `unique()` above already
     // indexes.
     index("impersonation_handoffs_expires_at_idx").on(table.expiresAt),
+    // The sweep's other half (`D28.4`, `DB-07`): an `OR` is served by a
+    // BitmapOr only when both sides are indexed. Partial, because an
+    // unconsumed row is null here and never the consumed half's concern.
+    index("impersonation_handoffs_consumed_at_idx")
+      .on(table.consumedAt)
+      .where(isNotNull(table.consumedAt)),
   ],
 );

@@ -89,6 +89,16 @@ export const sessions = pgTable(
       table.refreshTokenExpiresAt,
     ),
     /*
+     * The prune's other half (`D28.4`, `DB-07`): its predicate is
+     * `refresh_token_expires_at < cutoff OR revoked_at < cutoff`, and Postgres
+     * can BitmapOr an `OR` only when **both** sides have an index — without
+     * this one every batch was a full scan. Partial, because the column is null
+     * on every live session, the rows the sweep never wants.
+     */
+    index("sessions_revoked_at_idx")
+      .on(table.revokedAt)
+      .where(isNotNull(table.revokedAt)),
+    /*
      * "Every session this staff member minted" — `revokeAllImpersonatedBy`
      * (ADR-0057 §4) filters on exactly this column and had no index at all
      * until ADR-0060 §4.

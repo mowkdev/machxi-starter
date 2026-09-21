@@ -1,4 +1,4 @@
-import { inArray, lt, or } from "drizzle-orm";
+import { getTableName, inArray, lt, or } from "drizzle-orm";
 
 import { createDb, type DbExecutor } from "./client.js";
 import {
@@ -231,6 +231,49 @@ export const pruneAccountTokens = async (
   });
 };
 
+/**
+ * Every sweep this command runs, in order — the one list `main` iterates and
+ * the enumeration test reads (`D28.4`, `DB-08`).
+ *
+ * It was three calls written out by hand, a fourth hand-maintained table
+ * enumeration beside the three `enumerations.test.ts` already guarded, and a
+ * sixth flow's token table would have been missed silently. Now a table with
+ * an expiry column is in {@link PRUNED_TABLES} — because it has a sweep here —
+ * or in {@link NEVER_PRUNED_TABLES} by name with its reason, and the test
+ * refuses one that is in neither.
+ */
+export const SWEEPS = [
+  { table: getTableName(sessions), noun: "session(s)", prune: pruneSessions },
+  {
+    table: getTableName(impersonationHandoffs),
+    noun: "handoff(s)",
+    prune: pruneImpersonationHandoffs,
+  },
+  {
+    table: getTableName(accountTokens),
+    noun: "token(s)",
+    prune: pruneAccountTokens,
+  },
+] as const;
+
+/** The tables this command sweeps, by physical name. */
+export const PRUNED_TABLES: readonly string[] = SWEEPS.map(
+  (sweep) => sweep.table,
+);
+
+/**
+ * Tables that carry an expiry and are **deliberately** not swept, each with
+ * its reason — so leaving one out is a decision written down rather than an
+ * omission nobody sees.
+ */
+export const NEVER_PRUNED_TABLES: readonly string[] = [
+  // An invitation's expiry is a state read from `expires_at`, not a row to
+  // sweep: it is organization data kept with its organization, which carries
+  // no status column and derives `expired` from the timestamp (ADR-0067 §2;
+  // `docs/deploy.md` says so where an operator reads it).
+  "organization_invitations",
+];
+
 const main = async (): Promise<void> => {
   // The **application** role, alone among this package's CLI entry points
   // (ADR-0061 §1): this one runs no DDL — two `delete … where expired`
@@ -253,12 +296,18 @@ const main = async (): Promise<void> => {
   try {
     // `vacuum` is left to autovacuum; a delete of a few thousand rows does not
     // justify an exclusive lock on the table an API is authenticating against.
-    const deleted = await pruneSessions(client.db, cutoff);
-    const handoffs = await pruneImpersonationHandoffs(client.db, cutoff);
-    const tokens = await pruneAccountTokens(client.db, cutoff);
+    const counts: string[] = [];
+
+    for (const sweep of SWEEPS) {
+      counts.push(
+        `${String(await sweep.prune(client.db, cutoff))} ${sweep.noun}`,
+      );
+    }
+
+    const last = counts.pop() ?? "";
 
     writeLine(
-      `db:sessions:prune ✓ ${String(deleted)} session(s), ${String(handoffs)} handoff(s) and ${String(tokens)} token(s) removed`,
+      `db:sessions:prune ✓ ${counts.length > 0 ? `${counts.join(", ")} and ${last}` : last} removed`,
     );
   } finally {
     await client.close();

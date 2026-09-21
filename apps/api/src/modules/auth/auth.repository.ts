@@ -3,6 +3,7 @@ import { sessions, type DbExecutor } from "@repo/db";
 import { and, asc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 
 import { internal } from "../../core/errors/index.js";
+import type { RevokeReason } from "./auth.types.js";
 
 /**
  * Every query against `sessions` (ADR-0009, ADR-0018).
@@ -99,7 +100,8 @@ export interface RevokeBeyondCapInput {
   readonly principalId: string;
   /** `AUTH_MAX_SESSIONS_PER_PRINCIPAL`; `0` means uncapped and revokes nothing. */
   readonly max: number;
-  readonly reason: string;
+  /** A {@link RevokeReason} rather than a free string since `D28.4` (`SEC-12`). */
+  readonly reason: RevokeReason;
   readonly at: Date;
   /**
    * The session just minted, which is never a candidate however the counting

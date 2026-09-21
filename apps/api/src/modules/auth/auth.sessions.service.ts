@@ -257,7 +257,7 @@ export const createAuthSessions = ({
           principalType: population,
           principalId: principal.id,
           max: maxSessionsPerPrincipal,
-          reason: "session_cap",
+          reason: REVOKE_REASONS.sessionCap,
           at,
           exceptSessionId: created.id,
         },

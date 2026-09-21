@@ -386,6 +386,14 @@ export const REVOKE_REASONS = {
    * against `passwordChanged`.
    */
   impersonationEnded: "impersonation_ended",
+  /**
+   * A login or federated exchange past `AUTH_MAX_SESSIONS_PER_PRINCIPAL`
+   * revoked the principal's oldest live session (ADR-0073 §3).
+   *
+   * A member here since `D28.4` (`SEC-12`): it was a free literal at its one
+   * call site, the only revoke path whose reason the compiler did not check.
+   */
+  sessionCap: "session_cap",
 } as const;
 
 export type RevokeReason = (typeof REVOKE_REASONS)[keyof typeof REVOKE_REASONS];

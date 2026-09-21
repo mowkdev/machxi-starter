@@ -1134,6 +1134,43 @@ describe("migration 0017 — the two invariants in the database", () => {
   });
 });
 
+describe("migration 0018 — the prune's predicates", () => {
+  it("the prune predicates are indexed on both sides", async () => {
+    // `DB-07` (`D28.4`): each sweep in `prune-sessions.ts` is `expiry < cutoff
+    // OR spent < cutoff`, and Postgres serves an `OR` with a BitmapOr only when
+    // both columns carry an index. The expiry half of each pair predates this
+    // migration; the spent half is `0018`'s, partial on `is not null` because
+    // the column is null on every row still live.
+    const rows = await rowsOf<{
+      tablename: string;
+      indexname: string;
+      indexdef: string;
+    }>(
+      sql`select tablename, indexname, indexdef from pg_indexes
+          where schemaname = 'public'
+            and tablename in ('sessions', 'impersonation_handoffs', 'account_tokens')`,
+    );
+    const definitionOf = (name: string) =>
+      rows.find((row) => row.indexname === name)?.indexdef;
+
+    const pairs = [
+      ["sessions_refresh_token_expires_at_idx", "sessions_revoked_at_idx"],
+      [
+        "impersonation_handoffs_expires_at_idx",
+        "impersonation_handoffs_consumed_at_idx",
+      ],
+      ["account_tokens_expires_at_idx", "account_tokens_consumed_at_idx"],
+    ] as const;
+
+    for (const [expiry, spent] of pairs) {
+      expect(definitionOf(expiry), expiry).toBeDefined();
+      expect(definitionOf(spent), spent).toMatch(
+        /\((revoked_at|consumed_at)\) WHERE \(\1 IS NOT NULL\)/i,
+      );
+    }
+  });
+});
+
 describe("ping", () => {
   it("resolves against a reachable database (ADR-0003, ADR-0016)", async () => {
     await expect(client.ping()).resolves.toBeUndefined();

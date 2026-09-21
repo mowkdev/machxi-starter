@@ -550,6 +550,81 @@ test("a held dependency is one fact", async () => {
   );
 });
 
+/**
+ * The leading `--` comment block of a migration, which is where ADR-0060 §5
+ * asks the lock behaviour to be written down.
+ */
+const leadingComment = (sql) => {
+  const lines = [];
+  for (const line of sql.replace(/\r\n/g, "\n").split("\n")) {
+    if (!line.startsWith("--")) break;
+    lines.push(line);
+  }
+  return lines.join("\n");
+};
+
+/** Whether that block says what the migration locks, or that it blocks nothing. */
+const hasLockNote = (sql) =>
+  /\b(locks?|block|blocks|blocking)\b/i.test(leadingComment(sql));
+
+/**
+ * The migrations the rule reaches, and the two it cannot. `0011` and `0012`
+ * shipped without the note — `0011` is a bare generated file, `0012` a
+ * backfill whose header speaks to idempotency and not to locks. Committed
+ * migrations are never edited (ADR-0008), so they are named here rather than
+ * fixed; the list is closed, and every later file carries its note.
+ */
+const LOCK_NOTE_FROM = 11;
+const LOCK_NOTE_PREDATES = new Set([
+  "0011_organizations.sql",
+  "0012_backfill_personal_organizations.sql",
+]);
+
+test("every migration from 0011 on opens with its lock note", async () => {
+  // DB-12: ADR-0060 §5 asks every migration to say whether it blocks, and the
+  // rule had no check behind it — `0011` shipped without one and nothing said
+  // so. The predicate is deliberately loose (the note's wording is the
+  // author's), but a migration whose opening comment never mentions locking
+  // or blocking has not made the choice §5 asks it to make.
+  const dir = path.join(repoRoot, "packages", "db", "migrations");
+  const files = (await readdir(dir))
+    .filter((name) => /^\d{4}_.*\.sql$/.test(name))
+    .filter((name) => Number(name.slice(0, 4)) >= LOCK_NOTE_FROM)
+    .sort();
+
+  assert.ok(files.length > LOCK_NOTE_PREDATES.size, "no migrations to check");
+  for (const name of LOCK_NOTE_PREDATES) {
+    assert.ok(files.includes(name), `${name} is exempt but does not exist`);
+  }
+
+  const missing = [];
+  for (const name of files) {
+    if (LOCK_NOTE_PREDATES.has(name)) continue;
+    if (!hasLockNote(await readFile(path.join(dir, name), "utf8"))) {
+      missing.push(name);
+    }
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `open these migrations with an ADR-0060 §5 lock note: ${missing.join(", ")}`,
+  );
+
+  // The predicate itself: a generated file with no header is caught, a note
+  // below the first statement does not count, and either shape of note passes.
+  const bare = 'CREATE INDEX "x" ON "t" ("c");';
+  assert.equal(hasLockNote(bare), false);
+  assert.equal(hasLockNote(`${bare}\n-- takes a SHARE lock`), false);
+  assert.equal(
+    hasLockNote(`-- Nothing here is expected to block.\n${bare}`),
+    true,
+  );
+  assert.equal(
+    hasLockNote(`-- Holds a SHARE lock for the build.\n${bare}`),
+    true,
+  );
+});
+
 test("no tsconfig writes its buildinfo into a cached output", async () => {
   // CI-07, and the same species as CI-01 and CI-02: a link of the gate that
   // ran without checking anything. `check-types` caches `dist-types/**`, and

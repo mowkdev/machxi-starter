@@ -15,6 +15,7 @@ import {
 import type { DbClient } from "../client.js";
 import {
   federatedIdentities,
+  organizationInvitations,
   organizationMemberships,
   organizations,
   staff,
@@ -68,6 +69,7 @@ const countOf = async (
     | typeof userRoles
     | typeof organizations
     | typeof organizationMemberships
+    | typeof organizationInvitations
     | typeof federatedIdentities,
 ) => {
   const [row] = await client.db.select({ value: count() }).from(table);
@@ -262,28 +264,29 @@ describe("dev fixtures", () => {
     ).resolves.toBe(true);
   });
 
-  it("adds nothing on a second run", async () => {
-    const before = [
+  it("a second run changes nothing", async () => {
+    // `organization_invitations` since `D28.4` (`DB-10`): the one fixture
+    // whose seeder is idempotent by a predicate rather than by a constraint,
+    // so the one a second run could most plausibly duplicate — and the one
+    // this count used to leave out.
+    const counts = async () => [
       await countOf(staff),
       await countOf(staffRoles),
       await countOf(users),
       await countOf(userRoles),
       await countOf(organizations),
       await countOf(organizationMemberships),
+      await countOf(organizationInvitations),
       await countOf(federatedIdentities),
     ];
+    const before = await counts();
+
+    // Not vacuous: the first run seeded the pending invitation.
+    expect(before[6]).toBeGreaterThan(0);
 
     await seedDev();
 
-    expect([
-      await countOf(staff),
-      await countOf(staffRoles),
-      await countOf(users),
-      await countOf(userRoles),
-      await countOf(organizations),
-      await countOf(organizationMemberships),
-      await countOf(federatedIdentities),
-    ]).toEqual(before);
+    expect(await counts()).toEqual(before);
   });
 });
 

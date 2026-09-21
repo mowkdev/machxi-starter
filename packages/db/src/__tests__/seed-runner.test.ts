@@ -19,8 +19,16 @@ import type { Seeder } from "../../seeds/types.js";
  * a database is `seeds.int.test.ts`, against real Postgres.
  */
 
+/**
+ * A pool whose `transaction` hands the callback a marker object, so a case can
+ * tell "the seeder was given the transaction" from "the seeder was given the
+ * pool" (`D28.4`, `DB-09`).
+ */
+const TX = { transactionHandle: true } as unknown as Db;
+const transaction = vi.fn(async (work: (tx: Db) => Promise<void>) => work(TX));
+
 const noopContext = {
-  db: {} as Db,
+  db: { transaction } as unknown as Db,
   hasher: {} as PasswordHasher,
   env: {
     nodeEnv: "test",
@@ -92,6 +100,31 @@ describe("runSeeders", () => {
     expect(order).toEqual(["a", "b"]);
     expect(write).toHaveBeenCalledWith("  a: hello\n");
     expect(write).toHaveBeenCalledWith("  b: hello\n");
+  });
+
+  it("runs each seeder inside a transaction of its own (ADR-0067 §2)", async () => {
+    // The seed path is one of the user-creating paths, and "the personal
+    // organization in the same transaction" holds for it only because the
+    // runner opens one per seeder and hands the seeder the transaction rather
+    // than the pool.
+    transaction.mockClear();
+    const given: Db[] = [];
+    const make = (name: string): Seeder => ({
+      name,
+      run: async ({ db }) => {
+        given.push(db as Db);
+
+        return Promise.resolve();
+      },
+    });
+
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runSeeders([make("a"), make("b")], noopContext);
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(given).toHaveLength(2);
+    for (const db of given) expect(db).toBe(TX);
   });
 
   it("stops at the first failure rather than continuing into a broken state", async () => {

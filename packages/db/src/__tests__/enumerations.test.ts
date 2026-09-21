@@ -3,6 +3,7 @@ import { getTableName, is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
+import { NEVER_PRUNED_TABLES, PRUNED_TABLES } from "../prune-sessions.js";
 import * as schema from "../schema/index.js";
 import {
   TENANT_OWNED_TABLES,
@@ -11,8 +12,8 @@ import {
 } from "../testing.js";
 
 /**
- * The three hand-maintained table enumerations, checked against the schema
- * (ADR-0061 §4, ADR-0067 §5).
+ * The hand-maintained table enumerations, checked against the schema
+ * (ADR-0061 §4, ADR-0067 §5) — three, and since `D28.4` the prune's pair.
  *
  * Neither list has a compiler behind it, and both fail **silently** when a
  * table escapes them:
@@ -101,6 +102,20 @@ const scopedTableNames = tableExports
   )
   .map(([, table]) => getTableName(table));
 
+/**
+ * The physical names of every table carrying an expiry — a column whose
+ * declared key ends in `expiresAt`, so `sessions.refreshTokenExpiresAt` is
+ * caught beside the plain `expiresAt` of the token tables (`D28.4`, `DB-08`).
+ * `_?` so a column declared with an explicit `expires_at` name is caught too.
+ */
+const expiringTableNames = tableExports
+  .filter(([, table]) =>
+    getTableConfig(table).columns.some((column) =>
+      /expires_?at$/i.test(column.name),
+    ),
+  )
+  .map(([, table]) => getTableName(table));
+
 describe("the schema's tables", () => {
   it("are what this test compares against — a non-empty, named set", () => {
     // The guard that keeps the two assertions below from passing vacuously if
@@ -158,6 +173,31 @@ describe("the schema's tables", () => {
         scopedTableNames.includes(name),
       ).sort(),
     );
+  });
+
+  it("every expiring table is pruned or excluded by name", () => {
+    // `DB-08`: the sweep's table list was the fourth enumeration with no test.
+    // A table that carries an expiry is either swept by `db:sessions:prune`
+    // or named, with its reason, as never swept — a sixth flow's token table
+    // in neither list is a table that grows for ever and nothing says so.
+    expect(expiringTableNames.length).toBeGreaterThan(0);
+
+    const missing = missingFrom(
+      [...PRUNED_TABLES, ...NEVER_PRUNED_TABLES],
+      expiringTableNames,
+    );
+
+    expect(
+      missing,
+      `sweep these in packages/db/src/prune-sessions.ts or name them in NEVER_PRUNED_TABLES: ${missing.join(", ")}`,
+    ).toEqual([]);
+
+    // The negative case: a table removed from both lists is reported by name.
+    const [firstPruned, ...restPruned] = PRUNED_TABLES;
+
+    expect(
+      missingFrom([...restPruned, ...NEVER_PRUNED_TABLES], expiringTableNames),
+    ).toEqual([firstPruned]);
   });
 
   it("would be reported by name if a list lost one — the negative case", () => {

@@ -127,6 +127,13 @@
       "when": 1789675338192,
       "tag": "0017_users_active_email_verified_check",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790013623759,
+      "tag": "0018_prune_predicate_indexes",
+      "breakpoints": true
     }
   ]
 }

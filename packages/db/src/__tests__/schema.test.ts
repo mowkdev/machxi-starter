@@ -174,8 +174,12 @@ describe("account_tokens", () => {
     expect(columns.get("payload")?.getSQLType()).toBe("jsonb");
   });
 
-  it("indexes the re-mint lookup and the expiry the sweep scans", () => {
+  it("indexes the re-mint lookup and both halves of the sweep", () => {
     expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      // Partial on `consumed_at is not null` since `D28.4` (`DB-07`): the
+      // sweep is `expires_at < cutoff OR consumed_at < cutoff`, a BitmapOr
+      // only when both sides are indexed.
+      "account_tokens_consumed_at_idx",
       "account_tokens_expires_at_idx",
       "account_tokens_principal_purpose_idx",
     ]);
@@ -343,7 +347,7 @@ describe("sessions", () => {
     expect(columns.get("rotatedAt")?.notNull).toBe(false);
   });
 
-  it("indexes the principal, the previous hash, the expiry and the impersonator", () => {
+  it("indexes the principal, the previous hash, the expiry, the revocation and the impersonator", () => {
     expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
       // Partial (`where impersonated_by_staff_id is not null`) since
       // ADR-0060 §4: the column is null on every ordinary session, so the
@@ -353,6 +357,9 @@ describe("sessions", () => {
       "sessions_previous_refresh_token_hash_idx",
       "sessions_principal_idx",
       "sessions_refresh_token_expires_at_idx",
+      // The prune's other half, partial on `revoked_at is not null` since
+      // `D28.4` (`DB-07`).
+      "sessions_revoked_at_idx",
     ]);
   });
 
@@ -413,8 +420,10 @@ describe("impersonation_handoffs", () => {
     expect(columns.get("consumedAt")?.notNull).toBe(false);
   });
 
-  it("indexes the expiry, which is what the sweep scans", () => {
+  it("indexes both halves of what the sweep scans", () => {
     expect(config.indexes.map((index) => index.config.name).sort()).toEqual([
+      // Partial on `consumed_at is not null` since `D28.4` (`DB-07`).
+      "impersonation_handoffs_consumed_at_idx",
       "impersonation_handoffs_expires_at_idx",
     ]);
   });
