@@ -357,3 +357,30 @@ The review's 215s is the same tier under the whole gate's load (the log `main` h
 **Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`: `lint` 21/21, `check-types` 16/16, `test` 15/15 (admin 60 files, customer 32, API 48 unit and 28 integration), `size` 4/4 all `ok`, then `format:check` red on this notes file's table layout only; after `prettier --write` (whitespace) "All matched files use Prettier code style!". `pnpm check` exit `0`, 52/52. After the review's fixes (a status line and two docblocks): `pnpm lint`, `pnpm check-types --filter @repo/vitest-config` and `pnpm format:check` green.
 
 **Pending the operator.** Nothing is browser-only and nothing running reads the changed config. The spike worktree `.claude/worktrees/d28-10` was removed with its branch.
+
+## D28.11 — The ledger, the notes and the fork's view (2026-09-22)
+
+**Built.** The four process findings, and the two loose ends the operator routed here on 2026-09-22 (the step's labelled amendment). Closes `PRO-09`, `PRO-10`, `PRO-11`, `PRO-12`; closes the unit-hash replay D28.10 logged, and ADR-0048's stale directive rule D28.9 logged.
+
+- **`PRO-09`.** D26's row names "the three longest rows of the index's topic table, read as they stand when D26 opens" in place of the three stale chain enumerations.
+- **`PRO-12`.** D21's row says "`tsc -b` with the packages' `dist-types` emission".
+- **`PRO-11`.** `0020-review-hardening.notes.md` item 4 carries a labelled correction ("Corrected 2026-09-22 (D28.11)") pointing at the ledger's §How D20 closed; the original text stands.
+- **`PRO-10`.** `docs/forking.md` §2 gains a bullet: the process skills (`/scope`, `/step`, `/steps`, `/ship`, `/new-adr`), the builder agents and `gate-runner` are optional; `.claude/rules/`, the digests and the three reviewers are not; a deletion comes back as a modify/delete conflict, and it leaves named mentions elsewhere dangling unless trimmed (the digest's header through `scripts/rules-digest.mjs`).
+- **The unit hash.** `turbo.json`: `test:unit` depends on `transit`, which depends on `^transit` and is a script in no workspace. `turbo run test:unit --filter admin --dry=json`: before, `admin#test:unit` hash `7fb666d4…`, `dependencies: []`, 301 inputs, and the hash did not move when `packages/config-vitest/react.ts` or `packages/grid/src/density.ts` gained a line. After, `admin#test:unit` depends on `admin#transit`, whose dependencies are the `#transit` of the twelve workspace packages admin declares (`@repo/vitest-config` and `@repo/grid` among them), every one `<NONEXISTENT>` (nothing runs). With the tree cached by `pnpm check`: tree `405a7b74…` **HIT**; one byte appended to `react.ts` → `d3f9c5bc…` **MISS**; restored → `405a7b74…` **HIT**. (One probe read a different hash immediately after a restore and the next two reads were back on `405a7b74…`; a stat race while git refreshed its index, not a hash input.)
+- **Hygiene case** "a unit suite's hash covers its workspace dependencies" in `scripts/docs-hygiene.test.mjs`: green on the tree, **red on `turbo.json` as it stood at HEAD**; its predicate is red on `dependsOn: []`, on a transit without a `^` edge and on a transit some workspace defines as a script, and the case refuses a workspace `turbo.json` that redefines `test:unit`'s or `transit`'s `dependsOn`.
+- **Records.** ADR-0074 amended in place, labelled: the title and Supersedes line widen to ADR-0026 and ADR-0048, §7 gains the 0048 amendment, a new §9 states the unit-hash rule as a delta on ADR-0026's `test:unit` row, and Consequences names the two. ADR-0026 and ADR-0048 move to `superseded by` 0074 at this head — Status lines only, bodies untouched. The index's 0026, 0048 and 0074 rows, the task-graph topic row and the ledger's window paragraph say so. ADR-0048 has no topic-table row of its own, so none moved. ADR-0065's pending flip was left for step 12, as instructed.
+- **Digest.** "The gate" line in `scripts/rules-digest.mjs` cites 0074 and states the transit rule; `pnpm rules:digest` wrote 1 of 3, then 0 of 3.
+
+**Amendments.** The plan's step 11 (the widening, its ADRs line, and the added done-whens); ADR-0074 as above.
+
+**Review: one `adr-reviewer` pass, five findings, all fixed.**
+
+- **[fixed, major]** `forking.md`'s new bullet claimed only `CLAUDE.md` and `.claude/README.md` name the deletable files; a reviewer, a skill, `upstreaming.md`, the process digest's header and `gate.yml` do too. Reworded: the mentions are left dangling unless trimmed, and the digest's header is trimmed in the generator.
+- **[fixed]** ADR-0026's Status line lost its separator before ADR-0073.
+- **[fixed]** The hygiene case now also refuses a workspace `turbo.json` that redefines `transit`'s `dependsOn`.
+- **[fixed]** Step 11's **ADRs:** line names 0074, 0026 and 0048.
+- **[fixed]** ADR-0074 §Consequences' "one each" list names the two additions, labelled.
+
+**Gate.** `pnpm check`: the first run after `turbo.json` changed (every hash new, everything cold in parallel) failed three package suites — `@repo/i18n`, `@repo/ui`, `@repo/api-client` — on `[vitest-pool]: Failed to start forks worker … Timeout waiting for worker to respond`, load and not code; the rerun passed 52/52. Then `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited `0`: `lint` 21/21 (`test:scripts` 54 tests), `check-types` 16/16, `test` 15/15 cold in 5m33s, `size` 4/4 all `ok` (admin js 372.8 / 389.6 kB, entry 156.2 / 165.0 kB; customer js 320.6 / 335.9 kB, entry 103.9 / 110.4 kB), Prettier "All matched files use Prettier code style!". After the review's fixes (docs, one hygiene assertion): `pnpm test:scripts` 54/54, `pnpm docs:check` clean, `pnpm lint` and `pnpm format:check` green.
+
+**Pending the operator.** Nothing is browser-only; nothing running reads `turbo.json` changes. ADR-0065's move is still owed (step 12).

@@ -31,8 +31,20 @@
         "METRICS_TOKEN"
       ]
     },
+    // A workspace's unit suite runs its workspace dependencies' source — a
+    // package is source-only, and the shared Vitest config is a package — so
+    // its hash must cover their inputs, or a change in `@repo/grid` replays a
+    // stale green for the app that exercises it (ADR-0026 as carried by
+    // ADR-0074, amended at D28.11). `transit` is Turborepo's documented node
+    // for that: no workspace defines the script, so nothing runs and nothing
+    // waits, but each package's `transit` hashes its files and its
+    // dependencies' `transit`. `^test:unit` would do the same by running the
+    // packages' suites first, serialising the fast loop for no reason.
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
     "test:unit": {
-      "dependsOn": []
+      "dependsOn": ["transit"]
     },
     "size": {
       "dependsOn": ["build"],

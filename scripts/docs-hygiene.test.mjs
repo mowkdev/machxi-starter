@@ -500,6 +500,93 @@ test("the first link carries every check that can go red", async () => {
 });
 
 /**
+ * Why `test:unit`'s hash would miss its workspace dependencies, or `null`.
+ *
+ * Turbo hashes a task over its own package's files and the hashes of the tasks
+ * it depends on, so a suite that runs a package's source sees that source only
+ * through a `^` edge: `^test:unit` itself, or a task that exists for no other
+ * reason — turbo's transit node, named in `dependsOn`, reaching `^` itself and
+ * defined as a script by no workspace, so it is hashed and never run.
+ */
+const unitHashGap = ({ turbo, workspaces }) => {
+  const tasks = turbo.tasks ?? {};
+  const deps = tasks["test:unit"]?.dependsOn ?? [];
+  if (deps.includes("^test:unit")) return null;
+  const transit = deps.find(
+    (name) =>
+      !name.startsWith("^") &&
+      (tasks[name]?.dependsOn ?? []).includes(`^${name}`),
+  );
+  if (!transit)
+    return "test:unit depends on no ^ edge — a package's source is outside its hash";
+  const runs = workspaces.filter((pkg) => pkg.scripts?.[transit]);
+  if (runs.length > 0)
+    return `${transit} is a script in ${runs.map((pkg) => pkg.name).join(", ")} — it would run, not only hash`;
+  return null;
+};
+
+test("a unit suite's hash covers its workspace dependencies", async () => {
+  // Found at D28.10: `test:unit` declared `dependsOn: []`, so `admin#test:unit`
+  // hashed admin's files alone and a change in `@repo/vitest-config` replayed
+  // the old green from `pnpm check`. ADR-0026 as carried by ADR-0074 (amended
+  // at D28.11): the cache may decide a result only over everything that result
+  // is a function of, and a source-only package's code is part of it.
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const workspaces = [];
+  for (const group of ["apps", "packages"])
+    for (const entry of await readdir(path.join(repoRoot, group), {
+      withFileTypes: true,
+    })) {
+      if (!entry.isDirectory()) continue;
+      const text = await read(`${group}/${entry.name}/package.json`).catch(
+        () => null,
+      );
+      if (text !== null) workspaces.push(JSON.parse(text));
+      // A workspace may redefine the task; its own `dependsOn` would then be
+      // the one turbo reads for that package.
+      const own = await read(`${group}/${entry.name}/turbo.json`).catch(
+        () => null,
+      );
+      if (own !== null)
+        assert.equal(
+          parseJsonc(own).tasks?.["test:unit"]?.dependsOn,
+          undefined,
+          `${group}/${entry.name}/turbo.json redefines test:unit's dependsOn`,
+        );
+      if (own !== null)
+        assert.equal(
+          parseJsonc(own).tasks?.transit?.dependsOn,
+          undefined,
+          `${group}/${entry.name}/turbo.json redefines transit's dependsOn — it would cut the chain there`,
+        );
+    }
+  assert.ok(workspaces.length > 10, `only ${workspaces.length} workspaces`);
+
+  const turbo = parseJsonc(await read("turbo.json"));
+  assert.equal(unitHashGap({ turbo, workspaces }), null);
+
+  // The predicate itself: red on the shape that lied, and on a transit node
+  // some workspace would run.
+  const withUnit = (dependsOn, extra = {}) => ({
+    turbo: { tasks: { ...turbo.tasks, ...extra, "test:unit": { dependsOn } } },
+    workspaces,
+  });
+  assert.match(unitHashGap(withUnit([])), /no \^ edge/);
+  assert.match(
+    unitHashGap(withUnit(["transit"], { transit: { dependsOn: [] } })),
+    /no \^ edge/,
+  );
+  assert.equal(unitHashGap(withUnit(["^test:unit"])), null);
+  assert.match(
+    unitHashGap({
+      ...withUnit(["transit"], { transit: { dependsOn: ["^transit"] } }),
+      workspaces: [{ name: "x", scripts: { transit: "echo" } }],
+    }),
+    /would run/,
+  );
+});
+
+/**
  * The package names `pnpm-workspace.yaml`'s `overrides` block holds. A key may
  * be quoted, scoped, carry a version selector (`foo@<2`) or a parent chain
  * (`parent>foo`); the name returned is the package the override binds.

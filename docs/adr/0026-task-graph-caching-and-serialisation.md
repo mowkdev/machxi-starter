@@ -1,6 +1,6 @@
 # ADR-0026: Turborepo task graph: what may be cached and what must be serialised
 
-- Status: superseded by [ADR-0052](0052-grid-and-admin-followups.md) (delta: the documented gate grows a fourth link) and [ADR-0073](0073-review-hardening.md) (delta: `pnpm check` and the gate's first link run the repo-level script tests and `docs:check`, through the task graph rather than as links of their own)
+- Status: superseded by [ADR-0052](0052-grid-and-admin-followups.md) (delta: the documented gate grows a fourth link), [ADR-0073](0073-review-hardening.md) (delta: `pnpm check` and the gate's first link run the repo-level script tests and `docs:check`, through the task graph rather than as links of their own) and [ADR-0074](0074-review-follow-ups.md) (delta: a cached task's hash covers every workspace whose source it runs — `test:unit` reaches its workspace dependencies through turbo's `transit` node; §The rule's purity and every other row of the task table stand)
 - Date: 2026-08-18
 
 ## Context

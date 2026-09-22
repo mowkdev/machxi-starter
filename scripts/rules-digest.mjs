@@ -332,8 +332,8 @@ export const AREAS = [
       },
       {
         topic: "The gate",
-        records: ["0026", "0052", "0057"],
-        text: "The gate command is defined once, in `CLAUDE.md` §Commands, and referenced by name everywhere else. `pnpm check` is the cached inner loop; a task whose result depends on anything outside the repository is never cached and declares its `env`.",
+        records: ["0026", "0052", "0057", "0074"],
+        text: "The gate command is defined once, in `CLAUDE.md` §Commands, and referenced by name everywhere else. `pnpm check` is the cached inner loop; a task whose result depends on anything outside the repository is never cached and declares its `env`. A cached task's hash covers every workspace whose source it runs: `test:unit` reaches its workspace dependencies through turbo's `transit` node, which no workspace defines as a script.",
       },
       {
         topic: "The first link runs every check",
