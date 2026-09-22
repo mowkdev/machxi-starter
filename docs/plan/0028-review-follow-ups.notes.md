@@ -319,3 +319,41 @@ One low-value note, **[logged]**: the "are the seven this test names" case count
 `pnpm check` also passed, 52/52.
 
 **Pending the operator.** Nothing is browser-only. The running dev servers pick up the manifest change through Vite's dependency scan on the next reload, and no restart is needed to observe it.
+
+## D28.10 — The admin unit tier, measured (2026-09-22)
+
+**Built.** A timeboxed spike, run in a side worktree (`.claude/worktrees/d28-10`, its own `node_modules` from `pnpm install --frozen-lockfile`) while the operator's stack kept running; it took about an hour of its two. Coverage off landed, so `FE-09` closes here for its config half; pre-bundling did not, and its numbers are D22's input. Closes `FE-09` (with the residual routed).
+
+**The timings**, each read from `apps/admin/.turbo/turbo-test$colon$unit.log` after `pnpm turbo run test:unit --filter admin --force`, 60 files and 537 tests every time, on one otherwise idle machine:
+
+| run                                                               | Duration | transform | import  | tests   | environment |
+| ----------------------------------------------------------------- | -------- | --------- | ------- | ------- | ----------- |
+| the tree (v8 coverage on)                                         | 127.12s  | 82.93s    | 476.46s | 755.90s | 274.63s     |
+| the tree, again                                                   | 125.36s  | 36.51s    | 447.74s | 786.25s | 289.37s     |
+| `coverage.enabled: false`                                         | 92.34s   | 36.66s    | 398.89s | 531.79s | 275.91s     |
+| `coverage.enabled: false`, again                                  | 92.73s   | 34.50s    | 390.51s | 529.40s | 271.81s     |
+| coverage off + the seven packages pre-bundled (widest form tried) | 150.46s  | 33.70s    | 304.78s | 843.70s | 280.63s     |
+
+The review's 215s is the same tier under the whole gate's load (the log `main` held before this step, 23:10 on 2026-09-21); the ratio, not the absolute, is what this step decides on.
+
+- **Coverage: about 27% of the link.** `packages/config-vitest/react.ts` sets `coverage.enabled: false`, with provider and reporter still written out, so `pnpm test:unit --filter admin -- --coverage` prints the same `text-summary` (87.94% statements, 89.38% lines — identical to the pre-step log). Its docblock carries the numbers. `node.ts` is unchanged: the node suites were not the bill and were not measured.
+- **Pre-bundling: not a config change.** `test.deps.optimizer.client` over the seven source-only packages alone put a second copy of the router and React into the bundle: 38 of 60 files red (`Cannot read properties of null (reading 'isServer')` from `useMatches`), and `app-form-surface.test.tsx` ran past ten minutes on timeouts before the run was stopped. Adding React, `react-dom`, the JSX runtimes, the router, Query, Table, i18next, react-i18next, react-hook-form and Testing Library to the include, and `esbuildOptions.jsx: "automatic"` (without it every file failed `React is not defined`), left 44 of 537 tests red on the `@repo/ui` and Radix instances outside the bundle — `@repo/ui`'s wildcard subpath exports cannot be listed in an include — at 150.46s. Import time falls (≈ 395s → 305s), which is the re-transformation being real; but getting there means bundling the whole React graph, which is the suites moving into their packages, D22's row. `server.deps.inline` changes nothing: linked workspace packages resolve outside `node_modules` and are already transformed.
+- **ADR-0074** amended in place, labelled (Consequences, and the header's delta list on ADR-0073 §6). The process digest's line for the first link says where coverage is collected; `pnpm rules:digest` wrote 1 of 3.
+- **D22's ledger row** carries the pre-bundling numbers as its input.
+
+**Amendments.** The plan's step 10: the done-when's `pnpm test:unit -- --coverage --filter admin` hands `--filter` to every workspace's Vitest (all fifteen fail `Unknown option --filter`); it is read as `pnpm test:unit --filter admin -- --coverage`. ADR-0074, as above.
+
+**Done-when.** `pnpm test:unit --filter admin --force` 85.46s, green, no coverage line; again: `Cached: 1 cached, 1 total … FULL TURBO`. `pnpm test:unit --filter admin -- --coverage`: 537 passed, `Coverage summary` printed.
+
+**Found on the way, not taken here — a cache lie.** `pnpm test:unit --filter admin` right after `react.ts` changed answered `FULL TURBO` and replayed the old log, coverage and all. `turbo run test:unit --filter admin --dry=json` shows why: `admin#test:unit` has `dependencies: []` and its 301 inputs are admin's own files — `test:unit` declares `dependsOn: []`, so no workspace package's source (not `@repo/vitest-config`, not `@repo/grid`, whose code admin's suite exercises) reaches the hash. A package change can replay a green app suite from `pnpm check` and `pnpm test:unit`; `pnpm test` is uncached and the gate is therefore unaffected. The mechanism (a `^`-dependency on a transit task, or `inputs` naming the packages) is a decision on ADR-0026 as carried, so it is for the operator: a labelled widening of 0074 while the window is open, or D27's row, which is already about what the cache may decide.
+
+**Review: one `adr-reviewer` pass, four findings.**
+
+- **[fixed]** ADR-0073's `Status:` delta list did not name the new §6 delta that 0074's header now lists; it does.
+- **[fixed]** `node.ts`'s docblock cited 0073 §6 alone and gave the opposite rationale to `react.ts`'s; it now cites 0073 as carried by 0074 and says why the two differ.
+- **[fixed]** `react.ts` named its consumers too narrowly (`@repo/api-client` and `@repo/i18n` use it without rendering); it now says every workspace that imports it.
+- **[logged]** The cache lie above has no durable home. Routing it — D27's row, or a labelled widening of 0074 at D28.11 — is the operator's decision, not this diff's.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`: `lint` 21/21, `check-types` 16/16, `test` 15/15 (admin 60 files, customer 32, API 48 unit and 28 integration), `size` 4/4 all `ok`, then `format:check` red on this notes file's table layout only; after `prettier --write` (whitespace) "All matched files use Prettier code style!". `pnpm check` exit `0`, 52/52. After the review's fixes (a status line and two docblocks): `pnpm lint`, `pnpm check-types --filter @repo/vitest-config` and `pnpm format:check` green.
+
+**Pending the operator.** Nothing is browser-only and nothing running reads the changed config. The spike worktree `.claude/worktrees/d28-10` was removed with its branch.

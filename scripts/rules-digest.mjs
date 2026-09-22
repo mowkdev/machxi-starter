@@ -338,7 +338,7 @@ export const AREAS = [
       {
         topic: "The first link runs every check",
         records: ["0073", "0074"],
-        text: "`lint`'s `dependsOn` carries every root and app check the repository defines — `test:scripts`, `docs:check`, `i18n:check` — and a hygiene case refuses a check it does not name, so a new one joins by predicate. A cached task's restored outputs must not decide its own result: a buildinfo sits under a cached output only beside the emit it belongs to. Coverage is reported with no threshold; `pnpm audit --prod` runs nightly beside the browser tier, reported and never gating.",
+        text: "`lint`'s `dependsOn` carries every root and app check the repository defines — `test:scripts`, `docs:check`, `i18n:check` — and a hygiene case refuses a check it does not name, so a new one joins by predicate. A cached task's restored outputs must not decide its own result: a buildinfo sits under a cached output only beside the emit it belongs to. Coverage is reported with no threshold — on every run in the node suites, and in the jsdom suites only on `--coverage`, which keeps the slowest link a quarter shorter; `pnpm audit --prod` runs nightly beside the browser tier, reported and never gating.",
       },
       {
         topic: "Pinning, holds and the cooldown",

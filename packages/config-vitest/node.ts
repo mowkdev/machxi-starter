@@ -7,8 +7,10 @@ const alwaysExclude = ["**/node_modules/**", "**/dist/**", "**/.turbo/**"];
  * Fully parallel. `*.int.test.ts` files are excluded — they belong to
  * `integrationConfig` and the separate `test:int` script.
  *
- * **Coverage is reported and never gated** (ADR-0073 §6). A text summary on
- * every unit run is what says which slices are thin; a threshold chosen before
+ * **Coverage is reported and never gated** (ADR-0073 §6 as carried by
+ * ADR-0074). A text summary on every unit run is what says which slices are
+ * thin, and here it costs little; the jsdom suites collect it only on
+ * `--coverage`, where it cost a quarter of the slowest link (`react.ts`); a threshold chosen before
  * the number is measured is a number that gets edited on the first red run, so
  * a floor stays a later decision taken on a measurement. The block is written
  * out here and in `react.ts` rather than shared through a constant: inside
