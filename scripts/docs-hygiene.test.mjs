@@ -640,8 +640,11 @@ const lockfileVersions = (lock) => {
  * answered by `autoInstallPeers` with the newest release the range allows — a
  * second copy beside the one both apps build with. Not a hold, so not an
  * `overrides` entry; one version is asked of the lockfile all the same.
+ * `eslint` joined at `D21.2`: a plugin whose peer range has not reached the
+ * major (`eslint-plugin-react` on 10) is admitted by `peerDependencyRules`,
+ * and the lockfile is what shows it was not answered with a second copy.
  */
-const ONE_VERSION_TOOLS = ["vite", "vitest"];
+const ONE_VERSION_TOOLS = ["eslint", "vite", "vitest"];
 
 /** The held packages and tools the lockfile resolves more than once, as strings. */
 const heldTwice = (workspaceYaml, lock) => {
@@ -708,6 +711,68 @@ test("a held dependency is one fact", async () => {
     ),
     ["jsdom", "@scope/pkg", "child"],
   );
+});
+
+/**
+ * The workspaces with a `lint` script, and those of them that have no ESLint
+ * config of their own, as `group/name` strings. ESLint 10 looks a file's config up from the file's
+ * own directory rather than from the working directory (`D21.2`), so a
+ * workspace without one would be linted by whichever config sits above it —
+ * or by none.
+ */
+const lintedWithoutConfig = async (root) => {
+  const linted = [];
+  const missing = [];
+  for (const group of ["apps", "packages"]) {
+    const entries = await readdir(path.join(root, group), {
+      withFileTypes: true,
+    }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(root, group, entry.name);
+      const manifest = await readFile(path.join(dir, "package.json"), "utf8")
+        .then(JSON.parse)
+        .catch(() => null);
+      if (!manifest?.scripts?.lint) continue;
+      linted.push(`${group}/${entry.name}`);
+      const files = await readdir(dir);
+      if (!files.some((file) => /^eslint\.config\.[cm]?[jt]s$/.test(file)))
+        missing.push(`${group}/${entry.name}`);
+    }
+  }
+  return { linted, missing };
+};
+
+test("every linted workspace owns its config", async () => {
+  // The walk has to find the tree before its empty answer means anything.
+  const { linted, missing } = await lintedWithoutConfig(repoRoot);
+  assert.ok(linted.includes("apps/api"), String(linted));
+  assert.deepEqual(missing, []);
+
+  // The predicate itself: a linted workspace without a config is reported,
+  // and one without a `lint` script is not asked for one.
+  const scratch = await mkdtemp(path.join(tmpdir(), "lint-config-"));
+  try {
+    const workspace = async (name, scripts, config) => {
+      const dir = path.join(scratch, "packages", name);
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name, scripts }),
+      );
+      if (config)
+        await writeFile(path.join(dir, config), "export default [];\n");
+    };
+    await workspace("owned", { lint: "eslint ." }, "eslint.config.js");
+    await workspace("orphan", { lint: "eslint ." });
+    await workspace("unlinted", { build: "tsc" });
+    assert.deepEqual(await lintedWithoutConfig(scratch), {
+      linted: ["packages/orphan", "packages/owned"],
+      missing: ["packages/orphan"],
+    });
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 });
 
 /**

@@ -12,7 +12,16 @@ export const config = [
   pluginReact.configs.flat["jsx-runtime"],
   {
     settings: {
-      react: { version: "detect" },
+      /*
+       * The React major, stated rather than `"detect"`ed (`D21.2`). Detection
+       * calls `context.getFilename()`, which ESLint 10 removed, and
+       * `eslint-plugin-react` 7.37.5 has no release that stops calling it
+       * (jsx-eslint/eslint-plugin-react#4018, the wait named in
+       * `pnpm-workspace.yaml`'s `peerDependencyRules`). The plugin reads the
+       * version only to decide rules written for React before 16, so the
+       * major is all it needs; every workspace here declares React 19.
+       */
+      react: { version: "19" },
     },
     languageOptions: {
       ...pluginReact.configs.flat.recommended.languageOptions,

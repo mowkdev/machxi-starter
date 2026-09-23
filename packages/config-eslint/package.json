@@ -14,10 +14,12 @@
     "./doors": "./doors.js"
   },
   "scripts": {
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "test": "node --test \"*.test.js\"",
+    "test:unit": "node --test \"*.test.js\""
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "eslint": "catalog:",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-i18next": "^6.1.5",

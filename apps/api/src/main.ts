@@ -70,6 +70,10 @@ const main = async (): Promise<void> => {
     // deploy log that ends in `Failed query: select 1` does not tell an
     // operator that the API never started or why (ADR-0021 acceptance step 3).
     // It names no host and no credential — the log line has the detail.
+    // Which is why it carries no `cause`: Node prints an uncaught error's
+    // cause chain to stderr, and that chain is the driver error this sentence
+    // exists to keep out of it (ESLint 10's `preserve-caught-error`, `D21.2`).
+    // eslint-disable-next-line preserve-caught-error -- the cause is logged above, deliberately not rethrown
     throw new Error(
       `Database unreachable after ${String(config.db.connectRetries)} attempt(s); refusing to start. See the preceding log line for the driver error.`,
     );

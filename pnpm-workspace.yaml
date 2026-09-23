@@ -27,7 +27,7 @@ packages:
 # the bundler beside the one both apps build with.
 catalog:
   "@types/node": ^22.20.3
-  eslint: ^9.39.5
+  eslint: ^10.11.0
   typescript: 5.9.3
   vite: ^7.3.6
   vitest: ^5.0.1
@@ -43,6 +43,21 @@ catalog:
 # the lockfile for one version of every name listed here.
 overrides:
   jsdom: 30.0.1
+
+# A peer range a plugin has not yet widened, admitted by name and never by a
+# second copy of the tool (ADR-0074 §2; `D21.2`). One entry per plugin, each
+# naming the release it waits for — when that release lands, the entry goes.
+#
+# `eslint-plugin-react` 7.37.5 declares `eslint` up to `^9.7`, and no release
+# declaring 10 exists yet: jsx-eslint/eslint-plugin-react#3977 ("ESLint v10
+# compatibility") is the upstream issue. Its one ESLint 10 breakage that
+# reaches this tree is `settings.react.version: "detect"`, which calls the
+# `context.getFilename()` ESLint 10 removed (#4018) — so `react.js` in
+# `@repo/eslint-config` states the React major instead of detecting it. The
+# entry goes with the first release whose peer range names 10.
+peerDependencyRules:
+  allowedVersions:
+    eslint-plugin-react>eslint: "10"
 
 # ─── pnpm's own settings ──────────────────────────────────────────────────────
 # pnpm 12 no longer reads the `pnpm` field of `package.json` (ADR-0073 §4 as
