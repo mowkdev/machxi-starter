@@ -7,7 +7,7 @@
 
 ## Goal
 
-Take the queued majors one step each, in the order the first review set, on a gate that now runs every check: Vitest 5, ESLint 10, Vite 8 with `@vitejs/plugin-react` 6, the two runtime-adjacent majors `@types/node` 26 and `dotenv` 18, then TypeScript 6.0 as the bridge release and TypeScript 7 as a timeboxed spike — so the tree stops carrying a major behind on every tool it builds with, and the next fork starts on current majors with the reasons for any hold written down.
+Take the queued majors one step each, in the order the first review set, on a gate that now runs every check: Vitest 5, ESLint 10, Vite 8 with `@vitejs/plugin-react` 6, the two runtime-adjacent majors `@types/node` to the floor's own 24 and `dotenv` 18, then TypeScript 6.0 as the bridge release and TypeScript 7 as a timeboxed spike — so the tree stops carrying a major behind on every tool it builds with, and the next fork starts on current majors with the reasons for any hold written down.
 
 ## Constraints
 
@@ -38,9 +38,9 @@ Each step: implement, gate green, one bounded diff review (`code-reviewer`; `adr
 - [ ] **3. Vite 8 with `@vitejs/plugin-react` 6.** Both apps' `vite.config.ts` move `build.rollupOptions` to `build.rolldownOptions` and the vendor chunking to the shape Rolldown keeps (the function form of `manualChunks`, or `advancedChunks` if the function form no longer yields ADR-0062 §4's chunks); the `esbuild`-era `optimizeDeps` comment and options go; the default browser target moved to Baseline 2026, so both budget files are re-baselined by diff with every ceiling inside the headroom rule; `@tailwindcss/vite` and `@tanstack/router-plugin` at releases that declare a Vite 8 peer; the size link's built-page policy check stays green. Closes the third quarter of `STK-04` and the Vite half of `FE-02`'s future.
       **ADRs:** 0062 §4 as carried by 0073 §5, 0074 §6, 0073 §9.
       **Done when:** `pnpm why -r vite` resolves one version; `pnpm size --force` green with the measurement in the notes and the budget diff in the commit; `apps/admin/src/app/__tests__/grid-chunk.test.ts` and `apps/admin/e2e/smoke.spec.ts` green; `pnpm test:e2e` green in both apps with the floors unchanged; the gate green cold.
-- [ ] **4. `@types/node` 26 and `dotenv` 18.** The catalog's `@types/node` to `^26`, matching the Node 24 floor's successor types with `engines` unchanged; `dotenv` to `^18` in `@repo/db` and the API's dev dependency, with `packages/db/src/tooling/env.ts` still the only loader and the API's production bundle still free of it. Closes `STK-10`.
+- [ ] **4. `@types/node` at the floor, and `dotenv` 18.** The catalog's `@types/node` to `^24` — the types major tracks the Node major, so 24 describes the floor ADR-0073 §4 states and 26 describes APIs the floor does not have; `pnpm outdated` listing 26 from then on is the floor working, and the pinning register says so beside the catalog entry; `dotenv` to `^18` in `@repo/db` and the API's dev dependency, with `packages/db/src/tooling/env.ts` still the only loader and the API's production bundle still free of it. Closes `STK-10`.
       **ADRs:** 0073 §4, 0004, 0074 §2.
-      **Done when:** `pnpm check-types --force` 16/16; `pnpm test --filter=@repo/db` green; `scripts/docs-hygiene.test.mjs`'s bundle case (the API image's `dist/` carries no `dotenv`) green, or the case written if none exists; the gate green cold.
+      **Done when:** `pnpm check-types --force` 16/16 on `@types/node` 24; `pnpm test --filter=@repo/db` green; `scripts/docs-hygiene.test.mjs`'s bundle case (the API image's `dist/` carries no `dotenv`) green, or the case written if none exists; the gate green cold.
 - [ ] **5. TypeScript 6.0.** The catalog's exact `typescript` to `6.0.x` and `renovate.json`'s pin rule with it; every option 6.0 deprecates is gone from the `@repo/typescript-config` presets and the workspace `tsconfig`s before the flip (`baseUrl`, `moduleResolution: node10`, `target` below `es2015`, and the rest 6.0 names); `typescript-eslint`, `tsdown`, `drizzle-kit` and Vitest at releases whose peer admits 6.0; `strict` is already on everywhere, and any default 6.0 flips is stated in the presets rather than inherited silently.
       **ADRs:** 0073 §7 (the pin's reason), 0062 §3 (`tsc -b` and the emit), 0074 §2.
       **Done when:** `pnpm check-types --force` 16/16 with no deprecation diagnostic; `pnpm lint --force` green (type-aware rules still running); `pnpm build --filter api` green; `pnpm test:unit` twice, the second `FULL TURBO`; the gate green cold.
@@ -57,7 +57,7 @@ Run at `D21.7` and again by `/ship` on the committed tree.
 
 1. The gate green, every task cold: `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`.
 2. `pnpm test:unit` twice, the second `FULL TURBO` (ADR-0026 as carried).
-3. `pnpm outdated -r` lists no direct dependency behind a major except what D21's notes route by name; `pnpm audit --prod` reports no advisory.
+3. `pnpm outdated -r` lists no direct dependency behind a major except `@types/node` at the floor's major (its reason in the pinning register) and what D21's notes route by name; `pnpm audit --prod` reports no advisory.
 4. `pnpm why -r` resolves one version each of `vite`, `vitest`, `eslint` and `typescript` (two names, one version each, if the spike landed); the hygiene case that says so is green.
 5. `pnpm size` green with both budget files' baselines equal to the measurement of the shipping commit.
 6. `pnpm test:e2e` green in both apps against the local compose, the floors unchanged from `D20.13`'s.
