@@ -26,6 +26,7 @@
     "msw": "^2.15.0",
     "react": "^19.3.0",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {

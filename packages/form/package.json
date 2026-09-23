@@ -30,6 +30,7 @@
     "react-dom": "^19.3.0",
     "react-hook-form": "^7.88.0",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {

@@ -15,15 +15,22 @@ packages:
 # framework and the compiler, caret for everything else** — so `typescript` is
 # exact here and `eslint`, `vitest` and `@types/node` are carets.
 #
-# `@repo/vitest-config` keeps its own `vitest` **peer** range (`^4`) rather
+# `@repo/vitest-config` keeps its own `vitest` **peer** range (`^5`) rather
 # than `catalog:`: a peer is a compatibility statement to consumers, and
 # narrowing it to the version this repository happens to run would make the
 # package lie about what it works with.
+#
+# `vite` is here because Vitest 5 made it a peer rather than a dependency: every
+# workspace that runs Vitest declares it, which puts it over the threshold, and
+# declaring it is what keeps it one version — `autoInstallPeers` would answer an
+# undeclared peer with the newest release the range allows, a second copy of
+# the bundler beside the one both apps build with.
 catalog:
   "@types/node": ^22.20.3
   eslint: ^9.39.5
   typescript: 5.9.3
-  vitest: ^4.1.11
+  vite: ^7.3.6
+  vitest: ^5.0.1
 
 # A dependency held below a version is held here, once (ADR-0074 §2). A pin
 # in a manifest and `renovate.json`'s `allowedVersions` bind what a workspace

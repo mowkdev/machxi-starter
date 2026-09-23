@@ -633,10 +633,20 @@ const lockfileVersions = (lock) => {
   return versions;
 };
 
-/** The held packages the lockfile resolves more than once, as strings. */
+/**
+ * The toolchain the repository builds and tests with, which has to be one
+ * version for the same reason a hold does (ADR-0074 §2): Vitest 5 made `vite`
+ * a peer, and a workspace that runs Vitest without declaring the bundler is
+ * answered by `autoInstallPeers` with the newest release the range allows — a
+ * second copy beside the one both apps build with. Not a hold, so not an
+ * `overrides` entry; one version is asked of the lockfile all the same.
+ */
+const ONE_VERSION_TOOLS = ["vite", "vitest"];
+
+/** The held packages and tools the lockfile resolves more than once, as strings. */
 const heldTwice = (workspaceYaml, lock) => {
   const versions = lockfileVersions(lock);
-  return overrideNames(workspaceYaml)
+  return [...new Set([...overrideNames(workspaceYaml), ...ONE_VERSION_TOOLS])]
     .filter((name) => (versions.get(name)?.size ?? 0) > 1)
     .map((name) => `${name}: ${[...versions.get(name)].sort().join(", ")}`);
 };
@@ -662,6 +672,9 @@ test("a held dependency is one fact", async () => {
     "pnpm-workspace.yaml no longer holds jsdom",
   );
   assert.equal(lockfileVersions(lock).get("jsdom")?.size, 1);
+  for (const tool of ONE_VERSION_TOOLS) {
+    assert.equal(lockfileVersions(lock).get(tool)?.size, 1, tool);
+  }
   assert.deepEqual(heldTwice(workspaceYaml, lock), []);
 
   // The predicate itself: a lockfile carrying a second copy of a held package
@@ -673,6 +686,21 @@ test("a held dependency is one fact", async () => {
   );
   assert.deepEqual(heldTwice(workspaceYaml, twice), [
     `jsdom: ${resolved}, 999.0.0`,
+  ]);
+  const vite = [...lockfileVersions(lock).get("vite")][0];
+  const viteTwice = lock.replace(
+    `
+  vite@${vite}:
+`,
+    `
+  vite@999.0.0:
+    resolution: {integrity: sha512-x}
+
+  vite@${vite}:
+`,
+  );
+  assert.deepEqual(heldTwice(workspaceYaml, viteTwice), [
+    `vite: ${vite}, 999.0.0`,
   ]);
   assert.deepEqual(
     overrideNames(

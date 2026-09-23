@@ -12,16 +12,17 @@
     "check-types": "tsc -b"
   },
   "dependencies": {
-    "@vitest/coverage-v8": "4.1.11"
+    "@vitest/coverage-v8": "5.0.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "eslint": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "vitest": "^4"
+    "vitest": "^5"
   }
 }

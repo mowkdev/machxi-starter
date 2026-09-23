@@ -24,6 +24,7 @@
     "jsdom": "30.0.1",
     "react": "^19.3.0",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
