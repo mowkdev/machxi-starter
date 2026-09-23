@@ -27,6 +27,7 @@ Close every finding of the 2026-09-21 review that is an hour to close, before D2
 - **The `"use client"` rule and directive go**; D16 reintroduces them by its own record if a Next consumer arrives.
 - **D28 runs first, before D21**, so the majors land on the extended gate.
 - **Routed, not taken:** `CI-10`, `CI-11`, `DB-09`, `DB-10` to D24; `FE-15` to D22; `CI-13`, `STK-11` nothing to do; `PRO-13` is the operator's worktree.
+  **Amended 2026-09-23 (D28.12).** Read against what was built: `DB-09` and `DB-10` closed at `D28.4` (that step's amendment), so the routing to D24 holds for `CI-10` and `CI-11` alone, and both are now named on D24's row; `FE-15` is named on D22's row; `FE-09`'s pre-bundling residual went to D22 at `D28.10`. The review carries every id's fate.
 
 ## Steps
 
@@ -72,7 +73,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
       **ADRs:** 0065, 0068, 0025; 0074 (amended at this step — §7 and §9), 0026 and 0048 (moving here).
       **Done when:** `pnpm docs:check` clean; `pnpm test:scripts` green; `pnpm format:check` green.
       **Amended 2026-09-22 (D28.11).** Widened on the operator's decision of 2026-09-22, taken in the `/steps` session over two loose ends the D28.9 and D28.10 notes logged. **The unit hash:** `test:unit` declared `dependsOn: []`, so an app's unit hash covered its own files and a change in a workspace package replayed a stale green from `pnpm check`; the step makes `test:unit` depend on turbo's `transit` node, as a labelled widening of [ADR-0074](../adr/0074-review-follow-ups.md) (§9, a delta on [ADR-0026](../adr/0026-task-graph-caching-and-serialisation.md) as carried, which moves to `superseded by` at this head), and adds the `docs-hygiene.test.mjs` case "a unit suite's hash covers its workspace dependencies". **ADR-0048's directive:** [ADR-0048](../adr/0048-app-shell-and-record-surfaces.md) restated the `"use client"` rule D28.9 withdrew; ADR-0074's parent list widens to it (§7's amendment) and it moves to `superseded by` at this head, its body untouched. `pnpm rules:digest` regenerates the process digest. Added to the done-when: `turbo run test:unit --filter admin --dry=json` shows `admin#test:unit` depending on `admin#transit`, whose dependencies name admin's workspace packages; a byte appended to `packages/config-vitest/react.ts` changes `admin#test:unit`'s hash; the new hygiene case green, and red on `turbo.json` as it stood; `pnpm rules:digest` writes 1 of 3 then 0 of 3; the gate green.
-- [ ] **12. Close-out.** The review re-read finding by finding: each id in `docs/reviews/2026-09-21-repo-review.md` gains its fate — `Closed at D28.<n>`, the row it was routed to, or that it is an `Info` observation with nothing to close; the digests regenerated; then the definition of done.
+- [x] **12. Close-out.** The review re-read finding by finding: each id in `docs/reviews/2026-09-21-repo-review.md` gains its fate — `Closed at D28.<n>`, the row it was routed to, or that it is an `Info` observation with nothing to close; the digests regenerated; then the definition of done.
       **ADRs:** 0074, 0068, 0065.
       **Done when:** the definition of done below, every item.
 
