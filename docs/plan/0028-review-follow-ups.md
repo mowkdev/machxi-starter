@@ -1,6 +1,6 @@
 # D28 — Review follow-ups
 
-- Status: **in progress** — **scoped in full 2026-09-21 by `/scope`** from the findings of [`docs/reviews/2026-09-21-repo-review.md`](../reviews/2026-09-21-repo-review.md), the day it was written; **opened 2026-09-21**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D28 opened).
+- Status: **shipped 2026-09-23** — **scoped in full 2026-09-21 by `/scope`** from the findings of [`docs/reviews/2026-09-21-repo-review.md`](../reviews/2026-09-21-repo-review.md), the day it was written; **opened 2026-09-21**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D28 opened); **shipped 2026-09-23** on its definition of done, re-run by `/ship` on the committed tree (ledger §How D28 closed).
 - Records: [ADR-0074](../adr/0074-review-follow-ups.md) (review follow-ups — the gate's remaining twins, one fact per hold, digest coverage, the cap and the customer's own sessions, no client directive, a unit suite's whole hash; deltas on ADR-0026, 0047, 0048, 0065, 0071 and 0073 — 0026 and 0048 added at `D28.11`) — written `proposed` at scoping, **accepted 2026-09-21 at the head of `D28.1`**.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0028-review-follow-ups.notes.md`](0028-review-follow-ups.notes.md)
