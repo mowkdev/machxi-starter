@@ -22,7 +22,8 @@ import { versionDefine } from "./app-version";
  * **Grouped, not one chunk per package.** `react` and `react-dom` initialise
  * in a fixed order and `@tanstack/react-router` is meaningless without
  * `router-core`, `history` and the store it reads; splitting a group across
- * chunks buys nothing and risks an initialisation order Rollup has to guess.
+ * chunks buys nothing and risks an initialisation order the bundler has to
+ * guess.
  *
  * The names are the chunk names, so `dist/assets/vendor/react-<hash>.js` is
  * what the per-chunk ceilings in `size-budget.json` are written against — see
@@ -65,7 +66,8 @@ const packageOf = (id: string): string | undefined => {
     : first;
 };
 
-const manualChunks = (id: string): string | undefined => {
+/** The vendor group a module belongs to, or `undefined` for any other. */
+const vendorGroupOf = (id: string): string | undefined => {
   const pkg = packageOf(id);
 
   if (pkg === undefined) return undefined;
@@ -111,9 +113,32 @@ export default defineConfig({
      * every visitor's devtools to fetch it.
      */
     sourcemap: "hidden",
-    rollupOptions: {
+    /*
+     * Rolldown's options, because Vite 8 bundles with Rolldown (`D21.3`), and
+     * one `codeSplitting` group per vendor group in place of Rollup's
+     * `manualChunks` — which Rolldown keeps only as a deprecated translation
+     * into groups.
+     *
+     * **One group each, ranked in `VENDOR_GROUPS` order.** A group also
+     * captures what its packages import (`includeDependenciesRecursively`,
+     * on by default, which Rolldown keeps on to avoid chunks that import each
+     * other in a cycle); that is how Rollup's `manualChunks` behaved too, so
+     * `scheduler` joins React and `use-sync-external-store` joins the router,
+     * exactly the packages each chunk held under Vite 7. Every group imports React, and the ranking is what
+     * keeps it in the React chunk: a higher priority takes a module first.
+     * A single group whose `name` function returned the chunk — the literal
+     * translation — let the groups race, and `react` itself landed in the
+     * query chunk.
+     */
+    rolldownOptions: {
       output: {
-        manualChunks,
+        codeSplitting: {
+          groups: Object.keys(VENDOR_GROUPS).map((chunk, index, all) => ({
+            name: chunk,
+            test: (id: string) => vendorGroupOf(id) === chunk,
+            priority: all.length - index,
+          })),
+        },
         /*
          * Vendor chunks go in their own directory, and that is what makes the
          * per-chunk ceilings in `size-budget.json` checkable. A hashed file
@@ -122,9 +147,15 @@ export default defineConfig({
          * this app's own `query-error-<hash>.js` — a check that measures two
          * files, or the wrong one, depending on the day's hash. A directory is
          * a boundary a glob cannot get wrong.
+         *
+         * A vendor chunk is recognised by what it holds, not by its name
+         * alone: Rolldown names a shared chunk after a module in it, so
+         * `@repo/ui`'s `table.tsx` became a second `table` chunk under
+         * Vite 8 — and a name test sent it to `vendor/`, where the size
+         * link would have found two files for one ceiling.
          */
         chunkFileNames: (chunk) =>
-          chunk.name !== undefined && Object.hasOwn(VENDOR_GROUPS, chunk.name)
+          chunk.moduleIds.some((id) => vendorGroupOf(id) === chunk.name)
             ? "assets/vendor/[name]-[hash].js"
             : "assets/[name]-[hash].js",
       },
@@ -159,11 +190,14 @@ export default defineConfig({
    * too; those reach `@/test/msw/server`, which imports `msw/node`, which
    * imports `@mswjs/interceptors/ClientRequest` — an export whose `browser`
    * condition is `null` **on purpose**. Vite discovers the bare import while
-   * warming, re-runs `optimizeDeps` to include it, and esbuild refuses it: "No
-   * known conditions for ./ClientRequest". The optimize run then fails as a
-   * whole, so *every* optimized dependency answers `504 Outdated Optimize Dep`
-   * and the app renders a blank page — a total failure caused by a module the
-   * browser was never meant to load.
+   * warming and re-runs its dependency optimiser to include it, and under
+   * Vite 7 esbuild refused it: "No known conditions for ./ClientRequest". The
+   * optimize run then failed as a whole, so *every* optimized dependency
+   * answered `504 Outdated Optimize Dep` and the app rendered a blank page — a
+   * total failure caused by a module the browser was never meant to load.
+   * Since Vite 8 (`D21.3`) the optimiser is Rolldown, and the exclusion stands
+   * whichever tool is asked: a module whose export turns the browser away has
+   * no place in the graph the browser is served.
    *
    * It is invisible to the gate: `pnpm build` has no warmup, and `pnpm test`
    * resolves `msw/node` under Node conditions where it is perfectly valid.

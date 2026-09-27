@@ -17,6 +17,7 @@ import {
   driftWarnings,
   entryShareViolation,
   headroomViolations,
+  initialAppChunks,
   inlinePageViolations,
   maxCeiling,
   measure,
@@ -362,6 +363,72 @@ test("a measurement ten percent over its baseline is reported", async () => {
   });
   await withApp({}, (appDir) =>
     assert.doesNotMatch(check(appDir).lines.join("\n"), /warning/),
+  );
+});
+
+test("the entry is the module script and every app chunk the page preloads", async () => {
+  // `D21.3`: Rolldown moves what the entry shares with a lazy route into a
+  // common chunk the page preloads, so the entry *file* stopped being the
+  // app code paid before anything renders. Vendor chunks keep their own rows.
+  const html = page({
+    head: [
+      '<link rel="modulepreload" crossorigin href="/assets/route-G7h8.js">',
+      '<link crossorigin href="/assets/route-G7h8.js" rel="modulepreload">',
+    ].join("\n"),
+  });
+
+  assert.deepEqual(initialAppChunks(html), [
+    "assets/index-A1b2.js",
+    "assets/route-G7h8.js",
+  ]);
+  // Either attribute order is read — alone, so the dedupe above cannot hide it.
+  assert.deepEqual(
+    initialAppChunks(
+      page({
+        head: '<link crossorigin href="/assets/route-G7h8.js" rel="modulepreload">',
+      }),
+    ),
+    ["assets/index-A1b2.js", "assets/route-G7h8.js"],
+  );
+  // A preload link the pattern cannot read is refused, never skipped: an
+  // unquoted `rel` would otherwise drop its chunk from the row.
+  assert.throws(
+    () =>
+      initialAppChunks(
+        page({
+          head: '<link rel=modulepreload crossorigin href="/assets/route-G7h8.js">',
+        }),
+      ),
+    /modulepreload links and \d+ this script can read/,
+  );
+  // Rollup's page: the vendor chunks were the only preloads.
+  assert.deepEqual(initialAppChunks(page()), ["assets/index-A1b2.js"]);
+  assert.equal(initialAppChunks("<html><head></head></html>"), undefined);
+
+  await withApp({ html }, async (appDir) => {
+    const dist = path.join(appDir, "dist");
+    const gz = async (file) =>
+      gzipSync(await readFile(path.join(dist, "assets", file)), { level: 9 })
+        .length;
+
+    assert.equal(
+      measure(dist).entry,
+      (await gz("index-A1b2.js")) + (await gz("route-G7h8.js")),
+    );
+  });
+
+  // A preload naming a file the build did not emit is refused, not skipped —
+  // by the measurement `withApp` takes to write its budget.
+  await assert.rejects(
+    withApp(
+      {
+        html: page({
+          head: '<link rel="modulepreload" crossorigin href="/assets/gone-X1.js">\n',
+        }),
+      },
+      () => assert.fail("measured a page that preloads a missing chunk"),
+    ),
+    /points at assets\/gone-X1\.js, which does not exist/,
   );
 });
 

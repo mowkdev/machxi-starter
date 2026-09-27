@@ -29,7 +29,7 @@ catalog:
   "@types/node": ^22.20.3
   eslint: ^10.11.0
   typescript: 5.9.3
-  vite: ^7.3.6
+  vite: ^8.3.0
   vitest: ^5.0.1
 
 # A dependency held below a version is held here, once (ADR-0074 §2). A pin

@@ -76,3 +76,36 @@ The per-step build record of [D21](0021-stack-majors.md) — what was built, the
 
 - `main`'s `node_modules` still has ESLint 9 until the operator runs `pnpm install` there. The dev servers do not load ESLint, so they need no restart, but an editor's ESLint server should be reloaded after the install.
 - The side worktree `.claude/worktrees/d21-2` can be removed with `git worktree remove`, like `d21-1`.
+
+## D21.3 — Vite 8, with `@vitejs/plugin-react` 6 (2026-09-27)
+
+**Built.** Closes the third quarter of `STK-04` and the Vite half of `FE-02`'s future.
+
+- **The catalog's `vite` is `^8.3.0`**, and both apps' `@vitejs/plugin-react` is `^6.1.1`. `pnpm why -r vite` resolves one version, 8.3.0. `@tailwindcss/vite` 4.3.3 and `@tanstack/router-plugin` already declare a Vite 8 peer.
+- **The vendor chunks are Rolldown `codeSplitting` groups.** Rolldown 1.2 deprecates both `manualChunks` and `advancedChunks`. Both `vite.config.ts` files move `build.rollupOptions` to `build.rolldownOptions` and declare one group per vendor group, ranked in `VENDOR_GROUPS` order. The ranking keeps `react` in the React chunk. A single group with a `name` function let the groups race, and `react` landed in the query chunk. Each vendor chunk holds the same packages it held under Vite 7.
+- **`chunkFileNames` recognises a vendor chunk by the modules it holds.** Rolldown named `@repo/ui`'s `table.tsx` chunk `table`, and a test on the name alone sent it to `assets/vendor/`.
+- **The `entry` row prices the module script plus every non-vendor chunk `dist/index.html` preloads.** Rolldown moves the modules the entry shares with lazy routes into common chunks that the page preloads. The entry file alone fell from 156 kB to 38 kB gzipped in the admin app, and from 104 kB to 38 kB in the customer app, while nothing left the first paint. On a Rollup build, which preloaded only vendor chunks, the two definitions give the same number. `scripts/size.mjs` gains `initialAppChunks`, and `scripts/size.test.mjs` a case for it. **Operator decision:** this is the same rule measured a new way, so no record is amended and ADR-0062 is untouched. The plan's dated amendment is the trace.
+- **Both budget files are re-baselined** against a cold Vite 7 build of the same tree, with every ceiling set about 5% over its measurement, inside ADR-0073 §5's 15% cap. Most ceilings went down. The admin `entry` went up, 169000 to 175000, and the customer `entry` went from 113000 to 114000. The numbers and reasons are in each `size-budget.json`'s notes.
+- **`optimizeDeps`.** Neither app set any options, so only the esbuild-era comment in each `vite.config.ts` changed.
+
+**Where it was built.** In the side worktree `.claude/worktrees/d21-3`, which has its own install and copies of the operator's `.env` files, while the operator's stack kept running. The commit was fast-forwarded into `main`. `apps/*/src/app/routeTree.gen.ts` showed as modified after the builds. Those files are line-ending noise and were left out of the commit.
+
+**Amendments.** The plan's `D21.3` entry carries an `Amended 2026-09-23 (D21.3)` note covering `codeSplitting`, `chunkFileNames`, the `entry` file set, `optimizeDeps` and the e2e run. No record was amended.
+
+**Review: one `code-reviewer` pass, no defect in today's output, four findings.**
+
+- **The `entry` row failed open on a preload link its pattern could not read.** Fixed. `initialAppChunks` now counts every `<link>` that mentions `modulepreload` and refuses the page when the count differs from the links it read. A new assertion covers an unquoted `rel`. One case is still open: `build.modulePreload: false` would drop the links altogether, and the row would measure the entry file alone. Neither app sets it.
+- **The test's reversed-attribute link was hidden by the dedupe.** Fixed. There is now a separate assertion with only that link.
+- **The plan amendment said the test "proves" the Rollup equivalence.** Fixed. The amendment now states why the numbers match and what the test pins.
+- **The customer budget note said the entry file fell to "about a quarter".** It fell to about a third, 37.7 kB gzipped against 104 kB. Fixed.
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` was run cold (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2` because memory was short) and every command exited `0`. The results were `lint` 21/21, `check-types` 16/16, `test` 16/16 and `size` 4/4, then "All matched files use Prettier code style!". The previous attempt's gate was killed during `pnpm test` when the machine ran out of memory. The gate was run cold again after the review fixes, and every command exited `0` with the same counts.
+
+- Vite 8 prints a forward-compatibility warning on every build. `configLoader: 'native'` will not support `import "./app-version"` without a file extension (`vite.config.ts:8`). The build still passes. The import can take its extension when Vite makes the native loader the default.
+
+**`pnpm outdated -r` majors.** Before: `@types/node` 22→26, `@vitejs/plugin-react` 5→6, `dotenv` 17→18, `typescript` 5→7, `vite` 7→8. After: `@types/node` 22→26, `dotenv` 17→18, `typescript` 5→7. `@types/node` and `dotenv` are `D21.4`'s.
+
+**Pending the operator. The step's box stays unticked.**
+
+- The amended done-when ticks `D21.3` only when `pnpm test:e2e` passes against dev servers restarted on Vite 8, and only the operator can restart them. First run `pnpm install` in `main`, then restart the admin (3001) and customer (3002) dev servers, then run `pnpm test:e2e`. When it passes, tick the box.
+- The side worktree `.claude/worktrees/d21-3` can then be removed with `git worktree remove`.

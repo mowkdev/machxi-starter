@@ -49,28 +49,31 @@
     "RE-BASELINED at D20.9 (ADR-0073 §5), and the first time a ceiling in this file has gone DOWN — the lowering the D20.2 note above said this step would bring. Measured in the bytes this file stores, against the D20.2 baseline: js 327012 -> 327635 (+623), css 14026 -> 14075 (+49 bytes, D20.8's reduced-motion rule), entry 120324 -> 107600 (-12.7 kB, -10.6%), the three vendor chunks unmoved to the byte. The entry ceiling is 127000 -> 113000, ~5% over the new measurement; js and css keep their ceilings, ~5% and ~7% over what they measure.",
     "What left the entry: react-hook-form (35 kB of source) and `@repo/form`'s field adapters with the Radix primitives they draw. This app's composition root imports `@repo/form` for three things — the namespace, the zod installer and its readiness gate — through the package's barrel, and until this step the barrel's other exports travelled with them: a barrel import keeps every re-exported module in the graph, and each one's top-level `forwardRef`/`createContext` calls counted as side effects. `@repo/form` and `@repo/grid` now declare `sideEffects: false` (nothing in either runs anything on import — `packages/app-kit`'s composition test asserts the declaration), so Rollup keeps the three exports and drops the rest. The form machinery is still paid, once, behind the guard, in the account routes' chunk where D12.6 said it lands.",
     "What is still in the entry is the list the D12.6 note wrote: zod, axios, i18next, sonner and tailwind-merge, plus the eager `en` catalogues — every one an app-root decision (ADR-0034's one query client and root `<Toaster>`, ADR-0046 §13's zod locale bound at init, ADR-0046 §3's eager source locale). None moves without moving a decision, and this step moves none. The `lv` catalogue was never here: it has loaded through `resourcesToBackend` since D12.1 inherited the admin's factory, one chunk per `<locale>/<namespace>.json` (`account-<hash>.js`, `home-<hash>.js` and their siblings beside `lv-<hash>.js`, zod's own map).",
-    "The rule this file now runs under (ADR-0073 §5): every ceiling is at most 15% over the baseline beside it, and `scripts/size.mjs` — one script at the repository root since this step, addressed by the directory Turbo runs it in, in place of the copy this app carried — refuses the file otherwise. `scripts/size.test.mjs` reads this file and asserts the rule holds on the committed numbers."
+    "The rule this file now runs under (ADR-0073 §5): every ceiling is at most 15% over the baseline beside it, and `scripts/size.mjs` — one script at the repository root since this step, addressed by the directory Turbo runs it in, in place of the copy this app carried — refuses the file otherwise. `scripts/size.test.mjs` reads this file and asserts the rule holds on the committed numbers.",
+    "RE-BASELINED at D21.3 — Vite 8, which bundles with Rolldown in place of Rollup, and nothing about the app changed. Measured in the bytes this file stores, against a cold Vite 7 build of the same tree (not the D20.9 baseline, which D20-D28 had already moved): js 328261 -> 316230, css 14075 -> 14047, entry 106429 -> 108460, and the chunks query 10376 -> 10123, react 69054 -> 67388, router 27491 -> 26286. Rolldown's minifier and runtime are what the smaller totals are; every vendor chunk holds the same packages it held under Rollup (`vite.config.ts`'s ranked groups).",
+    "THE ENTRY ROW CHANGED ITS FILE SET, not its meaning. Rolldown moves a module the entry shares with a lazy route into a common chunk that dist/index.html preloads, where Rollup kept it in the entry — so the entry *file* fell to about a third of what it was (37.7 kB gzipped) while nothing left the first paint. `scripts/size.mjs` now prices the module script plus every non-vendor chunk the page preloads (under Rollup the page preloaded only vendor chunks, so on a Vite 7 build the two definitions give the same number). The Vite 7 figure above is that single file; the rise is the price of the split — per-chunk import and export boilerplate and the runtime chunk, gzipped file by file.",
+    "Every ceiling is set again at ~5% over the measurement beside it (5.0% to 5.7%), the rule this file has run at since D14.9 — most of them DOWN, because Rolldown's bundle is smaller and a ceiling left where it was would sit up to 14% over its baseline, one step from ADR-0073 §5's 15% cap and loose enough to hide real growth. Totals: js 344000 -> 332000, css 15100 -> 14800, entry 113000 -> 114000 (from 4.2% of headroom). Chunks: query 11500 -> 10700, react 73000 -> 70800, router 29600 -> 27600. The 60%-of-js rule on the entry is nowhere near binding."
   ],
   "baseline": {
-    "measuredAt": "2026-09-18",
-    "step": "D20.9",
-    "js": 327635,
-    "css": 14075,
-    "entry": 107600,
+    "measuredAt": "2026-09-23",
+    "step": "D21.3",
+    "js": 316230,
+    "css": 14047,
+    "entry": 108460,
     "chunks": {
-      "query": 10376,
-      "react": 69054,
-      "router": 27491
+      "query": 10123,
+      "react": 67388,
+      "router": 26286
     }
   },
   "budgets": {
-    "js": 344000,
-    "css": 15100,
-    "entry": 113000
+    "js": 332000,
+    "css": 14800,
+    "entry": 114000
   },
   "chunks": {
-    "query": 11500,
-    "react": 73000,
-    "router": 29600
+    "query": 10700,
+    "react": 70800,
+    "router": 27600
   }
 }

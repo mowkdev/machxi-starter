@@ -23,7 +23,7 @@
 // **Three totals and a ceiling per vendor chunk** (ADR-0062 §4). Totals alone
 // leave the *shape* of the bundle unpriced: a dependency can move from a lazy
 // route into the entry and `js` will not blink. So the file prices every
-// JavaScript byte, every CSS byte, the **entry chunk** every visitor pays
+// JavaScript byte, every CSS byte, the **entry** — the app code every visitor pays
 // before anything renders, and each **vendor chunk** `vite.config.ts` names.
 //
 // **Every ceiling is at most 15% over its baseline** (ADR-0073 §5). Before
@@ -209,6 +209,56 @@ export const UTILITY_BY_PACKAGE = Object.freeze({
 /** The module script `dist/index.html` loads — the entry, by definition. */
 const ENTRY_SRC = /<script[^>]+type="module"[^>]+src="\/([^"]+\.js)"/;
 
+/** Every chunk `dist/index.html` preloads beside the entry, by `href`. */
+const MODULEPRELOAD_HREF =
+  /<link\b(?=[^>]*\brel="modulepreload")[^>]*\bhref="\/([^"]+\.js)"/g;
+
+/** Every `<link>` that says `modulepreload` at all, however it is written. */
+const PRELOAD_LINK = /<link\b[^>]*\bmodulepreload\b[^>]*>/g;
+
+/**
+ * The files the `entry` row prices, from the page the browser is served: the
+ * module script, and every chunk the page preloads beside it that is not a
+ * vendor chunk. Returns `undefined` when the page names no module script, and
+ * refuses a page with a preload link it cannot read.
+ *
+ * **The entry is the app's own code paid before anything renders**, and the
+ * vendor chunks are priced by their own ceilings (ADR-0062 §4). Under Rollup
+ * that was one file: every module the entry reached statically went into the
+ * entry chunk, and the page preloaded only the vendor chunks. Rolldown
+ * (Vite 8, `D21.3`) splits the same graph differently — a module the entry
+ * shares with a lazy route goes to a common chunk the page preloads — so the
+ * entry *file* fell from 156 kB to 38 kB while nothing moved behind the
+ * first paint. Measuring the one file would have passed every later growth
+ * of that code, which is the silent pass this script exists to refuse. The
+ * preload list is the bundler's own statement of what the entry needs, so
+ * the row stays true whichever way a bundler cuts it.
+ */
+export const initialAppChunks = (source) => {
+  const entry = ENTRY_SRC.exec(source);
+
+  if (entry === null) return undefined;
+
+  const matched = [...source.matchAll(MODULEPRELOAD_HREF)];
+
+  // A preload link the pattern cannot read (an unquoted `rel`, a relative
+  // `href`) would drop its chunk from the row and pass every ceiling — so
+  // the page's preload links are counted, and a shortfall is refused.
+  const links = source.match(PRELOAD_LINK)?.length ?? 0;
+
+  if (links !== matched.length) {
+    refuse(
+      `dist/index.html has ${links} modulepreload links and ${matched.length} this script can read, so the entry cannot be priced. If the page's markup changed, this script has to change with it.`,
+    );
+  }
+
+  const preloaded = matched
+    .map((match) => match[1])
+    .filter((href) => !href.startsWith("assets/vendor/"));
+
+  return [...new Set([entry[1], ...preloaded])];
+};
+
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} kB`;
 
 /** `max-w-[400px]` is written `.max-w-\[400px\]` once it is a CSS selector. */
@@ -324,12 +374,13 @@ const walk = (dir) => {
 const gzipBytes = (path) => gzipSync(readFileSync(path), { level: 9 }).length;
 
 /**
- * The entry chunk's path, read from the HTML the browser is served.
+ * The entry's files, read from the HTML the browser is served
+ * ({@link initialAppChunks}).
  *
  * Anything else is a guess about a bundler's naming, and a guess that stops
  * matching fails *open*: zero bytes measured, every budget satisfied.
  */
-const entryPath = (dist) => {
+const entryPaths = (dist) => {
   const indexHtml = join(dist, "index.html");
 
   if (!existsSync(indexHtml)) {
@@ -338,27 +389,32 @@ const entryPath = (dist) => {
     );
   }
 
-  const match = ENTRY_SRC.exec(readFileSync(indexHtml, "utf8"));
+  const files = initialAppChunks(readFileSync(indexHtml, "utf8"));
 
-  if (match === null) {
+  if (files === undefined) {
     refuse(
       "dist/index.html names no module script, so the entry chunk cannot be identified. If the build's output shape changed, this script has to change with it.",
     );
   }
 
-  const path = join(dist, match[1]);
+  return files.map((file) => {
+    const path = join(dist, file);
 
-  if (!existsSync(path)) {
-    refuse(`dist/index.html points at ${match[1]}, which does not exist.`);
-  }
+    if (!existsSync(path)) {
+      refuse(`dist/index.html points at ${file}, which does not exist.`);
+    }
 
-  return path;
+    return path;
+  });
 };
 
 /** The three totals, gzipped, over everything the build emitted. */
 export const measure = (dist) => {
-  const entry = entryPath(dist);
-  const totals = { js: 0, css: 0, entry: gzipBytes(entry) };
+  const entry = entryPaths(dist).reduce(
+    (sum, path) => sum + gzipBytes(path),
+    0,
+  );
+  const totals = { js: 0, css: 0, entry };
 
   for (const { name, path } of walk(dist)) {
     if (name.endsWith(".js")) totals.js += gzipBytes(path);
@@ -457,7 +513,7 @@ export const check = (appDir) => {
    * `ENOENT` straight past the handler at the foot of this file — a stack
    * trace in place of the one sentence a reader needs, which is that `build`
    * did not run or did not finish. `measure` resolves the entry through
-   * `entryPath`, which says exactly that.
+   * `entryPaths`, which says exactly that.
    */
   const measured = measure(dist);
 
