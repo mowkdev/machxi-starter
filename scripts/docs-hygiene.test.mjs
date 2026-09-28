@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -1047,6 +1048,106 @@ test("both SPA images send the policy, and the same one", async () => {
     policies.admin,
     policies.customer,
     "the two images' policies have drifted apart",
+  );
+});
+
+/**
+ * The workspaces whose `dist/` the API image carries, read off the
+ * Dockerfile's `cp -R /repo/<workspace>/dist… /out/dist…` lines — so a third
+ * bundle copied in later is scanned without this file being told.
+ */
+const imageDistSources = (dockerfile) =>
+  [
+    ...dockerfile.matchAll(
+      /\bcp\s+-R\s+\/repo\/((?:apps|packages)\/[\w-]+)\/dist\S*\s+\/out\/dist\b/g,
+    ),
+  ].map((match) => match[1]);
+
+/**
+ * Whether a built file carries `dotenv`: inlined, it brings its own
+ * `DOTENV_*` switches (every release from 16 to 18 reads them); kept external,
+ * it is an import or a require of the specifier.
+ */
+const carriesDotenv = (text) =>
+  /\bDOTENV_(?:[A-Z]|\$\{)/.test(text) ||
+  /(?:\bfrom\s*|\bimport\s*\(\s*|(?:\b|__)require\s*\(\s*|\bimport\s+)["']dotenv(?:\/[^"']*)?["']/.test(
+    text,
+  );
+
+test("the API image's dist/ carries no dotenv", async () => {
+  // ADR-0004: "No `dotenv` in production builds". The API's own bundle keeps
+  // its dependencies external and never imported it, but `@repo/db`'s
+  // migrate and prune bundles inline their whole closure and are copied into
+  // the same `/app/dist` — so since `D14.3` the rule was untrue for the
+  // image, through `tooling/env.ts`. `D21.4` moved that loader to Node's
+  // `process.loadEnvFile`; this case builds every bundle the Dockerfile
+  // copies, into a scratch directory, and reads what would ship.
+  const dockerfile = await readFile(
+    path.join(repoRoot, "apps/api/Dockerfile"),
+    "utf8",
+  );
+  const sources = imageDistSources(dockerfile);
+  assert.deepEqual(
+    [...sources].sort(),
+    ["apps/api", "packages/db"],
+    "the image's dist/ sources",
+  );
+
+  const scratch = await mkdtemp(path.join(tmpdir(), "image-dist-"));
+  try {
+    const carrying = [];
+    for (const source of sources) {
+      const cwd = path.join(repoRoot, source);
+      const tsdown = JSON.parse(
+        await readFile(
+          path.join(cwd, "node_modules/tsdown/package.json"),
+          "utf8",
+        ),
+      );
+      const bin = path.join(
+        cwd,
+        "node_modules/tsdown",
+        typeof tsdown.bin === "string" ? tsdown.bin : tsdown.bin.tsdown,
+      );
+      const outDir = path.join(scratch, source.replace("/", "-"));
+      const built = spawnSync(process.execPath, [bin, "--out-dir", outDir], {
+        cwd,
+        encoding: "utf8",
+      });
+      assert.equal(built.status, 0, `${source}: ${built.stderr}`);
+
+      // Recursive: `cp -R` ships the whole tree, so a nested chunk ships too.
+      const files = (await readdir(outDir, { recursive: true })).filter(
+        (file) => /\.[cm]?js$/.test(file),
+      );
+      assert.ok(files.length > 0, `${source}: built nothing`);
+      for (const file of files) {
+        if (carriesDotenv(await readFile(path.join(outDir, file), "utf8")))
+          carrying.push(`${source}/dist/${file}`);
+      }
+    }
+    assert.deepEqual(carrying, []);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+
+  // The predicates themselves: both shapes of a bundle that carries it are
+  // caught, prose naming it is not, and the Dockerfile's copy lines are read.
+  assert.ok(carriesDotenv("const o = process.env.DOTENV_CONFIG_PATH;"));
+  assert.ok(carriesDotenv('import { config } from "dotenv";'));
+  assert.ok(carriesDotenv("import 'dotenv/config';"));
+  assert.ok(carriesDotenv('const d = require("dotenv");'));
+  // rolldown's shim for an external required from inlined CommonJS.
+  assert.ok(carriesDotenv('const d = __require("dotenv");'));
+  // dotenv 18's minified build names its switches with a template.
+  assert.ok(carriesDotenv("const k = `DOTENV_${t}`;"));
+  assert.ok(carriesDotenv('await import("dotenv")'));
+  assert.ok(!carriesDotenv("/** ADR-0004: No `dotenv` in production. */"));
+  assert.deepEqual(
+    imageDistSources(
+      "cp -R /repo/apps/api/dist /out/dist \\\n && cp -R /repo/packages/db/dist/. /out/dist/ \\\n && cp -R /repo/packages/db/migrations /out/migrations",
+    ),
+    ["apps/api", "packages/db"],
   );
 });
 

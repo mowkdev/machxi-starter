@@ -1,4 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { readSuperAdminCredentials } from "../tooling/env.js";
 
@@ -7,9 +19,10 @@ import { readSuperAdminCredentials } from "../tooling/env.js";
  * but the seed runner never passes through `core/config` — so the constraint
  * is enforced in `src/tooling/env.ts`, and this is where that is checked.
  *
- * `vi.stubEnv` wins over the root `.env`: dotenv does not override a variable
- * that is already set, which is the same property that lets a deployed
- * environment run these scripts with no `.env` file at all.
+ * `vi.stubEnv` wins over the root `.env`: `process.loadEnvFile` does not
+ * override a variable that is already set, which is the same property that
+ * lets a deployed environment run these scripts with no `.env` file at all —
+ * and `loadEnvFile` below proves it rather than leaning on it.
  */
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -106,5 +119,61 @@ describe("readSuperAdminCredentials", () => {
         "a-genuinely-private-value",
       );
     });
+  });
+});
+
+/**
+ * The loader itself (`D21.4`): Node's `process.loadEnvFile` in place of the
+ * `dotenv` package, which the migrate and prune bundles would otherwise inline
+ * into the API image. What the swap must keep is dotenv's precedence — the
+ * environment wins over the file — because `DATABASE_URL=… pnpm db:migrate`
+ * and a deployed job with injected variables both depend on it, and Node's
+ * loader must not throw where the deployed image has no file at all.
+ *
+ * Each case imports a fresh module, because the loader loads once per process.
+ */
+describe("loadEnvFile", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "db-env-"));
+  const file = join(scratch, ".env");
+
+  // Both start unset. Stubbing them is also the cleanup: `unstubAllEnvs`
+  // above restores each to its original absence, the loader's writes included.
+  beforeEach(() => {
+    vi.stubEnv("D21_4_FROM_SHELL", undefined);
+    vi.stubEnv("D21_4_FROM_FILE", undefined);
+  });
+
+  afterAll(() => {
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  /** What the loader left in the environment — the one thing under test. */
+  const env = (key: string): string | undefined =>
+    // eslint-disable-next-line no-restricted-properties -- reads back what the loader wrote; nothing here configures anything (ADR-0004).
+    process.env[key];
+
+  const freshLoader = async () => {
+    vi.resetModules();
+    return (await import("../tooling/env.js")).loadEnvFile;
+  };
+
+  it("fills what the environment lacks and never overrides what it has", async () => {
+    writeFileSync(
+      file,
+      "D21_4_FROM_SHELL=fromfile\nD21_4_FROM_FILE=fromfile\n",
+    );
+    vi.stubEnv("D21_4_FROM_SHELL", "fromshell");
+
+    (await freshLoader())(file);
+
+    expect(env("D21_4_FROM_SHELL")).toBe("fromshell");
+    expect(env("D21_4_FROM_FILE")).toBe("fromfile");
+  });
+
+  it("is a no-op, not a crash, when there is no file — the deployed image's case", async () => {
+    const loadEnvFile = await freshLoader();
+
+    expect(() => loadEnvFile(join(scratch, "absent.env"))).not.toThrow();
+    expect(env("D21_4_FROM_FILE")).toBeUndefined();
   });
 });

@@ -45,7 +45,7 @@
     "@types/node": "catalog:",
     "@types/qs": "^6.15.1",
     "@types/supertest": "^7.2.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.4",
     "eslint": "catalog:",
     "supertest": "^7.2.2",
     "tsdown": "^0.23.0",

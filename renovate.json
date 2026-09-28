@@ -41,6 +41,11 @@
       "allowedVersions": "30.0.1"
     },
     {
+      "description": "ADR-0073 §4 and §7, the register's second hold (`D21.4`): `@types/node` stays on the runtime floor's major. The types major tracks the Node major, so 24's types describe the floor the tree runs on (`.nvmrc`, `engines`, the three Dockerfiles) and a newer major's describe APIs that floor does not have — a call they admit is a crash on the Node that ships. `pnpm outdated` listing the newer major is therefore the floor working, not a major left behind. The hold itself is `pnpm-workspace.yaml`'s `overrides` entry (ADR-0074 §2), which binds the optional peers no manifest declares; this rule binds what Renovate proposes, and both name the same major. Lift both — and the catalog entry — in the pull request that moves the floor.",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25"
+    },
+    {
       "description": "ADR-0073 §7: the base images the Dockerfiles and the compose files pin — `node` (three Dockerfiles), `nginx` (both SPA images), `postgres` (both compose files and the two workflows' service container) and `axllent/mailpit` (local compose and the e2e workflow). The default managers detect them; without this rule they arrive ungrouped and unlabelled, which is how a base image quietly stops being read. A major here is a runtime floor move (ADR-0073 §4) and stays its own pull request — which is why this rule names its update types rather than matching everything: Renovate applies `packageRules` in order and the last match wins per field, so an unrestricted rule here would have re-grouped the majors the rule above deliberately un-groups.",
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],

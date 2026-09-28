@@ -109,3 +109,38 @@ The per-step build record of [D21](0021-stack-majors.md) — what was built, the
 
 - The amended done-when ticks `D21.3` only when `pnpm test:e2e` passes against dev servers restarted on Vite 8, and only the operator can restart them. First run `pnpm install` in `main`, then restart the admin (3001) and customer (3002) dev servers, then run `pnpm test:e2e`. When it passes, tick the box.
 - The side worktree `.claude/worktrees/d21-3` can then be removed with `git worktree remove`.
+
+## D21.4 — `@types/node` at the floor, and `dotenv` 18 (2026-09-28)
+
+**Built. The gate is not green yet, so the box stays unticked.** Closes `STK-10` once it is ticked.
+
+- **`@types/node` is `^24.19.0`**, both in the catalog and as a new `overrides` hold. Without the hold, `autoInstallPeers` answered the optional peers of `@inquirer/*` and `msw` with a second copy at 22.20.3, and Vitest resolved twice. The lockfile now carries one `@types/node`, and `renovate.json`'s register gives the reason with `allowedVersions: "<25"`.
+- **`@repo/db` no longer depends on `dotenv`** (operator decision, option B; see the plan's `Amended 2026-09-28 (D21.4)`). `tooling/env.ts` loads the root `.env` with `process.loadEnvFile` behind `existsSync`. `env.test.ts` proves that the environment wins over the file and that a missing file does nothing. `dotenv` ^18.0.4 remains only as the API's dev dependency. The one other copy in the lockfile is `dotenv@16.0.3`, and it comes from `eslint-plugin-turbo`.
+- **New `scripts/docs-hygiene.test.mjs` case: "the API image's dist/ carries no dotenv".** It builds every bundle that `apps/api/Dockerfile` copies into `/out/dist` into a scratch directory and scans what would ship. Built the same way from `main`, `@repo/db`'s shared chunk has 21 `DOTENV_` hits, so on `main` this case is red.
+
+**Review: one `security-reviewer` pass, 0 High, 1 Medium, 3 Low.**
+
+- **Medium: "`//#test:scripts` declares no inputs, so the case can replay a cached green."** Refuted by measurement. `turbo run //#test:scripts --dry=json` hashes 1405 inputs, and 1170 of them are under `apps/` and `packages/`. The root task already hashes the workspaces. No change.
+- **Low: the require regex missed rolldown's `__require("dotenv")`, and `DOTENV_` matched dotenv 18 only through `DOTENV_CONFIG_`.** Fixed. The predicate now accepts `__require` and `` `DOTENV_${…}` ``, with a self-test for each.
+- **Low: the scan read only the top level of `outDir`.** Fixed. It is now recursive.
+- **Low: ADR-0004 §Loading still says the seed scripts load `.env` "with `dotenv`".** Its step-6 amendment also credits "the library surface" with keeping dotenv out of production. ADR-0004 is closed, so it cannot be edited in place. Routed to the operator: a delta at `D21.7` or later, or accept the gap. The rule itself, "No `dotenv` in production builds", is true again.
+
+**Gate** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`, in the side worktree `.claude/worktrees/d21-4`):
+
+| Check          | Result                        |
+| -------------- | ----------------------------- |
+| `lint`         | 21/21                         |
+| `check-types`  | 16/16                         |
+| `test`         | 14/16, `@repo/db#test` failed |
+| `size`         | 4/4                           |
+| `format:check` | clean                         |
+
+`@repo/db`'s unit tier passed, 105/105. Its integration tier failed with "DATABASE_URL_TEST_OWNER is not set" because the worktree has no root `.env`, and a deny rule stops this session from copying the operator's. Nothing in the code is at fault.
+
+**`pnpm outdated -r` majors.** Before: `@types/node` 22→26, `dotenv` 17→18, `typescript` 5→7. After: `@types/node` 24→26 (the floor, as the register records) and `typescript` 5→7.
+
+**Pending the operator.**
+
+- Copy the root `.env` into `.claude/worktrees/d21-4`, then run the gate cold there. When it is green, tick the box, commit, and fast-forward `main`.
+- Then run `pnpm install` in `main`. Nothing the dev servers load changes.
+- Decide ADR-0004's stale "with `dotenv`" wording (the last review finding above).

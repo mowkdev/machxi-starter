@@ -41,7 +41,6 @@
   "dependencies": {
     "@repo/contracts": "workspace:*",
     "@repo/crypto": "workspace:*",
-    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
     "uuidv7": "^1.2.1"

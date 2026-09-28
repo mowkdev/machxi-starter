@@ -25,8 +25,17 @@ packages:
 # declaring it is what keeps it one version — `autoInstallPeers` would answer an
 # undeclared peer with the newest release the range allows, a second copy of
 # the bundler beside the one both apps build with.
+#
+# `@types/node` tracks the **runtime floor's** major, not the registry's newest
+# (`D21.4`): the types describe the Node the code runs on, and the floor is
+# Node 24 (ADR-0073 §4) — so 24's types are the true surface, and a newer
+# major's would type-check calls to APIs the floor does not have. `pnpm
+# outdated` listing a newer major from here on is the floor working, not a
+# major left behind; the types move with the floor, in the pull request that
+# moves it. The reason is in `renovate.json`'s register, and the hold is the
+# `overrides` entry below.
 catalog:
-  "@types/node": ^22.20.3
+  "@types/node": ^24.19.0
   eslint: ^10.11.0
   typescript: 5.9.3
   vite: ^8.3.0
@@ -41,7 +50,13 @@ catalog:
 # The reason for each hold stays in `renovate.json`'s register, beside the
 # rule that keeps Renovate from proposing past it; `scripts/docs-hygiene` asks
 # the lockfile for one version of every name listed here.
+#
+# `@types/node` is held at the floor's major for the reason the catalog states.
+# The catalog binds the manifests; this binds the peers nobody declares —
+# without it `autoInstallPeers` answered `@inquirer/*`'s and `msw`'s optional
+# peer with a second, older copy, and Vitest resolved twice around it.
 overrides:
+  "@types/node": ^24.19.0
   jsdom: 30.0.1
 
 # A peer range a plugin has not yet widened, admitted by name and never by a

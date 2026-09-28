@@ -3,16 +3,20 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { config as loadDotenv } from "dotenv";
-
 /**
  * The only place in `@repo/db` that reads `process.env` (ADR-0004).
  *
  * The API has `core/config` for this; the package's CLI entry points —
  * `src/migrate.ts`, `src/reset.ts`, `seeds/run.ts` and `drizzle.config.ts` —
  * have this. The library surface takes its connection string as an argument,
- * so `import '@repo/db'` never touches the environment and never loads dotenv,
- * which is what keeps dotenv out of the API's production bundle.
+ * so `import '@repo/db'` never touches the environment and never reads a file.
+ *
+ * The file is read with Node's own `process.loadEnvFile`, not a package
+ * (`D21.4`). `dist/migrate.js` and `dist/prune-sessions.js` inline their whole
+ * closure into the API image's `dist/` (`tsdown.config.ts`), so a loader
+ * package imported here ships in production however the library surface is
+ * kept — which is what ADR-0004's "No `dotenv` in production builds"
+ * forbids. A built-in ships nothing.
  *
  * ADR-0004 names this module as the one reader outside `core/config`: it gives
  * the "print the target, never the credentials" rule (ADR-0008 §Environment
@@ -65,9 +69,9 @@ const packageRoot = findPackageRoot();
  *
  * In the source tree that is the repository root. Inside the API image, where
  * `packageRoot` is `/app`, it resolves to `/` and there is no file there — a
- * deployed environment injects its variables and dotenv is a no-op, which is
- * the case `loadEnvFile` was written for. It is additive either way: dotenv
- * does not override, so an injected value always wins.
+ * deployed environment injects its variables and loading is skipped, which is
+ * the case `loadEnvFile` was written for. It is additive either way: Node's
+ * loader does not override, so an injected value always wins.
  */
 const repoRoot = resolve(packageRoot, "../..");
 
@@ -76,15 +80,22 @@ let loaded = false;
 /**
  * Loads the **root** `.env` — the same file Docker Compose reads (ADR-0004),
  * so the credentials exist once. Values already present in the environment
- * win: dotenv does not override, which is what makes `DATABASE_URL=… pnpm
- * db:migrate` and a deployed environment with no `.env` at all both work.
+ * win: `process.loadEnvFile` does not override, which is what makes
+ * `DATABASE_URL=… pnpm db:migrate` and a deployed environment with no `.env` at
+ * all both work. The existence check is what "no file" needs: Node's loader
+ * throws on a missing file where a package would have returned quietly.
+ *
+ * `path` is the seam `env.test.ts` uses to prove the precedence against a
+ * file of its own; every caller in the package takes the default.
  */
-export const loadEnvFile = (): void => {
+export const loadEnvFile = (path = resolve(repoRoot, ".env")): void => {
   if (loaded) {
     return;
   }
 
-  loadDotenv({ path: resolve(repoRoot, ".env"), quiet: true });
+  if (existsSync(path)) {
+    process.loadEnvFile(path);
+  }
   loaded = true;
 };
 
