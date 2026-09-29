@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D21 — Stack majors · 2026-09-29
+
+The queued majors, one step each so every breakage reads apart: Vitest 5, ESLint 10 with its plugin set, Vite 8 with `@vitejs/plugin-react` 6 under the bounded bundle budgets, `@types/node` at the Node 24 floor, and TypeScript 6.0 with the defaults it flips written into the presets. The TypeScript 7 spike landed: `tsc -b` runs on the native compiler (a cold `check-types` from about 50s to 15s) while the linter keeps 6.0 through an alias until `typescript-eslint` admits 7. `dotenv` left `@repo/db` for Node's own loader, so no file in the API image carries a loader package any more, and the configuration record's loading rules were brought back in line with the tree. Tag `starter-D21`.
+
 ## D28 — Review follow-ups · 2026-09-23
 
 Every finding of the 2026-09-21 repository review that was an hour to close, closed in one wave before the stack majors land: the four gaps of one shape — a control present in one place and missing from its twin — so `i18n:check` and a nightly audit now run in the gate's first link, a held dependency is one `overrides` fact rather than nine pins and a hope, pnpm and Renovate state the same cooldown with the security-patch procedure beside it, and every accepted record is the primary citation of a digest line or the generator refuses to run. Around them: the prune's predicates indexed and its table list guarded, the session cap counting only the customer's own sessions, every credential event spending every outstanding link in one place, the policy proved on the built page, the client directive gone from `@repo/ui`, the three fragment landings and the spinner audible to a screen reader, coverage off the default unit run after measuring it as a quarter of the link, and a unit suite's cache hash covering its workspace dependencies. Tag `starter-D28`.
