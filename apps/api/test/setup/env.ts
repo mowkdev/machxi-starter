@@ -75,7 +75,7 @@ export const loadTestEnv = (): {
   process.env.DATABASE_URL = databaseUrl;
   // Both, and the second is the one that matters more since `D14.4`. Anything
   // in this process that touches `@repo/db`'s tooling loads the **root** `.env`
-  // as a side effect (dotenv, non-overriding — `truncateAll`'s `isProduction()`
+  // as a side effect (`process.loadEnvFile`, non-overriding — `truncateAll`'s `isProduction()`
   // check is enough to trigger it), which would leave `DATABASE_URL_OWNER`
   // pointing at the *development* database as the owner role: the highest
   // privilege credential in the repository, live in a process whose whole

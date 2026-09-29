@@ -57,7 +57,12 @@ export const AREAS = [
       {
         topic: "Configuration",
         records: ["0004"],
-        text: "`process.env` is read only in `apps/api/src/core/config`, `packages/db/src/tooling/env.ts`, `scripts/postman.mjs` and the API test harness. A new variable means a zod schema entry, an `.env.example` line and — when a task reads it — a `turbo.json` `env` entry.",
+        text: "In `apps/api/src` only `core/config` reads `process.env`; in `@repo/db` only `src/tooling/env.ts` does. A new variable means a zod schema entry, an `.env.example` line and — when a task reads it — a `turbo.json` `env` entry.",
+      },
+      {
+        topic: "Loading env files",
+        records: ["0075"],
+        text: "An env file is loaded with Node's own loader (`--env-file`, `process.loadEnvFile`): the environment wins over the file, and a missing file is skipped. No file in the API image's `dist/` carries a loader package; a test harness may keep one as a dev dependency when it must override. Beside the application — harnesses, the browser tier, repository scripts — a process may read what it needs and forwards it unvalidated; a real configuration surface goes behind a schema. `@repo/db`'s CLI tooling may read an unset `NODE_ENV` as `development`; the API requires it.",
       },
       {
         topic: "Request context",

@@ -274,9 +274,11 @@ Full detail is in the ADRs; these are the ones that bite.
   (ADR-0012); `res.json` outside `apps/api/src/core/http` is a lint error.
 - **One error type** (ADR-0013): throw the `AppError` factories, check with
   `isAppError(e)` and `e.code`, never `instanceof`.
-- **`process.env` is read in four places only** (ADR-0004): `core/config`,
-  `packages/db/src/tooling/env.ts`, `scripts/postman.mjs` and the `apps/api/test/`
-  harness. `drizzle.config.ts` reads none — it calls `readDatabaseUrl()`.
+- **`process.env` is read by `core/config` alone in `apps/api/src`, and by
+  `packages/db/src/tooling/env.ts` alone in `@repo/db`** (ADR-0004, ADR-0075).
+  `drizzle.config.ts` reads none; it calls `readOwnerDatabaseUrl()`. The root
+  `.env` is loaded with Node's own loader, never a package that would ship in the
+  image. Harnesses and scripts beside the app may read what they forward.
   A new variable is a three-place change: zod schema, `.env.example`, deployment
   secret store.
 - **Migrations are generated and committed**, never pushed (ADR-0008).

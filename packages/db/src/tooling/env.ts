@@ -165,7 +165,16 @@ export const readTestDatabaseUrl = (): string => required("DATABASE_URL_TEST");
 export const readTestOwnerDatabaseUrl = (): string =>
   required("DATABASE_URL_TEST_OWNER");
 
-/** `NODE_ENV`, defaulted the same way the API's config schema defaults it. */
+/**
+ * `NODE_ENV`, with an unset value read as `development` (ADR-0075 §4).
+ *
+ * This deliberately differs from the API, whose config schema requires the
+ * variable and has no default (ADR-0004). These scripts run from a developer's
+ * bare shell, and the image that runs them in production sets
+ * `NODE_ENV=production` itself (`apps/api/Dockerfile`). A production database
+ * targeted from a shell that forgot the variable is treated as development:
+ * the printed target line is the warning, and nothing refuses it.
+ */
 export const readNodeEnv = (): string => read("NODE_ENV") ?? "development";
 
 /**

@@ -123,7 +123,7 @@ The per-step build record of [D21](0021-stack-majors.md) — what was built, the
 - **Medium: "`//#test:scripts` declares no inputs, so the case can replay a cached green."** Refuted by measurement. `turbo run //#test:scripts --dry=json` hashes 1405 inputs, and 1170 of them are under `apps/` and `packages/`. The root task already hashes the workspaces. No change.
 - **Low: the require regex missed rolldown's `__require("dotenv")`, and `DOTENV_` matched dotenv 18 only through `DOTENV_CONFIG_`.** Fixed. The predicate now accepts `__require` and `` `DOTENV_${…}` ``, with a self-test for each.
 - **Low: the scan read only the top level of `outDir`.** Fixed. It is now recursive.
-- **Low: ADR-0004 §Loading still says the seed scripts load `.env` "with `dotenv`".** Its step-6 amendment also credits "the library surface" with keeping dotenv out of production. ADR-0004 is closed, so it cannot be edited in place. Routed to the operator: a delta at `D21.7` or later, or accept the gap. The rule itself, "No `dotenv` in production builds", is true again.
+- **Low: ADR-0004 §Loading still says the seed scripts load `.env` "with `dotenv`".** Its step-6 amendment also credits "the library surface" with keeping dotenv out of production. ADR-0004 is closed, so it cannot be edited in place. Routed to the operator: a delta at `D21.7` or later, or accept the gap. The rule itself, "No `dotenv` in production builds", is true again. **Closed by ADR-0075** (2026-09-29).
 
 **Gate** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`, in the side worktree `.claude/worktrees/d21-4`, re-run cold on 2026-09-29 after the review fixes, with the operator's root `.env` copied in):
 
@@ -142,7 +142,7 @@ The earlier run's only failure was `@repo/db`'s integration tier, "DATABASE_URL_
 **Pending the operator.**
 
 - Run `pnpm install` in `main`. Nothing the dev servers load changes.
-- Decide ADR-0004's stale "with `dotenv`" wording (the last review finding above).
+- ~~Decide ADR-0004's stale "with `dotenv`" wording (the last review finding above).~~ Closed by ADR-0075 (2026-09-29).
 - The side worktree `.claude/worktrees/d21-4` can be removed with `git worktree remove`.
 
 ## D21.5 — TypeScript 6.0 (2026-09-29)
