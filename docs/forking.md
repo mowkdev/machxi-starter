@@ -50,6 +50,14 @@ git merge starter/main
 
 Merge periodically rather than once a year: the conflicts are proportional to the distance.
 
+### The migration journal
+
+`packages/db/migrations/meta/_journal.json` is one file both sides append to, so a merge that brings the starter's migrations conflicts there once the fork has migrations of its own. Resolve it by hand, keeping **every entry from both sides** — each names its own `.sql` file and carries its own `when` — in the order they should apply to a database that has neither, with `idx` renumbered to match; keep every `.sql` and snapshot file both sides added. Never edit a migration to make the merge fit, on either side.
+
+The runner is what makes that merge safe to apply. It applies every journal entry that no row of the applied-state table records — by hash or by journal timestamp — in journal order, rather than only entries newer than the last one applied, so a starter migration older than the fork's newest is still applied at the next `db:migrate` ([ADR-0078](adr/0078-backend-closing-wave.md) §1, migrations applied by hash). It has two lanes: ordinary files run in one transaction, and a file whose first line is `-- migrate:concurrently` runs statement by statement outside it; both kinds merge the same way. The migrations directory is pinned to LF in `.gitattributes`, so the hash of a file is the same on every checkout.
+
+After the merge, run `pnpm db:generate` and read what it emits before committing anything: drizzle-kit diffs the schema against the newest snapshot, which is one side's.
+
 ## 6. Diverging from an inherited decision
 
 **A fork never edits an inherited record — it supersedes.** An edit turns the next merge from the blueprint into a conflict, and erases the record of which decision was deliberately dropped. Write a new record in the fork's own numbering, state the delta, and move the inherited one to `superseded by` in the fork's index — the same lifecycle the starter itself runs ([ADR-0050](adr/0050-adr-lifecycle-and-verification.md), the ADR lifecycle, as carried by [ADR-0065](adr/0065-starter-lifecycle.md)).
@@ -58,11 +66,12 @@ The same rule applies to `.claude/` and the digests: change them by writing the 
 
 ## What conflicts, and what does not
 
-| Path                 | On a merge from `starter/main`                                           |
-| -------------------- | ------------------------------------------------------------------------ |
-| `docs/plan/`         | never — `merge=ours` keeps the fork's journal                            |
-| `docs/adr/`          | only where the fork edited an inherited record, which is why it must not |
-| `docs/rules/`        | generated; regenerate with `pnpm rules:digest` after the merge           |
-| `docs/specs/`        | like code: where both sides changed one capability's behaviour           |
-| `.claude/`           | where both sides changed the same skill; the fork's additions sit beside |
-| `apps/`, `packages/` | ordinary code conflicts, proportional to how long since the last merge   |
+| Path                                        | On a merge from `starter/main`                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| `docs/plan/`                                | never — `merge=ours` keeps the fork's journal                            |
+| `docs/adr/`                                 | only where the fork edited an inherited record, which is why it must not |
+| `docs/rules/`                               | generated; regenerate with `pnpm rules:digest` after the merge           |
+| `docs/specs/`                               | like code: where both sides changed one capability's behaviour           |
+| `packages/db/migrations/meta/_journal.json` | whenever both sides added a migration: keep every entry (above)          |
+| `.claude/`                                  | where both sides changed the same skill; the fork's additions sit beside |
+| `apps/`, `packages/`                        | ordinary code conflicts, proportional to how long since the last merge   |

@@ -15,3 +15,10 @@ docs/plan/** merge=ours
 # budget, so it is pinned for the same reason.
 docs/rules/** text eol=lf
 CLAUDE.md text eol=lf
+
+# The migration runner hashes each file as committed and records that hash
+# (ADR-0078 §1, applied by hash). Under `core.autocrlf=true` a checkout would
+# rewrite every line ending and change every hash; pinned to LF, the bytes on
+# disk are the bytes in the repository on every machine. The runner also
+# normalises before hashing — this is what keeps the file itself honest.
+packages/db/migrations/** text eol=lf

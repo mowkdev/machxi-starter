@@ -1,6 +1,6 @@
 # ADR-0060: List endpoints at scale (supersedes ADR-0014 in part — a delta)
 
-- Status: accepted
+- Status: superseded by [ADR-0078](0078-backend-closing-wave.md) (delta: §5's second rule — an index on a large table may be built concurrently, in a migration file marked for the runner's second lane; the enum rule and everything else stand)
 - Date: 2026-09-02
 - Supersedes (**landed at `D14.5`** 2026-09-03, the step that builds every section of this record): [ADR-0014](0014-pagination-filtering-sorting.md) (delta: `offset` gains a ceiling, the language gains a `count` flag, and the allow-list/index claim becomes a checked rule; every other pagination, filtering and sorting decision stands)
 
@@ -9,6 +9,8 @@
 > **Amended 2026-09-03 (D14.5)**, five times, each labelled where it applies: the header's parent list, which claimed [ADR-0006](0006-database-postgres-drizzle.md) as a second parent it does not touch; §1 on the status the ordinary validation path actually answers with; §2 on what declining the count costs a grid; §3 on the operator class a `citext` column needs before a `pg_trgm` index can serve it, and on the second query path that needs the same cast; and §5 on what those two rules are to [ADR-0008](0008-database-migrations-and-seeding.md).
 >
 > **Amended 2026-09-03 (D14.5) — one parent, not two.** The title written by `/scope` claimed "supersedes ADR-0014 and ADR-0006 in part". ADR-0006 chose Postgres, Drizzle over postgres.js, the `@repo/db` package, snake_case casing, UUIDv7 primary keys, the executor-taking repository and the no-singleton client; **this record touches none of them** — its one sentence about indexes ("UUIDv7 … time-ordered, index-friendly") is a property of the key, not a decision about which columns are indexed. The parent list is reconciled to the one record that really moves, which is the same correction [ADR-0059](0059-ci-containers-and-deployment.md) took at `D14.3`'s head and the reading [ADR-0030](0030-csrf-bootstrap-endpoint.md) got at `D12.12`: restating a decision, or standing near one, is not making it.
+
+> **Superseded in part 2026-09-30 by [ADR-0078](0078-backend-closing-wave.md)**, at the head of `D29.1`, the step that makes the delta true. A delta supersession under [ADR-0050](0050-adr-lifecycle-and-verification.md), on one rule: §5 said the migrator's single transaction rules out `CREATE INDEX CONCURRENTLY`, so an index on a large table is written down as blocking. The runner now has a second lane — a file whose first line is `-- migrate:concurrently` runs each statement on its own, outside any transaction, and is recorded when the last succeeds — so a concurrent build is available and the choice between it and a blocking one is still made per index and stated in the migration. §5's enum rule, §1–§4 and the session prune stand and are in force as part of 0078.
 
 ## Context
 

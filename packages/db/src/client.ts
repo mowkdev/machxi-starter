@@ -80,6 +80,16 @@ export interface CreateDbOptions {
    * indistinguishable from a clean run (ADR-0061 §1).
    */
   onNotice?: (notice: { message?: string }) => void;
+  /**
+   * Seconds before the driver retires a connection; `0` is never. Unset keeps
+   * postgres.js's own default, a random 30 to 60 minutes, which is right for a
+   * pool.
+   *
+   * The migration runner passes `0`: its advisory lock belongs to the one
+   * session that took it, and a connection retired between two statements of
+   * a long run would carry on unlocked on a fresh session.
+   */
+  maxLifetime?: number;
 }
 
 /**
@@ -128,6 +138,7 @@ export const createDb = (url: string, options: CreateDbOptions = {}) => {
     idleTransactionTimeoutMs = DEFAULT_IDLE_TRANSACTION_TIMEOUT_MS,
     applicationName = DEFAULT_APPLICATION_NAME,
     onNotice,
+    maxLifetime,
   } = options;
 
   const sql = postgres(url, {
@@ -151,6 +162,9 @@ export const createDb = (url: string, options: CreateDbOptions = {}) => {
     // A caller that wants them — the migration runner does, see `onNotice` —
     // says so.
     onnotice: onNotice ?? (() => undefined),
+    // Only when stated: postgres.js reads a present key, even one holding
+    // `undefined`, in place of its default.
+    ...(maxLifetime === undefined ? {} : { max_lifetime: maxLifetime }),
   });
 
   const db = createDrizzle(sql);

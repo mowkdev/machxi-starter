@@ -85,6 +85,11 @@ export const AREAS = [
         text: "Schema in `packages/db/src/schema`; migrations are generated with `drizzle-kit generate` and committed, never pushed; the API never auto-migrates; seeds are idempotent. The API connects as the application role (`DATABASE_URL`) with table privileges and no DDL, and every tooling connection is the owner role (`DATABASE_URL_OWNER`, required with no fallback).",
       },
       {
+        topic: "Migrations applied by hash",
+        records: ["0078"],
+        text: "`db:migrate` is the repository's own runner, under the advisory lock: a journal entry is applied when no row of `drizzle.__drizzle_migrations` records its hash or its journal timestamp — never because it is newer than the newest row — in journal order, a run of ordinary files in one transaction. A file whose first line is `-- migrate:concurrently` runs each statement on its own outside any transaction and is recorded when the last succeeds, so its statements are single and repeatable (an index is dropped `CONCURRENTLY IF EXISTS` before it is built). The migrations directory is pinned to LF.",
+      },
+      {
         topic: "Append-only audit",
         records: ["0058", "0061"],
         text: "`audit_events` is append-only in the database as well as in the lint rule — a revoked grant and a `BEFORE UPDATE OR DELETE` trigger — so retention is a reviewed migration and never a job.",
