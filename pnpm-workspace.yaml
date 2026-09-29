@@ -34,10 +34,19 @@ packages:
 # major left behind; the types move with the floor, in the pull request that
 # moves it. The reason is in `renovate.json`'s register, and the hold is the
 # `overrides` entry below.
+#
+# `typescript` is the native compiler, 7, since `D21.6` (ADR-0076): every
+# workspace's `check-types` is `tsc -b` on it. 7 has no JavaScript API, so the
+# one tool that needs one — `typescript-eslint`, for the type-aware rules — is
+# given 6.0 by the one manifest that installs it: `@repo/eslint-config`
+# declares `typescript` as `npm:typescript@6.0.3`, and `typescript-eslint`'s
+# peer resolves there. That alias is the second compiler version in the
+# lockfile, deliberately, and the only one; `scripts/docs-hygiene` asks for
+# exactly the two.
 catalog:
   "@types/node": ^24.19.0
   eslint: ^10.11.0
-  typescript: 6.0.3
+  typescript: 7.0.2
   vite: ^8.3.0
   vitest: ^5.0.1
 
@@ -70,9 +79,24 @@ overrides:
 # `context.getFilename()` ESLint 10 removed (#4018) — so `react.js` in
 # `@repo/eslint-config` states the React major instead of detecting it. The
 # entry goes with the first release whose peer range names 10.
+#
+# `typescript-eslint` 8.x declares `typescript` below 6.1, and no release
+# admitting 7 exists yet (`D21.6`, ADR-0076). The instance the rules run on is
+# `@repo/eslint-config`'s, whose `typescript` is the 6.0 alias, so its peer is
+# met. The four entries below are for a second instance nothing loads:
+# `eslint-plugin-boundaries` in both apps reaches `@typescript-eslint/parser`
+# through `eslint-module-utils`' optional peer, where the apps' compiler is 7
+# — and under flat config `eslint-module-utils` parses with the parser object
+# the config hands it (the 6.0 one), never by requiring a parser path. The
+# entries go with the first `typescript-eslint` release whose peer range
+# names 7, and the alias with them.
 peerDependencyRules:
   allowedVersions:
     eslint-plugin-react>eslint: "10"
+    "@typescript-eslint/parser>typescript": "7"
+    "@typescript-eslint/project-service>typescript": "7"
+    "@typescript-eslint/tsconfig-utils>typescript": "7"
+    "@typescript-eslint/typescript-estree>typescript": "7"
 
 # ─── pnpm's own settings ──────────────────────────────────────────────────────
 # pnpm 12 no longer reads the `pnpm` field of `package.json` (ADR-0073 §4 as

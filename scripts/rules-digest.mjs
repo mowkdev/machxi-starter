@@ -351,6 +351,11 @@ export const AREAS = [
         text: "Caret ranges by default and exact for the runtime framework and the compiler; any other exact pin is named with its reason in `renovate.json`'s pinning register. A version many workspaces declare lives in the `catalog:`; GitHub Actions are pinned by digest and the base images carry a named Renovate rule. A dependency held below a version is one `overrides` entry in `pnpm-workspace.yaml`, not a pin per workspace. `minimumReleaseAge` is one day for pnpm and for Renovate alike, with the one-install override for a younger security fix written beside pnpm's setting, and a lockfile through review installs under `trustLockfile`.",
       },
       {
+        topic: "The compiler",
+        records: ["0076"],
+        text: "`tsc -b` runs TypeScript 7, the catalog's exact version, in every workspace. `typescript-eslint` needs the JavaScript API 7 does not have, so `@repo/eslint-config` alone declares `typescript` as an exact `npm:typescript@6.0.x` alias. The lockfile carries those two versions and no third. The alias, its Renovate hold and the `@typescript-eslint/*>typescript` peer entries go together, with the first `typescript-eslint` whose peer admits 7. Declarations are the native compiler's own — type-equivalent to 6.0's, not byte-identical.",
+      },
+      {
         topic: "Forking",
         records: ["0065"],
         text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` is this repository's journal and resets.",

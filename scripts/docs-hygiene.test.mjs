@@ -644,8 +644,10 @@ const lockfileVersions = (lock) => {
  * `eslint` joined at `D21.2`: a plugin whose peer range has not reached the
  * major (`eslint-plugin-react` on 10) is admitted by `peerDependencyRules`,
  * and the lockfile is what shows it was not answered with a second copy.
+ * `typescript` left the list at `D21.6`: since 7 it is exactly two versions,
+ * and "the compiler is two facts" below asks for those two.
  */
-const ONE_VERSION_TOOLS = ["eslint", "typescript", "vite", "vitest"];
+const ONE_VERSION_TOOLS = ["eslint", "vite", "vitest"];
 
 /** The held packages and tools the lockfile resolves more than once, as strings. */
 const heldTwice = (workspaceYaml, lock) => {
@@ -711,6 +713,101 @@ test("a held dependency is one fact", async () => {
       'overrides:\n  jsdom: 30.0.1\n  "@scope/pkg@<2": 1.0.0\n  parent>child: 2.0.0\nnext: x\n',
     ),
     ["jsdom", "@scope/pkg", "child"],
+  );
+});
+
+/**
+ * What is wrong with the compiler's resolution, or `null` (ADR-0076). Every
+ * workspace but one declares `typescript` from the catalog; the one exception
+ * is `@repo/eslint-config`, whose exact `npm:typescript@…` alias gives
+ * `typescript-eslint` the JavaScript API the native compiler does not have,
+ * and so sits on an older major. The lockfile carries those two versions and
+ * no third.
+ */
+const compilerGap = ({ catalog, manifests, locked }) => {
+  const alias = /^npm:typescript@(\d+)\.\d+\.\d+$/.exec(
+    manifests["packages/config-eslint"] ?? "",
+  );
+  if (!alias) return "@repo/eslint-config does not alias an exact typescript";
+  const aliasVersion = manifests["packages/config-eslint"].slice(
+    "npm:typescript@".length,
+  );
+  if (Number(alias[1]) >= Number(catalog.split(".")[0]))
+    return `the linter's typescript ${aliasVersion} is not older than the catalog's ${catalog}`;
+  const strays = Object.entries(manifests)
+    .filter(
+      ([ws, spec]) => ws !== "packages/config-eslint" && spec !== "catalog:",
+    )
+    .map(([ws, spec]) => `${ws}: ${spec}`);
+  if (strays.length)
+    return `typescript outside the catalog in ${strays.join(", ")}`;
+  const want = [aliasVersion, catalog].sort().join(", ");
+  const have = [...locked].sort().join(", ");
+  return want === have
+    ? null
+    : `the lockfile resolves typescript ${have}, not ${want}`;
+};
+
+test("the compiler is two facts: the catalog's, and the linter's beside it", async () => {
+  // TypeScript 7 has no JavaScript API; `typescript-eslint` runs on one. So
+  // `tsc -b` runs the catalog's 7 in every workspace, and the one manifest
+  // that installs the linter keeps 6.0 under an alias (ADR-0076, `D21.6`).
+  // A second workspace off the catalog, or a third version in the lockfile,
+  // is the drift the catalog exists to prevent.
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const workspaceYaml = (await read("pnpm-workspace.yaml")).replace(
+    /\r\n/g,
+    "\n",
+  );
+  const lock = (await read("pnpm-lock.yaml")).replace(/\r\n/g, "\n");
+  const catalog = /^catalog:\n(?:[ \t]+.*\n)*?[ \t]+typescript:\s*(\S+)/m.exec(
+    workspaceYaml,
+  )?.[1];
+  assert.ok(catalog, "the catalog names no typescript");
+  const manifests = {};
+  for (const group of ["apps", "packages"]) {
+    for (const name of await readdir(path.join(repoRoot, group))) {
+      const pkg = JSON.parse(
+        await read(path.join(group, name, "package.json")).catch(() => "{}"),
+      );
+      const spec =
+        pkg.devDependencies?.typescript ?? pkg.dependencies?.typescript;
+      if (spec) manifests[`${group}/${name}`] = spec;
+    }
+  }
+  const locked = lockfileVersions(lock).get("typescript") ?? new Set();
+  assert.equal(compilerGap({ catalog, manifests, locked }), null);
+
+  // The predicate, on each shape it exists for.
+  const alias = manifests["packages/config-eslint"].slice(
+    "npm:typescript@".length,
+  );
+  const ok = { catalog, manifests, locked: new Set([catalog, alias]) };
+  assert.equal(compilerGap(ok), null);
+  assert.match(
+    compilerGap({ ...ok, locked: new Set([catalog, alias, "9.9.9"]) }),
+    /the lockfile resolves typescript/,
+  );
+  assert.match(
+    compilerGap({ ...ok, manifests: { ...manifests, "apps/x": "7.0.0" } }),
+    /outside the catalog in apps\/x/,
+  );
+  assert.match(
+    compilerGap({
+      ...ok,
+      manifests: { ...manifests, "packages/config-eslint": "catalog:" },
+    }),
+    /does not alias/,
+  );
+  assert.match(
+    compilerGap({
+      ...ok,
+      manifests: {
+        ...manifests,
+        "packages/config-eslint": `npm:typescript@${catalog}`,
+      },
+    }),
+    /not older/,
   );
 });
 
