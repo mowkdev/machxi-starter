@@ -172,3 +172,76 @@ The earlier run's only failure was `@repo/db`'s integration tier, "DATABASE_URL_
 **`pnpm outdated -r` majors.** Before: `@types/node` 24→26 (the floor) and `typescript` 5→7. After: `@types/node` 24→26 (the floor) and `typescript` 6→7, which is `D21.6`'s spike.
 
 **Pending the operator.** Run `pnpm install` in `main` after the fast-forward. The dev servers do not type-check, so nothing they load changes.
+
+## D21.6 — TypeScript 7, a timeboxed spike (2026-09-29)
+
+**Outcome: green inside the box, landed.** ADR-0076 was written and accepted at the step's head. [ADR-0062](../adr/0062-frontend-build-and-shared-composition.md) (§3) and [ADR-0073](../adr/0073-review-hardening.md) (§7) moved to `superseded by`. The spike took well under its one-day box. Closes the fourth quarter of `STK-04`.
+
+**Where it ran.** The measurements ran in a throwaway worktree, `.claude/worktrees/d21-6-spike`, with its own install. The landing and the gate ran in `.claude/worktrees/d21-4`, which has the operator's root `.env`. Its lockfile came out byte-identical to the spike's.
+
+**Timings.** `TURBO_CONCURRENCY=2` on one machine with 16 logical cores. "Cold" means every `*.tsbuildinfo` and `dist-types/` was removed first. "Warm" is a second `--force` run with the buildinfo in place.
+
+| Measurement                                       | 6.0.3 | 7.0.2 |
+| ------------------------------------------------- | ----- | ----- |
+| `pnpm check-types --force`, cold                  | 49.8s | 15.3s |
+| `pnpm check-types --force`, warm                  | 4.6s  | 5.0s  |
+| one `tsc -b` over a solution file of all 16, cold | 40.0s | 6.7s  |
+| the same, nothing to do                           | 0.32s | 0.27s |
+
+The warm turbo rows measure process start-up, not compilation.
+
+**Diagnostic diff: none.** Both compilers report zero diagnostics on the tree. Three probes behaved the same on both:
+
+- A deliberate `TS2322` in `apps/admin/src` is reported by both.
+- A lone `process.env` under `types: []` fails with `TS2591` on both. The same line inside `packages/config-vitest` passes on both, because `vitest.config.ts`'s imports bring Node's globals into that program.
+- Declarations are still emitted when there are errors. The only difference is the exit code: `2` on 7, `1` on 6.0. Both fail turbo.
+
+**Emit diff.** 24 of 302 `.d.ts` files differ. The differences are:
+
+- union members, and some inferred object members, in a different order;
+- `typeof X`, with an added import, where 6.0 inlined the signature (`@repo/form`'s and `@repo/grid`'s registries, `@repo/db`'s prune table);
+- the source's quote style kept in `@repo/db`'s `_shared.d.ts`;
+- `& unknown` on one generic constraint.
+
+All of these are type-equivalent. Every consumer's `tsc -b` reads the emit of the compiler it runs. The linter resolves packages to source through `exports`.
+
+**D27's input, measured.** The `D20.12` two-command experiment on `@repo/logger` gives the same result on 7 as on 6.0: with the restored marker it exits `0`, and with the marker removed it reports the error. A composite package's buildinfo still lands in `dist-types/`, and an app's still lands in `tsconfig.tsbuildinfo`. The ledger's D27 row carried "decided together or not at all". It now has an `Amended 2026-09-29 (D21.6)` note: the residual is the same on 7, so D27 decides it on 7.
+
+**Built.**
+
+- The catalog's `typescript` is `7.0.2`, exact.
+- `@repo/eslint-config` declares `typescript` as `npm:typescript@6.0.3`, so `typescript-eslint` 8.70 (peer `<6.1.0`) resolves 6.0 there. Type-aware rules still run: a probe `f();` in `apps/api/src` drew `@typescript-eslint/no-floating-promises`. The boundary rules gave the same result on 6.0 and 7 against a probe `shared → pages` import in `apps/admin`.
+- `pnpm-workspace.yaml`'s `peerDependencyRules` admits `@typescript-eslint/{parser,project-service,tsconfig-utils,typescript-estree}>typescript: "7"`, because of an instance that nothing loads. `eslint-plugin-boundaries` in the apps reaches the parser through `eslint-module-utils`' optional peer. Under flat config that module parses with the parser object it is handed, and `context.parserPath` is unset. `pnpm peers check` is clean.
+- `renovate.json` has a new rule capping the alias below 6.1, scoped by `matchFileNames`. The pin rule's description now names both versions.
+- `scripts/docs-hygiene.test.mjs`: `typescript` leaves `ONE_VERSION_TOOLS`, and a new case, "the compiler is two facts: the catalog's, and the linter's beside it", asserts the pair and self-tests each refusal.
+- `scripts/rules-digest.mjs` gains the line "The compiler" (0076), and `docs/rules/*` is regenerated. On a second run it wrote 0 of 3.
+- The API's build, and `@repo/db`'s bundles, are `tsdown` with `dts` off, so no compiler runs behind them. `tsdown` 0.23 and `rolldown-plugin-dts` both admit 7.
+
+**Amendments.** The plan's done-when now carries `Amended 2026-09-29 (D21.6)`. "Two names each at one version" cannot hold, because an alias installs `typescript` itself and `typescript-eslint` resolves the name `typescript`. So the landed form is one name, two versions, each declared once. It is the one exception to §Constraints' single-`typescript` line.
+
+**Review: one `adr-reviewer` pass, verdict "conforms with minor fixes", five findings.**
+
+- **Major: 0076 called the alias a "hold", which is ADR-0074 §2's word for an `overrides` fact.** Fixed. ADR-0076 §2 now calls it an exact pin under §7 whose Renovate rule caps proposals, and says why 0074 §2 does not apply: the alias binds one manifest's resolution, and the name stays at 7 elsewhere. `renovate.json`'s rule says the same.
+- **Major: the ledger's D27 row still stated a coupling the step had resolved.** Fixed with the labelled amendment above.
+- **Minor: no D21.6 notes entry.** This entry is it. The reviewer read the tree before the notes were written, which the step writes last.
+- **Minor: the hygiene self-test matched `/not/`, which three messages contain.** Fixed. It now matches `/the lockfile resolves typescript/`.
+- **Minor: the digest generator appends "and ADR-0076" to every line citing 0062 or 0073, not only §3 and §7.** Logged, not fixed. The generator carries citations per record rather than per section, and 0074 was over-attributed the same way. Fixing it means a section-level carriage rule, which is an ADR-0065 change and not D21's.
+
+**Gate** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`, `.claude/worktrees/d21-4`):
+
+| Check          | Result        |
+| -------------- | ------------- |
+| `lint`         | 21/21 (1m17s) |
+| `check-types`  | 16/16 (14.5s) |
+| `test`         | 16/16 (7m27s) |
+| `size`         | 4/4           |
+| `format:check` | clean         |
+
+The review fixes after the gate touched only records, `renovate.json` and the hygiene test's regex. `pnpm lint` (which carries `test:scripts` and `docs:check`) and `pnpm format:check` were re-run cold after them.
+
+**`pnpm outdated -r` majors.** Before: `@types/node` 24→26 (the floor) and `typescript` 6→7. After: `@types/node` 24→26 (the floor) and `typescript` 6.0.3→7.0.2 for `@repo/eslint-config` alone. That second one is ADR-0076's alias, and it waits for the first `typescript-eslint` whose peer admits 7.
+
+**Pending the operator.**
+
+- Run `pnpm install` in `main` after the fast-forward. The dev servers do not type-check, so nothing they load changes.
+- The throwaway worktree `.claude/worktrees/d21-6-spike` and its branch are removed at this step.
