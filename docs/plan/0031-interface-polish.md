@@ -1,6 +1,6 @@
 # D31 — Interface polish
 
-- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, on the operator's list of the same day, with D30 in progress (ledger §How D31 was scoped). Not opened: D30 is `in progress` (ADR-0025 rule 5 binds until D30 ships). Meant to open beside D29 as a lane under [ADR-0079](../adr/0079-parallel-lanes.md) once D30 has shipped.
+- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, on the operator's list of the same day, with D30 in progress (ledger §How D31 was scoped). Not opened. D30 shipped 2026-09-29 (ledger §How D30 closed), so this deliverable may open beside D29 as a lane under [ADR-0079](../adr/0079-parallel-lanes.md); opening is the operator's decision.
 - Records: [ADR-0080](../adr/0080-interface-polish.md) (the grid header's controls, the drawer toggle's state, a centred auth card, a visible wait; deltas on ADR-0039, 0052 and 0054) — written `proposed` at scoping, accepted at the head of `D31.1`. Parents: [ADR-0039](../adr/0039-grid-filter-ux.md), [ADR-0052](../adr/0052-grid-and-admin-followups.md), [ADR-0054](../adr/0054-design-language-instrument.md). Amends none. **Adds no migration.**
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0031-interface-polish.notes.md`](0031-interface-polish.notes.md)

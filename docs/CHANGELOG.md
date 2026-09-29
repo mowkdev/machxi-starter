@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D30 — Parallel lanes · 2026-09-29
+
+Deliverables whose records never meet can now be built at the same time, in separate sessions, without a second mutable copy of any record. The rule of one deliverable in progress gives way to a condition: no record belongs to two open lanes, and at most one lane adds migrations. The ledger's window section names every open lane in one shape, and `pnpm docs:check` refuses two lanes sharing a record, a second schema lane, and an entry that is malformed or missing. `/step`, `/steps` and `/ship` take the lane as their argument and refuse a bare call while more than one lane is open. A lane builds on its own branch, merging `main` in before each gate and out when green, or on `main` while it is the only lane; `/ship` runs on `main`. The rule travels with the records into a fork, and the ledger's lanes do not. Tag `starter-D30`.
+
 ## D22 — Shared composition, second wave · 2026-09-29
 
 What the two SPAs repeated moved into packages before the starter is forked, so a fork edits a route tree and a dictionary rather than files a later merge from the starter also touches. The session, the principal cache and the root's composition now live in `@repo/app-kit`, and each app's copy is a binding. The settings client, the preference cards, password reset and the shared profile features form a new eighth platform package, `@repo/account`, which each app reaches through the feature and entity slices that held them. The grid's and the form's door-level suites live in their own packages. The kit declares its side effects and the barrel guard no longer exempts it, and the parallel unit tier runs two workspaces at a time, so its workers start on a many-core machine. Tag `starter-D22`.

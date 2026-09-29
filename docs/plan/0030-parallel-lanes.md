@@ -1,6 +1,6 @@
 # D30 — Parallel lanes
 
-- Status: **in progress** — **scoped in full 2026-09-29 by `/scope`**, on the operator's question the same day, with D22 in progress and D29 scoped (ledger §How D30 was scoped). **Opened 2026-09-29**, the day D22 shipped, on the operator's decision, with the four decisions below confirmed as drafted (ledger §How D30 opened).
+- Status: **shipped 2026-09-29** (ledger §How D30 closed) — **scoped in full 2026-09-29 by `/scope`**, on the operator's question the same day, with D22 in progress and D29 scoped (ledger §How D30 was scoped). **Opened 2026-09-29**, the day D22 shipped, on the operator's decision, with the four decisions below confirmed as drafted (ledger §How D30 opened).
 - Records: [ADR-0079](../adr/0079-parallel-lanes.md) (more than one deliverable in progress when their records are disjoint), and the parent it supersedes, [ADR-0025](../adr/0025-deliverables.md) (a delta on rule 5 as carried by ADR-0065 and ADR-0068) — written `proposed` at scoping, **accepted 2026-09-29 at the head of `D30.1`**, where ADR-0025 moved.
 - Schema: no
 - Ledger: [`docs/plan/README.md`](README.md)
