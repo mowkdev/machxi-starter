@@ -1,6 +1,6 @@
 # D31 — Interface polish
 
-- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, on the operator's list of the same day, with D30 in progress (ledger §How D31 was scoped). Not opened. D30 shipped 2026-09-29 (ledger §How D30 closed), so this deliverable may open beside D29 as a lane under [ADR-0079](../adr/0079-parallel-lanes.md); opening is the operator's decision.
+- Status: **in progress** — **scoped in full 2026-09-29 by `/scope`**, on the operator's list of the same day, with D30 in progress (ledger §How D31 was scoped). **Opened 2026-09-30** on the operator's decision, the first lane under [ADR-0079](../adr/0079-parallel-lanes.md), built on `lane/D31`, with the decisions below confirmed as drafted (ledger §How D31 opened).
 - Records: [ADR-0080](../adr/0080-interface-polish.md) (the grid header's controls, the drawer toggle's state, a centred auth card, a visible wait; deltas on ADR-0039, 0052 and 0054) — written `proposed` at scoping, accepted at the head of `D31.1`. Parents: [ADR-0039](../adr/0039-grid-filter-ux.md), [ADR-0052](../adr/0052-grid-and-admin-followups.md), [ADR-0054](../adr/0054-design-language-instrument.md). Amends none. **Adds no migration.**
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0031-interface-polish.notes.md`](0031-interface-polish.notes.md)
@@ -32,7 +32,7 @@ The deliverable is short, frontend-only, and has records disjoint from D29's, so
 
 ## Decisions taken at scoping (2026-09-29)
 
-These are recommended from the operator's list; the operator confirms them when D31 opens.
+These were recommended from the operator's list, and the operator confirmed them when D31 opened on 2026-09-30.
 
 - **Sort is an icon button of its own**, named `"Sort by <header>"`, beside the filter's. The name is a label on every column, start-aligned, including end-aligned numeric columns.
 - **The drawer toggle is the shell's composition**, using lucide's panel-close/panel-open pair and `aria-expanded`. Its accessible name is unchanged, so the tests that find it keep working.
@@ -42,6 +42,7 @@ These are recommended from the operator's list; the operator confirms them when 
   - `AppLoader`'s delay once per page load;
   - a static indicator in `index.html`;
   - skeletons stay.
+  - Added at opening: the threshold and minimum are measured from the router's defaults, 1000 ms and 500 ms.
 - **Recorded, not asked:** the admin has no self-service email change, so item 4 is the customer's alone. The security page and its sign-in-methods rows are D29's record set (ADR-0072 §4) and are only copied, never edited.
 
 ## Steps
