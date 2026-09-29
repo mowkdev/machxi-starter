@@ -397,3 +397,7 @@ No record changes: neither setting is decided by a record, and ADR-0026's `test:
 - item 7: `docker compose -f docker/prod/compose.yaml build`.
 
 Item 5 does not apply, since D22 touched no endpoint (`/ship` runs `test:postman` only where a deliverable did). If the admin tier's solo time matters more than the headroom, `"75%"` is the next setting to try.
+
+**The worker cap was not enough.** On the operator's Windows machine, `pnpm test:unit` on `cdb76cc` still failed in eight tiers: `@repo/account`, `@repo/api-client`, `@repo/form`, `@repo/grid`, `@repo/ui`, `admin`, `api` and `customer`. Every one stopped at 121–125 s with its files still `[queued]`, so its workers never started; 9 tasks passed and 8 were cached. `api` is a Node tier, which the jsdom cap does not touch. So the limit is how many Vitest processes turbo runs at once, not the workers inside each one.
+
+**The second fix.** The root `test:unit` script runs turbo at `--concurrency=2`. `pnpm check` runs `lint` and `check-types` together first, then `pnpm test:unit`, so the inner loop gets the same limit. The flag lives in the root script, as ADR-0026 asks of a concurrency limit. ADR-0026's table still reads true: it calls `test:unit` parallel, and two at a time is parallel. The per-tier `"50%"` stays: with it, two jsdom tiers together start at most as many workers as the machine has cores.
