@@ -197,9 +197,12 @@ describe("every app's styles.css", () => {
  *   `locales/source.ts` installs the keyed custom-message map with
  *   `z.config`, deliberately, so the API needs no localisation code. A
  *   `false` would license a bundler to drop that install.
- * - This package is left out on purpose: its `testing/setup` entry registers
- *   jsdom stubs and MSW hooks *by being imported*, which is a side effect a
- *   false declaration would deny.
+ * - This package names the one module that acts on import (`D22.4`,
+ *   ADR-0077 §1 as amended): its `testing/setup` entry registers jsdom stubs
+ *   and MSW hooks *by being imported*, which a false declaration would deny.
+ *   Nothing its `.` barrel re-exports runs on import. Until `D22.4` the kit
+ *   was left out of this map for that entry, which was a hole in the guard
+ *   exactly where both roots import most.
  * - `@repo/ui` lists `**\/*.css` for the same reason — a stylesheet import
  *   must not be shaken — and is priced by its own subpath exports rather than
  *   a barrel.
@@ -209,6 +212,8 @@ const SHAKEABLE = {
   // for the settings gate, and through `shared/i18n` for its catalogue.
   account: false,
   "api-client": false,
+  // `D22.4` (ADR-0077 §1 as amended): the barrel both roots import most.
+  "app-kit": ["./src/testing/setup.ts"],
   "app-services": false,
   contracts: ["./src/locales/source.ts"],
   form: false,
@@ -250,19 +255,16 @@ export const barrelImports = (source: string): string[] => [
 /**
  * The barrels a set of sources import that {@link SHAKEABLE} does not name.
  *
- * `own` is the package making the claim. The kit's own barrel is exempt from
- * the map for the reason the map's docblock gives — its `testing/setup` entry
- * acts on import — and it is not exempt from the *check*: the kit's sources
- * are read as part of every root, so what the kit imports by barrel is held
- * to the same rule as what an app does.
+ * No package is exempt (`D22.4`): the kit's own barrel, which both roots
+ * import most, is held to the map like every other, and the kit's sources are
+ * read as part of every root, so what the kit imports by barrel is held to the
+ * same rule as what an app does.
  */
 export const unnamedBarrels = (
   sources: readonly string[],
   shakeable: readonly string[],
-  own = "@repo/app-kit",
 ): string[] =>
   [...new Set(sources.flatMap(barrelImports))]
-    .filter((specifier) => specifier !== own)
     .filter(
       (specifier) => !shakeable.includes(specifier.slice("@repo/".length)),
     )
@@ -357,8 +359,8 @@ const compositionRootSources = (app: string): string[] => [
 ];
 
 describe("the packages the composition roots import by barrel", () => {
-  it("are the eight this test names", () => {
-    expect(Object.keys(SHAKEABLE)).toHaveLength(8);
+  it("are the nine this test names", () => {
+    expect(Object.keys(SHAKEABLE)).toHaveLength(9);
   });
 
   it("follows a root past its first hop, to the account's door", () => {

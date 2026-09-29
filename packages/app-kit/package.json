@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "sideEffects": [
+    "./src/testing/setup.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing/index.ts",

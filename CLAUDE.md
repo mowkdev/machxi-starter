@@ -32,8 +32,8 @@ pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check
 
 ## Repo map
 
-- `apps/` — `api` (Express 5: `src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, `src/core/container.ts` the composition root), `admin` (staff SPA over `/admin`) and `customer` (user SPA over `/user`); both SPAs are `src/{app,pages,widgets,features,entities,shared}` and reach every package through a `shared/` door
-- `packages/` — `db`, `contracts`, `crypto`, `logger`, `config-*`, `ui`, and the platform packages both SPAs are built from: `api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`, `app-kit`
+- `apps/` — `api` (Express 5: `src/core`, `src/modules/<feature>`, `src/routes/{public,user,admin}.router.ts`, `src/core/container.ts` the composition root), `admin` (staff SPA over `/admin`) and `customer` (user SPA over `/user`); both SPAs are `src/{app,pages,widgets,features,entities,shared}` and reach every package through a door — a `shared/` slice, or for the feature package `account` the feature and entity slices that front it (ADR-0077 §3)
+- `packages/` — `db`, `contracts`, `crypto`, `logger`, `config-*`, `ui`, and the eight platform packages both SPAs are built from: `api-client`, `i18n`, `resource`, `grid`, `form`, `app-services`, `app-kit`, `account`
 - `docker/` local and reference-production compose · `docs/` records, plans, specs, rules, Postman · `scripts/` repo-level tooling · `turbo/generators` the two scaffolds
 
 ## The running stack is the operator's

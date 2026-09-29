@@ -6,6 +6,9 @@ paths:
   # The behavioural machinery lives in packages rather than in an app's
   # `shared/` tree (ADR-0051, platform extraction; ADR-0062, the shared
   # composition); these rules follow the code rather than the address.
+  # `packages/account` is the feature package whose door is a feature slice
+  # (ADR-0077, shared composition, second wave).
+  - "packages/account/**"
   - "packages/api-client/**"
   - "packages/app-kit/**"
   - "packages/app-services/**"

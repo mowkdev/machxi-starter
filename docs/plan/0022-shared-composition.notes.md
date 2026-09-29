@@ -322,3 +322,48 @@ After the review's two edits and this note, the links were run again: see the co
 **Closed 2026-09-29.** The coordinating session fast-forwarded `main` to `90c8642` on the operator's instruction. The operator then ran `pnpm install` and `pnpm test:e2e` in `main` and reported them green; that is the operator's report, and no counts were recorded. Before the operator's install, the coordinating session's `pnpm exec prettier` set off pnpm's pre-run dependency check in `main`. It reported the workspace and lockfile up to date and re-ran `argon2`'s install script, and the running API stayed healthy (`/health` ok, not restarted). The step was ticked on the operator's instruction.
 
 The visual check of the admin's unreachable notice (D22.1, D22.2) was still pending when this note was written. The operator accepted it later the same day; see the D22.2 note.
+
+## D22.4 — Close-out
+
+**Built.**
+
+- **The kit's `sideEffects`.** This settles the step's D22.2 amendment, with a third outcome the amendment's two branches did not name. Nothing the kit's `.` barrel reaches acts on import. The `testing` entry has one module that does, `testing/setup.ts`, which installs `jest-dom`, calls `configure` and registers `beforeAll`/`afterEach` hooks. So `@repo/app-kit` declares `"sideEffects": ["./src/testing/setup.ts"]`, the shape `@repo/contracts` uses, and gains a `SHAKEABLE` row, making nine. This is recorded as ADR-0077 §1's `D22.4` amendment and a labelled line under step 4. With the row removed, "a composition root imports only shakeable barrels" goes red naming `@repo/app-kit`, and it is green (22/22) with the row restored. The side-effect audit was done by reading, and the review confirmed it.
+- **The generator.** `resource-screen`'s `route.record.tsx.hbs` types the error component's `error` as `unknown`. It was typed `Error`, but the apps' own routes have used `unknown` since `D20.7`, and the template as committed failed `check-types --filter admin`. After the fix, a demo resource generated from scratch in a scratch worktree (`api-module`, then `resource-screen`) passes `lint --filter admin` 16/16 and `check-types --filter admin` 12/12.
+- **The derived documents.**
+  - `CLAUDE.md`'s repo map names eight platform packages and the feature-slice door.
+  - `.claude/rules/frontend.md` gains `packages/account/**`.
+  - `/frontend-conventions` and `/new-resource-ui` describe the eight packages and the door.
+  - `.claude/README.md` names no package count and is left unchanged.
+- **The fates, in both reviews.**
+  - `FE-01` closed at `D22.2`.
+  - `FE-04` closed whole at `D22.3`.
+  - `FE-09` closed for D22's scope, 96.93 s → 87.55 s. Pre-bundling was not built; the dependency optimizer on the remaining admin tier is left to the operator, with no row.
+  - `FE-15` closed for its first and fifth files. Four files remain over 600 lines, an `Info` finding with no row.
+- **Budgets re-baselined** to this tree (definition of done, item 3). Two cold builds agree to the byte:
+  - admin: js 374046 → 376664, entry 167019 → 167061;
+  - customer: js 316214 → 319452, entry 108440 → 109078.
+
+  No ceiling changed. Each app's entry file got smaller and total JS grew by about 1 kB; the cause was not traced.
+
+**Review.** One `code-reviewer` pass, three findings, all fixed. `FE-04`'s row still named the 1,839-line admin file. `FE-01`'s row still named D22 as remaining work. The plan's two outcomes did not include the list shape, which is now the labelled D22.4 line.
+
+**The definition of done, item by item.** Verified by running, by the step's builder, unless stated.
+
+1. **Green.** The gate, every task cold: lint 22/22, check-types 17/17, test 17/17, size 4/4. `format:check` was red once, on the `/frontend-conventions` table, and clean after prettier. After that fix only `format:check` and `docs:check` were re-run.
+2. **RED.** `pnpm test:unit` failed on all four full runs. Each time a Vitest worker never started (`[vitest-pool]: Failed to start forks worker … Timeout waiting for worker to respond`), in `@repo/grid` three times and in `@repo/form` and `@repo/app-kit` once each. Every test that did run passed, and `@repo/grid` (206/206) and `@repo/app-kit` (78/78) pass alone. The gate's `pnpm test`, which runs one workspace at a time, was green. The cause is inferred, not proved: load in the parallel tier, since `D22.3` added the large jsdom suites to `@repo/grid` and `@repo/form` beside both apps' tiers while the operator's stack is up. It was not reproduced at `802717b`. **Left open by the operator's decision, not fixed:** the step was ticked on the operator's instruction with this item red, and it is carried to `/ship`. The fix is a pool or worker setting in `@repo/vitest-config` or a concurrency cap on `test:unit`.
+3. **Green.** Baselines equal this tree's measurement. The shipping commit is this one.
+4. **Not run at D22.4.** `pnpm test:e2e`. The operator ran it green on `main` after the `D22.2` and `D22.3` fast-forwards. This step changed no shipped source except the kit's manifest.
+5. **Not run.** `pnpm test:postman`. D22 touched no endpoint.
+6. **Green**, after the template fix above.
+7. **Not run.** `docker compose -f docker/prod/compose.yaml build`.
+8. **Green.** `pnpm rules:digest` wrote 0 of 3 on both runs, and `pnpm docs:check` is clean.
+9. **Green.** The unit tier is 2494 = 2404 (D21's close) + 16 (D22.1) + 71 (D22.2) + 2 (D22.3) + 1 (D22.4).
+
+`pnpm test:scripts` passed 58/58.
+
+**Closed 2026-09-29 on the operator's instruction** ("commit, push, tick step 4"), with item 2 red and items 4, 5 and 7 not run at this step. The coordinating session committed and pushed. Item 2 is the one to settle before or at `/ship`.
+
+**Loose ends.**
+
+- `AppCrash` is still re-exported by both apps' `shared/ui` doors, and neither app uses it (from D22.1).
+- The scratch worktree folder `.claude/worktrees/d22-4-gen` is out of git's list, but Windows would not delete it.
