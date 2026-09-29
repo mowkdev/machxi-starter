@@ -319,4 +319,6 @@ After the review's two edits and this note, the links were run again: see the co
 3. `pnpm test:e2e`, in both apps, against the running stack.
 4. Tick step 3 when all of the above pass.
 
+**Closed 2026-09-29.** The coordinating session fast-forwarded `main` to `90c8642` on the operator's instruction. The operator then ran `pnpm install` and `pnpm test:e2e` in `main` and reported them green; that is the operator's report, and no counts were recorded. Before the operator's install, the coordinating session's `pnpm exec prettier` set off pnpm's pre-run dependency check in `main`. It reported the workspace and lockfile up to date and re-ran `argon2`'s install script, and the running API stayed healthy (`/health` ok, not restarted). The step was ticked on the operator's instruction.
+
 The visual check of the admin's unreachable notice (D22.1, D22.2) was still pending when this note was written. The operator accepted it later the same day; see the D22.2 note.
