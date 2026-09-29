@@ -42,6 +42,8 @@ Each lane builds on a branch of its own, named for its deliverable and cut from 
 
 A lane merges `main` into itself before a step's gate runs, so the gate runs over the merged tree; a step that ends green merges to `main`, and `main` is where `/ship` runs. A step is not closed while `main` does not carry it. The shared surfaces — the ledger, the index, the changelog — merge by the row; a conflict in a digest is resolved by regenerating it, never by editing the merge.
 
+**Amended 2026-09-29 (D30.2).** A lane that is the only one open may build on `main` itself, as every deliverable did before this record: both merges are empty and the branch buys nothing. The lane cuts its branch when a second lane opens, and a lane that opens beside another starts on its own. The branch is `lane/D<n>`.
+
 ### 5. The skills name the lane
 
 `/step`, `/steps` and `/ship` take the deliverable as their argument while more than one row is in progress, and refuse a bare call then. `/steps` stays in its lane, as it already does. `/scope` writes a plan's records where the check of §1 can read them, and opening stays the operator's decision.
@@ -55,7 +57,7 @@ A lane merges `main` into itself before a step's gate runs, so the gate runs ove
 ## Consequences
 
 - The starter's last wave can run beside other work: D29's records are disjoint from D22's, and from any feature that touches neither.
-- Every step ends with a merge of `main` and a merge to `main`. Row-level conflicts in the ledger and the index become routine, and are resolved by hand.
+- Every step on a lane branch ends with a merge of `main` and a merge to `main` (**amended 2026-09-29 (D30.2)**: a lane alone on `main` has neither, §4). Row-level conflicts in the ledger and the index become routine, and are resolved by hand.
 - The operator's running stack serves every lane. A lane that changes an environment variable or a Dockerfile restarts the stack the other lanes attach to, and the restart is still reported and never taken (`CLAUDE.md`).
 - A reviewer of a step reads the lane's branch against `main`, not against the other lanes.
 - A fork inherits this rule with the records; its ledger is its own, and its first lane opens alone.

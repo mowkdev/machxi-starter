@@ -16,11 +16,14 @@ import { fileURLToPath } from "node:url";
 
 import {
   LEDGER_WINDOW,
+  checkLanes,
   checkSpec,
   checkText,
   inheritedDocuments,
   isExcluded,
+  parseLanes,
   scan,
+  scanLanes,
   scanSpecs,
   specDocuments,
 } from "./docs-hygiene.mjs";
@@ -1327,6 +1330,155 @@ test("a file with no requirement is caught", () => {
   assert.deepEqual(rules(checkSpec("s.md", "# Empty\n", always)), [
     "spec-empty",
   ]);
+});
+
+// The open lanes (ADR-0079 §1–§3): the committed ledger's lanes are disjoint,
+// and each lane rule fires on the fixture it exists for.
+test("the committed ledger's open lanes are disjoint", async () => {
+  const { violations } = await scanLanes();
+  assert.deepEqual(
+    violations.map((v) => `${v.file}:${v.line} [${v.rule}] ${v.found}`),
+    [],
+  );
+});
+
+const lane = (n, records, schema = "no") =>
+  `- **Lane [D${n}](00${n}-x.md)** — opened 2026-09-29 · records ${records
+    .map((r) => `[${r}](../adr/${r}-x.md)`)
+    .join(", ")} · schema: ${schema}`;
+
+// The table marks `in progress` every deliverable an entry names, unless a
+// case passes its own rows.
+const rowsFor = (entries) =>
+  [...new Set(entries.map((e) => e.match(/\[(D\d+)\]/)?.[1]).filter(Boolean))]
+    .map((d) => `| [${d}](x.md) | T | **in progress** | x |`)
+    .join("\n");
+
+const ledger = (...entries) => ledgerWith(rowsFor(entries), entries);
+
+const ledgerWith = (rows, entries, heading = "**Open lanes:**") => `# Ledger
+
+| # | Title | Status | Scope |
+| - | ----- | ------ | ----- |
+| D2 | Old | **shipped 2026-01-01** | x |
+${rows}
+
+## Rules
+
+- **Lane [D1](0001-x.md)** — not in the window section, never read
+
+## The window
+
+Preamble.
+
+${heading}
+
+${entries.join("\n")}
+
+The running paragraph, which is not a lane.
+
+- A list after the paragraph is not a lane either.
+
+## Executing a step
+`;
+
+test("one open lane reads as before", () => {
+  const text = ledger(lane(30, ["0079", "0025"]));
+  const { lanes, malformed } = parseLanes(text);
+  assert.deepEqual(malformed, []);
+  assert.deepEqual(
+    lanes.map((l) => [l.deliverable, l.opened, l.records, l.schema]),
+    [["D30", "2026-09-29", ["0079", "0025"], false]],
+  );
+  assert.deepEqual(rules(checkLanes("l.md", text)), []);
+});
+
+test("two open lanes never share a record", () => {
+  const disjoint = ledger(
+    lane(29, ["0078", "0018"], "yes"),
+    lane(31, ["0080", "0062"]),
+  );
+  assert.deepEqual(rules(checkLanes("l.md", disjoint)), []);
+
+  const shared = ledger(lane(29, ["0078", "0018"]), lane(31, ["0080", "0018"]));
+  const violations = checkLanes("l.md", shared);
+  assert.deepEqual(rules(violations), ["lane-shared-record"]);
+  assert.equal(violations[0].found, "0018");
+});
+
+test("a second lane on the schema is refused", () => {
+  const text = ledger(
+    lane(29, ["0078"], "yes"),
+    lane(31, ["0080"], "yes"),
+    lane(32, ["0081"]),
+  );
+  const violations = checkLanes("l.md", text);
+  assert.deepEqual(rules(violations), ["lane-second-schema"]);
+  assert.equal(violations[0].found, "D31");
+});
+
+test("a lane entry that does not parse is refused, not skipped", () => {
+  const text = ledger(
+    lane(30, ["0079"]),
+    "- **Lane D31** — opened 2026-09-29 · records 0079 · schema: no",
+  );
+  assert.deepEqual(rules(checkLanes("l.md", text)), ["lane-malformed"]);
+});
+
+test("a record not written as a matching link is refused", () => {
+  const bare = ledger(
+    lane(29, ["0078"]).replace(" · schema", ", 0018 · schema"),
+    lane(31, ["0018"]),
+  );
+  // The refused entry is not a lane, so its row is also missing one.
+  assert.deepEqual(rules(checkLanes("l.md", bare)), [
+    "lane-missing",
+    "lane-malformed",
+  ]);
+  const mislabelled = ledger(lane(30, ["0079"]).replace("[0079]", "[0080]"));
+  assert.deepEqual(rules(checkLanes("l.md", mislabelled)), [
+    "lane-missing",
+    "lane-malformed",
+  ]);
+});
+
+test("an indented line inside the list is refused, and lanes after it are read", () => {
+  const text = ledger(
+    lane(29, ["0018"], "yes"),
+    "  a note under the entry",
+    lane(31, ["0018"], "yes"),
+  );
+  assert.deepEqual(rules(checkLanes("l.md", text)), [
+    "lane-malformed",
+    "lane-shared-record",
+    "lane-second-schema",
+  ]);
+});
+
+test("a deliverable in progress with no entry is refused, and so is an entry for one that is not", () => {
+  const misspelt = ledgerWith(
+    rowsFor([lane(29, ["0078"])]),
+    [lane(29, ["0078"])],
+    "**Open lanes**:",
+  );
+  assert.deepEqual(rules(checkLanes("l.md", misspelt)), ["lane-missing"]);
+  const stale = ledgerWith("", [lane(29, ["0078"])]);
+  assert.deepEqual(rules(checkLanes("l.md", stale)), ["lane-not-open"]);
+});
+
+test("a deliverable has one entry", () => {
+  const text = ledger(lane(30, ["0079"]), lane(30, ["0025"], "yes"));
+  assert.deepEqual(rules(checkLanes("l.md", text)), ["lane-duplicate"]);
+});
+
+test("a ledger with nothing in progress and no open-lanes list has no lanes", () => {
+  const text = "# Ledger\n\n## The window\n\nNothing is open.\n";
+  assert.deepEqual(parseLanes(text), {
+    lanes: [],
+    malformed: [],
+    inProgress: [],
+  });
+  assert.deepEqual(rules(checkLanes("l.md", text)), []);
 });
 
 // The negative cases: each rule must actually fire on the text it exists for,

@@ -328,7 +328,7 @@ export const AREAS = [
       {
         topic: "Lanes",
         records: ["0079"],
-        text: "A lane builds on a branch named for its deliverable, merges `main` in before a step's gate and merges to `main` when the step is green; a step is not closed while `main` does not carry it, and `/ship` runs on `main`. Deliverable and record numbers are reserved by scoping on `main`. The shared surfaces merge by the row, and a conflicted digest is regenerated, never hand-merged. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
+        text: "A lane builds on a branch named for its deliverable, `lane/D<n>`, merges `main` in before a step's gate and merges to `main` when the step is green; a step is not closed while `main` does not carry it, and `/ship` runs on `main`. A lane that is the only one open may build on `main` itself, and cuts its branch when a second opens. Deliverable and record numbers are reserved by scoping on `main`. The shared surfaces merge by the row, and a conflicted digest is regenerated, never hand-merged. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
       },
       {
         topic: "Acceptance at the head",

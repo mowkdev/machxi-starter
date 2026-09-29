@@ -24,3 +24,39 @@ D30's entry lists 0079 and its parent 0025, `schema: no`. `/step`, `/steps` and 
 **Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` — green (exit 0) before the review fixes; re-run green after them (below). `node --test scripts/rules-digest.test.mjs` 10/10; `pnpm rules:digest` wrote nothing on a second run; `pnpm docs:check` clean; `pnpm test:scripts` 58/58.
 
 **Pending the operator.** Nothing browser-side. The lane check itself is `D30.2`'s; until it lands, disjointness is read by hand.
+
+## D30.2 — The lane check, and the branch convention (2026-09-29)
+
+**Built.** `scripts/docs-hygiene.mjs` gains `parseLanes`, `checkLanes` and `scanLanes`, and `pnpm docs:check` runs them over the ledger (`open lanes: disjoint (N open)`). The parser reads the list under `**Open lanes:**` in `## The window` in `D30.1`'s entry shape, and it reads the table's `**in progress**` rows. The check refuses:
+
+- `lane-shared-record`: two lanes naming one record.
+- `lane-second-schema`: a second `schema: yes`.
+- `lane-malformed`: an entry that does not parse, a records field that is not wholly `[NNNN](../adr/NNNN-….md)` links with each label agreeing with its file, or an indented line inside the list.
+- `lane-duplicate`: two entries for one deliverable.
+- `lane-missing` / `lane-not-open`: an `in progress` row with no entry, or an entry with no `in progress` row. This means a misspelt list heading is a failure rather than zero lanes.
+
+A ledger with nothing in progress and no list (a fresh fork's) reads clean, and so does one with no ledger at all. `scripts/docs-hygiene.test.mjs` has the three named cases, "two open lanes never share a record", "a second lane on the schema is refused" and "one open lane reads as before", plus one case per other rule and a case that reads the committed ledger.
+
+`/step` gains §4's branch convention:
+
+- It builds on `lane/D<n>` while another lane is open.
+- It merges `main` in before the gate.
+- It merges the step to `main` when green.
+- A step is not closed while `main` does not carry it.
+- A conflicted digest is regenerated.
+
+`/ship` says it runs on `main`, and its PR path is gone. `docs/forking.md` says the lane rule travels with the records while the lanes, being journal, do not. The ledger's window-section bullet names the check.
+
+**Amendments.** ADR-0079 §4, **Amended 2026-09-29 (D30.2)**: a lane that is the only one open may build on `main` itself, since both merges are empty. It cuts its branch, `lane/D<n>`, when a second lane opens. This is how D30 itself is built, and §4 as written would have put this step off-record. §Consequences' "every step ends with a merge" bullet was amended to match, under the same label. The **Lanes** digest line in `scripts/rules-digest.mjs` says the same, and `docs/rules/process.md` was regenerated.
+
+**Review** (`adr-reviewer`, one pass): five findings, all fixed.
+
+1. MAJOR: a record written without a link was skipped, so a shared record could hide. **Fixed**: the records field must be links only, with labels agreeing with their files.
+2. MAJOR: a misspelt `**Open lanes:**` heading read as zero lanes and passed. **Fixed**: the table's `in progress` rows are cross-checked against the entries (`lane-missing`, `lane-not-open`).
+3. MAJOR: an indented line ended the list, and later lanes were dropped. **Fixed**: an indented line is `lane-malformed` and the list continues.
+4. MINOR: ADR-0079 §Consequences contradicted the §4 amendment. **Fixed**, labelled.
+5. MINOR: two entries for one deliverable were accepted. **Fixed** (`lane-duplicate`).
+
+**Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` — green (exit 0) before the review fixes and again after them; `pnpm test:scripts` 68/68. `node --test scripts/docs-hygiene.test.mjs` 44/44. `pnpm rules:digest` wrote nothing on a second run. `pnpm docs:check` is clean.
+
+**Pending the operator.** Nothing browser-side.

@@ -13,6 +13,12 @@
 // exist, and has at least one scenario with a WHEN and a THEN — so a deleted
 // test reddens every spec that claimed it.
 //
+// The ledger's window section names every open lane with its records
+// (ADR-0079 §2), and two lanes may not share a record or both add migrations
+// (ADR-0079 §1, §3). The ledger itself is not an inherited document — it is
+// this repository's journal and carries dates by design — so only its lane
+// entries are read.
+//
 // Usage:
 //   node scripts/docs-hygiene.mjs        report violations, exit 1 if any
 
@@ -300,13 +306,198 @@ export async function scanSpecs(root = repoRoot) {
   return violations;
 }
 
+/** The ledger whose window section names the open lanes (ADR-0079 §2). */
+export const LEDGER = "docs/plan/README.md";
+
+/**
+ * One open lane, in the one shape the window section writes it:
+ * `- **Lane [D30](0030-….md)** — opened 2026-09-29 · records [0079](…), [0025](…) · schema: no`
+ */
+const LANE_ENTRY =
+  /^- \*\*Lane \[(D\d+)\]\([^)]+\)\*\* — opened (\d{4}-\d{2}-\d{2}) · records (.+?) · schema: (yes|no)\s*$/;
+/**
+ * `[0079](../adr/0079-….md)` — a record as a lane entry links it, the label
+ * and the file agreeing. The records field is nothing but these, joined by
+ * `, `: a record written any other way would escape the check.
+ */
+const LANE_RECORD = /^\[(\d{4})\]\(\.\.\/adr\/(\d{4})-[^)]+\.md\)$/;
+
+/** `| [D30](…) | Title | **in progress** | …` — a ledger row that is open. */
+const TABLE_ROW = /^\|([^|]+)\|[^|]*\|([^|]+)\|/;
+
+/**
+ * Reads the open lanes out of the ledger's window section (ADR-0079 §2), and
+ * the deliverables its table marks `in progress`.
+ *
+ * The entries are the list under `**Open lanes:**` inside `## The window`,
+ * ending at the first unindented line that is neither blank nor a list item —
+ * the running paragraph. A ledger with no such list (a fresh fork's, before
+ * its first deliverable opens) has no open lanes; the table is what says
+ * whether it should have some. A list item that does not parse, and an
+ * indented line inside the list, are returned as `malformed` rather than
+ * dropped, so a typo cannot hide a lane or a record from the check.
+ */
+export function parseLanes(text) {
+  const lanes = [];
+  const malformed = [];
+  const inProgress = [];
+  let inWindow = false;
+  let inList = false;
+  const bad = (n, line) => malformed.push({ line: n, text: line.slice(0, 60) });
+  text.split(/\r?\n/).forEach((raw, index) => {
+    const line = raw.trimEnd();
+    const n = index + 1;
+    const row = line.match(TABLE_ROW);
+    if (row && row[2].trim() === "**in progress**") {
+      const id = row[1].match(/\bD\d+\b/);
+      if (id) inProgress.push({ line: n, deliverable: id[0] });
+    }
+    if (/^## /.test(line)) {
+      inWindow = line === "## The window";
+      inList = false;
+      return;
+    }
+    if (!inWindow) return;
+    if (line === "**Open lanes:**") {
+      inList = true;
+      return;
+    }
+    if (!inList || line === "") return;
+    if (/^\s/.test(line)) {
+      bad(n, line.trim());
+      return;
+    }
+    if (!line.startsWith("- ")) {
+      inList = false;
+      return;
+    }
+    const entry = line.match(LANE_ENTRY);
+    if (!entry) {
+      bad(n, line);
+      return;
+    }
+    const parts = entry[3].split(", ").map((p) => p.match(LANE_RECORD));
+    if (parts.some((m) => !m || m[1] !== m[2])) {
+      bad(n, line);
+      return;
+    }
+    const records = parts.map((m) => m[1]);
+    lanes.push({
+      line: n,
+      deliverable: entry[1],
+      opened: entry[2],
+      records,
+      schema: entry[4] === "yes",
+    });
+  });
+  return { lanes, malformed, inProgress };
+}
+
+/**
+ * The condition two open lanes meet (ADR-0079 §1 and §3): no record belongs to
+ * two of them, and at most one adds migrations — and the entries it is read
+ * from are the table's `in progress` rows, one each (§2), so a list the parser
+ * cannot find is a violation rather than zero lanes.
+ */
+export function checkLanes(file, text) {
+  const violations = [];
+  const push = (line, rule, found, message) =>
+    violations.push({ file, line, rule, found, message });
+  const { lanes, malformed, inProgress } = parseLanes(text);
+
+  const entered = new Set();
+  for (const lane of lanes) {
+    if (entered.has(lane.deliverable)) {
+      push(
+        lane.line,
+        "lane-duplicate",
+        lane.deliverable,
+        "a deliverable has one open-lane entry (ADR-0079 §2)",
+      );
+    }
+    entered.add(lane.deliverable);
+  }
+  const open = new Set(inProgress.map((r) => r.deliverable));
+  for (const row of inProgress) {
+    if (!entered.has(row.deliverable)) {
+      push(
+        row.line,
+        "lane-missing",
+        row.deliverable,
+        "a deliverable `in progress` has an entry under `**Open lanes:**` in the window section (ADR-0079 §2)",
+      );
+    }
+  }
+  for (const lane of lanes) {
+    if (!open.has(lane.deliverable)) {
+      push(
+        lane.line,
+        "lane-not-open",
+        lane.deliverable,
+        "an open-lane entry names a deliverable the table does not mark `in progress`",
+      );
+    }
+  }
+
+  for (const m of malformed) {
+    push(
+      m.line,
+      "lane-malformed",
+      m.text,
+      "an open-lane entry reads `- **Lane [D<n>](plan)** — opened YYYY-MM-DD · records [NNNN](../adr/…), … · schema: yes|no`",
+    );
+  }
+
+  const owner = new Map();
+  for (const lane of lanes) {
+    for (const record of new Set(lane.records)) {
+      const first = owner.get(record);
+      if (first && first !== lane.deliverable) {
+        push(
+          lane.line,
+          "lane-shared-record",
+          record,
+          `ADR-${record} is already in ${first}'s lane; a record belongs to one open lane (ADR-0079 §1)`,
+        );
+      } else {
+        owner.set(record, lane.deliverable);
+      }
+    }
+  }
+
+  const schemaLanes = lanes.filter((l) => l.schema);
+  for (const lane of schemaLanes.slice(1)) {
+    push(
+      lane.line,
+      "lane-second-schema",
+      lane.deliverable,
+      `${schemaLanes[0].deliverable} already owns the schema; at most one open lane adds migrations (ADR-0079 §3)`,
+    );
+  }
+
+  return violations.sort((a, b) => a.line - b.line);
+}
+
+export async function scanLanes(root = repoRoot) {
+  const full = path.join(root, ...LEDGER.split("/"));
+  // A corpus with no ledger yet (`/bootstrap --empty` before it writes one)
+  // has no lanes to check.
+  if (!existsSync(full)) return { violations: [], lanes: 0 };
+  const text = await readFile(full, "utf8");
+  return {
+    violations: checkLanes(LEDGER, text),
+    lanes: parseLanes(text).lanes.length,
+  };
+}
+
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const inherited = await scan();
   const specs = await scanSpecs();
-  const violations = [...inherited, ...specs];
+  const lanes = await scanLanes();
+  const violations = [...inherited, ...specs, ...lanes.violations];
   for (const v of violations) {
     console.error(
       `${v.file}:${v.line}  [${v.rule}] ${JSON.stringify(v.found)} — ${v.message}`,
@@ -320,4 +511,5 @@ if (
   console.log(
     `behaviour specs: clean (${(await specDocuments()).length} files)`,
   );
+  console.log(`open lanes: disjoint (${lanes.lanes} open)`);
 }
