@@ -104,7 +104,7 @@ The links were run again after the review's fixes and this note, and were green 
 - `/frontend-conventions` still describes `app/providers/` as holding the session. The plan gives the skills to step 4.
 - `AppCrash` is re-exported by both `shared/ui` doors and has had no consumer in either app since before this step.
 
-**Pending the operator.** One thing to eyeball: the admin's "API is not reachable" screen, in both themes, to confirm `bg-background` changed nothing. It shows when the admin is loaded with the API stopped, so it needs the operator's stack.
+**Pending the operator.** One thing to eyeball: the admin's "API is not reachable" screen, in both themes, to confirm `bg-background` changed nothing. It shows when the admin is loaded with the API stopped, so it needs the operator's stack. _Accepted by the operator 2026-09-29; see the D22.2 note._
 
 ## D22.2 — `@repo/account`: the settings client, the preference cards, password reset and the shared profile features (2026-09-29)
 
@@ -201,7 +201,7 @@ The customer's build has no `table` chunk. Both apps are within budget, and neit
 
   This step builds without it: `packages/app-kit/package.json` and the kit's `SHAKEABLE` exemption are untouched.
 
-- **The admin's unreachable notice keeps `bg-background`** (carried from D22.1), and the kit gains no class parameter. ADR-0077 §1 names the segment and the sentence as the providers' only deliberate differences, so the class was drift between two copies. `body` paints the same token, so no pixel should change. _Visual confirmation pending._ If it differs, the fix is to remove the class from the kit, not to parameterise it.
+- **The admin's unreachable notice keeps `bg-background`** (carried from D22.1), and the kit gains no class parameter. ADR-0077 §1 names the segment and the sentence as the providers' only deliberate differences, so the class was drift between two copies. `body` paints the same token, so no pixel should change. _Accepted by the operator 2026-09-29: seen with the API blocked, in both themes, it looks the same._ If it ever differs, the fix is to remove the class from the kit, not to parameterise it.
 
 **Pending the operator.** Step 2's checkbox is not ticked. Its done-when includes `pnpm test:e2e`, which needs this commit in `main`.
 
@@ -211,7 +211,7 @@ The customer's build has no `table` chunk. Both apps are within budget, and neit
 4. Open the admin with requests to `localhost:4000` blocked, in the light theme and in the dark theme, and confirm the "API is not reachable" screen looks unchanged.
 5. Tick step 2 when all of the above pass.
 
-**Closed 2026-09-29.** `main` was fast-forwarded to `d716f50` by the coordinating session, on the operator's instruction. The operator then ran `pnpm install` and `pnpm test:e2e` in `main` and reported both green; that is the operator's report, and no counts were recorded. The step was ticked on the operator's instruction. The visual check of the admin's unreachable notice, item 4, was not reported, so it stays _pending the operator_ and goes to `/ship` as a named operator item.
+**Closed 2026-09-29.** `main` was fast-forwarded to `d716f50` by the coordinating session, on the operator's instruction. The operator then ran `pnpm install` and `pnpm test:e2e` in `main` and reported both green; that is the operator's report, and no counts were recorded. The step was ticked on the operator's instruction. The visual check of the admin's unreachable notice, item 4, was not reported at the tick. The operator reported it later the same day: seen with the API blocked, in both themes, it looks the same. It is _accepted by the operator_.
 
 ## D22.3 — The grid's and the form's suites live in their packages (2026-09-29)
 
@@ -319,4 +319,4 @@ After the review's two edits and this note, the links were run again: see the co
 3. `pnpm test:e2e`, in both apps, against the running stack.
 4. Tick step 3 when all of the above pass.
 
-The visual check of the admin's unreachable notice (D22.1, D22.2) is unchanged and still pending.
+The visual check of the admin's unreachable notice (D22.1, D22.2) was still pending when this note was written. The operator accepted it later the same day; see the D22.2 note.
