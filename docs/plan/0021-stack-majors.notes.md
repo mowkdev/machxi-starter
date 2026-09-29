@@ -144,3 +144,31 @@ The earlier run's only failure was `@repo/db`'s integration tier, "DATABASE_URL_
 - Run `pnpm install` in `main`. Nothing the dev servers load changes.
 - Decide ADR-0004's stale "with `dotenv`" wording (the last review finding above).
 - The side worktree `.claude/worktrees/d21-4` can be removed with `git worktree remove`.
+
+## D21.5 — TypeScript 6.0 (2026-09-29)
+
+- **`typescript` is `6.0.3`**, exact, in the catalog. `renovate.json`'s pin rule notes that the version lives once, in the catalog, and moves with the rule. The lockfile carries one `typescript`. `scripts/docs-hygiene.test.mjs`'s `ONE_VERSION_TOOLS` now names `typescript` beside `eslint`, `vite` and `vitest`, so "a held dependency is one fact" asserts it.
+- **No deprecated option was in the tree.** No preset or workspace `tsconfig` sets `baseUrl`, `moduleResolution: node10`/`classic`, a `target` below ES2015, `outFile`, `downlevelIteration`, or `esModuleInterop: false`. `paths` in both apps already stood without `baseUrl`. The flip alone was green, `check-types --force` 16/16 with no diagnostic.
+- **The flipped defaults are stated in `@repo/typescript-config`.** `base.json` now carries `types: []`, `noUncheckedSideEffectImports: true` and `libReplacement: false`, and `strict` was already there. A probe confirmed `types` really defaults to `[]` on 6.0.3: a lone `process.env` fails with TS2591. The tree stayed green only because every Node program imports a `node:` module. `node.json` now names `types: ["node"]`. `packages/config-vitest` is the one `node.json` workspace that does not declare `@types/node`, and its two factories use no Node global, so its `tsconfig.json` narrows `types` back to `[]` and no dependency is added. `DOM.Iterable` leaves `lib` in `react-library.json`, `vite.json` and `nextjs.json`, because 6.0 merged it into `DOM` and its lib file is now an empty stub. `rootDir`'s new default, the tsconfig's own directory, changes nothing: every composite package already had its root there, and a preset cannot state it because a path resolves against the file that sets it.
+- **Peers.** `typescript-eslint` 8.70.0 declares `>=4.8.4 <6.1.0`, `tsdown` 0.23.0 declares `^6`, and `drizzle-kit` declares no `typescript` peer. Nothing moved beside the compiler.
+
+**Done-when.** `pnpm check-types --force` 16/16 with no deprecation diagnostic. `pnpm lint --force` 21/21. The type-aware rules still run: a probe `f();` in `apps/api/src` drew `@typescript-eslint/no-floating-promises`. `pnpm build --filter api` green. `pnpm test:unit` 16/16 twice, the second 16 cached, `FULL TURBO`.
+
+**Review: one `code-reviewer` pass, no correctness finding.**
+
+- **Note: `base.json`'s comment overstated what `types: []` achieves.** Node's globals still reach every react-library and SPA program through `vitest.config.ts`'s imports, as they did on 5.9. Fixed by rewording the comment.
+- **Note: `typescript-eslint`'s peer caps at `<6.1.0`.** The Renovate pull request that proposes 6.1 will fail that peer until `typescript-eslint` widens it. The pull request's own gate will show this, so it is logged here and nothing changes now.
+
+**Gate** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`, side worktree `.claude/worktrees/d21-4`):
+
+| Check          | Result |
+| -------------- | ------ |
+| `lint`         | 21/21  |
+| `check-types`  | 16/16  |
+| `test`         | 16/16  |
+| `size`         | 4/4    |
+| `format:check` | clean  |
+
+**`pnpm outdated -r` majors.** Before: `@types/node` 24→26 (the floor) and `typescript` 5→7. After: `@types/node` 24→26 (the floor) and `typescript` 6→7, which is `D21.6`'s spike.
+
+**Pending the operator.** Run `pnpm install` in `main` after the fast-forward. The dev servers do not type-check, so nothing they load changes.
