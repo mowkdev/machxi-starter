@@ -7,7 +7,7 @@
 
 ## Goal
 
-Close what is expensive to retrofit on the backend before the starter is forked. The migration runner applies by hash, so a fork can merge the starter's later migrations; the signing secret can rotate; the reference images and compose are hardened; and row-level security is proved or refuted in a box. It is the last deliverable before the fork.
+Close what is expensive to retrofit on the backend before the starter is forked. The migration runner applies by hash, so a fork can merge the starter's later migrations; the signing secret can rotate; the reference images and compose are hardened; and row-level security is proved or refuted in a box. It is the last backend deliverable before the fork, and it runs beside D31 as the first pair of lanes (ledger §How D31 was scoped).
 
 ## Constraints
 
