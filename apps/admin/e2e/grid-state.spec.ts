@@ -20,18 +20,17 @@ test.beforeEach(async ({ app: page }) => {
   await waitForRows(page);
 });
 
-test("a header click sorts, and the URL says so in the API's own language", async ({
+test("the header's sort control sorts, and the URL says so in the API's own language", async ({
   app: page,
 }) => {
   /*
-   * `exact`, because the column's resize handle is *also* a button whose name
-   * contains the header — "Resize Last name" (`D4.5`). A loose name matches
-   * both and Playwright refuses to guess, which is the strict-mode violation
-   * doing its job.
+   * The sort control by its own name (ADR-0080 §1, `D31.1`) — the header's
+   * name is a label and sorts nothing. `exact` stays, because the column's
+   * other buttons ("Filter by Last name", "Resize Last name") share the words.
    */
   const sortByLastName = page.getByRole("button", {
     exact: true,
-    name: "Last name",
+    name: "Sort by Last name",
   });
 
   await sortByLastName.click();

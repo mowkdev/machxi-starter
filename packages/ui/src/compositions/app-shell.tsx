@@ -1,5 +1,7 @@
+import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
+import { Button } from "@repo/ui/components/button";
 import {
   PageActionsProvider,
   PageActionsTarget,
@@ -7,7 +9,7 @@ import {
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
+  useSidebar,
 } from "@repo/ui/components/sidebar";
 import { cn } from "@repo/ui/lib/utils";
 import { useUiStrings } from "@repo/ui/ui-strings";
@@ -101,6 +103,43 @@ import { useUiStrings } from "@repo/ui/ui-strings";
  * inset (which the primitive already positions `relative`) costs the budget
  * nothing at all, in both states.
  */
+
+/**
+ * The drawer's toggle, which shows the drawer's state (ADR-0080 §2, `D31.1`).
+ *
+ * The shell's own, not shadcn's generated `SidebarTrigger`: that primitive
+ * draws one fixed icon and ADR-0047 keeps it byte-identical, while the toggle
+ * has always been the shell's (ADR-0048). It reads the sidebar's context —
+ * `open` on a wide screen, `openMobile` on a narrow one, the same split
+ * `toggleSidebar` makes — and says the answer twice: a panel-close icon while
+ * the drawer is open and a panel-open one while it is closed, and
+ * `aria-expanded` for assistive technology. The accessible name stays the
+ * `UiStrings` sentence, and the primitive's keyboard shortcut, which lives in
+ * the provider, stands. The two `data-*` attributes are the primitive's, kept
+ * so anything that found the trigger by them still does.
+ */
+const DrawerToggle = () => {
+  const { isMobile, open, openMobile, toggleSidebar } = useSidebar();
+  const { toggleSidebar: label } = useUiStrings();
+
+  const expanded = isMobile ? openMobile : open;
+  const Icon = expanded ? PanelLeftCloseIcon : PanelLeftOpenIcon;
+
+  return (
+    <Button
+      aria-expanded={expanded}
+      className="-ml-1 size-7"
+      data-sidebar="trigger"
+      data-slot="sidebar-trigger"
+      size="icon"
+      variant="ghost"
+      onClick={toggleSidebar}
+    >
+      <Icon aria-hidden />
+      <span className="sr-only">{label}</span>
+    </Button>
+  );
+};
 
 export interface AppShellProps {
   /** The whole drawer as one node — the app's `<Sidebar>`, not three fragments. */
@@ -233,7 +272,7 @@ export const AppShell = ({
           ) : null}
           {/* 56px, and the first of ADR-0054 §5's bands. */}
           <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
+            <DrawerToggle />
             {breadcrumbs}
             {headerEnd ? <div className="ml-auto">{headerEnd}</div> : null}
           </header>

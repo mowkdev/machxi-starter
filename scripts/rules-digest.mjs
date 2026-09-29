@@ -243,6 +243,11 @@ export const AREAS = [
         text: "Credentials live in memory only — no token, CSRF token or principal in `localStorage`, `sessionStorage` or a client-set cookie; non-credential display state may be persisted. Refresh is single-flight, the CSRF token comes from the bootstrap endpoint, its cookie is named per population, and the client never reads `document.cookie`.",
       },
       {
+        topic: "The drawer toggle",
+        records: ["0080"],
+        text: "The shell renders its own drawer toggle rather than the generated `SidebarTrigger`, reading the sidebar's context — `open` on a wide screen, `openMobile` on a narrow one — and shows it twice: a panel-close icon while the drawer is open and a panel-open one while it is closed, and `aria-expanded`. Its accessible name stays the `UiStrings` sentence.",
+      },
+      {
         topic: "Server state",
         records: ["0043", "0044"],
         text: "TanStack Query owns all server state through per-entity key factories — never an inline key. Outcomes are declared in typed mutation `meta` and delivered by one global handler; queries are silent and render their own failure panel. List state lives in the URL in the API's own query language through the shared codec; a record URL carries only the record, and the way back travels as history state.",
@@ -254,8 +259,17 @@ export const AREAS = [
       },
       {
         topic: "The grid",
-        records: ["0037", "0038", "0039", "0041", "0042", "0052", "0054"],
-        text: "A grid page is a height budget with one scroll container, a sticky header and a static pager, every wrapper down to the grid carrying `flex flex-col flex-1 min-h-0` and nothing on that path clipping. Capability flags say what a surface offers and `can(action, resource)` says who may use it, conjoined once per screen so the grid never learns a resource name. There is no filter row: a filterable column gets a header dialog that commits on Apply, hot filters are toolbar stances, and the applied-filters bar renders from the URL. Create and the Columns control sit in the page-header band. Bulk delete is a bounded client-side fan-out with per-item refusals.",
+        records: [
+          "0037",
+          "0038",
+          "0039",
+          "0041",
+          "0042",
+          "0052",
+          "0054",
+          "0080",
+        ],
+        text: "A grid page is a height budget with one scroll container, a sticky header and a static pager, every wrapper down to the grid carrying `flex flex-col flex-1 min-h-0` and nothing on that path clipping. Capability flags say what a surface offers and `can(action, resource)` says who may use it, conjoined once per screen so the grid never learns a resource name. A header cell's name is a start-aligned label that sorts nothing; its controls sit at the cell's end, sort then filter, one pair of ghost icon buttons, the sort named `Sort by <header>` and showing the direction it holds. There is no filter row: a filterable column gets a header dialog that commits on Apply, hot filters are toolbar stances, and the applied-filters bar renders from the URL. Create and the Columns control sit in the page-header band. Bulk delete is a bounded client-side fan-out with per-item refusals.",
       },
       {
         topic: "What owns what",

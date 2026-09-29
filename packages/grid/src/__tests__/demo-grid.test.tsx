@@ -43,10 +43,12 @@ describe("AppGrid", () => {
   it("offers a sort control only where the config allows one", () => {
     render(<Harness page={pageOf(demoRows)} />);
 
-    expect(screen.getByRole("button", { name: "Name" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sort by Name" }),
+    ).toBeInTheDocument();
     // `tags` is not sortable in the config, so there is nothing to click.
     expect(
-      screen.queryByRole("button", { name: "Tags" }),
+      screen.queryByRole("button", { name: "Sort by Tags" }),
     ).not.toBeInTheDocument();
   });
 
@@ -57,7 +59,7 @@ describe("AppGrid", () => {
 
     render(<Harness page={pageOf(rows)} onChange={onChange} />);
 
-    await user.click(screen.getByRole("button", { name: "Name" }));
+    await user.click(screen.getByRole("button", { name: "Sort by Name" }));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ sort: [{ field: "name", direction: "asc" }] }),
@@ -78,7 +80,7 @@ describe("AppGrid", () => {
 
     render(<Harness page={pageOf(demoRows)} />);
 
-    await user.click(screen.getByRole("button", { name: "Name" }));
+    await user.click(screen.getByRole("button", { name: "Sort by Name" }));
 
     await waitFor(() => {
       expect(

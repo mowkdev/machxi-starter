@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AppShell } from "@repo/ui/compositions/app-shell";
@@ -195,6 +195,55 @@ describe("AppShell", () => {
        * other side.
        */
       expect(pageContainer()).toHaveTextContent("Page content");
+    });
+
+    /*
+     * ADR-0080 §2 (`D31.1`): the shell's own toggle, reading the sidebar's
+     * context. Both widths, because the two read different state — `open` on a
+     * wide screen and `openMobile` on a narrow one — and a toggle that read
+     * `open` everywhere would say "open" over a closed sheet on every phone.
+     * `fireEvent` rather than `user-event`, per the ceiling above.
+     */
+    it("the drawer toggle shows and announces whether the drawer is open", () => {
+      const width = window.innerWidth;
+
+      try {
+        for (const [innerWidth, startsOpen] of [
+          [1024, true],
+          [500, false],
+        ] as const) {
+          Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: innerWidth,
+          });
+
+          const { unmount } = renderShell();
+          const toggle = screen.getByRole("button", { name: "Toggle Sidebar" });
+          const icon = () => toggle.querySelector("svg");
+
+          expect(toggle).toHaveAttribute("aria-expanded", String(startsOpen));
+          expect(icon()).toHaveClass(
+            startsOpen ? "lucide-panel-left-close" : "lucide-panel-left-open",
+          );
+
+          fireEvent.click(toggle);
+
+          expect(toggle).toHaveAttribute("aria-expanded", String(!startsOpen));
+          expect(icon()).toHaveClass(
+            startsOpen ? "lucide-panel-left-open" : "lucide-panel-left-close",
+          );
+          // The name is the sentence, in both states: tests that find it by
+          // name keep working, and the state travels in `aria-expanded`.
+          expect(toggle).toHaveAccessibleName("Toggle Sidebar");
+
+          unmount();
+        }
+      } finally {
+        Object.defineProperty(window, "innerWidth", {
+          configurable: true,
+          value: width,
+        });
+      }
     });
 
     it("places breadcrumbs and headerEnd in the header beside the trigger", () => {
