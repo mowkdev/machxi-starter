@@ -1,11 +1,13 @@
 ---
 name: step
-description: Build the next unchecked step of the in-progress deliverable — implement, gate green, one bounded diff review, commit. Use as "/step" for the next pending step, or "/step D<n>.<step>" for a specific one.
+description: Build the next unchecked step of an in-progress deliverable — implement, gate green, one bounded diff review, commit. Use as "/step" for the next pending step of the one lane, "/step D<n>" to name the lane when more than one deliverable is in progress, or "/step D<n>.<step>" for a specific one.
 ---
 
 # Build step $ARGUMENTS
 
 One step, end to end, in this session. The deliverable must be `in progress` in `docs/plan/README.md`; if it is `planned`, stop and ask the operator to open it (moving the row is their decision).
+
+**Which lane.** More than one deliverable may be in progress when their records are disjoint, each a lane ([ADR-0079](../../../docs/adr/0079-parallel-lanes.md), parallel lanes; the open lanes are listed in [the ledger's window section](../../../docs/plan/README.md#the-window)). An argument of `D<n>` or `D<n>.<step>` names the lane; it must be one the window section lists. A bare call builds the next step of the one lane when exactly one row is `in progress`, and **is refused when more than one is** — stop and ask which lane rather than pick one. Stay in the named lane: never amend a record another lane lists.
 
 1. **Orient**: read the step's entry in the deliverable's plan file — the plan, not its `.notes.md` sibling, which is the journal of earlier steps and is read only when a step names it — load [`docs/rules/process.md`](../../../docs/rules/process.md) and the digest for the area you are about to touch, open the capability's spec in [`docs/specs/`](../../../docs/specs/) for the behaviour you are about to change, then read every record the step's **ADRs:** line names. If the step's head accepts a `proposed` record, do that first: flip its status, move each superseded parent to `superseded by` with its delta stated, update the index row — then build.
 2. **Implement.** Use the domain skills (`/api-conventions`, `/frontend-conventions`, `/new-api-module`, `/new-resource-ui`, `/ui-component`, `/db-schema-change`) and the builder agents where they fit. Where the plan or a record turns out to be wrong against reality, **amend it in place, labelled** `**Amended YYYY-MM-DD (D<n>.<step>).**` — the window is open while the deliverable is in progress ([the ledger](../../../docs/plan/README.md#the-window)); a corrected record is the system working, not a failure to report. **A behaviour change updates the capability's spec in the same diff** — the requirement, its scenario and the `Proved by:` test — or writes the spec when the capability has none (ADR-0068, behaviour specs); `pnpm docs:check` refuses a requirement without a scenario or a test that does not exist.

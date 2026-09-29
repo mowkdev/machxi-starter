@@ -1,7 +1,8 @@
 # D29 — Backend closing wave
 
 - Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, from the ledger rows D23, D24, D25 and D27 folded on the operator's decision the same day (ledger §How D22 was scoped, §How D29 was scoped). Not opened. D22 shipped 2026-09-29, and D30 runs next so that this deliverable opens as the first lane under [ADR-0079](../adr/0079-parallel-lanes.md) (ledger §How D30 was scoped).
-- Records: [ADR-0078](../adr/0078-backend-closing-wave.md) (migrations applied by hash, a key ring, deadlocks retried, the reference images hardened; deltas on ADR-0008, 0018, 0059, 0060, 0072 and 0073) — written `proposed` at scoping, accepted at the head of `D29.1`.
+- Records: [ADR-0078](../adr/0078-backend-closing-wave.md) (migrations applied by hash, a key ring, deadlocks retried, the reference images hardened) — written `proposed` at scoping, accepted at the head of `D29.1` — and the parents it supersedes, [ADR-0008](../adr/0008-database-migrations-and-seeding.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0059](../adr/0059-ci-containers-and-deployment.md), [ADR-0060](../adr/0060-list-endpoints-at-scale.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md) and [ADR-0073](../adr/0073-review-hardening.md), with [ADR-0067](../adr/0067-organizations.md) held by the lane from opening because step 4 moves it if the spike lands.
+- Schema: yes — the one schema lane while it is open ([ADR-0079](../adr/0079-parallel-lanes.md) §3).
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0029-backend-closing-wave.notes.md`](0029-backend-closing-wave.notes.md)
 

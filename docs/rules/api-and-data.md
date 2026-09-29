@@ -2,7 +2,7 @@
 
 # API and data — the rules in force
 
-Loaded with `apps/api`, `packages/contracts`, `packages/db`, `packages/crypto`, `packages/logger`. Each line names the record it comes from; open that record when the line is not enough. Which window is open and which records are in force is stated once, in [the ledger](../plan/README.md#the-window).
+Loaded with `apps/api`, `packages/contracts`, `packages/db`, `packages/crypto`, `packages/logger`. Each line names the record it comes from; open that record when the line is not enough. Which windows are open and which records are in force is stated once, in [the ledger](../plan/README.md#the-window).
 
 - **Functional style, no OOP** — No `class`, no `this`, no decorators, no DI framework. Every layer is `create<Module><Layer>(deps)` returning an `as const` object; types come from `ReturnType`. Third-party constructors are wrapped in `create*` functions. — [ADR-0009](../adr/0009-api-modular-layering.md) (modular API)
 - **Layers** — `*.routes.ts` → `*.controller.ts` → `*.service.ts` → `*.repository.ts`. Services never import Express or SQL; repositories hold every Drizzle query; controllers read `req.valid`, call the service with `req.ctx` first, and answer through `respond.*`. — [ADR-0009](../adr/0009-api-modular-layering.md) (modular API)

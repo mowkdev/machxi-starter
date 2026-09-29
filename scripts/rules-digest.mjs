@@ -317,13 +317,18 @@ export const AREAS = [
     rules: [
       {
         topic: "Deliverables",
-        records: ["0025"],
-        text: "Work is staged into numbered deliverables, one plan file each, steps written `D<n>.<step>`. One deliverable is in progress at a time, and it closes on an executable acceptance checklist.",
+        records: ["0079", "0025"],
+        text: "Work is staged into numbered deliverables, one plan file each, steps written `D<n>.<step>`, and each closes on an executable acceptance checklist. More than one may be in progress when no record — written, superseded or amended in place — belongs to two of them; each is a lane, and the condition is checked by a test when a lane opens. At most one open lane adds migrations. Steps stay sequential within a lane.",
       },
       {
         topic: "The window",
-        records: ["0025"],
-        text: "An ADR may be amended in place only while the deliverable it belongs to is in progress; once that deliverable ships the record changes only by supersession. Which window is open, and which records are in force, is stated in one place — the ledger — and linked from everywhere else.",
+        records: ["0079", "0025"],
+        text: "An ADR may be amended in place only while the deliverable it belongs to is in progress; once that deliverable ships the record changes only by supersession, and opening a second lane reopens nothing. Which windows are open, and which records are in force, is stated in one place — the ledger's window section, one entry per open lane — and linked from everywhere else.",
+      },
+      {
+        topic: "Lanes",
+        records: ["0079"],
+        text: "A lane builds on a branch named for its deliverable, merges `main` in before a step's gate and merges to `main` when the step is green; a step is not closed while `main` does not carry it, and `/ship` runs on `main`. Deliverable and record numbers are reserved by scoping on `main`. The shared surfaces merge by the row, and a conflicted digest is regenerated, never hand-merged. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
       },
       {
         topic: "Acceptance at the head",
@@ -474,7 +479,7 @@ export function renderArea(area, records) {
     "",
     `# ${area.title}`,
     "",
-    `Loaded with ${area.loadWhen}. Each line names the record it comes from; open that record when the line is not enough. Which window is open and which records are in force is stated once, in [the ledger](../plan/README.md#the-window).`,
+    `Loaded with ${area.loadWhen}. Each line names the record it comes from; open that record when the line is not enough. Which windows are open and which records are in force is stated once, in [the ledger](../plan/README.md#the-window).`,
     "",
   ];
   for (const rule of area.rules) {

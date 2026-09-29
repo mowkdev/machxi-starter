@@ -1,10 +1,10 @@
 # ADR-0079: Parallel lanes — more than one deliverable in progress when their records are disjoint (supersedes ADR-0025 in part — delta)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-29
-- Supersedes (at the step that makes the delta true): [ADR-0025](0025-deliverables.md) rule 5 as carried by [ADR-0065](0065-starter-lifecycle.md) and [ADR-0068](0068-behaviour-specs-and-plan-notes.md) (delta: how many deliverables may be in progress, and on what condition — what a deliverable is, that a window belongs to a deliverable and to its records only, acceptance at the head of the building step and the executable checklist that closes one all stand). Every parent stands for everything not named here.
+- Supersedes: [ADR-0025](0025-deliverables.md) rule 5 as carried by [ADR-0065](0065-starter-lifecycle.md) and [ADR-0068](0068-behaviour-specs-and-plan-notes.md) (delta: how many deliverables may be in progress, and on what condition — what a deliverable is, that a window belongs to a deliverable and to its records only, acceptance at the head of the building step and the executable checklist that closes one all stand). Every parent stands for everything not named here.
 
-> Written 2026-09-29 by `/scope` for D30 ([`docs/plan/0030-parallel-lanes.md`](../plan/0030-parallel-lanes.md)), with D22 in progress and D29 scoped, on the operator's question of the same day — writing is not opening, opening is not accepting. `proposed`; accepted at the head of `D30.1`. ADR-0025 rule 5 asked for this record in its own words: "If that constraint ever costs more than it saves, it is a decision to revisit here, not to quietly break."
+> Written 2026-09-29 by `/scope` for D30 ([`docs/plan/0030-parallel-lanes.md`](../plan/0030-parallel-lanes.md)), with D22 in progress and D29 scoped, on the operator's question of the same day — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-29 at the head of `D30.1`**, where [ADR-0025](0025-deliverables.md) moved to `superseded by` for rule 5's delta — its third partial successor, beside 0065 and 0068 — in the step that restructures the ledger's window section into lanes and makes the process skills take one. Amendable in place, labelled, while D30 is `in progress` (ADR-0025 rule 2). ADR-0025 rule 5 asked for this record in its own words: "If that constraint ever costs more than it saves, it is a decision to revisit here, not to quietly break."
 
 ## Context
 

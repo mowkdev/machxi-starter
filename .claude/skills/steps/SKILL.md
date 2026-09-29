@@ -1,9 +1,9 @@
 ---
 name: steps
-description: Run /step repeatedly, unattended, until every step of the in-progress deliverable is ticked — never advances to /ship and never touches another deliverable. Each step runs in its own subagent so the loop's own context stays flat regardless of how many steps run. Use as "/steps" to grind through the remaining build order in one session.
+description: Run /step repeatedly, unattended, until every step of one in-progress deliverable is ticked — never advances to /ship and never touches another deliverable. Each step runs in its own subagent so the loop's own context stays flat regardless of how many steps run. Use as "/steps" when one deliverable is in progress, or "/steps D<n>" to name the lane when more than one is.
 ---
 
-# Run the remaining steps of the in-progress deliverable
+# Run the remaining steps of an in-progress deliverable $ARGUMENTS
 
 A thin repeat of `/step` — nothing more. It adds no verification of its own: `/step` already gates (`pnpm check`, then the full gate) and reviews itself, so this skill's only job is to run it again, read what came back, and decide whether to continue.
 
@@ -13,10 +13,10 @@ State lives in the plan file's checkboxes and in git, not in this conversation �
 
 ## Loop
 
-1. **Confirm scope**: read `docs/plan/README.md` for the one `in progress` deliverable. If none is `in progress`, stop and say so — this skill does not open one. Read that deliverable's plan file once to see which steps are already checked.
+1. **Confirm scope — the lane**: read `docs/plan/README.md` for the `in progress` deliverables; more than one may be, each a lane with disjoint records ([ADR-0079](../../../docs/adr/0079-parallel-lanes.md), parallel lanes; the open lanes are in [the ledger's window section](../../../docs/plan/README.md#the-window)). With an argument `D<n>`, that is the lane, and it must be one the window section lists. Without one, the lane is the one `in progress` row; **when more than one row is `in progress`, refuse the bare call** and ask which lane. If none is `in progress`, stop and say so — this skill does not open one. Read the lane's plan file once to see which steps are already checked. The loop stays in its lane from here to the end.
 2. **Delegate one step** to a subagent (the `Agent` tool, `general-purpose`, run in the foreground — the next action depends on its result). Give it a self-contained prompt along these lines, naming the actual deliverable and repo path:
 
-   > Build the next unchecked step of deliverable `<Dn>` in `<repo path>` by invoking the `step` skill with no argument (`Skill({skill: "step"})`) and following its instructions exactly — orient, implement, gate, one bounded review, commit. Do not pass a specific step id. When done, report concisely: which step you built, the gate's result verbatim (pass/fail, not full logs), review findings and their fates, and anything left pending operator acceptance. If you cannot proceed — a blocker only the operator can resolve, a done-when that cannot be satisfied as written, two failures of the same kind — stop and say exactly why rather than guessing or routing around it.
+   > Build the next unchecked step of deliverable `<Dn>` in `<repo path>` by invoking the `step` skill with the lane as its argument (`Skill({skill: "step", args: "<Dn>"})`) and following its instructions exactly — orient, implement, gate, one bounded review, commit. Do not pass a specific step id. When done, report concisely: which step you built, the gate's result verbatim (pass/fail, not full logs), review findings and their fates, and anything left pending operator acceptance. If you cannot proceed — a blocker only the operator can resolve, a done-when that cannot be satisfied as written, two failures of the same kind — stop and say exactly why rather than guessing or routing around it.
 
    Never run more than one step per subagent, and never fold this dispatch into a background batch — the loop needs this step's outcome before deciding on the next one.
 

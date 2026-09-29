@@ -7,7 +7,7 @@ A blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin 
 ## Rules that always apply
 
 - **Load the digest for your area before writing code**: [`docs/rules/`](docs/rules/) holds one per area — API and data, frontend and platform, process — generated, each line naming its record. The path-scoped files in `.claude/rules/` load the right one with the files you touch. The records are the source of truth; the digests are derived and never hand-edited.
-- **The amendment window.** A record may be amended in place only while the deliverable it belongs to is in progress; anything else changes by supersession. Which window is open, which records are frozen and which supersession is a delta is stated in exactly one place — [the ledger's window section](docs/plan/README.md#the-window) — and linked, never restated.
+- **The amendment window.** A record is amended in place only while its deliverable is in progress; anything else changes by supersession. Which windows are open (one per lane, ADR-0079), which records are frozen and which supersession is a delta is stated in one place — [the ledger's window section](docs/plan/README.md#the-window) — linked, never restated.
 - **A step whose record is still `proposed` is gated.** The record is accepted at the head of the step that builds it.
 - **A fork supersedes; it never edits an inherited record.** An edit turns the next merge into a conflict and erases which decision was deliberately dropped ([`docs/forking.md`](docs/forking.md), [`docs/upstreaming.md`](docs/upstreaming.md)).
 
