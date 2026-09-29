@@ -39,7 +39,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
 - [x] **2. The lane check, and the branch convention.** `scripts/docs-hygiene.mjs` reads the ledger's window section into the open lanes and their records and refuses two lanes naming one record or two lanes owning the schema; `scripts/docs-hygiene.test.mjs` proves it on fixtures the way it proves the spec rules. `/step` gains the branch convention of ADR-0079 §4 — a branch named for the deliverable, `main` merged in before the gate, the step merged to `main` when green, a step not closed while `main` does not carry it — and `/ship` says it runs on `main`. `docs/forking.md` says the rule travels with the records and the ledger does not.
       **ADRs:** 0079 §1, §3 and §4; 0065 §1 and §5; 0068 §2.
       **Done when:** `scripts/docs-hygiene.test.mjs` cases "two open lanes never share a record", "a second lane on the schema is refused" and "one open lane reads as before" green; `pnpm docs:check` clean on the committed tree; `pnpm test:scripts` green; `pnpm lint` green.
-- [ ] **3. Close-out.** `.claude/README.md` says how lanes run and that `/steps` stays in its lane; the digests regenerated; then the definition of done.
+- [x] **3. Close-out.** `.claude/README.md` says how lanes run and that `/steps` stays in its lane; the digests regenerated; then the definition of done.
       **ADRs:** 0079, 0065 as carried.
       **Done when:** the definition of done below, every item.
 

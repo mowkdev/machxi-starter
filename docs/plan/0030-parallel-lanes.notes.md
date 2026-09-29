@@ -60,3 +60,22 @@ A ledger with nothing in progress and no list (a fresh fork's) reads clean, and 
 **Gate.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` — green (exit 0) before the review fixes and again after them; `pnpm test:scripts` 68/68. `node --test scripts/docs-hygiene.test.mjs` 44/44. `pnpm rules:digest` wrote nothing on a second run. `pnpm docs:check` is clean.
 
 **Pending the operator.** Nothing browser-side.
+
+## D30.3 — Close-out (2026-09-29)
+
+**Built.** `.claude/README.md` gains a **Lanes** bullet under the process skills: the lane condition (no record in two open lanes, one schema lane) with a link to the ledger's window section rather than a restatement, `pnpm docs:check` as the check, the skills taking `D<n>` and refusing a bare call while more than one lane is open, the branch convention of ADR-0079 §4 as amended (`lane/D<n>`, or `main` while alone; `main` merged in before each gate; each green step merged to `main`; `/ship` on `main`), and `/steps` staying in its lane. The digests were regenerated: `pnpm rules:digest` wrote 0 of 3, as `D30.1` and `D30.2` had left them current.
+
+**Amendments.** None.
+
+**Review** (`adr-reviewer`, one pass): one finding.
+
+1. MINOR: "`/steps` … never starts, touches or ships another" implied it may open or ship its own lane, which the skill never does. **Fixed**: "never opens or ships a deliverable, and never touches another".
+
+**The definition of done, item by item.** Verified by running, by the step's builder.
+
+1. **Green.** The gate, every task cold (`--force`): `lint` 22/22, `check-types` 17/17, `test` 17/17 (the integration tier against the test database), `size` 4/4, all 0 cached; `format:check` clean. After the review's one-word fix and this note, `lint`, `format:check` and `docs:check` were re-run: see the commit message.
+2. **Green, on the second attempt.** The first cold `pnpm test:unit --force` failed in `customer` alone: two cases timed out at 30 s (`impersonation-exchange.test.tsx` "leaves nothing unaccented on the state a person sits on", `pseudo-notice.test.tsx` "renders into the shell's banner region when the channel says so"); 15/17 others passed. `customer` alone, cold, passed 281/281, and a second full cold run passed 17/17, followed by a warm run at 17/17 cached, `FULL TURBO`. This step changed no source. The cause is inferred, not proved: load in the two-at-a-time unit tier beside the operator's running stack, the same family as D22.4's worker-start timeouts. **Logged, not fixed**: a flake in the customer jsdom tier under load.
+3. **Green.** `pnpm rules:digest` wrote 0 of 3 on both runs; `pnpm docs:check` clean (`open lanes: disjoint (1 open)`); `pnpm test:scripts` 68/68.
+4. **Green.** `git status` clean after the commit.
+
+**Pending the operator.** Nothing browser-side. `/ship` is not run here. The customer unit-tier timeout above is the operator's to route.
