@@ -80,10 +80,13 @@ const APP_KIT_DOOR = {
      * below is what allows it: the group matches by prefix, so the harness
      * entry cannot be carved out of the pattern here.
      */
-    slices: ["ui", "i18n", "api"],
+    // `error-reporting` since `D22.1` (ADR-0077 §1): the reporter's factory
+    // and the context's shape moved into the kit, and the slice that binds
+    // them to this app's DSN and adapter is their door.
+    slices: ["ui", "i18n", "api", "error-reporting"],
     group: ["@repo/app-kit", "@repo/app-kit/*"],
     message:
-      "Import the shared composition through `@/shared/{ui,i18n,api}/*`, not from @repo/app-kit directly (ADR-0062).",
+      "Import the shared composition through `@/shared/{ui,i18n,api,error-reporting}/*`, not from @repo/app-kit directly (ADR-0062).",
   };
 
 const DOORS = [

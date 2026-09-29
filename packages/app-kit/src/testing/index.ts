@@ -19,8 +19,9 @@
  * render helper builds the app's own route tree, its API client at its own
  * segment and its own provider stack, none of which a package may name
  * (ADR-0062 §Consequences, and §1's `D14.8` amendment, which names
- * `test/render.tsx` among the files that stay for exactly that reason). D22
- * parameterises the provider stack by segment and revisits them then.
+ * `test/render.tsx` among the files that stay for exactly that reason).
+ * ADR-0077 §1 moved the session and the root's join into the kit and left
+ * the render helpers where they were, with the router and the route tree.
  */
 export { fail, listOk, ok } from "./envelope";
 export { nestSearchParams, parseListSearch } from "./list-query";

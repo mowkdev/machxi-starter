@@ -1,76 +1,36 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import { createErrorReporter } from "../index.js";
+import { describe, expect, it, vi } from "vitest";
 
 /**
- * ADR-0066 §3: the seam is off unless a DSN is configured, and the adapter is
- * loaded only inside that branch.
+ * The reporting seam's binding (ADR-0066 §3, ADR-0077 §1 and §4).
  *
- * `imports` counts evaluations of the adapter module, because "no dependency
- * loaded" is the decision — not merely "nothing was reported".
+ * The factory — no DSN no reporter, the adapter loaded once and inside the
+ * branch, every failure swallowed — is certified in `@repo/app-kit`, which
+ * has owned it since `D22.1`. What this app binds is its DSN and its adapter,
+ * and this is the smoke test that both arrived: with a DSN configured, a
+ * report reaches *this app's* `reporter.ts`.
  */
 
-let imports = 0;
+const DSN = "https://key@errors.example.com/1";
 const report = vi.fn();
 
-vi.mock("../reporter.js", () => {
-  imports += 1;
+vi.mock("@/shared/config", () => ({
+  config: { VITE_ERROR_REPORTING_DSN: DSN },
+}));
 
-  return { report };
-});
+vi.mock("../reporter.js", () => ({ report }));
 
-beforeEach(() => {
-  imports = 0;
-  report.mockClear();
-});
+describe("reportError", () => {
+  it("hands this app's adapter this app's DSN", async () => {
+    const { reportError } = await import("../index.js");
 
-describe("createErrorReporter", () => {
-  it("builds nothing without a DSN", async () => {
-    expect(createErrorReporter(undefined)).toBeUndefined();
-
-    await Promise.resolve();
-
-    expect(imports).toBe(0);
-    expect(report).not.toHaveBeenCalled();
-  });
-
-  it("loads the adapter once and hands it the DSN", async () => {
-    const reporter = createErrorReporter("https://key@errors.example.com/1");
-
-    expect(reporter).toBeDefined();
-    // Still nothing: the import is inside the call, not inside the factory, so
-    // a build with a DSN that never fails still never downloads the chunk.
-    expect(imports).toBe(0);
-
-    reporter?.(new Error("first"), { boundary: "app" });
-    reporter?.(new Error("second"));
-
-    await vi.waitFor(() => {
-      expect(report).toHaveBeenCalledTimes(2);
-    });
-
-    expect(imports).toBe(1);
-    expect(report).toHaveBeenNthCalledWith(
-      1,
-      "https://key@errors.example.com/1",
-      expect.any(Error),
-      { boundary: "app" },
-    );
-  });
-
-  it("swallows an adapter that throws", async () => {
-    report.mockImplementationOnce(() => {
-      throw new Error("reporter exploded");
-    });
-
-    const reporter = createErrorReporter("https://key@errors.example.com/1");
-
-    expect(() => {
-      reporter?.(new Error("boom"));
-    }).not.toThrow();
+    reportError?.(new Error("boom"), { boundary: "app" });
 
     await vi.waitFor(() => {
       expect(report).toHaveBeenCalledTimes(1);
+    });
+
+    expect(report).toHaveBeenCalledWith(DSN, expect.any(Error), {
+      boundary: "app",
     });
   });
 });

@@ -1,4 +1,4 @@
-import type { ErrorContext } from "./context.js";
+import type { ErrorContext } from "@repo/app-kit";
 
 /**
  * **The one file a fork replaces** (ADR-0066 §3, amended `D14.6`).

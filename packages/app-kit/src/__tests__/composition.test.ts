@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -87,6 +87,10 @@ const EXTRACTED = [
   "app/providers/query-client.ts",
   "app/providers/ui-strings.tsx",
   "shared/api/query-meta.ts",
+  // `D22.1` (ADR-0077 §1): the context's shape moved with the reporter's
+  // factory. `index.ts` and `reporter.ts` stay — the binding and the one file
+  // a fork replaces.
+  "shared/error-reporting/context.ts",
   "shared/i18n/create-app-i18n.ts",
   "shared/ui/app-loader.tsx",
   "shared/ui/settings-options.tsx",
@@ -214,9 +218,163 @@ const packageManifest = (
     readFileSync(join(REPO, "packages", dir, "package.json"), "utf8"),
   ) as { sideEffects?: boolean | readonly string[] };
 
+/**
+ * The barrel imports a source file makes of a workspace package: a bare
+ * `@repo/<name>`, with no subpath.
+ *
+ * A subpath import (`@repo/ui/components/button`) names one module and is
+ * priced by that module, so it is not a barrel and not this check's subject.
+ * A type-only import is erased before a bundler sees it. A regex rather than a
+ * parse, and the imprecision runs one way on purpose: a specifier inside a
+ * comment counts, so the worst this can do is ask for a declaration that was
+ * not strictly needed.
+ */
+export const barrelImports = (source: string): string[] => [
+  ...new Set(
+    [
+      ...source.matchAll(
+        /(?:^|\n)\s*(?:import|export)\s+(?!type\s)[^;]*?\sfrom\s+["'](@repo\/[a-z0-9-]+)["']/g,
+      ),
+      ...source.matchAll(/(?:^|\n)\s*import\s+["'](@repo\/[a-z0-9-]+)["']/g),
+      ...source.matchAll(/import\(\s*["'](@repo\/[a-z0-9-]+)["']\s*\)/g),
+    ].map((match) => match[1] ?? ""),
+  ),
+];
+
+/**
+ * The barrels a set of sources import that {@link SHAKEABLE} does not name.
+ *
+ * `own` is the package making the claim. The kit's own barrel is exempt from
+ * the map for the reason the map's docblock gives — its `testing/setup` entry
+ * acts on import — and it is not exempt from the *check*: the kit's sources
+ * are read as part of every root, so what the kit imports by barrel is held
+ * to the same rule as what an app does.
+ */
+export const unnamedBarrels = (
+  sources: readonly string[],
+  shakeable: readonly string[],
+  own = "@repo/app-kit",
+): string[] =>
+  [...new Set(sources.flatMap(barrelImports))]
+    .filter((specifier) => specifier !== own)
+    .filter(
+      (specifier) => !shakeable.includes(specifier.slice("@repo/".length)),
+    )
+    .sort();
+
+/** Every `.ts`/`.tsx` under `dir` that ships: no tests, no harness. */
+const shippedSources = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+
+    if (entry.isDirectory())
+      return entry.name === "__tests__" || entry.name === "testing"
+        ? []
+        : shippedSources(path);
+
+    return /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+
+/** The file an app-local specifier names, or `undefined` for anything else. */
+const resolveLocal = (
+  app: string,
+  from: string,
+  specifier: string,
+): string | undefined => {
+  const base = specifier.startsWith("@/")
+    ? join(REPO, "apps", app, "src", specifier.slice(2))
+    : specifier.startsWith(".")
+      ? resolve(dirname(from), specifier)
+      : undefined;
+
+  if (base === undefined) return undefined;
+
+  return [
+    `${base}.ts`,
+    `${base}.tsx`,
+    join(base, "index.ts"),
+    join(base, "index.tsx"),
+  ].find((candidate) => existsSync(candidate));
+};
+
+/**
+ * What a composition root is made of: `app/index.tsx`, the app files it
+ * imports — its doors and its providers — and the kit's own shipped sources,
+ * where the root's join has lived since `D22.1`.
+ *
+ * One hop and no further. The router reaches the whole app through the route
+ * tree, which is split by route and is `grid-chunk.test.ts`'s subject; the
+ * entry is what this check is about.
+ */
+const appRootSources = (app: string): string[] => {
+  const root = join(REPO, "apps", app, "src", "app", "index.tsx");
+  const text = readFileSync(root, "utf8");
+  const reached = [...text.matchAll(/from\s+["']([^"']+)["']/g)]
+    .map((match) => resolveLocal(app, root, match[1] ?? ""))
+    .filter((path): path is string => path !== undefined);
+
+  return [text, ...reached.map((path) => readFileSync(path, "utf8"))];
+};
+
+const compositionRootSources = (app: string): string[] => [
+  ...appRootSources(app),
+  ...shippedSources(join(HERE, "..")).map((path) => readFileSync(path, "utf8")),
+];
+
 describe("the packages the composition roots import by barrel", () => {
   it("are the seven this test names", () => {
     expect(Object.keys(SHAKEABLE)).toHaveLength(7);
+  });
+
+  it("reads a root that is really there", () => {
+    // The guard against a vacuous pass: a root that resolved to nothing
+    // imports no barrel at all.
+    for (const app of APPS) {
+      // The app's own half alone: the kit's sources are always there, so
+      // counting them would let this hold over a root that resolved nothing.
+      const sources = appRootSources(app);
+
+      expect(sources.length).toBeGreaterThan(5);
+      expect(sources.flatMap(barrelImports)).toContain("@repo/app-kit");
+    }
+  });
+
+  it("a composition root imports only shakeable barrels", () => {
+    for (const app of APPS) {
+      const unnamed = unnamedBarrels(
+        compositionRootSources(app),
+        Object.keys(SHAKEABLE),
+      );
+
+      expect(
+        unnamed,
+        `apps/${app}'s composition root imports these by barrel and SHAKEABLE does not name them, so nothing checks that they declare their side effects and every module they re-export may land in the entry: ${unnamed.join(", ")}`,
+      ).toEqual([]);
+    }
+  });
+
+  it("reports the barrel a root imports and the map does not name", () => {
+    // A root that reached past its doors for a package nobody declared, as a
+    // call rather than as a temporarily broken tree.
+    expect(
+      unnamedBarrels(
+        [
+          'import { AppRoot } from "@repo/app-kit";\nimport { useT } from "@repo/i18n";\nimport { widget } from "@repo/unnamed";\n',
+        ],
+        Object.keys(SHAKEABLE),
+      ),
+    ).toEqual(["@repo/unnamed"]);
+  });
+
+  it("asks nothing about a subpath or a type", () => {
+    expect(
+      unnamedBarrels(
+        [
+          'import { Button } from "@repo/ui/components/button";\nimport type { Thing } from "@repo/unnamed";\n',
+        ],
+        Object.keys(SHAKEABLE),
+      ),
+    ).toEqual([]);
   });
 
   it.each(Object.entries(SHAKEABLE))(

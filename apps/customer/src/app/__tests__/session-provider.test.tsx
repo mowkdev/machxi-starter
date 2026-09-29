@@ -1,9 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { StrictMode } from "react";
+import { render, screen } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { SessionProvider } from "@/app/providers/session";
+import { SessionProvider, apiClient } from "@/app/providers/session";
 import { createBootstrap } from "@/shared/api/bootstrap";
 import { createApiClient } from "@/shared/api/client";
 import { createSessionStore } from "@/shared/api/session-store";
@@ -15,121 +14,41 @@ import {
 import { server } from "@repo/app-kit/testing";
 
 /**
- * The loading gate (ADR-0033 §Boot, ADR-0030 for the CSRF half).
+ * The session's binding (ADR-0077 §1 and §4).
  *
- * The gate is the whole reason this component exists: a protected route that
- * rendered before the refresh landed would read an empty store, and the
- * `_dashboard` guard would bounce a signed-in customer to `/login` on every
- * reload. So what is asserted is the *ordering* — nothing below renders until
- * the boot sequence settles — rather than any particular markup.
+ * The gate itself — the ordering, `StrictMode`, the unreachable notice's
+ * mechanics — is certified in `@repo/app-kit`, which has owned it since
+ * `D22.1`. What this app states is the segment and the sentence, and these
+ * are the cases that need this app to be asked: the boot sequence over this
+ * app's own handlers, and the sentence under this app's own catalogue.
  *
  * This is also the one suite that mounts the provider at all: `renderApp`
  * deliberately leaves it out, because a routing test that waited on two
  * requests to assert a redirect would be asserting the boot rather than the
  * guard, and the bootstrap would overwrite the store the test passed.
  */
-
-const setup = (
-  bootstrap: () => Promise<"authenticated" | "anonymous">,
-  { strict = false }: { strict?: boolean } = {},
-) => {
-  const store = createSessionStore();
-  const client = createApiClient({
-    store,
-    baseUrl: "http://api.test",
-    segment: "user",
-  });
-
-  const tree = (
-    <SessionProvider
-      bootstrap={bootstrap}
-      client={client}
-      fallback={<p>Starting…</p>}
-      store={store}
-    >
-      <p>Protected content</p>
-    </SessionProvider>
-  );
-
-  return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
-};
-
-describe("SessionProvider", () => {
-  it("holds the children back until the boot sequence settles", async () => {
-    let release: ((outcome: "authenticated") => void) | undefined;
-    const bootstrap = vi.fn(
-      () =>
-        new Promise<"authenticated">((resolve) => {
-          release = resolve;
-        }),
-    );
-
-    setup(bootstrap);
-
-    expect(screen.getByText("Starting…")).toBeInTheDocument();
-    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
-
-    release?.("authenticated");
-
-    expect(await screen.findByText("Protected content")).toBeInTheDocument();
-  });
-
-  it("renders the app for a visitor with no session", async () => {
-    // `anonymous` is a successful outcome, not a failure: the boot sequence ran
-    // and the answer was "nobody is signed in". The router takes it from there.
-    setup(() => Promise.resolve("anonymous"));
-
-    expect(await screen.findByText("Protected content")).toBeInTheDocument();
-  });
-
-  it("renders under StrictMode, which double-invokes the effect", async () => {
-    /*
-     * `main.tsx` mounts the app inside `StrictMode`, and no other suite renders
-     * that way — which is exactly how a latch that returned early from the
-     * effect once shipped a permanently blank screen in the admin while every
-     * test stayed green. React runs the effect, runs its cleanup, then runs it
-     * again; the pending promise must resolve into handlers that are still
-     * live. The finding is inherited with the code, so the suite that caught it
-     * is inherited too.
-     */
-    const bootstrap = vi.fn(() =>
-      Promise.resolve<"authenticated">("authenticated"),
-    );
-
-    setup(bootstrap, { strict: true });
-
-    expect(await screen.findByText("Protected content")).toBeInTheDocument();
-    // The request is shared across the double-invoke; only the handlers repeat.
-    expect(bootstrap).toHaveBeenCalledTimes(1);
-  });
-
-  it("says so when the API cannot be reached at all", async () => {
-    // A rejection means `GET /auth/csrf` itself failed — the API is down or
-    // misconfigured. Reporting that as "anonymous" would send a customer to a
-    // sign-in screen that cannot work either.
-    setup(() => Promise.reject(new Error("boom")));
-
-    const alert = await screen.findByRole("alert");
-
-    expect(alert).toHaveTextContent(/cannot reach the service/i);
-    await waitFor(() => {
-      expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
-    });
-  });
-
+describe("the customer app's session", () => {
   it("lands a first-time visitor anonymous, over the real boot sequence", async () => {
     /*
-     * The branch `createBootstrap` exists for, and the one every other case
-     * here stubs past: somebody who has never signed in has no refresh cookie,
-     * so `GET /auth/csrf` succeeds and `POST /auth/refresh` is refused. That is
-     * **not** an error — the boot ran and the answer was "nobody is signed in"
-     * — and the app must render, so the router can put them on `/login`.
+     * The branch `createBootstrap` exists for: somebody who has never signed in
+     * has no refresh cookie, so `GET /auth/csrf` succeeds and
+     * `POST /auth/refresh` is refused. That is **not** an error — the boot ran
+     * and the answer was "nobody is signed in" — and the app must render, so
+     * the router can put them on `/login`.
      *
      * Uncovered until `D12.2`'s review pointed out that the handlers answered
      * every refresh with a session, which made the mock more permissive than
      * the endpoint on the one path that decides whether a stranger sees the app
      * or an error screen (ADR-0036 §The load-bearing rule).
+     *
+     * The segment this app binds is proved by the assertion on the app's own
+     * client below; the boot itself runs over a client of the test's own, so
+     * the app's singletons are never written.
      */
+    expect(apiClient.instance.defaults.baseURL?.endsWith("/api/v1/user")).toBe(
+      true,
+    );
+
     const state = createAuthMockState();
     state.hasRefreshCookie = false;
     server.use(...createAuthHandlers(state));
@@ -191,6 +110,7 @@ describe("SessionProvider", () => {
 
     const alert = await screen.findByRole("alert");
 
+    expect(alert).toHaveTextContent(/cannot reach the service/i);
     expect(alert.textContent).not.toContain("VITE_");
   });
 });

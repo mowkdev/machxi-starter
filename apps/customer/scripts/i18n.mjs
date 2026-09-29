@@ -83,7 +83,9 @@ const DYNAMIC = [
   {
     /*
      * `common:loading.starting` in `@repo/app-kit`'s `AppLoader`, and
-     * `common:brand.authTagline` in its `AuthLayout` (`D14.8`, ADR-0062 §1).
+     * `common:brand.authTagline` in its `AuthLayout` (`D14.8`, ADR-0062 §1);
+     * `common:boot.unreachable` in its session provider's notice since
+     * `D22.1` (ADR-0077 §1).
      *
      * The composition both SPAs share lives in a package, and this scan reads
      * `src/` — so a `t()` call that moved out of the app is invisible here
@@ -93,8 +95,9 @@ const DYNAMIC = [
      * app's catalogues, which is what keeps this entry an exemption from the
      * *scan* rather than from the type.
      */
-    pattern: /^common:(loading\.starting|brand\.authTagline)$/,
-    reason: "read inside @repo/app-kit (ADR-0062 §1)",
+    pattern:
+      /^common:(loading\.starting|brand\.authTagline|boot\.unreachable)$/,
+    reason: "read inside @repo/app-kit (ADR-0062 §1, ADR-0077 §1)",
   },
   {
     /*

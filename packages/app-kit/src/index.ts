@@ -15,11 +15,15 @@
  *
  * - **`providers/`** — the query client with ADR-0034's global notification
  *   caches and the `meta` augmentation that types them, the i18n provider with
- *   ADR-0046 §4's adoption latch, and the `UiStrings` filler of §12.
+ *   ADR-0046 §4's adoption latch, and the `UiStrings` filler of §12. Since
+ *   `D22.1` (ADR-0077 §1) also the session provider with its unreachable
+ *   notice, the principal-cache boundary and the root composition that orders
+ *   them, each parameterised by what differed between the apps.
  * - **`layouts/`** — the auth screen of ADR-0054 §7, the account area's shell
  *   and summary of ADR-0053, and the settings options control.
- * - **`feedback/`** — the boot loader both gates render, and §2's top-level
- *   error boundary, which neither app had.
+ * - **`feedback/`** — the boot loader both gates render, §2's top-level
+ *   error boundary, which neither app had, and the factory of the reporter
+ *   that boundary is handed (ADR-0066 §3).
  * - **`router/`** — the localized error and not-found components, and the
  *   crash surface the boundary falls back to.
  * - **`i18n/`** — the app i18n factory of ADR-0046 §13.
@@ -27,12 +31,14 @@
  *   server, the jsdom setup file, and (`D20.10`) the envelope builders and
  *   the list-query reader every handler in both apps goes through.
  *
- * **What is deliberately *not* here** (ADR-0062 §1, amended at `D14.8`): the
- * settings, session and principal-cache providers, the router itself and the
- * render helpers. Each is built out of an app's entities, its segment, its
- * policy table or its route tree, and §Consequences forbids this package to
- * learn any of them. The rule that decides the boundary is not "is it
- * duplicated" but "can a door bind the difference with a value".
+ * **What is deliberately *not* here** (ADR-0062 §1, amended at `D14.8`, as
+ * carried by ADR-0077 §1): the settings provider, the router itself and the
+ * render helpers. Each is built out of an app's entities, its policy table or
+ * its route tree, and §Consequences forbids this package to learn any of them.
+ * The rule that decides the boundary is not "is it duplicated" but "can a door
+ * bind the difference with a value" — and `D22.1` moved the session and the
+ * principal cache across it on exactly that test: a segment, a sentence and a
+ * key function are values.
  *
  * **The dependency direction is downward-only.** This is the first package
  * that may depend on other platform packages; none of them may depend on it.
@@ -55,6 +61,27 @@ export {
 } from "./providers/query-client";
 
 export { createI18nProvider, type I18nProviderProps } from "./providers/i18n";
+
+export {
+  createAppSession,
+  type AppSession,
+  type AppSessionOptions,
+  type SessionProviderProps,
+  type UnreachableNoticeCopy,
+} from "./providers/session";
+
+export {
+  createPrincipalCache,
+  type PrincipalCache,
+  type PrincipalCacheBoundaryProps,
+} from "./providers/principal-cache";
+
+export {
+  AppRoot,
+  type AppGate,
+  type AppRootProps,
+  type ErrorMessageBinding,
+} from "./providers/app-root";
 
 export {
   AppUiStrings,
@@ -84,6 +111,13 @@ export {
   AppErrorBoundary,
   type AppErrorBoundaryProps,
 } from "./feedback/error-boundary";
+
+export {
+  createErrorReporter,
+  type ErrorContext,
+  type ErrorReportAdapter,
+  type ErrorReporter,
+} from "./feedback/error-reporting";
 
 export { AppCrash, AppError, AppNotFound } from "./router/defaults";
 

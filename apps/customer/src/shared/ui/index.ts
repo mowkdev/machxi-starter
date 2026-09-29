@@ -195,6 +195,10 @@ export { Spinner } from "./spinner";
  * for `@repo/ui`, which is why its `DOORS` row lists this slice: every one of
  * these was app code in *both* apps until the kit took ownership, and every
  * consumer above `shared` keeps the import it already had.
+ *
+ * `AppRoot` joined at `D22.1` (ADR-0077 §1) and took `AppLoader` and
+ * `AppErrorBoundary` off this door with it: the root composition mounts both
+ * inside the kit, so `app/index.tsx` was their last consumer here.
  */
 export {
   ACCOUNT_SECTION_LINK,
@@ -202,14 +206,14 @@ export {
   AccountSummary,
   AppCrash,
   AppError,
-  AppErrorBoundary,
-  AppLoader,
   AppNotFound,
+  AppRoot,
   AppUiStrings,
   AuthLayout,
   SettingsOptions,
   type AccountShellProps,
   type AccountSummaryProps,
+  type AppRootProps,
   type AppUiStringsProps,
   type AuthLayoutProps,
   type SettingsOption,
