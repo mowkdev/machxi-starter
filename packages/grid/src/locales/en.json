@@ -39,6 +39,9 @@
     "reset": "Reset to defaults",
     "resize": "Resize {{column}}"
   },
+  "sort": {
+    "trigger": "Sort by {{column}}"
+  },
   "filter": {
     "trigger": "Filter by {{column}}",
     "triggerActive": "Filter by {{column}} (filtered)",

@@ -1,6 +1,9 @@
-import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
+import { Harness, pageOf } from "./support/demo-harness";
+import { demoRows } from "./support/demo-resource";
 import { renderAt, renderGrid } from "./support/grid-fixture";
 
 /**
@@ -44,6 +47,114 @@ describe("the resize handle", () => {
       "hover:bg-border",
     );
     expect(handle).toHaveClass("bg-transparent");
+  });
+});
+
+/**
+ * The column's name and its controls (ADR-0080 §1, `D31.1`).
+ *
+ * The name is a label and sorts nothing; sort and filter are one pair of ghost
+ * icon buttons at the cell's end, in that order. jsdom lays nothing out, so
+ * "at the end" is asserted as structure — the controls are the cell's last
+ * flex child, after a label that takes the rest — and as the absence of the
+ * end-alignment the cell used to follow for an end-aligned column.
+ */
+describe("the header's controls", () => {
+  const cellFor = (name: RegExp) =>
+    screen
+      .getAllByRole("columnheader")
+      .find((cell) => name.test(cell.textContent ?? ""))!;
+
+  it("the column's name is a label and sorts nothing", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(<Harness page={pageOf(demoRows)} onChange={onChange} />);
+
+    // No control is named for the bare header any more.
+    expect(
+      screen.queryByRole("button", { name: "Name" }),
+    ).not.toBeInTheDocument();
+
+    const label = cellFor(/^Name$/).querySelector(
+      '[data-slot="grid-header-label"]',
+    );
+
+    expect(label).toHaveTextContent(/^Name$/);
+    expect(label?.closest("button")).toBeNull();
+
+    await user.click(label as HTMLElement);
+
+    expect(onChange).not.toHaveBeenCalled();
+    // And the cell's text is the name alone: the controls carry names, not text.
+    expect(cellFor(/^Name$/).textContent).toBe("Name");
+  });
+
+  it("the sort control is named for its column and shows the direction it holds", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} />);
+
+    const sort = screen.getByRole("button", { name: "Sort by Name" });
+
+    // At rest: the neutral two-way arrow, and nothing active.
+    expect(sort).not.toHaveAttribute("data-active");
+    expect(sort).not.toHaveAttribute("data-direction");
+    expect(sort.querySelector("svg")).toHaveClass("lucide-arrow-up-down");
+
+    await user.click(sort);
+
+    await waitFor(() => {
+      expect(sort).toHaveAttribute("data-direction", "asc");
+    });
+    expect(sort).toHaveAttribute("data-active", "true");
+    // The filter's active treatment, so the two read as one pair.
+    expect(sort).toHaveClass("bg-accent", "text-accent-foreground");
+    expect(sort.querySelector("svg")).toHaveClass("lucide-arrow-up");
+    expect(cellFor(/^Name$/)).toHaveAttribute("aria-sort", "ascending");
+
+    await user.click(sort);
+
+    await waitFor(() => {
+      expect(sort).toHaveAttribute("data-direction", "desc");
+    });
+    expect(sort.querySelector("svg")).toHaveClass("lucide-arrow-down");
+    // The name does not change with the state; `aria-sort` carries it.
+    expect(sort).toHaveAccessibleName("Sort by Name");
+    expect(cellFor(/^Name$/)).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("the header's controls sit at the cell's end in the order sort, filter", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    const cell = cellFor(/^Name$/);
+    const row = cell.firstElementChild as HTMLElement;
+    const controls = row.lastElementChild as HTMLElement;
+
+    expect(controls).toHaveAttribute("data-slot", "grid-header-controls");
+    // The label takes the rest of the row and truncates; the pair never shrinks.
+    expect(row.firstElementChild).toHaveClass("min-w-0", "flex-1", "truncate");
+    expect(controls).toHaveClass("shrink-0");
+
+    expect(
+      [...controls.querySelectorAll("button")].map((button) =>
+        button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Sort by Name", "Filter by Name"]);
+
+    // The same ghost icon button at the same size, so neither moves the band.
+    for (const button of controls.querySelectorAll("button")) {
+      expect(button).toHaveClass("size-7");
+    }
+
+    // Start-aligned on every column, end-aligned ones included.
+    const actions = cellFor(/^Actions$/);
+    expect(actions).not.toHaveClass("text-right");
+    expect(actions.firstElementChild).not.toHaveClass("justify-end");
+    // A column with neither control renders no empty controls box.
+    expect(
+      actions.querySelector('[data-slot="grid-header-controls"]'),
+    ).toBeNull();
   });
 });
 

@@ -49,7 +49,7 @@ These were recommended from the operator's list, and the operator confirmed them
 
 Each step: implement, gate green, one bounded diff review, commit (ADR-0050). ADRs listed are what the builder reads first.
 
-- [ ] **1. Accept ADR-0080; the grid header and the drawer toggle.** Accept 0080 at the head, where [ADR-0039](../adr/0039-grid-filter-ux.md)'s status line gains its delta. The index row, the topic table and the ledger's window section say so. Write 0080's digest lines in `scripts/rules-digest.mjs`.
+- [x] **1. Accept ADR-0080; the grid header and the drawer toggle.** Accept 0080 at the head, where [ADR-0039](../adr/0039-grid-filter-ux.md)'s status line gains its delta. The index row, the topic table and the ledger's window section say so. Write 0080's digest lines in `scripts/rules-digest.mjs`.
   - `@repo/grid`'s header cell renders the name as a label and the sort and filter controls at its end, per ADR-0080 §1, with the sort key in both catalogues.
   - The tests and the admin e2e spec that found sorting by the column's name find it by `"Sort by <header>"`.
   - `@repo/ui`'s `AppShell` renders its own drawer toggle per §2.

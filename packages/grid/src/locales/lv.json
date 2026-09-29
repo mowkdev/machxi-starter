@@ -41,6 +41,9 @@
     "reset": "Atjaunot noklusējumus",
     "resize": "Mainīt {{column}} platumu"
   },
+  "sort": {
+    "trigger": "Kārtot pēc {{column}}"
+  },
   "filter": {
     "trigger": "Filtrēt pēc {{column}}",
     "triggerActive": "Filtrēt pēc {{column}} (filtrēts)",

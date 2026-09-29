@@ -1,5 +1,5 @@
 import type { GridDensity } from "@repo/contracts";
-import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { useT } from "@repo/i18n";
@@ -28,10 +28,9 @@ import { widthOf, type AppGridTable, type GridHeaderGroups } from "./state";
  * A column head, in Instrument's caps (ADR-0054 §3/§4, `D11.2`).
  *
  * 11/16 at 600 with 0.07em tracking, upper-cased — the type role the record
- * gives column heads and group labels. It is spelled twice, on the `th` and on
- * the sort `Button`, because a button carries its own `text-sm` and
- * `font-medium` from the primitive's variants: `text-transform` and
- * `letter-spacing` inherit into it, size and weight do not.
+ * gives column heads and group labels. Spelled once, on the `th`, since
+ * `D31.1`: the name is a plain label inside it rather than the text of a sort
+ * button, so it inherits all four properties (ADR-0080 §1).
  */
 const HEADER_LABEL =
   "text-[11px] leading-4 font-semibold tracking-[0.07em] uppercase";
@@ -52,153 +51,191 @@ export const GridHeader = ({
   density,
   setColumnWidth,
   clearColumnWidth,
-}: GridHeaderProps) => (
-  /*
-   * Sticky within the scroll body — the point of the budget. It carries
-   * an opaque background so rows pass *under* the header rather than
-   * through it, and a stacking order, because ADR-0039's filter
-   * popovers and ADR-0038's row menus will float in this same
-   * container and have to layer against it knowingly. The opaque
-   * background is on the cells rather than on the `thead`, for the
-   * reason `STICKY_HEADER_TABLE` in `app-grid.tsx` records — and since `D11.2`
-   * that background is `--grid-header`, the header band's own ground rather
-   * than the card's (ADR-0054 §4).
-   */
-  <TableHeader className="sticky top-0 z-10 [&_td]:bg-grid-header [&_th]:bg-grid-header">
-    {headerGroups.map((headerGroup) => (
-      <TableRow key={headerGroup.id}>
-        {headerGroup.headers.map((header) => {
-          const sorted = header.column.getIsSorted();
-          const align = header.column.columnDef.meta?.align ?? "start";
-          const filter = header.column.columnDef.meta?.filter;
+}: GridHeaderProps) => {
+  const { t } = useT("grid");
 
-          const width = widthOf(preferences, header.column.id);
+  return (
+    /*
+     * Sticky within the scroll body — the point of the budget. It carries
+     * an opaque background so rows pass *under* the header rather than
+     * through it, and a stacking order, because ADR-0039's filter
+     * popovers and ADR-0038's row menus will float in this same
+     * container and have to layer against it knowingly. The opaque
+     * background is on the cells rather than on the `thead`, for the
+     * reason `STICKY_HEADER_TABLE` in `app-grid.tsx` records — and since `D11.2`
+     * that background is `--grid-header`, the header band's own ground rather
+     * than the card's (ADR-0054 §4).
+     */
+    <TableHeader className="sticky top-0 z-10 [&_td]:bg-grid-header [&_th]:bg-grid-header">
+      {headerGroups.map((headerGroup) => (
+        <TableRow key={headerGroup.id}>
+          {headerGroup.headers.map((header) => {
+            const sorted = header.column.getIsSorted();
+            const canSort = header.column.getCanSort();
+            const filter = header.column.columnDef.meta?.filter;
+            /* The words on screen, which every control's name is built from. */
+            const label = String(
+              header.column.columnDef.header ?? header.column.id,
+            );
 
-          return (
-            <TableHead
-              key={header.id}
-              /*
-               * `relative` so the resize handle can sit on the edge —
-               * and, since `D11.2`, the header band's own geometry
-               * (ADR-0054 §4): 34px tall against the primitive's 40,
-               * with the caps label and the body's own horizontal
-               * padding — the height is the header's and the padding
-               * is the column's, so Compact moves one and not the
-               * other (ADR-0054 §6, `D11.6`).
-               */
-              className={cn(
-                "relative h-[34px]",
-                DENSITY_CELL_X[density],
-                HEADER_LABEL,
-                align === "end" && "text-right",
-              )}
-              style={width === undefined ? undefined : { width }}
-              aria-sort={
-                sorted === false
-                  ? undefined
-                  : sorted === "asc"
-                    ? "ascending"
-                    : "descending"
-              }
-            >
-              {/*
-               * Sort control and filter icon, side by side (ADR-0039).
-               * Sorting is untouched — a header click still toggles it —
-               * and the filter icon is a sibling rather than something
-               * inside the sort button, which would be a button in a
-               * button.
-               */}
-              <div
-                className={cn(
-                  "flex items-center gap-1",
-                  align === "end" && "justify-end",
-                  width !== undefined && "overflow-hidden",
-                )}
+            const width = widthOf(preferences, header.column.id);
+
+            return (
+              <TableHead
+                key={header.id}
                 /*
-                 * The width lives on an inner block as well as on the
-                 * cell, and that is what makes sizing bite at all.
-                 * `@repo/ui`'s `TableHead` and `TableCell` are
-                 * `whitespace-nowrap`, and under `table-layout: auto` a
-                 * cell's own `width` is a suggestion its content can
-                 * overrule — so a narrowed column would simply refuse
-                 * to narrow. A fixed-width block inside it cannot.
+                 * `relative` so the resize handle can sit on the edge —
+                 * and, since `D11.2`, the header band's own geometry
+                 * (ADR-0054 §4): 34px tall against the primitive's 40,
+                 * with the caps label and the body's own horizontal
+                 * padding — the height is the header's and the padding
+                 * is the column's, so Compact moves one and not the
+                 * other (ADR-0054 §6, `D11.6`).
                  */
-                style={
-                  width === undefined ? undefined : { width, maxWidth: width }
+                className={cn(
+                  "relative h-[34px]",
+                  DENSITY_CELL_X[density],
+                  HEADER_LABEL,
+                )}
+                style={width === undefined ? undefined : { width }}
+                aria-sort={
+                  sorted === false
+                    ? undefined
+                    : sorted === "asc"
+                      ? "ascending"
+                      : "descending"
                 }
               >
-                {header.column.getCanSort() ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    /*
-                     * `text-[11px] font-semibold` restated from
-                     * {@link HEADER_LABEL}: the button variant sets
-                     * both, and the two properties that *do* inherit
-                     * — the caps and the tracking — arrive from the
-                     * `th` on their own. `h-7` so a 34px band holds it.
-                     */
-                    className="-ml-2.5 h-7 text-[11px] font-semibold data-[state=open]:bg-accent"
-                    onClick={header.column.getToggleSortingHandler()}
+                {/*
+                 * The name is a label, and the column's controls sit at the
+                 * cell's end — sort, then filter — as a pair of the same ghost
+                 * icon button (ADR-0080 §1, `D31.1`). The name sorts nothing:
+                 * a clickable name read as a link, and two targets for one
+                 * action is one too many. Start-aligned on every column,
+                 * numeric ones included, so the labels read down one edge.
+                 */}
+                <div
+                  className={cn(
+                    "flex items-center gap-1",
+                    width !== undefined && "overflow-hidden",
+                  )}
+                  /*
+                   * The width lives on an inner block as well as on the
+                   * cell, and that is what makes sizing bite at all.
+                   * `@repo/ui`'s `TableHead` and `TableCell` are
+                   * `whitespace-nowrap`, and under `table-layout: auto` a
+                   * cell's own `width` is a suggestion its content can
+                   * overrule — so a narrowed column would simply refuse
+                   * to narrow. A fixed-width block inside it cannot.
+                   */
+                  style={
+                    width === undefined ? undefined : { width, maxWidth: width }
+                  }
+                >
+                  {/*
+                   * `truncate` only on a text header: its `overflow: hidden`
+                   * would clip the focus ring of a control rendered as the
+                   * header — the selection column's select-all checkbox.
+                   */}
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1",
+                      typeof header.column.columnDef.header === "string" &&
+                        "truncate",
+                    )}
+                    data-slot="grid-header-label"
                   >
                     <table.FlexRender header={header} />
-                    {sorted === "asc" ? (
-                      <ArrowUpIcon aria-hidden />
-                    ) : sorted === "desc" ? (
-                      <ArrowDownIcon aria-hidden />
-                    ) : (
-                      <ChevronsUpDownIcon aria-hidden className="opacity-50" />
-                    )}
-                  </Button>
-                ) : (
-                  <table.FlexRender header={header} />
-                )}
+                  </span>
 
-                {filter === undefined ? null : (
-                  <ColumnFilterDialog
-                    field={header.column.id}
-                    label={String(
-                      header.column.columnDef.header ?? header.column.id,
-                    )}
-                    config={filter}
+                  {canSort || filter !== undefined ? (
                     /*
-                     * Committed through the engine, not around it: the
-                     * dialog's Apply is `setFilterValue`, which lands in
-                     * `onColumnFiltersChange` in `state.ts` and navigates. One
-                     * path in and out, the same one the deleted row used.
+                     * `shrink-0` so a narrowed column truncates its name and
+                     * never its controls; the cell's own padding keeps the pair
+                     * clear of the resize handle on the edge.
                      */
-                    value={
-                      header.column.getFilterValue() as
-                        ColumnFilterValue | undefined
-                    }
-                    onCommit={(next) => {
-                      header.column.setFilterValue(next);
+                    <div
+                      className="flex shrink-0 items-center gap-0.5"
+                      data-slot="grid-header-controls"
+                    >
+                      {canSort ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          /*
+                           * The filter trigger's size and active treatment, so
+                           * the two read as one pair (ADR-0080 §1). The
+                           * direction is the icon's to show; `aria-sort` on
+                           * the `th` is what a screen reader hears.
+                           */
+                          className={cn(
+                            "size-7 shrink-0",
+                            sorted !== false &&
+                              "bg-accent text-accent-foreground",
+                          )}
+                          aria-label={t("sort.trigger", { column: label })}
+                          data-active={sorted === false ? undefined : "true"}
+                          data-direction={sorted === false ? undefined : sorted}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          {sorted === "asc" ? (
+                            <ArrowUpIcon aria-hidden />
+                          ) : sorted === "desc" ? (
+                            <ArrowDownIcon aria-hidden />
+                          ) : (
+                            <ArrowUpDownIcon
+                              aria-hidden
+                              className="opacity-50"
+                            />
+                          )}
+                        </Button>
+                      ) : null}
+
+                      {filter === undefined ? null : (
+                        <ColumnFilterDialog
+                          field={header.column.id}
+                          label={label}
+                          config={filter}
+                          /*
+                           * Committed through the engine, not around it: the
+                           * dialog's Apply is `setFilterValue`, which lands in
+                           * `onColumnFiltersChange` in `state.ts` and
+                           * navigates. One path in and out, the same one the
+                           * deleted row used.
+                           */
+                          value={
+                            header.column.getFilterValue() as
+                              ColumnFilterValue | undefined
+                          }
+                          onCommit={(next) => {
+                            header.column.setFilterValue(next);
+                          }}
+                        />
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {header.column.columnDef.meta?.structural === true ? null : (
+                  <ResizeHandle
+                    label={label}
+                    width={width}
+                    onResize={(next) => {
+                      setColumnWidth(header.column.id, next);
+                    }}
+                    onReset={() => {
+                      clearColumnWidth(header.column.id);
                     }}
                   />
                 )}
-              </div>
-
-              {header.column.columnDef.meta?.structural === true ? null : (
-                <ResizeHandle
-                  label={String(
-                    header.column.columnDef.header ?? header.column.id,
-                  )}
-                  width={width}
-                  onResize={(next) => {
-                    setColumnWidth(header.column.id, next);
-                  }}
-                  onReset={() => {
-                    clearColumnWidth(header.column.id);
-                  }}
-                />
-              )}
-            </TableHead>
-          );
-        })}
-      </TableRow>
-    ))}
-  </TableHeader>
-);
+              </TableHead>
+            );
+          })}
+        </TableRow>
+      ))}
+    </TableHeader>
+  );
+};
 
 /** How far one arrow-key press moves an edge. */
 const RESIZE_STEP = 16;

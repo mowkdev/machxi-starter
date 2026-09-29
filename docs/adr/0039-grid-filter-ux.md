@@ -1,6 +1,6 @@
 # ADR-0039: Filter UX — header filter dialogs, hot filters and the applied-filters bar
 
-- Status: superseded by [ADR-0052](0052-grid-and-admin-followups.md) (delta: hot filters get chips)
+- Status: superseded by [ADR-0052](0052-grid-and-admin-followups.md) (delta: hot filters get chips) and [ADR-0080](0080-interface-polish.md) (delta: the column's name is a label, and sorting moves to an icon button beside the filter's at the cell's end)
 - Date: 2026-08-20
 
 > One of the D4 (data grid v2) decision set, written together with [ADR-0037](0037-grid-viewport-layout.md), [ADR-0038](0038-grid-selection-and-capabilities.md), [ADR-0040](0040-record-routes-and-edit-surfaces.md) and [ADR-0041](0041-grid-preferences.md), before D4 opens (`docs/plan/0004-data-grid-v2.md`, `planned` — it opens when D3 ships). `D4.4` is the planned implementing step. Under ADR-0025 it becomes amendable in place while D4 is `in progress`. **Accepted 2026-08-20**, at the head of `D4.4` — the per-step acceptance D4 runs on.

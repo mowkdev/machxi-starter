@@ -77,7 +77,7 @@ describe("the address bar", () => {
 
     await screen.findByRole("cell", { name: "ada@machxi.local" });
 
-    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Sort by Email" }));
     await waitFor(() => {
       expect(lastList()?.sort).toEqual([{ field: "email", direction: "asc" }]);
     });
@@ -217,7 +217,7 @@ describe("the address bar", () => {
 
     await screen.findByRole("cell", { name: "ada@machxi.local" });
 
-    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Sort by Email" }));
     await waitFor(() => {
       expect(router.state.location.searchStr).toBe("?sort=email");
     });

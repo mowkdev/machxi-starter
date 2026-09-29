@@ -1,10 +1,10 @@
 # ADR-0080: Interface polish — the grid header's controls, the drawer toggle's state, a centred auth card, and a visible wait (supersedes ADR-0039, 0052 and 0054 in part — deltas)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-29
 - Supersedes (each at the step that makes its delta true): [ADR-0039](0039-grid-filter-ux.md) as carried by [ADR-0052](0052-grid-and-admin-followups.md) (delta: §"A filter icon in the header" — the column's name is a label and sorting moves to an icon button beside the filter's; the filter button, its name and its active state stand); [ADR-0052](0052-grid-and-admin-followups.md) as carried by [ADR-0054](0054-design-language-instrument.md), [ADR-0057](0057-impersonation-sessions.md) and [ADR-0062](0062-frontend-build-and-shared-composition.md) (delta: §Alternatives' rejected "pending route component" is taken, behind a threshold; §"Felt navigation" and the shell's indicator stand); [ADR-0054](0054-design-language-instrument.md) (delta: §7's login — one centred card on a gradient ground, with the `D11.7` amendment's left-aligned column and hairline ground retired; every other surface of §7, and §2's tokens, stand). Every parent stands for everything not named here.
 
-> Written 2026-09-29 by `/scope` for D31 ([`docs/plan/0031-interface-polish.md`](../plan/0031-interface-polish.md)), on the operator's list of the same day, with D30 in progress — writing is not opening, opening is not accepting. `proposed`; accepted at the head of `D31.1`.
+> Written 2026-09-29 by `/scope` for D31 ([`docs/plan/0031-interface-polish.md`](../plan/0031-interface-polish.md)), on the operator's list of the same day, with D30 in progress — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-30 at the head of `D31.1`**, where [ADR-0039](0039-grid-filter-ux.md) moved to `superseded by` for §1's delta; [ADR-0054](0054-design-language-instrument.md) moves at `D31.2` and [ADR-0052](0052-grid-and-admin-followups.md) at `D31.3`, the steps that make their deltas true. Amendable in place, labelled, while D31 is `in progress` (ADR-0025 rule 2, as carried by ADR-0079).
 
 ## Context
 

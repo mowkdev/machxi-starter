@@ -348,11 +348,11 @@ describe("the staff grid", () => {
     ]);
 
     /*
-     * Named exactly, not by pattern: since `D4.4` the Email header holds two
-     * buttons — the sort control and ADR-0039's filter icon — and `/Email/`
-     * matches both.
+     * The sort control, by its own name (ADR-0080 §1, `D31.1`): the header's
+     * name is a label now, and the Email header holds two icon buttons — sort
+     * and ADR-0039's filter — each named for the column.
      */
-    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Sort by Email" }));
 
     await waitFor(() => {
       expect(lastList()?.sort).toEqual([{ field: "email", direction: "asc" }]);
