@@ -1,6 +1,6 @@
 # D30 — Parallel lanes
 
-- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, on the operator's question the same day, with D22 in progress and D29 scoped (ledger §How D30 was scoped). Not opened. D22 shipped 2026-09-29, so the one condition of ADR-0025 rule 5 (the rule this deliverable supersedes, and which binds it until it ships) is met; opening is the operator's decision.
+- Status: **in progress** — **scoped in full 2026-09-29 by `/scope`**, on the operator's question the same day, with D22 in progress and D29 scoped (ledger §How D30 was scoped). **Opened 2026-09-29**, the day D22 shipped, on the operator's decision, with the four decisions below confirmed as drafted (ledger §How D30 opened).
 - Records: [ADR-0079](../adr/0079-parallel-lanes.md) (more than one deliverable in progress when their records are disjoint; a delta on ADR-0025 rule 5 as carried by ADR-0065 and ADR-0068) — written `proposed` at scoping, accepted at the head of `D30.1`.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0030-parallel-lanes.notes.md`](0030-parallel-lanes.notes.md)
@@ -20,7 +20,7 @@ Let deliverables whose records never meet be built at the same time, in separate
 
 ## Decisions taken at scoping (2026-09-29)
 
-Recommended in the sitting that asked whether two deliverables could be built at once; the operator confirms them when D30 opens.
+Recommended in the sitting that asked whether two deliverables could be built at once; confirmed by the operator at opening, 2026-09-29.
 
 - **Disjoint records, not disjoint files.** The condition on two lanes is that no record — written, superseded or amended — belongs to both. Files are git's problem.
 - **One schema owner.** At most one open lane adds migrations; the journal is one file.
