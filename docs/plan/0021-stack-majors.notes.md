@@ -112,7 +112,7 @@ The per-step build record of [D21](0021-stack-majors.md) — what was built, the
 
 ## D21.4 — `@types/node` at the floor, and `dotenv` 18 (2026-09-28)
 
-**Built. The gate is not green yet, so the box stays unticked.** Closes `STK-10` once it is ticked.
+**Built.** Closes `STK-10`.
 
 - **`@types/node` is `^24.19.0`**, both in the catalog and as a new `overrides` hold. Without the hold, `autoInstallPeers` answered the optional peers of `@inquirer/*` and `msw` with a second copy at 22.20.3, and Vitest resolved twice. The lockfile now carries one `@types/node`, and `renovate.json`'s register gives the reason with `allowedVersions: "<25"`.
 - **`@repo/db` no longer depends on `dotenv`** (operator decision, option B; see the plan's `Amended 2026-09-28 (D21.4)`). `tooling/env.ts` loads the root `.env` with `process.loadEnvFile` behind `existsSync`. `env.test.ts` proves that the environment wins over the file and that a missing file does nothing. `dotenv` ^18.0.4 remains only as the API's dev dependency. The one other copy in the lockfile is `dotenv@16.0.3`, and it comes from `eslint-plugin-turbo`.
@@ -125,22 +125,22 @@ The per-step build record of [D21](0021-stack-majors.md) — what was built, the
 - **Low: the scan read only the top level of `outDir`.** Fixed. It is now recursive.
 - **Low: ADR-0004 §Loading still says the seed scripts load `.env` "with `dotenv`".** Its step-6 amendment also credits "the library surface" with keeping dotenv out of production. ADR-0004 is closed, so it cannot be edited in place. Routed to the operator: a delta at `D21.7` or later, or accept the gap. The rule itself, "No `dotenv` in production builds", is true again.
 
-**Gate** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`, in the side worktree `.claude/worktrees/d21-4`):
+**Gate** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`, in the side worktree `.claude/worktrees/d21-4`, re-run cold on 2026-09-29 after the review fixes, with the operator's root `.env` copied in):
 
-| Check          | Result                        |
-| -------------- | ----------------------------- |
-| `lint`         | 21/21                         |
-| `check-types`  | 16/16                         |
-| `test`         | 14/16, `@repo/db#test` failed |
-| `size`         | 4/4                           |
-| `format:check` | clean                         |
+| Check          | Result |
+| -------------- | ------ |
+| `lint`         | 21/21  |
+| `check-types`  | 16/16  |
+| `test`         | 16/16  |
+| `size`         | 4/4    |
+| `format:check` | clean  |
 
-`@repo/db`'s unit tier passed, 105/105. Its integration tier failed with "DATABASE_URL_TEST_OWNER is not set" because the worktree has no root `.env`, and a deny rule stops this session from copying the operator's. Nothing in the code is at fault.
+The earlier run's only failure was `@repo/db`'s integration tier, "DATABASE_URL_TEST_OWNER is not set", because the worktree had no root `.env` and a deny rule stops this session from copying the operator's.
 
 **`pnpm outdated -r` majors.** Before: `@types/node` 22→26, `dotenv` 17→18, `typescript` 5→7. After: `@types/node` 24→26 (the floor, as the register records) and `typescript` 5→7.
 
 **Pending the operator.**
 
-- Copy the root `.env` into `.claude/worktrees/d21-4`, then run the gate cold there. When it is green, tick the box, commit, and fast-forward `main`.
-- Then run `pnpm install` in `main`. Nothing the dev servers load changes.
+- Run `pnpm install` in `main`. Nothing the dev servers load changes.
 - Decide ADR-0004's stale "with `dotenv`" wording (the last review finding above).
+- The side worktree `.claude/worktrees/d21-4` can be removed with `git worktree remove`.
