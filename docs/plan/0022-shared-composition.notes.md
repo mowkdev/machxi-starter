@@ -210,3 +210,5 @@ The customer's build has no `table` chunk. Both apps are within budget, and neit
 3. `pnpm test:e2e`, in both apps, against the running stack.
 4. Open the admin with requests to `localhost:4000` blocked, in the light theme and in the dark theme, and confirm the "API is not reachable" screen looks unchanged.
 5. Tick step 2 when all of the above pass.
+
+**Closed 2026-09-29.** `main` was fast-forwarded to `d716f50` by the coordinating session, on the operator's instruction. The operator then ran `pnpm install` and `pnpm test:e2e` in `main` and reported both green; that is the operator's report, and no counts were recorded. The step was ticked on the operator's instruction. The visual check of the admin's unreachable notice, item 4, was not reported, so it stays _pending the operator_ and goes to `/ship` as a named operator item.
