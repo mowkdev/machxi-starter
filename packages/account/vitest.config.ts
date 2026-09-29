@@ -12,6 +12,9 @@ import { defineConfig, mergeConfig } from "vitest/config";
 export default mergeConfig(
   reactConfig,
   defineConfig({
-    test: { setupFiles: ["./src/__tests__/support/setup.ts"] },
+    test: {
+      setupFiles: ["./src/__tests__/support/setup.ts"],
+      testTimeout: 30_000,
+    },
   }),
 );

@@ -17,6 +17,8 @@ import { defineConfig } from "vitest/config";
 export const reactConfig = defineConfig({
   test: {
     environment: "jsdom",
+    // Parallel `test:unit` runs many jsdom tiers; cores − 1 each overran Vitest's fixed 60s worker start.
+    maxWorkers: "50%",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/.turbo/**"],
     clearMocks: true,

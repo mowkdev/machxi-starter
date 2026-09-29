@@ -367,3 +367,33 @@ The visual check of the admin's unreachable notice (D22.1, D22.2) was still pend
 
 - `AppCrash` is still re-exported by both apps' `shared/ui` doors, and neither app uses it (from D22.1).
 - The scratch worktree folder `.claude/worktrees/d22-4-gen` is out of git's list, but Windows would not delete it.
+
+## Before `/ship` — the unit tier's fix
+
+Made 2026-09-29 by a cloud session, on the operator's instruction ("push the changes, ship the D22 if possible"), to settle the definition of done's item 2.
+
+**The cause.** Each jsdom tier starts `cores − 1` Vitest workers, and `pnpm test:unit` runs up to ten tiers at once. On a many-core machine that is well over a hundred forks starting together. Vitest 5 gives each one a fixed 60 s to answer (`START_TIMEOUT`, not configurable), and a fork waiting behind the others misses it. D28 met the same error on a cold `pnpm check` and passed on a rerun. D22.3 made it steady by moving the grid's and the form's large suites into their packages, where they run beside both apps' tiers.
+
+**The fix.**
+
+- `@repo/vitest-config/react` sets `maxWorkers: "50%"`, so each jsdom tier starts half the cores' worth of workers.
+- `@repo/account` sets `testTimeout: 30_000`, as `@repo/grid`, `@repo/form` and both apps already do; D22.2 missed it. Under load its suite was the first to fail, on the 5 s default.
+
+No record changes: neither setting is decided by a record, and ADR-0026's `test:unit` stays parallel.
+
+**Measured in the cloud container** (Linux, 4 cores, no Postgres, no Docker daemon). `pnpm <script>` there cannot spawn turbo's tasks ("Exec format error", the container's pnpm wrapper), so turbo was called directly and every tier's `test:unit` was run ten at a time with `xargs -P 10`, as turbo's default concurrency does.
+
+- The error does not reproduce there at the default worker count: 17 tiers green, 189 s.
+- Forcing 15 workers per tier (`VITEST_MAX_WORKERS=15`, a 16-core machine's default) fails `admin` and `@repo/account` on test timeouts. That confirms the overload, though not the Windows start failure itself.
+- With the fix, ten at a time: 17 tiers green, 2494 tests (item 9's total), 193 s.
+- The admin tier alone: 84.2 s before, 115.1 s after (3 workers to 2). This is the cost, and it falls on the gate's serial `pnpm test`.
+- `turbo run lint check-types` 39/39 cold; Prettier clean on both files.
+
+**Still for the operator before `/ship`:**
+
+- item 2: `pnpm test:unit` twice, the second `FULL TURBO`, on the operator's machine, which is where the failure lives;
+- item 1: the gate, since its `pnpm test` needs Postgres;
+- item 4: `pnpm test:e2e`;
+- item 7: `docker compose -f docker/prod/compose.yaml build`.
+
+Item 5 does not apply, since D22 touched no endpoint (`/ship` runs `test:postman` only where a deliverable did). If the admin tier's solo time matters more than the headroom, `"75%"` is the next setting to try.
