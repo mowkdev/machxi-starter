@@ -1,6 +1,6 @@
 # D29 — Backend closing wave
 
-- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, from the ledger rows D23, D24, D25 and D27 folded on the operator's decision the same day (ledger §How D22 was scoped, §How D29 was scoped). Not opened: D22 is `in progress` (ADR-0025 rule 5), and D30 runs between them so that this deliverable opens as the first lane under [ADR-0079](../adr/0079-parallel-lanes.md) (ledger §How D30 was scoped).
+- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, from the ledger rows D23, D24, D25 and D27 folded on the operator's decision the same day (ledger §How D22 was scoped, §How D29 was scoped). Not opened. D22 shipped 2026-09-29, and D30 runs next so that this deliverable opens as the first lane under [ADR-0079](../adr/0079-parallel-lanes.md) (ledger §How D30 was scoped).
 - Records: [ADR-0078](../adr/0078-backend-closing-wave.md) (migrations applied by hash, a key ring, deadlocks retried, the reference images hardened; deltas on ADR-0008, 0018, 0059, 0060, 0072 and 0073) — written `proposed` at scoping, accepted at the head of `D29.1`.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0029-backend-closing-wave.notes.md`](0029-backend-closing-wave.notes.md)

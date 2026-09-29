@@ -401,3 +401,13 @@ Item 5 does not apply, since D22 touched no endpoint (`/ship` runs `test:postman
 **The worker cap was not enough.** On the operator's Windows machine, `pnpm test:unit` on `cdb76cc` still failed in eight tiers: `@repo/account`, `@repo/api-client`, `@repo/form`, `@repo/grid`, `@repo/ui`, `admin`, `api` and `customer`. Every one stopped at 121–125 s with its files still `[queued]`, so its workers never started; 9 tasks passed and 8 were cached. `api` is a Node tier, which the jsdom cap does not touch. So the limit is how many Vitest processes turbo runs at once, not the workers inside each one.
 
 **The second fix.** The root `test:unit` script runs turbo at `--concurrency=2`. `pnpm check` runs `lint` and `check-types` together first, then `pnpm test:unit`, so the inner loop gets the same limit. The flag lives in the root script, as ADR-0026 asks of a concurrency limit. ADR-0026's table still reads true: it calls `test:unit` parallel, and two at a time is parallel. The per-tier `"50%"` stays: with it, two jsdom tiers together start at most as many workers as the machine has cores.
+
+## `/ship`
+
+**Shipped 2026-09-29**, on `a3f7732` plus the close-out's documents. The ledger's §How D22 closed separates what was machine-verified from what the operator reported. In short:
+
+- **Operator's report, "all green" on `a3f7732`, no counts recorded:** the gate (its first `pnpm test` lost one API integration hook, `the cap turned off`, a reset-and-seed past 30 s beside the running dev stack; the run after it was green), `pnpm test:unit` twice with the second `FULL TURBO`, `pnpm test:e2e` in both apps, and the production images built with both `VITE_*_API_URL` set. The first image build, without them, was refused by `D20.8`'s guard, as designed.
+- **Verified in the cloud container on `a3f7732`:** `pnpm size` 4/4 at the committed baselines; `pnpm rules:digest` wrote nothing on a second run; `pnpm docs:check` clean; `pnpm test:scripts` 58/58.
+- **Not applicable:** `pnpm test:postman`, since no endpoint changed.
+
+The loose ends above stay as written: `AppCrash` in both doors, and the scratch worktree folder on the operator's machine.

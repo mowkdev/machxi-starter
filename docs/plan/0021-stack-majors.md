@@ -1,6 +1,6 @@
 # D21 — Stack majors
 
-- Status: **in progress** — **scoped in full 2026-09-23 by `/scope`**, from the row inserted 2026-09-14 (ledger §How D20–D26 were inserted) and the two reviews' stack findings (`STK-04`, `STK-10`); **opened 2026-09-23**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D21 opened).
+- Status: **shipped 2026-09-29** — **scoped in full 2026-09-23 by `/scope`**, from the row inserted 2026-09-14 (ledger §How D20–D26 were inserted) and the two reviews' stack findings (`STK-04`, `STK-10`); **opened 2026-09-23**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D21 opened).
 - Records: none written at scoping. The majors build what [ADR-0059](../adr/0059-ci-containers-and-deployment.md) §3 as carried by [ADR-0073](../adr/0073-review-hardening.md) §7 and [ADR-0074](../adr/0074-review-follow-ups.md) §2 already decide — one pull request per major, the exact pins registered with their reasons, one fact per hold. A step that finds a rule wrong writes the delta record at its head; the TypeScript 7 spike is the one step expected to.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0021-stack-majors.notes.md`](0021-stack-majors.notes.md)

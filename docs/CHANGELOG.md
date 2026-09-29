@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D22 — Shared composition, second wave · 2026-09-29
+
+What the two SPAs repeated moved into packages before the starter is forked, so a fork edits a route tree and a dictionary rather than files a later merge from the starter also touches. The session, the principal cache and the root's composition now live in `@repo/app-kit`, and each app's copy is a binding. The settings client, the preference cards, password reset and the shared profile features form a new eighth platform package, `@repo/account`, which each app reaches through the feature and entity slices that held them. The grid's and the form's door-level suites live in their own packages. The kit declares its side effects and the barrel guard no longer exempts it, and the parallel unit tier runs two workspaces at a time, so its workers start on a many-core machine. Tag `starter-D22`.
+
 ## D21 — Stack majors · 2026-09-29
 
 The queued majors, one step each so every breakage reads apart: Vitest 5, ESLint 10 with its plugin set, Vite 8 with `@vitejs/plugin-react` 6 under the bounded bundle budgets, `@types/node` at the Node 24 floor, and TypeScript 6.0 with the defaults it flips written into the presets. The TypeScript 7 spike landed: `tsc -b` runs on the native compiler (a cold `check-types` from about 50s to 15s) while the linter keeps 6.0 through an alias until `typescript-eslint` admits 7. `dotenv` left `@repo/db` for Node's own loader, so no file in the API image carries a loader package any more, and the configuration record's loading rules were brought back in line with the tree. Tag `starter-D21`.
