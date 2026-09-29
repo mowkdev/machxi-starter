@@ -1,6 +1,6 @@
 # D29 — Backend closing wave
 
-- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, from the ledger rows D23, D24, D25 and D27 folded on the operator's decision the same day (ledger §How D22 was scoped, §How D29 was scoped). Not opened. D22 and D30 shipped 2026-09-29, so this deliverable opens as the first lane under [ADR-0079](../adr/0079-parallel-lanes.md) (ledger §How D30 was scoped, §How D30 closed); opening is the operator's decision.
+- Status: **in progress** — **scoped in full 2026-09-29 by `/scope`**, from the ledger rows D23, D24, D25 and D27 folded on the operator's decision the same day (ledger §How D22 was scoped, §How D29 was scoped). **Opened 2026-09-30** on the operator's decision, the second lane under [ADR-0079](../adr/0079-parallel-lanes.md) beside D31, built on `lane/D29` in its own worktree against its own test database, `machxi_d29_test` (ledger §How D29 opened).
 - Records: [ADR-0078](../adr/0078-backend-closing-wave.md) (migrations applied by hash, a key ring, deadlocks retried, the reference images hardened) — written `proposed` at scoping, accepted at the head of `D29.1` — and the parents it supersedes, [ADR-0008](../adr/0008-database-migrations-and-seeding.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md), [ADR-0059](../adr/0059-ci-containers-and-deployment.md), [ADR-0060](../adr/0060-list-endpoints-at-scale.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md) and [ADR-0073](../adr/0073-review-hardening.md), with [ADR-0067](../adr/0067-organizations.md) held by the lane from opening because step 4 moves it if the spike lands.
 - Schema: yes — the one schema lane while it is open ([ADR-0079](../adr/0079-parallel-lanes.md) §3).
 - Ledger: [`docs/plan/README.md`](README.md)
@@ -8,7 +8,7 @@
 
 ## Goal
 
-Close what is expensive to retrofit on the backend before the starter is forked. The migration runner applies by hash, so a fork can merge the starter's later migrations; the signing secret can rotate; the reference images and compose are hardened; and row-level security is proved or refuted in a box. It is the last backend deliverable before the fork, and it runs beside D31 as the first pair of lanes (ledger §How D31 was scoped).
+Close what is expensive to retrofit on the backend before the starter is forked. The migration runner applies by hash, so a fork can merge the starter's later migrations; the signing secret can rotate; the reference images and compose are hardened; and row-level security is proved or refuted in a box. It is the last backend deliverable before the fork, and it runs beside D31, the first pair of lanes (ledger §How D31 was scoped).
 
 ## Constraints
 
