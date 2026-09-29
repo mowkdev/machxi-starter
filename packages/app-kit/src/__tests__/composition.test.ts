@@ -31,8 +31,11 @@ const APPS = ["admin", "customer"] as const;
  * `@repo/ui` is deliberately absent: its own `globals.css` carries
  * `@source "../../src"`, so the design system scans itself for every consumer.
  * `api-client`, `app-services`, `resource` and `i18n` hold no class at all.
+ * `@repo/account` joined at `D22.2` (ADR-0077 §2): its forms spell the auth
+ * card's 38px rung themselves.
  */
 const RENDERING_PACKAGES = {
+  "@repo/account": "account",
   "@repo/app-kit": "app-kit",
   "@repo/form": "form",
   "@repo/grid": "grid",
@@ -202,6 +205,9 @@ describe("every app's styles.css", () => {
  *   a barrel.
  */
 const SHAKEABLE = {
+  // `D22.2` (ADR-0077 §2): both roots reach it through `entities/settings`,
+  // for the settings gate, and through `shared/i18n` for its catalogue.
+  account: false,
   "api-client": false,
   "app-services": false,
   contracts: ["./src/locales/source.ts"],
@@ -297,24 +303,53 @@ const resolveLocal = (
   ].find((candidate) => existsSync(candidate));
 };
 
-/**
- * What a composition root is made of: `app/index.tsx`, the app files it
- * imports — its doors and its providers — and the kit's own shipped sources,
- * where the root's join has lived since `D22.1`.
- *
- * One hop and no further. The router reaches the whole app through the route
- * tree, which is split by route and is `grid-chunk.test.ts`'s subject; the
- * entry is what this check is about.
- */
-const appRootSources = (app: string): string[] => {
-  const root = join(REPO, "apps", app, "src", "app", "index.tsx");
-  const text = readFileSync(root, "utf8");
-  const reached = [...text.matchAll(/from\s+["']([^"']+)["']/g)]
-    .map((match) => resolveLocal(app, root, match[1] ?? ""))
-    .filter((path): path is string => path !== undefined);
+/** The file the router's split begins at: past it, a route is its own chunk. */
+const ROUTE_TREE = "routeTree.gen.ts";
 
-  return [text, ...reached.map((path) => readFileSync(path, "utf8"))];
+/**
+ * What a composition root is made of: `app/index.tsx`, every app file it
+ * reaches — its providers, the slices they bind and the doors under those —
+ * and the kit's own shipped sources, where the root's join has lived since
+ * `D22.1`.
+ *
+ * **Followed until the route tree and no further** (`D22.2`). Until this step
+ * the walk stopped one hop from the root, which was every barrel the root
+ * could then reach; `@repo/account` arrives three hops away — the root
+ * imports its settings provider, which imports `entities/settings`, which is
+ * the package's door — so a one-hop walk would have held over a root whose
+ * newest barrel nothing had declared. The walk stops at the generated route
+ * tree because that is where the entry stops: `autoCodeSplitting` gives each
+ * route's component its own chunk, which is `grid-chunk.test.ts`'s subject.
+ */
+const appRootFiles = (app: string): string[] => {
+  const root = join(REPO, "apps", app, "src", "app", "index.tsx");
+  const seen = new Set<string>([root]);
+  const queue = [root];
+
+  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+    const text = readFileSync(file, "utf8");
+
+    for (const match of text.matchAll(/from\s+["']([^"']+)["']/g)) {
+      const reached = resolveLocal(app, file, match[1] ?? "");
+
+      if (
+        reached === undefined ||
+        seen.has(reached) ||
+        reached.endsWith(ROUTE_TREE)
+      ) {
+        continue;
+      }
+
+      seen.add(reached);
+      queue.push(reached);
+    }
+  }
+
+  return [...seen];
 };
+
+const appRootSources = (app: string): string[] =>
+  appRootFiles(app).map((path) => readFileSync(path, "utf8"));
 
 const compositionRootSources = (app: string): string[] => [
   ...appRootSources(app),
@@ -322,8 +357,28 @@ const compositionRootSources = (app: string): string[] => [
 ];
 
 describe("the packages the composition roots import by barrel", () => {
-  it("are the seven this test names", () => {
-    expect(Object.keys(SHAKEABLE)).toHaveLength(7);
+  it("are the eight this test names", () => {
+    expect(Object.keys(SHAKEABLE)).toHaveLength(8);
+  });
+
+  it("follows a root past its first hop, to the account's door", () => {
+    // The guard on the walk itself: `@repo/account` is three hops from each
+    // root, so a walk that stopped short would never read the file that
+    // imports it and the case below would hold for nothing.
+    for (const app of APPS) {
+      const door = join("entities", "settings", "index.ts");
+
+      expect(
+        appRootFiles(app).some((path) => path.endsWith(door)),
+        `apps/${app}'s root no longer reaches ${door}`,
+      ).toBe(true);
+      expect(appRootSources(app).flatMap(barrelImports)).toContain(
+        "@repo/account",
+      );
+      expect(appRootFiles(app).some((path) => path.endsWith(ROUTE_TREE))).toBe(
+        false,
+      );
+    }
   });
 
   it("reads a root that is really there", () => {

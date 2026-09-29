@@ -13,26 +13,21 @@ import { createSessionStore } from "@/shared/api/session-store";
 import { renderApp } from "@/test/render";
 
 /**
- * "Email me a recovery link" (`D18.6`, ADR-0071 §4).
+ * `/forgot-password` — this app's door onto `@repo/account`'s recovery form
+ * (`D22.2`, ADR-0077 §4; the screen is `D18.6`'s, ADR-0071 §4).
  *
- * Driven through the real route tree from `/forgot-password`, so the `_auth`
- * layout and its mirror guard are exercised rather than re-declared — the
- * sign-in and sign-up suites' shape, for the third screen in that family.
+ * **One smoke case, proving the binding.** What the form does — that it says
+ * the same thing about every address, takes its confirmation back, refuses an
+ * address the schema refuses, and words a `429` through the code map — is
+ * certified once, in the package's own `forgot-password-form.test.tsx`, where
+ * this suite's four cases and its twin's moved.
  *
- * **The property this file exists for is a negative one**: that the screen says
- * the *same thing* whatever address it is given. ADR-0020 §Enumeration is the
- * whole design of the endpoint — an address with an account and a stranger's
- * are answered identically — and the way that is thrown away is not a wrong
- * status code but a client that renders "check your inbox" for one and
- * "we could not find that address" for the other. So the two cases below
- * assert the same node, and the fixture addresses are deliberately one that
- * exists in the mock's world and one that does not.
+ * What is left is what only this app can prove: that the route is reachable
+ * anonymously under the `_auth` layout and its mirror guard, through the real
+ * route tree; that the form the door re-exports is mounted on it with this
+ * app's catalogue; and that the request goes to this app's own segment, which
+ * is the whole of the population rule.
  */
-
-const STRANGER = "nobody@machxi.local";
-
-/** The one sentence there is, as the catalogue writes it. */
-const CONFIRMATION = /If that address has an account, a link is on its way/;
 
 let state: AuthMockState;
 
@@ -43,87 +38,32 @@ beforeEach(() => {
 
 const setup = () => ({
   user: userEvent.setup(),
-  // An empty store: `_auth`'s mirror guard sends a signed-in visitor home, so
-  // a session here would render the home screen and assert nothing.
+  // An empty store: `_auth`'s mirror guard sends a signed-in visitor to
+  // home, so a session here would render that and assert nothing.
   ...renderApp({
     initialPath: "/forgot-password",
     store: createSessionStore(),
   }),
 });
 
-const ask = async (
-  user: ReturnType<typeof userEvent.setup>,
-  email: string,
-): Promise<void> => {
-  const field = await screen.findByLabelText("Email");
+describe("asking for a recovery link, through this app's door", () => {
+  it("is reachable signed out, and posts the address to this app's segment", async () => {
+    const { user, router } = setup();
 
-  await user.clear(field);
-  await user.type(field, email);
-  await user.click(screen.getByRole("button", { name: "Email me a link" }));
-};
+    await user.type(await screen.findByLabelText("Email"), CREDENTIALS.email);
+    await user.click(screen.getByRole("button", { name: "Email me a link" }));
 
-describe("asking for a recovery link", () => {
-  it("confirms an address that has an account", async () => {
-    const { user } = setup();
-
-    await ask(user, CREDENTIALS.email);
-
-    expect(await screen.findByText(CONFIRMATION)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /If that address has an account, a link is on its way/,
+      ),
+    ).toBeInTheDocument();
+    // Still here: the guard let an anonymous visitor stay.
+    expect(router.state.location.pathname).toBe("/forgot-password");
+    // The handlers answer on this app's segment alone, so a call recorded is
+    // a call that went there.
     expect(state.forgotPasswordCalls).toEqual([
-      // The locale travels in the body because the server must not read a
-      // stored one to answer (ADR-0071 §2, §4).
       { email: CREDENTIALS.email, locale: "en" },
     ]);
-  });
-
-  it("says exactly the same thing about an address nobody holds", async () => {
-    const { user } = setup();
-
-    await ask(user, STRANGER);
-
-    expect(await screen.findByText(CONFIRMATION)).toBeInTheDocument();
-    /*
-     * And nothing else on the screen distinguishes them either: the assertion
-     * above would pass while a second sentence sat beside it, so the sentence
-     * is checked to be the only status the screen reports.
-     */
-    expect(
-      screen.getAllByRole("status").map((node) => node.textContent),
-    ).toEqual([screen.getByText(CONFIRMATION).textContent]);
-    expect(state.forgotPasswordCalls).toEqual([
-      { email: STRANGER, locale: "en" },
-    ]);
-  });
-
-  it("takes the confirmation back when the address is edited", async () => {
-    const { user } = setup();
-
-    await ask(user, CREDENTIALS.email);
-    expect(await screen.findByText(CONFIRMATION)).toBeInTheDocument();
-
-    /*
-     * The confirmation was about the address that was sent (`D18.4`'s
-     * correction to the resend control, which this screen inherits): the
-     * person it would mislead is the one who mistyped the address they are
-     * trying to recover and is now looking at a promise about a different one.
-     */
-    await user.type(screen.getByLabelText("Email"), "x");
-
-    expect(screen.queryByText(CONFIRMATION)).not.toBeInTheDocument();
-  });
-
-  it("never leaves the browser with an address the schema refuses", async () => {
-    const { user } = setup();
-
-    await ask(user, "not-an-address");
-
-    /*
-     * `forgotPasswordBody` is the object the API validates with (ADR-0011,
-     * ADR-0023), and both of §4's budgets are spent by a request the schema
-     * goes on to refuse — so a client that posted this would burn a stranger's
-     * mailbox budget on a typo.
-     */
-    expect(state.forgotPasswordCalls).toEqual([]);
-    expect(screen.queryByText(CONFIRMATION)).not.toBeInTheDocument();
   });
 });

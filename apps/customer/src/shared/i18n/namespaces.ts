@@ -73,6 +73,9 @@ export const NAMESPACES = [
   "impersonation",
   "organizations",
   "form",
+  // `@repo/account`'s own (`D22.2`, ADR-0077 §2), declared for the reason
+  // `form` is: the instance must still load it.
+  "accountClient",
 ] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];

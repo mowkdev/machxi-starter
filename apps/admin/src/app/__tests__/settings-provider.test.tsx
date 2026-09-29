@@ -1,10 +1,9 @@
 import type { GridPreferencesV1 } from "@repo/contracts";
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SettingsProvider } from "@/app/providers/settings";
-import { SETTINGS_WRITE_DEBOUNCE_MS } from "@/entities/settings";
 import { gridStorageKey } from "@/shared/grid/preferences";
 import { useGridPreferences } from "@/shared/grid/use-grid-preferences";
 import { useTheme } from "@/shared/theme";
@@ -16,22 +15,22 @@ import {
   type SettingsMockState,
 } from "@/test/msw/handlers/settings.handlers";
 import { server } from "@repo/app-kit/testing";
-import { createSessionStore } from "@/shared/api/session-store";
 
 /**
- * The account's settings, adopted by the app (`D6.3`, ADR-0045 §The client).
+ * The settings gate, as this app binds it (`D22.2`, ADR-0077 §4; ADR-0045 §The
+ * client).
  *
- * Three claims, and each of them is about *ordering* rather than markup:
+ * The gate is `@repo/account`'s, and what it does — the ordering, the
+ * anonymous path, the writes — is certified in that package over stand-ins.
+ * This is the door's suite, and it asks what only this app can:
  *
- * 1. Nothing below renders until an authenticated principal's settings have
- *    settled, because ADR-0041's `read` is synchronous and a grid that mounted
- *    first would read the device and never hear about the account.
- * 2. The theme the account holds is applied when it arrives, and a toggle after
- *    that writes both the device cache and the account.
- * 3. Anonymous — before a sign-in, after a sign-out, or after a failed read —
- *    the app is exactly what it was before this deliverable: `localStorage`
- *    behind the seam, and no toast. Signed out is decided by the *session*,
- *    not by whether the disabled query still holds the last principal's row.
+ * 1. **The binding.** The gate holds until the account's settings have
+ *    settled and then hands them to this app's real providers: a grid reads
+ *    the account's arrangement through the real grid door, and the theme is
+ *    adopted under this app's device-key prefix.
+ * 2. **The toast.** A failed read raises none and a refused write raises one,
+ *    and both are the verdict of this app's query client (ADR-0043), which the
+ *    package does not have.
  *
  * The provider is rendered directly, with its dependencies passed, for the
  * reason `session-provider.test.tsx` renders that one directly: the module's
@@ -79,10 +78,7 @@ const ThemeProbe = () => {
   );
 };
 
-const renderProvider = (
-  state: SettingsMockState,
-  { anonymous = false }: { anonymous?: boolean } = {},
-) => {
+const renderProvider = (state: SettingsMockState) => {
   server.use(...createSettingsHandlers(state));
 
   return renderWithProviders(
@@ -90,7 +86,7 @@ const renderProvider = (
       <GridProbe />
       <ThemeProbe />
     </SettingsProvider>,
-    { store: anonymous ? createSessionStore() : authenticatedAs() },
+    { store: authenticatedAs() },
   );
 };
 
@@ -119,69 +115,6 @@ describe("the settings gate", () => {
     // The grid's very first read is the account's, not the device's — which is
     // the whole reason one round trip is paid before anything renders.
     expect(await screen.findByTestId("width")).toHaveTextContent("360");
-  });
-
-  it("renders immediately for an anonymous visitor, and asks for nothing", async () => {
-    const state = createSettingsMockState();
-
-    // `machxi.admin.grid:staff:v1` as a device-local entry: signed out, this is
-    // the only owner there is, and the app is what it was before ADR-0045.
-    window.localStorage.setItem(
-      gridStorageKey("staff"),
-      JSON.stringify(entry(140)),
-    );
-
-    renderProvider(state, { anonymous: true });
-
-    expect(screen.getByTestId("width")).toHaveTextContent("140");
-    expect(screen.queryByText("Loading settings…")).not.toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(state.seen.patches).toEqual([]);
-    });
-    // Not merely "no write": an anonymous visitor must not *ask*, because the
-    // request would 401 and start a refresh for a session that does not exist.
-    expect(state.seen.reads).toBe(0);
-  });
-
-  it("goes back to the device alone when the session ends in this tab", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({
-      theme: "dark",
-      locale: "en",
-      gridDensity: "comfortable",
-      grids: { staff: entry(360) },
-    });
-
-    // The arrangement this device has, which is not the account's.
-    window.localStorage.setItem(
-      gridStorageKey("staff"),
-      JSON.stringify(entry(140)),
-    );
-
-    const { store } = renderProvider(state);
-
-    expect(await screen.findByTestId("width")).toHaveTextContent("360");
-
-    // Logging out disables the query but does not evict what it cached, and
-    // `staleTime: Infinity` means it is never refetched. The signed-out app is
-    // still the local adapter alone (ADR-0045 §The server adapter), so this
-    // must not be decided by what happens to be in the cache.
-    act(() => {
-      store.clear();
-    });
-
-    expect(screen.getByTestId("width")).toHaveTextContent("140");
-
-    // And no publisher either: a toggle on the login screen writes the device
-    // and speaks to nobody.
-    await user.click(screen.getByRole("button", { name: "Light" }));
-
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("light");
-    await new Promise((resolve) => {
-      setTimeout(resolve, SETTINGS_WRITE_DEBOUNCE_MS + 250);
-    });
-    expect(state.seen.patches).toEqual([]);
   });
 
   it("degrades to the device when the read fails, without a toast", async () => {
@@ -220,33 +153,6 @@ describe("the theme as an account fact", () => {
     expect(window.localStorage.getItem("machxi.admin.theme")).toBe("dark");
   });
 
-  it("writes both the device and the account on a toggle", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({
-      theme: "dark",
-      locale: "en",
-      gridDensity: "comfortable",
-      grids: {},
-    });
-
-    renderProvider(state);
-
-    await user.click(await screen.findByRole("button", { name: "Light" }));
-
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("light");
-    expect(document.documentElement).not.toHaveClass("dark");
-
-    // The account half is debounced and coalesced, so it arrives after the
-    // window rather than with the click.
-    await waitFor(
-      () => {
-        expect(state.seen.patches).toEqual([{ theme: "light" }]);
-      },
-      { timeout: 5_000 },
-    );
-    expect(state.settings.theme).toBe("light");
-  });
-
   it("degrades to `not persisting` when the write is refused", async () => {
     const user = userEvent.setup();
     const state = createSettingsMockState({
@@ -275,61 +181,5 @@ describe("the theme as an account fact", () => {
     );
     expect(screen.getByTestId("theme")).toHaveTextContent("light");
     expect(document.documentElement).not.toHaveClass("dark");
-  });
-
-  it("keeps the operator's choice rather than springing back", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({
-      theme: "dark",
-      locale: "en",
-      gridDensity: "comfortable",
-      grids: {},
-    });
-
-    renderProvider(state);
-
-    await user.click(await screen.findByRole("button", { name: "Light" }));
-
-    await waitFor(
-      () => {
-        expect(state.seen.patches).toHaveLength(1);
-      },
-      { timeout: 5_000 },
-    );
-
-    // The response re-seeds the mirror and the adoption latch sees a new value;
-    // what it must not do is re-apply the theme the account held a second ago.
-    expect(screen.getByTestId("theme")).toHaveTextContent("light");
-  });
-});
-
-describe("one account, two browsers", () => {
-  it("adopts a device-only arrangement and hands it to the next client", async () => {
-    const state = createSettingsMockState();
-
-    // The arrangement an operator built before this API existed.
-    window.localStorage.setItem(
-      gridStorageKey("staff"),
-      JSON.stringify(entry(500)),
-    );
-
-    const { unmount } = renderProvider(state);
-
-    expect(await screen.findByTestId("width")).toHaveTextContent("500");
-
-    await waitFor(
-      () => {
-        expect(state.settings.grids["staff"]).toEqual(entry(500));
-      },
-      { timeout: 5_000 },
-    );
-
-    unmount();
-
-    // A second browser: same account, nothing in its `localStorage`.
-    window.localStorage.clear();
-    renderProvider(state);
-
-    expect(await screen.findByTestId("width")).toHaveTextContent("500");
   });
 });

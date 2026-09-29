@@ -1,12 +1,14 @@
 # ADR-0051: Platform extraction — six packages, the router as a peer, a door in every app
 
-- Status: superseded by [ADR-0062](0062-frontend-build-and-shared-composition.md) (delta: a seventh package, `@repo/app-kit`, holds the composition the six left behind)
+- Status: superseded by [ADR-0062](0062-frontend-build-and-shared-composition.md) (delta: a seventh package, `@repo/app-kit`, holds the composition the six left behind) and [ADR-0077](0077-shared-composition-second-wave.md) (deltas: an eighth platform package, `@repo/account`; "`features` and `entities` stay strictly per-app" narrows to the features and entities no second app repeats; a feature package's door is a feature slice; the door rule's invariant — a door is exempt from its own groups and from no others — the per-app dictionary, policy data and config stand)
 - Date: 2026-08-27
 - Supersedes: [ADR-0033](0033-browser-api-client-and-session.md) (delta: where the machinery lives); [ADR-0049](0049-admin-app-architecture.md) (delta: what the `shared/` slices are)
 
 > Written 2026-08-27 ahead of D9 opening ([`docs/plan/0009-platform-extraction.md`](../plan/0009-platform-extraction.md)) — writing is not opening. Accepted at the head of `D9.1`, where both parents move to `superseded by ADR-0051`; amendable in place while D9 is `in progress` (ADR-0025 rule 2). The first supersession written under [ADR-0050](0050-adr-lifecycle-and-verification.md)'s delta rule: **each parent's delta is stated below, and everything else in both parents stands as written and is in force as part of this record.**
 >
 > **Superseded in part 2026-09-03 by [ADR-0062](0062-frontend-build-and-shared-composition.md)**, accepted at the head of `D14.8`: a delta on the **count and contents** alone. D9 extracted the behavioural machinery into six packages and left every app its own composition; D12 proved that the six take no diff from a second consumer and that the composition around them takes plenty. So a seventh package, `@repo/app-kit`, holds what both SPAs compose identically. **Nothing else moves**: the door rule is this record's, applied one more time; each app still owns its dictionary, its policy data, its config, its size budget and its route tree; the dependency direction is still downward-only; and every one of the six packages and every seam this record parameterised stands exactly as written.
+>
+> **Superseded in part 2026-09-29 by [ADR-0077](0077-shared-composition-second-wave.md)**, at the head of `D22.2`, the step that makes the delta true. A delta supersession under [ADR-0050](0050-adr-lifecycle-and-verification.md): the count, the reach of "per-app", and where a feature package's door sits. An eighth platform package, `@repo/account`, holds the account's client; "`features` and `entities` stay strictly per-app" narrows to the features and entities no second app repeats; and an app reaches a feature package through a feature slice, the one that held the code. The door rule's invariant — a door is exempt from its own groups and from no others — and the per-app dictionary, policy data and config stand and are in force as part of 0077.
 
 ## Context
 

@@ -1,13 +1,17 @@
 export { LoginForm } from "./login/login-form";
 export { RegisterForm, type RegisterFormProps } from "./register/register-form";
 export { useSignOut, type SignOut } from "./logout/use-sign-out";
-export { ForgotPasswordForm } from "./password-reset/forgot-password-form";
-export { ResetPasswordForm } from "./password-reset/reset-password-form";
+/*
+ * Password recovery is `@repo/account`'s since `D22.2` (ADR-0077 §2–§3), and
+ * this slice is its door: `./password-reset/recovery` binds the forms and the
+ * hook to this app's router, catalogue and outcome sentence.
+ */
 export {
+  ForgotPasswordForm,
+  ResetPasswordForm,
   useResetPassword,
-  type PasswordReset,
-  type PasswordResetStatus,
-} from "./password-reset/use-reset-password";
+} from "./password-reset/recovery";
+export type { PasswordReset, PasswordResetStatus } from "@repo/account";
 export {
   useConfirmEmail,
   type EmailChangeStatus,

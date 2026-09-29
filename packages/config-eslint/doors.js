@@ -22,9 +22,19 @@
  * two blocks naming the same files would leave whichever ESLint applied last
  * silently deciding the rule.
  *
+ * **A feature package's door is a feature slice** (`D22.2`, ADR-0077 §3).
+ * `@repo/account` holds features and an entity, and an app reaches it through
+ * the slices that held the code — `features/auth`, `entities/settings` — so
+ * that a page's imports do not change and nothing imports a feature from
+ * `shared/`. A slice written with its layer, `features/auth`, is a directory
+ * under `src/`; a bare name, `ui`, is one under `src/shared/` as it always
+ * was. The invariant is the same one: exempt from its own groups and from no
+ * others.
+ *
  * @typedef {object} Door
- * @property {readonly string[]} slices `src/shared/*` directories that are the
- *   door for this package.
+ * @property {readonly string[]} slices The directories that are the door for
+ *   this package: a bare name under `src/shared/`, or `<layer>/<slice>` under
+ *   `src/`.
  * @property {readonly string[]} group The import patterns the door covers.
  * @property {string} message What a violator is told, ADR number included.
  */
@@ -54,6 +64,19 @@ const doorsBySlice = (doors) => {
 };
 
 /**
+ * Where a slice is on disk: a bare name is a directory of `root`, and a name
+ * written with its layer is a directory of `root`'s parent (ADR-0077 §3).
+ *
+ * @param {string} slice
+ * @param {string} root
+ * @returns {string}
+ */
+const sliceDirectory = (slice, root) =>
+  slice.includes("/")
+    ? `${root.slice(0, root.lastIndexOf("/"))}/${slice}`
+    : `${root}/${slice}`;
+
+/**
  * One config block per door slice, each carrying every group **except** the
  * ones that slice is the door for.
  *
@@ -63,7 +86,7 @@ const doorsBySlice = (doors) => {
  */
 export const doorRules = (doors, root = "src/shared") =>
   [...doorsBySlice(doors)].map(([slice, own]) => ({
-    files: [`${root}/${slice}/**`],
+    files: [`${sliceDirectory(slice, root)}/**`],
     rules: {
       "no-restricted-imports": restrictImports(
         doors.filter((door) => !own.includes(door)),
@@ -141,7 +164,7 @@ export const doorBypass = ({ doors, files, opens, root = "src/shared" }) => {
   return [
     { files: [...files], rules: { "no-restricted-imports": restrictImports(shared) } },
     ...[...doorsBySlice(doors)].map(([slice, own]) => ({
-      files: [`${root}/${slice}/**/__tests__/**`],
+      files: [`${sliceDirectory(slice, root)}/**/__tests__/**`],
       rules: {
         "no-restricted-imports": restrictImports(
           shared.filter((door) => !own.includes(door)),

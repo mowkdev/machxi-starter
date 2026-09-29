@@ -1,0 +1,57 @@
+{
+  "preferences": {
+    "appearance": {
+      "title": "Appearance"
+    },
+    "theme": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "density": {
+      "title": "Rows",
+      "comfortable": "Comfortable",
+      "compact": "Compact"
+    },
+    "language": {
+      "title": "Language",
+      "en": "English",
+      "lv": "Latviešu"
+    }
+  },
+  "profile": {
+    "save": "Save changes"
+  },
+  "password": {
+    "dialog": {
+      "title": "Change your password",
+      "submit": "Change password"
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Current password"
+      },
+      "newPassword": {
+        "label": "New password"
+      }
+    }
+  },
+  "recovery": {
+    "fields": {
+      "email": "Email",
+      "newPassword": "New password"
+    },
+    "forgot": {
+      "submit": "Email me a link",
+      "submitting": "Sending…",
+      "sent": "If that address has an account, a link is on its way. It can be used once and expires. The previous link stops working."
+    },
+    "reset": {
+      "passwordHint": "At least {{min}} characters.",
+      "submit": "Save the new password",
+      "submitting": "Saving…",
+      "refused": "This link cannot be used. It may already have been used, or it may have expired.",
+      "request": "Ask for a new link"
+    }
+  }
+}

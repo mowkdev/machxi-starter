@@ -1,10 +1,12 @@
 # ADR-0053: The account area — `/account` with sections, and the menu slimmed
 
-- Status: accepted
+- Status: superseded by [ADR-0077](0077-shared-composition-second-wave.md) (delta: §5's homes — the profile, password, theme, locale and density features live in `@repo/account`, reached through the feature slices that held them; the `/account` route family, its sections, the slimmed menu and what one segment alone has stand)
 - Date: 2026-08-29
 - Supersedes: [ADR-0045](0045-user-settings.md) (deltas: where the theme control renders; the settings core gains the density key)
 
 > Written 2026-08-29 ahead of D11 ([`docs/plan/0011-design-foundations-and-account-area.md`](../plan/0011-design-foundations-and-account-area.md)), while D10 was still in progress — writing is not opening, the D4 precedent. **Revised 2026-08-30 while `proposed`** (the 0048 precedent): the design reference settled the density question as an account-held mode, and this record — the owner of the settings surface — takes it: §2's density paragraph, the second ADR-0045 delta, and the `/account/preferences` line below. **Accepted 2026-08-30 at the head of `D11.6`** — the density step, which is this record's first implementing step because it is the first one to build a decision of its own (§2's density key); the `/account` routes, the layout and the slimmed menu follow at `D11.8`–`D11.10`. ADR-0045 moved to `superseded by ADR-0053` in the same commit. Amendable in place while D11 is `in progress` (ADR-0025 rule 2). A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): **everything ADR-0045 decided — the settings resource, both tables, the merge rules, the server adapter behind ADR-0041's seam, the coalescing writer, the adoption latch — stands as written and is in force as part of this record.** The one thing that changes is where the theme control renders.
+>
+> **Superseded in part 2026-09-29 by [ADR-0077](0077-shared-composition-second-wave.md)**, at the head of `D22.2`, the step that makes the delta true. A delta supersession under [ADR-0050](0050-adr-lifecycle-and-verification.md): §5's homes. The profile, password, theme, locale and density features live in `@repo/account`, and each app reaches them through the feature slices that held them. The `/account` route family, its sections, the slimmed menu and what one segment alone has stand and are in force as part of 0077.
 
 ## Context
 

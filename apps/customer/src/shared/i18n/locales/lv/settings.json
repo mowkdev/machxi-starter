@@ -3,21 +3,13 @@
     "title": "Izskats",
     "description": "Kā lietotne tiek attēlota. Sistēmas režīms seko ierīcei."
   },
-  "theme": {
-    "light": "Gaišs",
-    "dark": "Tumšs",
-    "system": "Sistēmas"
-  },
+  "theme": {},
   "density": {
     "title": "Rindas",
-    "description": "Cik blīvi saraksti izkārto rindas. Tiek saglabāts kontā un gaida ekrānus, kas to izmantos.",
-    "comfortable": "Ērtas",
-    "compact": "Kompaktas"
+    "description": "Cik blīvi saraksti izkārto rindas. Tiek saglabāts kontā un gaida ekrānus, kas to izmantos."
   },
   "language": {
     "title": "Valoda",
-    "description": "Valoda, kurā runā lietotne. Katrs variants nosaukts pats savā valodā.",
-    "en": "English",
-    "lv": "Latviešu"
+    "description": "Valoda, kurā runā lietotne. Katrs variants nosaukts pats savā valodā."
   }
 }

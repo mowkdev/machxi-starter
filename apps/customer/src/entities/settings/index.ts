@@ -1,19 +1,24 @@
 /**
- * The account's settings, as this app reads and writes them (`D12.7`;
- * ADR-0045 as carried by ADR-0053, ADR-0055 §3).
+ * The account's settings, as this app reads and writes them — a door onto
+ * `@repo/account` since `D22.2` (ADR-0077 §2–§3; ADR-0045 as carried by
+ * ADR-0053, ADR-0055 §3).
  *
- * The slice's public API, which is the only way anything above `entities` may
- * reach it (the `boundaries` policy in `eslint.config.js`).
+ * The entity, its coalescing writer and the settings gate live in the package.
+ * **This app passes it no grid preference adapter**: ADR-0055 §3 keeps
+ * `@repo/grid` out until a domain entity arrives, so there is no store, no key
+ * to parse and no arrangement to mirror — and the writer flushes the scalars
+ * alone.
  *
- * **Narrower than the admin's, and by the same rule `shared/density` applies to
- * itself**: `createSettingsApi` and `settingsKeys` are the query layer's own
- * plumbing and nothing outside this slice has a use for either — a door line
- * with no consumer is a claim about a need that does not exist. They are one
- * line away when a loader or a second invalidation asks for them.
+ * **Narrower than the admin's**: `createSettingsApi` and `settingsKeys` are the
+ * query layer's own plumbing and nothing in this app has a use for either — a
+ * door line with no consumer is a claim about a need that does not exist.
  */
-export { useSettings, useUpdateSettings } from "./settings.queries";
 export {
   SETTINGS_WRITE_DEBOUNCE_MS,
+  createSettingsProvider,
   createSettingsWriter,
+  useSettings,
+  useUpdateSettings,
+  type SettingsProviderProps,
   type SettingsWriter,
-} from "./settings.storage";
+} from "@repo/account";

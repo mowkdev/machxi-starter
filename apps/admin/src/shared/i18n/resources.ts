@@ -48,7 +48,7 @@ export const EN_RESOURCES = {
  * longer the same list — and this type is what keeps that difference checked
  * rather than implied.
  */
-export type PackageNamespace = "grid" | "form";
+export type PackageNamespace = "grid" | "form" | "accountClient";
 
 /** The namespaces whose words are this app's, and whose catalogues it ships. */
 export type AppNamespace = Exclude<Namespace, PackageNamespace>;

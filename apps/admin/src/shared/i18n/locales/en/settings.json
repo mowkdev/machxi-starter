@@ -3,22 +3,14 @@
     "title": "Appearance",
     "description": "How the panel is painted. System follows the device."
   },
-  "theme": {
-    "light": "Light",
-    "dark": "Dark",
-    "system": "System"
-  },
+  "theme": {},
   "density": {
     "title": "Rows",
     "description": "How tightly the tables pack their rows.",
-    "toggle": "Compact rows",
-    "comfortable": "Comfortable",
-    "compact": "Compact"
+    "toggle": "Compact rows"
   },
   "language": {
     "title": "Language",
-    "description": "The language the panel speaks. Each option names itself.",
-    "en": "English",
-    "lv": "Latviešu"
+    "description": "The language the panel speaks. Each option names itself."
   }
 }

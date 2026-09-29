@@ -1,4 +1,9 @@
 import {
+  ACCOUNT_NAMESPACE,
+  bundles as accountBundles,
+  loadCatalogue as loadAccountCatalogue,
+} from "@repo/account";
+import {
   createAppI18nFactory,
   type AppI18nOptions,
   type PackageCatalogue,
@@ -48,6 +53,12 @@ const PACKAGE_BUNDLES: Readonly<Record<PackageNamespace, PackageCatalogue>> = {
   [FORM_NAMESPACE]: {
     bundles: formBundles,
     loadCatalogue: loadFormCatalogue,
+  },
+  // `D22.2` (ADR-0077 §2): the account's client ships the copy both apps
+  // wrote identically, and is composed at `init` like the two above it.
+  [ACCOUNT_NAMESPACE]: {
+    bundles: accountBundles,
+    loadCatalogue: loadAccountCatalogue,
   },
 };
 

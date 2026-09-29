@@ -1,12 +1,9 @@
-import { changePasswordBody } from "@repo/contracts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { delay, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { staffKeys } from "@/entities/staff";
 import { createSessionStore } from "@/shared/api/session-store";
-import { API } from "@/test/msw/handlers/auth.handlers";
 import {
   CURRENT_PASSWORD,
   PROFILE,
@@ -17,19 +14,23 @@ import {
 import { server } from "@repo/app-kit/testing";
 import { renderWithProviders } from "@/test/render";
 
-import {
-  ChangePasswordDialog,
-  changePasswordFields,
-} from "../change-password-dialog";
-import { ProfileDetailsForm } from "../profile-details-form";
+import { ChangePasswordDialog, ProfileDetailsForm } from "../index";
 
 /**
- * The two profile write flows (`D3.9`; ADR-0027, ADR-0035, ADR-0036).
+ * The operator's profile door, bound (`D3.9`, a door since `D22.2`; ADR-0077
+ * §4, ADR-0027, ADR-0036).
  *
- * Both go through the real ADR-0033 client to handlers that parse with the
- * API's own schemas, so "the form submits the right thing" means the thing the
- * endpoint would have accepted. The queries are by role and accessible name,
- * and every name here comes from a config rather than from this file.
+ * **The two forms are `@repo/account`'s and are certified there** — what they
+ * render, send, refuse and lock is that package's suite, asked once for both
+ * apps. What is asked here is what this slice *binds*, with the real things:
+ * the profile entity over `/admin/profile` and handlers that parse with the
+ * API's own schemas, this app's field config, its catalogue's sentences, its
+ * code map, and the one thing only this segment has — the acting operator is
+ * also a row in `/admin/staff`, so both writes invalidate it.
+ *
+ * So each form keeps a smoke case that would fail on a door bound to the
+ * wrong value, and the cases whose claim is the entity's: the outcome toasts,
+ * the session a password change spares, and `gcTime: 0`.
  */
 
 const NEW_PASSWORD = "AnotherPassword!456";
@@ -41,8 +42,8 @@ beforeEach(() => {
   server.use(...createProfileHandlers(state));
 });
 
-describe("the details form", () => {
-  it("renders the fields the config declares, seeded from the account", () => {
+describe("the details form, bound to the admin segment", () => {
+  it("renders the fields the entity's config declares, seeded from the account", () => {
     renderWithProviders(<ProfileDetailsForm profile={PROFILE} />);
 
     expect(screen.getByLabelText("First name")).toHaveValue("Ada");
@@ -58,41 +59,7 @@ describe("the details form", () => {
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 
-  it("offers no submit until something has actually changed", async () => {
-    const user = userEvent.setup();
-
-    renderWithProviders(<ProfileDetailsForm profile={PROFILE} />);
-
-    const save = screen.getByRole("button", { name: "Save changes" });
-
-    expect(save).toBeDisabled();
-
-    await user.type(screen.getByLabelText("First name"), "x");
-
-    expect(save).toBeEnabled();
-  });
-
-  it("sends only the field the operator changed", async () => {
-    const user = userEvent.setup();
-
-    renderWithProviders(<ProfileDetailsForm profile={PROFILE} />);
-
-    await user.clear(screen.getByLabelText("First name"));
-    await user.type(screen.getByLabelText("First name"), "Adaline");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => {
-      expect(state.seen.updated).toHaveLength(1);
-    });
-
-    // Pruned to `dirtyFields`, so the untouched last name is not re-sent — a
-    // re-send would overwrite whatever a second admin changed in the meantime,
-    // and it is what makes the contract's "at least one field" mean an edit.
-    expect(state.seen.updated[0]).toEqual({ firstName: "Adaline" });
-    expect(state.profile.lastName).toBe("Admin");
-  });
-
-  it("toasts the outcome and goes clean again", async () => {
+  it("saves through the profile endpoint and toasts the outcome", async () => {
     const user = userEvent.setup();
 
     renderWithProviders(<ProfileDetailsForm profile={PROFILE} />);
@@ -100,16 +67,15 @@ describe("the details form", () => {
     await user.type(screen.getByLabelText("Last name"), "s");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
+    // The entity's `meta.success`, in this app's catalogue's words.
     expect(
       await screen.findByText("Your profile was updated."),
     ).toBeInTheDocument();
 
-    // The saved values are the new baseline: nothing left to submit.
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Save changes" }),
-      ).toBeDisabled();
-    });
+    // Parsed by the handler with `updateStaffProfileBody`, the half of the
+    // contracts pair this door binds: the body is one the endpoint accepts.
+    expect(state.seen.updated).toEqual([{ lastName: "Admins" }]);
+    expect(state.profile.firstName).toBe("Ada");
   });
 
   it("invalidates the operator's own row in the staff cache", async () => {
@@ -126,7 +92,8 @@ describe("the details form", () => {
     /*
      * The acting operator is a staff row too, and this write changed its names.
      * ADR-0032 stops the *entity* reaching `staffKeys`; the feature is the layer
-     * that may see both, which is where the invalidation lives.
+     * that may see both, which is where the invalidation lives — bound as the
+     * form's `useAfterSave`.
      */
     await waitFor(() => {
       expect(
@@ -134,123 +101,52 @@ describe("the details form", () => {
       ).toBe(true);
     });
   });
-
-  it("locks every field while the request is in flight", async () => {
-    const user = userEvent.setup();
-
-    // Held open, because otherwise the request settles before the assertion
-    // and the test would pass on a form that never locked at all.
-    server.use(
-      http.patch(`${API}/profile`, async () => {
-        await delay("infinite");
-      }),
-    );
-
-    renderWithProviders(<ProfileDetailsForm profile={PROFILE} />);
-
-    await user.type(screen.getByLabelText("First name"), "x");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-
-    /*
-     * The `fieldset disabled aria-busy` half of ADR-0035's submit lock — the
-     * half this form assembles by hand because it is not in a dialog. Asserted
-     * on the control rather than on the fieldset, because what matters is that
-     * the operator cannot type into it.
-     */
-    await waitFor(() => {
-      expect(screen.getByLabelText("First name")).toBeDisabled();
-    });
-  });
 });
 
-describe("the change-password dialog", () => {
+describe("the change-password dialog, bound to the admin segment", () => {
   const open = (onClose = vi.fn()) => ({
     onClose,
     ...renderWithProviders(<ChangePasswordDialog onClose={onClose} />),
   });
 
-  it("declares a field map the endpoint's own body accepts", () => {
-    /*
-     * The contract test a field map owes when it is not a resource's (ADR-0035,
-     * amended D3.7). `changePasswordBody` is a `strictObject`, so one parse
-     * proves both directions: no unknown key, nothing required left unrendered.
-     */
-    const parsed = changePasswordBody.safeParse(
-      Object.fromEntries(
-        Object.keys(changePasswordFields).map((name) => [
-          name,
-          name === "currentPassword" ? CURRENT_PASSWORD : NEW_PASSWORD,
-        ]),
-      ),
-    );
-
-    expect(Object.keys(changePasswordFields)).toEqual([
-      "currentPassword",
-      "newPassword",
-    ]);
-    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
-  });
-
-  it("tells the browser the truth about whose passwords these are", () => {
-    open();
-
-    /*
-     * The inverse of the D3.7 finding. There both boxes held the *subject's*
-     * credential and `new-password` would have filed somebody else's password
-     * into the acting admin's vault; here both belong to the person typing, so
-     * the browser is allowed to offer to save the new one.
-     */
-    expect(screen.getByLabelText("Current password")).toHaveAttribute(
-      "autocomplete",
-      "current-password",
-    );
-    expect(screen.getByLabelText("New password")).toHaveAttribute(
-      "autocomplete",
-      "new-password",
-    );
-  });
-
-  it("refuses a new password equal to the current one before anything is sent", async () => {
-    const user = userEvent.setup();
-
-    open();
-
-    await user.type(
-      screen.getByLabelText("Current password"),
-      CURRENT_PASSWORD,
-    );
-    await user.type(screen.getByLabelText("New password"), CURRENT_PASSWORD);
-    await user.click(screen.getByRole("button", { name: "Change password" }));
-
-    // `changePasswordBody`'s own refinement, rendered by the client because the
-    // client validates with the schema the server validates with (ADR-0011).
-    expect(
-      await screen.findByText(
-        "The new password must differ from the current one",
-      ),
-    ).toBeInTheDocument();
-    expect(state.seen.changed).toHaveLength(0);
-  });
-
-  it("lands a wrong current password on the box that has to change", async () => {
-    const user = userEvent.setup();
-
-    open();
-
-    await user.type(
-      screen.getByLabelText("Current password"),
-      "NotMyPassword!1",
-    );
+  const submit = async (
+    user: ReturnType<typeof userEvent.setup>,
+    current = CURRENT_PASSWORD,
+  ) => {
+    await user.type(screen.getByLabelText("Current password"), current);
     await user.type(screen.getByLabelText("New password"), NEW_PASSWORD);
     await user.click(screen.getByRole("button", { name: "Change password" }));
+  };
+
+  it("speaks to an operator: this app's sentences and its code map", async () => {
+    const user = userEvent.setup();
+
+    open();
 
     /*
-     * `AUTH_CURRENT_PASSWORD_INVALID` is a `403` with no `details` — the
-     * condition belongs to the credential check, not to a field (ADR-0027
-     * §Contracts) — so it reaches the right box through `codeFields` rather
-     * than through a path, and reads as the ADR-0034 catalogue sentence rather
-     * than as the API's developer-facing message.
+     * The three sentences the door passes as keys (ADR-0077 §2): an operator
+     * is told about *sessions*, where a customer is told about devices.
      */
+    expect(
+      screen.getByRole("dialog", { name: "Change your password" }),
+    ).toHaveAccessibleDescription(
+      "Signing out your other sessions is the point of a password change, so it is not optional. Nothing forces a change again afterwards.",
+    );
+    expect(
+      screen.getByText(
+        "Required even though you are signed in — a stolen session must not be able to set a new password.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Every other session is signed out. This one stays signed in.",
+      ),
+    ).toBeInTheDocument();
+
+    await submit(user, "NotMyPassword!1");
+
+    // The refusal is the real endpoint's, and the sentence is this app's
+    // `errors` catalogue's (ADR-0034) through the code map the door binds.
     expect(
       await screen.findByText("That is not your current password."),
     ).toBeInTheDocument();
@@ -268,12 +164,7 @@ describe("the change-password dialog", () => {
 
     renderWithProviders(<ChangePasswordDialog onClose={vi.fn()} />, { store });
 
-    await user.type(
-      screen.getByLabelText("Current password"),
-      CURRENT_PASSWORD,
-    );
-    await user.type(screen.getByLabelText("New password"), NEW_PASSWORD);
-    await user.click(screen.getByRole("button", { name: "Change password" }));
+    await submit(user);
 
     expect(
       await screen.findByText(
@@ -289,18 +180,30 @@ describe("the change-password dialog", () => {
     expect(store.isAuthenticated()).toBe(true);
   });
 
+  it("invalidates the operator's own row after a password change too", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = open();
+
+    queryClient.setQueryData(staffKeys.detail(PROFILE.id), PROFILE);
+
+    await submit(user);
+
+    // The password write stamps `updatedAt` on the same row (ADR-0034
+    // §Invalidation, amended D3.9) — bound as the dialog's `useAfterChange`.
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(staffKeys.detail(PROFILE.id))?.isInvalidated,
+      ).toBe(true);
+    });
+  });
+
   it("keeps no trace of either password once the mutation has settled", async () => {
     const user = userEvent.setup();
     const { queryClient, unmount } = renderWithProviders(
       <ChangePasswordDialog onClose={vi.fn()} />,
     );
 
-    await user.type(
-      screen.getByLabelText("Current password"),
-      CURRENT_PASSWORD,
-    );
-    await user.type(screen.getByLabelText("New password"), NEW_PASSWORD);
-    await user.click(screen.getByRole("button", { name: "Change password" }));
+    await submit(user);
 
     await waitFor(() => {
       expect(state.password).toBe(NEW_PASSWORD);
@@ -317,22 +220,6 @@ describe("the change-password dialog", () => {
      */
     await waitFor(() => {
       expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
-    });
-  });
-
-  it("closes once the change has landed", async () => {
-    const user = userEvent.setup();
-    const { onClose } = open();
-
-    await user.type(
-      screen.getByLabelText("Current password"),
-      CURRENT_PASSWORD,
-    );
-    await user.type(screen.getByLabelText("New password"), NEW_PASSWORD);
-    await user.click(screen.getByRole("button", { name: "Change password" }));
-
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
 });

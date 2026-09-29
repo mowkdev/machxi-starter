@@ -140,6 +140,56 @@ test("a door slice may reach its own package and no other (ADR-0051)", async () 
   assert.ok(other.includes("no-restricted-imports"), String(other));
 });
 
+const FEATURE_DOORS = [
+  ...DOORS,
+  {
+    slices: ["features/auth", "entities/settings"],
+    group: ["@repo/account", "@repo/account/*"],
+    message: "Through the account's slices (ADR-0077).",
+  },
+];
+
+const withFeatureDoor = [
+  ...adminConfig({ tsconfigRootDir: root }),
+  {
+    files: ["src/**"],
+    rules: { "no-restricted-imports": restrictImports(FEATURE_DOORS) },
+  },
+  ...doorRules(FEATURE_DOORS),
+];
+
+test("a feature slice is a door for its own groups and no others (ADR-0077)", async () => {
+  const account = 'export { useSettings } from "@repo/account";\n';
+
+  // Its own group, from each kind of slice the row names.
+  for (const door of [
+    "src/features/auth/index.ts",
+    "src/entities/settings/index.ts",
+  ]) {
+    assert.deepEqual(await ruleIds(withFeatureDoor, door, account), [], door);
+  }
+
+  // No other group: the slice is a door onto the account and nothing else.
+  const other = await ruleIds(
+    withFeatureDoor,
+    "src/features/auth/index.ts",
+    'import { Grid } from "@repo/grid";\nexport { Grid };\n',
+  );
+  assert.ok(other.includes("no-restricted-imports"), String(other));
+
+  // And nobody else's door: a page, a slice the row does not name, and a
+  // `shared/` slice of the same name are all refused the package.
+  for (const outside of [
+    "src/pages/account/index.tsx",
+    "src/features/users-manage/index.ts",
+    "src/shared/auth/index.ts",
+    "src/shared/ui/index.ts",
+  ]) {
+    const ids = await ruleIds(withFeatureDoor, outside, account);
+    assert.ok(ids.includes("no-restricted-imports"), `${outside}: ${ids}`);
+  }
+});
+
 test("operator-facing copy refuses a literal (ADR-0046)", async () => {
   const ids = await ruleIds(
     admin,

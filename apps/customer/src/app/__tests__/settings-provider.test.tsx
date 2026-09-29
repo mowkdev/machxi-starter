@@ -1,10 +1,8 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SettingsProvider } from "@/app/providers/settings";
-import { SETTINGS_WRITE_DEBOUNCE_MS } from "@/entities/settings";
-import { createSessionStore } from "@/shared/api/session-store";
 import { useGridDensity } from "@/shared/density";
 import { useLocale } from "@/shared/i18n";
 import { useTheme } from "@/shared/theme";
@@ -18,23 +16,21 @@ import { authenticated } from "@/test/principals";
 import { renderWithProviders } from "@/test/render";
 
 /**
- * The account's settings, adopted by the app (`D12.7`; ADR-0045 §The client as
- * carried by ADR-0053, ADR-0046 §4).
+ * The settings gate, as this app binds it (`D22.2`, ADR-0077 §4; `D12.7`,
+ * ADR-0045 §The client as carried by ADR-0053, ADR-0046 §4).
  *
- * Three claims, and each is about *ordering* rather than markup:
+ * The gate is `@repo/account`'s, and what it does — the ordering, the
+ * anonymous path, the writes — is certified in that package over stand-ins.
+ * This is the door's suite, and it asks what only this app can:
  *
- * 1. Nothing below renders until an authenticated customer's settings have
- *    settled. This app's reason is not the admin's — there a grid reads its
- *    storage synchronously at mount; here the i18next instance is **built** from
- *    a locale and the density provider **seeds** from one, so a value arriving
- *    after the first render is a language change and a re-render rather than the
- *    answer.
- * 2. What the account holds is what the app comes up in, and a change after that
- *    writes both what the device remembers and what the account does.
- * 3. Anonymous — before a sign-in, after a sign-out, or after a failed read —
- *    the app is the device alone, and no toast. Signed out is decided by the
- *    *session*, not by whether the disabled query still holds the last
- *    customer's row.
+ * 1. **The binding.** The gate holds until the account's settings have
+ *    settled and then hands them to this app's real providers: the density
+ *    seeds from the account, the i18next instance is **built** in the
+ *    account's language by this app's own provider, and the theme is adopted
+ *    under this app's device-key prefix.
+ * 2. **The toast.** A failed read raises none and a refused write raises one,
+ *    and both are the verdict of this app's query client (ADR-0043), which the
+ *    package does not have.
  *
  * The provider is rendered directly, with its dependencies passed, for the
  * reason `session-provider.test.tsx` renders that one directly: the module's
@@ -61,45 +57,18 @@ const ThemeProbe = () => {
 };
 
 const DensityProbe = () => {
-  const { density, setDensity } = useGridDensity();
+  const { density } = useGridDensity();
 
-  return (
-    <>
-      <output data-testid="density">{density}</output>
-      <button
-        onClick={() => {
-          setDensity("compact");
-        }}
-        type="button"
-      >
-        Compact
-      </button>
-    </>
-  );
+  return <output data-testid="density">{density}</output>;
 };
 
 const LocaleProbe = () => {
-  const { locale, setLocale } = useLocale();
+  const { locale } = useLocale();
 
-  return (
-    <>
-      <output data-testid="locale">{locale}</output>
-      <button
-        onClick={() => {
-          setLocale("lv");
-        }}
-        type="button"
-      >
-        Latvian
-      </button>
-    </>
-  );
+  return <output data-testid="locale">{locale}</output>;
 };
 
-const renderProvider = (
-  state: SettingsMockState,
-  { anonymous = false }: { anonymous?: boolean } = {},
-) => {
+const renderProvider = (state: SettingsMockState) => {
   server.use(...createSettingsHandlers(state));
 
   return renderWithProviders(
@@ -108,7 +77,7 @@ const renderProvider = (
       <DensityProbe />
       <LocaleProbe />
     </SettingsProvider>,
-    { store: anonymous ? createSessionStore() : authenticated() },
+    { store: authenticated() },
   );
 };
 
@@ -176,50 +145,6 @@ describe("the settings gate", () => {
     expect(window.localStorage.getItem("machxi.user.theme")).toBe("dark");
   });
 
-  it("renders immediately for an anonymous visitor, and asks for nothing", async () => {
-    const state = createSettingsMockState({ ...ACCOUNT });
-
-    renderProvider(state, { anonymous: true });
-
-    expect(screen.queryByText("Loading settings…")).not.toBeInTheDocument();
-    expect(screen.getByTestId("density")).toHaveTextContent("comfortable");
-
-    await waitFor(() => {
-      expect(state.seen.patches).toEqual([]);
-    });
-    // Not merely "no write": an anonymous visitor must not *ask*, because the
-    // request would 401 and start a refresh for a session that does not exist.
-    expect(state.seen.reads).toBe(0);
-  });
-
-  it("goes back to the device alone when the session ends in this tab", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({ ...ACCOUNT });
-
-    const { store } = renderProvider(state);
-
-    expect(await screen.findByTestId("theme")).toHaveTextContent("dark");
-
-    /*
-     * Signing out disables the query but does not evict what it cached, and
-     * `staleTime: Infinity` means it is never refetched. The signed-out app is
-     * the device alone, so this must not be decided by what happens to be in
-     * the cache.
-     */
-    act(() => {
-      store.clear();
-    });
-
-    // A toggle on the sign-in screen writes the device and speaks to nobody.
-    await user.click(screen.getByRole("button", { name: "Light" }));
-
-    expect(window.localStorage.getItem("machxi.user.theme")).toBe("light");
-    await new Promise((resolve) => {
-      setTimeout(resolve, SETTINGS_WRITE_DEBOUNCE_MS + 250);
-    });
-    expect(state.seen.patches).toEqual([]);
-  });
-
   it("degrades to the device when the read fails, without a toast", async () => {
     const state = createSettingsMockState({ ...ACCOUNT });
     state.failWith = { status: 500, code: "INTERNAL_ERROR" };
@@ -240,83 +165,6 @@ describe("the settings gate", () => {
 });
 
 describe("what a chosen preference does to the account", () => {
-  it("writes the theme through the coalescing writer", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({ ...ACCOUNT });
-
-    renderProvider(state);
-
-    await user.click(await screen.findByRole("button", { name: "Light" }));
-
-    expect(window.localStorage.getItem("machxi.user.theme")).toBe("light");
-    expect(document.documentElement).not.toHaveClass("dark");
-
-    // The account half is debounced, so it arrives after the window rather
-    // than with the click.
-    await waitFor(
-      () => {
-        expect(state.seen.patches).toEqual([{ theme: "light" }]);
-      },
-      { timeout: 5_000 },
-    );
-    expect(state.settings.theme).toBe("light");
-  });
-
-  it("collapses a theme and a density chosen together into one PATCH", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({ ...ACCOUNT });
-
-    renderProvider(state);
-
-    await screen.findByTestId("theme");
-
-    /*
-     * The reason the writer is still here in an app with no grid to drag
-     * (`entities/settings/settings.storage.ts`): appearance and density are two
-     * cards on one section, clicked in the same breath by somebody setting the
-     * app up. Two clicks inside the window are one body carrying both keys —
-     * and the body carries *only* what changed, which is what makes sending a
-     * partial patch safe under ADR-0045's per-key merge.
-     */
-    await user.click(screen.getByRole("button", { name: "Light" }));
-    await user.click(screen.getByRole("button", { name: "Compact" }));
-
-    await waitFor(
-      () => {
-        expect(state.seen.patches).toEqual([
-          { theme: "light", gridDensity: "compact" },
-        ]);
-      },
-      { timeout: 5_000 },
-    );
-  });
-
-  it("sends a chosen language straight through, without waiting for the window", async () => {
-    const user = userEvent.setup();
-    const state = createSettingsMockState({ ...ACCOUNT, locale: "en" });
-
-    renderProvider(state);
-
-    expect(await screen.findByTestId("locale")).toHaveTextContent("en");
-
-    await user.click(screen.getByRole("button", { name: "Latvian" }));
-
-    /*
-     * ADR-0046 §4's own path, and the timeout is the claim: a language is
-     * chosen once, deliberately, by somebody who walked to a settings page to
-     * do it, so there is nothing to coalesce and a second of debounce would be
-     * a second of not knowing. Bounded *under* the writer's window, so a locale
-     * quietly moved onto the writer would fail here rather than pass late.
-     */
-    await waitFor(
-      () => {
-        expect(state.seen.patches).toEqual([{ locale: "lv" }]);
-      },
-      { timeout: SETTINGS_WRITE_DEBOUNCE_MS - 400 },
-    );
-    expect(state.settings.locale).toBe("lv");
-  });
-
   it("keeps what the customer chose when the write is refused", async () => {
     const user = userEvent.setup();
     const state = createSettingsMockState({ ...ACCOUNT });

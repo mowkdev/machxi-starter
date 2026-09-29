@@ -44,3 +44,24 @@ Proved by: `apps/api/test/settings.int.test.ts`
 
 - **WHEN** a staff session and a user session each patch a theme
 - **THEN** each segment's read answers its own value
+
+## Requirement: Either app sends what changed, once per burst
+
+What a browser asks of `/settings` is the same in both apps. An anonymous visitor asks nothing. A signed-in one reads once, before anything that depends on the answer is rendered, and a read that fails leaves the device's own values in force with nothing said. Changes made within one second of each other leave as one `PATCH` carrying only the keys that changed; a grid's arrangement is among them only in an app that mounts a grid, where `null` for a grid means it was reset. A write that is refused leaves what the person chose on screen.
+Records: [ADR-0045](../adr/0045-user-settings.md), [ADR-0077](../adr/0077-shared-composition-second-wave.md), [ADR-0041](../adr/0041-grid-preferences.md)
+Proved by: `packages/account/src/__tests__/settings.storage.test.ts`, `packages/account/src/__tests__/settings-provider.test.tsx`
+
+### Scenario: A burst of changes
+
+- **WHEN** a theme and a density are chosen within the same second
+- **THEN** one `PATCH` leaves, carrying those two keys and no others
+
+### Scenario: Nobody is signed in
+
+- **WHEN** the app is opened with no session
+- **THEN** it renders at once from the device's values, and `/settings` is neither read nor written
+
+### Scenario: An app with no grid
+
+- **WHEN** an app that mounts no grid writes a preference
+- **THEN** the body carries no `grids` key

@@ -10,27 +10,26 @@
     "lastLogin": "Pēdējā pieteikšanās"
   },
   "fields": {
-    "firstName": { "label": "Vārds" },
-    "lastName": { "label": "Uzvārds" }
+    "firstName": {
+      "label": "Vārds"
+    },
+    "lastName": {
+      "label": "Uzvārds"
+    }
   },
-  "save": "Saglabāt izmaiņas",
   "password": {
     "title": "Parole",
     "description": "Tās maiņa atsaka visas pārējās sesijas un atstāj šo pieteiktu.",
     "action": "Mainīt paroli",
     "note": "Jums prasīs pašreizējo paroli. Pārējās ierīces paliek atteiktas, līdz tajās tiks izmantota jaunā parole.",
     "dialog": {
-      "title": "Mainiet savu paroli",
-      "description": "Pārējo sesiju atteikšana ir paroles maiņas jēga, tāpēc tā nav izvēles iespēja. Pēc tam nekas neliek paroli mainīt atkārtoti.",
-      "submit": "Mainīt paroli"
+      "description": "Pārējo sesiju atteikšana ir paroles maiņas jēga, tāpēc tā nav izvēles iespēja. Pēc tam nekas neliek paroli mainīt atkārtoti."
     },
     "fields": {
       "currentPassword": {
-        "label": "Pašreizējā parole",
         "description": "Nepieciešama arī tad, ja esat pieteicies — nozagta sesija nedrīkst spēt uzstādīt jaunu paroli."
       },
       "newPassword": {
-        "label": "Jaunā parole",
         "description": "Visas pārējās sesijas tiek atteiktas. Šī paliek pieteikta."
       }
     }

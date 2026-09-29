@@ -1,0 +1,57 @@
+{
+  "preferences": {
+    "appearance": {
+      "title": "Izskats"
+    },
+    "theme": {
+      "light": "Gaišs",
+      "dark": "Tumšs",
+      "system": "Sistēmas"
+    },
+    "density": {
+      "title": "Rindas",
+      "comfortable": "Ērtas",
+      "compact": "Kompaktas"
+    },
+    "language": {
+      "title": "Valoda",
+      "en": "English",
+      "lv": "Latviešu"
+    }
+  },
+  "profile": {
+    "save": "Saglabāt izmaiņas"
+  },
+  "password": {
+    "dialog": {
+      "title": "Mainiet savu paroli",
+      "submit": "Mainīt paroli"
+    },
+    "fields": {
+      "currentPassword": {
+        "label": "Pašreizējā parole"
+      },
+      "newPassword": {
+        "label": "Jaunā parole"
+      }
+    }
+  },
+  "recovery": {
+    "fields": {
+      "email": "E-pasts",
+      "newPassword": "Jaunā parole"
+    },
+    "forgot": {
+      "submit": "Nosūtīt saiti",
+      "submitting": "Notiek nosūtīšana…",
+      "sent": "Ja šai adresei ir konts, saite jau ir ceļā. To var izmantot vienreiz, un tai beidzas derīguma termiņš. Iepriekšējā saite vairs nedarbojas."
+    },
+    "reset": {
+      "passwordHint": "Vismaz {{min}} rakstzīmes.",
+      "submit": "Saglabāt jauno paroli",
+      "submitting": "Notiek saglabāšana…",
+      "refused": "Šo saiti nevar izmantot. Iespējams, tā jau ir izmantota vai tai beidzies derīguma termiņš.",
+      "request": "Pieprasīt jaunu saiti"
+    }
+  }
+}

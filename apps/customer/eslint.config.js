@@ -147,6 +147,27 @@ const DOORS = [
     message:
       "Import the resource vocabulary through `@/shared/resource/*`, not from @repo/resource directly (ADR-0051).",
   },
+  {
+    /*
+     * `D22.2`, ADR-0077 §3 — the eighth package, and the first whose door is
+     * outside `shared/`. `@repo/account` holds features and an entity, so the
+     * slices that held the code are its doors: each is an index that
+     * re-exports and binds this app's values, and a page's imports did not
+     * change. `doorRules` reads a slice written with its layer as a directory
+     * under `src/`.
+     */
+    slices: [
+      "entities/settings",
+      "features/auth",
+      "features/density",
+      "features/locale",
+      "features/profile-manage",
+      "features/theme",
+    ],
+    group: ["@repo/account", "@repo/account/*"],
+    message:
+      "Import the account's client through its slices — `@/entities/settings`, `@/features/{auth,profile-manage,theme,locale,density}` — not from @repo/account directly (ADR-0077).",
+  },
   APP_KIT_DOOR,
 ];
 
@@ -167,7 +188,7 @@ const DOORS = [
 const packageCatalogueRule = doorExemption({
   doors: DOORS,
   files: ["src/shared/i18n/app-i18n.ts"],
-  opens: ["i18n", "form"],
+  opens: ["i18n", "form", "entities/settings"],
 });
 
 /**

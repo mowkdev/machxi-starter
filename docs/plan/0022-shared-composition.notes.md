@@ -105,3 +105,108 @@ The links were run again after the review's fixes and this note, and were green 
 - `AppCrash` is re-exported by both `shared/ui` doors and has had no consumer in either app since before this step.
 
 **Pending the operator.** One thing to eyeball: the admin's "API is not reachable" screen, in both themes, to confirm `bg-background` changed nothing. It shows when the admin is loaded with the API stopped, so it needs the operator's stack.
+
+## D22.2 — `@repo/account`: the settings client, the preference cards, password reset and the shared profile features (2026-09-29)
+
+**Head.** [ADR-0051](../adr/0051-platform-extraction.md), [ADR-0045](../adr/0045-user-settings.md) and [ADR-0053](../adr/0053-account-area.md) moved to `superseded by` [ADR-0077](../adr/0077-shared-composition-second-wave.md). Each change is its `- Status:` line plus one appended dated paragraph that states the delta and what stands. With 0062 moved at `D22.1`, all four of 0077's parents have now moved. The index rows, the topic table's "SPA architecture, doors and the shared composition" and "User settings and the account area" rows, and the ledger's window section say so. `scripts/rules-digest.mjs` gained the line "The account package". "Where the machinery lives" and "Doors" now cite 0077, and the digest loads with "the eight platform packages".
+
+**Built.** Closes `FE-01`.
+
+- **`packages/account`** is new, with `"sideEffects": false` and its `accountClient` catalogue in `en` (composed at `init`) and `lv` (loaded lazily). It holds:
+  - `settings/`: the settings API, keys and queries, the coalescing writer with the server preference adapter, and the settings gate (`settings-provider.tsx`);
+  - `preferences/`: the theme, density and locale cards over one options control;
+  - `password-reset/`: the forgot-password form, the reset form and `use-reset-password`;
+  - `profile/`: the profile details form and the change-password dialog.
+- **The grid preference adapter is a parameter.** The admin passes it as a `GridPreferenceSeam`. The customer passes none, and with no seam the writer never reads a grid and no `grids` key goes on the wire.
+- **Both apps' slices are now doors** under ADR-0077 §3: `entities/settings`, `features/auth`, `features/profile-manage`, `features/theme`, `features/locale` and `features/density`. Each is an index that re-exports and binds the app's values. `app/providers/settings.tsx` in each app is a binding. A page's imports did not change.
+- **`doorRules`** in `packages/config-eslint/doors.js` learned a door outside `shared/`. Both `DOORS` tables gained the six-slice row, both `eslint.config.js` files carry it, and `app-i18n.ts` is exempted by file to reach the catalogue.
+- **The stylesheets.** Both `styles.css` files gained `@source` for the package and `@source not` for its `__tests__`, and `RENDERING_PACKAGES` gained `@repo/account`.
+- **`composition.test.ts`.** `SHAKEABLE` gained `account: false`, so it names eight. The barrel walk now follows a root until the route tree rather than one hop, because `@repo/account` sits three hops from each root (`app/index.tsx`, then the settings provider, then `entities/settings`). A guard case proves the walk reaches that door. This closes the one-hop finding logged at D22.1.
+- **The customer's twin of `grid-chunk.test.ts`**: "the account package brings no grid".
+- **One lockfile entry.** `pnpm-lock.yaml` gained the workspace package. Both apps depend on `@repo/account`, and both `tsconfig.json` files reference it. The step was built in the side worktree `.claude/worktrees/d22-2`, so `main` and the running stack were not touched. The worktree ran on the committed `.env.example` files, because a permission rule refused copying the operator's `.env` (the D28.2 precedent).
+
+**Declared deviations from the plan's wording.**
+
+- The namespace is `accountClient`, not `account`, because both apps already own an `account` namespace for `pages/account`.
+- The kit's `SettingsOptions` control and principal-cache boundary reach the package as slots, because it depends on `@repo/app-kit` never.
+- The profile entity stays in each app.
+- Tests are net +71, not zero (see below).
+- `settings.md` and `users-and-profile.md` each gained one requirement, rather than only renaming their `Proved by:` paths.
+
+**Amendments.**
+
+- **ADR-0077 §2**, `Amended 2026-09-29 (D22.2)`: the namespace, what is worded identically versus what arrives as a key, the slots, and the profile entity staying per app.
+- **ADR-0077's Supersedes line and 0045's Status line and paragraph**, from the review: the delta is named "§The client (its home)", because 0045 has no heading called "The client's home".
+- **This plan's step 4** gained the kit's own `sideEffects` / `SHAKEABLE` item (below).
+
+**Tests.** Unit tier, per workspace, from the gate's `pnpm test` log:
+
+| Workspace       | Before | After |
+| --------------- | ------ | ----- |
+| `@repo/account` | —      | 110   |
+| `@repo/app-kit` | 75     | 77    |
+| `admin`         | 532    | 500   |
+| `customer`      | 290    | 281   |
+| every other     | 1523   | 1523  |
+| **total**       | 2420   | 2491  |
+
+The integration tier is unchanged: `api` 823 and `@repo/db` 113. `packages/config-eslint/rules.test.js` runs inside `lint` and gained "a feature slice is a door for its own groups and no others (ADR-0077)".
+
+- Net +71 is the measured delta, and it includes the one case the review added ("reaches no grid through the workspace packages it depends on", in the customer's `grid-chunk.test.ts`). The builder declared +71 before that case existed. The one-case difference between the two counts was not reconciled.
+- The package's suites are the moved app suites, split into `settings.storage`, `settings-provider`, `theme-cards`, `density-cards`, `locale-rows`, `forgot-password-form`, `reset-password`, `profile-details-form`, `change-password-dialog` and `catalogue`. Each app's slice keeps its own tests as the door's smoke tests.
+
+**`pnpm size`, gzipped kB, D22.1's close → this step.**
+
+| app      | js            | css         | entry         |
+| -------- | ------------- | ----------- | ------------- |
+| admin    | 364.7 → 366.5 | 14.6 → 14.6 | 162.7 → 163.2 |
+| customer | 308.7 → 311.1 | 13.7 → 13.7 | 106.0 → 107.2 |
+
+The customer's build has no `table` chunk. Both apps are within budget, and neither budget file is touched.
+
+**Verified by running**, in the worktree, on the tree including the review's fixes:
+
+| Link           | Result                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `lint`         | 22/22, cold                                                                                            |
+| `check-types`  | 17/17, cold                                                                                            |
+| `test`         | 17/17, cold (the integration tier ran against the test database)                                       |
+| `size`         | 4/4                                                                                                    |
+| `format:check` | red once on `docs/adr/README.md` (a table the anchor fix widened), then clean after `prettier --write` |
+
+- The builder had run the same links cold on the staged tree before the review, and every link passed.
+- **The lint red case.** `export { ThemeCards as __probe } from "@repo/account"` was appended to each app's `pages/account/index.tsx`. `eslint --max-warnings 0` refused it in both apps with the ADR-0077 `no-restricted-imports` message. Both files were then restored from the index.
+- `pnpm docs:check` and `pnpm i18n:check` passed inside `lint`. The reviewer ran `node scripts/rules-digest.mjs --check`, which answered "up to date (3 digests)".
+
+**Inferred, not run.**
+
+- `pnpm test:e2e` was not run. The worktree serves nothing, and the operator's stack serves `main`, which does not have this step until it is fast-forwarded and installed.
+- "No pixel changes" for the account screens rests on the moved components being the same markup, as the review read them. Nobody looked at them in a browser.
+
+**Review: one `code-reviewer` pass and one `adr-reviewer` pass.** Neither found a blocker or a major. The code reviewer read every removed app file beside its package counterpart and found no behaviour lost: the query keys, the latch, the writer's coalescing, the reset hook's two app variants, the catalogue keys and `sideEffects: false` all hold.
+
+- **(adr, minor) `.claude/rules/frontend.md` does not load the digest for `packages/account/**`.** Logged for D22.4: step 4 already owns "the rule files".
+- **(adr, minor) The customer's `app-i18n.ts` comments** said it registers `@repo/form` alone, and "like the two above it". Fixed.
+- **(adr, minor) "§The client's home" names no heading in ADR-0045.** Fixed in 0045, in 0077's Supersedes line and in the index row, as "§The client (its home)".
+- **(code, low) The customer's `grid-chunk.test.ts` checked only `@repo/account`'s own manifest.** A grid declared by one of the package's workspace dependencies would still have reached the bundle. Fixed: a case now checks each `@repo/*` dependency one level down.
+- **(code, low) The customer's `settings-provider.test.tsx:163` asserts "no toast" right after the density renders**, so a toast arriving a tick later would pass unseen. The assertion is inherited from the pre-move suite, so this step did not introduce it. Logged, not changed.
+
+**Decided by the operator (delegated to the coordinating session), 2026-09-29.**
+
+- **The kit's own `sideEffects` / `SHAKEABLE` row: yes, and built at D22.4, not here.** After D22.1 and this step, `@repo/app-kit` is the barrel both composition roots import most, so its exemption is a hole in the barrel guard exactly where the imports are. Step 4 was amended in place (`Amended 2026-09-29 (D22.2)`):
+  - First confirm that no module under `packages/app-kit/src` has an import-time side effect.
+  - If none has, the kit gets `"sideEffects": false` and a `SHAKEABLE` row, taking the count from eight to nine, with a labelled amendment to ADR-0077.
+  - If one has, the exemption is written into ADR-0077.
+  - Either way, `pnpm size` is measured before and after.
+
+  This step builds without it: `packages/app-kit/package.json` and the kit's `SHAKEABLE` exemption are untouched.
+
+- **The admin's unreachable notice keeps `bg-background`** (carried from D22.1), and the kit gains no class parameter. ADR-0077 §1 names the segment and the sentence as the providers' only deliberate differences, so the class was drift between two copies. `body` paints the same token, so no pixel should change. _Visual confirmation pending._ If it differs, the fix is to remove the class from the kit, not to parameterise it.
+
+**Pending the operator.** Step 2's checkbox is not ticked. Its done-when includes `pnpm test:e2e`, which needs this commit in `main`.
+
+1. Fast-forward `main` to `d22-2` (`git merge --ff-only d22-2`, run in the main checkout).
+2. `pnpm install` in `main`, since the lockfile gained `@repo/account`. Restart whatever the install disturbs.
+3. `pnpm test:e2e`, in both apps, against the running stack.
+4. Open the admin with requests to `localhost:4000` blocked, in the light theme and in the dark theme, and confirm the "API is not reachable" screen looks unchanged.
+5. Tick step 2 when all of the above pass.

@@ -42,7 +42,7 @@ export const EN_RESOURCES = {
  * Still no `"grid"`, and it is the admin's other member: ADR-0055 §3 keeps
  * `@repo/grid` out of this app until a domain entity arrives.
  */
-export type PackageNamespace = "form";
+export type PackageNamespace = "form" | "accountClient";
 
 /** The namespaces whose words are this app's, and whose catalogues it ships. */
 export type AppNamespace = Exclude<Namespace, PackageNamespace>;

@@ -195,12 +195,12 @@ export const AREAS = [
     slug: "frontend-and-platform",
     title: "Frontend and platform — the rules in force",
     loadWhen:
-      "`apps/admin`, `apps/customer`, `packages/ui` and the seven platform packages",
+      "`apps/admin`, `apps/customer`, `packages/ui` and the eight platform packages",
     rules: [
       {
         topic: "Where the machinery lives",
-        records: ["0051", "0062"],
-        text: "The behavioural machinery is packages, not app code: `@repo/api-client` (client, session, CSRF, URL⇄query), `@repo/i18n`, `@repo/resource`, `@repo/grid`, `@repo/form`, `@repo/app-services` and `@repo/app-kit` (the provider stack, the auth and account layouts, the app loader, the top-level error boundary, the router defaults, the app i18n factory, and the SPA test harness behind its own `testing` entry). An app keeps what a door cannot bind with a value — its settings provider, router, route tree, dictionary, policy data, config and size budget.",
+        records: ["0051", "0062", "0077"],
+        text: "The behavioural machinery is packages, not app code: `@repo/api-client` (client, session, CSRF, URL⇄query), `@repo/i18n`, `@repo/resource`, `@repo/grid`, `@repo/form`, `@repo/app-services`, `@repo/app-kit` (the provider stack, the auth and account layouts, the app loader, the top-level error boundary, the router defaults, the app i18n factory, and the SPA test harness behind its own `testing` entry) and `@repo/account` (the account's client: the settings entity and gate, the preference cards, password recovery and the shared profile forms). An app keeps what a door cannot bind with a value — the binding of the settings gate, its router, route tree, dictionary, policy data, config and size budget.",
       },
       {
         topic: "The session and the root in the kit",
@@ -208,9 +208,14 @@ export const AREAS = [
         text: "`@repo/app-kit` holds the session provider with its unreachable notice, the principal-cache boundary and the root composition that orders the providers, each parameterised by what differed between the apps: the segment, the notice's sentence, the function that derives the cache key from a principal, and slots for the providers the kit does not own. An app's `app/providers/session.tsx`, `principal-cache.tsx` and `app/index.tsx` are bindings. The kit learns no route name, no resource name and no policy; the router, the route tree and `test/render` stay in the apps. A package's behaviour is certified in the package, and a door's own suite is a smoke test of the binding.",
       },
       {
+        topic: "The account package",
+        records: ["0077", "0045", "0053", "0051"],
+        text: "`@repo/account` names the account's own resources — settings, profile, credentials — and no other. It depends downward only, on `@repo/app-kit` never and on `@repo/grid` never; what it needs from either arrives as a parameter or a slot. Navigation leaves it as callbacks and rendered children. It ships its own namespace, and copy the two apps word differently stays in the app and arrives as a key. What one segment alone has stays in that app.",
+      },
+      {
         topic: "Doors",
-        records: ["0051", "0062"],
-        text: "An app reaches a platform package only through its own `shared/` door; `no-restricted-imports` refuses the package path anywhere else. A door is the only path to those symbols — not one slice per package, since a slice may front several — so the door blocks are generated per slice from each app's `DOORS` table.",
+        records: ["0051", "0062", "0077"],
+        text: "An app reaches a platform package only through its own `shared/` door; `no-restricted-imports` refuses the package path anywhere else. A door is the only path to those symbols — not one slice per package, since a slice may front several — so the door blocks are generated per slice from each app's `DOORS` table. A feature package's door is a feature or entity slice rather than a `shared/` slice, and a page's imports do not change. The invariant is unchanged: a door is exempt from its own groups and from no others.",
       },
       {
         topic: "Design system",

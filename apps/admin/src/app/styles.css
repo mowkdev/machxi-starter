@@ -38,6 +38,8 @@
  * and `i18n` hold no `className` at all. Tests are excluded because a class
  * mentioned only in a test is exactly how the original defect stayed hidden.
  */
+@source "../../../../packages/account/src";
+@source not "../../../../packages/account/src/__tests__";
 @source "../../../../packages/app-kit/src";
 @source not "../../../../packages/app-kit/src/__tests__";
 @source "../../../../packages/grid/src";

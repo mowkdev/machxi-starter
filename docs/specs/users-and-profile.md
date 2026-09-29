@@ -180,3 +180,19 @@ Proved by: `apps/api/test/user-profile.int.test.ts`
 
 - **WHEN** the password verifies
 - **THEN** the answer is `204`, the refresh token that made the request is dead, and the address can be registered again
+
+## Requirement: The profile forms send only what changed, and keep what was refused
+
+In either app, saving the names sends the fields the person edited and no others, and nothing at all when none was; afterwards the saved values are the form's baseline. Changing the password sends the two passwords once and clears them from the form before it closes. A refusal stays on the form: a wrong current password is reported at the current-password box, a rule the contract refuses is reported at its own field in the reader's language, and anything else is one sentence for the whole form.
+Records: [ADR-0027](../adr/0027-credential-self-service-and-reset.md), [ADR-0035](../adr/0035-config-driven-resource-ui.md), [ADR-0077](../adr/0077-shared-composition-second-wave.md)
+Proved by: `packages/account/src/__tests__/profile-details-form.test.tsx`, `packages/account/src/__tests__/change-password-dialog.test.tsx`
+
+### Scenario: One name edited
+
+- **WHEN** a person changes their first name and saves
+- **THEN** the request carries `firstName` alone
+
+### Scenario: The current password is wrong
+
+- **WHEN** the API answers `403 AUTH_CURRENT_PASSWORD_INVALID`
+- **THEN** the dialog stays open and the sentence is shown at the current-password box

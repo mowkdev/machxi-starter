@@ -3,21 +3,13 @@
     "title": "Appearance",
     "description": "How the app is painted. System follows your device."
   },
-  "theme": {
-    "light": "Light",
-    "dark": "Dark",
-    "system": "System"
-  },
+  "theme": {},
   "density": {
     "title": "Rows",
-    "description": "How tightly lists pack their rows. Saved with your account, ready for the screens that use it.",
-    "comfortable": "Comfortable",
-    "compact": "Compact"
+    "description": "How tightly lists pack their rows. Saved with your account, ready for the screens that use it."
   },
   "language": {
     "title": "Language",
-    "description": "The language the app speaks. Each option names itself.",
-    "en": "English",
-    "lv": "Latviešu"
+    "description": "The language the app speaks. Each option names itself."
   }
 }

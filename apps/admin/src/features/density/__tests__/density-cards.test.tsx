@@ -1,3 +1,4 @@
+import { GRID_DENSITIES } from "@repo/contracts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -15,23 +16,32 @@ import { authenticatedAs } from "@/test/principals";
 import { renderWithProviders } from "@/test/render";
 
 /**
- * The density mode as the Preferences section lists it (`D11.10`, ADR-0053 §2,
- * ADR-0054 §6).
+ * The density door's binding, and the wiring behind it (`D22.2`, ADR-0077 §4;
+ * ADR-0053 §2, ADR-0054 §6).
  *
- * The card set is `D11.6`'s toggle with a second surface, so the claims are
- * that step's claims made again from here — the mode is adopted from the
- * account on arrival, a click writes it back through ADR-0045's coalescing
- * writer, and a click beside a theme change is *one* `PATCH`. The real
- * `SettingsProvider` is mounted and MSW answers `/settings` with the schema the
- * API validates with, because a mock kinder than the server would certify the
- * opposite of production (ADR-0036).
+ * **The card set is `@repo/account`'s and is certified there**: that the
+ * options are the contracts tuple, that the group is named, that the mode in
+ * force is the one marked and that a choice is handed to a writer are the
+ * package's `density-cards.test.tsx`. What remains here is what the package
+ * cannot ask.
  *
- * The fourth case is the one only this step can make: **the two surfaces are
- * one fact**. ADR-0053 §2's one-inventory rule tolerates the grid band's
- * toggle beside the section's cards because a working control next to the
- * thing it changes is not an inventory — and the thing that makes that
- * tolerable rather than a double entry is that neither can disagree with the
- * other.
+ * The **smoke case** is the one thing this slice does — hand the cards
+ * `@repo/app-kit`'s real `SettingsOptions` — and it is asked under the real
+ * settings gate, so the mode it finds marked is the account's.
+ *
+ * The **wiring cases** are `D11.6`'s claims made from this surface: a click
+ * writes the mode back through ADR-0045's coalescing writer, and a click
+ * beside a theme change is *one* `PATCH`. The real `SettingsProvider` is
+ * mounted and MSW answers `/settings` with the schema the API validates with,
+ * because a mock kinder than the server would certify the opposite of
+ * production (ADR-0036).
+ *
+ * The last case is the one only this app can make: **the two surfaces are one
+ * fact**. ADR-0053 §2's one-inventory rule tolerates the grid band's toggle
+ * beside the section's cards because a working control next to the thing it
+ * changes is not an inventory — and the thing that makes that tolerable
+ * rather than a double entry is that neither can disagree with the other. The
+ * toggle is the admin's alone, so the case is too.
  */
 
 const ThemeProbe = () => {
@@ -68,8 +78,8 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe("the density cards", () => {
-  it("offers exactly the modes the contract declares, and marks the account's", async () => {
+describe("the density door", () => {
+  it("draws the package's cards with the kit's control, marking the account's mode", async () => {
     renderCards(
       createSettingsMockState({
         theme: "system",
@@ -82,7 +92,7 @@ describe("the density cards", () => {
     await waitFor(() => {
       expect(card("Compact")).toBeChecked();
     });
-    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.getAllByRole("radio")).toHaveLength(GRID_DENSITIES.length);
     expect(card("Comfortable")).not.toBeChecked();
     expect(screen.getByRole("group", { name: "Rows" })).toBeInTheDocument();
   });

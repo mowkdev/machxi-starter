@@ -30,6 +30,9 @@ export const NAMESPACES = [
    */
   "grid",
   "form",
+  // `@repo/account`'s own (`D22.2`, ADR-0077 §2), declared for the reason
+  // `form` is: the instance must still load it.
+  "accountClient",
   "errors",
   "auth",
   "dashboard",

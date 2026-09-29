@@ -16,19 +16,26 @@ import {
 import { renderApp } from "@/test/render";
 
 /**
- * `/reset-password` — where an operator's recovery link lands (`D18.6`,
- * ADR-0071 §4).
+ * `/reset-password` — where an operator's recovery link lands, through this app's door onto
+ * `@repo/account` (`D22.2`, ADR-0077 §4; the screen is `D18.6`'s, ADR-0071
+ * §4).
  *
- * Driven through the generated route tree on a memory history, because the
- * credential arrives in the **URL fragment** and a hand-built tree would be
- * asserting the test's own parsing. `renderApp` hands `initialPath` straight to
- * `createMemoryHistory`, so `#token=…` reaches the router exactly as a browser
- * would deliver it. This is the first route in this app whose credential
- * arrives that way.
+ * **What the screen does is certified in the package**, in its own
+ * `reset-password.test.tsx`: reading the token, holding it out of the
+ * document, the dead-link screen, the password policy, the `429`. Those cases
+ * moved there from this suite and its twin. What stays is what is about
+ * **this app's route tree and router**, which the package stands in for and
+ * so cannot prove:
  *
- * The store is empty: somebody following a recovery link is ordinarily
- * anonymous in this browser, and the page wears its own shell so `_auth`'s
- * mirror guard cannot redirect the exchange away when they are not.
+ * - the route is reachable outside both layout routes, with `#token=…`
+ *   delivered by a memory history exactly as a browser would deliver it;
+ * - the strike empties the *router's* location and its history entry;
+ * - success lands on this tree's `/login`, and is not bounced by `_auth`'s
+ *   authenticated-visitor guard when the browser held a session;
+ * - the dead link's way forward is this tree's `/forgot-password`.
+ *
+ * The store is empty unless a case seeds it: somebody following a recovery
+ * link is ordinarily anonymous in this browser.
  */
 
 const NEW_PASSWORD = "DevPassword!456";
@@ -138,73 +145,26 @@ describe("choosing a new password from the link", () => {
     expect(router.history.location.href).not.toContain(RESET_TOKEN);
   });
 
-  it("renders the dead-link screen and a way to another when the token is refused", async () => {
-    const { user } = setup(link("a-dead-link"));
-
-    await choose(user, NEW_PASSWORD);
-
-    expect(
-      await screen.findByText(/This link cannot be used/),
-    ).toBeInTheDocument();
+  it("sends a dead link's reader to this app's own /forgot-password", async () => {
     /*
-     * The screen's own sentence, not the catalogue's `UNAUTHENTICATED` one:
-     * "Your session has ended. Sign in again." is false in every word here —
-     * the reader is anonymous, nothing of theirs has ended, and signing in is
-     * exactly what they cannot do.
+     * The dead-link screen is the package's; the link on it is this app's
+     * router's `Link`, passed as a rendered child because a router types its
+     * destinations against its own route tree (ADR-0077 §2). So what is
+     * proved here is the destination: that following it lands on the route
+     * this tree has, with the form the same door binds.
      */
-    expect(
-      screen.queryByText(/Your session has ended/),
-    ).not.toBeInTheDocument();
+    const { user, router } = setup("/reset-password");
 
-    // The way forward is a link, because a dead link's remedy is another one.
-    expect(
-      screen.getByRole("link", { name: "Ask for a new link" }),
-    ).toHaveAttribute("href", "/forgot-password");
-    // And the form is gone: no password would make that token work.
-    expect(screen.queryByLabelText("New password")).not.toBeInTheDocument();
-  });
+    await user.click(
+      await screen.findByRole("link", { name: "Ask for a new link" }),
+    );
 
-  it("says the same thing when the address carries no link at all", async () => {
-    setup("/reset-password");
-
-    /*
-     * Nothing in this app sends anybody here empty-handed, so the only way to
-     * arrive without a fragment is a link that has lost one — the same
-     * predicament as a link that has been spent, and the same sentence rather
-     * than an invented distinction.
-     */
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/forgot-password");
+    });
     expect(
-      await screen.findByText(/This link cannot be used/),
+      await screen.findByRole("button", { name: "Email me a link" }),
     ).toBeInTheDocument();
     expect(state.resetPasswordCalls).toEqual([]);
-  });
-
-  it("holds the link back from a password the policy refuses", async () => {
-    const { user } = setup(link(RESET_TOKEN));
-
-    await choose(user, "short");
-
-    /*
-     * `resetPasswordBody` is the object the API validates with (ADR-0011,
-     * ADR-0023), so the rule is the rule — and the request never leaves,
-     * because the endpoint carries the login limiter's argon2 budget
-     * (ADR-0071 §4 as amended) and a body the schema refuses would spend it.
-     */
-    /*
-     * The positive assertion first, so the case cannot pass by the submit
-     * handler never running at all (`D18.6`, `code-reviewer`). The sentence is
-     * zod's own rather than a key this app wrote, which is ADR-0046 §6's shape.
-     */
-    expect(
-      await screen.findByText(/expected string to have >=12 characters/i),
-    ).toBeInTheDocument();
-
-    expect(state.resetPasswordCalls).toEqual([]);
-    // Still the form, and still holding the link: a bad password is something
-    // the person can fix by typing a better one.
-    expect(screen.getByLabelText("New password")).toBeInTheDocument();
-    expect(
-      screen.queryByText(/This link cannot be used/),
-    ).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,9 @@
 import {
+  ACCOUNT_NAMESPACE,
+  bundles as accountBundles,
+  loadCatalogue as loadAccountCatalogue,
+} from "@repo/account";
+import {
   createAppI18nFactory,
   type AppI18nOptions,
   type PackageCatalogue,
@@ -31,8 +36,8 @@ import type { Catalogues, PackageNamespace } from "./resources";
  *
  * Before `D14.8` this file also held the composition: the bundle merge, the
  * `structuredClone` per locale and the load dispatch, written out identically
- * one app over. This app registers `@repo/form` alone — ADR-0055 §3 keeps the
- * grid out until a domain entity arrives. Those are the kit's now; what is left is the registry, the
+ * one app over. This app registers `@repo/form` and `@repo/account` — ADR-0055
+ * §3 keeps the grid out until a domain entity arrives. Those are the kit's now; what is left is the registry, the
  * loader, and the narrowing of the kit's options to this app's own catalogue
  * and namespace types.
  */
@@ -40,6 +45,12 @@ const PACKAGE_BUNDLES: Readonly<Record<PackageNamespace, PackageCatalogue>> = {
   [FORM_NAMESPACE]: {
     bundles: formBundles,
     loadCatalogue: loadFormCatalogue,
+  },
+  // `D22.2` (ADR-0077 §2): the account's client ships the copy both apps
+  // wrote identically, and is composed at `init` like the one above it.
+  [ACCOUNT_NAMESPACE]: {
+    bundles: accountBundles,
+    loadCatalogue: loadAccountCatalogue,
   },
 };
 

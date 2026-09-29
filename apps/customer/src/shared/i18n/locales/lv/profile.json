@@ -16,7 +16,6 @@
       "label": "Uzvārds"
     }
   },
-  "save": "Saglabāt izmaiņas",
   "email": {
     "action": "Mainīt e-pastu",
     "dialog": {
@@ -40,17 +39,13 @@
     "action": "Mainīt paroli",
     "note": "Jums prasīs pašreizējo paroli, pat ja esat pieteicies. Pārējās ierīces paliek atteiktas, līdz tajās izmantosiet jauno paroli.",
     "dialog": {
-      "title": "Mainiet savu paroli",
-      "description": "Pārējo ierīču atteikšana ir paroles maiņas jēga, tāpēc tā nav izvēles iespēja. Pēc tam nekas neliks paroli mainīt atkārtoti.",
-      "submit": "Mainīt paroli"
+      "description": "Pārējo ierīču atteikšana ir paroles maiņas jēga, tāpēc tā nav izvēles iespēja. Pēc tam nekas neliks paroli mainīt atkārtoti."
     },
     "fields": {
       "currentPassword": {
-        "label": "Pašreizējā parole",
         "description": "Nepieciešama arī tad, ja esat pieteicies — tas, kurš atradis šo cilni atvērtu, nedrīkst spēt uzstādīt jaunu paroli."
       },
       "newPassword": {
-        "label": "Jaunā parole",
         "description": "Visas pārējās ierīces tiek atteiktas. Šī paliek pieteikta."
       }
     }
