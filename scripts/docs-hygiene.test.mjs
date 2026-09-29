@@ -645,7 +645,7 @@ const lockfileVersions = (lock) => {
  * major (`eslint-plugin-react` on 10) is admitted by `peerDependencyRules`,
  * and the lockfile is what shows it was not answered with a second copy.
  */
-const ONE_VERSION_TOOLS = ["eslint", "vite", "vitest"];
+const ONE_VERSION_TOOLS = ["eslint", "typescript", "vite", "vitest"];
 
 /** The held packages and tools the lockfile resolves more than once, as strings. */
 const heldTwice = (workspaceYaml, lock) => {

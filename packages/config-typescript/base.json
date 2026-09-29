@@ -15,6 +15,17 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
 
+    // TypeScript 6.0's flipped defaults, stated rather than inherited
+    // (D21.5). No `@types/*` package loads as a global unless a preset names
+    // it (node.json names `node`, vite.json `vite/client`) — though a module
+    // that imports one, as every `vitest.config.ts` does through Vite's
+    // types, still brings its globals into that program; a side-effect import
+    // has to resolve; and no `@typescript/lib-*` package replaces `lib`.
+    // `strict`, above, became 6.0's default too and stays stated.
+    "types": [],
+    "noUncheckedSideEffectImports": true,
+    "libReplacement": false,
+
     // Safe standalone default; node.json overrides to NodeNext.
     "module": "ESNext",
     "moduleResolution": "Bundler",

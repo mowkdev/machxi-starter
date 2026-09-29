@@ -4,7 +4,12 @@
     "@repo/typescript-config/composite.json"
   ],
   "compilerOptions": {
-    "outDir": "dist-types"
+    "outDir": "dist-types",
+    // Two config factories that touch no Node global, and the one node.json
+    // workspace that does not declare `@types/node` — so the preset's
+    // `types: ["node"]` is narrowed back to TypeScript 6.0's empty default
+    // rather than a dependency added to satisfy it (D21.5).
+    "types": []
   },
   "include": ["*.ts"]
 }
