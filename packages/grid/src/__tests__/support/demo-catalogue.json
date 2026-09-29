@@ -1,0 +1,15 @@
+{
+  "noun_one": "widget",
+  "noun_other": "widgets",
+  "columns": {
+    "name": "Name",
+    "status": "Status",
+    "tags": "Tags",
+    "createdAt": "Created",
+    "archivedAt": "Archived",
+    "actions": "Actions"
+  },
+  "filters": {
+    "showArchived": "Show archived"
+  }
+}

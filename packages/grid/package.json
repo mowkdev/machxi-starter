@@ -15,6 +15,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@repo/app-kit": "workspace:*",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@repo/vitest-config": "workspace:*",

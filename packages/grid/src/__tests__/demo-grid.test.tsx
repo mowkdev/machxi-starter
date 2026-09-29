@@ -1,0 +1,325 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+
+import { Harness, base, pageOf } from "./support/demo-harness";
+import { demoRows } from "./support/demo-resource";
+
+/**
+ * The grid's shell over the demo config: the table, the pager, search, the
+ * loading shape and the viewport frame (`D3.6`, ADR-0035, ADR-0037).
+ *
+ * **Moved from the admin at `D22.3`** (ADR-0077 §4), where these cases were
+ * the first third of `shared/grid/__tests__/app-grid.test.tsx` and reached this
+ * package through the door. Their assertions are unchanged; the harness they
+ * share with the four files beside this one is `support/demo-harness.tsx`.
+ */
+
+describe("AppGrid", () => {
+  it("renders a themed, semantic table entirely from config", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    const table = screen.getByRole("table");
+
+    // Headers come from the config's `header`, in declaration order.
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Name", "Status", "Tags", "Created", "Archived", "Actions"]);
+
+    expect(screen.getByText("Sprocket")).toBeInTheDocument();
+    // `statusBadge` and `rolesList` resolved from their keys.
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
+    // The `date` formatter ran; the raw ISO string never reaches the screen.
+    expect(
+      screen.queryByText("2026-01-15T10:00:00.000Z"),
+    ).not.toBeInTheDocument();
+    // A null value is a dash, not a blank.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("offers a sort control only where the config allows one", () => {
+    render(<Harness page={pageOf(demoRows)} />);
+
+    expect(screen.getByRole("button", { name: "Name" })).toBeInTheDocument();
+    // `tags` is not sortable in the config, so there is nothing to click.
+    expect(
+      screen.queryByRole("button", { name: "Tags" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports a header click as a state change instead of reordering the page", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const rows = [...demoRows];
+
+    render(<Harness page={pageOf(rows)} onChange={onChange} />);
+
+    await user.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: [{ field: "name", direction: "asc" }] }),
+    );
+
+    /*
+     * The honesty the manual flags exist for: the engine did not sort the rows
+     * it holds. `Sprocket` is still first because the *server* has not been
+     * asked yet — a grid that reordered here would be implying it had sorted
+     * the dataset when it had only touched one page.
+     */
+    const [, body] = screen.getAllByRole("rowgroup");
+    expect(within(body!).getAllByRole("row")[0]).toHaveTextContent("Sprocket");
+  });
+
+  it("marks the sorted column for assistive technology", async () => {
+    const user = userEvent.setup();
+
+    render(<Harness page={pageOf(demoRows)} />);
+
+    await user.click(screen.getByRole("button", { name: "Name" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("columnheader", { name: /Name/ }),
+      ).toHaveAttribute("aria-sort", "ascending");
+    });
+  });
+});
+
+describe("the pager", () => {
+  it("says where the operator is, out of a real total", () => {
+    render(
+      <Harness
+        page={pageOf(demoRows, { total: 143, offset: 20, limit: 20 })}
+        initial={{ ...base, offset: 20 }}
+      />,
+    );
+
+    expect(screen.getByText("21–22 of 143")).toBeInTheDocument();
+  });
+
+  it("disables the ends it is already at", () => {
+    render(<Harness page={pageOf(demoRows, { total: 2 })} />);
+
+    expect(screen.getByRole("button", { name: "First page" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Previous page" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Last page" })).toBeDisabled();
+  });
+
+  it("jumps to the last page from a real total", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness page={pageOf(demoRows, { total: 143 })} onChange={onChange} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Last page" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ offset: 140 }),
+    );
+  });
+
+  it("is open-ended when the endpoint did not count", () => {
+    /*
+     * `total: null` is reserved for endpoints that opt out of `count(*)`
+     * (ADR-0014). None do today, which is exactly why the branch is written
+     * now: a pager that assumed a number would render `NaN` the day one does.
+     */
+    const rows = Array.from({ length: 20 }, (_, index) => ({
+      ...demoRows[0]!,
+      id: String(index),
+    }));
+
+    render(<Harness page={pageOf(rows, { total: null })} />);
+
+    expect(screen.getByText("1–20")).toBeInTheDocument();
+    expect(screen.queryByText(/ of /)).not.toBeInTheDocument();
+    // There is no last page to reach, so the control says so.
+    expect(screen.getByRole("button", { name: "Last page" })).toBeDisabled();
+    // A full page is the only evidence that more exists.
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+  });
+
+  it("keeps the operator near their place when the page size changes", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf(demoRows, { total: 143, offset: 60 })}
+        initial={{ ...base, offset: 60 }}
+        onChange={onChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Rows per page" }));
+    await user.click(screen.getByRole("option", { name: "50" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 50 }),
+    );
+  });
+
+  it("rescues a stranded offset instead of showing an empty grid", async () => {
+    /*
+     * Deletions shrank the dataset below the page the operator is on: the API
+     * answers an empty `items` with the true `total`, and without the rescue
+     * they are left staring at a blank grid that looks exactly like
+     * "everything is gone".
+     */
+    const onChange = vi.fn();
+
+    render(
+      <Harness
+        page={pageOf([], { total: 45, offset: 60 })}
+        initial={{ ...base, offset: 60 }}
+        onChange={onChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ offset: 40 }),
+      );
+    });
+  });
+
+  it("leaves a genuinely empty dataset alone", () => {
+    const onChange = vi.fn();
+
+    render(<Harness page={pageOf([], { total: 0 })} onChange={onChange} />);
+
+    expect(screen.getByText("No results.")).toBeInTheDocument();
+    expect(screen.getByText("No results")).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("search", () => {
+  it("appears only where the endpoint is searchable", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    const { rerender } = render(<Harness page={pageOf(demoRows)} />);
+
+    expect(
+      screen.queryByRole("searchbox", { name: "Search" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <Harness page={pageOf(demoRows)} searchable onChange={onChange} />,
+    );
+
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "ada");
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "ada" }),
+      );
+    });
+  });
+});
+
+describe("loading", () => {
+  it("holds the table's shape rather than collapsing to nothing", () => {
+    render(<Harness />);
+
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader")).toHaveLength(6);
+    expect(screen.queryByText("Sprocket")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The frame the grid renders into (`D4.1`, ADR-0037).
+ *
+ * Nothing here asserts geometry, and it says so rather than pretending: jsdom
+ * computes no layout, so "the header stayed put while the rows scrolled" is a
+ * claim only the deliverable's manual walk can make. What this suite pins is
+ * the *structure* that produces it — which element scrolls, that there is
+ * exactly one of it, and that the header and the pager are its static siblings
+ * rather than its content. Those are the invariants a careless wrapper breaks,
+ * and they are exactly what ADR-0037 §Consequences asks a review to cite.
+ */
+describe("viewport layout", () => {
+  /*
+   * By its `data-slot`, not by its utility classes: renaming a Tailwind class
+   * should not fail a suite that is asking "which element scrolls". The class
+   * *assertions* below are a different question — which axes and what floor —
+   * and those genuinely are about the classes.
+   */
+  const scrollBody = (container: HTMLElement) =>
+    container.querySelector('[data-slot="grid-scroll"]');
+
+  it("puts the table in exactly one scroll container, and owns it", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    // The doubled wrapper is gone: `@repo/ui`'s Table no longer contributes
+    // one, so the border's radius has nothing clipping it and sticky offsets
+    // have one element to resolve against.
+    expect(
+      container.querySelectorAll('[data-slot="table-container"]'),
+    ).toHaveLength(0);
+
+    const body = scrollBody(container);
+    expect(body).not.toBeNull();
+    expect(container.querySelectorAll(".overflow-auto")).toHaveLength(1);
+    expect(body).toContainElement(screen.getByRole("table"));
+  });
+
+  it("scrolls on both axes, with the design system's own scrollbar", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    // `overflow-auto`, not `overflow-x-auto`: the vertical scroll the height
+    // budget hands it and the horizontal scroll the double wrapper used to
+    // split are the same container's job now.
+    const body = scrollBody(container);
+    expect(body?.className).toContain("scrollbar-thin");
+    expect(body?.className).toContain("min-h-64");
+  });
+
+  it("keeps the header inside the scroll body and stuck to its top", () => {
+    const { container } = render(<Harness page={pageOf(demoRows)} />);
+
+    const header = container.querySelector('[data-slot="table-header"]');
+    expect(scrollBody(container)).toContainElement(header as HTMLElement);
+    expect(header?.className).toContain("sticky");
+    /*
+     * Opaque on the *cells*, and the table drawn with separated borders — the
+     * shape ADR-0037 (amended D4.1) settled on after the browser showed that a
+     * background on the `thead` does not travel with a sticky section while
+     * `border-collapse: collapse` is in force. Asserted because it looks like
+     * gratuitous class soup at a glance and is not; the ADR says why.
+     *
+     * The ground is `--grid-header` since `D11.2` (ADR-0054 §4) — the header
+     * band's own token. The pane stopped painting `bg-card` when the card frame
+     * retired, so there is no longer a second surface for this one to agree
+     * with; what matters is only that it is opaque and on the cells.
+     */
+    expect(header?.className).toContain("[&_th]:bg-grid-header");
+    expect(screen.getByRole("table").className).toContain("border-separate");
+  });
+
+  it("keeps the search box and the pager out of it", () => {
+    const { container } = render(
+      <Harness page={pageOf(demoRows)} searchable />,
+    );
+
+    // Static siblings of the scroll body: the chrome declares its height and
+    // the rows take the rest, which is the whole budget in one assertion.
+    const body = scrollBody(container);
+    expect(body).not.toContainElement(
+      screen.getByRole("navigation", { name: "Pagination" }),
+    );
+    expect(body).not.toContainElement(
+      screen.getByRole("searchbox", { name: "Search" }),
+    );
+  });
+});

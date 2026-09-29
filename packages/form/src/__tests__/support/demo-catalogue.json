@@ -1,0 +1,21 @@
+{
+  "shellFallback": "Demo",
+  "create": {
+    "routeTitle": "New widget"
+  },
+  "edit": {
+    "routeTitle": "Edit widget"
+  },
+  "fields": {
+    "name": { "label": "Name" },
+    "secret": { "label": "Initial password" },
+    "notes": {
+      "label": "Notes",
+      "description": "Optional. Clearing it removes the note."
+    },
+    "status": { "label": "Status" },
+    "tags": { "label": "Tags" },
+    "featured": { "label": "Featured" },
+    "accepted": { "label": "Accept terms" }
+  }
+}

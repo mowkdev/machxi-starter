@@ -5,8 +5,6 @@ import {
 } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
 
-import { demoResourceConfig } from "@/test/fixtures/demo-resource";
-
 import {
   filterableColumns,
   fromColumnFiltersState,
@@ -29,6 +27,7 @@ import {
   withSort,
   withoutFilter,
 } from "../list-state";
+import { demoResourceConfig } from "./support/demo-resource";
 
 /**
  * The pure seam between the URL and the engine (ADR-0034/0035).

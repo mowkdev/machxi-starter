@@ -1,17 +1,16 @@
+import { apiClientError } from "@repo/api-client";
 import { emailSchema } from "@repo/contracts";
+import { Button } from "@repo/ui/components/button";
+import { Input } from "@repo/ui/components/input";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 
-import { apiClientError } from "@/shared/api/api-error";
-import { createMessageForError } from "@/shared/notifications/messages";
-import { Button, Input } from "@/shared/ui";
-import { createTestI18n } from "@/test/render";
-
 import { AppFormProvider } from "../context";
 import { AppFormError } from "../form-error";
 import { applyServerErrors } from "../server-errors";
+import { APP_ERRORS, messageForError } from "./support/render";
 
 /**
  * Server-side failures landing where the operator will look (ADR-0035,
@@ -31,18 +30,18 @@ interface Values {
 
 const FIELDS = ["email", "firstName"] as const;
 
-/**
- * The code catalogue's lookup, built from the real `en` resources (`D7.2`).
+/*
+ * The code map is `applyServerErrors`' required option (`D7.2`) — a default
+ * would have been English, and a form whose fields are Latvian and whose
+ * form-level failure is English is the drift the argument in
+ * `server-errors.ts` exists to prevent.
  *
- * `applyServerErrors` takes it as a required option now — a default would have
- * been English, and a form whose fields are Latvian and whose form-level
- * failure is English is the drift the argument in `server-errors.ts` exists to
- * prevent. The assertions below are unchanged because the catalogue holds the
- * same sentences `ERROR_MESSAGES` did.
+ * **A stand-in since `D22.3`**, when this suite moved out of the admin's door
+ * (ADR-0077 §4). The admin's map read the admin's `errors` catalogue, and both
+ * are that app's; the package's claim is where a failure *lands*, so the map
+ * is the harness's `messageForError`, whose sentences no app ships. The
+ * assertions that named the admin's words name the stand-in's.
  */
-const messageForError = createMessageForError(
-  createTestI18n().instance.getFixedT(null, "errors"),
-);
 
 const Harness = ({
   error,
@@ -128,9 +127,7 @@ describe("applyServerErrors", () => {
      * change?" and the answer is the email box. The message is the ADR-0034
      * map's, so the wording lives in one place.
      */
-    expect(
-      screen.getByText("Another staff member already uses that email address."),
-    ).toBeInTheDocument();
+    expect(screen.getByText(APP_ERRORS.STAFF_EMAIL_TAKEN)).toBeInTheDocument();
   });
 
   it("shows a failure no field can claim at the top of the form", async () => {
@@ -149,7 +146,7 @@ describe("applyServerErrors", () => {
     await user.click(screen.getByRole("button", { name: "Fail" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "This is the last super admin. Promote someone else first.",
+      APP_ERRORS.STAFF_LAST_SUPER_ADMIN,
     );
   });
 
@@ -181,9 +178,7 @@ describe("applyServerErrors", () => {
 
     await user.click(screen.getByRole("button", { name: "Fail" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Something went wrong. Try again.",
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(APP_ERRORS.fallback);
   });
 
   it("reports whether anything landed on a field", () => {
@@ -294,7 +289,7 @@ describe("applyServerErrors", () => {
       screen.queryByText("pg: connection refused"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "The API could not be reached. Check your connection and try again.",
+      APP_ERRORS.SERVICE_UNAVAILABLE,
     );
   });
 });

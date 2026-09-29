@@ -1,14 +1,9 @@
-import {
-  CUSTOM_MESSAGES,
-  changePasswordBody,
-  createStaffBody,
-} from "@repo/contracts";
+import { createStaffBody } from "@repo/contracts";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { I18nextProvider } from "react-i18next";
-import type { ZodType } from "zod";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { apiClientError } from "@/shared/api/api-error";
 import {
@@ -45,6 +40,14 @@ import {
  * promise: a path the form's own values cannot produce an issue for keeps the
  * wire's sentence. That is the `D3.8` residual with one more property, not a
  * new one.
+ *
+ * **The form door's smoke test since `D22.3`** (ADR-0077 §4). The suite moved
+ * into `@repo/form`, whose re-derivation and installer these are, and runs
+ * there on the package's own instance. One case stays, because only this app
+ * can show it: that the instance *this app* builds — its `createI18n`, which
+ * binds `applyZodLocale` and `zodLocaleReady` — puts the rule in Latvian
+ * through the door's re-exports. `turbo gen resource-screen` still fills this
+ * file's `lv` block, which is why the block still spells every namespace out.
  */
 
 interface Values {
@@ -142,92 +145,7 @@ const Harness = ({ i18n }: { readonly i18n: I18n }) => {
   );
 };
 
-describe("schemaFieldRules", () => {
-  it("answers a path its schema refuses and nothing else", () => {
-    const rules = schemaFieldRules(changePasswordBody, {
-      currentPassword: "same-password-12",
-      newPassword: "same-password-12",
-    });
-
-    expect(rules("newPassword")).toBe(CUSTOM_MESSAGES.passwordMustDiffer);
-    expect(rules("currentPassword")).toBeUndefined();
-  });
-
-  it("answers nothing at all for values its schema accepts", () => {
-    const rules = schemaFieldRules(changePasswordBody, {
-      currentPassword: "old-password-12",
-      newPassword: "new-password-12",
-    });
-
-    expect(rules("newPassword")).toBeUndefined();
-  });
-
-  /**
-   * A rejected submit that names three fields must not parse three times, and
-   * one that names none must not parse at all — the whole reason the lookup is
-   * built lazily rather than eagerly beside `messageForError`.
-   */
-  it("parses once however many paths it is asked about, and never if none", () => {
-    const safeParse = vi.fn(() => createStaffBody.safeParse({}));
-    const schema = { safeParse } as unknown as ZodType;
-
-    const unused = schemaFieldRules(schema, {});
-
-    expect(safeParse).not.toHaveBeenCalled();
-
-    const rules = schemaFieldRules(schema, {});
-
-    rules("email");
-    rules("password");
-    rules("firstName");
-
-    expect(safeParse).toHaveBeenCalledTimes(1);
-    expect(unused).toBeTypeOf("function");
-  });
-
-  it("keeps the first issue for a path, which is what the resolver shows", () => {
-    const rules = schemaFieldRules(createStaffBody, {
-      email: "not-an-address",
-      password: "short",
-      firstName: "",
-      lastName: "",
-      roles: [],
-    });
-
-    expect(rules("email")).toBe("Invalid email address");
-  });
-
-  /**
-   * An async schema makes `safeParse` throw. Nothing in `@repo/contracts` has
-   * one; the guard exists so that the day one arrives, the form falls back to
-   * the API's sentence instead of crashing on a failed submit.
-   */
-  it("falls back to nothing when the schema refuses to parse synchronously", () => {
-    const schema = {
-      safeParse: () => {
-        throw new Error("async schema");
-      },
-    } as unknown as ZodType;
-
-    expect(schemaFieldRules(schema, {})("email")).toBeUndefined();
-  });
-});
-
-describe("a refused field, re-derived", () => {
-  it("shows the schema's rule rather than the wire's copy", async () => {
-    const user = userEvent.setup();
-    const i18n = build();
-
-    render(<Harness i18n={i18n} />);
-    await user.click(screen.getByRole("button", { name: "Fail" }));
-
-    // Identical to the wire's sentence at `en`, which is the point: nothing
-    // an operator sees changed, only where the sentence came from.
-    expect(
-      screen.getByText("Too small: expected string to have >=12 characters"),
-    ).toBeInTheDocument();
-  });
-
+describe("a refused field, re-derived through this app's instance", () => {
   it("says it in Latvian once the locale has moved, with no reload", async () => {
     const user = userEvent.setup();
     const i18n = build();
@@ -242,23 +160,5 @@ describe("a refused field, re-derived", () => {
     expect(
       screen.queryByText("Too small: expected string to have >=12 characters"),
     ).not.toBeInTheDocument();
-  });
-
-  /**
-   * The residual, stated as a test so it cannot be mistaken for an oversight:
-   * a detail whose path the form's own values produce no issue for keeps the
-   * API's English. It is the `D3.8` case — a form whose state is not its body —
-   * and it is still shown, which is the only guarantee that was ever made.
-   */
-  it("keeps the API's words for a rule the form's values cannot reproduce", () => {
-    const rules = schemaFieldRules(createStaffBody, {
-      email: "someone@example.test",
-      password: "a-long-enough-password",
-      firstName: "Ada",
-      lastName: "Lovelace",
-      roles: ["editor"],
-    });
-
-    expect(rules("email")).toBeUndefined();
   });
 });

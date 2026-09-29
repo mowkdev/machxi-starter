@@ -13,6 +13,11 @@ import en from "../../locales/en.json";
  * was a test about that app's dictionary and went back there. What is left
  * here can be asked of the grid with only its own copy mounted.
  *
+ * **Those went-back suites came home at `D22.3`** (ADR-0077 §4): what they
+ * read of the admin's dictionary was the grid's namespace, the demo fixture's
+ * and an enum's `common:options`, so `demo-i18n.ts` composes exactly those and
+ * the door-level cases run in this package beside the ones below.
+ *
  * `@repo/i18n`'s factory rather than a stub, so the `t` these tests pass into
  * `buildColumns` is the same kind of translator the app supplies — including
  * the `defaultValue` behaviour that config-supplied labels lean on.

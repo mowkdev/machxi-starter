@@ -212,3 +212,111 @@ The customer's build has no `table` chunk. Both apps are within budget, and neit
 5. Tick step 2 when all of the above pass.
 
 **Closed 2026-09-29.** `main` was fast-forwarded to `d716f50` by the coordinating session, on the operator's instruction. The operator then ran `pnpm install` and `pnpm test:e2e` in `main` and reported both green; that is the operator's report, and no counts were recorded. The step was ticked on the operator's instruction. The visual check of the admin's unreachable notice, item 4, was not reported, so it stays _pending the operator_ and goes to `/ship` as a named operator item.
+
+## D22.3 — The grid's and the form's suites live in their packages (2026-09-29)
+
+**Head.** No record moves at this step. ADR-0077 §4 was accepted at `D22.1`, and neither the plan nor a record was amended here.
+
+**Built.** Closes `FE-04`, `FE-09`'s residual as far as this step can (see the durations), and `FE-15` for its first and fifth files. The fates are written into the reviews at `D22.4`.
+
+- **The moved suites.** Ten admin files left `apps/admin/src/shared/{grid,form}/__tests__` for `packages/grid/src/__tests__` and `packages/form/src/__tests__`.
+  - The grid's `app-grid.test.tsx` was split by concern as it landed: `demo-grid` (the table, the pager, search, loading and the viewport frame), `header-filters`, `filter-bar` (the applied-filters bar and the hot filters), `selection-and-toolbar` and `column-preferences`. The five share `support/demo-harness.tsx`.
+  - The form's `app-form-surface.test.tsx` was split into itself (the parity cases, the one deliberate difference, the drawer's refusal and the page's blocker) and `app-form-surface-layout.test.tsx` (the inverted frame). The two share `support/surface-harness.tsx`.
+  - `list-state`, `filter-chips`, `bulk-summary`, `grid-locale`, `app-form`, `app-form-dialog`, `server-errors` and `server-errors-locale` moved whole.
+- **The harness.** Both packages run on `@repo/app-kit/testing/setup`, with `testTimeout: 30_000` above its twenty-second `asyncUtilTimeout`, as both apps do. Each package's own `support/setup.ts` was a subset of the same stubs and was deleted. Each package gained `support/matchers.d.ts`, the apps' `test/matchers.d.ts` in miniature, because the setup file is outside the package's TypeScript program.
+- **The fixture.** The admin's demo resource was split between the packages: the columns and rows to `@repo/grid`, the fields and bodies to `@repo/form`. Each half has its own `demo:` catalogue and `ResourceNamespaceMap` augmentation. The admin's own fixture stays, because `shared/resource/__tests__/config.test.ts` still reads it.
+- **The instances.** `@repo/grid`'s `demo-i18n.ts` composes the grid's catalogue in `en` and `lv`, the fixture's, and the `common:options` slice an enum resolves through. `@repo/form`'s `render.tsx` composes the form's catalogue in both locales and the fixture's, and binds `applyZodLocale` and `zodLocaleReady` as `zod-locale.test.ts` does. Both are `@repo/i18n`'s factory.
+- **The doors' smoke tests.**
+  - The grid door keeps `app-grid.test.tsx` with the two density-binding cases it already had, over the door's own `AppGrid`.
+  - The form door keeps `server-errors-locale.test.tsx` with the Latvian re-derivation through the admin's own `createI18n`. That is the case that proves the admin's binding installs zod's map. The file keeps its `lv` block because `turbo gen resource-screen` fills it (`PARTIAL_LV_FIXTURES`).
+- **The pending submit label.** `packages/form/src/__tests__/app-form-actions.test.tsx`: "the pending submit label is a catalogue string", under the pseudo-locale. It asserts the key exists, the label is bracketed by the lens, it is not the primitive's "Loading", and it is `t("form:actions.pending")`.
+- **The dependencies.** `@repo/grid` gained `@repo/app-kit` as a devDependency. `@repo/form` gained `@repo/app-kit`, `@repo/app-services` (the route-meta hooks the surface harness reads), `@hookform/resolvers`, `@testing-library/user-event` and `react-i18next`, all as devDependencies. Both `tsconfig.json` files reference the new workspaces. Neither the kit nor `@repo/app-services` depends on either package, so no cycle arises. The customer's `grid-chunk.test.ts` checks `@repo/account`'s dependencies one level down for `@repo/grid` and the table engine, and `@repo/form` still declares neither.
+- **The lockfile moved**: 18 lines in `pnpm-lock.yaml`, importers only. So the step was built in the side worktree `.claude/worktrees/d22-3` on branch `d22-3`, and `main` and the running stack were not touched. The worktree ran on the committed `.env.example`, copied to its ignored `.env`, as at D22.2.
+
+**Declared deviations from the plan's wording.**
+
+- **"Each door keeps one smoke test."** The grid door keeps one file with two cases (with and without a density provider), both pre-existing. The form door keeps one case, which is also moved into the package, so it runs twice (below).
+- **Three moved cases read a stand-in rather than the admin's words.** `bulk-summary` reads the fixture's `demo:noun` ("widget", "widgets") where it read `staff:noun` and `users:noun`, which are the admin's namespaces. `server-errors` reads the harness's `APP_ERRORS` ("… (test).") where it read the admin's `errors` catalogue. The review confirmed that every other body is unchanged, and that the stand-ins make those cases stricter: a "(test)" sentence arrives only through the `messageForError` the case passes.
+- **The surface harness returns the render result alone.** In the admin it also returned the router, which no case read. Exported from its own module, the router's inferred type could not be named by the declaration emit.
+
+**Tests.** Unit tier, per workspace, from the gate's `pnpm test` log:
+
+| Workspace    | Before | After |
+| ------------ | ------ | ----- |
+| `@repo/grid` | 101    | 206   |
+| `@repo/form` | 7      | 74    |
+| `admin`      | 500    | 330   |
+| every other  | 1883   | 1883  |
+| **total**    | 2491   | 2493  |
+
+The integration tier is unchanged: `api` 823 and `@repo/db` 113.
+
+- **Moved, 170 cases, at zero net.** 105 to `@repo/grid` and 65 to `@repo/form`. The review matched the titles: 161 in the ten files at `HEAD`, and 162 across the new package files and the two admin smoke files. The one extra title is the duplicated Latvian case.
+- **Kept as the doors' smoke tests, 3 cases.** The two density cases and the Latvian case.
+- **Net-new, 2 cases, both in `@repo/form`.** "the pending submit label is a catalogue string", and the package's copy of "says it in Latvian once the locale has moved, with no reload".
+
+**The pending-label case went red.** With `actions.pending` deleted from `packages/form/src/locales/en.json`, the case failed on `expected false to be true` (the `exists` assertion). It went green again with the file restored from the index.
+
+**Line counts** (`wc -l`) of every moved file, before → after. The admin paths are under `apps/admin/src/shared/`, the package paths under `packages/{grid,form}/src/__tests__/`.
+
+- `grid/__tests__/app-grid.test.tsx`, 1838 → `demo-grid` 325, `header-filters` 265, `filter-bar` 346, `selection-and-toolbar` 371, `column-preferences` 414, and `support/demo-harness.tsx` 167. The admin's smoke file of the same name is 100.
+- `grid/__tests__/list-state.test.ts`, 360 → 359.
+- `grid/__tests__/filter-chips.test.ts`, 249 → 252.
+- `grid/__tests__/grid-locale.test.tsx`, 129 → 130.
+- `grid/__tests__/bulk-summary.test.ts`, 104 → 107.
+- `form/__tests__/app-form-surface.test.tsx`, 764 → `app-form-surface` 295, `app-form-surface-layout` 216, and `support/surface-harness.tsx` 294.
+- `form/__tests__/server-errors.test.tsx`, 308 → 303.
+- `form/__tests__/app-form.test.tsx`, 282 → 285.
+- `form/__tests__/server-errors-locale.test.tsx`, 264 → 234. The admin's smoke file of the same name is 164.
+- `form/__tests__/app-form-dialog.test.tsx`, 217 → 216.
+
+No moved or split file is over 600 lines. The largest is `column-preferences.test.tsx` at 414.
+
+**The admin unit tier's duration**, from the tier's own `Duration` line, `pnpm turbo run test:unit --filter=admin --filter=@repo/grid --filter=@repo/form --force --concurrency=1` in the worktree, once each:
+
+| Workspace    | Before (`4bbe52c`)          | After                       |
+| ------------ | --------------------------- | --------------------------- |
+| `admin`      | 96.93s, 60 files, 500 tests | 87.55s, 52 files, 330 tests |
+| `@repo/grid` | 38.58s, 12 files, 101 tests | 19.26s, 21 files, 206 tests |
+| `@repo/form` | 3.04s, 1 file, 7 tests      | 13.46s, 8 files, 74 tests   |
+
+- The admin link is about 10% shorter. That is one run each way on one machine, and the grid's before-run shows how noisy a single run is: 38.6s for 101 tests, then 19.3s for 206.
+- The bill `FE-09` named is `staff-page`, `staff-manage`, `users-manage`, `users-page` and `record-routes`: the files that mount the whole route tree. They stayed in the admin, and they were most of that link. `app-grid` was the one package suite among them, and it left. Whether the rest is worth pre-bundling is D22.4's close-out question, not this step's.
+
+**`pnpm size`, gzipped kB, D22.2's close → this step.**
+
+| app      | js            | css         | entry         |
+| -------- | ------------- | ----------- | ------------- |
+| admin    | 366.5 → 366.4 | 14.6 → 14.5 | 163.2 → 163.2 |
+| customer | 311.1 → 311.0 | 13.7 → 13.7 | 107.2 → 107.2 |
+
+No shipped source changed. The admin's CSS fell 0.1 kB, which is consistent with Tailwind no longer scanning the moved test files' class names under `apps/admin/src`. That was inferred, not traced. Neither budget file is touched.
+
+**Verified by running**, in the worktree, on the tree before the review's two edits:
+
+| Link           | Result                                                           |
+| -------------- | ---------------------------------------------------------------- |
+| `lint`         | 22/22 (1 cached)                                                 |
+| `check-types`  | 17/17 (14 cached, from the step's own earlier run)               |
+| `test`         | 17/17, cold (the integration tier ran against the test database) |
+| `size`         | 4/4                                                              |
+| `format:check` | clean                                                            |
+
+After the review's two edits and this note, the links were run again: see the commit message.
+
+**Inferred, not run.** `pnpm test:e2e` was not run. The worktree serves nothing, and the operator's stack serves `main`, which does not have this step until it is fast-forwarded and installed. The step changes no shipped source, so no browser-visible change is expected.
+
+**Review: one `code-reviewer` pass, three findings, all low, all carried over from the admin.** The reviewer compared each moved case's body, keyed by title, with the version at `HEAD`, and found none weakened and none lost.
+
+- **The `common:options` stand-in words are what `humanize` answers**, so the enum cases pass with that block deleted. The admin had the same gap. Not changed: the fix would rewrite a dozen moved assertions. `demo-i18n.ts` now says the lookup is not checked here and is `@repo/resource`'s to certify.
+- **The admin's density case "hands the table the account's mode" looped over the cells with no non-empty guard.** Fixed: it gained its sibling's `toBeGreaterThan(0)`.
+- **At `en`, "shows the schema's rule rather than the wire's copy" is satisfied by either source**, as its own comment says. The Latvian case beside it is the real proof, in the package and in the admin. Logged, not changed.
+
+**Pending the operator.** Step 3's checkbox is not ticked. The step moved the lockfile, so it follows the D22.2 path:
+
+1. Fast-forward `main` to `d22-3` (`git merge --ff-only d22-3`, run in the main checkout).
+2. `pnpm install` in `main`, since `pnpm-lock.yaml` gained the new devDependencies of `@repo/grid` and `@repo/form`. Restart whatever the install disturbs.
+3. `pnpm test:e2e`, in both apps, against the running stack.
+4. Tick step 3 when all of the above pass.
+
+The visual check of the admin's unreachable notice (D22.1, D22.2) is unchanged and still pending.

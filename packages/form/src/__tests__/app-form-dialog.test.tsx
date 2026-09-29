@@ -1,20 +1,19 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { initialValuesFor } from "@repo/resource";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 
-import { initialValuesFor } from "@/shared/resource/config";
+import { AppFormDialog } from "../app-form-dialog";
+import { createAppFormInput } from "../app-form-input";
 import {
   demoCreateBody,
   demoResourceConfig,
   type DemoCreateBody,
-} from "@/test/fixtures/demo-resource";
-import { renderWithProviders } from "@/test/render";
-
-import { createAppFormInput } from "../app-form-input";
-import { AppFormDialog } from "../app-form-dialog";
+} from "./support/demo-resource";
+import { renderWithI18n } from "./support/render";
 
 /**
  * The one shell a caller still opens and closes (`D8.11`, ADR-0048 §4).
@@ -35,6 +34,10 @@ import { AppFormDialog } from "../app-form-dialog";
  * gets through unmounts the dialog, and the assertion that it did not is
  * falsifiable. The `isPending: false` cases below are the proof that it is —
  * the same gestures close it there.
+ *
+ * **Moved from the admin's door at `D22.3`** (ADR-0077 §4), with its cases
+ * unchanged. The corner button's "Close" is `@repo/ui`'s own default here,
+ * where the admin mounted its `UiStrings` binding over the same word.
  */
 
 const DemoFormInput = createAppFormInput(demoResourceConfig.fields);
@@ -123,9 +126,7 @@ describe("the dialog refuses dismissal while the mutation is in flight", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    renderWithProviders(
-      <ControlledDialog isPending onOpenChange={onOpenChange} />,
-    );
+    renderWithI18n(<ControlledDialog isPending onOpenChange={onOpenChange} />);
 
     await screen.findByLabelText("Name");
     await user.keyboard("{Escape}");
@@ -137,9 +138,7 @@ describe("the dialog refuses dismissal while the mutation is in flight", () => {
   it("stays open when the overlay is clicked", async () => {
     const onOpenChange = vi.fn();
 
-    renderWithProviders(
-      <ControlledDialog isPending onOpenChange={onOpenChange} />,
-    );
+    renderWithI18n(<ControlledDialog isPending onOpenChange={onOpenChange} />);
 
     await screen.findByLabelText("Name");
     await clickOverlay();
@@ -149,7 +148,7 @@ describe("the dialog refuses dismissal while the mutation is in flight", () => {
   });
 
   it("offers no close button to press", async () => {
-    renderWithProviders(<ControlledDialog isPending />);
+    renderWithI18n(<ControlledDialog isPending />);
 
     await screen.findByLabelText("Name");
 
@@ -175,7 +174,7 @@ describe("and reports every dismissal once nothing is in flight", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    renderWithProviders(<ControlledDialog onOpenChange={onOpenChange} />);
+    renderWithI18n(<ControlledDialog onOpenChange={onOpenChange} />);
 
     await screen.findByLabelText("Name");
     await user.keyboard("{Escape}");
@@ -189,7 +188,7 @@ describe("and reports every dismissal once nothing is in flight", () => {
   it("closes on an overlay click", async () => {
     const onOpenChange = vi.fn();
 
-    renderWithProviders(<ControlledDialog onOpenChange={onOpenChange} />);
+    renderWithI18n(<ControlledDialog onOpenChange={onOpenChange} />);
 
     await screen.findByLabelText("Name");
     await clickOverlay();
@@ -204,7 +203,7 @@ describe("and reports every dismissal once nothing is in flight", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    renderWithProviders(<ControlledDialog onOpenChange={onOpenChange} />);
+    renderWithI18n(<ControlledDialog onOpenChange={onOpenChange} />);
 
     await screen.findByLabelText("Name");
     await user.click(screen.getByRole("button", { name: "Close" }));

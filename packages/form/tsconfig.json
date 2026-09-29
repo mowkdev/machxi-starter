@@ -12,6 +12,12 @@
       "path": "../api-client"
     },
     {
+      "path": "../app-kit"
+    },
+    {
+      "path": "../app-services"
+    },
+    {
       "path": "../contracts"
     },
     {

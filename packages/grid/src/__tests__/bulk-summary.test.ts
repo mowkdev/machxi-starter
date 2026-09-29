@@ -1,10 +1,8 @@
+import type { BulkOutcome } from "@repo/api-client";
 import { describe, expect, it } from "vitest";
 
-import type { BulkOutcome } from "@/shared/api/bulk-outcome";
-import type { TranslateKey } from "@/shared/i18n";
-import { createTestI18n } from "@/test/render";
-
 import { summariseBulk } from "../bulk-summary";
+import { createTranslator } from "./support/demo-i18n";
 
 /**
  * The aggregate outcome's one sentence (ADR-0038, ADR-0034 §Notifications),
@@ -26,8 +24,13 @@ import { summariseBulk } from "../bulk-summary";
  * The **app-wide** translator since `D7.4`: the noun is a key in the
  * resource's own namespace now (`staff:noun`, with its own plural forms), so a
  * `grid`-bound `t` could not resolve it. The sentences are otherwise unchanged.
+ *
+ * **The demo's noun since `D22.3`**, when the suite moved into the package
+ * (ADR-0077 §4): `staff:` and `users:` are the admin's namespaces and this
+ * package has neither, so the fixture's `demo:noun` stands in with the same
+ * two plural forms. The sentences around the noun are the grid's catalogue.
  */
-const t = createTestI18n().t as TranslateKey;
+const t = createTranslator();
 
 const outcome = (over: Partial<BulkOutcome> = {}): BulkOutcome => ({
   deleted: [],
@@ -39,17 +42,17 @@ const outcome = (over: Partial<BulkOutcome> = {}): BulkOutcome => ({
 describe("summariseBulk", () => {
   it("picks the singular form for one row and the plural for more", () => {
     expect(
-      summariseBulk(outcome({ deleted: ["1"] }), "staff:noun", t).headline,
-    ).toBe("1 staff account deleted.");
+      summariseBulk(outcome({ deleted: ["1"] }), "demo:noun", t).headline,
+    ).toBe("1 widget deleted.");
 
     expect(
-      summariseBulk(outcome({ deleted: ["1", "2"] }), "staff:noun", t).headline,
-    ).toBe("2 staff accounts deleted.");
+      summariseBulk(outcome({ deleted: ["1", "2"] }), "demo:noun", t).headline,
+    ).toBe("2 widgets deleted.");
   });
 
   it("calls a clean run a success", () => {
     expect(
-      summariseBulk(outcome({ deleted: ["1"] }), "users:noun", t).tone,
+      summariseBulk(outcome({ deleted: ["1"] }), "demo:noun", t).tone,
     ).toBe("success");
   });
 
@@ -59,7 +62,7 @@ describe("summariseBulk", () => {
         deleted: ["1"],
         refused: [{ id: "2", label: "ada@example.com", message: "Refused." }],
       }),
-      "staff:noun",
+      "demo:noun",
       t,
     );
 
@@ -77,7 +80,7 @@ describe("summariseBulk", () => {
         refused: [{ id: "2", label: "row-2", message: "Refused." }],
         unattempted: [{ id: "3", label: "row-3" }],
       }),
-      "users:noun",
+      "demo:noun",
       t,
     );
 
@@ -96,7 +99,7 @@ describe("summariseBulk", () => {
         outcome({
           refused: [{ id: "1", label: "row-1", message: "Refused." }],
         }),
-        "staff:noun",
+        "demo:noun",
         t,
       ).tone,
     ).toBe("error");

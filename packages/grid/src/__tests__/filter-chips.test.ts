@@ -1,12 +1,11 @@
 import type { Filter } from "@repo/contracts";
+import { activeIntlTag } from "@repo/i18n";
+import { mergeColumns } from "@repo/resource";
 import { describe, expect, it } from "vitest";
 
-import { activeIntlTag, type TranslateKey } from "@/shared/i18n";
-import { mergeColumns } from "@/shared/resource/config";
-import { demoResourceConfig } from "@/test/fixtures/demo-resource";
-import { createTestI18n } from "@/test/render";
-
 import { chipsForState } from "../filter-chips";
+import { createTranslator } from "./support/demo-i18n";
+import { demoResourceConfig } from "./support/demo-resource";
 
 /**
  * The applied-filters bar's contents, as data (ADR-0039, `D4.4`).
@@ -37,8 +36,12 @@ const columns = mergeColumns(demoResourceConfig.columns);
  * **App-wide rather than `grid`-bound since `D7.4`**: half of a chip's words
  * are the column's — its header, an enum option, a `presence` label — and those
  * are keys in the resource's namespace (here the fixture's `demo:`).
+ *
+ * **The package's own instance since `D22.3`** (ADR-0077 §4): the grid's
+ * catalogue, the fixture's and the `common:options` slice an enum reads — the
+ * three things these labels were ever composed from.
  */
-const t = createTestI18n().t as TranslateKey;
+const t = createTranslator();
 
 const labels = (filters: readonly Filter[]): readonly string[] =>
   chipsForState(filters, columns, t).map((chip) => chip.label);

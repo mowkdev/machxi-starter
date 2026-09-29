@@ -1,19 +1,18 @@
 import type { ListQuerySearch, Page } from "@repo/contracts";
+import type { I18n } from "@repo/i18n";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import { describe, expect, it } from "vitest";
 
-import { listSearchDefaults } from "@/shared/grid/list-state";
-import type { I18n } from "@/shared/i18n";
+import { AppGrid } from "../app-grid";
+import { listSearchDefaults } from "../list-state";
+import { KEY_PREFIX, createTestI18n } from "./support/demo-i18n";
 import {
   demoResourceConfig,
   demoRows,
   type DemoRow,
-} from "@/test/fixtures/demo-resource";
-import { createTestI18n } from "@/test/render";
-
-import { AppGrid } from "../app-grid";
+} from "./support/demo-resource";
 
 /**
  * A locale switch, seen from the grid (ADR-0046 §5, `D7.2`).
@@ -52,6 +51,8 @@ const renderGrid = (i18n: I18n) => {
 
     return (
       <AppGrid
+        keyPrefix={KEY_PREFIX}
+        renderError={() => <p>Failed</p>}
         columns={demoResourceConfig.columns}
         page={page}
         listState={listState}
