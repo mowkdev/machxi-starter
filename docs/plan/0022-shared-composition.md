@@ -1,6 +1,6 @@
 # D22 — Shared composition, second wave
 
-- Status: **planned** — **scoped in full 2026-09-29 by `/scope`**, from the row inserted 2026-09-14 (ledger §How D20–D26 were inserted) and `FE-01`, `FE-04`, `FE-09`'s residual and `FE-15` of the two reviews. Not opened: no row is in progress since D21 shipped the same day, and opening is the operator's decision (ADR-0025 rule 5; ledger §How D22 was scoped).
+- Status: **in progress** — **scoped in full 2026-09-29 by `/scope`**, from the row inserted 2026-09-14 (ledger §How D20–D26 were inserted) and `FE-01`, `FE-04`, `FE-09`'s residual and `FE-15` of the two reviews. **Opened 2026-09-29**, the same sitting, on the operator's decision (ADR-0025 rule 5; ledger §How D22 was scoped, §How D22 opened).
 - Records: [ADR-0077](../adr/0077-shared-composition-second-wave.md) (the session in the kit, `@repo/account`, a feature slice as a door; deltas on ADR-0062, 0051, 0045 and 0053) — written `proposed` at scoping, accepted at the head of `D22.1`.
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0022-shared-composition.notes.md`](0022-shared-composition.notes.md)
