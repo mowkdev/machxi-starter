@@ -63,7 +63,7 @@ Run at `D21.7` and again by `/ship` on the committed tree.
 1. The gate green, every task cold: `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`.
 2. `pnpm test:unit` twice, the second `FULL TURBO` (ADR-0026 as carried).
 3. `pnpm outdated -r` lists no direct dependency behind a major except `@types/node` at the floor's major (its reason in the pinning register) and what D21's notes route by name; `pnpm audit --prod` reports no advisory.
-4. `pnpm why -r` resolves one version each of `vite`, `vitest`, `eslint` and `typescript` (two names, one version each, if the spike landed); the hygiene case that says so is green.
+4. `pnpm why -r` resolves one version each of `vite`, `vitest`, `eslint` and `typescript` (two names, one version each, if the spike landed); the hygiene case that says so is green. **Amended 2026-09-29 (D21.7).** The spike landed in the form `D21.6`'s amendment states: one name, two versions, each declared once. So `typescript` resolves 7.0.2 for every compiler and 6.0.3 behind `@repo/eslint-config` alone, and the cases that say so are "a held dependency is one fact" (for `vite`, `vitest` and `eslint`) and "the compiler is two facts".
 5. `pnpm size` green with both budget files' baselines equal to the measurement of the shipping commit.
 6. `pnpm test:e2e` green in both apps against the local compose, the floors unchanged from `D20.13`'s.
 7. `pnpm test:postman` exit `0` with the counts the READMEs state.

@@ -245,3 +245,81 @@ The review fixes after the gate touched only records, `renovate.json` and the hy
 
 - Run `pnpm install` in `main` after the fast-forward. The dev servers do not type-check, so nothing they load changes.
 - The throwaway worktree `.claude/worktrees/d21-6-spike` and its branch are removed at this step.
+
+## D21.7 — Close-out (2026-09-29)
+
+**Where it ran.** In `.claude/worktrees/d21-4`, fast-forwarded to `main` at `8a4981c` first, with its own install and the operator's root `.env`.
+
+**`pnpm outdated -r` read against the goal: two majors, each taken or routed by name.**
+
+| Dependency    | Installed → latest | Where                              | Fate                                                                                                                                                                                                                                                                                                                      |
+| ------------- | ------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@types/node` | 24.19.0 → 26.6.3   | 13 workspaces, through the catalog | **Taken at the floor** (`D21.4`). 24 is the runtime floor's major (ADR-0073 §4); the reason is the register's `@types/node` rule in `renovate.json`, the hold is `pnpm-workspace.yaml`'s `overrides` entry, and both move with the floor.                                                                                 |
+| `typescript`  | 6.0.3 → 7.0.2      | `@repo/eslint-config` alone        | **Routed to the first `typescript-eslint` release whose peer admits 7** (ADR-0076). It is the linter's alias, not the compiler; every `tsc -b` runs 7.0.2. The route is written three times and moves as one: `renovate.json`'s alias rule, the four `@typescript-eslint/*>typescript` peer entries and the alias itself. |
+
+Every other row is a minor or a patch for Renovate's weekly group. `jsdom` 30.0.1 → 30.1.1 is the register's standing hold, not a major.
+
+**The carried items, each routed by name.**
+
+- **`eslint-plugin-react` admitted to ESLint 10** by `peerDependencyRules` (`D21.2`). This waits on jsx-eslint/eslint-plugin-react#3977. The entry's comment names the issue and says that the entry, and `react.js`'s stated React major, go with the first release whose peer names 10.
+- **`typescript-eslint`'s `<6.1.0` peer cap** (`D21.5`'s review note) is now the same wait as the alias above. `renovate.json`'s alias rule caps proposals below 6.1, so the pull request that fails on it cannot open.
+- **Vite 8's warning on `import "./app-version"` without an extension** (`D21.3`) is routed to the Vite release that makes `configLoader: 'native'` the default. That release's Renovate major is its own pull request, and the build fails there rather than warning. The fix is one extension in each `vite.config.ts`, taken in that pull request.
+- **The digest generator carries a delta per record, not per section** (`D21.6`'s review). This is routed to D26, Record consolidation. The ledger row now names it, because a section-level carriage rule is a delta on ADR-0065 §5 and restating the chains is where the over-attribution shows.
+
+**The pins and the catalog agree with the lockfile.**
+
+- The catalog's `eslint` ^10.11.0, `typescript` 7.0.2, `vite` ^8.3.0 and `vitest` ^5.0.1 match the lockfile's `catalogs.default` entry by entry.
+- `@types/node` ^24.19.0 is written by the `overrides` entry into every importer's specifier, and resolves 24.19.0 there.
+- The pin rule's exact names resolve at the versions the manifests state: `express` 5.2.1, `@types/express` 5.0.6, `typescript` 7.0.2 plus the 6.0.3 alias, and `@vitest/coverage-v8` 5.0.1.
+- The two `overrides` entries (`@types/node`, `jsdom` 30.0.1) and the register's `allowedVersions` (`<25` and `30.0.1`) state the same versions.
+
+**Digests.** `pnpm rules:digest` wrote 0 of 3, and 0 of 3 again on a second run. D21.6 had already written ADR-0076's line.
+
+**Budgets re-baselined, no ceiling moved.** Two cold builds of this tree agree to the byte. Against `D21.3`'s baselines:
+
+- admin: `js` 374107 → 374046 and `entry` 167068 → 167019.
+- customer: `js` 316230 → 316214 and `entry` 108460 → 108440.
+- `css` and every vendor chunk are unchanged to the byte.
+
+No app source and no runtime package moved after `D21.3`. The one input under the apps that did is `D21.5`'s `@repo/typescript-config` presets, which Vite 8's transform reads. The cause was not isolated further. Both `size-budget.json` files carry the note, and `baseline` now says `D21.7`, 2026-09-29. So definition-of-done item 5 holds on this commit.
+
+**Definition of done, item by item.**
+
+1. **The gate, cold** (`TURBO_FORCE=1`, `TURBO_CONCURRENCY=2`), before the budget and journal edits:
+
+   | Check          | Result        |
+   | -------------- | ------------- |
+   | `lint`         | 21/21 (1m50s) |
+   | `check-types`  | 16/16 (6.4s)  |
+   | `test`         | 16/16 (6m50s) |
+   | `size`         | 4/4 (18.2s)   |
+   | `format:check` | clean         |
+
+   After the edits, the links those files reach were re-run cold (see §Gate after the edits).
+
+2. `pnpm test:unit` 16/16, then 16/16 again with 16 cached, `FULL TURBO` (97ms).
+3. `pnpm outdated -r` gives the two majors above, each named. `pnpm audit --prod` reports "No known vulnerabilities found".
+4. `pnpm why -r` finds 1 version each of `vite` (8.3.0), `vitest` (5.0.1) and `eslint` (10.11.0). It finds 2 of `typescript`: 7.0.2, and 6.0.3 behind `@repo/eslint-config` alone. This is the form `D21.6`'s amendment set, and item 4 now carries an `Amended 2026-09-29 (D21.7)` note that says so. The hygiene cases "a held dependency is one fact" and "the compiler is two facts" were green in `lint`'s `test:scripts`.
+5. `pnpm size` green, and both baselines equal this commit's measurement (above).
+6. **`pnpm test:e2e`: pending the operator.** It runs over the dev servers, which belong to the operator. They need `pnpm install` in `main` and a restart first. Nothing here ran it.
+7. `pnpm test:postman` exited `0` against the running API: 212 requests, 424 test scripts, 647 assertions, 0 failed. The READMEs state 646. The extra assertion is the one `D20.11` recorded, which runs only where a Google client is configured, as it is on this machine. `D28`'s close-out accepted the same reading.
+8. `docker compose -f docker/prod/compose.yaml build` succeeded, with `VITE_ADMIN_API_URL` and `VITE_CUSTOMER_API_URL` set to `http://localhost:4000`. Without them, `D20.8`'s guard refuses the SPA stage, as designed; that was the first attempt here. `docker image inspect` gives the API image as 87.4 MB, the size `D20` recorded. The admin image is 96.4 MB and the customer image is 96.2 MB. The TypeScript 7 native binaries do not reach the image: `/app/node_modules` is 46 MB of runtime packages.
+9. `pnpm rules:digest` wrote nothing on its second run. `pnpm docs:check` passed inside `lint`.
+
+**Gate after the edits.** The edits touched the two budget files, the plan, the ledger and this file. The links those reach were re-run cold: `pnpm lint` 21/21 (1m47s; it carries `test:scripts`, with `size.test.mjs`'s headroom case over the committed budgets, and `docs:check`), `pnpm size` 4/4, and `pnpm format:check` clean. No code moved, so `check-types` and `test` stand from the run above.
+
+**Amendments.** Definition-of-done item 4 now carries `Amended 2026-09-29 (D21.7)`. It pointed at "two names", which `D21.6` had already shown cannot hold, and `/ship` reruns the definition of done against this text. No record was amended.
+
+**Review: one `code-reviewer` pass, three findings and one query.**
+
+- **The step was ticked while item 6 was open.** Fixed: the box stays unticked, following `D21.3`'s precedent. It is ticked when `pnpm test:e2e` is green.
+- **The budget note said each ceiling sat further inside the cap.** It is the reverse: the baselines went down and the ceilings stayed, so each ceiling now sits a few bytes further above its baseline, 4.8% to 5.1% against a 15% cap. Fixed in both files.
+- **Definition-of-done item 4 still said "two names".** Fixed by the amendment above.
+- **Query: is 647 against the READMEs' 646 the stated count?** Yes. `D20.11` recorded the Google-client assertion, `D28`'s close-out accepted it, and item 7 above now says so.
+
+**`pnpm outdated -r` majors.** Before: `@types/node` 24→26 (the floor) and `typescript` 6.0.3→7.0.2 for `@repo/eslint-config` alone (ADR-0076's alias). After: the same two, each named in the table above. The close-out moved no dependency.
+
+**Pending the operator. The step's box stays unticked.**
+
+- Run `pnpm install` in `main` after the fast-forward, then restart the admin (3001) and customer (3002) dev servers and the API. Then run `pnpm test:e2e`, which is definition-of-done item 6, with the floors from `D20.13`. When it is green, tick step 7, and D21 is ready for `/ship`.
+- `.claude/worktrees/d21-4` can be removed with `git worktree remove` once the operator has no further use for it.
