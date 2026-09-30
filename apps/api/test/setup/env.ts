@@ -104,4 +104,16 @@ export const loadTestEnv = (): {
   return { databaseUrl, ownerDatabaseUrl };
 };
 
+/**
+ * The cluster superuser's URL for the test database — for the one file that
+ * needs to create roles (`database-role.int.test.ts`). Read on demand rather
+ * than returned by {@link loadTestEnv}, so no other file is handed it — though,
+ * like every key in `.env.test`, dotenv has loaded it into `process.env`.
+ */
+export const readTestSuperuserUrl = (): string => {
+  loadTestEnv();
+
+  return read("DATABASE_URL_TEST_SUPERUSER");
+};
+
 loadTestEnv();

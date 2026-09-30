@@ -17,6 +17,7 @@ const BOUND: RoleRowLevelSecurity = {
   role: "machxi_app",
   superuser: false,
   bypassRls: false,
+  bypassingRolesHeld: [],
   ownedTables: [],
 };
 
@@ -43,6 +44,45 @@ describe("rowLevelSecurityBypasses", () => {
       }),
     ).toEqual(["owns organization_invitations, organization_memberships"]);
   });
+
+  it("names membership in a superuser or BYPASSRLS role, which is one SET ROLE away", () => {
+    expect(
+      rowLevelSecurityBypasses({
+        ...BOUND,
+        bypassingRolesHeld: ["platform_admin", "rds_superuser"],
+      }),
+    ).toEqual([
+      "is a member of platform_admin, rds_superuser (superuser or BYPASSRLS)",
+    ]);
+  });
+
+  it("names three owned tables and counts the rest", () => {
+    expect(
+      rowLevelSecurityBypasses({
+        ...BOUND,
+        ownedTables: [
+          "drizzle.__drizzle_migrations",
+          "public.account_tokens",
+          "public.audit_events",
+          "public.users",
+        ],
+      }),
+    ).toEqual([
+      "owns drizzle.__drizzle_migrations, public.account_tokens, public.audit_events and 1 more table",
+    ]);
+    expect(
+      rowLevelSecurityBypasses({
+        ...BOUND,
+        ownedTables: [
+          "public.a",
+          "public.b",
+          "public.c",
+          "public.d",
+          "public.e",
+        ],
+      }),
+    ).toEqual(["owns public.a, public.b, public.c and 2 more tables"]);
+  });
 });
 
 describe("assertRoleBoundByRowLevelSecurity", () => {
@@ -53,6 +93,7 @@ describe("assertRoleBoundByRowLevelSecurity", () => {
           role: "machxi_app",
           superuser: false,
           bypass_rls: false,
+          bypassing_roles_held: [],
           owned_tables: [],
         }),
       ),
@@ -65,6 +106,7 @@ describe("assertRoleBoundByRowLevelSecurity", () => {
         role: "postgres",
         superuser: true,
         bypass_rls: true,
+        bypassing_roles_held: [],
         owned_tables: [],
       }),
     );
@@ -74,6 +116,22 @@ describe("assertRoleBoundByRowLevelSecurity", () => {
     ).resolves.toBe(true);
     await expect(refusal).rejects.toThrow(
       /"postgres" is a superuser, and has BYPASSRLS/,
+    );
+  });
+
+  it("refuses a member of a bypassing role, and an owner of tables with no row-level security", async () => {
+    await expect(
+      assertRoleBoundByRowLevelSecurity(
+        answering({
+          role: "api",
+          superuser: false,
+          bypass_rls: false,
+          bypassing_roles_held: ["platform_admin"],
+          owned_tables: ["public.users"],
+        }),
+      ),
+    ).rejects.toThrow(
+      /"api" is a member of platform_admin \(superuser or BYPASSRLS\), and owns public\.users, so row-level security would not bind it/,
     );
   });
 });

@@ -6,6 +6,17 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D29 — Backend closing wave · 2026-09-30
+
+Closes what is expensive to retrofit on the backend before the starter is forked.
+
+- **Migrations by hash.** The migration runner applies every journal entry whose hash is absent, and a second lane builds concurrent indexes outside the transaction, so a fork can merge the starter's later migrations.
+- **A rotatable signing secret.** The access token's secret rotates through a key ring: tokens name their key, and a previous secret still verifies while it is configured. The OIDC transaction codec signs under a key of its own.
+- **Deadlocks.** The federated exchange's locks are ordered against the credential sweeps, and a transaction that loses a deadlock is retried.
+- **Row-level security, proved and landed.** Policies cover both tenant-owned tables, every transaction carries its request's scope, and invitations take a column-level grant. The API refuses to boot on a database role the policies would not bind.
+- **Hardened reference deployment.** The SPA images run unprivileged on 8080 with a health check, every image fetches from the lockfile before copying the source, and the production compose states limits and a capped log per service.
+- **Type-check caching.** A referenced package's `check-types` is no longer cached, so a restored buildinfo cannot mask its own error.
+
 ## D31 — Interface polish · 2026-09-30
 
 Five changes the operator named after using both SPAs. A grid header's name is now a plain label, and its sort and filter controls sit together at the cell's end: sort is an icon button of its own, named "Sort by <header>" and showing the direction it holds. The shell's drawer toggle shows and announces whether the drawer is open. The auth screens are one centred card on a gradient drawn between two existing tokens, with each screen's ways out inside the card. The customer's "Change email" sits on the email's own row. A navigation or deep link that takes longer than a second shows a pending state, held for at least half a second so it never flickers, and the boot loader's delay runs once per page load; a static indicator in `index.html` was tried and withdrawn. Frontend only, and the first deliverable built as a lane beside another. Tag `starter-D31`.

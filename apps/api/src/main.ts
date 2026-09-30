@@ -86,22 +86,29 @@ const main = async (): Promise<void> => {
 
   // Once the database answers, and before anything is built on it: in
   // production, a role that row-level security does not bind — a superuser,
-  // BYPASSRLS, or the owner of a policed table — would keep every request
-  // working and isolate no tenant, so the process refuses rather than starts
-  // (ADR-0078 §4 as amended at `D29.7`). Development and test are exempt: a
-  // local database is the developer's own, and the suite proves the policies
-  // against the application role directly.
+  // BYPASSRLS, a member of either, or the owner of a table — would keep
+  // every request working and isolate no tenant, so the process refuses
+  // rather than starts (ADR-0078 §4 as amended at `D29.7`). Development and
+  // test are exempt: a local database is the developer's own, and the suite
+  // proves the policies against the application role directly.
   if (config.env === "production") {
     try {
       await assertRoleBoundByRowLevelSecurity(db.db);
     } catch (error) {
+      // Two failures, two log lines: a refusal is a statement about the role,
+      // and a query that failed while asking says nothing about it — both
+      // stop the process (the `D29.7` follow-up).
+      const refused = isRowLevelSecurityRefusal(error);
+
       logger.fatal(
         { err: error },
-        "database role not bound by row-level security, refusing to start",
+        refused
+          ? "database role not bound by row-level security, refusing to start"
+          : "could not read the database role's row-level security attributes, refusing to start",
       );
       await db.close();
 
-      if (isRowLevelSecurityRefusal(error)) throw error;
+      if (refused) throw error;
 
       // A driver error while asking: the sentence reaches stderr, the error
       // the log line above (the same reasoning as the probe's).
