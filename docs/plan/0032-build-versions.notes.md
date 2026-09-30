@@ -134,3 +134,42 @@ Checked clean: the mock cannot leak past its file, since per-file isolation is t
 The reviewer also noted, without calling it a finding, that `merge.ours.driver` is not defined in this clone. So on the lane→`main` merges here, `merge=ours` falls back to an ordinary merge, as `docs/plan/**` always has. How `merge=ours` behaves across lanes is D34's question.
 
 **For the operator.** Nothing needs a browser. The `/bootstrap` and `/ship` wording is exercised only when a fork bootstraps or the next deliverable ships. Neither skill was run here.
+
+## D32.4 — Close-out (2026-09-30)
+
+**No head.** Every record was already accepted or moved, and none was amended.
+
+**A merge `D32.3`'s note did not record.** After `D32.3` was committed (`d134911`), `main` carried D29's ship, and it was merged into the lane at `c620127`. It conflicted in one place, the ledger's window paragraph. The conflict was resolved by taking `main`'s paragraph, which records D29 shipped and D32 as the one open lane, and re-applying `D32.3`'s sentence that [ADR-0065](../adr/0065-starter-lifecycle.md) moved at `D32.3`. It is recorded here because `D32.3`'s note was written before the merge.
+
+**The close-out bullets.**
+
+- **Every parent's status line carries its delta.** This was already true: [0004](../adr/0004-configuration-and-environment.md) and [0016](../adr/0016-health-checks.md) moved at `D32.1`, [0054](../adr/0054-design-language-instrument.md) at `D32.2` and [0065](../adr/0065-starter-lifecycle.md) at `D32.3`. Each `- Status:` line names 0081 with its delta, and so does each index row.
+- **The topic table** was already true. The forking, configuration, health and design-language rows name 0081.
+- **The digests.** `pnpm rules:digest` wrote 0 of 3, and `node scripts/rules-digest.mjs --check` reported `up to date (3 digests)`. Each step had regenerated its own area.
+- **The sweep.**
+  - `README.md`'s quick start, `apps/admin/.env.example` and `apps/customer/.env.example` carried no `package.json` version wording, so there was nothing to remove.
+  - Each SPA's `.env.example` gains one closing comment. It says the footer's label and commit are not configured there: they are `APP_VERSION` and `GIT_SHA`, build arguments of the image, with no `VITE_` twin. Unset, the footer says `dev`, and `pnpm dev` never passes them through.
+  - The root `.env.example`'s "set them here only to see a label on a local run", which `D32.2`'s note flagged, now says it is the local API's `/health` alone. The SPAs' dev servers never read that file for these values.
+  - The old wording remains only where it is frozen: the bodies of 0004, 0016 and 0054, which their 0081 deltas supersede, and the ledger's history.
+
+**Done-whens.**
+
+- `pnpm rules:digest` wrote, and then reported nothing stale.
+- `pnpm docs:check` clean: inherited documents clean, 16 specs, 1 open lane, `tag prefix: starter`.
+- `pnpm test:e2e` green in both apps, against the operator's running stack, which was attached to and not restarted.
+  - admin: 38 passed and 1 skipped. The skip is `smoke.spec.ts`'s built-image case, which is conditional on a preview URL, as before. "the sidebar footer shows the build's version" passed.
+  - customer: 12 passed.
+- **The gate: green.** `pnpm lint`, `pnpm check-types`, `pnpm test`, `pnpm size` and `pnpm format:check` all passed. As at the earlier steps, it ran with `DATABASE_URL_TEST` and `DATABASE_URL_TEST_OWNER` exported from their committed values, against the shared `machxi_test`. The review fix below changed two comments in `.env.example` files, which no check reads.
+
+**Review: one bounded pass, `adr-reviewer`.** The diff conforms. There was one Minor finding, which was fixed:
+
+1. The SPA comments said the footer says `dev` "as in every local build and dev server". That claims too much. A local build with `APP_VERSION` exported stamps it, which is `D32.2`'s own done-when, and so does a dev server started outside turbo. Both comments now say the footer is `dev` unless the building shell exports the values, and that `pnpm dev` never passes them through.
+
+The reviewer verified the four status lines, the four topic rows and the absence of stale wording outside frozen text.
+
+**For the operator.**
+
+- **The running API answers `"version":"0.0.0"` on `/health`.** Under `D32.1`'s code, unset is `dev`. The `.env.example` from before D32 carried `APP_VERSION=0.0.0`, so the operator's root `.env` probably still does. This session cannot read `.env` to confirm it. Deleting that line (or `GIT_SHA`'s, if set) and restarting the API makes `/health` say `dev`. That restart is the operator's.
+- Still open from `D32.2`: the footer at 240px with a long label and a commit, in a browser.
+- Still open from `D32.1`: the security reviewer's residuals, namely the full commit on an unauthenticated `/health`, no length bound on either value, and whether Coolify injects compose variables over the baked `ENV`.
+- Every step is ticked. D32 is ready for `/ship`.
