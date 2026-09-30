@@ -27,12 +27,38 @@ Proved by: `apps/api/src/core/config/__tests__/config.test.ts`, `apps/api/test/h
 ### Scenario: A build nobody labelled
 
 - **WHEN** the image was built with neither build argument, or with either one empty
-- **THEN** `/health` answers `version: "dev"` and carries no `commit` field
+- **THEN** `/health` answers `version: "dev"` and carries no `commit` field, to every caller
 
 ### Scenario: A labelled build
 
-- **WHEN** the image was built with `APP_VERSION=9.9.9` and a `GIT_SHA`
+- **WHEN** the image was built with `APP_VERSION=9.9.9` and a `GIT_SHA`, and the request carries the metrics token
 - **THEN** `/health` answers `version: "9.9.9"` and that commit in full
+
+## Requirement: The commit is answered to the operator, not the public
+
+Every `/health` view answers `version` to every caller, and `commit` only to a request carrying the configured metrics token, `Authorization: Bearer <METRICS_TOKEN>`, read and compared in constant time by the same check `/metrics` uses. A request with no token or a wrong one is not refused: it gets `version` alone, the status it would have had and no error, with nothing saying more was there. With no `METRICS_TOKEN` configured, which only a non-production deployment may do, no request carries it, so `commit` is answered to nobody.
+Records: [ADR-0084](../adr/0084-fork-readiness.md), [ADR-0081](../adr/0081-build-versions.md), [ADR-0013](../adr/0013-error-model.md)
+Proved by: `apps/api/test/health.int.test.ts`, `apps/api/src/modules/health/__tests__/health.service.test.ts`
+
+### Scenario: An unauthenticated caller
+
+- **WHEN** a request to `/health`, `/health/ready` or `/health/live` carries no token
+- **THEN** it answers `version` and no `commit` — "an unauthenticated /health answers the version and no commit"
+
+### Scenario: The operator, with the token
+
+- **WHEN** the request carries the configured metrics token as a bearer token
+- **THEN** it answers `version` and `commit` — "a /health carrying the metrics token answers the commit"
+
+### Scenario: A wrong token
+
+- **WHEN** the request carries another bearer token, a prefix or an extension of the right one, or the right one under another scheme
+- **THEN** it answers `200` with `version` and no `commit`, and no error — "a wrong token answers no commit and no error"
+
+### Scenario: No token configured
+
+- **WHEN** the deployment set no `METRICS_TOKEN`
+- **THEN** no request is answered `commit`, whatever it carries
 
 ## Requirement: Metrics are behind a token, and required in production
 

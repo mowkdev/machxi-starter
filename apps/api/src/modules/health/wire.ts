@@ -30,6 +30,10 @@ export const wireHealth = ({ config, db }: WireHealthDeps) => {
     /** No table of its own: health reads other people's connections. */
     repositories: {} as const,
     services: { health } as const,
-    controllers: { health: createHealthController(health) } as const,
+    controllers: {
+      health: createHealthController(health, {
+        metricsToken: config.metrics.token,
+      }),
+    } as const,
   } as const;
 };

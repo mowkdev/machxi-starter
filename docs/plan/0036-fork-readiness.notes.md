@@ -212,3 +212,42 @@ step:check ✓
 ```
 
 `size` ran because `turbo.json` is in the diff, which puts both SPAs in the affected filter. After the check, only this note was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+### D36.3 — the commit behind the metrics token
+
+**The run read first.** `gate.yml` run 36786939909 on the lane's last pushed commit, `a0fe934e` (D36.2's follow-up): **in progress** when read, so the step was built without waiting (`/step` §1). The run before it, 36784620219 on `3dfcf28d`, was green.
+
+**Built.**
+
+- `apps/api/src/core/metrics/metrics.token.ts`: `carriesMetricsToken(req, token)`. It is the bearer read and the constant-time comparison that `metrics.routes.ts` held, moved and not rewritten, so `/metrics` and `/health` share one check. It answers `false` when no token is configured. `/metrics` keeps its own "none configured means open" branch ahead of it, unchanged in behaviour.
+- `health.service.ts`: `live` and `ready` take a `HealthDisclosure`, `{ commit: boolean }`, defaulting to the public view, `{ commit: false }`. `commit` is added only when the disclosure asks for it and the image has one. The 503 path carries no commit, as before.
+- `health.controller.ts` takes `{ metricsToken }` from `wire.ts` (`config.metrics.token`) and asks `carriesMetricsToken` per request. A missing or wrong token is not an error: the caller gets `version` alone, the same status, and no hint (ADR-0013).
+- **No token configured: `commit` is never answered.** ADR-0084 §3 says "only when … a token is configured", and "carries the configured token" cannot be true when none is configured. Outside production, where `METRICS_TOKEN` may be unset, `/health` names no commit to anyone. Production requires the token, so the operator always has a way to read it. The case "with no metrics token configured, no request is answered the commit" proves it.
+- ADR-0081's status line gains the §3 delta and a head note. It moved to `superseded by` ADR-0084 at this step. The index row and the Health topic row say so. ADR-0084's head note says 0082 and 0081 "moved".
+- `docs/specs/health-and-metrics.md`: a new requirement, "The commit is answered to the operator, not the public", with four scenarios naming the tests. The labelled-build scenario now carries the token. `docs/forking.md`, `docs/deploy.md`, `.env.example`, the contract's `commit` comment and the digest source (`scripts/rules-digest.mjs`, Build versions) say the same. `pnpm rules:digest` wrote 3 of 3: the text changed, and the carried-by chains now include 0084.
+- Postman (`/postman-sync`): the Health folder shows both calls. `Health (human view)` has no token and asserts no `commit`. The new `Health (with the metrics token)` sends `Authorization: Bearer {{metricsToken}}`. It asserts no `commit` when no token is configured, and a non-empty one when a token is configured and the image has a commit. `local.postman_environment.json` gains `metricsToken`, empty and secret. `scripts/postman.mjs` passes `METRICS_TOKEN` from `.env`. The Postman README gives the counts, now 213 requests, and the variable.
+
+**Tests.** `apps/api/test/health.int.test.ts`: "an unauthenticated /health answers the version and no commit", "a /health carrying the metrics token answers the commit" and "a wrong token answers no commit and no error". Each of the first two runs over `/health`, `/health/ready` and `/health/live`. The wrong-token case tries another token, the token plus one character, the token minus one, `Basic <token>` and a bare `Bearer`. There is also "with no metrics token configured, no request is answered the commit", and "answers dev and no commit field for a build nobody labelled", which now presents the token. `health.service.test.ts` adds "answers no commit unless the caller is shown it (ADR-0084 §3)". `observability.int.test.ts` still covers `/metrics`'s token after the move.
+
+**Amendments.** None to a record's body. ADR-0081 moved by supersession, as the plan scheduled.
+
+**Step check.**
+
+`export TEST_DB_LANE=$(pnpm --silent db:lane)` printed "already there". Then `pnpm step:check`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/skills/bootstrap/SKILL.md changed)
+  ran      format:check
+step:check ✓
+```
+
+The comparison base is the lane's merge base with `main`, so the lane's earlier steps widen what the check reaches: `size` and `test:fork` ran for them. After the check, only this note and the plan's tick were written. `pnpm format:check` and `pnpm docs:check` were re-run over them.
+
+**Review.** **Owed.** This builder ran as a subagent with no Agent tool, so by ADR-0082 §2 its own reading is not a review. The change touches an unauthenticated endpoint and a credential check, so `security-reviewer` fits. The orchestrating session runs the one review over this step's commit. Confirmed findings land as `fix(api,docs): D36.3 follow-up — the review's findings`.
+
+**Pending the operator.** `pnpm test:postman` against the operator's running stack, for the two health calls. It is already named in the plan's definition of done, item 5. Run it with and without `METRICS_TOKEN` in `.env`: set, the API must be restarted to read it, and that restart is the operator's.

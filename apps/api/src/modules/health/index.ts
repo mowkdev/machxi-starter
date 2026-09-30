@@ -1,6 +1,7 @@
 export {
   createHealthController,
   type HealthController,
+  type HealthControllerDeps,
 } from "./health.controller.js";
 export { createDbIndicator, sanitiseDbError } from "./health.indicators.js";
 export { createHealthRouter } from "./health.routes.js";
@@ -8,6 +9,7 @@ export {
   DEFAULT_CHECK_TIMEOUT_MS,
   aggregateStatus,
   createHealthService,
+  type HealthDisclosure,
   type HealthService,
   type HealthServiceDeps,
 } from "./health.service.js";

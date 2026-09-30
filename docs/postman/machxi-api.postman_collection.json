@@ -137,7 +137,7 @@
   "item": [
     {
       "name": "Health",
-      "description": "Unversioned, unauthenticated and outside every rate limiter (ADR-0016), so a probe never depends on the API layer.",
+      "description": "Unversioned, unauthenticated and outside every rate limiter (ADR-0016), so a probe never depends on the API layer. Every view answers `version` to anyone and `commit` only to a request carrying the metrics token (ADR-0084 §3): the human view is called both ways below.",
       "item": [
         {
           "name": "Liveness",
@@ -213,9 +213,16 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"200 and the readiness resource\", function () {",
+                  "pm.test(\"200, the readiness resource, and no commit without the token\", function () {",
                   "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().data.checks.database.status).to.eql(\"ok\");",
+                  "",
+                  "  const health = pm.response.json().data;",
+                  "",
+                  "  pm.expect(health.checks.database.status).to.eql(\"ok\");",
+                  "  pm.expect(health.version, \"version\").to.be.a(\"string\").that.is.not.empty;",
+                  "  // The commit maps a public instance to its exact source: it is the",
+                  "  // operator's, answered only with the metrics token (ADR-0084 §3).",
+                  "  pm.expect(health, \"no commit to an unauthenticated caller\").to.not.have.property(\"commit\");",
                   "});"
                 ]
               }
@@ -229,7 +236,53 @@
               "host": ["{{baseUrl}}"],
               "path": ["health"]
             },
-            "description": "The same resource readiness returns — a second shape would only be a second thing to keep in sync (ADR-0016)."
+            "description": "The same resource readiness returns — a second shape would only be a second thing to keep in sync (ADR-0016). Called with no token, so it answers `version` and no `commit`."
+          }
+        },
+        {
+          "name": "Health (with the metrics token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, and the commit only when a metrics token is configured\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "",
+                  "  const health = pm.response.json().data;",
+                  "",
+                  "  pm.expect(health.version, \"version\").to.be.a(\"string\").that.is.not.empty;",
+                  "",
+                  "  if (!pm.variables.get(\"metricsToken\")) {",
+                  "    // No METRICS_TOKEN configured: no request carries it, so the commit is",
+                  "    // answered to nobody (ADR-0084 §3).",
+                  "    pm.expect(health, \"no token configured, no commit\").to.not.have.property(\"commit\");",
+                  "  } else if (\"commit\" in health) {",
+                  "    // With the token, the commit is answered whenever the image has one;",
+                  "    // a build nobody labelled has none (ADR-0081).",
+                  "    pm.expect(health.commit, \"commit\").to.be.a(\"string\").that.is.not.empty;",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{metricsToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "The operator's call: `Authorization: Bearer {{metricsToken}}`, the credential `/metrics` reads, answers the image's `commit` beside `version` (ADR-0084 §3). A wrong token is not an error — it gets the public view. `pnpm test:postman` passes `METRICS_TOKEN` from `.env` as `metricsToken`; locally it is usually unset, and then no commit is answered to anyone."
           }
         }
       ]

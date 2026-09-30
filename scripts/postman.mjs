@@ -149,6 +149,9 @@ const main = async () => {
       { key: "baseUrl", value: baseUrl },
       { key: "superAdminEmail", value: email },
       { key: "superAdminPassword", value: password },
+      // Empty when `.env` sets none: then `/health` answers the commit to
+      // nobody, which the token request asserts (ADR-0084 §3).
+      { key: "metricsToken", value: process.env.METRICS_TOKEN ?? "" },
     ],
     reporters: ["cli"],
     // Every folder after a failure still runs: a broken teardown should not

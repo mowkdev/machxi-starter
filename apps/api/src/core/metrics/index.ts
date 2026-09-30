@@ -9,3 +9,4 @@ export {
   createMetricsRouter,
   type MetricsRouterDeps,
 } from "./metrics.routes.js";
+export { carriesMetricsToken } from "./metrics.token.js";

@@ -62,7 +62,7 @@ export const AREAS = [
       {
         topic: "Build versions",
         records: ["0081", "0004", "0016"],
-        text: "Two facts name a build, each under one name everywhere it is taken: `APP_VERSION`, the release label, one value for the whole product and never parsed, stamped into all three images, and `GIT_SHA`, the commit, the API's image's alone. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged, and is the one place the commit is shown.",
+        text: "Two facts name a build, each under one name everywhere it is taken: `APP_VERSION`, the release label, one value for the whole product and never parsed, stamped into all three images, and `GIT_SHA`, the commit, the API's image's alone. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged, and is the one place the commit is shown — to a request carrying the metrics token alone, by `/metrics`'s constant-time check; none configured, nobody.",
       },
       {
         topic: "Loading env files",

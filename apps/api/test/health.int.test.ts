@@ -110,27 +110,103 @@ describe("health endpoints", () => {
 });
 
 /*
- * ADR-0081 §3: `/health` answers the image's two build facts in ADR-0016's
- * shape. The parse — blank is unset, unset is `dev` — is `config.test.ts`'s;
- * these prove what reaches the wire from each outcome of it.
+ * ADR-0081 §3 as carried by ADR-0084 §3: `/health` answers the image's two
+ * build facts in ADR-0016's shape, and the commit only to a request carrying
+ * the configured metrics token — the same credential, and the same
+ * constant-time check, `/metrics` reads. The parse — blank is unset, unset is
+ * `dev` — is `config.test.ts`'s; these prove what reaches the wire.
  */
 describe("the build's version and commit", () => {
-  const harnessWith = (app: { version: string; commit?: string }) =>
+  const TOKEN = "m".repeat(40);
+  const COMMIT = "0123456789abcdef";
+
+  // `{ token }` rather than a defaulted parameter, so an explicit `undefined`
+  // — no token configured — is not replaced by the default.
+  const harnessWith = (
+    app: { version: string; commit?: string },
+    { token }: { token: string | undefined } = { token: TOKEN },
+  ) =>
     createTestApp({
-      config: (config) => ({ ...config, app: { id: config.app.id, ...app } }),
+      config: (config) => ({
+        ...config,
+        app: { id: config.app.id, ...app },
+        metrics: { token },
+      }),
     });
 
-  it("answers a labelled build's version and its commit in full", async () => {
-    const harness = harnessWith({
-      version: "9.9.9",
-      commit: "0123456789abcdef",
-    });
+  const PATHS = ["/health", "/health/ready", "/health/live"] as const;
+
+  it("an unauthenticated /health answers the version and no commit", async () => {
+    const harness = harnessWith({ version: "9.9.9", commit: COMMIT });
     try {
-      for (const path of ["/health", "/health/live"]) {
+      for (const path of PATHS) {
         const response = await supertest(harness.app).get(path).expect(200);
 
         expect(response.body.data.version).toBe("9.9.9");
-        expect(response.body.data.commit).toBe("0123456789abcdef");
+        expect("commit" in response.body.data).toBe(false);
+        expect(JSON.stringify(response.body)).not.toContain(COMMIT);
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("a /health carrying the metrics token answers the commit", async () => {
+    const harness = harnessWith({ version: "9.9.9", commit: COMMIT });
+    try {
+      for (const path of PATHS) {
+        const response = await supertest(harness.app)
+          .get(path)
+          .set("Authorization", `Bearer ${TOKEN}`)
+          .expect(200);
+
+        expect(response.body.data.version).toBe("9.9.9");
+        expect(response.body.data.commit).toBe(COMMIT);
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("a wrong token answers no commit and no error", async () => {
+    const harness = harnessWith({ version: "9.9.9", commit: COMMIT });
+    try {
+      for (const authorization of [
+        `Bearer ${"x".repeat(40)}`,
+        `Bearer ${TOKEN}x`,
+        `Bearer ${TOKEN.slice(1)}`,
+        `Basic ${TOKEN}`,
+        "Bearer",
+      ]) {
+        const response = await supertest(harness.app)
+          .get("/health")
+          .set("Authorization", authorization)
+          .expect(200);
+
+        expect(response.body.error).toBeUndefined();
+        expect(response.body.data.version).toBe("9.9.9");
+        expect("commit" in response.body.data).toBe(false);
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("with no metrics token configured, no request is answered the commit", async () => {
+    const harness = harnessWith(
+      { version: "9.9.9", commit: COMMIT },
+      { token: undefined },
+    );
+    try {
+      for (const authorization of [undefined, `Bearer ${TOKEN}`]) {
+        const call = supertest(harness.app).get("/health");
+        const response = await (
+          authorization === undefined
+            ? call
+            : call.set("Authorization", authorization)
+        ).expect(200);
+
+        expect("commit" in response.body.data).toBe(false);
       }
     } finally {
       await harness.close();
@@ -140,7 +216,10 @@ describe("the build's version and commit", () => {
   it("answers dev and no commit field for a build nobody labelled", async () => {
     const harness = harnessWith({ version: "dev" });
     try {
-      const response = await supertest(harness.app).get("/health").expect(200);
+      const response = await supertest(harness.app)
+        .get("/health")
+        .set("Authorization", `Bearer ${TOKEN}`)
+        .expect(200);
 
       expect(response.body.data.version).toBe("dev");
       expect("commit" in response.body.data).toBe(false);
