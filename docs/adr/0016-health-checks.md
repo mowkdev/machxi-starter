@@ -1,7 +1,9 @@
 # ADR-0016: Health check endpoints
 
-- Status: superseded by [ADR-0066](0066-infrastructure-seams.md) (delta: `/metrics` joins `/health` as a second unversioned operational endpoint outside every limiter)
+- Status: superseded by [ADR-0066](0066-infrastructure-seams.md) (delta: `/metrics` joins `/health` as a second unversioned operational endpoint outside every limiter) and [ADR-0081](0081-build-versions.md) (delta: §Consequences' fallback — `version` is the image's label or `dev`, never a manifest's)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-30 by [ADR-0081](0081-build-versions.md)**, accepted at the head of `D32.1`, the step that stamps the API's version into its image. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): §Consequences said `version` "falls back to `package.json` version and `"unknown"`", and nothing ever read that file. Under 0081 §1 and §3 `version` is the `APP_VERSION` the image was built with, or `dev` when the build set none, and `commit` is the build's `GIT_SHA`, absent when unset or empty. **The response's shape does not change**, and everything else this record decides stands, together with 0066's `/metrics`.
 
 > **Superseded in part 2026-09-03 by [ADR-0066](0066-infrastructure-seams.md)**, accepted at the head of `D14.6`. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): this record made `/health` the one unversioned, unlimited operational surface, and 0066 §2 adds a second — `GET /metrics`, mounted beside it and before the `/api/v1` limiter for the reason stated here, that an operational endpoint which can be rate-limited takes a working instance out of rotation. **The two are not the same thing and neither absorbs the other**: a probe stays cheap, unauthenticated and bounded, while a scrape is behind `METRICS_TOKEN` and answers an unbounded body of counters. **Everything this record decides stands**: the `live`/`ready` split, the indicator registry, the 200/503 mapping, the `no-store` headers and the rule that a health response leaks no configuration.
 

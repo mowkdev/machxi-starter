@@ -1,10 +1,10 @@
 # ADR-0081: Build versions — one release label and a commit, stamped at image build (supersedes ADR-0004, 0016, 0054 and 0065 in part — deltas)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-30
-- Supersedes: [ADR-0004](0004-configuration-and-environment.md) (delta: `APP_VERSION` defaults to `dev`, an empty `GIT_SHA` is absent, and neither is read from a `package.json`); [ADR-0016](0016-health-checks.md) (delta: §Consequences' fallback — `version` is the image's label or `dev`, never a manifest's); [ADR-0054](0054-design-language-instrument.md) (delta: §5's footer source — the image build's label and commit, not a hand-bumped `package.json`); [ADR-0065](0065-starter-lifecycle.md) (delta: §2's tag namespace belongs to the repository that writes it, and §3's journal gains `docs/CHANGELOG.md`)
+- Supersedes (each at the step that makes its delta true): [ADR-0004](0004-configuration-and-environment.md) (delta: `APP_VERSION` defaults to `dev`, an empty `GIT_SHA` is absent, and neither is read from a `package.json`); [ADR-0016](0016-health-checks.md) (delta: §Consequences' fallback — `version` is the image's label or `dev`, never a manifest's); [ADR-0054](0054-design-language-instrument.md) (delta: §5's footer source — the image build's label and commit, not a hand-bumped `package.json`); [ADR-0065](0065-starter-lifecycle.md) (delta: §2's tag namespace belongs to the repository that writes it, and §3's journal gains `docs/CHANGELOG.md`)
 
-> Written 2026-09-30 by `/scope` for D32 ([`docs/plan/0032-build-versions.md`](../plan/0032-build-versions.md)), with D29 in progress — writing is not opening, opening is not accepting. `proposed`; accepted at the head of `D32.1`. Delta supersessions per [ADR-0050](0050-adr-lifecycle-and-verification.md): every parent stands for everything named below that it does not decide.
+> Written 2026-09-30 by `/scope` for D32 ([`docs/plan/0032-build-versions.md`](../plan/0032-build-versions.md)), with D29 in progress — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-30 at the head of `D32.1`**, where [ADR-0004](0004-configuration-and-environment.md) and [ADR-0016](0016-health-checks.md) moved to `superseded by` for §1–§3's API half; [ADR-0054](0054-design-language-instrument.md) moves at `D32.2` and [ADR-0065](0065-starter-lifecycle.md) at `D32.3`, the steps that make their deltas true. Amendable in place, labelled, while D32 is `in progress` (ADR-0025 rule 2, as carried by ADR-0079). Delta supersessions per [ADR-0050](0050-adr-lifecycle-and-verification.md): every parent stands for everything named below that it does not decide.
 
 ## Context
 

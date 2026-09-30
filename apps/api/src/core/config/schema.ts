@@ -296,8 +296,24 @@ export const envSchema = z
       )
       .max(32)
       .default(DEFAULT_APP_ID),
-    APP_VERSION: z.string().default("0.0.0"),
-    GIT_SHA: z.string().optional(),
+    /**
+     * The build's two facts (ADR-0081 §1–§2): the release label and the
+     * commit, stamped into the image as build arguments and promoted to `ENV`
+     * in its runtime stage. Neither is ever read from a `package.json`.
+     *
+     * Blank is unset for both. A build that passes no `--build-arg` still
+     * declares the `ARG`, so the image carries `APP_VERSION=` and `GIT_SHA=`
+     * as empty strings rather than leaving the keys out — and an empty label
+     * would answer `/health` with `""`, an empty commit with a `commit` field
+     * that names nothing. Unset, the label is `dev`: a truthful answer for a
+     * local run, the gate and an image built without the arguments.
+     */
+    APP_VERSION: z.preprocess(
+      (value) =>
+        typeof value === "string" && value.trim() === "" ? undefined : value,
+      z.string().default("dev"),
+    ),
+    GIT_SHA: optionalEnv(z.string()),
     // Express `trust proxy`: 'false' | 'true' | a hop count | a CIDR list.
     // Interpreted by `toTrustProxy`; kept as a string here because the three
     // forms are what Express itself accepts.

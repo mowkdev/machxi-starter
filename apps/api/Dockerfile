@@ -105,6 +105,23 @@ ENV NODE_ENV=production \
 COPY --from=build --chown=node:node /out /app
 USER node
 
+# **The build's two facts are stamped here, at image build** (ADR-0081 §2):
+# the release label and the commit, passed as `--build-arg`s and promoted to
+# `ENV` so `core/config` reads them at boot exactly as it reads anything else.
+# The reference compose passes them as build arguments and never at run time,
+# so a deployment from it reports the version it was built as. (A runtime
+# `-e APP_VERSION=…` still overrides an `ENV`; nothing in the reference
+# deployment sets one.)
+#
+# Declared in this stage alone and after the `COPY`, so a new label rebuilds
+# two metadata layers and nothing else — not the fetch, not the install, not
+# the bundle. Omitted, both arrive as empty strings, which the config schema
+# reads as unset: the label `dev` and no commit (ADR-0081 §1).
+ARG APP_VERSION
+ARG GIT_SHA
+ENV APP_VERSION=${APP_VERSION} \
+    GIT_SHA=${GIT_SHA}
+
 EXPOSE 4000
 
 # Liveness, never readiness (ADR-0016): this decides whether the orchestrator

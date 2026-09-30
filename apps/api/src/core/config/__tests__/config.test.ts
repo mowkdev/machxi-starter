@@ -47,7 +47,7 @@ describe("envSchema", () => {
     expect(env).toMatchObject({
       PORT: 4000,
       LOG_LEVEL: "info",
-      APP_VERSION: "0.0.0",
+      APP_VERSION: "dev",
       TRUST_PROXY: "false",
       DB_POOL_MAX: 10,
       DB_CONNECT_RETRIES: 10,
@@ -542,6 +542,34 @@ describe("loadConfig", () => {
 
   it("omits commit entirely when GIT_SHA is absent", () => {
     expect("commit" in loadConfig(validEnv).app).toBe(false);
+  });
+
+  /*
+   * ADR-0081 §1: a build argument cannot be left out the way a bare
+   * environment key can. An image built with no `--build-arg` still promotes
+   * its `ARG` to `ENV`, so both keys arrive as empty strings — and they must
+   * read exactly as if they were never set.
+   */
+  it("APP_VERSION defaults to dev", () => {
+    expect(loadConfig(validEnv).app.version).toBe("dev");
+    expect(loadConfig({ ...validEnv, APP_VERSION: "" }).app.version).toBe(
+      "dev",
+    );
+    expect(loadConfig({ ...validEnv, APP_VERSION: "  " }).app.version).toBe(
+      "dev",
+    );
+    expect(
+      loadConfig({ ...validEnv, APP_VERSION: "2026.10.1" }).app.version,
+    ).toBe("2026.10.1");
+  });
+
+  it("an empty GIT_SHA is absent", () => {
+    expect("commit" in loadConfig({ ...validEnv, GIT_SHA: "" }).app).toBe(
+      false,
+    );
+    expect("commit" in loadConfig({ ...validEnv, GIT_SHA: " " }).app).toBe(
+      false,
+    );
   });
 
   it("freezes the result so nothing can rewrite configuration at runtime", () => {

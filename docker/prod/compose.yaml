@@ -52,6 +52,16 @@ x-api-image: &api-image
   build:
     context: ../..
     dockerfile: apps/api/Dockerfile
+    # **The build's two facts are stamped into the image** (ADR-0081 §2): the
+    # release label and the commit, as build arguments the Dockerfile promotes
+    # to `ENV`. No service below sets them in its `environment`, so a
+    # deployment from this file reports the version it was built as, and
+    # `migrate`, `api` and `prune` carry the one pair their image was built with.
+    # Derive both from git when building (`docs/deploy.md`). Unset or empty,
+    # the API answers `dev` and no commit, which is true of an unlabelled build.
+    args:
+      APP_VERSION: ${APP_VERSION:-}
+      GIT_SHA: ${GIT_SHA:-}
 
 services:
   migrate:
@@ -99,17 +109,15 @@ services:
         limits:
           cpus: "1.0"
           memory: 1G
-    # List form, not the mapping, so the two optional variables can be written
-    # as bare keys: a bare key is passed through only when it is actually set,
-    # where `GIT_SHA: ${GIT_SHA:-}` would inject an empty string — and an empty
-    # string is a *stated* value, so `/health/ready` would answer
-    # `"commit": ""` instead of omitting the field (ADR-0016).
+    # List form, not the mapping, so the optional variables can be written as
+    # bare keys: a bare key is passed through only when it is actually set,
+    # where `KEY: ${KEY:-}` would inject an empty string — a *stated* value.
+    # `APP_VERSION` and `GIT_SHA` are not here at all: they are the image's,
+    # stamped at build (the anchor above, ADR-0081 §2).
     environment:
       - NODE_ENV=production
       - PORT=4000
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - APP_VERSION=${APP_VERSION:-0.0.0}
-      - GIT_SHA
       # The brand every cookie name and the JWT audience are derived from
       # (ADR-0064 §1). A bare key: unset means the schema's own `machxi`, and
       # the SPAs' VITE_APP_ID below must carry the same word — they are two

@@ -25,9 +25,9 @@ export interface HealthCheckResource {
 
 export interface HealthResource {
   readonly status: HealthStatus;
-  /** `APP_VERSION`, falling back to the API's `package.json` version. */
+  /** The image's `APP_VERSION`, or `dev` when the build set none (ADR-0081). */
   readonly version: string;
-  /** `GIT_SHA` when the build injected one. */
+  /** The image's `GIT_SHA`; absent when unset or empty (ADR-0081). */
   readonly commit?: string;
   readonly uptimeSeconds: number;
   readonly timestamp: IsoDateTime;

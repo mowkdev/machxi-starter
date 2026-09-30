@@ -26,8 +26,9 @@ export interface AppConfig {
      * and the JWT audience. A fork-day value, defaulting to `machxi`.
      */
     readonly id: string;
+    /** The image's `APP_VERSION`, or `dev` when the build set none (ADR-0081 §1). */
     readonly version: string;
-    /** Absent unless the build injected `GIT_SHA`. */
+    /** Absent unless the build injected a non-empty `GIT_SHA` (ADR-0081 §1). */
     readonly commit?: string;
   };
   readonly http: {
