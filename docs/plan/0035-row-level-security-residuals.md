@@ -1,6 +1,6 @@
 # D35 — Row-level security, residuals
 
-- Status: **in progress** — **scoped in full 2026-09-30 by `/scope`**, from the ledger row written at `D29.7`, the day D29 shipped (ledger §How D35 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D32 (ledger §How D35 opened).
+- Status: **shipped 2026-09-30** (ledger §How D35 closed) — **scoped in full 2026-09-30 by `/scope`**, from the ledger row written at `D29.7`, the day D29 shipped (ledger §How D35 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D32 (ledger §How D35 opened).
 - Records: [ADR-0083](../adr/0083-row-level-security-without-widenings.md) (no setting widens anything, the staff segment scoped by its route, the consume policies' check, the login role and the schema's bypasses, the committed database password, the scope held in request storage by a test). Written `proposed` at scoping and accepted at the head of `D35.1`. It supersedes in part [ADR-0078](../adr/0078-backend-closing-wave.md), which moves at `D35.1`. Amends none.
 - Schema: yes
 - Ledger: [`docs/plan/README.md`](README.md)
