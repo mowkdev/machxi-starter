@@ -208,3 +208,26 @@ No Critical, High or Medium findings. **Two Lows, not fixed, logged for the reco
 **An independent `security-reviewer` pass is still owed.** The plan's constraint requires it before the step merges, and the orchestrating session runs it.
 
 **Pending operator acceptance:** none for this step (no UI).
+
+**Independent `security-reviewer` pass over `da089a9` (2026-09-30).** It found **no Critical, High or Medium findings**. It confirmed:
+
+- The `session_user` refusal cannot refuse a correctly provisioned role by mistake, poolers included, and the probes that could bypass it on PG16 are ignored or refused.
+- The view and definer-function traversals are correct.
+- `0022` runs in the ordinary lane, and `0023`'s `DO` block and `VALIDATE CONSTRAINT` run outside a transaction in the concurrent lane.
+- The `USING` change leaves accept, decline and the tenant admins' revoke intact.
+- The password refine parses as postgres.js does and never echoes the value.
+
+It agreed with the builder's two Lows. Three new Lows, **routed to `D35.4`**:
+
+1. **A rewrite rule on an ordinary table bypasses row-level security, and the view check does not see it.** The rule's action runs as the table's owner. It was proved on PG16 in a rolled-back transaction. The fix: a schema case expecting no non-`_RETURN` rule outside the system schemas, and deploy.md's third rule naming rules.
+2. **The policy-set equality compares name, command and permissiveness only.** An `ALTER POLICY … USING (true)` or a changed `TO` passes. The fix: compare `roles`, and pin `qual`/`with_check` against a committed fixture, or narrow 0083 §4's sentence to "a policy added by hand".
+3. **The committed-password check reads only the URL.** postgres.js falls back to `PGPASSWORD` when the URL has none. The fix: check `PGPASSWORD` when the URL's password is empty, or refuse a password-less `DATABASE_URL` in production.
+
+**Also routed to `D35.4`, from the builder's first Low and the reviewer's residual:** `DATABASE_URL_OWNER` is not refused for a committed password, although the owner bypasses every policy. The fix is the same list in `readOwnerDatabaseUrl` under `NODE_ENV=production`. It is an in-place amendment of 0083 §5, labelled.
+
+**Further residuals, for a later record:**
+
+- The schema-bypass guards run only against the migration-built test database. Objects created outside migrations are caught by nothing at runtime.
+- Permissive UPDATE policies OR their `WITH CHECK` clauses across branches.
+
+**Merged to `main` (2026-09-30).**
