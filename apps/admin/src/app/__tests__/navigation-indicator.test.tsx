@@ -141,4 +141,73 @@ describe("the navigation indicator", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  /*
+   * The router's pending component (`D31.3`, ADR-0080 §5): the bar owns the
+   * first second, and a wait that outlasts it becomes a sentence. The package
+   * proves what the component says; this proves the app's router takes it as
+   * its default, with the kit's threshold. Real time, because the threshold is
+   * the claim: the held response is released only after the sentence shows.
+   */
+  it("a route whose loader outlasts the threshold shows the pending state", async () => {
+    const user = userEvent.setup();
+
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    server.use(
+      http.get(`${API}/staff/:id`, async (): Promise<Response> => {
+        await held;
+
+        return ok(ADA);
+      }),
+    );
+
+    renderApp({ initialPath: "/staff", store: signedIn() });
+
+    await screen.findByRole("cell", { name: ADA.email });
+
+    await user.click(
+      screen.getByRole("button", { name: `Row actions for ${ADA.id}` }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+    // Inside the threshold: the bar, and the list still behind it.
+    expect(await screen.findByRole("progressbar")).toBeInTheDocument();
+    expect(
+      screen.queryByText(enCommon.loading.pending),
+    ).not.toBeInTheDocument();
+
+    // Past it: the pending state, in a polite status region.
+    const sentence = await screen.findByText(
+      enCommon.loading.pending,
+      {},
+      { timeout: 3000 },
+    );
+    const region = sentence.closest('[role="status"]');
+
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute("aria-live", "polite");
+
+    release?.();
+
+    expect(
+      await screen.findByRole("heading", { name: `Edit ${ADA.email}` }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByText(enCommon.loading.pending),
+      ).not.toBeInTheDocument();
+    });
+
+    // Closed before unmount, for the reason the case above gives.
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: `Edit ${ADA.email}` }),
+      ).not.toBeInTheDocument();
+    });
+  }, 10_000);
 });

@@ -10,7 +10,13 @@ import {
   type SessionStore,
 } from "@/shared/api/session-store";
 import { FEATURES, type AppFeatures } from "@/shared/config";
-import { AppError, AppNotFound } from "@/shared/ui";
+import {
+  AppError,
+  AppNotFound,
+  AppPending,
+  PENDING_MIN_MS,
+  PENDING_MS,
+} from "@/shared/ui";
 
 import { routeTree } from "../routeTree.gen";
 import { onSessionEnded, sessionStore } from "./session";
@@ -114,6 +120,14 @@ export const createAppRouter = ({
      */
     defaultErrorComponent: AppError,
     defaultNotFoundComponent: AppNotFound,
+    /*
+     * A route chunk the shell's indicator has covered for a second becomes a
+     * sentence in the outlet, and holds long enough not to flicker (`D31.3`,
+     * ADR-0080 §5). The numbers are the kit's, measured once for both apps.
+     */
+    defaultPendingComponent: AppPending,
+    defaultPendingMs: PENDING_MS,
+    defaultPendingMinMs: PENDING_MIN_MS,
     // Spread rather than passed as `undefined`: `exactOptionalPropertyTypes`
     // (ADR-0002) distinguishes "absent" from "explicitly undefined", and the
     // router's own option is the former.

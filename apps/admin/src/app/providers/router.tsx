@@ -16,7 +16,13 @@ import {
   createSessionStore,
   type SessionStore,
 } from "@/shared/api/session-store";
-import { AppError, AppNotFound } from "@/shared/ui";
+import {
+  AppError,
+  AppNotFound,
+  AppPending,
+  PENDING_MIN_MS,
+  PENDING_MS,
+} from "@/shared/ui";
 
 import { routeTree } from "../routeTree.gen";
 import { apiClient, onSessionEnded, sessionStore } from "./session";
@@ -108,6 +114,14 @@ export const createAppRouter = ({
      */
     defaultErrorComponent: AppError,
     defaultNotFoundComponent: AppNotFound,
+    /*
+     * A wait the shell's indicator has covered for a second becomes a
+     * sentence in the outlet, and holds long enough not to flicker (`D31.3`,
+     * ADR-0080 §5). The numbers are the kit's, measured once for both apps.
+     */
+    defaultPendingComponent: AppPending,
+    defaultPendingMs: PENDING_MS,
+    defaultPendingMinMs: PENDING_MIN_MS,
     /*
      * One serialization for the list-query language, here rather than on the
      * routes (ADR-0043, `D5.2`). `validateSearch` has to round-trip its own

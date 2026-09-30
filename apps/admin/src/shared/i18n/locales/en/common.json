@@ -27,6 +27,7 @@
   },
   "loading": {
     "label": "Loading",
+    "pending": "Loading…",
     "starting": "Starting…"
   },
   "options": {

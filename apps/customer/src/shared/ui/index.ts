@@ -199,6 +199,8 @@ export { Spinner } from "./spinner";
  * `AppRoot` joined at `D22.1` (ADR-0077 §1) and took `AppLoader` and
  * `AppErrorBoundary` off this door with it: the root composition mounts both
  * inside the kit, so `app/index.tsx` was their last consumer here.
+ * `AppPending` and its two numbers joined at `D31.3` (ADR-0080 §5), for the
+ * router's defaults.
  */
 export {
   ACCOUNT_SECTION_LINK,
@@ -207,9 +209,12 @@ export {
   AppCrash,
   AppError,
   AppNotFound,
+  AppPending,
   AppRoot,
   AppUiStrings,
   AuthLayout,
+  PENDING_MIN_MS,
+  PENDING_MS,
   SettingsOptions,
   type AccountShellProps,
   type AccountSummaryProps,

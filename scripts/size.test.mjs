@@ -12,6 +12,7 @@ import {
   ENTRY_SHARE_OF_JS,
   HEADROOM_PERCENT,
   UTILITY_BY_PACKAGE,
+  bootIndicatorViolations,
   check,
   chunkMeasurements,
   driftWarnings,
@@ -204,8 +205,18 @@ const VITE_HEAD = [
   '<link rel="stylesheet" crossorigin href="/assets/index-E5f6.css">',
 ].join("\n");
 
-const page = ({ head = "", body = "" } = {}) =>
-  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />\n${VITE_HEAD}\n${head}</head>\n<body>\n<div id="root"></div>\n${body}</body>\n</html>\n`;
+/** The root both apps' `index.html` carries since `D31.3`: the boot indicator. */
+const BOOT_ROOT = [
+  "<!-- The boot indicator. -->",
+  '<div id="root">',
+  '  <div class="boot-indicator" data-boot-indicator role="status" aria-label="Loading">',
+  '    <svg class="boot-indicator-spinner" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>',
+  "  </div>",
+  "</div>",
+].join("\n");
+
+const page = ({ head = "", body = "", root = BOOT_ROOT } = {}) =>
+  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />\n${VITE_HEAD}\n${head}</head>\n<body>\n${root}\n${body}</body>\n</html>\n`;
 
 /**
  * A whole app directory `check` can run over: a built page, an entry, a
@@ -325,6 +336,75 @@ test("a built page with an inline script fails the link", async () => {
         /dist\/index\.html carries an inline <script>[\s\S]*ADR-0074 §6/,
       ),
   );
+});
+
+test("the built page's root carries the boot indicator and no inline style", async () => {
+  // ADR-0080 §5: the root is not blank before the script runs, and the
+  // indicator is painted from the stylesheet.
+  assert.deepEqual(bootIndicatorViolations(page()), []);
+
+  const cases = [
+    [
+      page({ root: '<div id="root"></div>' }),
+      /does not open with the boot indicator/,
+    ],
+    [
+      page({ root: '<div id="root"><div class="boot-indicator"></div></div>' }),
+      /does not open with the boot indicator/,
+    ],
+    [
+      // A marker that is only a value somewhere is not the indicator.
+      page({
+        root: '<div id="root"><div title="data-boot-indicator"></div></div>',
+      }),
+      /does not open with the boot indicator/,
+    ],
+    [page({ root: "<main></main>" }), /no `<div id="root">`/],
+    [
+      page({
+        root: '<div id="root"><div data-boot-indicator style="opacity:0"></div></div>',
+      }),
+      /inline `style` attribute on <div>/,
+    ],
+    [
+      page({ body: '<p STYLE="color:red">hi</p>\n' }),
+      /inline `style` attribute on <p>/,
+    ],
+  ];
+
+  for (const [html, pattern] of cases) {
+    const found = bootIndicatorViolations(html);
+    assert.equal(found.length, 1, html);
+    assert.match(found[0], pattern);
+  }
+
+  // Neither a commented-out attribute nor a value that reads like one is paint.
+  assert.deepEqual(
+    bootIndicatorViolations(
+      page({
+        body: '<!-- <p style="x"></p> -->\n<meta name="d" content="a style=b" />\n',
+      }),
+    ),
+    [],
+  );
+
+  // Through the link itself.
+  await withApp({ html: page({ root: '<div id="root"></div>' }) }, (appDir) =>
+    assert.throws(
+      () => check(appDir),
+      /dist\/index\.html carries a root that does not open with the boot indicator[\s\S]*ADR-0080 §5/,
+    ),
+  );
+
+  // And both apps' own index.html pass the same rule as written.
+  for (const app of ["admin", "customer"]) {
+    const source = await readFile(
+      path.join(repoRoot, "apps", app, "index.html"),
+      "utf8",
+    );
+    assert.deepEqual(bootIndicatorViolations(source), [], app);
+    assert.deepEqual(inlinePageViolations(source), [], app);
+  }
 });
 
 test("a measurement ten percent over its baseline is reported", async () => {

@@ -37,3 +37,54 @@
 @source not "../../../../packages/app-kit/src/__tests__";
 @source "../../../../packages/form/src";
 @source not "../../../../packages/form/src/__tests__";
+
+/*
+ * The boot indicator in `index.html`'s root (`D31.3`, ADR-0080 §5).
+ *
+ * Static markup, so the root is not blank while the script downloads, and
+ * styled here rather than inline, because the built page carries no inline
+ * style (ADR-0074 §6; `scripts/size.mjs` checks both). The first render
+ * replaces it. It stays invisible for the quarter-second `AppLoader` waits
+ * from the page load, so a fast boot flashes nothing, and a slow one finds
+ * the loader already visible when the first render replaces this markup.
+ * Plain rules rather than utilities: `index.html` is not a source Tailwind is
+ * told to scan, and the colour is still a token.
+ *
+ * That holds for the built page, which links this stylesheet in its head.
+ * Under `pnpm dev` Vite injects it from the script, so the markup shows
+ * unstyled — a still spinner in the corner — until then: a dev-only flash,
+ * accepted, since hiding it without this sheet would take inline paint.
+ */
+.boot-indicator {
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  opacity: 0;
+  animation: boot-indicator-in 1ms linear 250ms forwards;
+}
+
+.boot-indicator-spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  animation: boot-indicator-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-indicator-spinner {
+    animation: none;
+  }
+}
+
+@keyframes boot-indicator-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes boot-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
