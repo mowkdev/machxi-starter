@@ -304,3 +304,27 @@ Items 4–6 are pending the operator, as at D29.6 and D31.4, which were ticked i
 - The independent `security-reviewer` pass.
 - The merge of this step to `main`. This session pushes only `claude/keen-knuth-jwf8xb`.
 - A deployment keeps its database passwords in the two URLs, both uncommitted, from this release.
+
+**Independent `security-reviewer` pass over `c43493c` (2026-09-30).** It found **no Critical, High or Medium findings**. It re-ran both new integration cases, 2/2 green. It confirmed:
+
+- The rule query spans every non-system schema.
+- The policy-equality case cannot pass vacuously: a failed probe throws, the probe name differs from the policy's, and its negative exercises roles, `USING` and `WITH CHECK` on three different policies.
+- Both password parsers agree with postgres.js 3.4.9 on the edge cases, and every unparseable URL fails closed.
+- Neither error echoes a value.
+- The migrate image and the owner CLIs run under `NODE_ENV=production`, and dev, CI and test are unaffected.
+- No earlier D35 guarantee is loosened.
+
+Three Lows, **logged, not fixed**, for `/ship` or a later record:
+
+1. **The two password lists could drift.** `@repo/db`'s test checks only the `DATABASE_URL*` lines, not `POSTGRES_PASSWORD` or `00-roles.sql`. The fix: the same checks there, or a test comparing the API list's literals with the mirror.
+2. **One comment in `database-password.ts` is inaccurate.** A multi-host URL without ports does parse, and its password is read correctly.
+3. **The rule query exempts any rule named `_RETURN`.** Only a view can hold one, so it is correct in practice. The hardening: tie the exemption to `relkind in ('v','m')`.
+
+**Residuals, for a later record:**
+
+- A production shell without `NODE_ENV` skips the owner check, by ADR-0075 §4.
+- `db:sessions:prune`'s `readDatabaseUrl` is not checked against the list.
+- Password-less authentication cannot pass the refusal, which is documented.
+- Objects created outside migrations are held by nothing at runtime.
+
+**Merged to `main` (2026-09-30).**
