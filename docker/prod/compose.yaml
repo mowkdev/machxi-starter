@@ -349,11 +349,11 @@ services:
         VITE_API_URL: ${VITE_ADMIN_API_URL}
         VITE_APP_ID: ${APP_ID:-machxi}
         VITE_CUSTOMER_APP_URL: ${VITE_CUSTOMER_APP_URL}
-        # The build's two facts, the pair the API's image takes (ADR-0081 §2):
-        # one label and one commit for the whole product, shown in the
-        # sidebar's footer. Unset or empty, it says `dev` and no commit.
+        # The release label, the one the API's image takes (ADR-0081 §2):
+        # one value for the whole product, shown alone in the sidebar's
+        # footer. Unset or empty, it says `dev`. No `GIT_SHA`: the commit is
+        # the API's `/health` fact, and the SPAs do not take it (`D32.5`).
         APP_VERSION: ${APP_VERSION:-}
-        GIT_SHA: ${GIT_SHA:-}
     container_name: machxi-admin
     restart: unless-stopped
     logging: *logging
@@ -394,9 +394,8 @@ services:
         # interpolates — so it is set here beside the SPAs' other build
         # arguments, and set true only where the API has both halves.
         VITE_FEATURE_GOOGLE_SIGN_IN: ${VITE_FEATURE_GOOGLE_SIGN_IN:-false}
-        # The build's two facts, as the admin's and the API's (ADR-0081 §2).
+        # The release label alone, as the admin's (ADR-0081 §2, `D32.5`).
         APP_VERSION: ${APP_VERSION:-}
-        GIT_SHA: ${GIT_SHA:-}
     container_name: machxi-customer
     restart: unless-stopped
     logging: *logging

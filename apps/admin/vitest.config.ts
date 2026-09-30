@@ -31,8 +31,8 @@ export default mergeConfig(
      * **Built from nothing set, not from `process.env`** (`D32.2`), for the
      * reason `env` below pins `VITE_API_URL`: a label read from the shell
      * would be invisible to Turbo's hash for this task and would move what
-     * the footer's suite asserts. Unset is `dev` and no commit, which is
-     * what every local build shows.
+     * the footer's suite asserts. Unset is `dev`, which is what every local
+     * build shows.
      */
     define: versionDefine({}),
     resolve: {

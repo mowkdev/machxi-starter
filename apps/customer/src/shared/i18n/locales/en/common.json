@@ -14,8 +14,7 @@
     "mark": "m",
     "name": "machxi",
     "product": "Account",
-    "version": "{{version}}",
-    "versionWithCommit": "{{version}} · {{commit}}"
+    "version": "{{version}}"
   },
   "boot": {
     "unreachable": "We cannot reach the service. Check your connection, or try again in a moment."
