@@ -95,6 +95,7 @@ These are carried knowingly, each recorded where it lives:
   - no per-request principal check;
   - no step-up authentication;
   - no retention policy for soft-deleted accounts;
-  - the pre-hijack registration risk.
+  - the pre-hijack registration risk;
+  - one metrics token grants both the scrape and `/health`'s commit, and both token-checked routes sit outside every limiter by design, so the token's entropy is its only guard (D36.3's review).
 - **Image hardening remainders:** the SPA stages install the whole workspace, base images are pinned by tag, and `conf.d` is writable by uid 101.
 - **Flakes under load**, other than the admin theme case: the staff-delete race's status and the concurrency cases under Docker Desktop. D34's lock and lane database are their mitigation.

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import type { Request } from "express";
 
@@ -30,15 +30,23 @@ const bearerToken = (req: Request): string | undefined => {
     : undefined;
 };
 
-/** Constant-time equality over two UTF-8 strings of any length. */
-const matches = (presented: string, expected: string): boolean => {
-  const a = Buffer.from(presented, "utf8");
-  const b = Buffer.from(expected, "utf8");
+/** SHA-256 of a UTF-8 string: 32 bytes whatever the input's length. */
+const digest = (value: string): Buffer =>
+  createHash("sha256").update(value, "utf8").digest();
 
-  // `timingSafeEqual` throws on a length mismatch, which would itself be the
-  // oracle: fold the length check into the result instead.
-  return a.length === b.length && timingSafeEqual(a, b);
-};
+/**
+ * Equality over two UTF-8 strings, with timing independent of where they
+ * differ and of whether their lengths do.
+ *
+ * `timingSafeEqual` throws on a length mismatch, and checking the lengths
+ * first returns early, so the time taken would tell a caller whether it had
+ * guessed the token's length. Both sides are hashed to a fixed width instead,
+ * and the digests compared: there is no length check to time. Hashing costs
+ * time in proportion to the presented string, which tells the caller only the
+ * length it chose.
+ */
+const matches = (presented: string, expected: string): boolean =>
+  timingSafeEqual(digest(presented), digest(expected));
 
 /**
  * Whether `req` carries the configured metrics token.

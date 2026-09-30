@@ -251,3 +251,31 @@ The comparison base is the lane's merge base with `main`, so the lane's earlier 
 **Review.** **Owed.** This builder ran as a subagent with no Agent tool, so by ADR-0082 §2 its own reading is not a review. The change touches an unauthenticated endpoint and a credential check, so `security-reviewer` fits. The orchestrating session runs the one review over this step's commit. Confirmed findings land as `fix(api,docs): D36.3 follow-up — the review's findings`.
 
 **Pending the operator.** `pnpm test:postman` against the operator's running stack, for the two health calls. It is already named in the plan's definition of done, item 5. Run it with and without `METRICS_TOKEN` in `.env`: set, the API must be restarted to read it, and that restart is the operator's.
+
+### D36.3 — the review, and its findings' fates
+
+The orchestrating session ran the one review: `security-reviewer` over `b97b6b75`, in a fresh context. It found nothing above Low. It confirmed that `/metrics` is unchanged, and that `/health` gives no oracle `/metrics` does not already give. `no-store` and the disabled ETags keep the commit out of every cache, an empty token cannot match, and the Postman secret is handled as the super admin's is. The fix is in `fix(api): D36.3 follow-up — the review's findings`.
+
+1. **[Low] The token's length leaked through timing. Fixed.** `matches` returned on `a.length === b.length` before `timingSafeEqual`, so a caller could time whether it had guessed the token's length. `metrics.token.ts` now hashes both sides with SHA-256 and compares the 32-byte digests with `timingSafeEqual`. There is no length check left, and the comment no longer claims constant time over "any length". `/metrics` still answers 401 to a missing or wrong token, and `/health` still answers no `commit`. The new file `apps/api/src/core/metrics/__tests__/metrics.token.test.ts` has five cases. Among them, "a presented token of a different length is refused without comparing lengths first" asserts that `timingSafeEqual` is reached once, on two 32-byte digests, for a shorter, a longer, a truncated and an empty token.
+
+**Residual risks, accepted, carried** (the plan's §Not in D36 lists both):
+
+- One secret now grants both the scrape of `/metrics` and the commit on `/health`. Separate audiences would need a record.
+- Both token-checked routes sit outside every limiter by design (ADR-0016, ADR-0066 §2), so a low-entropy 32-character token has nothing else guarding it.
+
+**Step check.**
+
+`TEST_DB_LANE` exported; `pnpm step:check`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/skills/bootstrap/SKILL.md changed)
+  ran      format:check
+step:check ✓
+```
+
+The integration tiers ran `@repo/db` 128 tests and `api` 850. After the check, only this note was written. `pnpm format:check` and `pnpm docs:check` were re-run over it.
