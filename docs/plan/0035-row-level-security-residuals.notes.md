@@ -47,8 +47,28 @@ The case therefore holds the ADR's actual claim at the database. The application
 - The scope narrows rather than widens: staff writes now reach only the route's organization.
 - Parameterised `set_config` is unchanged, and nothing new lands in logs or responses.
 
-No findings. **An independent `security-reviewer` pass over this diff is still owed**, as the plan's constraint requires, before the step merges to `main`.
+No findings. The independent pass the plan's constraint requires is below.
 
 **Residual, routed to `D35.2`.** Migration `0019`'s `_unscoped` policies still admit `app.tenant_unscoped = 'staff'` if something places it (an injected statement, ADR-0083 §7). Nothing in the API does any more. The policies are dropped at `D35.2`.
 
 **Pending operator acceptance:** none for this step (no UI). The walk in the definition of done, item 6 (admin organization detail, members, add/remove member, create with owner), exercises the guard on the dev stack at close-out.
+
+**Independent `security-reviewer` pass (2026-09-30).** The orchestrating session ran the `security-reviewer` agent over `9f3077a`. It found **no Critical, High or Medium findings**, and re-ran four integration files, which passed 164/164.
+
+It confirmed five things:
+
+- The guard places an organization only under `/admin/organizations/:id`, where every `:id` is an organization, and only behind `authenticate("staff")` and `authorize`.
+- No user or impersonated request reaches `routeOrganizationId`.
+- No staff path now reads empty: the organization's detail, list, update and delete touch only `organizations`, and the member routes act on the route's id.
+- Staff creation and deletion of users touch only `organizations`.
+- Referential actions bypass row-level security.
+
+It logged three Lows, **not fixed**, and routed them to `D35.2`, where they fit:
+
+1. **The concurrency case exercises the user path only.** Its first barrier is the one that proves storage isolation. The second proves only that the two transactions run concurrently. The fix: make one context a staff principal with a route organization, and name the first barrier in the comment.
+2. **`router.use("/:id", placeRouteOrganization)` covers only routes registered after it.** A tenant-touching route added above it would read nothing. That fails closed. The fix is a comment saying such routes go below the guard, or a test.
+3. **`routeOrganizationId` stays on the context after the router finishes.** It has no effect today.
+
+**Residual for the record, to `D35.4`:** a future staff surface over tenant rows outside `/admin/organizations/:id` must name its organization or take a record of its own, never a widening. ADR-0083 should say so in one sentence.
+
+**Merged to `main` (2026-09-30).**
