@@ -467,7 +467,7 @@ export const AREAS = [
       {
         topic: "Citations that survive a fork",
         records: ["0065", "0084"],
-        text: "In `.claude/**` every record citation carries a topic gloss and never a bare range, and no step numbers or dates appear. Source-code comments keep their step references — they are the reasoning attached to the code that carries it. The carried documents that are not records — `README.md`, `docs/*.md`, `docs/specs/`, `docs/rules/` and `.claude/` — link to no starter plan, and `pnpm docs:check` refuses a relative link in one of them to a file that is not there, resolved from the file that holds it. A record's link into a plan is history, read at `starter/main`, and is not checked.",
+        text: "In `.claude/**` every record citation carries a topic gloss and never a bare range, and no step numbers or dates appear. Source-code comments keep their step references — they are the reasoning attached to the code that carries it. `pnpm docs:check` refuses a relative link to a file that is not there in every Markdown file a fork carries — everything outside `docs/plan/`, plus the ledger and `docs/plan/lanes/README.md` — resolved from the file that holds it. A link into a plan from a record, the ADR index or a review is history, read at `starter/main`, and is exempt; a broken link a frozen record carries is allowed by name, with its reason, and the entry is refused once the link works.",
       },
       {
         topic: "The digests",

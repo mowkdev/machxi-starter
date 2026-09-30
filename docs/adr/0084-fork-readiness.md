@@ -32,6 +32,8 @@ Deltas on the parents named above. Everything else each decides stands, and is i
 
 On a ledger with no rows, `/scope` writes the first row with the number and title the operator names, instead of asking for a `planned` row to exist.
 
+**Amended 2026-09-30 (D36.5).** `pnpm docs:check` refuses a relative link to a missing file in every Markdown file a fork carries — everything outside `docs/plan/`, plus the ledger and `docs/plan/lanes/README.md` — so a document that links into a starter plan fails the rehearsal's fork. A link into `docs/plan/` from a record, the ADR index or a review is history, read at `starter/main`, and is exempt; a broken link in a frozen record is allowed by name with its reason, and refused as stale once it works.
+
 ### 2. The starter merge removes every journal file it brings
 
 After `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main`, every file the merge added under `docs/plan/` is removed with `git rm -qf`: plans, notes files and lane files. That leaves the fork's own journal, which was there before the merge. A modify/delete conflict under `docs/plan/` is resolved by deleting the file.

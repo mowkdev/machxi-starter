@@ -408,3 +408,45 @@ step:check ✓
 ```
 
 `test:scripts` passed all 158 tests. `pnpm test:fork` also ran alone and passed 8 of 8, the new case among them. The first run was red on one case, "the committed digests are what the generator produces", until `pnpm rules:digest` ran.
+
+### D36.5 — the review, and its findings' fates
+
+The orchestrating session ran the one review: `adr-reviewer` over `58e2988e`, in a fresh context. It confirmed that the checklist's commands exist, that `/bootstrap` and `/scope` are right, and that the rehearsal runs `docs:check` in the fork. It found one major and four minors, and all five are fixed.
+
+1. **[Major] The link check skipped carried documents that link into starter plans. Fixed.**
+   - **Scope.** `isCarriedLinkDocument` now takes every Markdown file outside `docs/plan/`, plus the ledger and `docs/plan/lanes/README.md`. The files are listed by `git ls-files --cached --others --exclude-standard`, which gives 151 documents where there were 54.
+   - **The exemption is by target** (`isHistoryLink`). A link from `docs/adr/**` (the index included) or `docs/reviews/**` into a plan other than those two READMEs is history, read at `starter/main`. Every other link is checked, record bodies included.
+   - **What stays.** `docs/reviews/` stays in forks; bootstrap never touched it.
+   - **The documents.** `forking.md` §2 now names the records, the ADR index and the reviews as history.
+   - **New cases:** "a record's link into a plan is history and exempt", "a record's link to a missing record is refused" and "the ADR index's plan links are exempt, its other links are checked". "a link from a record to a plan is not a carried document's" now asserts the widened scope and the target rule.
+   - **A simulated fork found nothing.** The simulation marks every plan missing. It found no broken link outside the history sources and the allow-list.
+2. **[Minor] A broken link in a frozen record. Allowed by name.** `KNOWN_BROKEN_LINKS` in `scripts/docs-hygiene.mjs` holds each entry with its reason, and `applyKnownBroken` refuses an entry as stale once its link works, as long as the file is still there. A fork's `--empty` corpus has no such file, so it carries the entry harmlessly. The widened check surfaced **two more** broken links in records, both closed, and both are allowed the same way:
+   - `docs/adr/0022-frontend-apps.md` → `0050-adr-lifecycle.md` (the file is `0050-adr-lifecycle-and-verification.md`);
+   - `docs/adr/0066-infrastructure-seams.md` → `0025-deliverables-and-adr-windows.md` (the file is `0025-deliverables.md`);
+   - `docs/adr/0067-organizations.md` → `0028-user-lifecycle-and-deletion.md` (the file is `0028-account-deletion.md`).
+
+   It also surfaced broken links in one document that is not a record, the ledger, and these are fixed. Eight links on one line of its frozen history were written `docs/adr/…`, which from `docs/plan/` resolves nowhere; they are now `../adr/…`. Two history links, `[D11](0011-customer-app.md)` and `[D12](0012-impersonation.md)`, named plan files from before the renumbering; they are now `0012-customer-app.md` and `0013-impersonation.md`, with the link text unchanged. New case: "a known broken link in a frozen record is allowed, and refused once it works".
+
+3. **[Minor] `checkLinks` let broken links through. Fixed, one case each.**
+   - Reference definitions `[r]: path` are now read: "a reference definition's target is checked".
+   - `<a b.md>` targets are now read: "an angle-bracketed target with a space is checked".
+   - A fence now closes only on its own character, at least as long: "a backtick fence line inside a tilde fence does not hide later links".
+   - A target that does not decode is now reported as `malformed-link` rather than thrown: "a malformed percent escape is reported, not thrown".
+   - **Anchors stay unchecked.** A slug match would have to reproduce GitHub's rules for every heading shape in the tree. The code comment says so.
+4. **[Minor] A sentence had drifted into `/scope`'s empty-ledger sub-bullet. Fixed.** The ADR-0050 §Altitude sentence is back at the end of step 1.
+5. **[Minor] ADR-0084 §1 was stale. Amended in place, labelled `**Amended 2026-09-30 (D36.5).**`.** It now states the link rule over carried documents, the history exemption and the allow-list.
+
+The digest source for "Citations that survive a fork" says the same. `docs/rules/process.md` was regenerated, and a second `pnpm rules:digest` wrote nothing. `.claude/README.md` was updated to match.
+
+**Step check (the follow-up).** `TEST_DB_LANE` exported; `pnpm step:check`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/README.md changed)
+  ran      format:check
+step:check ✓
+```

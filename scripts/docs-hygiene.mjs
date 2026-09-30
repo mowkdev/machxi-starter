@@ -28,6 +28,7 @@
 // Usage:
 //   node scripts/docs-hygiene.mjs        report violations, exit 1 if any
 
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -811,89 +812,213 @@ export async function scanLanes(root = repoRoot) {
 // ---------------------------------------------------------------------------
 // Relative links in the carried documents (ADR-0084, fork readiness).
 //
-// The non-record documents a fork carries — `README.md`, `docs/*.md`,
-// `docs/specs/**`, `docs/rules/**` and `.claude/**` — must not link to a file
-// that is not there. A fork's bootstrap removes the starter's plans, so a link
-// from one of them into a starter plan would break on day one. Records
-// (`docs/adr/*.md`) are history: their links into plans are read at
-// `starter/main` and are not checked here. Links are resolved relative to the
-// file that holds them — a skill's links relative to its `SKILL.md`.
+// Every Markdown file a fork carries — every one the tree holds outside
+// `docs/plan/`, plus the two READMEs there that bootstrap keeps — must not
+// link to a file that is not there. A fork's bootstrap removes the starter's
+// plans, so a link into one would break on day one. The exemption is by
+// target: a link from a record, the ADR index or a review (`docs/adr/**`,
+// `docs/reviews/**`) into a plan is history, read at `starter/main`, and is
+// not checked. Every other link in every scanned file is, record bodies
+// included. Links resolve from the file that holds them — a skill's from its
+// `SKILL.md`. Anchors are not checked: a slug match would have to reproduce
+// GitHub's rules for every heading shape the tree uses.
+
+/** The two files under `docs/plan/` a bootstrapped fork keeps. */
+const KEPT_PLAN_DOCUMENTS = new Set([
+  "docs/plan/README.md",
+  "docs/plan/lanes/README.md",
+]);
+
+/** The documents whose links into `docs/plan/` are history. */
+const HISTORY_SOURCES = /^docs\/(?:adr|reviews)\//;
+
+/**
+ * Broken links in frozen records, allowed by name. A record is accepted and
+ * closed, and its body is never edited (ADR-0065), so a link it got wrong
+ * stays wrong. Each entry says why. An entry whose link is no longer broken,
+ * in a file that is still there, is refused as stale.
+ */
+export const KNOWN_BROKEN_LINKS = [
+  {
+    file: "docs/adr/0022-frontend-apps.md",
+    target: "0050-adr-lifecycle.md",
+    reason:
+      "the record was written before ADR-0050's file took its final name, 0050-adr-lifecycle-and-verification.md; 0022 is closed",
+  },
+  {
+    file: "docs/adr/0066-infrastructure-seams.md",
+    target: "0025-deliverables-and-adr-windows.md",
+    reason:
+      "ADR-0025's file is 0025-deliverables.md; the record guessed a longer name and is closed",
+  },
+  {
+    file: "docs/adr/0067-organizations.md",
+    target: "0028-user-lifecycle-and-deletion.md",
+    reason:
+      "ADR-0028's file is 0028-account-deletion.md; the record guessed another name and is closed",
+  },
+];
 
 /** True for a repo-relative path whose relative links this check reads. */
 export function isCarriedLinkDocument(rel) {
   if (isExcluded(rel) || !rel.endsWith(".md")) return false;
-  if (rel === "README.md") return true;
-  if (/^docs\/[^/]+\.md$/.test(rel)) return true;
+  if (rel.startsWith("docs/plan/")) return KEPT_PLAN_DOCUMENTS.has(rel);
+  return true;
+}
+
+/** True for a link that is history: a record's, the index's or a review's into a plan. */
+export function isHistoryLink(file, resolved) {
   return (
-    rel.startsWith("docs/specs/") ||
-    rel.startsWith("docs/rules/") ||
-    rel.startsWith(".claude/")
+    HISTORY_SOURCES.test(file) &&
+    resolved.startsWith("docs/plan/") &&
+    !KEPT_PLAN_DOCUMENTS.has(resolved)
   );
 }
 
-// `](target)` or `](target "title")`; an image's `![..](..)` matches too.
-const MARKDOWN_LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
-const FENCE = /^\s*(```|~~~)/;
+// `](target)`, `](<target with spaces>)`, either with a `"title"`; an
+// image's `![..](..)` matches too.
+const MARKDOWN_LINK = /\]\(\s*(?:<([^>\n]*)>|([^)\s]+))(?:\s+"[^"]*")?\s*\)/g;
+// `[label]: target` or `[label]: <target>`, a reference definition.
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:\s*(?:<([^>]*)>|(\S+))/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const NOT_RELATIVE = /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i;
 
 /**
  * Broken relative links in one carried document. `exists(relPath)` answers
  * for a repo-relative, POSIX-separated path. Fenced code is not read, nor is
- * inline code; a target is split from its `#anchor` and `?query`.
+ * inline code; a fence closes only on its own character, at least as long. A
+ * target is split from its `#anchor` and `?query`; one that does not decode
+ * is reported, not thrown.
  */
 export function checkLinks(file, text, exists) {
   const violations = [];
-  let fenced = false;
-  text.split(/\r?\n/).forEach((line, index) => {
-    if (FENCE.test(line)) {
-      fenced = !fenced;
+  let fence = null;
+  const report = (index, target, rule, message) =>
+    violations.push({ file, line: index + 1, rule, found: target, message });
+  const check = (index, target) => {
+    if (NOT_RELATIVE.test(target)) return;
+    let bare;
+    try {
+      bare = decodeURI(target.split(/[#?]/)[0]);
+    } catch {
+      report(
+        index,
+        target,
+        "malformed-link",
+        "a link target that does not decode",
+      );
       return;
     }
-    if (fenced) return;
-    const prose = line.replace(/`[^`]*`/g, "");
-    for (const match of prose.matchAll(MARKDOWN_LINK)) {
-      const target = match[1];
-      if (NOT_RELATIVE.test(target)) continue;
-      const bare = decodeURI(target.split(/[#?]/)[0]);
-      if (bare === "") continue;
-      const resolved = path.posix.normalize(
-        path.posix.join(path.posix.dirname(file), bare),
+    if (bare === "") return;
+    const resolved = path.posix
+      .normalize(path.posix.join(path.posix.dirname(file), bare))
+      .replace(/\/$/, "");
+    if (!resolved.startsWith("../") && isHistoryLink(file, resolved)) return;
+    if (resolved.startsWith("../") || !exists(resolved)) {
+      report(
+        index,
+        target,
+        "broken-link",
+        "a relative link to a file that is not there",
       );
-      if (resolved.startsWith("../") || !exists(resolved.replace(/\/$/, ""))) {
-        violations.push({
-          file,
-          line: index + 1,
-          rule: "broken-link",
-          found: target,
-          message: "a relative link to a file that is not there",
-        });
+    }
+  };
+  text.split(/\r?\n/).forEach((line, index) => {
+    const opener = FENCE.exec(line);
+    if (fence) {
+      if (
+        opener &&
+        opener[1][0] === fence[0] &&
+        opener[1].length >= fence.length &&
+        line.trim() === opener[1]
+      ) {
+        fence = null;
       }
+      return;
+    }
+    if (opener) {
+      fence = opener[1];
+      return;
+    }
+    const prose = line.replace(/`[^`]*`/g, "");
+    const definition = REFERENCE_DEFINITION.exec(prose);
+    if (definition) check(index, definition[1] ?? definition[2]);
+    for (const match of prose.matchAll(MARKDOWN_LINK)) {
+      check(index, match[1] ?? match[2]);
     }
   });
   return violations;
 }
 
-async function carriedLinkDocuments(root) {
-  const files = [
-    ...(await markdownUnder(path.join(root, ".claude"), ".claude")),
-    ...(await markdownUnder(path.join(root, "docs"), "docs")),
-  ];
-  if (existsSync(path.join(root, "README.md"))) {
-    files.push({ full: path.join(root, "README.md"), rel: "README.md" });
+/**
+ * The allow-list applied to a scan's violations: an allowed one is dropped,
+ * and an entry that matched none, in a file that exists, is refused as stale.
+ */
+export function applyKnownBroken(violations, known, exists) {
+  const used = new Set();
+  const kept = violations.filter((v) => {
+    const i = known.findIndex(
+      (k) =>
+        k.file === v.file && k.target === v.found && v.rule === "broken-link",
+    );
+    if (i === -1) return true;
+    used.add(i);
+    return false;
+  });
+  known.forEach((k, i) => {
+    if (used.has(i) || !exists(k.file)) return;
+    kept.push({
+      file: k.file,
+      line: 0,
+      rule: "stale-known-broken",
+      found: k.target,
+      message:
+        "an allowed broken link that is no longer broken; remove it from KNOWN_BROKEN_LINKS",
+    });
+  });
+  return kept;
+}
+
+function carriedLinkDocuments(root) {
+  let listed;
+  try {
+    listed = execFileSync(
+      "git",
+      [
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "*.md",
+      ],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+  } catch {
+    return [];
   }
-  return files
-    .filter(({ rel }) => isCarriedLinkDocument(rel))
-    .sort((a, b) => a.rel.localeCompare(b.rel));
+  return [...new Set(listed.split("\0").filter(Boolean))]
+    .filter(
+      (rel) =>
+        isCarriedLinkDocument(rel) &&
+        existsSync(path.join(root, ...rel.split("/"))),
+    )
+    .sort()
+    .map((rel) => ({ full: path.join(root, ...rel.split("/")), rel }));
 }
 
 export async function scanLinks(root = repoRoot) {
   const exists = (rel) => existsSync(path.join(root, ...rel.split("/")));
-  const documents = await carriedLinkDocuments(root);
+  const documents = carriedLinkDocuments(root);
   const violations = [];
   for (const { full, rel } of documents) {
     violations.push(...checkLinks(rel, await readFile(full, "utf8"), exists));
   }
-  return { violations, documents: documents.length };
+  return {
+    violations: applyKnownBroken(violations, KNOWN_BROKEN_LINKS, exists),
+    documents: documents.length,
+  };
 }
 
 export async function scanTagPrefix(root = repoRoot) {

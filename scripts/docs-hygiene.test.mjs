@@ -24,6 +24,8 @@ import {
   LEDGER,
   LEDGER_WINDOW,
   TAG_PREFIX_LINE,
+  KNOWN_BROKEN_LINKS,
+  applyKnownBroken,
   checkCloseOut,
   checkLanes,
   checkLinks,
@@ -34,6 +36,7 @@ import {
   countTiers,
   inheritedDocuments,
   isCarriedLinkDocument,
+  isHistoryLink,
   isExcluded,
   parseLanes,
   parseTagPrefix,
@@ -2745,26 +2748,205 @@ test("a broken relative link in a carried document is refused", () => {
 });
 
 test("a link from a record to a plan is not a carried document's", () => {
-  assert.equal(isCarriedLinkDocument("docs/adr/0084-fork-readiness.md"), false);
-  assert.equal(isCarriedLinkDocument("docs/adr/README.md"), false);
-  assert.equal(isCarriedLinkDocument("docs/plan/README.md"), false);
-  assert.equal(
-    isCarriedLinkDocument("docs/plan/0036-fork-readiness.md"),
-    false,
-  );
-  assert.equal(isCarriedLinkDocument("docs/postman/README.md"), false);
-  assert.equal(isCarriedLinkDocument(".claude/worktrees/x/README.md"), false);
+  // Every Markdown file outside docs/plan/ is scanned, records included, with
+  // the ledger and the lanes' README; plans and notes are not.
   for (const rel of [
     "README.md",
+    "CLAUDE.md",
     "docs/forking.md",
-    "docs/CHANGELOG.md",
-    "docs/specs/health-and-metrics.md",
-    "docs/rules/process.md",
-    ".claude/README.md",
+    "docs/adr/0084-fork-readiness.md",
+    "docs/adr/README.md",
+    "docs/reviews/2026-09-21-repository-review.md",
+    "docs/postman/README.md",
+    "docs/plan/README.md",
+    "docs/plan/lanes/README.md",
     ".claude/skills/scope/SKILL.md",
+    "apps/api/README.md",
   ]) {
     assert.equal(isCarriedLinkDocument(rel), true, rel);
   }
+  for (const rel of [
+    "docs/plan/0036-fork-readiness.md",
+    "docs/plan/0036-fork-readiness.notes.md",
+    "docs/plan/lanes/D36.md",
+    ".claude/worktrees/x/README.md",
+  ]) {
+    assert.equal(isCarriedLinkDocument(rel), false, rel);
+  }
+  // What a record's link into a plan is: history, by target.
+  assert.equal(
+    isHistoryLink(
+      "docs/adr/0084-fork-readiness.md",
+      "docs/plan/0036-fork-readiness.md",
+    ),
+    true,
+  );
+  assert.equal(
+    isHistoryLink("docs/reviews/r.md", "docs/plan/0001-api-foundation.md"),
+    true,
+  );
+  assert.equal(
+    isHistoryLink("docs/adr/README.md", "docs/plan/README.md"),
+    false,
+  );
+  assert.equal(
+    isHistoryLink("docs/forking.md", "docs/plan/0001-api-foundation.md"),
+    false,
+  );
+});
+
+const noPlans = (present) => (rel) => present.has(rel);
+
+test("a record's link into a plan is history and exempt", () => {
+  const exists = noPlans(new Set(["docs/plan/README.md"]));
+  assert.deepEqual(
+    checkLinks(
+      "docs/adr/0084-fork-readiness.md",
+      "[the plan](../plan/0036-fork-readiness.md) [notes](../plan/0036-fork-readiness.notes.md#d365)",
+      exists,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    checkLinks(
+      "docs/reviews/r.md",
+      "[a plan](../plan/0001-api-foundation.md)",
+      exists,
+    ),
+    [],
+  );
+  // The same link from a document that is not history is refused.
+  assert.deepEqual(
+    checkLinks(
+      "docs/forking.md",
+      "[a plan](plan/0001-api-foundation.md)",
+      exists,
+    ).map(({ found }) => found),
+    ["plan/0001-api-foundation.md"],
+  );
+});
+
+test("a record's link to a missing record is refused", () => {
+  const exists = noPlans(
+    new Set(["docs/adr/0050-adr-lifecycle-and-verification.md"]),
+  );
+  assert.deepEqual(
+    checkLinks(
+      "docs/adr/0022-frontend-apps.md",
+      "[ADR-0050](0050-adr-lifecycle-and-verification.md) [ADR-0050](0050-adr-lifecycle.md) [the window](../plan/README.md#the-window)",
+      exists,
+    ).map(({ rule, found }) => `${rule} ${found}`),
+    [
+      "broken-link 0050-adr-lifecycle.md",
+      "broken-link ../plan/README.md#the-window",
+    ],
+  );
+});
+
+test("the ADR index's plan links are exempt, its other links are checked", () => {
+  const exists = noPlans(
+    new Set(["docs/adr/0084-fork-readiness.md", "docs/plan/README.md"]),
+  );
+  const text = [
+    "| [0084](0084-fork-readiness.md) | Fork readiness | [D36](../plan/0036-fork-readiness.md) |",
+    "| [0085](0085-missing.md) | [the ledger](../plan/README.md) [lanes](../plan/lanes/README.md) |",
+  ].join("\n");
+  assert.deepEqual(
+    checkLinks("docs/adr/README.md", text, exists).map(
+      ({ line, found }) => `${line} ${found}`,
+    ),
+    ["2 0085-missing.md", "2 ../plan/lanes/README.md"],
+  );
+});
+
+test("a reference definition's target is checked", () => {
+  const exists = noPlans(new Set(["docs/deploy.md"]));
+  assert.deepEqual(
+    checkLinks(
+      "docs/forking.md",
+      'See [deploy][d] and [gone][g].\n\n[d]: deploy.md\n[g]: <gone.md> "Gone"\n  [h]: https://example.com',
+      exists,
+    ).map(({ line, found }) => `${line} ${found}`),
+    ["4 gone.md"],
+  );
+});
+
+test("an angle-bracketed target with a space is checked", () => {
+  const exists = noPlans(new Set(["docs/a b.md"]));
+  assert.deepEqual(
+    checkLinks(
+      "docs/forking.md",
+      '[here](<a b.md>) [there](<c d.md> "title") [enc](a%20b.md)',
+      exists,
+    ).map(({ found }) => found),
+    ["c d.md"],
+  );
+});
+
+test("a backtick fence line inside a tilde fence does not hide later links", () => {
+  const exists = noPlans(new Set());
+  const text = [
+    "~~~markdown",
+    "```",
+    "[inside](gone-inside.md)",
+    "~~~",
+    "[after](gone-after.md)",
+    "````",
+    "```",
+    "[still inside](gone-too.md)",
+    "````",
+    "[last](gone-last.md)",
+  ].join("\n");
+  assert.deepEqual(
+    checkLinks("docs/forking.md", text, exists).map(({ found }) => found),
+    ["gone-after.md", "gone-last.md"],
+  );
+});
+
+test("a malformed percent escape is reported, not thrown", () => {
+  const violations = checkLinks(
+    "docs/forking.md",
+    "[bad](100%-sure.md)",
+    () => true,
+  );
+  assert.deepEqual(
+    violations.map(({ rule, found }) => `${rule} ${found}`),
+    ["malformed-link 100%-sure.md"],
+  );
+});
+
+test("a known broken link in a frozen record is allowed, and refused once it works", () => {
+  const known = [
+    {
+      file: "docs/adr/0022-frontend-apps.md",
+      target: "0050-adr-lifecycle.md",
+      reason: "closed",
+    },
+  ];
+  const broken = {
+    file: "docs/adr/0022-frontend-apps.md",
+    line: 6,
+    rule: "broken-link",
+    found: "0050-adr-lifecycle.md",
+    message: "",
+  };
+  const other = { ...broken, found: "0099-missing.md" };
+  const present = () => true;
+  assert.deepEqual(applyKnownBroken([broken, other], known, present), [other]);
+  // The link was fixed, or the file no longer has it: the entry is stale.
+  assert.deepEqual(
+    applyKnownBroken([], known, present).map(
+      ({ rule, found }) => `${rule} ${found}`,
+    ),
+    ["stale-known-broken 0050-adr-lifecycle.md"],
+  );
+  // A fork whose corpus lacks the file carries the entry harmlessly.
+  assert.deepEqual(
+    applyKnownBroken([], known, () => false),
+    [],
+  );
+  // Every committed entry names its reason.
+  for (const entry of KNOWN_BROKEN_LINKS) assert.ok(entry.reason, entry.file);
 });
 
 test("this repository's carried documents have no broken link", async () => {
