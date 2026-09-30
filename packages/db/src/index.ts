@@ -66,7 +66,6 @@ export {
   TENANT_SETTINGS,
   tenantSetting,
   type TenantScope,
-  type TenantUnscopedReason,
 } from "./tenancy.js";
 
 export {

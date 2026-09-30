@@ -86,7 +86,7 @@ describe("a principal at the cap", () => {
 
   beforeAll(async () => {
     harness = createTestApp(withCap(CAP));
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     const admin = await login(harness.app, "staff", superAdmin());
 
@@ -153,7 +153,7 @@ describe("an impersonated session under the cap", () => {
 
   beforeAll(async () => {
     harness = createTestApp(withCap(SMALL_CAP));
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     const admin = await login(harness.app, "staff", superAdmin());
 
@@ -216,7 +216,7 @@ describe("the cap turned off", () => {
 
   beforeAll(async () => {
     harness = createTestApp(withCap(0));
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     const admin = await login(harness.app, "staff", superAdmin());
 

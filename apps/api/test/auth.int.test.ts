@@ -137,7 +137,7 @@ describe.each(RUNS)("$name authentication", ({ population, transport }) => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -479,7 +479,7 @@ describe("refresh token reuse detection", () => {
       }),
     });
 
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {

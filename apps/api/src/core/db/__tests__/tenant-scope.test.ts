@@ -116,7 +116,7 @@ describe("openInRequestScope", () => {
   it("a transaction clears every setting it does not place", async () => {
     // D29.7: a value already on the session — a startup parameter, a
     // session-level `set_config` — must not reach a request's transaction, so
-    // the opener writes all four settings, `''` for each one it does not
+    // the opener writes all three settings, `''` for each one it does not
     // place. A user acting in an organization names two of them.
     const ctx = context();
 
@@ -135,12 +135,11 @@ describe("openInRequestScope", () => {
     );
 
     expect(ran).toHaveLength(1);
-    expect(ran[0]?.sql.match(/set_config\(/g)).toHaveLength(4);
+    expect(ran[0]?.sql.match(/set_config\(/g)).toHaveLength(3);
     expect(placed(ran[0]?.params ?? [])).toEqual({
       [TENANT_SETTINGS.organizationId]: "org-1",
       [TENANT_SETTINGS.userId]: tenantScopeOf(ctx).userId ?? "",
       [TENANT_SETTINGS.invitationTokenHash]: "",
-      [TENANT_SETTINGS.unscoped]: "",
     });
   });
 
@@ -156,7 +155,6 @@ describe("openInRequestScope", () => {
       [TENANT_SETTINGS.organizationId]: "",
       [TENANT_SETTINGS.userId]: "",
       [TENANT_SETTINGS.invitationTokenHash]: "",
-      [TENANT_SETTINGS.unscoped]: "",
     });
   });
 });

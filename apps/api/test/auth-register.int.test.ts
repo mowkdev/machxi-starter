@@ -30,7 +30,7 @@ describe("user self-registration", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -220,7 +220,7 @@ describe("user self-registration", () => {
       slug: personalOrganizationSlug(userId),
     });
 
-    const memberships = await harness.asTooling((tx) =>
+    const memberships = await harness.asOwner((tx) =>
       tx
         .select({
           userId: organizationMemberships.userId,

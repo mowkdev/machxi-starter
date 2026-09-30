@@ -148,6 +148,13 @@
       "when": 1790767143980,
       "tag": "0020_invitation_column_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790775368583,
+      "tag": "0021_row_level_security_without_widenings",
+      "breakpoints": true
     }
   ]
 }

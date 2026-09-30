@@ -3,7 +3,10 @@ import {
   organizationMemberships,
   organizations,
   personalOrganizationSlug,
+  replaceTenantScope,
   users,
+  type DbExecutor,
+  type TenantScope,
 } from "@repo/db";
 import { randomToken, sha256Base64url } from "@repo/crypto";
 import { and, eq } from "drizzle-orm";
@@ -35,6 +38,13 @@ import { FIXTURE_USERS, resetAndSeed } from "./support/seed.js";
  * relational builder aliases out of scope: every call failed with `42P01`,
  * for any input, and the whole five-link gate was green because nothing called
  * it yet.
+ *
+ * **Under a tenant's scope** (ADR-0083 §1). Each repository is handed a
+ * transaction opener that places the scope the request would have — the
+ * organization a case acts in, or the principal for the principal-scoped
+ * reads — so every query here passes through the row-level-security policies
+ * rather than around them. No setting widens anything; the one read of a row
+ * no request can see goes through the owner's connection and says so.
  */
 
 describe("the organizations repositories", () => {
@@ -68,7 +78,7 @@ describe("the organizations repositories", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     const [owner] = await harness.db.db
       .select({ id: users.id })
@@ -99,11 +109,36 @@ describe("the organizations repositories", () => {
     await harness.close();
   });
 
-  const repositories = () => ({
-    organizations: createOrganizationsRepository(harness.db.db),
-    memberships: createMembershipsRepository(harness.db.db, harness.asTooling),
-    invitations: createInvitationsRepository(harness.db.db, harness.asTooling),
-  });
+  /**
+   * The three repositories, each tenant-owned one opening its transactions in
+   * `scope` — what `openInRequestScope` places for a request whose guards
+   * resolved that scope, replacing every setting it does not name.
+   */
+  const openIn =
+    (scope: TenantScope) =>
+    <T>(fn: (tx: DbExecutor) => Promise<T>): Promise<T> =>
+      harness.db.db.transaction(async (tx) => {
+        await replaceTenantScope(tx, scope);
+
+        return fn(tx);
+      });
+
+  const repositories = (scope: TenantScope = {}) => {
+    const inScope = openIn(scope);
+
+    return {
+      organizations: createOrganizationsRepository(harness.db.db),
+      memberships: createMembershipsRepository(harness.db.db, inScope),
+      invitations: createInvitationsRepository(harness.db.db, inScope),
+    };
+  };
+
+  /** A request acting in `organizationId`, as `requireMembership` leaves it. */
+  const inOrganization = (organizationId: string) =>
+    repositories({ organizationId });
+
+  /** A signed-in user outside any organization: their own memberships alone. */
+  const asPrincipal = (userId: string) => repositories({ userId });
 
   /* ── organizations ──────────────────────────────────────────────────────── */
 
@@ -163,9 +198,12 @@ describe("the organizations repositories", () => {
   /* ── memberships ────────────────────────────────────────────────────────── */
 
   it("resolves a membership with its organization's slug, and only while it is live", async () => {
-    const { memberships, organizations: repo } = repositories();
+    const repo = repositories().organizations;
+    // The guard's own read runs before it knows the organization, under the
+    // caller's principal alone.
+    const principal = asPrincipal(ownerId).memberships;
 
-    expect(await memberships.resolveFor(orgId, ownerId)).toMatchObject({
+    expect(await principal.resolveFor(orgId, ownerId)).toMatchObject({
       organizationId: orgId,
       slug: "acme",
       role: "owner",
@@ -174,7 +212,7 @@ describe("the organizations repositories", () => {
     // A membership of an organization that does not exist resolves to nothing,
     // which is what the guard turns into a `404`.
     expect(
-      await memberships.resolveFor(
+      await principal.resolveFor(
         "00000000-0000-4000-8000-000000000000",
         ownerId,
       ),
@@ -187,25 +225,26 @@ describe("the organizations repositories", () => {
       createdBy: ownerId,
     });
     const id = throwaway?.id ?? "";
+    const tenant = inOrganization(id).memberships;
 
-    await memberships.create(id, ownerId, "owner");
-    expect(await memberships.resolveFor(id, ownerId)).toBeDefined();
+    await tenant.create(id, ownerId, "owner");
+    expect(await principal.resolveFor(id, ownerId)).toBeDefined();
 
     await repo.softDelete(id, at());
 
     // The membership row survives the soft delete — nothing cascades on it —
     // and the join is what stops it resolving inside a deleted tenant.
-    expect(await memberships.findFor(id, ownerId)).toBeDefined();
-    expect(await memberships.resolveFor(id, ownerId)).toBeUndefined();
+    expect(await tenant.findFor(id, ownerId)).toBeDefined();
+    expect(await principal.resolveFor(id, ownerId)).toBeUndefined();
     expect(
-      (await memberships.listForUser(ownerId)).some(
+      (await principal.listForUser(ownerId)).some(
         (row) => row.organization.id === id,
       ),
     ).toBe(false);
   });
 
   it("counts only owners whose account is still open", async () => {
-    const { memberships, organizations: repo } = repositories();
+    const repo = repositories().organizations;
 
     const created = await repo.create({
       slug: unique("owners-probe"),
@@ -214,6 +253,7 @@ describe("the organizations repositories", () => {
       createdBy: ownerId,
     });
     const id = created?.id ?? "";
+    const memberships = inOrganization(id).memberships;
 
     await memberships.create(id, ownerId, "owner");
     await memberships.create(id, memberId, "owner");
@@ -242,7 +282,7 @@ describe("the organizations repositories", () => {
   });
 
   it("takes the owner-invariant lock inside a transaction", async () => {
-    const { memberships } = repositories();
+    const { memberships } = inOrganization(orgId);
 
     // `pg_advisory_xact_lock(int4, int4)` over `hashtext(uuid)` — run once so
     // the statement is known to parse and the lock class is known to be in the
@@ -255,7 +295,7 @@ describe("the organizations repositories", () => {
   });
 
   it("updates and removes a membership, reporting whether anything changed", async () => {
-    const { memberships, organizations: repo } = repositories();
+    const repo = repositories().organizations;
 
     const created = await repo.create({
       slug: unique("member-probe"),
@@ -264,6 +304,7 @@ describe("the organizations repositories", () => {
       createdBy: ownerId,
     });
     const id = created?.id ?? "";
+    const memberships = inOrganization(id).memberships;
 
     expect(await memberships.create(id, memberId, "member")).toBe(true);
     // The composite primary key is the conflict target, so this is idempotent.
@@ -293,7 +334,7 @@ describe("the organizations repositories", () => {
     email: string,
     expiresAt = new Date(Date.now() + 3_600_000),
   ) =>
-    repositories().invitations.create(organizationId, {
+    inOrganization(organizationId).invitations.create(organizationId, {
       email,
       role: "member",
       invitedBy: ownerId,
@@ -310,28 +351,26 @@ describe("the organizations repositories", () => {
     expect(Object.keys(created)).not.toContain("tokenHash");
     expect(JSON.stringify(created)).not.toContain("tokenHash");
 
-    expect(
-      await repositories().invitations.findById(orgId, created.id),
-    ).toMatchObject({ id: created.id });
+    const invitations = inOrganization(orgId).invitations;
 
-    // Scoped: another organization's id does not reach this row.
+    expect(await invitations.findById(orgId, created.id)).toMatchObject({
+      id: created.id,
+    });
+
+    // Scoped: another organization's id does not reach this row, even in a
+    // transaction whose policies admit it — the repository's own predicate.
     expect(
-      await repositories().invitations.findById(
+      await invitations.findById(
         "00000000-0000-4000-8000-000000000000",
         created.id,
       ),
     ).toBeUndefined();
 
-    await repositories().invitations.consume(
-      orgId,
-      created.id,
-      "revokedAt",
-      at(),
-    );
+    await invitations.consume(orgId, created.id, "revokedAt", at());
   });
 
   it("lists what is pending, by organization and by address", async () => {
-    const repo = repositories().invitations;
+    const repo = inOrganization(orgId).invitations;
     const email = `${unique("pending")}@machxi.local`;
     const pending = await invite(orgId, email);
     const expired = await invite(
@@ -364,7 +403,8 @@ describe("the organizations repositories", () => {
   });
 
   it("consumes an invitation exactly once, and never into a deleted tenant", async () => {
-    const { invitations, organizations: repo } = repositories();
+    const repo = repositories().organizations;
+    const invitations = inOrganization(orgId).invitations;
     const email = `${unique("consume")}@machxi.local`;
     const created = await invite(orgId, email);
 
@@ -396,8 +436,9 @@ describe("the organizations repositories", () => {
 
     // The row itself outlives its organization's soft delete — nothing
     // cascades on one — which is the fact every read here is defending
-    // against.
-    const [survivor] = await harness.asTooling((tx) =>
+    // against. Read in the deleted organization's own scope: the policy
+    // admits the row by its `organization_id`, whatever `organizations` says.
+    const [survivor] = await openIn({ organizationId: id })((tx) =>
       tx
         .select({ id: organizationInvitations.id })
         .from(organizationInvitations)
@@ -409,20 +450,22 @@ describe("the organizations repositories", () => {
     // And no read returns it, because every one of them joins `organizations`
     // and filters `deleted_at` — so an invitation into a deleted tenant is not
     // pending, it is void.
-    expect(await invitations.findById(id, orphan.id)).toBeUndefined();
+    const orphaned = inOrganization(id).invitations;
+
+    expect(await orphaned.findById(id, orphan.id)).toBeUndefined();
     expect(
-      await invitations.consume(id, orphan.id, "acceptedAt", at()),
+      await orphaned.consume(id, orphan.id, "acceptedAt", at()),
     ).toBeUndefined();
-    expect(
-      await invitations.listPendingForEmail(orphan.email, at()),
-    ).toHaveLength(0);
+    expect(await orphaned.listPendingForEmail(orphan.email, at())).toHaveLength(
+      0,
+    );
   });
 
   afterAll(async () => {
     // Leave the seeded fixtures as this file found them: the suite runs
     // serially, but a stray team organization would still show up in the next
-    // file's counts.
-    await harness.asTooling((tx) =>
+    // file's counts. Across organizations, so as the owner.
+    await harness.asOwner((tx) =>
       tx
         .delete(organizationMemberships)
         .where(

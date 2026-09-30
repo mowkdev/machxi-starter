@@ -1,10 +1,11 @@
 import {
   organizationInvitations,
   organizationMemberships,
+  setTenantScope,
   users,
   type DbExecutor,
 } from "@repo/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -78,7 +79,7 @@ describe("organizations on the user segment", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     owner = await login(harness.app, "user", {
       email: FIXTURE_USERS.active,
@@ -516,7 +517,7 @@ describe("organizations on the user segment", () => {
         .send({ email: "token.probe@machxi.local", role: "member" })
         .expect(201);
 
-      const [row] = await harness.asTooling((tx) =>
+      const [row] = await harness.asOwner((tx) =>
         tx
           .select({ tokenHash: organizationInvitations.tokenHash })
           .from(organizationInvitations)
@@ -896,7 +897,7 @@ describe("organizations on the user segment", () => {
         expect(message?.text.split("#token=")[0]).not.toContain(token);
 
         // And the database still holds only the hash, which nothing returns.
-        const [row] = await harness.asTooling((tx) =>
+        const [row] = await harness.asOwner((tx) =>
           tx
             .select({ tokenHash: organizationInvitations.tokenHash })
             .from(organizationInvitations)
@@ -1111,8 +1112,8 @@ describe("organizations on the user segment", () => {
 
     it("a query that forgets its organization returns nothing", async () => {
       // The rows are there: the seeders and this file's cases wrote several
-      // tenants' worth, and the tooling's scope reads them all.
-      const all = await harness.asTooling(everyMembership);
+      // tenants' worth, and the owner's connection reads them all.
+      const all = await harness.asOwner(everyMembership);
 
       expect(all.length).toBeGreaterThan(1);
       expect(
@@ -1130,7 +1131,7 @@ describe("organizations on the user segment", () => {
     it("shows a member's request its organization alone — not even the caller's own rows elsewhere", async () => {
       // The caller has memberships elsewhere: their personal organization and
       // the teams this file created.
-      const theirs = await harness.asTooling((tx) =>
+      const theirs = await harness.asOwner((tx) =>
         everyMembership(tx).where(eq(organizationMemberships.userId, ownerId)),
       );
 
@@ -1169,23 +1170,30 @@ describe("organizations on the user segment", () => {
     });
 
     it("a session-level scope does not reach a request transaction", async () => {
-      // D29.7: a pool whose every connection starts widened — the tooling's
-      // `tenantUnscoped` startup parameter, which the API never passes — and
-      // a user's request opened on it. The opener writes `''` for each
-      // setting it does not place, so the session's `system` is shadowed for
-      // the transaction and the request sees what its own scope admits.
-      const widened = createDb(harness.config.db.url, {
+      // D29.7: a connection whose session already carries a tenant setting —
+      // a `set_config(…, false)` somebody ran on a pooled connection — and a
+      // user's request opened on it. The opener writes `''` for each setting
+      // it does not place, so the session's organization is shadowed for the
+      // transaction and the request sees what its own scope admits. (Until
+      // `D35.2` this case used the `system` widening as its session value;
+      // no setting widens anything now, ADR-0083 §1.)
+      const team = await createTeam(stranger.accessToken, "rls-session");
+      const pinned = createDb(harness.config.db.url, {
         max: 1,
         idleTimeout: 1,
-        tenantUnscoped: "system",
       });
 
       try {
-        // The widening is really on the session: a bare statement sees
-        // every tenant.
-        expect(await everyMembership(widened.db)).toHaveLength(
-          (await harness.asTooling(everyMembership)).length,
+        await pinned.db.execute(
+          sql`select set_config('app.organization_id', ${orgId}, false)`,
         );
+
+        // The setting is really on the session: a bare statement sees acme's
+        // rows.
+        const bare = await everyMembership(pinned.db);
+
+        expect(bare.length).toBeGreaterThan(0);
+        expect(bare.every((row) => row.organizationId === orgId)).toBe(true);
 
         const seen = await runWithContext(
           Object.assign(
@@ -1193,20 +1201,23 @@ describe("organizations on the user segment", () => {
               requestId: "rls-session",
               logger: harness.logger,
             }),
-            { principal: userPrincipal(strangerId), organization: null },
+            {
+              principal: userPrincipal(strangerId),
+              organization: { id: team.id, slug: "x", role: "owner" as const },
+            },
           ),
-          () => openInRequestScope(widened.db)(everyMembership),
+          () => openInRequestScope(pinned.db)(everyMembership),
         );
 
         expect(seen.length).toBeGreaterThan(0);
-        expect(seen.every((row) => row.userId === strangerId)).toBe(true);
+        expect(seen.every((row) => row.organizationId === team.id)).toBe(true);
 
         // And a request with no principal at all sees nothing.
-        expect(await openInRequestScope(widened.db)(everyMembership)).toEqual(
+        expect(await openInRequestScope(pinned.db)(everyMembership)).toEqual(
           [],
         );
       } finally {
-        await widened.close();
+        await pinned.close();
       }
     });
 
@@ -1250,7 +1261,7 @@ describe("organizations on the user segment", () => {
         ),
       ).toBe("42501");
 
-      const [row] = await harness.asTooling((tx) =>
+      const [row] = await harness.asOwner((tx) =>
         tx
           .select({
             organizationId: organizationInvitations.organizationId,
@@ -1267,6 +1278,121 @@ describe("organizations on the user segment", () => {
         .post(`${INVITATIONS}/${id}/decline`)
         .set("Authorization", bearer(invitee.tokens.accessToken))
         .expect(204);
+    });
+
+    /** The SQLSTATE a refused statement carried, or `"ok"` when it ran. */
+    const outcome = (work: Promise<unknown>): Promise<string | undefined> =>
+      work.then(
+        () => "ok",
+        (caught: unknown) =>
+          (caught as { cause?: { code?: string } }).cause?.code,
+      );
+
+    it("an invitee cannot revoke an invitation addressed to them", async () => {
+      // ADR-0083 §3: the invitee's consume policy checks the row it leaves.
+      // The invitee accepts or declines; revoking is the organization's act,
+      // through the tenant policy, and the column grant alone would admit
+      // `revoked_at` to anybody the policy lets update the row.
+      const org = await createTeam(owner.accessToken, "rls-invitee-revoke");
+      const invitee = await freshAccount("rls.revoker@machxi.local");
+
+      const created = await request()
+        .post(`${ORGS}/${org.id}/invitations`)
+        .set("Authorization", bearer(owner.accessToken))
+        .send({ email: invitee.email, role: "member" })
+        .expect(201);
+      const id = created.body.data.id as string;
+
+      expect(
+        await outcome(
+          inRequest({ principal: userPrincipal(invitee.id) }, (tx) =>
+            tx
+              .update(organizationInvitations)
+              .set({ revokedAt: new Date(), updatedAt: new Date() })
+              .where(eq(organizationInvitations.id, id)),
+          ),
+        ),
+      ).toBe("42501");
+
+      const [row] = await harness.asOwner((tx) =>
+        tx
+          .select({
+            revokedAt: organizationInvitations.revokedAt,
+            declinedAt: organizationInvitations.declinedAt,
+          })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id)),
+      );
+
+      expect(row).toEqual({ revokedAt: null, declinedAt: null });
+
+      // The stamps the invitee's own paths write are still theirs to write.
+      await request()
+        .post(`${INVITATIONS}/${id}/decline`)
+        .set("Authorization", bearer(invitee.tokens.accessToken))
+        .expect(204);
+    });
+
+    it("a bearer cannot decline or revoke by token", async () => {
+      // ADR-0083 §3: the bearer's consume policy admits an accept and
+      // nothing else. The transaction holds the token's hash and no
+      // principal — exactly what the lookup and the accept-by-token place.
+      const org = await createTeam(owner.accessToken, "rls-bearer");
+      const email = "rls.bearer@machxi.local";
+
+      const created = await request()
+        .post(`${ORGS}/${org.id}/invitations`)
+        .set("Authorization", bearer(owner.accessToken))
+        .send({ email, role: "member" })
+        .expect(201);
+      const id = created.body.data.id as string;
+      const [held] = await harness.asOwner((tx) =>
+        tx
+          .select({ tokenHash: organizationInvitations.tokenHash })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id)),
+      );
+      const tokenHash = held!.tokenHash;
+
+      const asBearer = (stamp: "acceptedAt" | "declinedAt" | "revokedAt") =>
+        inRequest({ principal: null }, async (tx) => {
+          await setTenantScope(tx, { invitationTokenHash: tokenHash });
+
+          const stamped = await tx
+            .update(organizationInvitations)
+            .set({ [stamp]: new Date(), updatedAt: new Date() })
+            .where(eq(organizationInvitations.id, id))
+            .returning({ id: organizationInvitations.id });
+
+          // Rolled back whatever happened, so the accept below leaves the
+          // row as the refusals found it.
+          throw Object.assign(new Error("rolled back"), {
+            cause: { code: `stamped:${String(stamped.length)}` },
+          });
+        });
+
+      expect(await outcome(asBearer("declinedAt"))).toBe("42501");
+      expect(await outcome(asBearer("revokedAt"))).toBe("42501");
+      // The control: the same transaction may accept, so the refusals above
+      // are the check's and not the scope's.
+      expect(await outcome(asBearer("acceptedAt"))).toBe("stamped:1");
+
+      const [row] = await harness.asOwner((tx) =>
+        tx
+          .select({
+            acceptedAt: organizationInvitations.acceptedAt,
+            declinedAt: organizationInvitations.declinedAt,
+            revokedAt: organizationInvitations.revokedAt,
+          })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id)),
+      );
+
+      expect(row).toEqual({
+        acceptedAt: null,
+        declinedAt: null,
+        revokedAt: null,
+      });
     });
 
     const staffPrincipal: RequestContext["principal"] = {
@@ -1417,10 +1543,18 @@ describe("organizations on the user segment", () => {
 
     it("two concurrent requests in different organizations each see only their own", async () => {
       // ADR-0083 §6: the opener reads the scope from request storage, and no
-      // request's continuation runs inside another's. Two requests meet at a
-      // barrier before their transactions open and again inside them, so
-      // each resumes from a promise the other settled while both are in
-      // flight — the interleaving a leak would show up in.
+      // request's continuation runs inside another's. Two requests of the two
+      // kinds that place an organization — a member's, placed by
+      // `requireMembership`, and a staff request's, placed by
+      // `placeRouteOrganization` — meet at two barriers.
+      //
+      // **The first barrier is the one that proves isolation.** Each request
+      // resumes from it on a promise the *other* settled, and only then opens
+      // its transaction, so the scope the opener reads from storage is read
+      // in a continuation the other request released: a store that leaked
+      // across continuations would hand one of them the other's scope here.
+      // The second, inside the transactions, proves only that both are in
+      // flight at once.
       const team = await createTeam(stranger.accessToken, "rls-concurrent");
 
       const barrier = () => {
@@ -1439,16 +1573,8 @@ describe("organizations on the user segment", () => {
       const beforeOpening = barrier();
       const insideTransaction = barrier();
 
-      const concurrently = (principal: string, organizationId: string) => {
-        const ctx = createRequestContext({
-          requestId: `rls-concurrent-${organizationId}`,
-          logger: harness.logger,
-        });
-
-        ctx.principal = userPrincipal(principal);
-        ctx.organization = { id: organizationId, slug: "x", role: "owner" };
-
-        return runWithContext(ctx, async () => {
+      const concurrently = (ctx: RequestContext) =>
+        runWithContext(ctx, async () => {
           await beforeOpening();
 
           return openInRequestScope(harness.db.db)(async (tx) => {
@@ -1457,11 +1583,26 @@ describe("organizations on the user segment", () => {
             return everyMembership(tx);
           });
         });
-      };
+
+      const member = createRequestContext({
+        requestId: "rls-concurrent-member",
+        logger: harness.logger,
+      });
+
+      member.principal = userPrincipal(ownerId);
+      member.organization = { id: orgId, slug: "acme", role: "owner" };
+
+      const staffInTeam = createRequestContext({
+        requestId: "rls-concurrent-staff",
+        logger: harness.logger,
+      });
+
+      staffInTeam.principal = staffPrincipal;
+      staffInTeam.routeOrganizationId = team.id;
 
       const [acmeSeen, teamSeen] = await Promise.all([
-        concurrently(ownerId, orgId),
-        concurrently(strangerId, team.id),
+        concurrently(member),
+        concurrently(staffInTeam),
       ]);
 
       expect(acmeSeen.length).toBeGreaterThan(0);

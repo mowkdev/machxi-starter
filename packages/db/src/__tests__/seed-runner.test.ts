@@ -103,10 +103,11 @@ describe("runSeeders", () => {
     expect(write).toHaveBeenCalledWith("  b: hello\n");
   });
 
-  it("places the tooling's named tenant scope on each seeder's transaction", async () => {
-    // The seeders run as the application role, which the tenant-owned tables'
-    // policies bind (ADR-0078 §4 as amended at `D29.4`); without the scope a
-    // seeder that writes an organization's members would be refused.
+  it("places no tenant setting: the seeders act as the owner, not by a widening", async () => {
+    // ADR-0083 §1: no setting widens anything. The seeders write across
+    // tenants because they connect as the owner, which the tenant-owned
+    // tables' policies do not bind — the runner places nothing on the
+    // transaction it hands them.
     execute.mockClear();
 
     await runSeeders(
@@ -117,7 +118,7 @@ describe("runSeeders", () => {
       noopContext,
     );
 
-    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("runs each seeder inside a transaction of its own (ADR-0067 §2)", async () => {

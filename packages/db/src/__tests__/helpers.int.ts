@@ -21,25 +21,27 @@ import {
  * `apps/api/.env.test` and follows the root `.env` (ADR-0004).
  */
 export const migrateFreshTestDatabase = async (): Promise<DbClient> => {
-  // Two roles, and the asymmetry is the point (ADR-0061 §1): the rebuild is
-  // DDL and runs as the **owner**, while what the suite gets back is a client
-  // on the **application** role — the one the API connects as. A test that
-  // passes on a connection with more privilege than production has proves
-  // nothing about production.
-  await migrateFreshDatabase(readTestOwnerDatabaseUrl());
+  // The rebuild is DDL and runs as the owner (ADR-0061 §1), and so does what
+  // the suite gets back (ADR-0083 §1): this tier asserts on the schema, the
+  // migrations and the seeders — tooling that acts across tenants — and no
+  // setting lets the application role read across them. A case that is about
+  // the application role says so by opening {@link openApplicationRole}.
+  const url = readTestOwnerDatabaseUrl();
 
-  //
-  // Unscoped for the tenant policies, by name (ADR-0078 §4 as amended at
-  // `D29.4`): this tier asserts on the schema, the migrations and the seeders
-  // — tooling that acts across tenants — and not on the request's scope,
-  // which the API's integration tier proves. `schema.int.test.ts` opens a
-  // client without it for the one case that is about the scope.
-  return createDb(readTestDatabaseUrl(), {
-    max: 2,
-    idleTimeout: 2,
-    tenantUnscoped: "system",
-  });
+  await migrateFreshDatabase(url);
+
+  return createDb(url, { max: 2, idleTimeout: 2 });
 };
+
+/**
+ * A client on the **application** role — the one the API connects as — for
+ * the cases whose subject is what that role may and may not do: its grants,
+ * the append-only log, the tenant policies. A test that passes on a
+ * connection with more privilege than production has proves nothing about
+ * production, so those cases never use the owner's pool.
+ */
+export const openApplicationRole = (): DbClient =>
+  createDb(readTestDatabaseUrl(), { max: 2, idleTimeout: 2 });
 
 /**
  * argon2 at the lowest parameters the library accepts. The suite hashes on

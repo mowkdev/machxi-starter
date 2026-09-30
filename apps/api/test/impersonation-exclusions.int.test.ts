@@ -126,7 +126,7 @@ const signIn = (email: string) =>
 
 beforeAll(async () => {
   harness = createTestApp();
-  await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+  await resetAndSeed({ hasher: harness.hasher });
 
   const tokens = await login(harness.app, "staff", superAdmin());
 

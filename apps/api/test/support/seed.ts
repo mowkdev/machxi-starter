@@ -1,5 +1,5 @@
 import type { PasswordHasher } from "@repo/crypto";
-import type { DbClient } from "@repo/db";
+import { createDb } from "@repo/db";
 import { baseSeeders, devSeeders, runSeeders } from "@repo/db/seeds";
 import { truncateAllWithOwner } from "@repo/db/testing";
 
@@ -71,7 +71,6 @@ export const superAdmin = (): SeededSuperAdmin => ({
 });
 
 export interface ResetAndSeedOptions {
-  readonly db: DbClient;
   /**
    * The harness's hasher (`TestApp.hasher`), built from the same
    * `config.auth.argon2` as the container's, so fixtures are hashed with
@@ -88,35 +87,43 @@ export interface ResetAndSeedOptions {
  * Exported separately from {@link resetAndSeed} because "running it twice
  * changes nothing" is the property ADR-0008 asks for, and a truncate in
  * between would make that trivially true and prove nothing.
+ *
+ * On a short-lived **owner** connection, as `pnpm db:seed` runs them
+ * (ADR-0083 §1): the seeders write an organization and its members across
+ * tenants, and no setting lets the application role do that.
  */
-export const seed = async ({
-  db,
-  hasher,
-}: ResetAndSeedOptions): Promise<void> => {
+export const seed = async ({ hasher }: ResetAndSeedOptions): Promise<void> => {
   const { email, password } = superAdmin();
-
-  await runSeeders([...baseSeeders, ...devSeeders], {
-    db: db.db,
-    hasher,
-    env: {
-      // `test`, not `production` — `selectSeeders` refuses `--dev` fixtures in
-      // production, and this path bypasses that CLI guard.
-      nodeEnv: "test",
-      superAdminEmail: email,
-      superAdminPassword: password,
-    },
+  const owner = createDb(loadTestEnv().ownerDatabaseUrl, {
+    max: 1,
+    idleTimeout: 1,
   });
+
+  try {
+    await runSeeders([...baseSeeders, ...devSeeders], {
+      db: owner.db,
+      hasher,
+      env: {
+        // `test`, not `production` — `selectSeeders` refuses `--dev` fixtures
+        // in production, and this path bypasses that CLI guard.
+        nodeEnv: "test",
+        superAdminEmail: email,
+        superAdminPassword: password,
+      },
+    });
+  } finally {
+    await owner.close();
+  }
 };
 
 /**
  * Empties every table, then seeds. What each integration file starts from.
  *
- * The truncate goes through a short-lived **owner** connection (ADR-0061 §1),
- * not through the app's `options.db`: `TRUNCATE` is not in the application
- * role's grant, and it is deliberately not added, because a row-level trigger
- * never fires for it and it is therefore the one statement that could empty
- * the append-only log. Seeding stays on the app connection — it inserts rows,
- * which is exactly what production does.
+ * Both go through a short-lived **owner** connection (ADR-0061 §1): `TRUNCATE`
+ * is not in the application role's grant, and it is deliberately not added,
+ * because a row-level trigger never fires for it and it is therefore the one
+ * statement that could empty the append-only log; and the seeders write
+ * across tenants, which only the owner may (ADR-0083 §1).
  */
 export const resetAndSeed = async (
   options: ResetAndSeedOptions,

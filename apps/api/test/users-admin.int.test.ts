@@ -66,7 +66,7 @@ describe("admin user administration", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     superAdminTokens = await login(harness.app, "staff", superAdmin());
 
@@ -389,7 +389,7 @@ describe("admin user administration", () => {
         slug: personalOrganizationSlug(created.id),
       });
 
-      const memberships = await harness.asTooling((tx) =>
+      const memberships = await harness.asOwner((tx) =>
         tx
           .select({
             userId: organizationMemberships.userId,
@@ -846,7 +846,7 @@ describe("admin user administration", () => {
       // The membership survives the soft delete — nothing cascades on it —
       // which is why every read of it joins `organizations` and filters
       // `deleted_at` rather than trusting the row's absence.
-      const memberships = await harness.asTooling((tx) =>
+      const memberships = await harness.asOwner((tx) =>
         tx
           .select({ userId: organizationMemberships.userId })
           .from(organizationMemberships)

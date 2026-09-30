@@ -1,13 +1,16 @@
 import { sql as raw } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDb, type DbClient } from "../client.js";
+import type { DbClient } from "../client.js";
 import { auditEvents } from "../index.js";
 import {
   readTestDatabaseUrl,
   readTestOwnerDatabaseUrl,
 } from "../tooling/env.js";
-import { migrateFreshTestDatabase } from "./helpers.int.js";
+import {
+  migrateFreshTestDatabase,
+  openApplicationRole,
+} from "./helpers.int.js";
 
 /**
  * `audit_events` is append-only in the database, twice over (ADR-0061 §2).
@@ -39,8 +42,8 @@ const ROW = {
 } as const;
 
 beforeAll(async () => {
-  app = await migrateFreshTestDatabase();
-  owner = createDb(readTestOwnerDatabaseUrl(), { max: 1, idleTimeout: 2 });
+  owner = await migrateFreshTestDatabase();
+  app = openApplicationRole();
 
   // One row for both connections to fail to change. Inserted through the
   // application role on purpose: `INSERT` is the one write this table accepts,

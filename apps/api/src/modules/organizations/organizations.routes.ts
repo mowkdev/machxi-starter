@@ -393,6 +393,12 @@ export const createOrganizationsRouter = (
   // Every route below names one organization, and that one alone is the
   // tenant its transactions act in (ADR-0083 §2): staff carry no widening,
   // so a staff read of memberships or invitations is scoped by this path.
+  //
+  // **A route that touches a tenant-owned table goes below this line.**
+  // Express runs a `use` only for the routes registered after it, so a route
+  // above it gets no organization placed and reads no tenant-owned row — it
+  // fails closed, as an empty page, rather than leaking. Only the two routes
+  // above, which read and write `organizations` alone, belong there.
   router.use("/:id", placeRouteOrganization);
 
   router.get("/:id", validate(getOrganizationSchema), controller.getById);

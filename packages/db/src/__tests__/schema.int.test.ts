@@ -1,7 +1,7 @@
 import { and, eq, exists, gt, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDb, type DbClient } from "../client.js";
+import type { DbClient } from "../client.js";
 import {
   federatedIdentities,
   organizationInvitations,
@@ -17,7 +17,10 @@ import {
 } from "../index.js";
 import { TENANT_OWNED_TABLES } from "../testing.js";
 import { readTestDatabaseUrl } from "../tooling/env.js";
-import { migrateFreshTestDatabase } from "./helpers.int.js";
+import {
+  migrateFreshTestDatabase,
+  openApplicationRole,
+} from "./helpers.int.js";
 
 /**
  * The migrations against real Postgres (ADR-0021).
@@ -237,12 +240,18 @@ describe("migration 0001", () => {
     // own (ADR-0061 §1): the role the API connects as has no privilege on the
     // migration journal, so a query through it cannot read — let alone
     // rewrite — the record of what has been applied.
-    const rows = await rowsOf<{ table_schema: string }>(
-      sql`select table_schema from information_schema.tables
-          where table_name = '__drizzle_migrations'`,
-    );
+    const app = openApplicationRole();
 
-    expect(rows).toEqual([]);
+    try {
+      const rows = await app.db.execute(
+        sql`select table_schema from information_schema.tables
+            where table_name = '__drizzle_migrations'`,
+      );
+
+      expect([...rows]).toEqual([]);
+    } finally {
+      await app.close();
+    }
   });
 
   it("names every column snake_case (ADR-0006)", async () => {
@@ -1193,7 +1202,7 @@ describe("migration 0019 — row-level security on the tenant-owned tables", () 
   let scoped: DbClient;
 
   beforeAll(() => {
-    scoped = createDb(readTestDatabaseUrl(), { max: 2, idleTimeout: 2 });
+    scoped = openApplicationRole();
   });
 
   afterAll(async () => {
@@ -1291,5 +1300,40 @@ describe("migration 0019 — row-level security on the tenant-owned tables", () 
       .from(organizationMemberships);
 
     expect(after?.total).toBe(0);
+  });
+
+  it("the application role holds no table-wide UPDATE on organization_invitations", async () => {
+    // ADR-0083 §3 checks the row a consume leaves; migration `0020`'s column
+    // grant is what keeps that UPDATE to the stamps. A table-level privilege
+    // satisfies every column, so the day it comes back — a recreated table
+    // under `0008`'s default privileges — the grant is decorative and an
+    // invitee could rewrite the columns their policy admits them by.
+    const role = new URL(readTestDatabaseUrl()).username;
+    const [grants] = await rowsOf<{
+      table_wide: boolean;
+      organization_id: boolean;
+      email: boolean;
+      token_hash: boolean;
+      role: boolean;
+      stamps: boolean;
+    }>(sql`
+      select has_table_privilege(${role}, 'organization_invitations', 'UPDATE') as table_wide,
+             has_column_privilege(${role}, 'organization_invitations', 'organization_id', 'UPDATE') as organization_id,
+             has_column_privilege(${role}, 'organization_invitations', 'email', 'UPDATE') as email,
+             has_column_privilege(${role}, 'organization_invitations', 'token_hash', 'UPDATE') as token_hash,
+             has_column_privilege(${role}, 'organization_invitations', 'role', 'UPDATE') as role,
+             has_column_privilege(${role}, 'organization_invitations', 'accepted_at', 'UPDATE')
+               and has_column_privilege(${role}, 'organization_invitations', 'declined_at', 'UPDATE')
+               and has_column_privilege(${role}, 'organization_invitations', 'revoked_at', 'UPDATE')
+               and has_column_privilege(${role}, 'organization_invitations', 'updated_at', 'UPDATE') as stamps`);
+
+    expect(grants).toEqual({
+      table_wide: false,
+      organization_id: false,
+      email: false,
+      token_hash: false,
+      role: false,
+      stamps: true,
+    });
   });
 });

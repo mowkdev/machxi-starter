@@ -23,14 +23,22 @@ import { TENANT_SETTINGS, tenantSetting } from "../tenancy.js";
 
 /*
  * Row-level security on the tenant-owned tables (ADR-0067 §5, ADR-0078 §4 as
- * amended at `D29.4`). Each branch of what a transaction may see is a
- * permissive policy of its own, named for the setting that admits it, so a
- * row is visible when **any** placed setting names it and invisible when none
- * does. The tenant and the unscoped branches are `for: "all"` with no separate
- * `withCheck` — a write is checked against the same expression a read is, so
- * a transaction cannot insert a row it could not then read. The principal
- * and bearer branches read, and stamp an invitation, and write nothing else:
- * a membership is always written inside its organization's scope.
+ * amended at `D29.4`, as carried by ADR-0083). Each branch of what a
+ * transaction may see is a permissive policy of its own, named for the
+ * setting that admits it, so a row is visible when **any** placed setting
+ * names it and invisible when none does. **No setting widens anything**
+ * (ADR-0083 §1): every policy admits a row because a setting names its
+ * organization, its principal or its token's hash, and whatever must see
+ * every tenant connects as the owner, which the policies do not bind.
+ *
+ * The tenant branch is `for: "all"` with no separate `withCheck` — a write is
+ * checked against the same expression a read is, so a transaction cannot
+ * insert a row it could not then read. The principal and bearer branches
+ * read, and stamp an invitation, and write nothing else: a membership is
+ * always written inside its organization's scope. Their consume policies
+ * carry a `withCheck` of their own (ADR-0083 §3): the stamped row must still
+ * be one the branch admits, and must not carry a stamp that branch never
+ * writes.
  *
  * Written with physical column names rather than column objects: a policy is
  * DDL, and the expression has to be the one Postgres stores whatever casing
@@ -41,15 +49,10 @@ const policy = (expression: string) => sql.raw(expression);
 const byOrganization = policy(
   `organization_id = ${tenantSetting(TENANT_SETTINGS.organizationId)}::uuid`,
 );
-const byInvitee = policy(
-  `email = (select u.email from users u where u.id = ${tenantSetting(TENANT_SETTINGS.userId)}::uuid and u.deleted_at is null)`,
-);
-const byBearer = policy(
-  `token_hash = ${tenantSetting(TENANT_SETTINGS.invitationTokenHash)}`,
-);
-const byUnscopedReason = policy(
-  `${tenantSetting(TENANT_SETTINGS.unscoped)} in ('staff', 'system')`,
-);
+const byInviteeExpression = `email = (select u.email from users u where u.id = ${tenantSetting(TENANT_SETTINGS.userId)}::uuid and u.deleted_at is null)`;
+const byInvitee = policy(byInviteeExpression);
+const byBearerExpression = `token_hash = ${tenantSetting(TENANT_SETTINGS.invitationTokenHash)}`;
+const byBearer = policy(byBearerExpression);
 
 /**
  * Organizations — the tenant (ADR-0067 §1, §2).
@@ -222,11 +225,6 @@ export const organizationMemberships = pgTable(
       for: "select",
       using: policy(`user_id = ${tenantSetting(TENANT_SETTINGS.userId)}::uuid`),
     }),
-    /* The staff segment and the tooling, each by a setting that names it. */
-    pgPolicy("organization_memberships_unscoped", {
-      for: "all",
-      using: byUnscopedReason,
-    }),
   ],
 );
 
@@ -380,10 +378,16 @@ export const organizationInvitations = pgTable(
       for: "select",
       using: byInvitee,
     }),
-    /* …and the invitee's accept and decline, which stamp the row and create nothing. */
+    /*
+     * …and the invitee's accept and decline, which stamp the row and create
+     * nothing. The check is the row they leave (ADR-0083 §3): still addressed
+     * to the invitee, and never revoked — revoking is the organization's act,
+     * through the tenant policy.
+     */
     pgPolicy("organization_invitations_invitee_consume", {
       for: "update",
       using: byInvitee,
+      withCheck: policy(`(${byInviteeExpression}) and revoked_at is null`),
     }),
     /*
      * The secret-scoped read ADR-0067 §5 sanctions: the one invitation whose
@@ -394,14 +398,13 @@ export const organizationInvitations = pgTable(
       for: "select",
       using: byBearer,
     }),
+    /* The bearer accepts and nothing else: never a decline, never a revoke (ADR-0083 §3). */
     pgPolicy("organization_invitations_bearer_consume", {
       for: "update",
       using: byBearer,
-    }),
-    /* The staff segment and the tooling, each by a setting that names it. */
-    pgPolicy("organization_invitations_unscoped", {
-      for: "all",
-      using: byUnscopedReason,
+      withCheck: policy(
+        `(${byBearerExpression}) and revoked_at is null and declined_at is null`,
+      ),
     }),
   ],
 );

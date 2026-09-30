@@ -40,7 +40,7 @@ describe("staff account deletion", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     superAdminTokens = await login(harness.app, "staff", superAdmin());
 

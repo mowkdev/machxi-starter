@@ -52,7 +52,7 @@ describe("login rate limit", () => {
 
   beforeAll(async () => {
     harness = createTestApp(withLimits({ loginMax: 2 }));
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -131,7 +131,7 @@ describe("refresh rate limit", () => {
 
   beforeAll(async () => {
     harness = createTestApp(withLimits({ refreshMax: 2 }));
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -336,7 +336,7 @@ describe("the invitation mailbox limit", () => {
 
   beforeAll(async () => {
     harness = createTestApp(withLimits({ mailboxMax: 2 }));
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     const owner = await login(harness.app, "user", {
       email: FIXTURE_USERS.active,
@@ -545,7 +545,7 @@ describe("the set-password link limit", () => {
     harness = createTestApp(
       withLimits({ passwordResetMax: 2, mailboxMax: 100_000 }),
     );
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -618,7 +618,7 @@ describe("the per-principal hash budget", () => {
   beforeAll(async () => {
     const seeder = createTestApp();
 
-    await resetAndSeed({ db: seeder.db, hasher: seeder.hasher });
+    await resetAndSeed({ hasher: seeder.hasher });
     await seeder.close();
   });
 

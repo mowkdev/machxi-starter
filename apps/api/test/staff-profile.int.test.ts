@@ -45,7 +45,7 @@ describe("staff profile", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     // The super admin is only here to create the accounts the destructive
     // tests act on, so the shared fixtures keep the password every other file

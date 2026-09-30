@@ -3,7 +3,6 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import * as schema from "./schema/index.js";
-import { TENANT_SETTINGS, type TenantUnscopedReason } from "./tenancy.js";
 
 /**
  * The database client (ADR-0006).
@@ -91,18 +90,6 @@ export interface CreateDbOptions {
    * a long run would carry on unlocked on a fresh session.
    */
   maxLifetime?: number;
-  /**
-   * A **session-level** widening of the tenant policies, named for who holds
-   * it (ADR-0078 §4 as amended at `D29.4`): every transaction on this pool
-   * starts as if it had placed `app.tenant_unscoped` itself.
-   *
-   * For tooling that acts across tenants on every statement — a test
-   * harness's own reads of the tables it asserts on. **The API never passes
-   * it**: its scope is placed per transaction from the request, and a pool
-   * that started unscoped would admit by omission exactly what the policies
-   * exist to refuse. Unset, nothing is placed.
-   */
-  tenantUnscoped?: TenantUnscopedReason;
 }
 
 /**
@@ -152,7 +139,6 @@ export const createDb = (url: string, options: CreateDbOptions = {}) => {
     applicationName = DEFAULT_APPLICATION_NAME,
     onNotice,
     maxLifetime,
-    tenantUnscoped,
   } = options;
 
   const sql = postgres(url, {
@@ -170,9 +156,6 @@ export const createDb = (url: string, options: CreateDbOptions = {}) => {
       statement_timeout: statementTimeoutMs,
       idle_in_transaction_session_timeout: idleTransactionTimeoutMs,
       application_name: applicationName,
-      ...(tenantUnscoped === undefined
-        ? {}
-        : { [TENANT_SETTINGS.unscoped]: tenantUnscoped }),
     },
     // postgres.js prints connection notices to stdout unless told otherwise;
     // logging belongs to the caller's logger (ADR-0005), not to the driver.

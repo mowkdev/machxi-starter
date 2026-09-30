@@ -12,7 +12,6 @@ import {
   type FakeOidcProvider,
 } from "../../src/core/oidc/index.js";
 import type { ErrorReporter } from "../../src/core/reporting/index.js";
-import { setTenantScope } from "@repo/db";
 
 import { loadTestEnv } from "../setup/env.js";
 
@@ -69,22 +68,15 @@ export interface TestApp {
    */
   readonly oidc: FakeOidcProvider;
   /**
-   * Runs `fn` in a transaction on this app's own pool, scoped `system` for the
-   * tenant-owned tables' policies (ADR-0078 §4 as amended at `D29.4`).
-   *
-   * For a test's **own** reads and writes of those tables — fixtures and
-   * assertions, which act as tooling across tenants. The suite still runs as
-   * the application role, and the app itself never goes through this: every
-   * request's transactions are scoped by its guards, which is what the
-   * integration cases exercise.
-   */
-  readonly asTooling: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
-  /**
-   * Runs `fn` in a transaction on a short-lived **owner** connection — for
-   * the one kind of fixture the application role is not granted at all, such
-   * as moving an invitation's `expires_at` into the past (migration `0020`
-   * grants it UPDATE on the terminal stamps alone, ADR-0078 §4 as amended at
-   * `D29.7`). The owner is bound by no policy and by no column grant.
+   * Runs `fn` in a transaction on a short-lived **owner** connection — the
+   * only way a test reads or writes across tenants (ADR-0083 §1): its own
+   * fixtures and assertions on the tenant-owned tables, and the fixtures the
+   * application role is not granted at all, such as moving an invitation's
+   * `expires_at` into the past (migration `0020` grants it UPDATE on the
+   * terminal stamps alone). The owner is bound by no policy and by no column
+   * grant. The app itself never goes through this: every request's
+   * transactions are scoped by its guards, which is what the integration
+   * cases exercise.
    */
   readonly asOwner: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly close: () => Promise<void>;
@@ -153,12 +145,6 @@ export const createTestApp = ({
     hasher: createArgon2Hasher(config.auth.argon2),
     mail,
     oidc,
-    asTooling: (fn) =>
-      db.db.transaction(async (tx) => {
-        await setTenantScope(tx, { unscoped: "system" });
-
-        return fn(tx);
-      }),
     asOwner: async (fn) => {
       const owner = createDb(loadTestEnv().ownerDatabaseUrl, {
         max: 1,

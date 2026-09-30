@@ -44,7 +44,7 @@ The staff segment keeps ADR-0067 §3's rule: staff are above tenants, never insi
 
 ### 3. The consume policies check the row they leave
 
-`organization_invitations_invitee_consume` gains `WITH CHECK (revoked_at IS NULL)`: an invitee accepts or declines and never revokes. `organization_invitations_bearer_consume` gains `WITH CHECK (revoked_at IS NULL AND declined_at IS NULL)`: a bearer accepts and nothing else. The tenant policy, which the organization's own admins revoke through, is unchanged.
+`organization_invitations_invitee_consume` gains `WITH CHECK (revoked_at IS NULL)`: an invitee accepts or declines and never revokes. `organization_invitations_bearer_consume` gains `WITH CHECK (revoked_at IS NULL AND declined_at IS NULL)`: a bearer accepts and nothing else. The tenant policy, which the organization's own admins revoke through, is unchanged. **Amended 2026-09-30 (D35.2).** Each check is the policy's own admitting expression **and** the stamp condition, not the stamp condition alone: a `WITH CHECK` replaces the `USING` a policy would otherwise reuse as its check, so the condition alone would stop requiring the stamped row to be one the branch admits. The column grant of `0020` already keeps the admitting columns unwritable; the conjunction keeps the policy true without leaning on it.
 
 ### 4. The boot refusal reads the login role, and the schema admits no bypass
 

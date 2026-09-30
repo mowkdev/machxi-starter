@@ -96,7 +96,7 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 
 ## Requirement: The database scopes a tenant-owned table by itself, and admits nothing by omission
 
-Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved — which, once placed, is the request's only scope — or, outside an organization, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), the one invitation whose token hash the transaction holds, or the named `system` widening, which only tooling places. A staff request carries no widening: under `/admin/organizations/:id` it is scoped to the organization the route names, and a staff request under no such route reads no tenant-owned row. A foreign key's cascade needs no setting. Two concurrent requests in different organizations each see only their own. An invitation's stamps (`accepted_at`, `declined_at`, `revoked_at`, `updated_at`) are the only columns the application role may update. Every transaction a service opens is placed in its request's scope, with every setting the scope does not name cleared for that transaction, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. In production the API refuses to start as a role the policies do not bind. The wire is unchanged.
+Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved — which, once placed, is the request's only scope — or, outside an organization, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), or the one invitation whose token hash the transaction holds. No setting widens anything: whatever must see every tenant connects as the owner, which the policies do not bind. A staff request carries no widening: under `/admin/organizations/:id` it is scoped to the organization the route names, and a staff request under no such route reads no tenant-owned row. A foreign key's cascade needs no setting. Two concurrent requests in different organizations each see only their own. An invitation's stamps (`accepted_at`, `declined_at`, `revoked_at`, `updated_at`) are the only columns the application role may update. The invitee may accept or decline an invitation addressed to them and never revoke it; the bearer of its token may accept it and nothing else. Every transaction a service opens is placed in its request's scope, with every setting the scope does not name cleared for that transaction, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. In production the API refuses to start as a role the policies do not bind. The wire is unchanged.
 Records: [ADR-0083](../adr/0083-row-level-security-without-widenings.md), [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0061](../adr/0061-database-roles-and-append-only-enforcement.md)
 Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__tests__/schema.int.test.ts`, `apps/api/test/organizations.int.test.ts`, `apps/api/src/core/db/__tests__/tenant-scope.test.ts`, `apps/api/test/database-role.int.test.ts`, `apps/api/src/core/db/__tests__/role-check.test.ts`
 
@@ -122,13 +122,23 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 
 ### Scenario: A scope already on the session
 
-- **WHEN** a request's transaction opens on a connection whose session already carries the `system` widening
+- **WHEN** a request's transaction opens on a connection whose session already carries another organization's setting
 - **THEN** it reads only what the request's own scope admits
 
 ### Scenario: An invitee rewrites an invitation
 
 - **WHEN** a transaction in the invitee's request updates their invitation's organization or role
 - **THEN** Postgres refuses it with `42501` and the invitation is unchanged, and the invitee can still decline it
+
+### Scenario: An invitee revokes an invitation
+
+- **WHEN** a transaction in the invitee's request stamps `revoked_at` on an invitation addressed to them
+- **THEN** Postgres refuses it with `42501` and the invitation is unchanged, and the invitee can still decline it
+
+### Scenario: A bearer declines or revokes by token
+
+- **WHEN** a transaction that holds an invitation's token hash and no principal stamps its `declined_at` or its `revoked_at`
+- **THEN** Postgres refuses each with `42501`, while the same transaction may stamp `accepted_at`
 
 ### Scenario: A role the policies do not bind
 

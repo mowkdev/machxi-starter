@@ -1,6 +1,6 @@
 import { createArgon2Hasher } from "@repo/crypto";
 
-import { createDb, setTenantScope, type Db } from "../src/index.js";
+import { createDb, type Db } from "../src/index.js";
 import { isEntryPoint } from "../src/tooling/entrypoint.js";
 import { readArgon2Params } from "../src/tooling/argon2.js";
 import {
@@ -87,6 +87,12 @@ export const selectSeeders = (
  * the one that did not. One transaction per seeder rather than one for the run:
  * a seeder is the unit of "all or nothing", and a later seeder failing has no
  * reason to take back the super admin an earlier one created.
+ *
+ * **No tenant setting is placed** (ADR-0083 §1). The seeders write across
+ * tenants — an organization and its members, in no request and under no
+ * principal — and they may because they connect as the owner, which the
+ * tenant-owned tables' policies do not bind. There is no setting that would
+ * let the application role do the same, so `db` must be an owner connection.
  */
 export const runSeeders = async (
   seeders: readonly Seeder[],
@@ -97,12 +103,6 @@ export const runSeeders = async (
     // on earlier ones, and `Promise.all` would throw that away for a saving
     // measured in milliseconds.
     await ctx.db.transaction(async (tx) => {
-      // The tooling reads and writes across tenants, and says so by name
-      // (ADR-0078 §4 as amended at `D29.4`): the seeders run as the
-      // application role, which the tenant-owned tables' policies bind, and a
-      // seeder that creates an organization and its members acts in no
-      // request and under no principal.
-      await setTenantScope(tx, { unscoped: "system" });
       await seeder.run({
         ...ctx,
         db: tx,
@@ -118,11 +118,11 @@ const main = async (): Promise<void> => {
   const args = parseSeedArgs(process.argv.slice(2));
   const nodeEnv = readNodeEnv();
   const seeders = selectSeeders(args, nodeEnv);
-  // The owner's connection (ADR-0061 §1). Seeding writes rows, which the
-  // application role could do — but the seeders are tooling, they run beside
-  // `db:migrate` in `db:setup`, and a second connection string in that one
-  // command is a second thing to get wrong. One rule: `packages/db`'s CLI
-  // entry points connect as the owner.
+  // The owner's connection (ADR-0061 §1, ADR-0083 §1). The seeders write
+  // across tenants, which the application role cannot — no setting widens
+  // the tenant policies — and they are tooling that runs beside `db:migrate`
+  // in `db:setup`. One rule: `packages/db`'s CLI entry points connect as the
+  // owner.
   const url = readOwnerDatabaseUrl();
 
   writeLine(

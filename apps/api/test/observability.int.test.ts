@@ -76,10 +76,7 @@ describe("GET /metrics", () => {
   });
 
   it("labels by route pattern, so an id never becomes a time series", async () => {
-    await resetAndSeed({
-      db: harness.db,
-      hasher: harness.hasher,
-    });
+    await resetAndSeed({ hasher: harness.hasher });
 
     const tokens = await login(harness.app, "staff", superAdmin());
     const id = "018f0000-0000-7000-8000-000000000000";

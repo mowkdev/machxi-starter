@@ -72,3 +72,63 @@ It logged three Lows, **not fixed**, and routed them to `D35.2`, where they fit:
 **Residual for the record, to `D35.4`:** a future staff surface over tenant rows outside `/admin/organizations/:id` must name its organization or take a record of its own, never a widening. ADR-0083 should say so in one sentence.
 
 **Merged to `main` (2026-09-30).**
+
+## D35.2 — No setting widens anything; the consume policies check the row they leave (2026-09-30)
+
+**Built.**
+
+- **Schema and migration.** `src/schema/organizations.ts` loses both `_unscoped` policies. `organization_invitations_invitee_consume` gains `withCheck` "(admitted by the invitee) and `revoked_at is null`", and `_bearer_consume` gains "(admitted by the token hash) and `revoked_at is null and declined_at is null`". `drizzle-kit generate` wrote `0021_row_level_security_without_widenings.sql` (renamed from the generated tag, journal updated before commit): two `DROP POLICY … CASCADE` and two `ALTER POLICY … USING (…) WITH CHECK (…)`, which is what was intended. The only edit is the header comment, with the ADR-0060 §5 lock note (catalogue changes, no rows read) and the deploy order (code first, then this file).
+- **The widening removed.** `TENANT_SETTINGS.unscoped`, `TenantUnscopedReason`, `TenantScope.unscoped` and `CreateDbOptions.tenantUnscoped` are gone from `@repo/db`. `replaceTenantScope` now clears three settings, not four.
+- **Seeders.** `runSeeders` places no setting. The CLI already connected as the owner. The API harness's `seed`/`resetAndSeed` now seed on a short-lived owner connection, and the `db` option went with it (43 call sites).
+- **Harness.** `asTooling` is removed. Every cross-tenant fixture or assertion goes through `asOwner`, as ADR-0083 §1 and its Consequences name it. The plan's "`asTooling` becomes the owner's connection" is met by the one helper, not by two names for the same connection.
+  - `@repo/db`'s `migrateFreshTestDatabase` returns an owner pool.
+  - A new `openApplicationRole()` serves the cases whose subject is the application role: the audit log's grants, the journal's invisibility and the 0019 policy cases.
+- **Repository tests.** `organizations-repositories.int.test.ts` builds its repositories with an opener that places a tenant's scope through `replaceTenantScope`. It uses `inOrganization(id)` for tenant reads and writes and `asPrincipal(userId)` for the guard's `resolveFor` and `listForUser`. It never uses `asTooling`. The orphaned-invitation read runs in the deleted organization's own scope, and only the file's `afterAll` clean-up, which spans organizations, uses `asOwner`.
+- **Generator.** The `api-module` template's organization-scoped branch emits only the tenant policy.
+- **The digest's "Row-level security" line** (`scripts/rules-digest.mjs`) now says no setting widens, states the consume checks, and names the owner's connection and `asOwner`. Regenerated.
+- **Spec.** In `docs/specs/organizations.md`, the requirement drops the `system` widening and states the consume rule. The session-scope scenario now uses another organization's setting. Two scenarios were added: "An invitee revokes an invitation" and "A bearer declines or revokes by token".
+- **`.claude/skills/local-dev/SKILL.md`**: one troubleshooting row named `harness.asTooling`, which no longer exists, and now names `harness.asOwner`. The wider sweep of skills, agents and rules is `D35.4`'s.
+
+**Tests.**
+
+- `enumerations.test.ts` "no tenant-owned table carries a widening policy" is green. A policy widens when its admitting expression reads none of the three settings, or when any of its expressions reads a setting outside them. The case carries its own negative: a synthetic table with the restored `_unscoped` branch and a bare `true`, each reported by name. It was also **red with one restored**: re-adding `organization_memberships_unscoped` to the schema failed it, naming that policy, and the schema was then put back.
+- `schema.int.test.ts` "the application role holds no table-wide UPDATE on organization_invitations" is green. It checks `has_table_privilege` false, the admitting columns false and the four stamps true.
+- `organizations.int.test.ts`:
+  - "an invitee cannot revoke an invitation addressed to them" is green: `42501`, the row is unchanged, and the invitee's decline still answers `204`.
+  - "a bearer cannot decline or revoke by token" is green. The token hash is placed and no principal. Decline and revoke each give `42501`; accept stamps one row, then everything is rolled back.
+  - "a session-level scope does not reach a request transaction" was rewritten. The `tenantUnscoped` pool option is gone, so the session value is now a session-level `set_config('app.organization_id', …, false)` on a one-connection pool, and a member's request in another organization reads only its own.
+- `organizations-repositories.int.test.ts` is green under a tenant's scope, with no `asTooling`.
+- `seed-runner.test.ts`: "places no tenant setting" replaces "places the tooling's named tenant scope".
+- `tenant-scope.test.ts`: the opener writes three settings.
+
+**Routed from D35.1's independent review.**
+
+1. **Fixed.** The concurrency case now runs one member's context, placed by `requireMembership`, and one staff principal with `routeOrganizationId`, placed by `placeRouteOrganization`. Its comment says the first barrier proves isolation, because the scope is read in a continuation the other request released, and that the second proves only concurrency.
+2. **Fixed.** `organizations.routes.ts` now carries a comment at `router.use("/:id", placeRouteOrganization)`: a route touching a tenant-owned table goes below it, a route above it fails closed, and only the two `organizations`-only routes belong above.
+3. **No change, as routed.** `routeOrganizationId` lingering on the context.
+
+**Amended in place.** ADR-0083 §3, **amended 2026-09-30 (D35.2)**. Each `WITH CHECK` is the policy's admitting expression **and** the stamp condition, not the stamp condition alone. A `WITH CHECK` replaces the `USING` an update policy would otherwise reuse as its check, so the bare condition would have stopped requiring the stamped row to be one the branch admits. That is harmless only because of `0020`'s column grant, and the conjunction does not depend on it.
+
+**Database.** `pnpm db:migrate` against the dev database printed "applied 1, up to date", then "up to date". `pnpm db:seed -- --dev` twice gave identical output apart from turbo's timing lines.
+
+**Gate:** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited 0.
+
+- `@repo/db`: 108 unit, 122 int.
+- `api`: 825 unit, 844 int.
+- "All matched files use Prettier code style!"
+
+**Review.** The builder had no Agent tool, so it did its own pass against `.claude/agents/security-reviewer.md`. What it checked:
+
+- Every `set_config` stays parameterised, including the test's session-level one.
+- No API path placed `staff` or `system` after `D35.1`, so dropping the policies removes no access the API used. The full integration tier is green.
+- Every consume the API issues still passes its check:
+  - accept and decline are stamped by `pendingAt`, so `revoked_at` is null;
+  - the bearer's accept-by-token stamps `accepted_at` alone;
+  - `enterOrganization` runs after the consume, so no tenant scope is ORed into the consume's check;
+  - an organization's revoke goes through the tenant policy, which is unchanged.
+- Seeding on the owner's connection matches `pnpm db:seed` in production.
+- Nothing new reaches a log or a response.
+
+No Critical, High or Medium findings. **One Low, not fixed, logged for the record.** The consume checks forbid only the stamp the branch never writes. At the database level an invitee could still stamp `accepted_at` on an invitation they had declined, or one that had expired, and a bearer an expired one. The repository's `pendingAt` predicate refuses both, and a membership still needs its organization placed. Row-level security here defends against a forgotten predicate (ADR-0083 §7), and tightening the checks to "pending" goes beyond what §3 decided. **An independent `security-reviewer` pass is still owed.** The plan's constraint requires it before the step merges, and the orchestrating session runs it.
+
+**Pending operator acceptance:** none for this step (no UI). The walk in definition-of-done item 6 exercises the invitation accept and decline on the dev stack at close-out.

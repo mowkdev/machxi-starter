@@ -79,7 +79,7 @@ describe.each(CASES)("$name GET /auth/csrf", (population) => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -259,7 +259,7 @@ describe("GET /auth/csrf is per population", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -350,7 +350,7 @@ describe("GET /auth/csrf and the refresh limiter", () => {
         rateLimit: { ...config.rateLimit, refreshMax: REFRESH_MAX },
       }),
     });
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {

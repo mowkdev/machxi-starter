@@ -57,7 +57,7 @@ describe("user profile", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
 
     // The super admin is only here to create the accounts the destructive
     // tests below act on, so that the shared `customer` fixture keeps the
@@ -515,7 +515,7 @@ describe("user profile", () => {
       // The membership survives — nothing cascades on a soft delete — which
       // is why every read of it joins `organizations` and filters
       // `deleted_at`.
-      const memberships = await harness.asTooling((tx) =>
+      const memberships = await harness.asOwner((tx) =>
         tx
           .select({ userId: organizationMemberships.userId })
           .from(organizationMemberships)

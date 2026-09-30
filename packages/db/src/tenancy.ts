@@ -4,7 +4,7 @@ import type { DbExecutor } from "./client.js";
 
 /**
  * Row-level security's half of tenant isolation (ADR-0067 §5, ADR-0078 §4 as
- * amended at `D29.4`).
+ * amended at `D29.4`, as carried by ADR-0083).
  *
  * Every table in `TENANT_OWNED_TABLES` carries policies that read these
  * transaction-local settings, and admit a row only when one of them names it.
@@ -18,6 +18,10 @@ import type { DbExecutor } from "./client.js";
  * pooled connection. The table owner, which runs the migrations and the
  * harness's truncate, is not subject to the policies (no `FORCE ROW LEVEL
  * SECURITY`); the application role always is (ADR-0061 §1).
+ *
+ * **No setting widens anything** (ADR-0083 §1). There is no setting that
+ * admits every tenant: whatever must read across tenants — the seeders, the
+ * test harness's own fixtures and assertions — connects as the owner.
  */
 
 /** The setting names, said once — the policies and the writer both read them. */
@@ -28,24 +32,13 @@ export const TENANT_SETTINGS = {
   userId: "app.user_id",
   /** The one secret-scoped read ADR-0067 §5 sanctions: an invitation by its token's hash. */
   invitationTokenHash: "app.invitation_token_hash",
-  /**
-   * An explicit, named widening: `system`, for the tooling. Nothing in the API
-   * places it — staff are scoped by their route's organization since `D35.1`
-   * (ADR-0083 §2) — and the setting goes with the rest of the widening at
-   * `D35.2` (§1).
-   */
-  unscoped: "app.tenant_unscoped",
 } as const;
-
-/** Who may read across tenants, and why — never implied, always named. */
-export type TenantUnscopedReason = "system";
 
 /** What a transaction is scoped to. Every key is optional; an absent key places nothing. */
 export interface TenantScope {
   readonly organizationId?: string | undefined;
   readonly userId?: string | undefined;
   readonly invitationTokenHash?: string | undefined;
-  readonly unscoped?: TenantUnscopedReason | undefined;
 }
 
 /**
@@ -85,7 +78,6 @@ export const setTenantScope = async (
   place(TENANT_SETTINGS.organizationId, scope.organizationId);
   place(TENANT_SETTINGS.userId, scope.userId);
   place(TENANT_SETTINGS.invitationTokenHash, scope.invitationTokenHash);
-  place(TENANT_SETTINGS.unscoped, scope.unscoped);
 
   if (placed.length === 0) return;
 
@@ -98,8 +90,8 @@ export const setTenantScope = async (
  *
  * The opener of a request's transaction calls this rather than
  * {@link setTenantScope}, which only adds: a value already on the session —
- * the `tenantUnscoped` startup parameter, or a `set_config(…, false)` somebody
- * ran on a pooled connection — would otherwise reach every transaction that
+ * a startup parameter, or a `set_config(…, false)` somebody ran on a pooled
+ * connection — would otherwise reach every transaction that
  * did not place that name itself. Writing `''` transaction-locally shadows it
  * until the transaction ends, and `tenantSetting` reads `''` as unset.
  *
@@ -115,7 +107,6 @@ export const replaceTenantScope = async (
       [TENANT_SETTINGS.organizationId, scope.organizationId],
       [TENANT_SETTINGS.userId, scope.userId],
       [TENANT_SETTINGS.invitationTokenHash, scope.invitationTokenHash],
-      [TENANT_SETTINGS.unscoped, scope.unscoped],
     ] as const
   ).map(([name, value]) => sql`set_config(${name}, ${value ?? ""}, true)`);
 

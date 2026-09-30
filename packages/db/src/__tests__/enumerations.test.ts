@@ -1,10 +1,18 @@
 import { RESTRICTED_SCHEMA_TABLE_IMPORTS } from "@repo/eslint-config/api";
-import { getTableName, is } from "drizzle-orm";
-import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
+import { getTableName, is, sql, type SQL } from "drizzle-orm";
+import {
+  getTableConfig,
+  pgPolicy,
+  pgTable,
+  PgDialect,
+  PgTable,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import { NEVER_PRUNED_TABLES, PRUNED_TABLES } from "../prune-sessions.js";
 import * as schema from "../schema/index.js";
+import { TENANT_SETTINGS, tenantSetting } from "../tenancy.js";
 import {
   TENANT_OWNED_TABLES,
   TENANT_SCOPE_COLUMN,
@@ -119,6 +127,55 @@ const unpolicedTables = (names: readonly string[]): string[] =>
   });
 
 /**
+ * The settings a policy may admit a row by (ADR-0083 §1): the organization,
+ * the principal, the token's hash — each naming the row it admits. There is
+ * no fourth, and no setting that admits every tenant.
+ */
+const ADMITTING_SETTINGS: readonly string[] = Object.values(TENANT_SETTINGS);
+
+const dialect = new PgDialect();
+
+/** Every `current_setting('…')` an expression reads, by name. */
+const settingsRead = (expression: SQL | undefined): string[] =>
+  expression === undefined
+    ? []
+    : [
+        ...dialect
+          .sqlToQuery(expression)
+          .sql.matchAll(/current_setting\('([^']+)'/g),
+      ].map((match) => match[1] ?? "");
+
+/**
+ * `table.policy` for every policy on `tables` that widens — one that admits a
+ * row without a setting naming it (ADR-0083 §1, `D35.2`).
+ *
+ * A policy widens when the expression that admits rows (`using`, or the
+ * check of an insert-only policy) reads none of {@link ADMITTING_SETTINGS},
+ * or when any of its expressions reads a setting outside them — the shape
+ * the removed `app.tenant_unscoped = 'staff' | 'system'` branch had, and the
+ * shape a `true` or a role test would have.
+ */
+const wideningPolicies = (tables: readonly PgTable[]): string[] =>
+  tables.flatMap((table) =>
+    getTableConfig(table)
+      .policies.filter((policy) => {
+        const admitting =
+          policy.for === "insert" ? policy.withCheck : policy.using;
+        const admittedBy = settingsRead(admitting);
+        const read = [
+          ...settingsRead(policy.using),
+          ...settingsRead(policy.withCheck),
+        ];
+
+        return (
+          !admittedBy.some((name) => ADMITTING_SETTINGS.includes(name)) ||
+          read.some((name) => !ADMITTING_SETTINGS.includes(name))
+        );
+      })
+      .map((policy) => `${getTableName(table)}.${policy.name}`),
+  );
+
+/**
  * The physical names of every table carrying an expiry — a column whose
  * declared key ends in `expiresAt`, so `sessions.refreshTokenExpiresAt` is
  * caught beside the plain `expiresAt` of the token tables (`D28.4`, `DB-08`).
@@ -206,6 +263,58 @@ describe("the schema's tables", () => {
 
     // The negative case: a table that declares none is reported by name.
     expect(unpolicedTables(["users"])).toEqual(["users"]);
+  });
+
+  it("no tenant-owned table carries a widening policy", () => {
+    // ADR-0083 §1, built at `D35.2`: every policy admits a row because a
+    // setting names its organization, its principal or its token's hash.
+    // Whatever must see every tenant connects as the owner.
+    const tenantTables = tableExports
+      .map(([, table]) => table)
+      .filter((table) =>
+        (TENANT_OWNED_TABLES as readonly string[]).includes(
+          getTableName(table),
+        ),
+      );
+
+    expect(tenantTables.length).toBe(TENANT_OWNED_TABLES.length);
+
+    const widening = wideningPolicies(tenantTables);
+
+    expect(
+      widening,
+      `these policies admit rows no setting names — scope them by the organization, the principal or the token's hash, and read across tenants as the owner: ${widening.join(", ")}`,
+    ).toEqual([]);
+
+    // The negative case: the `_unscoped` branch `0019` shipped, restored on a
+    // table of its own, is reported by name — and so is a bare `true`.
+    const restored = pgTable(
+      "restored_widening",
+      { organizationId: uuid().notNull() },
+      () => [
+        pgPolicy("restored_widening_tenant", {
+          for: "all",
+          using: sql.raw(
+            `organization_id = ${tenantSetting(TENANT_SETTINGS.organizationId)}::uuid`,
+          ),
+        }),
+        pgPolicy("restored_widening_unscoped", {
+          for: "all",
+          using: sql.raw(
+            `nullif(current_setting('app.tenant_unscoped', true), '') in ('staff', 'system')`,
+          ),
+        }),
+        pgPolicy("restored_widening_everything", {
+          for: "select",
+          using: sql.raw("true"),
+        }),
+      ],
+    );
+
+    expect(wideningPolicies([restored])).toEqual([
+      "restored_widening.restored_widening_unscoped",
+      "restored_widening.restored_widening_everything",
+    ]);
   });
 
   it("every expiring table is pruned or excluded by name", () => {

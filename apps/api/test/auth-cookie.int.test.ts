@@ -55,7 +55,7 @@ describe.each(CASES)("$name cookie transport", (population) => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -342,7 +342,7 @@ describe("cookie transport across the two segments", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
@@ -416,7 +416,7 @@ describe("two populations signed in at once", () => {
 
   beforeAll(async () => {
     harness = createTestApp();
-    await resetAndSeed({ db: harness.db, hasher: harness.hasher });
+    await resetAndSeed({ hasher: harness.hasher });
   });
 
   afterAll(async () => {
