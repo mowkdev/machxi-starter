@@ -255,7 +255,7 @@ Nothing about the scope changed on the way in. [ADR-0078](../adr/0078-backend-cl
 
 ## How D31 closed, and on what evidence
 
-**D31 shipped 2026-09-30**, four steps built, the first deliverable built as a lane beside another. The three parts of ADR-0025 rule 4 happened together: the definition of done ran on the committed tree at `c700989`, this row moved, and the window on [0080](../adr/0080-interface-polish.md) shut. 0080 is `accepted` with three labelled amendments (`D31.2` §3, `D31.3` §5, `D31.4` §5), and its three parents, [0039](../adr/0039-grid-filter-ux.md), [0052](../adr/0052-grid-and-admin-followups.md) and [0054](../adr/0054-design-language-instrument.md), read `superseded by` with their deltas stated. Every step merged to `main` by fast-forward from `lane/D31`, which has nothing left to merge.
+**D31 shipped 2026-09-30**, four steps built, the first deliverable built as a lane beside another. The three parts of ADR-0025 rule 4 happened together: the definition of done ran on `main` from `c700989`, this row moved, and the window on [0080](../adr/0080-interface-polish.md) shut. 0080 is `accepted` with three labelled amendments (`D31.2` §3, `D31.3` §5, `D31.4` §5), and its three parents, [0039](../adr/0039-grid-filter-ux.md), [0052](../adr/0052-grid-and-admin-followups.md) and [0054](../adr/0054-design-language-instrument.md), read `superseded by` with their deltas stated. Every step merged to `main` by fast-forward from `lane/D31`, which has nothing left to merge.
 
 **Machine-verified, and re-runnable by anyone**, on the operator's Windows machine with the dev stack running:
 
@@ -264,6 +264,7 @@ Nothing about the scope changed on the way in. [ADR-0078](../adr/0078-backend-cl
 - Item 3: `pnpm size` green with both budget files' baselines equal to the measurement of the shipping tree, re-baselined at `D31.4` after the static indicator's CSS left.
 - Item 4: `pnpm test:e2e` on `main` at `c700989`: admin 38 passed and 1 skipped (the built-image smoke), customer 12 passed.
 - Item 6: `pnpm rules:digest` wrote 0 of 3 twice; `pnpm docs:check` clean; `pnpm test:scripts` 69/69.
+- **`main` moved under the run.** D29.4 (`710178f`, row-level security and migration `0019`, merged as `823678a`) arrived in the main checkout while the cold run was going, so parts of it ran over `c700989` and parts over `823678a`. The shipping commit `49ae830`, which carries both, was then checked on its own: `lint` 22/22, `check-types` 17/17, `size` 4/4, `test:unit` 17/17 `FULL TURBO` twice, `format:check` clean, `docs:check` clean and the digests 0 of 3. The tag `starter-D31` is on `49ae830`.
 
 **Accepted by the operator, each by name:**
 
