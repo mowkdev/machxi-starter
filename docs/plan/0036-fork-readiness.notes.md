@@ -369,3 +369,42 @@ step:check ✓
 ```
 
 The integration tiers ran `@repo/db` 128 tests and `api` 850. After the check, only this note was written. `pnpm test:scripts`, `pnpm docs:check` and `pnpm format:check` were re-run over it.
+
+**D36.4's pending read, closed as far as this step could.** At D36.5's start the pull request's `gate.yml` run on `8f6f9d2b`, run 36789941512, was `pending` (queued), and run 36789446009 on `05910953` was still `in_progress`; it is superseded by the later push. **The "no Node 20 deprecation annotation" done-when is still unread.** `/ship` reads it from the run on the lane's head.
+
+## D36.5 — What a fork reads on day one
+
+**Run read first.** `gate.yml` on the lane's last push, `8f6f9d2b`: run 36789941512, **pending** (queued, not started). Recorded as pending, for `/ship` to read, with D36.4's Node 20 annotation check. Nothing to fix forward.
+
+**Built.**
+
+- `docs/forking.md` opens with **Fork day**, one checklist, in order: clone, then `pnpm bootstrap --prefix <name>`; rename, which formats what it rewrites; licence; record the `starter-D<n>` tag forked at (`git describe --tags --match 'starter-D*' --abbrev=0`); the Renovate app in "Scan and Alert" mode, since "Scan Only" runs silently; branch protection on `main` where the plan allows it, otherwise ADR-0082 §1's convention; `deploy.md`'s "Before the first deploy" and its required variables; tags a cloud session cannot push, pushed by the operator; a fork that enables IPv6 re-adds `listen [::]:8080;` to both SPA `nginx.conf` files (D36.4's review carry); `/scope` writes the first row. §2's `docs/adr/` bullet says a carried record's plan link is read at `starter/main`.
+- `pnpm docs:check` checks relative links in the carried non-record documents: `README.md`, `docs/*.md`, `docs/specs/**`, `docs/rules/**` and `.claude/**`. New in `scripts/docs-hygiene.mjs`: `isCarriedLinkDocument`, `checkLinks` and `scanLinks`. Links resolve from the file that holds them, so a skill's start `../../../`. Fenced and inline code are not read, and a link leaving the tree is refused. Records, the ledger, plans and `docs/postman/` are out of scope. The check prints `carried links: none broken (54 documents)`.
+- **Broken links: none in the starter's tree.** It read 839 links in 54 documents. One link, `README.md` → `docs/plan/0001-api-foundation.md`, would have broken in every bootstrapped fork; the rehearsal's fork `docs:check` now proves it. It is replaced by the segment routers. Two code-span plan mentions went the same way: `README.md`'s `0012-customer-app.md` and `docs/postman/README.md`'s `0001-api-foundation.md`.
+- `/bootstrap` runs `pnpm bootstrap --prefix <prefix>` in place of the hand-written reset, and ends on `pnpm docs:check` and `pnpm test:scripts` green. It names what is left of the fork-day checklist for the operator. `/scope` writes the first row on an empty ledger, with the number and title the operator names.
+- `.claude/README.md` states the link check and the new `/bootstrap` and `/scope`. `scripts/rules-digest.mjs`'s "Citations that survive a fork" line (now citing 0065 and 0084) and its "The bootstrap and the rehearsal" line say the same. `docs/rules/process.md` is regenerated from them.
+- The ADR index's stale "D14's to architect" line about `apps/web` now names D16, amended in place and labelled.
+- `scripts/fork-rehearsal.test.mjs` gains "the bootstrapped fork's /scope preconditions hold: a prefix, an empty ledger, the generated block". It checks the fork's prefix alone, a table with no row, `docs/plan/` holding only the ledger and `lanes/README.md`, and the generated block equal to `renderLanes([])` under `## The window`.
+
+**Amendments, labelled.** The plan's step 5 adds the Renovate mode, the IPv6 carry, `/scope`'s first row and the digest regeneration. The ADR index's line on ADR-0055 names D16.
+
+**Review: owed.** This builder had no Agent tool. The orchestrating session runs the one review over this commit (ADR-0082 §2). `code-reviewer` or `adr-reviewer` fits, since this step is documents plus a docs check.
+
+**Pending the operator.** The checklist's operator items are in the definition of done's item 5. The Node 20 annotation is `/ship`'s read.
+
+**Step check.**
+
+`TEST_DB_LANE` exported; `pnpm step:check`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/README.md changed)
+  ran      format:check
+step:check ✓
+```
+
+`test:scripts` passed all 158 tests. `pnpm test:fork` also ran alone and passed 8 of 8, the new case among them. The first run was red on one case, "the committed digests are what the generator produces", until `pnpm rules:digest` ran.

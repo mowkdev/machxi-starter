@@ -26,18 +26,21 @@ import {
   TAG_PREFIX_LINE,
   checkCloseOut,
   checkLanes,
+  checkLinks,
   checkSpec,
   checkTagPrefix,
   checkText,
   checkUnionJournal,
   countTiers,
   inheritedDocuments,
+  isCarriedLinkDocument,
   isExcluded,
   parseLanes,
   parseTagPrefix,
   planDate,
   scan,
   scanCloseOut,
+  scanLinks,
   scanLanes,
   scanSpecs,
   scanTagPrefix,
@@ -2700,4 +2703,72 @@ test("this repository's plans carry no close-out step past their date", async ()
     exempt,
     dated.filter((date) => date !== null && date <= CLOSE_OUT_WITHDRAWN).length,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Relative links in the carried documents (ADR-0084, fork readiness).
+
+test("a broken relative link in a carried document is refused", () => {
+  const present = new Set([
+    "docs/adr/0084-fork-readiness.md",
+    "docs/forking.md",
+    "docs/plan/README.md",
+  ]);
+  const exists = (rel) => present.has(rel);
+  const text = [
+    "[forking](forking.md) and [a record](adr/0084-fork-readiness.md#decision)",
+    "[the window](plan/README.md#the-window), [web](https://example.com), [here](#top)",
+    "[a starter plan](plan/0001-api-foundation.md)",
+    "`[in code](plan/0002-missing.md)` is not a link",
+    "```",
+    "[in a fence](plan/0003-missing.md)",
+    "```",
+    "[outside the tree](../../elsewhere.md)",
+  ].join("\n");
+  const violations = checkLinks("docs/deploy.md", text, exists);
+  assert.deepEqual(
+    violations.map(({ line, rule, found }) => ({ line, rule, found })),
+    [
+      { line: 3, rule: "broken-link", found: "plan/0001-api-foundation.md" },
+      { line: 8, rule: "broken-link", found: "../../elsewhere.md" },
+    ],
+  );
+  // A skill's links resolve from the skill's own directory.
+  assert.deepEqual(
+    checkLinks(
+      ".claude/skills/scope/SKILL.md",
+      "[forking](../../../docs/forking.md) [wrong](../../docs/forking.md)",
+      exists,
+    ).map(({ found }) => found),
+    ["../../docs/forking.md"],
+  );
+});
+
+test("a link from a record to a plan is not a carried document's", () => {
+  assert.equal(isCarriedLinkDocument("docs/adr/0084-fork-readiness.md"), false);
+  assert.equal(isCarriedLinkDocument("docs/adr/README.md"), false);
+  assert.equal(isCarriedLinkDocument("docs/plan/README.md"), false);
+  assert.equal(
+    isCarriedLinkDocument("docs/plan/0036-fork-readiness.md"),
+    false,
+  );
+  assert.equal(isCarriedLinkDocument("docs/postman/README.md"), false);
+  assert.equal(isCarriedLinkDocument(".claude/worktrees/x/README.md"), false);
+  for (const rel of [
+    "README.md",
+    "docs/forking.md",
+    "docs/CHANGELOG.md",
+    "docs/specs/health-and-metrics.md",
+    "docs/rules/process.md",
+    ".claude/README.md",
+    ".claude/skills/scope/SKILL.md",
+  ]) {
+    assert.equal(isCarriedLinkDocument(rel), true, rel);
+  }
+});
+
+test("this repository's carried documents have no broken link", async () => {
+  const { violations, documents } = await scanLinks(repoRoot);
+  assert.deepEqual(violations, []);
+  assert.ok(documents > 0, "the scan read no carried document");
 });

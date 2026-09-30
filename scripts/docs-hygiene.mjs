@@ -808,6 +808,94 @@ export async function scanLanes(root = repoRoot) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Relative links in the carried documents (ADR-0084, fork readiness).
+//
+// The non-record documents a fork carries — `README.md`, `docs/*.md`,
+// `docs/specs/**`, `docs/rules/**` and `.claude/**` — must not link to a file
+// that is not there. A fork's bootstrap removes the starter's plans, so a link
+// from one of them into a starter plan would break on day one. Records
+// (`docs/adr/*.md`) are history: their links into plans are read at
+// `starter/main` and are not checked here. Links are resolved relative to the
+// file that holds them — a skill's links relative to its `SKILL.md`.
+
+/** True for a repo-relative path whose relative links this check reads. */
+export function isCarriedLinkDocument(rel) {
+  if (isExcluded(rel) || !rel.endsWith(".md")) return false;
+  if (rel === "README.md") return true;
+  if (/^docs\/[^/]+\.md$/.test(rel)) return true;
+  return (
+    rel.startsWith("docs/specs/") ||
+    rel.startsWith("docs/rules/") ||
+    rel.startsWith(".claude/")
+  );
+}
+
+// `](target)` or `](target "title")`; an image's `![..](..)` matches too.
+const MARKDOWN_LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
+const FENCE = /^\s*(```|~~~)/;
+const NOT_RELATIVE = /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i;
+
+/**
+ * Broken relative links in one carried document. `exists(relPath)` answers
+ * for a repo-relative, POSIX-separated path. Fenced code is not read, nor is
+ * inline code; a target is split from its `#anchor` and `?query`.
+ */
+export function checkLinks(file, text, exists) {
+  const violations = [];
+  let fenced = false;
+  text.split(/\r?\n/).forEach((line, index) => {
+    if (FENCE.test(line)) {
+      fenced = !fenced;
+      return;
+    }
+    if (fenced) return;
+    const prose = line.replace(/`[^`]*`/g, "");
+    for (const match of prose.matchAll(MARKDOWN_LINK)) {
+      const target = match[1];
+      if (NOT_RELATIVE.test(target)) continue;
+      const bare = decodeURI(target.split(/[#?]/)[0]);
+      if (bare === "") continue;
+      const resolved = path.posix.normalize(
+        path.posix.join(path.posix.dirname(file), bare),
+      );
+      if (resolved.startsWith("../") || !exists(resolved.replace(/\/$/, ""))) {
+        violations.push({
+          file,
+          line: index + 1,
+          rule: "broken-link",
+          found: target,
+          message: "a relative link to a file that is not there",
+        });
+      }
+    }
+  });
+  return violations;
+}
+
+async function carriedLinkDocuments(root) {
+  const files = [
+    ...(await markdownUnder(path.join(root, ".claude"), ".claude")),
+    ...(await markdownUnder(path.join(root, "docs"), "docs")),
+  ];
+  if (existsSync(path.join(root, "README.md"))) {
+    files.push({ full: path.join(root, "README.md"), rel: "README.md" });
+  }
+  return files
+    .filter(({ rel }) => isCarriedLinkDocument(rel))
+    .sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
+export async function scanLinks(root = repoRoot) {
+  const exists = (rel) => existsSync(path.join(root, ...rel.split("/")));
+  const documents = await carriedLinkDocuments(root);
+  const violations = [];
+  for (const { full, rel } of documents) {
+    violations.push(...checkLinks(rel, await readFile(full, "utf8"), exists));
+  }
+  return { violations, documents: documents.length };
+}
+
 export async function scanTagPrefix(root = repoRoot) {
   const full = path.join(root, ...LEDGER.split("/"));
   // No ledger yet, no prefix to name: `/bootstrap` writes both together.
@@ -829,6 +917,7 @@ if (
   const tagPrefix = await scanTagPrefix();
   const unionJournal = await scanUnionJournal();
   const closeOut = await scanCloseOut();
+  const links = await scanLinks();
   const violations = [
     ...inherited,
     ...specs,
@@ -836,6 +925,7 @@ if (
     ...tagPrefix.violations,
     ...unionJournal,
     ...closeOut.violations,
+    ...links.violations,
   ];
   for (const v of violations) {
     console.error(
@@ -858,6 +948,7 @@ if (
   );
   if (tagPrefix.prefix) console.log(`tag prefix: ${tagPrefix.prefix}`);
   console.log("union journal: no passage twice");
+  console.log(`carried links: none broken (${links.documents} documents)`);
   console.log(
     `close-out steps: none (${closeOut.exempt} plan(s) exempt by date)`,
   );

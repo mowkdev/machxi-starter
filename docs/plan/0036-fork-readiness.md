@@ -49,7 +49,7 @@ Each step: read the last push's run, implement, `pnpm step:check` green, one bou
   - **Amended 2026-09-30 (D36.4).** Vitest 5 spells the flag `--repeats` and refuses `--repeat` as an unknown option, so the done-when's command says `--repeats 10`. `scripts/images.test.mjs` did not exist; this step writes it.
     **ADRs:** 0073 §7 as carried, 0059 §1 and §2 as carried by 0082, 0078 §5.
     **Done when:** `scripts/docs-hygiene.test.mjs` cases "a gate.yml run on main is grouped by commit" and "every workflow action is pinned to a commit digest" (existing) green; `scripts/images.test.mjs` case "neither SPA's nginx.conf requires an IPv6 socket" green; `apps/admin/src/app/__tests__/settings-provider.test.tsx` case "adopts the account's theme when the query resolves" green ten times in a row, `pnpm --filter admin exec vitest run settings-provider --repeats 10`, recorded in the notes; the pull request's `gate.yml` run green on the step's commit with no Node 20 deprecation annotation (recorded in the notes); `pnpm step:check` green.
-- [ ] **5. What a fork reads on day one.**
+- [x] **5. What a fork reads on day one.**
   - `docs/forking.md` opens with one fork-day checklist:
     - clone and `pnpm bootstrap`;
     - rename, then licence;
@@ -65,6 +65,7 @@ Each step: read the last push's run, implement, `pnpm step:check` green, one bou
   - `pnpm docs:check` checks relative links in the carried non-record documents: `README.md`, `docs/*.md`, `docs/specs/**`, `docs/rules/**` and `.claude/**`.
   - The ADR index's stale "D14 owns `apps/web`" line names D16.
   - `.claude/README.md`, the digests' sources and the skills say what changed.
+  - **Amended 2026-09-30 (D36.5).** The checklist also names the Renovate app's "Scan and Alert" mode, since "Scan Only" runs it silently; the IPv6 listener a fork that enables IPv6 re-adds (D36.4's review); and `/scope` writing the first row. The step also regenerates `docs/rules/process.md`, because `rules-digest.test.mjs` refuses a digest its source no longer produces.
     **ADRs:** 0084, 0065 §1 and §3, 0068.
     **Done when:** `scripts/docs-hygiene.test.mjs` cases "a broken relative link in a carried document is refused", "a link from a record to a plan is not a carried document's" and "this repository's carried documents have no broken link" green; `scripts/fork-rehearsal.test.mjs` case "the bootstrapped fork's /scope preconditions hold: a prefix, an empty ledger, the generated block" green; `pnpm step:check` green.
 

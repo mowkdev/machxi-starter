@@ -1,8 +1,8 @@
 # Postman
 
 The manual/smoke tier of ADR-0021, and the API's living documentation until
-OpenAPI is generated. Built in implementation step 10 (see
-`../plan/0001-api-foundation.md`).
+OpenAPI is generated. Every endpoint has a request here, added in the same
+change as the endpoint (`/postman-sync`).
 
 - `machxi-api.postman_collection.json` — 213 requests and 652 assertions in 18
   folders: `Health`, `Metrics`,

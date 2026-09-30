@@ -53,7 +53,7 @@ import { fileURLToPath } from "node:url";
 
 import { STARTER_PREFIX } from "./bootstrap.mjs";
 import { CHANGELOG, parseTagPrefix } from "./docs-hygiene.mjs";
-import { LANES_DIR, LEDGER } from "./lanes.mjs";
+import { LANES_DIR, LEDGER, findBlock, renderLanes } from "./lanes.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -391,6 +391,10 @@ describe(
         ]);
         git(fork, "add", "--all");
         git(fork, "commit", "--quiet", "-m", "bootstrap the journal");
+        seen.bootstrappedLedger = readFileSync(path.join(fork, LEDGER), "utf8");
+        seen.bootstrappedPlans = git(fork, "ls-files", "docs/plan")
+          .trim()
+          .split("\n");
         seen.rename = run(fork, process.execPath, ["scripts/rename.mjs", NAME]);
         git(fork, "add", "--all");
         git(fork, "commit", "--quiet", "-m", `rename to ${NAME}`);
@@ -505,6 +509,42 @@ describe(
       // And its first lane opens on the bootstrapped ledger.
       assert.equal(seen.lanes.status, 0, seen.lanes.output);
       assert.equal(seen.openedDocsCheck.status, 0, seen.openedDocsCheck.output);
+    });
+
+    it("the bootstrapped fork's /scope preconditions hold: a prefix, an empty ledger, the generated block", () => {
+      const ledger = seen.bootstrappedLedger;
+      // A prefix: the one header line `/ship` tags from, and not the starter's.
+      const { prefixes } = parseTagPrefix(ledger);
+      assert.deepEqual(
+        prefixes.map(({ prefix }) => prefix),
+        [PREFIX],
+      );
+      // An empty ledger: the table's header and separator, and no row for
+      // `/scope` to find — it writes the first one.
+      const lines = ledger.split("\n");
+      const header = lines.findIndex((line) => /^\|\s*#\s*\|/.test(line));
+      assert.notEqual(header, -1, "the ledger has no table");
+      assert.match(lines[header + 1], /^\|\s*-+/);
+      assert.ok(
+        !/^\|/.test(lines[header + 2] ?? ""),
+        `the ledger has a row: ${lines[header + 2]}`,
+      );
+      // No plan is left for `/scope` to trip on; the ledger and the lanes'
+      // README are the whole of docs/plan/.
+      assert.deepEqual(
+        [...seen.bootstrappedPlans].sort(),
+        [LEDGER, `${LANES_DIR}/README.md`].sort(),
+      );
+      // The generated block, reading no lane open, under the window section
+      // every rule file links to.
+      assert.match(ledger, /^## The window$/m);
+      const block = findBlock(ledger);
+      assert.ok(block && !block.error, "the ledger has no generated block");
+      assert.equal(block.block, renderLanes([]));
+      assert.ok(
+        ledger.indexOf("## The window") < block.start,
+        "the generated block is not in the window section",
+      );
     });
 
     it("a starter ship that edits a plan the fork deleted merges with the documented commands", () => {

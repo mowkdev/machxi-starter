@@ -452,7 +452,7 @@ export const AREAS = [
       {
         topic: "The bootstrap and the rehearsal",
         records: ["0084", "0065"],
-        text: "A fork's journal is reset by a script, `pnpm bootstrap --prefix <name>` (`scripts/bootstrap.mjs`), which the `/bootstrap` skill runs: it removes the starter's plans, notes and lane files and keeps `docs/plan/lanes/README.md`, writes the empty ledger under the fork's prefix with the window section's generated block and no link to the starter's frozen history, resets the changelog to its preamble, and refuses a tree that is not a fresh clone of the starter. A rehearsal, `pnpm test:fork`, uncached in the gate's `test` link and in the step check because it reads the whole tree, bootstraps a temporary clone, merges a simulated starter ship into it with the commands `docs/forking.md` states, and runs the fork's checks, so a change that breaks a fork breaks the starter's gate. A script test never depends on the starter's own journal: what it reads of one is a fixture. On a ledger with no rows, `/scope` writes the first row the operator names.",
+        text: "`docs/forking.md` opens with the fork-day checklist, in order, ending on `/scope` writing the first row of the empty ledger. A fork's journal is reset by a script, `pnpm bootstrap --prefix <name>` (`scripts/bootstrap.mjs`), which the `/bootstrap` skill runs and ends on `pnpm docs:check` and the script tests green: it removes the starter's plans, notes and lane files and keeps `docs/plan/lanes/README.md`, writes the empty ledger under the fork's prefix with the window section's generated block and no link to the starter's frozen history, resets the changelog to its preamble, and refuses a tree that is not a fresh clone of the starter. A rehearsal, `pnpm test:fork`, uncached in the gate's `test` link and in the step check because it reads the whole tree, bootstraps a temporary clone, merges a simulated starter ship into it with the commands `docs/forking.md` states, and runs the fork's checks, so a change that breaks a fork breaks the starter's gate. A script test never depends on the starter's own journal: what it reads of one is a fixture. On a ledger with no rows, `/scope` writes the first row the operator names.",
       },
       {
         topic: "Upstreaming",
@@ -466,8 +466,8 @@ export const AREAS = [
       },
       {
         topic: "Citations that survive a fork",
-        records: ["0065"],
-        text: "In `.claude/**` every record citation carries a topic gloss and never a bare range, and no step numbers or dates appear. Source-code comments keep their step references — they are the reasoning attached to the code that carries it.",
+        records: ["0065", "0084"],
+        text: "In `.claude/**` every record citation carries a topic gloss and never a bare range, and no step numbers or dates appear. Source-code comments keep their step references — they are the reasoning attached to the code that carries it. The carried documents that are not records — `README.md`, `docs/*.md`, `docs/specs/`, `docs/rules/` and `.claude/` — link to no starter plan, and `pnpm docs:check` refuses a relative link in one of them to a file that is not there, resolved from the file that holds it. A record's link into a plan is history, read at `starter/main`, and is not checked.",
       },
       {
         topic: "The digests",
