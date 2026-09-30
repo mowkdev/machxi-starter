@@ -26,6 +26,7 @@
         "DATABASE_URL_TEST",
         "DATABASE_URL_TEST_OWNER",
         "DATABASE_URL_TEST_SUPERUSER",
+        "TEST_DB_LANE",
         "DB_*",
         "REDIS_URL",
         "ERROR_REPORTING_DSN",
@@ -74,6 +75,7 @@
         "DATABASE_URL_TEST",
         "DATABASE_URL_TEST_OWNER",
         "DATABASE_URL_TEST_SUPERUSER",
+        "TEST_DB_LANE",
         "DB_*",
         "REDIS_URL",
         "ERROR_REPORTING_DSN",
@@ -128,6 +130,8 @@
       "env": [
         "DATABASE_URL",
         "DATABASE_URL_OWNER",
+        "DATABASE_URL_TEST_OWNER",
+        "TEST_DB_LANE",
         "DB_*",
         "ARGON2_*",
         "SEED_SUPER_ADMIN_*"

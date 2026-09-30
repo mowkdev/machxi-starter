@@ -1,7 +1,9 @@
 # ADR-0021: Testing strategy (Vitest, supertest, Postman)
 
-- Status: accepted
+- Status: superseded by [ADR-0082](0082-lanes-on-one-machine-and-one-main.md) (delta: the integration tier's database is one of a family, `machxi_<lane>_test`, derived from the branch)
 - Date: 2026-08-17
+
+> **Superseded in part 2026-09-30 by [ADR-0082](0082-lanes-on-one-machine-and-one-main.md)**, accepted at the head of `D34.1`, the step that builds its §3. A delta supersession per [ADR-0050](0050-adr-lifecycle-and-verification.md): the integration tier's database is `machxi_test` on `main` and `machxi_<lane>_test` on a lane's branch, where `<lane>` is the branch's slug in `TEST_DB_LANE`; both harnesses rewrite the database name of their test URLs after the env files load, the `_test` suffix guard stays underneath, and `pnpm db:lane` creates the lane's database. **Everything else this record decides stands and is in force** — the tiers, the tools, the per-file truncation, Postman — together with 0082 §3's family of databases.
 
 ## Context
 

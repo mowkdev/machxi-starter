@@ -1,14 +1,33 @@
-# The blueprint's journal never travels in either direction (ADR-0065 §3, the
-# starter lifecycle, as carried by ADR-0081 §5). `docs/plan/` and
-# `docs/CHANGELOG.md` record how *this* repository got here and what it
-# shipped: a fork resets both to its own, and a merge from `starter/main` must
-# not pull the blueprint's plan prose or changelog entries down over them.
-# `merge=ours` keeps whatever the current branch has.
+# The journal — `docs/plan/` and `docs/CHANGELOG.md` — records how *this*
+# repository got here and what it shipped (ADR-0065 §3, the starter lifecycle,
+# as carried by ADR-0081 §5 and ADR-0082 §4). Two kinds of merge meet it, and
+# the attributes serve both without a driver defined anywhere:
 #
-# It needs the driver to be defined once per clone, which `/bootstrap` does:
-#   git config merge.ours.driver true
+# - A lane merge — a lane branch and `main`, in the starter or in a fork. The
+#   notes and the changelog have one writer each and are only appended to, so
+#   `union` keeps both lanes' entries. The ledger, the plans and the lane files
+#   are written by more than one lane, and keep git's ordinary merge: `ours`
+#   names a driver no clone defines, so git falls back to the text merge, and a
+#   collision conflicts rather than dropping a side.
+# - The starter merge — `starter/main` into a fork. The fork's journal is kept
+#   whole: the command defines both drivers for itself alone, `ours` for the
+#   ledger and the plans and `union` for the notes and the changelog, each as
+#   `true`, which keeps the fork's side of every file both sides changed (git
+#   looks a driver up in the config before its own built-in `union`):
+#
+#     git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main
+#
+# Never define either driver in a clone's or a global git config: with
+# `merge.ours.driver` every lane merge would keep its own ledger, and with
+# `merge.union.driver` its own notes and changelog, silently dropping the other
+# lane's. Union keeps both sides of a collision without a conflict, so the
+# changelog's preamble and a notes file's existing text are edited only by the
+# lane that ships; `pnpm docs:check` refuses the duplicated headings a union of
+# two edits leaves.
+# `scripts/merge-attributes.test.mjs` proves both merges against this file.
 docs/plan/** merge=ours
-docs/CHANGELOG.md merge=ours
+docs/plan/*.notes.md merge=union
+docs/CHANGELOG.md merge=union
 
 # `scripts/rules-digest.mjs` writes these with `endOfLine: "lf"` and compares the
 # result byte for byte against what is on disk. Under `core.autocrlf=true` a fresh

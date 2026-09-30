@@ -11,14 +11,15 @@ import {
  * Shared setup for the integration suite (ADR-0021).
  *
  * Points at `DATABASE_URL_TEST` — the `machxi_test` database created by the
- * compose init script (ADR-0007) — and rebuilds it from the committed
+ * compose init script (ADR-0007), or the lane's beside it — and rebuilds it from the committed
  * migrations, so what these tests exercise is the same path `pnpm db:setup`
  * takes. Requires `pnpm docker:up`.
  *
  * The reset itself, and the `_test`-suffix refusal that guards it, live in
  * `src/testing.ts` (`@repo/db/testing`) because the API's integration suite
- * needs exactly the same thing (step 7). This package predates
- * `apps/api/.env.test` and follows the root `.env` (ADR-0004).
+ * needs exactly the same thing (step 7). The URLs come from the committed
+ * `packages/db/.env.test`, which `vitest.int.config.ts` loads, and name the
+ * lane's database when `TEST_DB_LANE` is set (ADR-0082 §3).
  */
 export const migrateFreshTestDatabase = async (): Promise<DbClient> => {
   // The rebuild is DDL and runs as the owner (ADR-0061 §1), and so does what

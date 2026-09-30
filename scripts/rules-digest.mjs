@@ -205,6 +205,11 @@ export const AREAS = [
         text: "Unit tests use fake repositories as plain objects; integration tests go through `createApp(buildContainer({ db: testDb }))` and supertest against the test database. Every new endpoint gets both, plus a Postman request.",
       },
       {
+        topic: "A test database per lane",
+        records: ["0082", "0021", "0007", "0004"],
+        text: "The integration tiers run on `machxi_test` when `TEST_DB_LANE` is unset and on `machxi_<lane>_test` when it is set, `<lane>` being the branch's slug. `pnpm --silent db:lane` creates the current branch's database with `machxi_test`'s owner and grants, idempotently, refuses `main`, and prints the value to export — a lane's database is never named by hand. Both harnesses rewrite their test URLs after the committed env files load — `apps/api/.env.test`, `packages/db/.env.test`, neither carrying `TEST_DB_LANE` — and the `_test` suffix guard holds on both sides of the rewrite. `TEST_DB_LANE` is declared on `test` and `test:int`.",
+      },
+      {
         topic: "Lint is the mechanical half",
         records: ["0002", "0062"],
         text: "`packages/config-eslint/api.js` already fails the build on classes, raw responses, `process.env` and layer-crossing imports. A rule a reviewer keeps repeating belongs there instead.",
@@ -377,12 +382,17 @@ export const AREAS = [
       {
         topic: "The window",
         records: ["0079", "0025"],
-        text: "An ADR may be amended in place only while the deliverable it belongs to is in progress; once that deliverable ships the record changes only by supersession, and opening a second lane reopens nothing. Which windows are open, and which records are in force, is stated in one place — the ledger's window section, one entry per open lane — and linked from everywhere else.",
+        text: "An ADR may be amended in place only while the deliverable it belongs to is in progress; once that deliverable ships the record changes only by supersession, and opening a second lane reopens nothing. Which windows are open, and which records are in force, is stated in one place — the ledger's window section, which links one file per open lane — and linked from everywhere else.",
+      },
+      {
+        topic: "Lane files and tiers",
+        records: ["0082", "0079"],
+        text: "Each open lane is a file, `docs/plan/lanes/D<n>.md`: the deliverable and its plan, the date it opened, its branch, its tier, whether it adds migrations, and its records. `/scope` creates it when a lane opens and `/ship` removes it. The window section's list of lanes and its running paragraph are generated from the files by `pnpm lanes`, never edited by hand, and a conflict in them is resolved by running it; the paragraph states only what the files say, and a window's history is the ledger's `How D<n> opened` and `How D<n> closed` sections. A plan's header names its tier beside `- Schema:` — `package` needs no Postgres beyond a harness's own tests and no SPA build, `api` takes a lane database, `schema` is the one lane that adds migrations; the tier declares what a lane expects to need, and the step check still sizes itself to the diff — and `pnpm docs:check` refuses a lane whose tier its plan does not name, and a stale generated block.",
       },
       {
         topic: "Lanes",
-        records: ["0079"],
-        text: "A lane builds on a branch named for its deliverable, `lane/D<n>`, merges `main` in before a step's gate and merges to `main` when the step is green; a step is not closed while `main` does not carry it, and `/ship` runs on `main`. A lane that is the only one open may build on `main` itself, and cuts its branch when a second opens. Deliverable and record numbers are reserved by scoping on `main`. The shared surfaces merge by the row, and a conflicted digest is regenerated, never hand-merged. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
+        records: ["0082", "0079"],
+        text: "Every lane builds on a branch of its own from its first step — `lane/D<n>`, or the branch a cloud session was given, as its lane file names — with one draft pull request to `main`. A step is one commit pushed to it: it begins by reading the last push's `gate.yml` run and fixes forward when that is red, or says in its note that it could not read it; it ends on the step check and one review; it never merges to `main` and never waits on CI. `main` is merged into a lane only when the lane needs something `main` has or GitHub reports a conflict, and a conflicted generated file is regenerated, never hand-merged. `main` takes the documents-only commits `/scope` writes — the scoping, a lane's opening — and each lane once, when `/ship`, on the lane's head, merges its pull request with a merge commit and tags the merge commit. Deliverable and record numbers are reserved by scoping on `main`. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
       },
       {
         topic: "Acceptance at the head",
@@ -401,13 +411,18 @@ export const AREAS = [
       },
       {
         topic: "Verification",
-        records: ["0050"],
-        text: "Machines are the gate; review is one bounded pass over the diff per step — no refutation rounds and no zero-finding requirement. Uncertain mechanics get a timeboxed spike in a worktree rather than a debate.",
+        records: ["0050", "0082"],
+        text: "Machines are the gate; review is one bounded pass over the diff per step, in a fresh context — no refutation rounds and no zero-finding requirement. Where the builder cannot run a reviewer, the orchestrating session's pass is that one review; the builder's own reading is not a review. A deliverable has no close-out step: its last step builds, and `/ship` runs the definition of done — `pnpm docs:check` refuses a close-out step in a plan dated after the record withdrew them. Uncertain mechanics get a timeboxed spike in a worktree rather than a debate.",
       },
       {
         topic: "The gate",
         records: ["0026", "0052", "0057", "0074"],
         text: "The gate command is defined once, in `CLAUDE.md` §Commands, and referenced by name everywhere else. `pnpm check` is the cached inner loop; a task whose result depends on anything outside the repository is never cached and declares its `env`. A cached task's hash covers every workspace whose source it runs: `test:unit` reaches its workspace dependencies through turbo's `transit` node, which no workspace defines as a script.",
+      },
+      {
+        topic: "The step check and the lock",
+        records: ["0082", "0026", "0050"],
+        text: "A step ends green on the step check, `pnpm step:check`, defined beside the gate in `CLAUDE.md` §Commands: `pnpm check`, then `vitest run --changed` against the lane's merge base with `main` on each affected package's integration config — every integration file when the diff touches what the tier is built from, a migration, the harness, an `.env.test`, an integration config or a manifest — `size` only when an SPA is in turbo's `...[<base>]` filter, and `format:check`. A failed file is re-run in its set first; failing there again, or alone, makes it the step's defect, and only one that passes in its set and alone twice is a flake, named in the step's note. A lane ends green on the gate — the whole tree, by CI on every push and on the machine once, at ship. `test`, `test:int`, `size` and `test:e2e` run inside `scripts/with-lock.mjs`, one lock every worktree of a clone shares, which prints its holder while a second lane waits. A cached result is a proof: nothing passes `--force`.",
       },
       {
         topic: "The first link runs every check",
@@ -431,8 +446,8 @@ export const AREAS = [
       },
       {
         topic: "Forking",
-        records: ["0065"],
-        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, marked `merge=ours`, and reset.",
+        records: ["0065", "0082"],
+        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, reset by `/bootstrap`. The starter merge alone keeps the fork's journal, defining both drivers on its own command line — `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main` — and neither driver is defined in a clone's or a global config, so a lane merge conflicts on the ledger and the plans and keeps both sides of the notes and the changelog, which `.gitattributes` puts on `merge=union`. Those two are appended to; their existing text — the changelog's preamble, a notes file's earlier entries — is edited only by the lane that ships.",
       },
       {
         topic: "Upstreaming",

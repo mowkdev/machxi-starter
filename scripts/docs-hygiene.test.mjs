@@ -19,23 +19,31 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  CLOSE_OUT_WITHDRAWN,
   LEDGER,
   LEDGER_WINDOW,
   TAG_PREFIX_LINE,
+  checkCloseOut,
   checkLanes,
   checkSpec,
   checkTagPrefix,
   checkText,
+  checkUnionJournal,
+  countTiers,
   inheritedDocuments,
   isExcluded,
   parseLanes,
   parseTagPrefix,
+  planDate,
   scan,
+  scanCloseOut,
   scanLanes,
   scanSpecs,
   scanTagPrefix,
+  scanUnionJournal,
   specDocuments,
 } from "./docs-hygiene.mjs";
+import { parseLaneFile, renderLanes, writeLanes } from "./lanes.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -428,7 +436,8 @@ const decidesItsOwnResult = (rel, config, cached) => {
  * A check is a script that can go red without writing anything: at the root, a
  * script that is not a `turbo run` launcher and is named `*:check` or runs
  * `node --test`; in a workspace, a script named `*:check`. The gate's own links
- * are excluded — they run as links, not through the first one. A root check is
+ * are excluded — they run as links, not through the first one — and so is the
+ * step check, which runs the first link rather than inside it. A root check is
  * named in `lint`'s `dependsOn` as `//#<script>`, a workspace one by its bare
  * task name, which turbo resolves in each package that defines it.
  */
@@ -459,17 +468,28 @@ test("the first link carries every check that can go red", async () => {
   // than by memory: the next `*:check` a workspace defines is red here until
   // `lint` depends on it.
   const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
-  const gate = [
+  const claude = await read("CLAUDE.md");
+  const links = [
     .../pnpm lint && pnpm check-types[^\n`]*/
-      .exec(await read("CLAUDE.md"))[0]
+      .exec(claude)[0]
       .split("&&")
       .map((link) => link.trim().replace(/^pnpm\s+/, "")),
   ];
   assert.deepEqual(
-    gate,
+    links,
     ["lint", "check-types", "test", "size", "format:check"],
     "the gate as CLAUDE.md defines it",
   );
+  // The step check runs the first link; it is not one of its checks
+  // (ADR-0082 §2). Read from CLAUDE.md, where it is defined beside the gate.
+  const stepCheck =
+    /^# THE STEP CHECK\b[^\n]*\n(?:#[^\n]*\n)*pnpm\s+(\S+)/m.exec(claude)?.[1];
+  assert.equal(
+    stepCheck,
+    "step:check",
+    "the step check as CLAUDE.md defines it",
+  );
+  const gate = [...links, stepCheck];
 
   const workspaces = [];
   for (const group of ["apps", "packages"])
@@ -1747,8 +1767,9 @@ test("a file with no requirement is caught", () => {
   ]);
 });
 
-// The open lanes (ADR-0079 §1–§3): the committed ledger's lanes are disjoint,
-// and each lane rule fires on the fixture it exists for.
+// The open lanes (ADR-0079 §1–§3, ADR-0082 §4–§5): one file each under
+// `docs/plan/lanes/`, the committed ones disjoint and the ledger's generated
+// block current, and each lane rule fires on the fixture it exists for.
 test("the committed ledger's open lanes are disjoint", async () => {
   const { violations } = await scanLanes();
   assert.deepEqual(
@@ -1757,143 +1778,376 @@ test("the committed ledger's open lanes are disjoint", async () => {
   );
 });
 
-const lane = (n, records, schema = "no") =>
-  `- **Lane [D${n}](00${n}-x.md)** — opened 2026-09-29 · records ${records
-    .map((r) => `[${r}](../adr/${r}-x.md)`)
-    .join(", ")} · schema: ${schema}`;
+/** A lane file's `{ rel, name, text }`, in the shape `/scope` writes. */
+const lane = (n, records, schema = "no", tier) => ({
+  rel: `docs/plan/lanes/D${n}.md`,
+  name: `D${n}.md`,
+  text: `# Lane D${n}
 
-// The table marks `in progress` every deliverable an entry names, unless a
-// case passes its own rows.
-const rowsFor = (entries) =>
-  [...new Set(entries.map((e) => e.match(/\[(D\d+)\]/)?.[1]).filter(Boolean))]
+An open lane.
+
+- Deliverable: [D${n}](../00${n}-x.md)
+- Opened: 2026-09-29
+- Branch: \`lane/D${n}\`
+- Tier: ${tier ?? (schema === "yes" ? "schema" : "package")}
+- Schema: ${schema}
+- Records: ${records.map((r) => `[${r}](../../adr/${r}-x.md)`).join(", ")}
+`,
+});
+
+/** Every plan names the tier its lane file carries, unless a case says not. */
+const plansFor = (files, tiers = {}) => {
+  const plans = new Map();
+  for (const file of files) {
+    const n = file.name.match(/^D(\d+)\.md$/)?.[1];
+    if (!n) continue;
+    const tier =
+      `D${n}` in tiers
+        ? tiers[`D${n}`]
+        : (file.text.match(/^- Tier: (\S+)/m)?.[1] ?? "package");
+    // A tier line below the header is not the plan's tier.
+    plans.set(
+      `00${n}-x.md`,
+      tier === null
+        ? `# D${n}\n\n- Schema: no\n\n## Goal\n\n- Tier: package\n`
+        : `# D${n}\n\n- Schema: no\n- Tier: ${tier} (why)\n\n## Goal\n`,
+    );
+  }
+  return (rel) => plans.get(rel) ?? null;
+};
+
+// The table marks `in progress` every deliverable a file names, unless a case
+// passes its own rows.
+const rowsFor = (files) =>
+  [...new Set(files.map((f) => f.name.match(/^(D\d+)\.md$/)?.[1]))]
+    .filter(Boolean)
     .map((d) => `| [${d}](x.md) | T | **in progress** | x |`)
     .join("\n");
 
-const ledger = (...entries) => ledgerWith(rowsFor(entries), entries);
-
-const ledgerWith = (rows, entries, heading = "**Open lanes:**") => `# Ledger
+/** The ledger around a block; `block` defaults to what `pnpm lanes` writes. */
+const ledgerWith = (rows, block) => `# Ledger
 
 | # | Title | Status | Scope |
 | - | ----- | ------ | ----- |
 | D2 | Old | **shipped 2026-01-01** | x |
 ${rows}
 
-## Rules
-
-- **Lane [D1](0001-x.md)** — not in the window section, never read
-
 ## The window
 
 Preamble.
 
-${heading}
+**Open lanes** — one file each:
 
-${entries.join("\n")}
+${block}
 
-The running paragraph, which is not a lane.
+## The window's history, frozen
 
-- A list after the paragraph is not a lane either.
+History, never read.
 
 ## Executing a step
 `;
 
+const current = (files) =>
+  renderLanes(
+    files.map((f) => parseLaneFile(f.name, f.text).lane).filter(Boolean),
+  );
+
+/** Checks lane files against a ledger whose block is current. */
+const check = (files, { rows = rowsFor(files), tiers, block } = {}) =>
+  checkLanes({
+    ledger: ledgerWith(rows, block ?? current(files)),
+    laneFiles: files,
+    readPlan: plansFor(files, tiers),
+  });
+
 test("one open lane reads as before", () => {
-  const text = ledger(lane(30, ["0079", "0025"]));
-  const { lanes, malformed } = parseLanes(text);
+  const files = [lane(30, ["0079", "0025"])];
+  const { lanes, malformed } = parseLanes(
+    ledgerWith(rowsFor(files), ""),
+    files,
+  );
   assert.deepEqual(malformed, []);
   assert.deepEqual(
-    lanes.map((l) => [l.deliverable, l.opened, l.records, l.schema]),
-    [["D30", "2026-09-29", ["0079", "0025"], false]],
+    lanes.map((l) => [
+      l.deliverable,
+      l.opened,
+      l.records.map((r) => r.id),
+      l.schema,
+      l.tier,
+      l.branch,
+      l.file,
+    ]),
+    [
+      [
+        "D30",
+        "2026-09-29",
+        ["0079", "0025"],
+        false,
+        "package",
+        "lane/D30",
+        "docs/plan/lanes/D30.md",
+      ],
+    ],
   );
-  assert.deepEqual(rules(checkLanes("l.md", text)), []);
+  assert.deepEqual(rules(check(files)), []);
 });
 
 test("two open lanes never share a record", () => {
-  const disjoint = ledger(
+  const disjoint = [
     lane(29, ["0078", "0018"], "yes"),
     lane(31, ["0080", "0062"]),
-  );
-  assert.deepEqual(rules(checkLanes("l.md", disjoint)), []);
+  ];
+  assert.deepEqual(rules(check(disjoint)), []);
 
-  const shared = ledger(lane(29, ["0078", "0018"]), lane(31, ["0080", "0018"]));
-  const violations = checkLanes("l.md", shared);
+  const shared = [lane(29, ["0078", "0018"]), lane(31, ["0080", "0018"])];
+  const violations = check(shared);
   assert.deepEqual(rules(violations), ["lane-shared-record"]);
   assert.equal(violations[0].found, "0018");
+  assert.equal(violations[0].file, "docs/plan/lanes/D31.md");
 });
 
 test("a second lane on the schema is refused", () => {
-  const text = ledger(
+  const files = [
     lane(29, ["0078"], "yes"),
     lane(31, ["0080"], "yes"),
     lane(32, ["0081"]),
-  );
-  const violations = checkLanes("l.md", text);
+  ];
+  const violations = check(files);
   assert.deepEqual(rules(violations), ["lane-second-schema"]);
   assert.equal(violations[0].found, "D31");
 });
 
-test("a lane entry that does not parse is refused, not skipped", () => {
-  const text = ledger(
-    lane(30, ["0079"]),
-    "- **Lane D31** — opened 2026-09-29 · records 0079 · schema: no",
+test("a stale running paragraph is refused", () => {
+  const files = [lane(29, ["0078"], "yes"), lane(31, ["0080"])];
+  // The block as it stood before D31's file was added.
+  const before = current([files[0]]);
+  const violations = check(files, { block: before });
+  assert.deepEqual(rules(violations), ["lanes-stale"]);
+  assert.equal(violations[0].file, LEDGER);
+
+  // A hand edit inside the block is stale too.
+  const handEdited = current(files).replace(
+    "D29 owns the schema",
+    "D29 owns the schema, for now",
   );
-  assert.deepEqual(rules(checkLanes("l.md", text)), ["lane-malformed"]);
+  assert.deepEqual(rules(check(files, { block: handEdited })), ["lanes-stale"]);
+
+  // A ledger with lanes open and no block at all.
+  assert.deepEqual(rules(check(files, { block: "Hand-written." })), [
+    "lanes-stale",
+  ]);
+  // One marker without the other.
+  assert.deepEqual(
+    rules(check(files, { block: current(files).split("\n")[0] })),
+    ["lanes-stale"],
+  );
+  // The block names what the files say, and nothing else.
+  assert.match(current(files), /\*\*Two lanes are open: D29 and D31\.\*\*/);
+  assert.match(current(files), /D29 owns the schema/);
+  assert.match(current(files), /By tier: `package` D31; `schema` D29\./);
+});
+
+test("a tier the plan does not name is refused", () => {
+  const files = [lane(30, ["0079"]), lane(31, ["0080"], "no", "api")];
+  assert.deepEqual(rules(check(files)), []);
+
+  // The plan says api; the lane file says package.
+  const differs = check(files, { tiers: { D30: "api" } });
+  assert.deepEqual(rules(differs), ["lane-tier"]);
+  assert.equal(differs[0].file, "docs/plan/lanes/D30.md");
+  assert.equal(differs[0].found, "package");
+
+  // A plan with no `- Tier:` line in its header names no tier.
+  assert.deepEqual(rules(check(files, { tiers: { D31: null } })), [
+    "lane-tier",
+  ]);
+
+  // A tier outside the vocabulary does not parse.
+  const unknown = [lane(30, ["0079"], "no", "frontend")];
+  assert.deepEqual(rules(check(unknown, { tiers: { D30: "frontend" } })), [
+    "lane-malformed",
+  ]);
+
+  // The schema tier is the lane that adds migrations, and no other.
+  const mismatch = [lane(29, ["0078"], "no", "schema")];
+  assert.deepEqual(rules(check(mismatch)), ["lane-tier"]);
+  const unmarked = [lane(29, ["0078"], "yes", "api")];
+  assert.deepEqual(rules(check(unmarked)), ["lane-tier"]);
+});
+
+test("the tiers are counted, and the schema tier is at most one lane", () => {
+  const files = [
+    lane(29, ["0078"], "yes"),
+    lane(30, ["0079"], "no", "api"),
+    lane(31, ["0080"]),
+    lane(32, ["0081"]),
+  ];
+  const { lanes } = parseLanes("", files);
+  assert.deepEqual(countTiers(lanes), { package: 2, api: 1, schema: 1 });
+  assert.deepEqual(rules(check(files)), []);
+});
+
+test("a lane file that does not parse is refused, not skipped", () => {
+  const good = lane(30, ["0079"]);
+  const cases = [
+    // A field misspelt.
+    good.text.replace("- Opened:", "- Open:"),
+    // A field missing.
+    good.text.replace(/^- Branch: .*\n/m, ""),
+    // A field twice.
+    `${good.text}- Tier: api\n`,
+    // The deliverable not the one the file is named for.
+    good.text.replace("[D30](", "[D31]("),
+    // The branch not backticked.
+    good.text.replace("`lane/D30`", "lane/D30"),
+    // A date that is not one.
+    good.text.replace("2026-09-29", "yesterday"),
+    // Another deliverable's plan, whose tier the check would read.
+    good.text.replace("(../0030-x.md)", "(../0031-x.md)"),
+  ];
+  for (const text of cases) {
+    const violations = check([{ ...good, text }]);
+    assert.deepEqual([...new Set(rules(violations))], ["lane-malformed"], text);
+  }
+  const misnamed = { ...good, rel: "docs/plan/lanes/d30.md", name: "d30.md" };
+  assert.deepEqual(rules(check([misnamed], { rows: rowsFor([good]) })), [
+    "lane-malformed",
+    "lane-missing",
+  ]);
 });
 
 test("a record not written as a matching link is refused", () => {
-  const bare = ledger(
-    lane(29, ["0078"]).replace(" · schema", ", 0018 · schema"),
-    lane(31, ["0018"]),
-  );
-  // The refused entry is not a lane, so its row is also missing one.
-  assert.deepEqual(rules(checkLanes("l.md", bare)), [
+  const bare = lane(29, ["0078"]);
+  bare.text = bare.text.replace(/(- Records: .*)$/m, "$1, 0018");
+  assert.deepEqual(rules(check([bare, lane(31, ["0018"])])), [
+    "lane-malformed",
+  ]);
+  const mislabelled = lane(30, ["0079"]);
+  mislabelled.text = mislabelled.text.replace("[0079]", "[0080]");
+  assert.deepEqual(rules(check([mislabelled])), ["lane-malformed"]);
+});
+
+test("a deliverable in progress with no file is refused, and so is a file for one that is not", () => {
+  const files = [lane(29, ["0078"])];
+  assert.deepEqual(rules(check([], { rows: rowsFor(files) })), [
     "lane-missing",
-    "lane-malformed",
   ]);
-  const mislabelled = ledger(lane(30, ["0079"]).replace("[0079]", "[0080]"));
-  assert.deepEqual(rules(checkLanes("l.md", mislabelled)), [
-    "lane-missing",
-    "lane-malformed",
-  ]);
+  const shipped = check(files, {
+    rows: "| [D29](x.md) | T | **shipped 2026-09-30** | x |",
+  });
+  assert.deepEqual(rules(shipped), ["lane-not-open"]);
+  assert.equal(shipped[0].file, "docs/plan/lanes/D29.md");
 });
 
-test("an indented line inside the list is refused, and lanes after it are read", () => {
-  const text = ledger(
-    lane(29, ["0018"], "yes"),
-    "  a note under the entry",
-    lane(31, ["0018"], "yes"),
+test("a lane file the ledger has no row for is foreign, and pnpm lanes is not the answer", () => {
+  // A fork's ledger names its own deliverables; the starter merge brought D40.
+  const ours = lane(29, ["0078"]);
+  const theirs = lane(40, ["0082"]);
+  const violations = check([ours, theirs], {
+    rows: rowsFor([ours]),
+    // The block as the fork wrote it, before the merge: not called stale,
+    // because regenerating it would write the starter's lane into it.
+    block: current([ours]),
+  });
+  assert.deepEqual(rules(violations), ["lane-foreign"]);
+  assert.equal(violations[0].file, "docs/plan/lanes/D40.md");
+  assert.match(violations[0].message, /git rm/);
+});
+
+test("an indented or nested line in a lane file is refused", () => {
+  const good = lane(30, ["0084"]);
+  const continued = good.text.replace(
+    /(- Records: .*)$/m,
+    "$1\n  [0079](../../adr/0079-x.md)",
   );
-  assert.deepEqual(rules(checkLanes("l.md", text)), [
-    "lane-malformed",
-    "lane-shared-record",
-    "lane-second-schema",
-  ]);
-});
-
-test("a deliverable in progress with no entry is refused, and so is an entry for one that is not", () => {
-  const misspelt = ledgerWith(
-    rowsFor([lane(29, ["0078"])]),
-    [lane(29, ["0078"])],
-    "**Open lanes**:",
+  const nested = good.text.replace(
+    /(- Records: .*)$/m,
+    "$1\n  - Records: [0082](../../adr/0082-x.md)",
   );
-  assert.deepEqual(rules(checkLanes("l.md", misspelt)), ["lane-missing"]);
-  const stale = ledgerWith("", [lane(29, ["0078"])]);
-  assert.deepEqual(rules(checkLanes("l.md", stale)), ["lane-not-open"]);
+  const trailing = `${good.text}\n[0082](../../adr/0082-x.md)\n`;
+  for (const text of [continued, nested, trailing]) {
+    const parsed = parseLaneFile(good.name, text);
+    assert.equal(parsed.lane, undefined, text);
+    assert.deepEqual(
+      [...new Set(rules(check([{ ...good, text }])))],
+      ["lane-malformed"],
+      text,
+    );
+  }
+  // Prose above the first field is not read.
+  assert.ok(parseLaneFile(good.name, good.text).lane);
 });
 
-test("a deliverable has one entry", () => {
-  const text = ledger(lane(30, ["0079"]), lane(30, ["0025"], "yes"));
-  assert.deepEqual(rules(checkLanes("l.md", text)), ["lane-duplicate"]);
+test("a lane whose plan is missing is refused", () => {
+  const files = [lane(30, ["0079"])];
+  const violations = checkLanes({
+    ledger: ledgerWith(rowsFor(files), current(files)),
+    laneFiles: files,
+    readPlan: () => null,
+  });
+  assert.deepEqual(rules(violations), ["lane-plan-missing"]);
 });
 
-test("a ledger with nothing in progress and no open-lanes list has no lanes", () => {
+test("a ledger with nothing in progress, no lane files and no block has no lanes", () => {
   const text = "# Ledger\n\n## The window\n\nNothing is open.\n";
-  assert.deepEqual(parseLanes(text), {
+  assert.deepEqual(parseLanes(text, []), {
     lanes: [],
     malformed: [],
     inProgress: [],
+    rows: new Set(),
   });
-  assert.deepEqual(rules(checkLanes("l.md", text)), []);
+  assert.deepEqual(
+    rules(checkLanes({ ledger: text, laneFiles: [], readPlan: () => null })),
+    [],
+  );
+  // With the block, it says so.
+  assert.match(renderLanes([]), /\*\*No lane is open\.\*\*/);
+});
+
+test("pnpm lanes writes the block, and nothing on a second run", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "lanes-"));
+  try {
+    await mkdir(path.join(root, "docs", "plan", "lanes"), { recursive: true });
+    const files = [lane(29, ["0078"], "yes"), lane(31, ["0080"])];
+    for (const f of files) {
+      await writeFile(path.join(root, f.rel), f.text);
+    }
+    const ledgerPath = path.join(root, ...LEDGER.split("/"));
+    await writeFile(
+      ledgerPath,
+      ledgerWith(rowsFor(files), current([files[0]])),
+    );
+    assert.deepEqual(await writeLanes(root), { wrote: true, lanes: 2 });
+    const once = await readFile(ledgerPath, "utf8");
+    assert.deepEqual(await writeLanes(root), { wrote: false, lanes: 2 });
+    assert.equal(await readFile(ledgerPath, "utf8"), once);
+    assert.ok(once.includes(current(files)));
+    // Only the block changed: the frozen history below it is untouched.
+    assert.ok(once.includes("## The window's history, frozen\n\nHistory"));
+
+    // A file that does not parse writes nothing.
+    await writeFile(path.join(root, files[1].rel), "- Tier: api\n");
+    await assert.rejects(writeLanes(root), /D31\.md/);
+    assert.equal(await readFile(ledgerPath, "utf8"), once);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the generated block survives prettier unchanged", () => {
+  const files = [lane(29, ["0078", "0018"], "yes"), lane(31, ["0080"])];
+  const text = ledgerWith(rowsFor(files), current(files));
+  const run = spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "node_modules", "prettier", "bin", "prettier.cjs"),
+      "--stdin-filepath",
+      "docs/plan/README.md",
+    ],
+    { input: text, encoding: "utf8", cwd: repoRoot },
+  );
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes(current(files)));
 });
 
 // The tag prefix (ADR-0081 §5): one line of the ledger's header names the
@@ -2048,4 +2302,242 @@ test("the placeholders the skills teach are not violations", () => {
     rules(checkText("f.md", "The row moves to `shipped YYYY-MM-DD`.")),
     [],
   );
+});
+
+// The union-merged journal (ADR-0082 §4 as amended): a passage two lanes both
+// edited comes back twice, without a conflict.
+const changelog = [
+  "# Changelog",
+  "",
+  "One entry per shipped deliverable, written by `/ship`.",
+  "",
+  "**This file is journal.** It records this repository's deliverables.",
+  "",
+  "## D2 — Second · 2026-02-01",
+  "",
+  "Tag `starter-D2`.",
+  "",
+  "## D1 — First · 2026-01-01",
+  "",
+  "Tag `starter-D1`.",
+  "",
+].join("\n");
+
+test("a changelog whose preamble or an entry's heading appears twice is refused", () => {
+  const clean = checkUnionJournal("docs/CHANGELOG.md", changelog, { level: 2 });
+  assert.deepEqual(clean, []);
+  // Two lanes each edited the preamble's paragraph; union kept both.
+  const preamble = changelog.replace(
+    "**This file is journal.** It records this repository's deliverables.\n",
+    "**This file is journal.** It records this repository's deliverables.\n\n**This file is journal.** It records this repository's shipped deliverables.\n",
+  );
+  const twicePreamble = checkUnionJournal("docs/CHANGELOG.md", preamble, {
+    level: 2,
+  });
+  assert.deepEqual(rules(twicePreamble), ["union-duplicate"]);
+  assert.equal(twicePreamble[0].line, 7);
+  // Two lanes each rewrote one entry.
+  const entry = `${changelog}## D2 — Second · 2026-02-01\n\nTag \`starter-D2\`, again.\n`;
+  const twiceEntry = checkUnionJournal("docs/CHANGELOG.md", entry, {
+    level: 2,
+  });
+  assert.deepEqual(rules(twiceEntry), ["union-duplicate"]);
+  assert.equal(twiceEntry[0].found, "## D2 — Second · 2026-02-01");
+});
+
+test("a notes file with a duplicated section heading is refused", () => {
+  const notes = [
+    "# D9 — build notes",
+    "",
+    "## D9.1 — First step (2026-01-01)",
+    "",
+    "### D9.1 — the review",
+    "",
+    "## D9.2 — Second step (2026-01-02)",
+    "",
+    "```",
+    "## not a heading inside a fence",
+    "## not a heading inside a fence",
+    "```",
+    "",
+  ].join("\n");
+  assert.deepEqual(checkUnionJournal("n.notes.md", notes, { level: 3 }), []);
+  const twiceSection = `${notes}## D9.1 — First step (2026-01-01)\n`;
+  assert.deepEqual(
+    rules(checkUnionJournal("n.notes.md", twiceSection, { level: 3 })),
+    ["union-duplicate"],
+  );
+  const twiceSub = `${notes}### D9.1 — the review\n`;
+  assert.deepEqual(
+    rules(checkUnionJournal("n.notes.md", twiceSub, { level: 3 })),
+    ["union-duplicate"],
+  );
+});
+
+test("this repository's changelog and notes repeat no passage", async () => {
+  assert.deepEqual(await scanUnionJournal(), []);
+});
+
+// ADR-0082 §2: a deliverable has no close-out step; plans dated on or before
+// the day the record withdrew them are exempt.
+const planWith = (status, steps) =>
+  [
+    "# D40 — Something",
+    "",
+    `- Status: ${status}`,
+    "- Schema: no",
+    "- Tier: package",
+    "",
+    "## Steps",
+    "",
+    ...steps,
+    "",
+    "## Definition of done",
+    "",
+    "1. The gate green.",
+    "",
+  ].join("\n");
+
+const buildStep = [
+  "- [ ] **1. Build the thing.** The code, the spec, the digests regenerated.",
+  "      **ADRs:** 0090.",
+  '      **Done when:** `thing.test.ts` case "it works" green; `pnpm docs:check` clean.',
+];
+
+test("a plan with a close-out step is refused", () => {
+  const later = "planned — **scoped in full 2026-10-02 by `/scope`**";
+  assert.deepEqual(checkCloseOut("p.md", planWith(later, buildStep)), {
+    exempt: false,
+    violations: [],
+  });
+
+  // Titled as a close-out, the D30 shape.
+  const titled = checkCloseOut(
+    "p.md",
+    planWith(later, [
+      ...buildStep,
+      "- [ ] **2. Close-out.** The digests regenerated; then the definition of done.",
+      "      **Done when:** `pnpm rules:digest` writes nothing on a second run.",
+    ]),
+  );
+  assert.deepEqual(rules(titled.violations), ["close-out-step"]);
+  assert.equal(titled.violations[0].line, 12);
+  assert.equal(titled.violations[0].found, "2. Close-out.");
+
+  // Named otherwise, but its done-when is the checklist `/ship` runs; flagged once.
+  const checklist = checkCloseOut(
+    "p.md",
+    planWith(later, [
+      ...buildStep,
+      "- [ ] **2. The browser tier, and close-out.** Then the definition of done.",
+      "      **Done when:** the definition of done below, every item.",
+      "- [ ] **3. Wrap up.** Routed residuals.",
+      "      **Done when:** the definition of done, top to bottom.",
+    ]),
+  );
+  assert.deepEqual(rules(checklist.violations), [
+    "close-out-step",
+    "close-out-step",
+  ]);
+  assert.deepEqual(
+    checklist.violations.map((v) => v.line),
+    [12, 14],
+  );
+
+  // A plan with no scoping or shipping date is not exempt.
+  const undated = checkCloseOut(
+    "p.md",
+    planWith("planned", [...buildStep, "- [ ] **2. Close-out.**"]),
+  );
+  assert.deepEqual(rules(undated.violations), ["close-out-step"]);
+
+  // A title that only mentions a close-out builds: a fork's shift report.
+  const report = checkCloseOut(
+    "p.md",
+    planWith(later, [
+      ...buildStep,
+      "- [ ] **2. Shift close-out report.** The report screen and its export.",
+      '      **Done when:** `shift-report.test.ts` case "it closes the shift" green.',
+    ]),
+  );
+  assert.deepEqual(report, { exempt: false, violations: [] });
+});
+
+test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by its date", async () => {
+  const closeOut = [
+    ...buildStep,
+    "- [x] **2. Close-out.** Then the definition of done.",
+  ];
+  for (const status of [
+    "**shipped 2026-09-21** — **scoped in full 2026-09-14 by `/scope`**",
+    `in progress — **scoped in full ${CLOSE_OUT_WITHDRAWN} by \`/scope\`**`,
+    "**shipped 2026-08-18**",
+  ]) {
+    assert.deepEqual(checkCloseOut("p.md", planWith(status, closeOut)), {
+      exempt: true,
+      violations: [],
+    });
+  }
+  // Another date in the header — a row inserted — is not the plan's.
+  assert.equal(
+    planDate(
+      planWith(
+        "planned — **scoped in full 2026-10-02 by `/scope`**, from the row inserted 2026-09-14",
+        [],
+      ),
+    ),
+    "2026-10-02",
+  );
+  // Another deliverable's ship, cited in the status line, dates nothing: a
+  // later plan is not exempt by it, and its close-out step is refused.
+  const cited = planWith(
+    "planned — **scoped in full 2026-10-02 by `/scope`**, the day D34 shipped 2026-09-30",
+    [...buildStep, "- [ ] **2. Close-out.** Then the definition of done."],
+  );
+  assert.equal(planDate(cited), "2026-10-02");
+  assert.deepEqual(rules(checkCloseOut("p.md", cited).violations), [
+    "close-out-step",
+  ]);
+  const citedOnly = planWith("planned, like D34, which shipped 2026-09-30", [
+    ...buildStep,
+    "- [ ] **2. Close-out.**",
+  ]);
+  assert.equal(planDate(citedOnly), null);
+  assert.equal(checkCloseOut("p.md", citedOnly).exempt, false);
+  // Nor does a date on a header line other than the status line.
+  assert.equal(
+    planDate(
+      planWith("planned", []).replace(
+        "- Schema: no",
+        "- Schema: no, as D34 scoped 2026-09-30",
+      ),
+    ),
+    null,
+  );
+  // A date below the header is not the plan's either.
+  assert.equal(
+    planDate(`${planWith("planned", [])}\nshipped 2026-01-01\n`),
+    null,
+  );
+
+  // D34's own close-out stays allowed by its date, and is the step the check
+  // would catch in a plan written after it.
+  const d34 = await readFile(
+    path.join(repoRoot, "docs/plan/0034-lanes-on-one-machine.md"),
+    "utf8",
+  );
+  assert.equal(checkCloseOut("d34", d34).exempt, true);
+  const d34Later = d34.replaceAll(CLOSE_OUT_WITHDRAWN, "2026-10-01");
+  const later = checkCloseOut("d34", d34Later);
+  assert.equal(later.exempt, false);
+  assert.deepEqual(
+    later.violations.map((v) => v.found.slice(0, 12)),
+    ["6. Close-out"],
+  );
+});
+
+test("this repository's plans carry no close-out step past their date", async () => {
+  const { violations, exempt } = await scanCloseOut();
+  assert.deepEqual(violations, []);
+  assert.ok(exempt > 0);
 });

@@ -1,5 +1,17 @@
 # The gate (ADR-0059 §1), run on every push to `main` and every pull request.
 #
+# What a pull-request run proves (ADR-0082 §1–§2, lanes on one machine and one
+# `main`, a delta on ADR-0059 §1–§2). Every lane is one branch and one pull
+# request, and every step is one commit pushed to it. A step ends locally on
+# the step check — the fast loop and the integration files its change reaches —
+# and never runs the whole tree; this workflow does, on every push, over the
+# head merged into `main` as GitHub builds the pull request's merge ref. So
+# each run is the whole-tree proof of the lane as it stands after that step,
+# against the `main` of the moment, without the lane merging anything. The
+# next step reads this run before it builds and fixes forward when it is red,
+# and `/ship` merges the pull request only once the run on its last commit is
+# green. A burst of pushes costs one run, the last: the cancellation below.
+#
 # It runs the five documented links and nothing else — `pnpm lint`,
 # `pnpm check-types`, `pnpm test`, `pnpm size`, `pnpm format:check`, in that
 # order (ADR-0052 as carried by ADR-0057 §8). There is deliberately no
@@ -30,18 +42,22 @@
 name: gate
 
 on:
-  # `main` on push, because `/step` commits straight to it from an
-  # interactive session (ADR-0050) and the required check has to exist for
-  # the commit that is actually on `main` (ADR-0059 §2). Every other branch
-  # is covered by `pull_request`, which is how an unattended run's branch
-  # reaches the gate — one run per change rather than two.
+  # `main` on push, because the required check has to exist for the commit
+  # that is actually on `main` (ADR-0059 §2). No step reaches `main` directly
+  # any more (ADR-0082 §1): `main` takes a lane's pull-request merge, made
+  # by `/ship`, and the documents-only commits `/scope` pushes straight to it —
+  # a scoping, a lane's opening, a revision while a record is `proposed` —
+  # and this is the run that proves each of them on `main`. A lane branch is
+  # covered by `pull_request` alone, one run per push rather than two.
   push:
     branches: [main]
   pull_request:
 
-# One run per ref: a second push to a branch cancels the first, and `main`'s
-# runs are never cancelled because the required check has to exist for the
-# commit that is on `main` (ADR-0059 §2).
+# One run per ref: a second push to a lane's pull request cancels the first,
+# so a step pushed while the last step's run is going supersedes it and the
+# next step reads the run on the newest commit; `main`'s runs are never
+# cancelled, because the required check has to exist for the commit that is
+# on `main` (ADR-0059 §2).
 concurrency:
   group: gate-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}

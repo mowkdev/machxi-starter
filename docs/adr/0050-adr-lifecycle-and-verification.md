@@ -1,12 +1,14 @@
 # ADR-0050: ADR lifecycle v2 — delta supersessions, altitude, and verification by machines
 
-- Status: superseded by [ADR-0065](0065-starter-lifecycle.md) (delta: rule 5 regains the reason ADR-0024 gave it, and a fork's deviation is a new record in the fork's own corpus)
+- Status: superseded by [ADR-0065](0065-starter-lifecycle.md) (delta: rule 5 regains the reason ADR-0024 gave it, and a fork's deviation is a new record in the fork's own corpus) and [ADR-0082](0082-lanes-on-one-machine-and-one-main.md) (delta: a step ends green on the step check; the deterministic gate is the lane's stamp, run by CI on every push and locally once at ship)
 - Date: 2026-08-26
 - Supersedes: [ADR-0024](0024-adr-lifecycle.md)
 
 > Written 2026-08-26 ahead of D8 opening, beside its siblings [0047](0047-ui-package-scope.md)–[0049](0049-admin-app-architecture.md); **D8 opened 2026-08-26** and this record was **accepted 2026-08-26 at the head of `D8.1`** with them, where [ADR-0024](0024-adr-lifecycle.md) moved to `superseded by ADR-0050`. It supersedes [ADR-0024](0024-adr-lifecycle.md) and carries it whole — deliberately the **last** supersession required to do so, because its own §Lifecycle changes that rule.
 >
 > **Superseded in part 2026-09-04 by [ADR-0065](0065-starter-lifecycle.md)**, accepted at the head of `D14.12`: a delta on rule 5 alone. Rule 5 keeps its decision — a downstream project supersedes and never amends — and regains the reason [ADR-0024](0024-adr-lifecycle.md) gave for it: an edit turns the next merge from the blueprint into a conflict and erases the record of which decision was deliberately dropped. Everything else here stands and is in force: the statuses, the delta rule, the altitude rule, and verification by the deterministic gate plus one bounded review pass per step.
+>
+> **Superseded in part 2026-09-30 by [ADR-0082](0082-lanes-on-one-machine-and-one-main.md)**, at `D34.2`, the step that builds its §2: a delta on §Verification item 1 alone. A step no longer ends on the deterministic gate but on the step check `CLAUDE.md` §Commands defines beside it (`pnpm step:check`: the fast loop, the integration files the change reaches, `size` when an SPA is reached, `format:check`). The gate stays the stamp, and it is the lane's: run by CI on every push to the lane's pull request and on the machine once, at ship. A plan is still buildable when its done-whens are commands and test names. **Everything else here stands and is in force**, together with 0065: the one bounded review pass per step, the spike, and the pre-build reading pass.
 
 ## Context
 
