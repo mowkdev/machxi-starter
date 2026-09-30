@@ -1,6 +1,6 @@
 # D32 — Build versions
 
-- Status: **in progress** — **scoped in full 2026-09-30 by `/scope`**, on the operator's question about versioning before the fork, with D29 in progress (ledger §How D32 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D29 once `D29.5` had landed, rather than after D29 ships as scoping recorded. It builds on `lane/D32` in a worktree of its own (ledger §How D32 opened).
+- Status: **shipped 2026-09-30** (ledger §How D32 closed) — **scoped in full 2026-09-30 by `/scope`**, on the operator's question about versioning before the fork, with D29 in progress (ledger §How D32 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D29 once `D29.5` had landed, rather than after D29 ships as scoping recorded. It builds on `lane/D32` in a worktree of its own (ledger §How D32 opened).
 - Records: [ADR-0081](../adr/0081-build-versions.md) (one release label and a commit, stamped at image build; a fork's own tag namespace and changelog) — written `proposed` at scoping, accepted at the head of `D32.1`. Parents: [ADR-0004](../adr/0004-configuration-and-environment.md), [ADR-0016](../adr/0016-health-checks.md), [ADR-0054](../adr/0054-design-language-instrument.md), [ADR-0065](../adr/0065-starter-lifecycle.md). Amends none. **Adds no migration.**
 - Schema: no
 - Ledger: [`docs/plan/README.md`](README.md)
