@@ -205,3 +205,61 @@ step:check ✓
 **Pending the operator.** Nothing is browser-only. CI state for the pull request was not read in this step: steps 1–4 close on the local gate, and the pull request's `gate.yml` run on this push is its CI proof.
 
 - **`CLAUDE.md` was edited** as this step's plan requires: §Commands, rule 3, and trims to fit its 6 KB cap. The operator should read that diff.
+
+## D34.3 — `merge=ours` scoped to the starter merge; union for notes and the changelog (2026-09-30)
+
+Built in a cloud session on the lane branch `claude/nifty-planck-bnxu4s` (PostgreSQL 16 on localhost:5432, no Docker, no dev stack, no root `.env`), committed and pushed there as one commit; not merged to `main` (plan §Constraints).
+
+**Moved at this step.** [ADR-0065](../adr/0065-starter-lifecycle.md) → `superseded by` [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) for §3's mechanism, and [ADR-0081](../adr/0081-build-versions.md) → `superseded by` 0082 for one sentence of §5, each with its delta on the status line and a head note, bodies untouched. The index rows for 0065, 0081 and 0082, the topic table's forking row, the index's "starter as a starter" note, the ledger's lane entry (0081 added) and its running paragraph say so. The process digest's "Forking" line now cites 0082 and says how the journal is kept; `pnpm rules:digest` wrote 3 of 3 (0065 and 0081 are carried in all three areas' citations), then 0 of 3.
+
+**Built.**
+
+- `.gitattributes`: `docs/plan/** merge=ours`, then `docs/plan/*.notes.md merge=union` and `docs/CHANGELOG.md merge=union` (a later line wins), and a comment that says what each merge does with them and that no clone or global config may define `merge.ours.driver`. `git check-attr merge` reads `ours` for the ledger and the plans, `union` for the notes and the changelog.
+- `docs/forking.md` §5: the starter merge is `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main`, with a paragraph on why it is the only merge that keeps the journal, the warning against a defined driver, and what still arrives (a plan the starter adds) or conflicts (modify/delete on a plan the fork deleted — observed in a scratch repository). §2's two journal bullets and the "What conflicts" table point at §5 instead of `merge=ours`.
+- `/bootstrap`: keeps the attributes, defines no driver, names the starter merge; its acceptance reads `merge: ours` for the ledger, `merge: union` for the changelog, and no `merge.ours.driver` in the config. Its description line follows.
+- `docs/CHANGELOG.md`'s preamble: kept by the starter merge's command line, `union` between lanes.
+- `scripts/merge-attributes.test.mjs` (picked up by `pnpm test:scripts`): each case a repository under `os.tmpdir()`, removed in `after`, carrying this clone's committed `.gitattributes`, with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1` so no machine-wide driver can make a case pass, and `user.name`/`user.email`/`commit.gpgsign` set per repository. The starter-merge case reads the command's `-c` flags from `docs/forking.md` and requires `/bootstrap` to name the same command.
+
+**Amended against the plan and the record, labelled in both.** The plan said `.gitattributes` drops `docs/plan/** merge=ours` and the starter merge is `git -c merge.ours.driver=true merge starter/main`. Git runs a merge driver only for a path whose `merge` attribute names it (a scratch repository: with no attribute naming `ours`, the flag changes nothing), so that pair keeps nothing, and the done-when "the starter merge with the driver on the command line keeps ours" could not pass as scoped. What goes is the standing _driver_, not the attribute: an attribute naming a driver no config defines falls back to git's text merge (observed: `CONFLICT (content)`, no warning), so the ledger conflicts in a lane merge exactly as the plan wants. And with the changelog on the built-in `union`, `-c merge.ours.driver=true` alone would have let the starter's changelog entries into a fork, undoing [ADR-0081](../adr/0081-build-versions.md) §5 (the changelog is journal); git looks a driver up in the config before its built-in `union` (observed), so the command also defines `merge.union.driver=true`. 0082 §4 is amended in place, labelled `**Amended 2026-09-30 (D34.3).**`; its header's supersedes list gains 0081 §5 and its title "0065 and 0081"; the plan's step 3 and its Records line are amended, labelled. **The command differs from the one the plan and the step's brief named** — the operator should read 0082 §4's amendment.
+
+**Tests.** `scripts/merge-attributes.test.mjs`:
+
+- "a lane merge keeps both sides of a notes file"
+- "a lane merge keeps both sides of the changelog"
+- "a lane merge of the ledger conflicts rather than dropping a side"
+- "the starter merge with the driver on the command line keeps ours" — the fork's ledger, changelog and notes kept byte for byte, the starter's code change taken, and the same merge without the flags conflicting
+- "the journal names ours, the notes and the changelog union" (`git check-attr`)
+
+A mutant with every `merge=union` read as `merge=ours` fails the attribute case and both union cases, so they test the attribute rather than git's defaults.
+
+**Done-whens.**
+
+- The four named cases: green (5 of 5 in the file).
+- `pnpm docs:check`: clean ("inherited documents: clean", "open lanes: disjoint (1 open)", "tag prefix: starter").
+- `pnpm test:scripts`: green, 117 tests.
+
+**Gate**, over the whole diff, with `TEST_DB_LANE=claude-nifty-planck-bnxu4s` and nothing else exported, never `--force`:
+
+- `pnpm lint`: pass (22 tasks, 0 cached; `test:scripts` 117 tests and `docs:check` inside it).
+- `pnpm check-types`: pass (17 tasks).
+- `pnpm test`: pass (17 tasks, 0 cached, 8m59s, under the `tiers` lock). `api` 51 unit files / 836 tests and 29 int files / 847 tests; `@repo/db` 7 unit files / 125 tests and 6 int files / 128 tests; `admin` 54 files / 335 tests; `customer` 39 files / 287 tests. All 23 `db:migrate →` lines name `machxi_claude-nifty-planck-bnxu4s_test`.
+- `pnpm size`: pass (4 tasks).
+- `pnpm format:check`: pass.
+
+**Review.** **Owed.** This builder session had no Agent tool, so it could not run the one bounded review in a fresh context; by ADR-0082 §2 its own reading is not the review, and none is recorded here. The orchestrating session runs it over this step's commit — `adr-reviewer` fits, the step being record-heavy — and a confirmed finding is fixed in a `D34.3` follow-up commit, noted below.
+
+**Pending the operator.** Nothing is browser-only. CI state was not read (steps 1–4 close on the local gate); the pull request's `gate.yml` run on this push is its CI proof. **Read 0082 §4's amendment**: the starter merge now defines two drivers, `-c merge.ours.driver=true -c merge.union.driver=true`, where the plan named one, and 0081 §5 joined the lane to say so.
+
+**`pnpm step:check` on the final tree** (everything above written), with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, base `d518b5938943` (`git merge-base origin/main HEAD`), exit 0:
+
+```
+step:check against d518b5938943b56fafbb726ae37fa268a77b4efe
+  ran      check
+  ran      integration @repo/db (every file: apps/api/test/setup/env.test.ts changed): 6 file(s)
+  ran      integration api (every file: apps/api/test/setup/env.test.ts changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      format:check
+step:check ✓
+```
+
+`check`: 39 tasks (5 cached) and then `test:unit`'s 17, all successful. The base is the lane's merge base, so the whole lane's diff counts, and `D34.1`'s harness change is a trigger: both integration tiers ran whole, every `db:migrate →` line on `machxi_claude-nifty-planck-bnxu4s_test`. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.

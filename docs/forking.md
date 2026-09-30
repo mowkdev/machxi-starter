@@ -18,9 +18,9 @@ git push -u origin main
 
 Run `/bootstrap`. It resets the journal and leaves the process skills working:
 
-- **`docs/plan/` resets.** The plans and the ledger narrative are the blueprint's journal — how _this_ repository got here. A fork writes its own from row one, and `.gitattributes` marks `docs/plan/ merge=ours` so the journal never travels in either direction.
+- **`docs/plan/` resets.** The plans and the ledger narrative are the blueprint's journal — how _this_ repository got here. A fork writes its own from row one, and the starter merge keeps it (§5), so the journal never travels in either direction.
 - **The tag prefix is the fork's own.** The ledger's header names it in one line, `` Tag prefix: `<prefix>` ``, and `/ship` tags each shipped deliverable `<prefix>-D<n>`. The starter's is `starter`; `/bootstrap` asks for the fork's and refuses `starter`, so the fork's D1 is `acme-D1` and never meets the starter's `starter-D1` ([ADR-0081](adr/0081-build-versions.md) §5, build versions). `pnpm docs:check` refuses a ledger with no prefix line.
-- **`docs/CHANGELOG.md` resets too.** It records one repository's shipped deliverables, so it is journal like `docs/plan/`: `/bootstrap` empties it to its preamble, and `.gitattributes` marks it `merge=ours`. The starter's history stays one command away: `git show starter/main:docs/CHANGELOG.md`.
+- **`docs/CHANGELOG.md` resets too.** It records one repository's shipped deliverables, so it is journal like `docs/plan/`: `/bootstrap` empties it to its preamble, and the starter merge keeps the fork's (§5). The starter's history stays one command away: `git show starter/main:docs/CHANGELOG.md`.
 - **`docs/adr/` is carried.** The records are the decisions the code stands on; they come with the code. The fork's own records continue the numbering after the highest inherited one.
 - **`.claude/` is carried.** The rules, agents and skills are the machinery that applies the records. They are written to survive the trip: every citation carries a topic gloss, and no step number or date appears in them (`pnpm docs:check` enforces it).
 - **Some of `.claude/` is optional, and some is not.** A fork that does not run the process may delete the process skills (`/scope`, `/step`, `/steps`, `/ship`, `/new-adr`), the builder agents (`module-builder`, `ui-builder`, `db-migrator`, `test-engineer`, `adr-author`) and `gate-runner`: they are conveniences over the gate and the records, and nothing the gate runs depends on them. Other inherited documents still mention them by name — `CLAUDE.md` and `.claude/README.md` list them, a reviewer or a skill may recommend `/new-adr`, `docs/upstreaming.md` walks through `/scope`, `/step` and `/ship` — so a deletion leaves those mentions dangling unless the fork trims them too, and the process digest's header is trimmed in `scripts/rules-digest.mjs`, never in the generated file. It keeps `.claude/rules/`, the digests in `docs/rules/` and the three reviewers (`adr-reviewer`, `security-reviewer`, `code-reviewer`): the rules and digests are how the records reach a session that touches the code, and the reviewers are the one review pass a change gets. A deleted file comes back as a modify/delete conflict whenever the starter changes it; resolve it by deleting again.
@@ -48,8 +48,10 @@ Every shipped deliverable of the starter is an annotated tag `starter-D<n>` and 
 git fetch starter --tags
 git log starter-D13..starter/main --oneline    # what has landed since
 git show starter/main:docs/CHANGELOG.md        # what each of those deliverables was
-git merge starter/main
+git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main
 ```
+
+**The starter merge keeps the fork's journal, and it is the only merge that does** ([ADR-0082](adr/0082-lanes-on-one-machine-and-one-main.md) §4, shared surfaces that do not conflict). `.gitattributes` gives the ledger and the plans `merge=ours` and the notes and the changelog `merge=union`, and no clone defines a driver. So a lane merge — a lane branch and `main`, here or in the starter — keeps both sides of the notes and the changelog, which have one writer each, and conflicts on the ledger rather than dropping a side. The starter merge defines both drivers as `true` on its own command line, which keeps the fork's side of every journal file both sides changed; git looks a driver up in the config before its own built-in `union`. **Never define `merge.ours.driver` in the clone's or your global git config**: every lane merge would then keep its own ledger and silently drop the other lane's. A plan or a notes file the starter adds arrives with the merge, and one the fork deleted that the starter changed comes back as a modify/delete conflict; resolve either by deleting it (`git rm`). `scripts/merge-attributes.test.mjs` proves both merges against the committed attributes.
 
 Merge periodically rather than once a year: the conflicts are proportional to the distance.
 
@@ -80,8 +82,8 @@ The same rule applies to `.claude/` and the digests: change them by writing the 
 
 | Path                                        | On a merge from `starter/main`                                           |
 | ------------------------------------------- | ------------------------------------------------------------------------ |
-| `docs/plan/`                                | never — `merge=ours` keeps the fork's journal                            |
-| `docs/CHANGELOG.md`                         | never — `merge=ours` keeps the fork's; `git show` reads the starter's    |
+| `docs/plan/`                                | the starter merge keeps the fork's (§5); a file the starter adds arrives |
+| `docs/CHANGELOG.md`                         | the starter merge keeps the fork's (§5); `git show` reads the starter's  |
 | tags                                        | never — the fork tags `<prefix>-D<n>`, the starter `starter-D<n>`        |
 | `docs/adr/`                                 | only where the fork edited an inherited record, which is why it must not |
 | `docs/rules/`                               | generated; regenerate with `pnpm rules:digest` after the merge           |

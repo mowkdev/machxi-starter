@@ -441,8 +441,8 @@ export const AREAS = [
       },
       {
         topic: "Forking",
-        records: ["0065"],
-        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, marked `merge=ours`, and reset.",
+        records: ["0065", "0082"],
+        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, reset by `/bootstrap`. The starter merge alone keeps the fork's journal, defining both drivers on its own command line — `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main` — and no clone defines one, so a lane merge conflicts on the ledger and the plans and keeps both sides of the notes and the changelog, which `.gitattributes` puts on `merge=union`.",
       },
       {
         topic: "Upstreaming",
