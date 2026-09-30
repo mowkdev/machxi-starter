@@ -17,8 +17,13 @@
 #
 #     git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main
 #
-# Never define `merge.ours.driver` in a clone's or a global git config: every
-# lane merge would then keep its own ledger and silently drop the other lane's.
+# Never define either driver in a clone's or a global git config: with
+# `merge.ours.driver` every lane merge would keep its own ledger, and with
+# `merge.union.driver` its own notes and changelog, silently dropping the other
+# lane's. Union keeps both sides of a collision without a conflict, so the
+# changelog's preamble and a notes file's existing text are edited only by the
+# lane that ships; `pnpm docs:check` refuses the duplicated headings a union of
+# two edits leaves.
 # `scripts/merge-attributes.test.mjs` proves both merges against this file.
 docs/plan/** merge=ours
 docs/plan/*.notes.md merge=union

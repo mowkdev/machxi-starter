@@ -182,6 +182,28 @@ describe("merge attributes", () => {
     assert.doesNotMatch(changelog, /^(<<<<<<<|=======|>>>>>>>)/m);
   });
 
+  it("a union driver defined in the clone makes a lane merge drop a side", () => {
+    // Why no clone may keep the starter merge's flags in its config.
+    const repo = repository();
+    repo.git("config", "merge.union.driver", "true");
+    repo.commit("base", { [CHANGELOG]: changelogBase });
+    repo.git("checkout", "--quiet", "-b", "lane/D3");
+    repo.commit("lane", {
+      [CHANGELOG]: withEntry(changelogBase, "D3 — Third"),
+    });
+    repo.git("checkout", "--quiet", "main");
+    repo.commit("main", {
+      [CHANGELOG]: withEntry(changelogBase, "D2 — Second"),
+    });
+
+    const result = repo.merge([], "lane/D3");
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const changelog = repo.read(CHANGELOG);
+    assert.match(changelog, /## D2 — Second/);
+    assert.doesNotMatch(changelog, /## D3 — Third/);
+  });
+
   it("a lane merge of the ledger conflicts rather than dropping a side", () => {
     const repo = repository();
     repo.commit("base", { [LEDGER]: ledgerBase });

@@ -545,6 +545,71 @@ export function checkTagPrefix(file, text) {
   return violations;
 }
 
+/**
+ * The union-merged journal (ADR-0082 §4 as amended): the changelog and the
+ * notes merge by `union`, which keeps both sides of a collision without a
+ * conflict. Two lanes editing one passage leave it twice, so a heading, the
+ * title or a preamble paragraph that repeats is refused. Fenced code is not
+ * read. `level` is the deepest heading checked: 2 for the changelog, 3 for a
+ * notes file.
+ */
+export function checkUnionJournal(file, text, { level }) {
+  const violations = [];
+  const seen = new Map();
+  const heading = new RegExp(`^(#{1,${level}}) \\S`);
+  let fenced = false;
+  let preamble = true;
+  let paragraphStart = true;
+  for (const [index, raw] of text.split(/\r?\n/).entries()) {
+    const line = raw.trimEnd();
+    if (/^(```|~~~)/.test(line)) fenced = !fenced;
+    if (fenced) continue;
+    let key = null;
+    if (heading.test(line)) {
+      key = line;
+      if (line.startsWith("## ")) preamble = false;
+    } else if (preamble && paragraphStart && line !== "" && level === 2) {
+      // A preamble paragraph, by its opening 40 characters: a copy two lanes
+      // edited apart past them still repeats it.
+      key = `preamble: ${line.slice(0, 40)}`;
+    }
+    paragraphStart = line === "";
+    if (key === null) continue;
+    if (seen.has(key)) {
+      violations.push({
+        file,
+        line: index + 1,
+        rule: "union-duplicate",
+        found: line.slice(0, 60),
+        message: `repeats line ${seen.get(key)}; this file merges by union, so its existing text is edited only by the lane that ships (ADR-0082 §4)`,
+      });
+    } else {
+      seen.set(key, index + 1);
+    }
+  }
+  return violations;
+}
+
+export const CHANGELOG = "docs/CHANGELOG.md";
+
+export async function scanUnionJournal(root = repoRoot) {
+  const violations = [];
+  const changelog = path.join(root, ...CHANGELOG.split("/"));
+  if (existsSync(changelog)) {
+    const text = await readFile(changelog, "utf8");
+    violations.push(...checkUnionJournal(CHANGELOG, text, { level: 2 }));
+  }
+  const plan = path.join(root, "docs", "plan");
+  const names = existsSync(plan) ? await readdir(plan) : [];
+  for (const name of names.filter((n) => n.endsWith(".notes.md")).sort()) {
+    const text = await readFile(path.join(plan, name), "utf8");
+    violations.push(
+      ...checkUnionJournal(`docs/plan/${name}`, text, { level: 3 }),
+    );
+  }
+  return violations;
+}
+
 export async function scanLanes(root = repoRoot) {
   const full = path.join(root, ...LEDGER.split("/"));
   // A corpus with no ledger yet (`/bootstrap --empty` before it writes one)
@@ -576,11 +641,13 @@ if (
   const specs = await scanSpecs();
   const lanes = await scanLanes();
   const tagPrefix = await scanTagPrefix();
+  const unionJournal = await scanUnionJournal();
   const violations = [
     ...inherited,
     ...specs,
     ...lanes.violations,
     ...tagPrefix.violations,
+    ...unionJournal,
   ];
   for (const v of violations) {
     console.error(
@@ -597,4 +664,5 @@ if (
   );
   console.log(`open lanes: disjoint (${lanes.lanes} open)`);
   if (tagPrefix.prefix) console.log(`tag prefix: ${tagPrefix.prefix}`);
+  console.log("union journal: no passage twice");
 }

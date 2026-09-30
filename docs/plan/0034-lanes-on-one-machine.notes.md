@@ -263,3 +263,27 @@ step:check ✓
 ```
 
 `check`: 39 tasks (5 cached) and then `test:unit`'s 17, all successful. The base is the lane's merge base, so the whole lane's diff counts, and `D34.1`'s harness change is a trigger: both integration tiers ran whole, every `db:migrate →` line on `machxi_claude-nifty-planck-bnxu4s_test`. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+### D34.3 — the review, and its findings' fates
+
+**The one review** was run by the orchestrating session: `adr-reviewer` over `87714e6`, in a fresh context. It checked every git claim and found each one true: a driver no config defines falls back to the text merge, the later `.gitattributes` line wins on the notes files, `-c merge.union.driver=true` overrides the built-in `union`, and a repeat starter merge keeps the fork's side. It then found three issues in the records and documents around that mechanism. All three are fixed in the follow-up commit `fix(docs,scripts,adr): D34.3 follow-up — the review's findings`.
+
+1. **[MAJOR] ADR-0082 still stated the rule its amendment withdrew. Fixed.**
+   - The header's 0065 §3 delta read "never as a standing attribute a lane merge would hit". It is now struck, and the replacement says the standing driver goes and the attribute stays, inert without one.
+   - §4's sentence "The `docs/plan/** merge=ours` attribute is removed; the starter merge applies the driver on the command line …" is struck with `~~` under the existing D34.3 label, which now says it replaces the struck sentence.
+   - The plan's Constraints line "`merge=ours` is applied on the command line … not as a standing attribute" is struck, labelled, and restated: the drivers are defined on the command line, and the attribute stays.
+2. **[MINOR] The warning named only `merge.ours.driver`. Fixed.** `.gitattributes`, `docs/forking.md` §5, 0082 §4 and `/bootstrap` now warn about both drivers. A `merge.union.driver` in a clone's or a global config would make every lane merge keep its own notes and changelog. `/bootstrap`'s acceptance now requires `git config --get-regexp '^merge\.(ours|union)\.driver$'` to print nothing.
+   - New case in `scripts/merge-attributes.test.mjs`: "a union driver defined in the clone makes a lane merge drop a side". With `merge.union.driver=true` in the repository's config, a lane merge of the changelog exits 0 and loses the lane's entry.
+3. **[MINOR] Nothing enforced "appends only" on the union files. Fixed on the orchestrating session's decision.**
+   - 0082 §4's D34.3 amendment now says the changelog's preamble and a notes file's existing text are edited only by the lane that ships. `.gitattributes`, `docs/forking.md` §5 and the process digest's "Forking" line say the same; `pnpm rules:digest` wrote 1 of 3, then 0 of 3.
+   - `scripts/docs-hygiene.mjs` gains `checkUnionJournal` and `scanUnionJournal`. `pnpm docs:check` now refuses a `docs/CHANGELOG.md` with a repeated title, a repeated preamble paragraph (keyed by its first 40 characters, so a copy edited apart after its opening still counts) or a repeated `## ` heading. It refuses a `docs/plan/*.notes.md` with a repeated `#`, `##` or `###` heading. Fenced code is not read. It prints "union journal: no passage twice".
+   - The change is kept to one function, its scan and one line in the entry point, because `D34.4` rewrites other parts of the file.
+   - Tests in `scripts/docs-hygiene.test.mjs`: "a changelog whose preamble or an entry's heading appears twice is refused", "a notes file with a duplicated section heading is refused", and "this repository's changelog and notes repeat no passage" (the live tree).
+
+**Checks after the fix**, with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, never `--force`. No package changed, so the whole gate was not re-run (the orchestrating session's instruction):
+
+- `pnpm test:scripts`: pass, 121 tests. `merge-attributes.test.mjs` 6, and `docs-hygiene.test.mjs` 54.
+- `pnpm docs:check`: clean, "union journal: no passage twice".
+- `pnpm rules:digest`: 0 of 3 on two further runs.
+- `pnpm format:check`: pass.
+- `pnpm check`: pass. 39 tasks (0 cached; `test:scripts` and `docs:check` inside `lint`), then `test:unit`'s 17.

@@ -33,7 +33,7 @@ Taken in the review sitting of the same day (the review is kept in the project's
 - **One commit per step**, on the lane branch, titled with the step's conventional message, review findings in its body; the pull request merges with a merge commit so the ledger's step citations survive on `main`.
 - **Derive, don't validate.** `TEST_DB_LANE` comes from the branch name; `pnpm db:lane` takes no argument.
 - **Union merge for notes and the changelog only.** The ledger and the records never union; they stop conflicting by becoming per-lane files and a generated paragraph.
-- **`merge=ours` is applied on the command line for the starter merge**, not as a standing attribute.
+- ~~**`merge=ours` is applied on the command line for the starter merge**, not as a standing attribute.~~ **Amended 2026-09-30 (D34.3).** **The merge drivers are defined on the command line for the starter merge**, never in a clone's or a global config; the `merge=ours` attribute stays, inert in a lane merge (ADR-0082 §4 as amended).
 - **Recorded, not asked:** steps within a lane stay sequential; no record is shared by agreement; no human approval is required on `main`; one Postgres container.
 
 ## Steps

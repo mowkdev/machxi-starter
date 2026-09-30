@@ -26,6 +26,7 @@ import {
   checkSpec,
   checkTagPrefix,
   checkText,
+  checkUnionJournal,
   inheritedDocuments,
   isExcluded,
   parseLanes,
@@ -34,6 +35,7 @@ import {
   scanLanes,
   scanSpecs,
   scanTagPrefix,
+  scanUnionJournal,
   specDocuments,
 } from "./docs-hygiene.mjs";
 
@@ -2060,4 +2062,78 @@ test("the placeholders the skills teach are not violations", () => {
     rules(checkText("f.md", "The row moves to `shipped YYYY-MM-DD`.")),
     [],
   );
+});
+
+// The union-merged journal (ADR-0082 §4 as amended): a passage two lanes both
+// edited comes back twice, without a conflict.
+const changelog = [
+  "# Changelog",
+  "",
+  "One entry per shipped deliverable, written by `/ship`.",
+  "",
+  "**This file is journal.** It records this repository's deliverables.",
+  "",
+  "## D2 — Second · 2026-02-01",
+  "",
+  "Tag `starter-D2`.",
+  "",
+  "## D1 — First · 2026-01-01",
+  "",
+  "Tag `starter-D1`.",
+  "",
+].join("\n");
+
+test("a changelog whose preamble or an entry's heading appears twice is refused", () => {
+  const clean = checkUnionJournal("docs/CHANGELOG.md", changelog, { level: 2 });
+  assert.deepEqual(clean, []);
+  // Two lanes each edited the preamble's paragraph; union kept both.
+  const preamble = changelog.replace(
+    "**This file is journal.** It records this repository's deliverables.\n",
+    "**This file is journal.** It records this repository's deliverables.\n\n**This file is journal.** It records this repository's shipped deliverables.\n",
+  );
+  const twicePreamble = checkUnionJournal("docs/CHANGELOG.md", preamble, {
+    level: 2,
+  });
+  assert.deepEqual(rules(twicePreamble), ["union-duplicate"]);
+  assert.equal(twicePreamble[0].line, 7);
+  // Two lanes each rewrote one entry.
+  const entry = `${changelog}## D2 — Second · 2026-02-01\n\nTag \`starter-D2\`, again.\n`;
+  const twiceEntry = checkUnionJournal("docs/CHANGELOG.md", entry, {
+    level: 2,
+  });
+  assert.deepEqual(rules(twiceEntry), ["union-duplicate"]);
+  assert.equal(twiceEntry[0].found, "## D2 — Second · 2026-02-01");
+});
+
+test("a notes file with a duplicated section heading is refused", () => {
+  const notes = [
+    "# D9 — build notes",
+    "",
+    "## D9.1 — First step (2026-01-01)",
+    "",
+    "### D9.1 — the review",
+    "",
+    "## D9.2 — Second step (2026-01-02)",
+    "",
+    "```",
+    "## not a heading inside a fence",
+    "## not a heading inside a fence",
+    "```",
+    "",
+  ].join("\n");
+  assert.deepEqual(checkUnionJournal("n.notes.md", notes, { level: 3 }), []);
+  const twiceSection = `${notes}## D9.1 — First step (2026-01-01)\n`;
+  assert.deepEqual(
+    rules(checkUnionJournal("n.notes.md", twiceSection, { level: 3 })),
+    ["union-duplicate"],
+  );
+  const twiceSub = `${notes}### D9.1 — the review\n`;
+  assert.deepEqual(
+    rules(checkUnionJournal("n.notes.md", twiceSub, { level: 3 })),
+    ["union-duplicate"],
+  );
+});
+
+test("this repository's changelog and notes repeat no passage", async () => {
+  assert.deepEqual(await scanUnionJournal(), []);
 });
