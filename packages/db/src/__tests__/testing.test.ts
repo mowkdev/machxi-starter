@@ -25,7 +25,14 @@ describe("laneDatabaseUrl", () => {
 
   it("returns the URL unchanged when no lane is set", () => {
     expect(laneDatabaseUrl(testUrl, undefined)).toBe(testUrl);
-    expect(laneDatabaseUrl(testUrl, "  ")).toBe(testUrl);
+  });
+
+  it("refuses a lane that is set but empty rather than reading it as unset", () => {
+    for (const lane of ["", "  "]) {
+      expect(() => laneDatabaseUrl(testUrl, lane)).toThrow(
+        /TEST_DB_LANE is set but empty/,
+      );
+    }
   });
 
   it("does not stack a lane on a URL already on it", () => {

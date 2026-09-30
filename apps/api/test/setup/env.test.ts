@@ -59,6 +59,12 @@ describe("loadTestEnv", () => {
     expect(process.env.DATABASE_URL_OWNER).toBe(ownerDatabaseUrl);
   });
 
+  it("refuses a lane that is set but empty", () => {
+    vi.stubEnv("TEST_DB_LANE", "");
+
+    expect(() => loadTestEnv()).toThrow(/TEST_DB_LANE is set but empty/);
+  });
+
   it("refuses a lane that is not a branch slug", () => {
     vi.stubEnv("TEST_DB_LANE", "lane/D29");
 

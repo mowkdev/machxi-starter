@@ -49,7 +49,8 @@ export const assertTestDatabase = (url: string): void => {
 
 /**
  * `url` pointed at the lane's database — `machxi_test` becomes
- * `machxi_<lane>_test` — or `url` itself when no lane is set (ADR-0082 §3).
+ * `machxi_<lane>_test` — or `url` itself when `lane` is `undefined`
+ * (ADR-0082 §3). A lane that is set but empty is refused.
  *
  * The suffix guard is applied on **both sides**: the URL the lane is derived
  * from must already name a `_test` database, so a lane can never turn a
@@ -62,7 +63,17 @@ export const laneDatabaseUrl = (
   url: string,
   lane: string | undefined,
 ): string => {
-  if (lane === undefined || lane.trim() === "") return url;
+  if (lane === undefined) return url;
+
+  // Set but empty is refused, not read as unset: it is what
+  // `export TEST_DB_LANE=$(pnpm --silent db:lane)` leaves behind when
+  // `db:lane` fails, and reading it as `machxi_test` would put the lane back
+  // on the one database this rule exists to take it off.
+  if (lane.trim() === "") {
+    throw new Error(
+      "TEST_DB_LANE is set but empty; re-run `export TEST_DB_LANE=$(pnpm --silent db:lane)` or unset it (ADR-0082 §3).",
+    );
+  }
 
   assertTestDatabase(url);
 

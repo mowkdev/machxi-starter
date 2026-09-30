@@ -130,6 +130,8 @@
       "env": [
         "DATABASE_URL",
         "DATABASE_URL_OWNER",
+        "DATABASE_URL_TEST_OWNER",
+        "TEST_DB_LANE",
         "DB_*",
         "ARGON2_*",
         "SEED_SUPER_ADMIN_*"

@@ -43,13 +43,14 @@ const read = (key: string): string => {
  * the branch's slug as `pnpm db:lane` prints it. Applied **after** the file
  * loads — the file names the family, the shell names the member — and never
  * written back to the `_TEST` variables, so nothing downstream can stack the
- * lane twice. `laneDatabaseUrl` keeps the `_test` suffix guard on both sides.
+ * lane twice. `laneDatabaseUrl` keeps the `_test` suffix guard on both sides,
+ * and refuses a lane that is set but empty rather than reading it as unset.
  *
  * `TEST_DB_LANE` is deliberately absent from `.env.test`: the `override: true`
  * load below would otherwise pin every lane to one database.
  */
 const readTestUrl = (key: string): string =>
-  laneDatabaseUrl(read(key), process.env.TEST_DB_LANE?.trim());
+  laneDatabaseUrl(read(key), process.env.TEST_DB_LANE);
 
 let loaded = false;
 

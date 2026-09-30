@@ -14,6 +14,7 @@
 // database created here is on the host the harness will connect to.
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -34,10 +35,21 @@ const TEST_SUFFIX = "_test";
  */
 export const MAX_SLUG_LENGTH = 40;
 
+/** How many hex characters of the branch's hash end a truncated slug. */
+const HASH_LENGTH = 6;
+
+/** The longest name Postgres keeps; a longer one is truncated silently. */
+export const MAX_DATABASE_NAME_BYTES = 63;
+
 /**
  * The lane's slug for a branch name: `lane/` dropped, lower-cased, every run
- * of anything but letters and digits one hyphen, trimmed, capped. `main` is
- * refused — its test database is `machxi_test` — and so is no branch at all.
+ * of anything but letters and digits one hyphen, trimmed. A slug longer than
+ * the cap keeps its head and ends in a hash of the whole branch name, so two
+ * branches that differ only past the cut — `…-v1` and `…-v2`, or a cloud
+ * branch's random suffix — never share a database; a slug that fits carries
+ * no hash, so `lane/D29` is `d29`. `main` is refused — its test database is
+ * `machxi_test` — and so are `lane/main`, which would slug to it, and no
+ * branch at all.
  */
 export function slugBranch(branch) {
   const name = branch.trim();
@@ -54,21 +66,35 @@ export function slugBranch(branch) {
     );
   }
 
-  const slug = name
+  const full = name
     .replace(/^lane\//i, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, MAX_SLUG_LENGTH)
-    .replace(/-+$/, "");
+    .replace(/^-+|-+$/g, "");
 
-  if (slug === "") {
+  if (full === "") {
     throw new Error(
       `db:lane: the branch ${JSON.stringify(name)} has no letter or digit to name a lane by (ADR-0082 §3).`,
     );
   }
 
-  return slug;
+  if (full === "main") {
+    throw new Error(
+      `db:lane: the branch ${JSON.stringify(name)} slugs to main, which has no lane database — its integration tier runs on machxi_test (ADR-0082 §3).`,
+    );
+  }
+
+  if (full.length <= MAX_SLUG_LENGTH) return full;
+
+  const hash = createHash("sha1")
+    .update(name)
+    .digest("hex")
+    .slice(0, HASH_LENGTH);
+  const head = full
+    .slice(0, MAX_SLUG_LENGTH - HASH_LENGTH - 1)
+    .replace(/-+$/, "");
+
+  return `${head}-${hash}`;
 }
 
 /** `machxi_test` → `machxi_<slug>_test`, the rule the harness applies. */
@@ -79,7 +105,17 @@ export function laneDatabaseName(testDatabase, slug) {
     );
   }
 
-  return `${testDatabase.slice(0, -TEST_SUFFIX.length)}_${slug}${TEST_SUFFIX}`;
+  const name = `${testDatabase.slice(0, -TEST_SUFFIX.length)}_${slug}${TEST_SUFFIX}`;
+
+  // Postgres would keep the first 63 bytes and create a database whose name
+  // no longer ends in `_test` — debris the harness then refuses to use.
+  if (Buffer.byteLength(name) > MAX_DATABASE_NAME_BYTES) {
+    throw new Error(
+      `db:lane: the lane database "${name}" is longer than the ${MAX_DATABASE_NAME_BYTES} bytes Postgres keeps (ADR-0082 §3).`,
+    );
+  }
+
+  return name;
 }
 
 const databaseOf = (url) =>

@@ -4,7 +4,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { laneDatabaseName, MAX_SLUG_LENGTH, slugBranch } from "./db-lane.mjs";
+import {
+  laneDatabaseName,
+  MAX_DATABASE_NAME_BYTES,
+  MAX_SLUG_LENGTH,
+  slugBranch,
+} from "./db-lane.mjs";
 
 describe("slugBranch", () => {
   it("lane/D29 slugs to d29", () => {
@@ -34,10 +39,34 @@ describe("slugBranch", () => {
     assert.equal(slugBranch("Feature//Foo__Bar."), "feature-foo-bar");
   });
 
-  it("is capped without ending on a hyphen", () => {
-    const slug = slugBranch(`${"a".repeat(MAX_SLUG_LENGTH - 1)}-bcd`);
+  it("lane/main is refused", () => {
+    assert.throws(() => slugBranch("lane/main"), /slugs to main/);
+  });
 
-    assert.equal(slug, "a".repeat(MAX_SLUG_LENGTH - 1));
+  it("a slug that fits carries no hash", () => {
+    const branch = "a".repeat(MAX_SLUG_LENGTH);
+
+    assert.equal(slugBranch(branch), branch);
+  });
+
+  it("truncated slugs of branches that differ past the cut differ", () => {
+    const v1 = slugBranch("spike/d29-row-level-security-for-organizations-v1");
+    const v2 = slugBranch("spike/d29-row-level-security-for-organizations-v2");
+
+    assert.notEqual(v1, v2);
+    for (const slug of [v1, v2]) {
+      assert.ok(slug.length <= MAX_SLUG_LENGTH, slug);
+      assert.match(slug, /^spike-d29-row-level-security-for-[0-9a-f]{6}$/);
+    }
+  });
+
+  it("a truncated slug ends in the hash, with one hyphen before it", () => {
+    const slug = slugBranch(
+      `${"a".repeat(MAX_SLUG_LENGTH - 8)}-${"b".repeat(20)}`,
+    );
+
+    assert.match(slug, /^a+-[0-9a-f]{6}$/);
+    assert.ok(slug.length <= MAX_SLUG_LENGTH);
   });
 
   it("is stable when applied to its own output", () => {
@@ -50,6 +79,21 @@ describe("slugBranch", () => {
 describe("laneDatabaseName", () => {
   it("puts the lane between the name and the _test suffix", () => {
     assert.equal(laneDatabaseName("machxi_test", "d29"), "machxi_d29_test");
+  });
+
+  it("refuses a name longer than Postgres keeps", () => {
+    const base = `${"x".repeat(MAX_DATABASE_NAME_BYTES - MAX_SLUG_LENGTH - 5)}_test`;
+
+    assert.throws(
+      () => laneDatabaseName(base, "a".repeat(MAX_SLUG_LENGTH)),
+      /longer than the 63 bytes/,
+    );
+    assert.equal(
+      Buffer.byteLength(
+        laneDatabaseName("machxi_test", "a".repeat(MAX_SLUG_LENGTH)),
+      ),
+      MAX_SLUG_LENGTH + 12,
+    );
   });
 
   it("refuses a base that is not a test database", () => {

@@ -233,7 +233,13 @@ export const readTestOwnerDatabaseUrl = (): string =>
  * Tooling-only, like the URLs it rewrites; declared on `test` and `test:int`
  * in `turbo.json`.
  */
-export const readTestDbLane = (): string | undefined => read("TEST_DB_LANE");
+export const readTestDbLane = (): string | undefined => {
+  loadEnvFile();
+
+  // Raw, not through `read`, which turns `""` into unset: an empty lane is
+  // `laneDatabaseUrl`'s to refuse, never to read as `machxi_test`.
+  return process.env.TEST_DB_LANE;
+};
 
 /**
  * `NODE_ENV`, with an unset value read as `development` (ADR-0075 §4).
