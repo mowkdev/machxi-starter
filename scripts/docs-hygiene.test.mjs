@@ -278,6 +278,34 @@ test("every workflow action is pinned to a commit digest", async () => {
   assert.deepEqual(offenders, []);
 });
 
+test("every checkout step sets persist-credentials: false", async () => {
+  // No workflow here pushes, so a checkout that persisted `GITHUB_TOKEN` would
+  // only hand it to every install and test script that runs after it (D36.4's
+  // review). The step is read up to the next `- ` item at its own indent.
+  const dir = path.join(repoRoot, ".github", "workflows");
+  const files = (await readdir(dir)).filter((f) => /[.]ya?ml$/.test(f));
+  const offenders = [];
+  let checkouts = 0;
+  for (const file of files) {
+    const lines = (await readFile(path.join(dir, file), "utf8")).split(/\r?\n/);
+    lines.forEach((line, index) => {
+      const m = /^(\s*)-\s*uses:\s*actions\/checkout@/.exec(line);
+      if (!m) return;
+      checkouts += 1;
+      const body = [];
+      for (const next of lines.slice(index + 1)) {
+        const indent = /^(\s*)\S/.exec(next)?.[1].length;
+        if (indent !== undefined && indent <= m[1].length) break;
+        body.push(next);
+      }
+      if (!body.some((l) => /^\s*persist-credentials:\s*false\s*$/.test(l)))
+        offenders.push(`.github/workflows/${file}:${index + 1}`);
+    });
+  }
+  assert.ok(checkouts > 0, "no checkout step found");
+  assert.deepEqual(offenders, []);
+});
+
 test("a gate.yml run on main is grouped by commit", async () => {
   // A run on `main` must never share a group with another run on `main`: a
   // group holds one running and one pending run, and a third push replaces

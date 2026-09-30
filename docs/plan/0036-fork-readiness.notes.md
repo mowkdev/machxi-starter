@@ -337,3 +337,35 @@ step:check ✓
 ```
 
 After the check, only this note was written. `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+### D36.4 — the review, and its findings' fates
+
+The orchestrating session ran the one review: `security-reviewer` over `05910953`, in a fresh context. It found nothing above Low. It checked every pin against GitHub; the `pnpm/action-setup` pin is correctly the commit the annotated tag points to. `permissions` are unchanged, the grouping is sound, and nothing probes `[::1]`. The fix is in `fix(ci): D36.4 follow-up — the review's findings`.
+
+1. **[Low, pre-existing] `actions/checkout` persisted `GITHUB_TOKEN` for the rest of each job. Fixed.** The token was left in the job for the install and test scripts that run after the checkout, in both `gate.yml` and `e2e.yml`. Under `contents: read` it is read-only. Both checkout steps now set `persist-credentials: false`; neither workflow pushes. The new hygiene case "every checkout step sets persist-credentials: false" in `scripts/docs-hygiene.test.mjs` reads every workflow's checkout steps. It fails against the old `e2e.yml`.
+
+**Carried, for a future record:**
+
+- **Checking the pin comments against their commits.** Each `# vX.Y.Z` comment could be re-resolved against its SHA automatically. Today only the digest's shape is checked, and the comment is trusted.
+- **A fork that enables IPv6 re-adds the listener.** Such a fork adds `listen [::]:8080;` back to both SPA `nginx.conf` files. D36.5's fork-day checklist will say so.
+
+**Still pending the next run's read.** The done-when "no Node 20 deprecation annotation" is read from the pull request's `gate.yml` run on `05910953`, run 36789446009. That run was in progress when this follow-up was built. The next step reads it, or the run on this follow-up's commit, which supersedes it.
+
+One thing to know when reading those runs: run 36788520486 on `3fcd424d` was not cancelled by the push of `05910953`. The group name changed with that commit, from `gate-<ref>` to `gate-pr-<ref>`, so the two runs were in different groups. This happens once, at the change. Later pushes share `gate-pr-<ref>` and cancel as intended.
+
+**Step check (the follow-up).**
+
+`TEST_DB_LANE` exported; `pnpm step:check`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/skills/bootstrap/SKILL.md changed)
+  ran      format:check
+step:check ✓
+```
+
+The integration tiers ran `@repo/db` 128 tests and `api` 850. After the check, only this note was written. `pnpm test:scripts`, `pnpm docs:check` and `pnpm format:check` were re-run over it.
