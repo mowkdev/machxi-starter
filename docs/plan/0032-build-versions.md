@@ -99,3 +99,20 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm docs:check` clean;
   - `pnpm test:e2e` green in both apps;
   - the gate green.
+
+- [ ] **5. The footer shows the label alone.** Added 2026-09-30 after `D32.4`, on the operator's decision: the SPA footer shows the release label and no commit. The commit remains the API's `/health` fact alone. ADR-0081 §3 is amended in place, labelled, while D32 is in progress, and §2 is amended where it has the SPAs taking `GIT_SHA`.
+  - Both sidebar footers render the label alone. The `{{version}} · {{commit}}` string leaves both catalogues in `en` and `lv`.
+  - The SPAs no longer take `GIT_SHA` anywhere. Each `app-version.ts` installs a define for the label only, each app's `turbo.json` `build` `env` drops it, each SPA Dockerfile drops its `ARG`, and compose passes it only to the API's build.
+  - `docs/deploy.md`, `docker/prod/.env.example`, the SPA `.env.example` comments, `docs/forking.md` and 0081's digest line say the commit is the API's alone.
+
+  **ADRs:** 0081 §2–§3, 0054 §5 as carried by 0081.
+  **Done when:**
+  - `pnpm test:unit --filter admin` and `pnpm test:unit --filter customer` green, each with cases "the footer shows the release label alone" and "the footer shows dev when unset", and each `app-version.test.ts` asserting no commit define;
+  - `APP_VERSION=9.9.9 GIT_SHA=0123456789abcdef pnpm turbo run build --filter admin --dry=json` lists `APP_VERSION` and not `GIT_SHA` among `admin#build`'s environment variables;
+  - `docker compose -f docker/prod/compose.yaml config` renders `GIT_SHA` in the `migrate` and `api` images' build arguments only;
+  - `pnpm test:e2e` green in the admin, with the footer case "the sidebar footer shows the build's version";
+  - `pnpm i18n:check` green;
+  - `pnpm size` green;
+  - `pnpm rules:digest` writes, then reports nothing stale;
+  - `pnpm docs:check` clean;
+  - the gate green.
