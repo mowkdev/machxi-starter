@@ -132,3 +132,22 @@ It logged three Lows, **not fixed**, and routed them to `D35.2`, where they fit:
 No Critical, High or Medium findings. **One Low, not fixed, logged for the record.** The consume checks forbid only the stamp the branch never writes. At the database level an invitee could still stamp `accepted_at` on an invitation they had declined, or one that had expired, and a bearer an expired one. The repository's `pendingAt` predicate refuses both, and a membership still needs its organization placed. Row-level security here defends against a forgotten predicate (ADR-0083 §7), and tightening the checks to "pending" goes beyond what §3 decided. **An independent `security-reviewer` pass is still owed.** The plan's constraint requires it before the step merges, and the orchestrating session runs it.
 
 **Pending operator acceptance:** none for this step (no UI). The walk in definition-of-done item 6 exercises the invitation accept and decline on the dev stack at close-out.
+
+**Independent `security-reviewer` pass over `413998c` (2026-09-30).** It found **no Critical, High or Medium findings**. It confirmed:
+
+- `ALTER POLICY … WITH CHECK` replaces the check that would otherwise come from `USING`, so the `D35.2` amendment's conjunction is necessary and correct.
+- `CASCADE` on `DROP POLICY` is inert.
+- Nothing reads or places `app.tenant_unscoped` any more, and no production path lost a widening it needed.
+- The owner helpers cannot reach a production bundle.
+- The policy cases run as the application role.
+
+Three Lows, **routed to `D35.3`**:
+
+1. **The consume policies' `USING` does not require the row to be unended, which sharpens the builder's own Low.** Migration `0020` grants UPDATE on all three stamps, so a bearer's or an invitee's transaction could run `SET revoked_at = NULL, accepted_at = now()` on a revoked invitation. An invitee could also stamp `accepted_at` on one it declined, and nothing stops two stamps at once. The repository's `pendingAt` refuses all of this in the application. In the database it is un-revoking, against ADR-0083 §3's intent. The fix:
+   - add `accepted_at is null and declined_at is null and revoked_at is null` to both consume policies' `USING`, which does not affect reads;
+   - optionally add `expires_at > now()`;
+   - add a `num_nonnulls(accepted_at, declined_at, revoked_at) <= 1` check constraint.
+2. **The widening detector is syntactic and reads only the declared schema.** A hand-written policy, or `… OR true`, passes it. The fix: `schema.int.test.ts` asserts that the tenant-owned tables' `pg_policies` equal the declared set.
+3. **The invitee-revoke case lacks an in-transaction positive control.** The fix: a rolled-back `declinedAt` update in the same case, asserted to succeed.
+
+**Merged to `main` (2026-09-30).**
