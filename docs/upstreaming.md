@@ -24,7 +24,15 @@ A feature that fails either is fork-specific **until somebody does the work to m
 3. **Records first.** Where the feature decides something the corpus does not already decide, write the record and accept it at the head of the step that builds it. Where it diverges from an inherited decision, write the superseding record and state the delta — never edit the parent.
 4. **Build it with `/step`.** The fork's implementation is a reference to read, not a patch to apply: names, layering and tests follow the starter's own conventions, and the digests in [`rules/`](rules/) are what "the starter's conventions" currently means.
 5. **Ship it.** `/ship` runs the definition of done, regenerates the digests, tags `starter-D<n>` and writes the changelog entry.
-6. **Merge it back down.** In the fork, `git fetch starter && git merge starter/main`, then delete the fork's own implementation in favour of the upstream one — in one commit, so the fork's history says plainly which version it is on.
+6. **Merge it back down.** In the fork, run the starter merge exactly as [`forking.md`](forking.md) §5 states it — the drivers on the merge's own command line, then the removal of every journal file the merge brought ([ADR-0084](adr/0084-fork-readiness.md) §2). A plain `git merge starter/main` conflicts on the fork's ledger and silently unions the starter's changelog into the fork's.
+
+   ```bash
+   git fetch starter --tags
+   git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main
+   git diff --name-only --diff-filter=A ORIG_HEAD -- docs/plan | xargs -r git rm -qf
+   ```
+
+   Commit the merge as §5 says, then delete the fork's own implementation in favour of the upstream one — in one commit, so the fork's history says plainly which version it is on.
 
 ## What not to send
 

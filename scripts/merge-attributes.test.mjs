@@ -42,13 +42,17 @@ const starterMergeConfig = starterMerge
   : [];
 
 /**
- * The step after the starter merge, as `docs/forking.md` states it: every lane
- * file the merge added is removed (ADR-0082 §4). A lane file is a new file, and
- * a merge takes a file added on one side without consulting any driver.
+ * The step after the starter merge, as `docs/forking.md` states it: every
+ * journal file the merge brought under `docs/plan/` is removed (ADR-0084 §2, a
+ * delta on ADR-0082 §4). A merge takes a file added on one side without
+ * consulting any driver, and a file the fork deleted that the starter changed
+ * comes back as a modify/delete conflict; neither is in `ORIG_HEAD`, the
+ * fork's tree before the merge. `-f`, because a stopped merge has staged what
+ * it added.
  */
-const DROP_LANES =
-  /^git diff --name-only --diff-filter=A ORIG_HEAD -- '[^']+' \| xargs -r git rm -q$/m;
-const dropLanes = forking.match(DROP_LANES)?.[0];
+const DROP_JOURNAL =
+  /^git diff --name-only --diff-filter=A ORIG_HEAD -- docs\/plan \| xargs -r git rm -qf$/m;
+const dropJournal = forking.match(DROP_JOURNAL)?.[0];
 
 /** Git with no global or system config, and nothing but what a case passes. */
 const gitEnv = {
@@ -312,16 +316,16 @@ describe("merge attributes", () => {
 
   it("a starter merge adds the starter's lane file, which the documented step removes", () => {
     assert.ok(
-      dropLanes,
-      "docs/forking.md states no step that removes the lane files the starter merge adds",
+      dropJournal,
+      "docs/forking.md states no step that removes the journal files the starter merge brings",
     );
     const bootstrap = readFileSync(
       path.join(repoRoot, ".claude/skills/bootstrap/SKILL.md"),
       "utf8",
     );
     assert.ok(
-      bootstrap.includes(dropLanes),
-      `/bootstrap does not name \`${dropLanes}\``,
+      bootstrap.includes(dropJournal),
+      `/bootstrap does not name \`${dropJournal}\``,
     );
 
     const LANES_README = "docs/plan/lanes/README.md";
@@ -355,7 +359,7 @@ describe("merge attributes", () => {
     assert.equal(repo.read(LEDGER), forkLedger);
     assert.match(repo.git("ls-files", "docs/plan/lanes"), /D40\.md/);
 
-    execFileSync("sh", ["-c", dropLanes], { cwd: repo.dir, env: gitEnv });
+    execFileSync("sh", ["-c", dropJournal], { cwd: repo.dir, env: gitEnv });
     repo.git("commit", "--quiet", "-m", "drop the starter's open lanes");
 
     assert.deepEqual(
@@ -364,5 +368,63 @@ describe("merge attributes", () => {
     );
     assert.equal(repo.read("docs/plan/lanes/D1.md"), forkLane);
     assert.equal(repo.read("src/answer.ts"), "export const answer = 42;\n");
+  });
+
+  it("a conflicted starter merge's added lane file is removed by git rm -qf", () => {
+    assert.ok(dropJournal, "docs/forking.md states no journal removal");
+    const PLAN = "docs/plan/0001-first.md";
+    const LANES_README = "docs/plan/lanes/README.md";
+    const repo = repository();
+    repo.commit("the starter at the fork point", {
+      [LEDGER]: ledgerBase,
+      [PLAN]: "# D1 — First\n\n- [ ] **1. Build.**\n",
+      [LANES_README]: "# Lanes\n\nOne file per open lane.\n",
+    });
+    repo.git("checkout", "--quiet", "-b", "starter");
+    // A ship edits its plan, and the next lane opens: the modify/delete that
+    // stops the merge, and a file added beside it.
+    repo.commit("the starter ships D1 and opens D40", {
+      [PLAN]: "# D1 — First\n\n- [x] **1. Build.**\n",
+      "docs/plan/lanes/D40.md":
+        "# Lane D40\n\n- Deliverable: [D40](../0040-x.md)\n",
+      "docs/plan/0040-x.md": "# D40 — Forty\n",
+    });
+    repo.git("checkout", "--quiet", "main");
+    const forkLedger =
+      "# Deliverables\n\n| # | Title | Status |\n| --- | --- | --- |\n";
+    repo.git("rm", "--quiet", PLAN);
+    repo.commit("the fork resets its journal", { [LEDGER]: forkLedger });
+
+    const result = repo.merge(starterMergeConfig, "starter");
+
+    assert.notEqual(result.status, 0, "the merge did not stop");
+    assert.match(
+      result.stdout,
+      /CONFLICT \(modify\/delete\): docs\/plan\/0001-first\.md deleted in HEAD/,
+    );
+    // Without `-f`, `git rm` refuses the files the stopped merge staged.
+    const withoutForce = spawnSync(
+      "sh",
+      ["-c", dropJournal.replace(/ git rm -qf$/, " git rm -q")],
+      { cwd: repo.dir, env: gitEnv, encoding: "utf8" },
+    );
+    assert.notEqual(withoutForce.status, 0, "git rm -q removed staged files");
+    assert.match(withoutForce.stderr, /changes staged in the index/);
+
+    execFileSync("sh", ["-c", dropJournal], { cwd: repo.dir, env: gitEnv });
+    assert.equal(repo.git("ls-files", "--unmerged"), "");
+    repo.git("commit", "--quiet", "--no-edit");
+
+    assert.deepEqual(repo.git("ls-files", "docs/plan").trim().split("\n"), [
+      LEDGER,
+      LANES_README,
+    ]);
+    assert.equal(repo.read(LEDGER), forkLedger);
+    assert.equal(
+      repo.git("rev-list", "--parents", "-n", "1", "HEAD").trim().split(" ")
+        .length,
+      3,
+      "the removal is not in the merge's own commit",
+    );
   });
 });

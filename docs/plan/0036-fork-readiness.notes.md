@@ -125,3 +125,59 @@ step:check ✓
 - Integration: `@repo/db` 6 files / 128 tests and `api` 29 files / 847 tests. Every `db:migrate →` line is on `machxi_claude-nifty-planck-bnxu4s_test`.
 - The trigger is the root `package.json` (the `bootstrap` script), which the lane's diff carries from `D36.1`.
 - After the check, only this note was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+## D36.2 — The fork rehearsed; the starter merge removes every journal file it brings (2026-09-30)
+
+**Resumed after an interruption.** A first builder of this step was stopped by a container restart before it checked, reviewed or committed anything. Its uncommitted work was in the tree: eleven modified files and the untracked `scripts/fork-rehearsal.test.mjs`. This builder read all of it against the plan's step 2 and ADR-0084 §1–§2 and kept everything except one file:
+
+- **Reverted:** `.gitattributes`. The first builder had added the removal command to its header comment. Step 2 does not name the file, no test reads the comment, and the plan's constraints keep the attributes of 0082 §4 unchanged. The one statement of the commands is `docs/forking.md` §5, where the rehearsal reads them.
+- **Kept, although step 2 does not name it:** `docs/rules/api-and-data.md`. It is generated. With 0082 now `superseded by` 0084, `pnpm rules:digest` cites 0082 as "as carried by ADR-0084" in every rule that names it, in this digest as well as the process one. A re-run wrote 0 of 3 digests.
+- **Kept:** `docs/forking.md`, `docs/upstreaming.md`, `.claude/skills/bootstrap/SKILL.md`, `scripts/rules-digest.mjs` (the forking rule's text and its records), `scripts/merge-attributes.test.mjs`, ADR-0082's status line and head note, the ADR index rows for 0082 and 0084, and the new rehearsal test. Each was re-run or re-read here, not taken on trust.
+
+**The run read first.** `gate.yml` run 36781475822 on `d2f7d29a`, the lane's last pushed commit (D36.1's follow-up), concluded `success`. The one before it, 36780055856 on `9ae2af52`, was cancelled by that push.
+
+**Superseded at this step.** [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) moved to `superseded by` 0084 for §4's starter merge alone. The delta is on its status line, with a head note, and its body is untouched. The index row for 0082 carries the delta, and 0084's row gains its D36.2 entry. The topic table's forking row already named 0084. The forking rule in `scripts/rules-digest.mjs` now also cites 0084 and states the cleanup command.
+
+**Built.**
+
+- `docs/forking.md` §5:
+  - the command after the merge is `git diff --name-only --diff-filter=A ORIG_HEAD -- docs/plan | xargs -r git rm -qf`;
+  - the prose explains why: a file the starter added, or one the fork deleted that comes back as a modify/delete conflict, is absent from `ORIG_HEAD`, and `-f` is needed because a stopped merge has staged what it added;
+  - then commit, with `--no-edit` when the merge stopped;
+  - the `git log` line takes `starter-D<n>` rather than a fixed `starter-D13`;
+  - the table row for `docs/plan/` says what the merge brings is removed.
+- `docs/upstreaming.md` step 6 runs `git fetch starter --tags` and the same two commands, and says why a plain `git merge` is wrong.
+- `/bootstrap` names the same command, which `merge-attributes.test.mjs` asserts.
+- `scripts/fork-rehearsal.test.mjs` does ADR-0084 §1's rehearsal:
+  1. The tree as it stands (tracked and untracked, never ignored) is copied under `os.tmpdir()` and committed there as the starter.
+  2. The fork clones it and renames `origin` to `starter`. It runs `node scripts/bootstrap.mjs --prefix acme` and `node scripts/rename.mjs acme-fulfilment-platform` (24 characters, past the old slug cap), committing each.
+  3. Side by side, the fork runs `docs:check`, its own script tests, and Prettier's check over every file bootstrap and rename wrote. It then opens its first lane and runs `lanes.mjs` and `docs:check` again.
+  4. The starter ships. It edits the newest plan that has notes, and those notes. It opens D99 with a plan, notes and a lane file, adds a ledger row and a changelog entry, and adds a file outside the journal.
+  5. The fork runs every line of `docs/forking.md` §5's block that has no placeholder, read from the document, and commits the merge.
+  - Git runs with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`. Nothing is installed: the fork links this tree's root and workspace `node_modules` read-only. In a fork's own tree the ledger's prefix is not `starter`, so the suite skips. That is also why the fork's copy, run in stage 3, does not rehearse again.
+  - The suite takes 25–31 s: 30.7 s alone and 25.3 s inside `test:scripts`. `real 0m31.0s` for the file on its own.
+- `merge-attributes.test.mjs` reads the new command from `docs/forking.md`. Its new case, "a conflicted starter merge's added lane file is removed by git rm -qf", stops a merge on a modify/delete conflict and shows that `git rm -q` refuses the staged files. It then shows that the documented `-qf` leaves no unmerged path and only the fork's ledger and lanes README, with the removal inside the merge's commit.
+
+**Tests.** `fork-rehearsal.test.mjs`: the six cases the plan names, 6/6. `merge-attributes.test.mjs`: 8/8, including the new case. `test:scripts`: 154 pass, 0 fail. After the rehearsal, `git status` in this repository showed only this step's own changes.
+
+**Residual, for the review.** `//#test:scripts` is a root task, and its default inputs hash the root package's files only. The rehearsal also reads `apps/` and `packages/`, because rename rewrites them and Prettier checks them. So a local cached `test:scripts` can replay a green over a change confined to a workspace that would break the fork's `format:check`. CI runs with no cache and catches it. Widening the task's `inputs` is left to the review or a later step rather than made here unasked.
+
+**Step check.** `export TEST_DB_LANE=$(pnpm --silent db:lane)` printed "already there". Then `pnpm step:check`, never `--force`, in 4 m 9 s:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      format:check
+  skipped  size: no SPA is reached
+step:check ✓
+```
+
+- `check`: 39 tasks (5 cached), then `test:unit`'s 17 (17 cached), all successful.
+- Integration: `@repo/db` 128 tests and `api` 29 files / 847 tests. Every `db:migrate →` line is on `machxi_claude-nifty-planck-bnxu4s_test`.
+- After the check, only this note was written. `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+**Review.** **Owed.** This builder ran as a subagent with no Agent tool. By ADR-0082 §2 its own reading is not a review, and none is recorded here. The step is record-heavy and adds a test script, so `adr-reviewer` or `code-reviewer` fits. The orchestrating session runs the one review over this step's commit. Confirmed findings land as `fix(scripts,docs): D36.2 follow-up — the review's findings`, with their fates in this file.
+
+**Pending the operator.** Nothing new from this step. D36.1's items stand.
