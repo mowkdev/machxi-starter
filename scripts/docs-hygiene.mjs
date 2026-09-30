@@ -695,31 +695,38 @@ export const CLOSE_OUT_WITHDRAWN = "2026-09-30";
 
 /** `- [ ] **6. Close-out — the last one.**` — a step line and its title. */
 const STEP_LINE = /^- \[[ xX]\] \*\*(\d+)\.\s*(.*?)\*\*/;
-const CLOSE_OUT_TITLE = /\bclose[- ]?out\b/i;
+/**
+ * A title that is a close-out: it opens with the word, as `Close-out.` and
+ * `Close-out — the last one.` do. A title that only mentions one — a fork's
+ * "Shift close-out report" — builds; a step that is the checklist under
+ * another name is caught by its done-when.
+ */
+const CLOSE_OUT_TITLE = /^close[- ]?out\b/i;
 /** `**Done when:** the definition of done …` — a step that is the checklist. */
 const DONE_WHEN_DOD = /\*\*Done when:\*\*\s*the definition of done\b/i;
-/** `shipped 2026-09-21`, `scoped in full 2026-09-14` — a plan's own dates. */
-const PLAN_DATE =
-  /\b(?:shipped|scoped(?: in full)?)\*{0,2}\s+(\d{4}-\d{2}-\d{2})\b/g;
+/** `scoped in full 2026-09-14` — the plan's own scoping date. */
+const SCOPED_DATE = /\bscoped(?: in full)?\*{0,2}\s+(\d{4}-\d{2}-\d{2})\b/;
+/** `- Status: **shipped 2026-09-21**` — a shipped plan's date, leading its line. */
+const SHIPPED_DATE = /^- Status: \**shipped\s+(\d{4}-\d{2}-\d{2})\b/;
 
 /**
- * The date a plan's header gives it, or `null`: the earliest `scoped` or
- * `shipped` date above its first section. Other dates in a header — a row
- * inserted, a decision recorded — say nothing about when the plan was written.
+ * The date a plan gives itself, or `null`, read from its header's `- Status:`
+ * line alone: the `scoped` date `/scope` writes there, else the `shipped`
+ * date that leads a shipped plan's line. Any other date — another
+ * deliverable's ship cited in passing, a row inserted — says nothing about
+ * when this plan was written, so it can neither exempt a plan nor date one.
  */
 export function planDate(text) {
-  let earliest = null;
   for (const raw of text.split(/\r?\n/)) {
     if (raw.startsWith("## ")) break;
-    for (const m of raw.matchAll(PLAN_DATE)) {
-      if (earliest === null || m[1] < earliest) earliest = m[1];
-    }
+    if (!raw.startsWith("- Status:")) continue;
+    return raw.match(SCOPED_DATE)?.[1] ?? raw.match(SHIPPED_DATE)?.[1] ?? null;
   }
-  return earliest;
+  return null;
 }
 
 /**
- * A plan carries no close-out step (ADR-0082 §2): no step whose title names a
+ * A plan carries no close-out step (ADR-0082 §2): no step whose title is a
  * close-out, and none whose done-when is the definition of done, which
  * `/ship` runs. A plan dated on or before `CLOSE_OUT_WITHDRAWN` is exempt.
  */

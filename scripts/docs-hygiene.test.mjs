@@ -2450,6 +2450,17 @@ test("a plan with a close-out step is refused", () => {
     planWith("planned", [...buildStep, "- [ ] **2. Close-out.**"]),
   );
   assert.deepEqual(rules(undated.violations), ["close-out-step"]);
+
+  // A title that only mentions a close-out builds: a fork's shift report.
+  const report = checkCloseOut(
+    "p.md",
+    planWith(later, [
+      ...buildStep,
+      "- [ ] **2. Shift close-out report.** The report screen and its export.",
+      '      **Done when:** `shift-report.test.ts` case "it closes the shift" green.',
+    ]),
+  );
+  assert.deepEqual(report, { exempt: false, violations: [] });
 });
 
 test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by its date", async () => {
@@ -2476,6 +2487,32 @@ test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by
       ),
     ),
     "2026-10-02",
+  );
+  // Another deliverable's ship, cited in the status line, dates nothing: a
+  // later plan is not exempt by it, and its close-out step is refused.
+  const cited = planWith(
+    "planned — **scoped in full 2026-10-02 by `/scope`**, the day D34 shipped 2026-09-30",
+    [...buildStep, "- [ ] **2. Close-out.** Then the definition of done."],
+  );
+  assert.equal(planDate(cited), "2026-10-02");
+  assert.deepEqual(rules(checkCloseOut("p.md", cited).violations), [
+    "close-out-step",
+  ]);
+  const citedOnly = planWith("planned, like D34, which shipped 2026-09-30", [
+    ...buildStep,
+    "- [ ] **2. Close-out.**",
+  ]);
+  assert.equal(planDate(citedOnly), null);
+  assert.equal(checkCloseOut("p.md", citedOnly).exempt, false);
+  // Nor does a date on a header line other than the status line.
+  assert.equal(
+    planDate(
+      planWith("planned", []).replace(
+        "- Schema: no",
+        "- Schema: no, as D34 scoped 2026-09-30",
+      ),
+    ),
+    null,
   );
   // A date below the header is not the plan's either.
   assert.equal(

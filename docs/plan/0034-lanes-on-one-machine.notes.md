@@ -447,3 +447,45 @@ step:check ✓
 - Nothing is browser-only.
 
 **CI read after the push.** Run 91 on `20df2ee` (`D34.4`'s follow-up), `in_progress` when this step began, concluded `success`. Run 92 on this step's commit `b28fc19` concluded `success`, the step's proof by the plan. This session read both with the GitHub tools, not `gh`, which it does not have. The notes-only commit that records them triggers a run of its own, which the next step reads first.
+
+### D34.5 — the review, and its findings' fates
+
+**The one review** was run by the orchestrating session: `adr-reviewer` over `b28fc19`, in a fresh context. It found that the four skills agree with [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) §1–§2 and with each other, that no old-shape text is left, and that the records are clean. It reported five gaps in the skills and the close-out check. The builder checked each one against the skills and the code. All five were confirmed, and all five are fixed in the follow-up commit `fix(claude,scripts): D34.5 follow-up — the review's findings`.
+
+1. **[MAJOR] A conflicted pull request gets no CI run, and neither `/step` nor `/ship` handled it. Confirmed; fixed.**
+   - The problem: GitHub builds no merge ref, and so runs no `pull_request` workflow, while a pull request conflicts with `main`. `/step` would have found no run for the head and fallen into "cannot be read — build", and `/ship`'s wait would never end.
+   - `/step` gains a case for no run on the lane's last pushed commit. It reads the pull request's `mergeable`/`mergeStateStatus` (`gh pr view --json …`, or the GitHub tools' pull-request read). On `CONFLICTING` it merges `origin/main` in, regenerates the conflicted generated files (`pnpm lanes`, `pnpm rules:digest`), runs `pnpm step:check`, pushes the merge as its own commit, and reads again. Mergeable or `UNKNOWN` is a queued run, treated as still running.
+   - `/ship` step 10 gains the same case, since `main` can move after step 1. It also now waits on the lane's last pushed commit, not the ship commit.
+   - Step 12 takes the merge commit from the pull request (`gh pr view --json mergeCommit`, or the GitHub tools' read), not from `origin/main`, which may have moved. It confirms that the commit's second parent is the head the run proved green — the ship commit or a fix-forward after it — where it had said "the ship commit", which a fix-forward makes wrong.
+2. **[MAJOR] `/scope` in a cloud session left the lane branch without the scoping and opening commits. Confirmed; fixed.**
+   - A session's branch is cut before scoping, and only `lane/D<n>` was cut from the opening commit. The session branch is now brought to the opening commit before anything else (`git merge --ff-only origin/main`, or the local `main` holding the commits) and pushed. The first `/step` finds the plan, the lane file and the row.
+   - In the limited-session case, both the scoping and the opening commit become the lane branch's first commits and ride with the pull request, as D34's own opening did (ledger §How D34 opened). With another lane open, the session asks the operator to push both to `main`, since the numbers the scoping reserves would otherwise be reserved only on the branch.
+   - Step 6's refused-push sentence points at that case.
+3. **[MAJOR] A lane on a cloud session's branch cannot be continued or shipped from another cloud session. Confirmed; fixed.**
+   - `/step` and `/steps` each gain one sentence: such a lane continues only from a session given that branch, or from a local clone. `/steps` also no longer claims that a re-run anywhere picks up "exactly as if nothing had happened".
+   - `/ship` gains the branch check `/step` has, at its top, stopping with the same sentence.
+4. **[MINOR] The close-out check could be dodged, and it had a false positive. Confirmed; fixed.**
+   - Both were reproduced before the fix. A later plan whose header cited "the day D34 shipped 2026-09-30" read as exempt, and "Shift close-out report" was refused.
+   - `planDate` now reads the `- Status:` line alone: its `scoped` date, else the `shipped` date that leads a shipped plan's line. A title is a close-out only when it opens with the word (`^close[- ]?out\b`); the done-when rule catches the checklist under another name.
+   - All 28 plans are still exempt by their own dates, D34's step 6 among them.
+   - New assertions: "a plan with a close-out step is refused" gains the "Shift close-out report" title, which passes. "…exempt by its date" gains a status line citing another deliverable's ship, which neither dates nor exempts a later plan and whose close-out step is refused, and a date on a header line other than the status line, which is not read.
+   - Both tests fail against `b28fc19`'s `docs-hygiene.mjs` and pass against the fix.
+5. **[MINOR] `/ship` without `gh` could not merge the draft pull request. Confirmed; fixed.** Step 11 now says to mark it ready with `gh pr ready` or the GitHub tools' pull-request update with `draft: false`, because a draft cannot be merged.
+
+**Checks after the fix**, with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, never `--force`.
+
+- `node --test scripts/docs-hygiene.test.mjs`: 63 pass.
+- `pnpm docs:check`: clean, "close-out steps: none (28 plan(s) exempt by date)".
+- A first `pnpm step:check` over the fix went red on `format:check` alone, over this notes file, whose appended section had not been through prettier. It was formatted, and the step check re-run:
+
+```
+step:check against d518b5938943b56fafbb726ae37fa268a77b4efe
+  ran      check
+  ran      integration @repo/db (every file: apps/api/test/setup/env.test.ts changed): 6 file(s)
+  ran      integration api (every file: apps/api/test/setup/env.test.ts changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      format:check
+step:check ✓
+```
+
+`check`: 39 tasks (5 cached; `test:scripts` and `docs:check` inside `lint`), then `test:unit`'s 17 (cached), all successful. Integration: `@repo/db` 128 tests and `api` 847, all 23 `db:migrate →` lines on `machxi_claude-nifty-planck-bnxu4s_test`. `size`: 4 tasks cached. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
