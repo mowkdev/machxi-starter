@@ -109,6 +109,47 @@ describe("health endpoints", () => {
   });
 });
 
+/*
+ * ADR-0081 §3: `/health` answers the image's two build facts in ADR-0016's
+ * shape. The parse — blank is unset, unset is `dev` — is `config.test.ts`'s;
+ * these prove what reaches the wire from each outcome of it.
+ */
+describe("the build's version and commit", () => {
+  const harnessWith = (app: { version: string; commit?: string }) =>
+    createTestApp({
+      config: (config) => ({ ...config, app: { id: config.app.id, ...app } }),
+    });
+
+  it("answers a labelled build's version and its commit in full", async () => {
+    const harness = harnessWith({
+      version: "9.9.9",
+      commit: "0123456789abcdef",
+    });
+    try {
+      for (const path of ["/health", "/health/live"]) {
+        const response = await supertest(harness.app).get(path).expect(200);
+
+        expect(response.body.data.version).toBe("9.9.9");
+        expect(response.body.data.commit).toBe("0123456789abcdef");
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("answers dev and no commit field for a build nobody labelled", async () => {
+    const harness = harnessWith({ version: "dev" });
+    try {
+      const response = await supertest(harness.app).get("/health").expect(200);
+
+      expect(response.body.data.version).toBe("dev");
+      expect("commit" in response.body.data).toBe(false);
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
 describe("readiness with an unreachable database", () => {
   let harness: TestApp;
 

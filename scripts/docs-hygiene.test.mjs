@@ -1520,10 +1520,13 @@ test("every service in the reference deployment states its limits and a bounded 
   // mean something — every service carries both, and the log driver the
   // services share is bounded, since `json-file` alone grows until the disk
   // is full.
-  const compose = await readFile(
-    path.join(repoRoot, "docker/prod/compose.yaml"),
-    "utf8",
-  );
+  //
+  // Line endings are normalised first (`D32.1`): the patterns below are
+  // written against `\n`, and a Windows checkout under `core.autocrlf=true`
+  // has `\r\n`, which failed every service on a tree that was correct.
+  const compose = (
+    await readFile(path.join(repoRoot, "docker/prod/compose.yaml"), "utf8")
+  ).replace(/\r\n/g, "\n");
   const services = compose.slice(compose.search(/^services:\s*$/m));
   const end = services.search(/\n(?=\S)/);
   const body = end === -1 ? services : services.slice(0, end + 1);

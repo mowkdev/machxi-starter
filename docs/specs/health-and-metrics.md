@@ -18,6 +18,22 @@ Proved by: `apps/api/test/health.int.test.ts`, `apps/api/src/modules/health/__te
 - **WHEN** a client has exhausted the global limit on `/api`
 - **THEN** its probes still answer
 
+## Requirement: The version and the commit are the image's
+
+`version` in every `/health` view, liveness included, is the `APP_VERSION` the image was built with, and `commit` is its `GIT_SHA`, both stamped at image build and never read from a `package.json`. Unset or empty, `version` is `dev` and `commit` is left out of the body, never answered as an empty string. The shape of the response does not change.
+Records: [ADR-0081](../adr/0081-build-versions.md), [ADR-0016](../adr/0016-health-checks.md)
+Proved by: `apps/api/src/core/config/__tests__/config.test.ts`, `apps/api/test/health.int.test.ts`
+
+### Scenario: A build nobody labelled
+
+- **WHEN** the image was built with neither build argument, or with either one empty
+- **THEN** `/health` answers `version: "dev"` and carries no `commit` field
+
+### Scenario: A labelled build
+
+- **WHEN** the image was built with `APP_VERSION=9.9.9` and a `GIT_SHA`
+- **THEN** `/health` answers `version: "9.9.9"` and that commit in full
+
 ## Requirement: Metrics are behind a token, and required in production
 
 `GET /metrics` answers `200` with a Prometheus text body labelled by route pattern. With `METRICS_TOKEN` set it requires `Authorization: Bearer <token>`, compared in constant time, and answers `401 UNAUTHENTICATED` otherwise; in production an unset token refuses to start.

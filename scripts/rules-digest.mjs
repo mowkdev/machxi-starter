@@ -60,6 +60,11 @@ export const AREAS = [
         text: "In `apps/api/src` only `core/config` reads `process.env`; in `@repo/db` only `src/tooling/env.ts` does. A new variable means a zod schema entry, an `.env.example` line and — when a task reads it — a `turbo.json` `env` entry.",
       },
       {
+        topic: "Build versions",
+        records: ["0081", "0004", "0016"],
+        text: "Two facts name a build, under the same two names in every Dockerfile, in compose and in `turbo.json`: `APP_VERSION`, the release label, one value for the whole product and never parsed, and `GIT_SHA`, the commit. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged.",
+      },
+      {
         topic: "Loading env files",
         records: ["0075"],
         text: "An env file is loaded with Node's own loader (`--env-file`, `process.loadEnvFile`): the environment wins over the file, and a missing file is skipped. No file in the API image's `dist/` carries a loader package; a test harness may keep one as a dev dependency when it must override. Beside the application — harnesses, the browser tier, repository scripts — a process may read what it needs and forwards it unvalidated; a real configuration surface goes behind a schema. `@repo/db`'s CLI tooling may read an unset `NODE_ENV` as `development`; the API requires it.",

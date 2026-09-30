@@ -41,7 +41,7 @@ Recorded, not asked:
 
 Each step: implement, gate green, one bounded diff review, commit (ADR-0050). ADRs listed are what the builder reads first.
 
-- [ ] **1. Accept ADR-0081; the API's version.** Accept 0081 at the head. [ADR-0004](../adr/0004-configuration-and-environment.md)'s and [ADR-0016](../adr/0016-health-checks.md)'s status lines gain their deltas, and the index row, the topic table and the ledger's window section say so. Write 0081's digest lines in `scripts/rules-digest.mjs`.
+- [x] **1. Accept ADR-0081; the API's version.** Accept 0081 at the head. [ADR-0004](../adr/0004-configuration-and-environment.md)'s and [ADR-0016](../adr/0016-health-checks.md)'s status lines gain their deltas, and the index row, the topic table and the ledger's window section say so. Write 0081's digest lines in `scripts/rules-digest.mjs`.
   - `APP_VERSION` defaults to `dev`, and an empty `GIT_SHA` parses as absent.
   - `apps/api/Dockerfile` takes both as `ARG` and promotes them to `ENV` in the runtime stage.
   - The reference compose passes both as build arguments to the API image and removes them from the `api` service's environment.
