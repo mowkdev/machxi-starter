@@ -278,6 +278,81 @@ test("every workflow action is pinned to a commit digest", async () => {
   assert.deepEqual(offenders, []);
 });
 
+test("a gate.yml run on main is grouped by commit", async () => {
+  // A run on `main` must never share a group with another run on `main`: a
+  // group holds one running and one pending run, and a third push replaces
+  // the pending one, so its commit never gets the required check (ADR-0059
+  // §2). Pull requests keep one group per ref and cancel in progress. The two
+  // expressions are evaluated rather than matched as text, over the subset of
+  // the Actions expression language they may use: the three context values,
+  // `==`, `!=`, `&&`, `||` and `format`. Anything else refuses to evaluate.
+  const text = await readFile(
+    path.join(repoRoot, ".github", "workflows", "gate.yml"),
+    "utf8",
+  );
+  const block = /^concurrency:\n((?:[ \t]+\S.*\n)+)/m.exec(text);
+  assert.ok(block, "gate.yml has no top-level concurrency block");
+  const field = (name) => {
+    const m = new RegExp(`^\\s+${name}:\\s*(.+)$`, "m").exec(block[1]);
+    assert.ok(m, `gate.yml's concurrency has no ${name}`);
+    return m[1].trim();
+  };
+
+  const evaluate = (value, ctx) => {
+    const expr = /^\$\{\{(.*)\}\}$/.exec(value)?.[1];
+    if (expr === undefined) return value;
+    const js = expr
+      .replace(/github\.(event_name|ref|sha)\b/g, (_, k) => `ctx.${k}`)
+      .replace(/\bformat\(/g, "fmt(")
+      .replace(/([!=])=(?!=)/g, "$1==");
+    assert.match(
+      js,
+      /^(?:\s|ctx\.\w+|fmt\(|'[^']*'|[(),]|===|!==|&&|\|\|)*$/,
+      `an expression outside the evaluated subset: ${expr}`,
+    );
+    const fmt = (template, ...args) =>
+      template.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)]));
+    return new Function("ctx", "fmt", `return (${js});`)(ctx, fmt);
+  };
+
+  const push = (sha) => ({ event_name: "push", ref: "refs/heads/main", sha });
+  const pr = (sha) => ({
+    event_name: "pull_request",
+    ref: "refs/pull/4/merge",
+    sha,
+  });
+  const group = (ctx) => evaluate(field("group"), ctx);
+  const cancel = (ctx) => String(evaluate(field("cancel-in-progress"), ctx));
+
+  const a = "a".repeat(40);
+  const b = "b".repeat(40);
+  assert.notEqual(
+    group(push(a)),
+    group(push(b)),
+    "two commits on main share a group",
+  );
+  assert.ok(
+    String(group(push(a))).includes(a),
+    "main's group does not name its commit",
+  );
+  assert.equal(cancel(push(a)), "false", "a run on main can be cancelled");
+  assert.equal(
+    group(pr(a)),
+    group(pr(b)),
+    "a pull request's pushes do not share a group",
+  );
+  assert.equal(
+    cancel(pr(a)),
+    "true",
+    "a pull request's run is not cancelled by the next push",
+  );
+  assert.notEqual(
+    group(pr(a)),
+    group(push(a)),
+    "a pull request shares a group with main",
+  );
+});
+
 test("one Node major, stated in every place that states one", async () => {
   // `.nvmrc`, the root `engines`, both workflows and the three Dockerfiles are
   // the runtime floor written down seven times, and the failure is always the

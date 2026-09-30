@@ -279,3 +279,61 @@ step:check ✓
 ```
 
 The integration tiers ran `@repo/db` 128 tests and `api` 850. After the check, only this note was written. `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+## D36.4 — The carry-overs a fork should not inherit (2026-09-30)
+
+**The run read first.** `gate.yml` run 36788520486 on the lane's last pushed commit, `3fcd424d` (D36.3's follow-up), was `pending` when this step began. The step built without waiting; the next step reads it. Run 36787973122 on `b97b6b75` was still in progress, and it is superseded by that run.
+
+**What was built.**
+
+- **`gate.yml`'s concurrency.** A pull request's runs are grouped by ref as `gate-pr-<ref>`, and `cancel-in-progress` is on for them alone. A run on `main` is grouped by commit, as `gate-main-<sha>`, so no two runs on `main` share a group, and none is cancelled or dropped. The old single group for `main` kept one running and one pending run, and a third push replaced the pending one. The comment now says what the configuration does. The new hygiene case "a gate.yml run on main is grouped by commit" evaluates both expressions for a push and for a pull request. It covers the subset of the Actions expression language they use, and it refuses anything outside that subset. It fails against the old `gate-${{ github.ref }}`.
+- **The actions, to their current majors, digest-pinned, tag in the comment.** The GitHub tools in this session reach only this repository, so each tag and its commit came from `git ls-remote --tags` and from a depth-1 fetch of the tag. Each new tag's `action.yml` declares `runs.using: node24`.
+
+  | Action                                | Was                | Now                                                                            |
+  | ------------------------------------- | ------------------ | ------------------------------------------------------------------------------ |
+  | `actions/checkout`                    | `11d5960a…` v4.4.0 | `3d3c42e5aac5ba805825da76410c181273ba90b1` v7.0.1                              |
+  | `actions/setup-node`                  | `49933ea5…` v4.4.0 | `820762786026740c76f36085b0efc47a31fe5020` v7.0.0                              |
+  | `actions/cache`                       | `0057852b…` v4.3.0 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` v6.1.0                              |
+  | `actions/upload-artifact` (`e2e.yml`) | `ea165f8d…` v4.6.2 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` v7.0.1                              |
+  | `pnpm/action-setup`                   | `b906affc…` v4.3.0 | `ea17c68df8912ef543352723c149a84f56e3d413` v6.1.0 (the annotated tag's commit) |
+
+  Each new major's breaking changes, read from its README at the tag, were checked against how the two workflows use it:
+  - `checkout` v5–v7: node24, credentials moved to `$RUNNER_TEMP`, fork code refused under `pull_request_target` and `workflow_run`. Neither workflow uses those triggers.
+  - `setup-node` v5–v7: automatic caching when no `cache` input is given, then limited to npm; `always-auth` removed; ESM. Both workflows pass `cache: pnpm` explicitly and no `always-auth`.
+  - `cache` v5–v6: node24 and ESM. The key and restore-key semantics are unchanged.
+  - `upload-artifact` v5–v7: node24 and a new `archive` input, which defaults to `true`, the old zipped behaviour. `name`, `path`, `retention-days` and `if-no-files-found` are unchanged. `e2e.yml` uploads one artifact, `playwright-report`, from its one job, so the uniqueness rule is met.
+  - `pnpm/action-setup` v6: the same inputs. `version` is still optional beside `packageManager` (`pnpm@12.4.2`), and pnpm 12 runs from the plain package's native executable. `cache` still defaults to `false`, so `setup-node`'s `cache: pnpm` remains the one cache.
+
+- **Both SPA `nginx.conf` files listen on IPv4 alone.** The mechanism is dropping `listen [::]:8080;`. The line is fatal on a kernel without IPv6: `nginx -t` and nginx at start both fail with `socket() [::]:8080 failed (97: …)` (D29's notes). The stock image's entrypoint adds the IPv6 listener only when `/proc/net/if_inet6` exists, and only to its own default config, which this file replaces. Docker publishes the host port on both families and forwards to the container's IPv4 address, so the reference deployment loses nothing. The comment tells a fork on an IPv6-only container network to add the listener back. `scripts/images.test.mjs` is new. "neither SPA's nginx.conf requires an IPv6 socket" reads every `listen` with comments stripped and refuses a bracketed address or `ipv6only=`. It fails against the old admin conf. A second case pins the reader to a fixture. The docs-hygiene port-agreement case still reads one port.
+- **The flake.** "adopts the account's theme when the query resolves" waits for the probe with `findByTestId`, then retries the text, the `dark` class and the device write together under `waitFor`.
+
+**Amended in place, labelled (D36.4).** The plan's done-when said `--repeat 10`, and vitest 5.0.1 refuses that as an unknown option. The flag is `--repeats`. The amendment also says `scripts/images.test.mjs` was new in this step.
+
+**The repeat run.** `pnpm --filter admin exec vitest run settings-provider --repeats 10` (vitest 5.0.1): `Test Files 1 passed (1)`, `Tests 4 passed (4)`, 39.56s. Each of the file's four cases, the theme case among them, ran with ten repeats and none failed.
+
+**Pending.**
+
+- **The next step reads the Node 20 annotation.** The done-when's "no Node 20 deprecation annotation" is read from the pull request's `gate.yml` run on this commit.
+- **The IPv6-off image run is the operator's.** Docker is not usable in this container (`docker info` fails). Two runs are owed:
+  - `docker compose -f docker/prod/compose.yaml build admin customer`, as committed;
+  - the admin image run with IPv6 disabled (`--sysctl net.ipv6.conf.all.disable_ipv6=1`, or on an IPv6-less host), with `/healthz` answering.
+- **`e2e.yml` on the new pins** is read at its next nightly run.
+
+**Review: owed.** This builder had no Agent tool. The orchestrating session runs the one review over this commit (ADR-0082 §2); `security-reviewer` fits, because the step touches CI and the deployment images.
+
+**Step check.**
+
+`TEST_DB_LANE` exported; `pnpm step:check`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/skills/bootstrap/SKILL.md changed)
+  ran      format:check
+step:check ✓
+```
+
+After the check, only this note was written. `pnpm format:check` and `pnpm docs:check` were re-run over it.

@@ -146,11 +146,18 @@ describe("the theme as an account fact", () => {
       }),
     );
 
-    expect(await screen.findByTestId("theme")).toHaveTextContent("dark");
-    expect(document.documentElement).toHaveClass("dark");
-    // The device cache is written too, so the next first paint is right before
-    // any session exists to ask.
-    expect(window.localStorage.getItem("machxi.admin.theme")).toBe("dark");
+    // Under `waitFor`, not after `findByTestId` alone (D36.4): the probe
+    // mounts once the gate opens, and the account's theme can land a render
+    // after it, so the text, the class and the device write are retried
+    // together until all three agree rather than read on the first paint.
+    await screen.findByTestId("theme");
+    await waitFor(() => {
+      expect(screen.getByTestId("theme")).toHaveTextContent("dark");
+      expect(document.documentElement).toHaveClass("dark");
+      // The device cache is written too, so the next first paint is right
+      // before any session exists to ask.
+      expect(window.localStorage.getItem("machxi.admin.theme")).toBe("dark");
+    });
   });
 
   it("degrades to `not persisting` when the write is refused", async () => {

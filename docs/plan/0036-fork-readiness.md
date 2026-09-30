@@ -41,13 +41,14 @@ Each step: read the last push's run, implement, `pnpm step:check` green, one bou
 - [x] **3. The commit behind the metrics token.** `/health` answers `commit` only to a request carrying the configured metrics token (ADR-0084 §3). An unauthenticated caller gets `version` alone. [ADR-0081](../adr/0081-build-versions.md)'s status line gains its §3 delta. `docs/specs/health-and-metrics.md` states it, and the Postman collection's health request shows both calls.
       **ADRs:** 0084 §3, 0081 §3, 0016 as carried, 0013.
       **Done when:** `apps/api/test/health.int.test.ts` cases "an unauthenticated /health answers the version and no commit", "a /health carrying the metrics token answers the commit" and "a wrong token answers no commit and no error" green; `health-and-metrics.md`'s scenarios name those tests (`pnpm docs:check`); `pnpm step:check` green.
-- [ ] **4. The carry-overs a fork should not inherit.**
+- [x] **4. The carry-overs a fork should not inherit.**
   - `gate.yml` groups `main`'s runs by commit, so a queued run on `main` is never dropped, and its comment says so truly.
   - The actions still on the deprecated Node 20 runtime move to their current majors, digest-pinned with the tag in a comment.
   - Both SPA `nginx.conf` files start on a host without IPv6.
   - `apps/admin/src/app/__tests__/settings-provider.test.tsx`'s theme check retries under `waitFor`.
+  - **Amended 2026-09-30 (D36.4).** Vitest 5 spells the flag `--repeats` and refuses `--repeat` as an unknown option, so the done-when's command says `--repeats 10`. `scripts/images.test.mjs` did not exist; this step writes it.
     **ADRs:** 0073 §7 as carried, 0059 §1 and §2 as carried by 0082, 0078 §5.
-    **Done when:** `scripts/docs-hygiene.test.mjs` cases "a gate.yml run on main is grouped by commit" and "every workflow action is pinned to a commit digest" (existing) green; `scripts/images.test.mjs` case "neither SPA's nginx.conf requires an IPv6 socket" green; `apps/admin/src/app/__tests__/settings-provider.test.tsx` case "adopts the account's theme when the query resolves" green ten times in a row, `pnpm --filter admin exec vitest run settings-provider --repeat 10`, recorded in the notes; the pull request's `gate.yml` run green on the step's commit with no Node 20 deprecation annotation (recorded in the notes); `pnpm step:check` green.
+    **Done when:** `scripts/docs-hygiene.test.mjs` cases "a gate.yml run on main is grouped by commit" and "every workflow action is pinned to a commit digest" (existing) green; `scripts/images.test.mjs` case "neither SPA's nginx.conf requires an IPv6 socket" green; `apps/admin/src/app/__tests__/settings-provider.test.tsx` case "adopts the account's theme when the query resolves" green ten times in a row, `pnpm --filter admin exec vitest run settings-provider --repeats 10`, recorded in the notes; the pull request's `gate.yml` run green on the step's commit with no Node 20 deprecation annotation (recorded in the notes); `pnpm step:check` green.
 - [ ] **5. What a fork reads on day one.**
   - `docs/forking.md` opens with one fork-day checklist:
     - clone and `pnpm bootstrap`;
