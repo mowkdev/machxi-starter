@@ -99,7 +99,10 @@ export const rowLevelSecurityBypasses = (
  *
  * `MEMBER` rather than `USAGE`, in both places: Postgres honours an inherited
  * attribute or ownership, and a non-inheriting member is one `SET ROLE` away
- * from the same. A superuser is left out of the membership list because
+ * from the same. On PostgreSQL 16, `MEMBER` also counts a grant made
+ * `WITH INHERIT FALSE, SET FALSE`, which confers neither: that refusal is
+ * conservative, and accepted as such (`D35.4`), since the fix is a role with
+ * no such grant at all. A superuser is left out of the membership list because
  * `pg_has_role` answers true for it on every role and it is refused already.
  *
  * Ownership is counted **whatever the table's row-level-security flag**

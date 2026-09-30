@@ -41,6 +41,7 @@ The staff segment keeps ADR-0067 §3's rule: staff are above tenants, never insi
 - **A staff request places no principal setting**, so a staff read that forgets its organization returns nothing, as a member's does.
 - **Creating an organization** places the new organization before its owner's membership is written, as the user segment's paths already do.
 - **Cascades need no setting.** A staff deletion that removes memberships by a foreign key's cascade works without one, because referential actions are not subject to row-level security. **Amended 2026-09-30 (D35.1).** No staff route removes memberships this way today: `DELETE /admin/users/:id` soft-deletes the account (ADR-0028), a closed account keeps its team memberships (ADR-0067 §2), and `organizations.created_by` would refuse a hard delete of any account that created an organization. The rule is therefore held at the database — the application role, in a staff request's transaction that places nothing, hard-deletes an account and its memberships in two organizations go with it — so a future hard-delete path inherits it.
+- **A staff surface elsewhere names its organization.** **Amended 2026-09-30 (D35.4).** A future staff route over a tenant-owned table outside `/admin/organizations/:id` places the organization it names, as this guard does, or takes a record of its own. It never brings back a widening.
 
 ### 3. The consume policies check the row they leave
 
@@ -55,11 +56,18 @@ The refusal of ADR-0078 §4 as amended at `D29.7` gains a fifth reason: it refus
 
 **Amended 2026-09-30 (D35.3).** A view counts whether it reads the table directly or through another view, since an invoker view called from a definer view runs as the outer view's owner; a materialized view over a tenant-owned table is refused outright, since it stores what its owner could see. The same test holds that the tenant-owned tables carry exactly the policies the schema declares, so a policy written by hand in a migration is caught as well.
 
+**Amended 2026-09-30 (D35.4).** The same test refuses a third kind of object, a rewrite rule other than a view's own `_RETURN`: a rule's action runs with the rights of its table's owner, so a rule on any table could copy a tenant-owned table's rows past the policies. The policy set is compared on roles, `USING` and `WITH CHECK` as well as name, command and permissiveness, so a policy altered in place is caught too. The declared form is normalised by Postgres rather than pinned in a fixture: the test recreates each declared policy beside the held one, from the schema's own expressions, and compares the two deparsed forms.
+
 `docs/deploy.md` states both rules. The refusal stays a check at boot. A membership or ownership granted while the API runs is an operator's act, and deploy.md says the next restart is what catches it.
 
 ### 5. A committed database password is refused in production
 
 ADR-0078 §2's rule is that a committed value is refused in production. It reaches `DATABASE_URL`: in production, a URL whose password is one this repository commits is refused at startup, like a committed signing secret.
+
+**Amended 2026-09-30 (D35.4).** Two more cases are refused in production:
+
+- **A `DATABASE_URL` with no password.** postgres.js reads `PGPASSWORD` when the URL carries none, and the config schema does not declare that variable, so a committed password there would pass unseen. Refusing the password-less URL keeps the password where the check reads it, and declares no new variable. The cost is that a deployment keeps its password in the URL, not in `PGPASSWORD` or a peer-authenticated socket.
+- **`DATABASE_URL_OWNER`, on the same two tests.** The owner is bound by no policy, so its password matters more than the application role's. `@repo/db`'s tooling reader refuses it under `NODE_ENV=production`, which the migrate image sets. It keeps a mirrored list, since `@repo/db` may not import the API, and a test in each package reads the committed files.
 
 ### 6. The scope stays in request storage, and a test holds it there
 
