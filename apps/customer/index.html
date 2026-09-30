@@ -6,34 +6,7 @@
     <title>Account | machxi</title>
   </head>
   <body>
-    <!--
-      The boot indicator (D31.3, ADR-0080 §5): static markup, so the root is not
-      blank while the script loads, styled from src/app/styles.css and replaced
-      by the first render. No inline script or style (ADR-0074 §6).
-    -->
-    <div id="root">
-      <div
-        class="boot-indicator"
-        data-boot-indicator
-        role="status"
-        aria-label="Loading"
-      >
-        <svg
-          class="boot-indicator-spinner"
-          aria-hidden="true"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-        </svg>
-      </div>
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -12,7 +12,6 @@ import {
   ENTRY_SHARE_OF_JS,
   HEADROOM_PERCENT,
   UTILITY_BY_PACKAGE,
-  bootIndicatorViolations,
   check,
   chunkMeasurements,
   driftWarnings,
@@ -20,6 +19,7 @@ import {
   headroomViolations,
   initialAppChunks,
   inlinePageViolations,
+  inlineStyleViolations,
   maxCeiling,
   measure,
   missingUtilities,
@@ -205,17 +205,7 @@ const VITE_HEAD = [
   '<link rel="stylesheet" crossorigin href="/assets/index-E5f6.css">',
 ].join("\n");
 
-/** The root both apps' `index.html` carries since `D31.3`: the boot indicator. */
-const BOOT_ROOT = [
-  "<!-- The boot indicator. -->",
-  '<div id="root">',
-  '  <div class="boot-indicator" data-boot-indicator role="status" aria-label="Loading">',
-  '    <svg class="boot-indicator-spinner" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>',
-  "  </div>",
-  "</div>",
-].join("\n");
-
-const page = ({ head = "", body = "", root = BOOT_ROOT } = {}) =>
+const page = ({ head = "", body = "", root = '<div id="root"></div>' } = {}) =>
   `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />\n${VITE_HEAD}\n${head}</head>\n<body>\n${root}\n${body}</body>\n</html>\n`;
 
 /**
@@ -338,32 +328,14 @@ test("a built page with an inline script fails the link", async () => {
   );
 });
 
-test("the built page's root carries the boot indicator and no inline style", async () => {
-  // ADR-0080 §5: the root is not blank before the script runs, and the
-  // indicator is painted from the stylesheet.
-  assert.deepEqual(bootIndicatorViolations(page()), []);
+test("the built page carries no inline style", async () => {
+  // ADR-0074 §6, with ADR-0080 §5 as amended: the page is painted from its
+  // stylesheet, and a `style` attribute is the other road inline paint takes.
+  assert.deepEqual(inlineStyleViolations(page()), []);
 
   const cases = [
     [
-      page({ root: '<div id="root"></div>' }),
-      /does not open with the boot indicator/,
-    ],
-    [
-      page({ root: '<div id="root"><div class="boot-indicator"></div></div>' }),
-      /does not open with the boot indicator/,
-    ],
-    [
-      // A marker that is only a value somewhere is not the indicator.
-      page({
-        root: '<div id="root"><div title="data-boot-indicator"></div></div>',
-      }),
-      /does not open with the boot indicator/,
-    ],
-    [page({ root: "<main></main>" }), /no `<div id="root">`/],
-    [
-      page({
-        root: '<div id="root"><div data-boot-indicator style="opacity:0"></div></div>',
-      }),
+      page({ root: '<div id="root" style="opacity:0"></div>' }),
       /inline `style` attribute on <div>/,
     ],
     [
@@ -373,14 +345,14 @@ test("the built page's root carries the boot indicator and no inline style", asy
   ];
 
   for (const [html, pattern] of cases) {
-    const found = bootIndicatorViolations(html);
+    const found = inlineStyleViolations(html);
     assert.equal(found.length, 1, html);
     assert.match(found[0], pattern);
   }
 
   // Neither a commented-out attribute nor a value that reads like one is paint.
   assert.deepEqual(
-    bootIndicatorViolations(
+    inlineStyleViolations(
       page({
         body: '<!-- <p style="x"></p> -->\n<meta name="d" content="a style=b" />\n',
       }),
@@ -389,20 +361,22 @@ test("the built page's root carries the boot indicator and no inline style", asy
   );
 
   // Through the link itself.
-  await withApp({ html: page({ root: '<div id="root"></div>' }) }, (appDir) =>
-    assert.throws(
-      () => check(appDir),
-      /dist\/index\.html carries a root that does not open with the boot indicator[\s\S]*ADR-0080 §5/,
-    ),
+  await withApp(
+    { html: page({ body: '<p style="color:red">hi</p>\n' }) },
+    (appDir) =>
+      assert.throws(
+        () => check(appDir),
+        /dist\/index\.html carries an inline `style` attribute on <p>[\s\S]*ADR-0080 §5/,
+      ),
   );
 
-  // And both apps' own index.html pass the same rule as written.
+  // And both apps' own index.html pass the same rules as written.
   for (const app of ["admin", "customer"]) {
     const source = await readFile(
       path.join(repoRoot, "apps", app, "index.html"),
       "utf8",
     );
-    assert.deepEqual(bootIndicatorViolations(source), [], app);
+    assert.deepEqual(inlineStyleViolations(source), [], app);
     assert.deepEqual(inlinePageViolations(source), [], app);
   }
 });
