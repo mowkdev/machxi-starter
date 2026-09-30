@@ -4,21 +4,21 @@ import { describe, expect, it } from "vitest";
 import { renderApp } from "@/test/render";
 import { authenticatedAs } from "@/test/principals";
 
-import packageJson from "../../../package.json";
-
 /**
- * The sidebar's version footer (`D11.3`, ADR-0054 §5).
+ * The sidebar's version footer, unlabelled (ADR-0081 §1–§3, the delta on
+ * ADR-0054 §5; `D32.2`).
  *
  * **What is under test is the channel, not the string.** The value is a Vite
  * `define` — a textual substitution, invisible to the type checker's usual
  * reach and to every other test in this suite — installed by `vite.config.ts`
  * for the build and by `vitest.config.ts` for the runner, both from
- * `app-version.ts`. Two things can go wrong there and nothing else would say
- * so: the constant can be missing under one of the two configs, in which case
- * it renders as the literal `undefined`; and it can drift from the tracked
- * source it claims to come from. So the expectation is built by reading
- * `package.json` here, which is the only way this file can assert
- * *provenance* rather than repeat a number.
+ * `app-version.ts`. The runner's is built from nothing set, which is every
+ * local build's state, so this case sees the real substitution with no mock
+ * between it and the footer: a missing `define` renders the literal
+ * `undefined`, and a label the catalogue decorates renders `vdev`.
+ *
+ * The labelled build is `version-footer-labelled.test.tsx`, which has to
+ * replace the configuration door to get a label at all.
  *
  * Through `renderApp` rather than by rendering `AppSidebar`, because the claim
  * includes where the string hangs: the footer is a region `D8.5` deliberately
@@ -27,7 +27,7 @@ import packageJson from "../../../package.json";
  */
 
 describe("the sidebar's version footer", () => {
-  it("renders the version from apps/admin/package.json", async () => {
+  it("the footer shows dev and no commit when unset", async () => {
     renderApp({ initialPath: "/", store: authenticatedAs() });
 
     /*
@@ -38,13 +38,11 @@ describe("the sidebar's version footer", () => {
 
     const footer = document.querySelector('[data-slot="sidebar-footer"]');
 
-    expect(footer).toHaveTextContent(`v${packageJson.version}`);
     /*
-     * Not the literal word — the failure a missing `define` produces. A
-     * `toHaveTextContent` on the version alone would pass against
-     * "vundefined" for a version of `undefined`, and would keep passing for
-     * every version that is a prefix of another.
+     * Exactly the word, which is three claims at once: the label is `dev`
+     * rather than a manifest's `0.0.0`, nothing decorates it (`vdev`), and no
+     * separator or commit follows it.
      */
-    expect(footer?.textContent).not.toContain("undefined");
+    expect(footer?.textContent).toBe("dev");
   });
 });

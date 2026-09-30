@@ -148,22 +148,30 @@ export const API_SEGMENT = "admin" as const;
 export const DEVICE_KEY_PREFIX = `${config.VITE_APP_ID}.${API_SEGMENT}`;
 
 /**
- * The build's version, substituted at compile time (ADR-0054 §5, `D11.3`).
+ * The build the sidebar footer names, substituted at compile time (ADR-0081
+ * §1–§3, the delta on ADR-0054 §5; `D32.2`).
  *
- * **Not part of `config` above, and not in the schema, because it is not
- * environment.** `import.meta.env` is configuration a deployment sets; this is
- * a literal Vite splices into the source from `apps/admin/package.json`,
- * installed as a `define` by both `vite.config.ts` and `vitest.config.ts` (see
- * `app-version.ts` for why it is a tracked file rather than a variable or a
- * git SHA). Putting it in the zod object would claim a deployment could change
- * it, and would make an absent `.env` fail a build that has everything it
- * needs.
+ * `APP_VERSION` is the release label the image was built with, or `dev`;
+ * `GIT_SHA` is the commit it was built from, or `undefined` when the build
+ * named none. Both come from the build's own environment under those two
+ * names, through the `define` `vite.config.ts` and `vitest.config.ts` install
+ * from `app-version.ts`; no `package.json` is read.
  *
- * The `declare` is the constant's only type: `define` substitutes text, so
- * nothing exists at runtime for a module to import. It is declared here — the
- * app's one configuration door — so that no component reaches for a bare
- * global.
+ * **Not part of `config` above, and not in the schema.** `import.meta.env`
+ * is the `VITE_*` configuration a deployment sets per environment; these two
+ * are facts about the build, one pair for the whole product, and a
+ * `VITE_`-named twin would be a second name for each (ADR-0081 §2). Putting
+ * them in the zod object would also make an absent `.env` fail a build that
+ * has everything it needs.
+ *
+ * The `declare`s are the constants' only types: `define` substitutes text,
+ * so nothing exists at runtime for a module to import. They are declared here
+ * — the app's one configuration door — so that no component reaches for a
+ * bare global.
  */
 declare const __APP_VERSION__: string;
+declare const __GIT_SHA__: string;
 
 export const APP_VERSION: string = __APP_VERSION__;
+
+export const GIT_SHA: string | undefined = __GIT_SHA__ || undefined;

@@ -11,7 +11,7 @@ import { useSignOut } from "@/features/auth";
 import { TEAM_ROUTES } from "@/widgets/organization-switcher";
 
 import { useSession } from "@/shared/api/context";
-import { APP_VERSION } from "@/shared/config";
+import { APP_VERSION, GIT_SHA } from "@/shared/config";
 import { useT } from "@/shared/i18n";
 import {
   Button,
@@ -380,10 +380,13 @@ export const AppSidebar = () => {
        *
        * 48px, mono, right-aligned, `--muted-foreground`: it is a fact to look
        * up when reporting a problem, not something to read on the way past.
-       * `APP_VERSION` is substituted at build time from
-       * `apps/customer/package.json` — see `shared/config` and
-       * `app-version.ts`, which is where the "never an env var, never a git
-       * SHA" argument lives.
+       *
+       * **The build, not a manifest** (ADR-0081 §3): the release label the
+       * image was built with, and the first seven characters of its commit
+       * when it has one — `dev` alone for a build nobody labelled. Both are
+       * substituted at build time — see `shared/config` and `app-version.ts`.
+       * The label is shown as given, with no `v` in front: its scheme is the
+       * releasing repository's, and a tag-derived label already carries one.
        *
        * Hidden when the rail is collapsed rather than truncated into it: a
        * 3rem column cannot hold a version string, and the two characters that
@@ -391,7 +394,12 @@ export const AppSidebar = () => {
        */}
       <SidebarFooter className="h-12 justify-center border-t border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:hidden">
         <span className="truncate text-right font-mono text-xs text-muted-foreground">
-          {t("brand.version", { version: APP_VERSION })}
+          {GIT_SHA
+            ? t("brand.versionWithCommit", {
+                version: APP_VERSION,
+                commit: GIT_SHA.slice(0, 7),
+              })
+            : t("brand.version", { version: APP_VERSION })}
         </span>
       </SidebarFooter>
 

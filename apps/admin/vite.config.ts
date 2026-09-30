@@ -99,11 +99,12 @@ export default defineConfig({
     tailwindcss(),
   ],
   /*
-   * The sidebar footer's version (ADR-0054 §5, `D11.3`). See `app-version.ts`
-   * for why it is a tracked file rather than an env var or a git SHA, and why
-   * `vitest.config.ts` installs the same object.
+   * The sidebar footer's build: the release label and the commit the image
+   * was built with (ADR-0081 §2, `D32.2`). See `app-version.ts` for why the
+   * build's environment rather than `package.json`, and why
+   * `vitest.config.ts` installs the same object with nothing set.
    */
-  define: versionDefine,
+  define: versionDefine(process.env),
   build: {
     /*
      * **Emitted, and not referenced from the bundle** (ADR-0062 §4). A minified

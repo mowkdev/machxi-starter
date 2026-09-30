@@ -27,8 +27,14 @@ export default mergeConfig(
      * (`D11.3`). Vitest reads this file and not that one, so a constant
      * declared only there is `undefined` under the runner — and the footer's
      * test would be asserting a global the suite never had.
+     *
+     * **Built from nothing set, not from `process.env`** (`D32.2`), for the
+     * reason `env` below pins `VITE_API_URL`: a label read from the shell
+     * would be invisible to Turbo's hash for this task and would move what
+     * the footer's suite asserts. Unset is `dev` and no commit, which is
+     * what every local build shows.
      */
-    define: versionDefine,
+    define: versionDefine({}),
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),

@@ -337,6 +337,11 @@ export const AREAS = [
         text: "Packages stay source-only and Vite consumes `src`; project references add a declarations-only build for type-checking, emitted where nothing resolves to it at runtime. Vendor groups are explicit chunks, sourcemaps are hidden, and each SPA's budget carries per-chunk ceilings beside its totals.",
       },
       {
+        topic: "The build's version",
+        records: ["0081", "0054"],
+        text: "The sidebar footer of both SPAs shows the release label and, when there is one, the commit's first seven characters — `dev` alone when unset, the label as given. Both are `APP_VERSION` and `GIT_SHA` from the build's environment, substituted through the `define` each `app-version.ts` builds, and declared in each app's `turbo.json` `build` `env`, so a cached build cannot show another build's version; each SPA image takes them as build arguments. No `package.json` `version` is read, there is no `VITE_`-named twin and no runtime fetch, and the unit suites build the `define` from nothing set.",
+      },
+      {
         topic: "Budget headroom",
         records: ["0073"],
         text: "Every ceiling in a `size-budget.json` is at most 15% over its committed baseline, enforced by `scripts/size.mjs`, and a diff that raises a ceiling re-measures its baseline, so a raise always shows both numbers; a measurement more than ten percent over its baseline is reported beside the table and never fails the link. The entry stays lean by declaration rather than by a raise: a rendering package the composition root imports by barrel declares `sideEffects: false` when nothing in it acts on import.",
