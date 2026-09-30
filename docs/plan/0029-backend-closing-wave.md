@@ -51,10 +51,14 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
 - [x] **6. Close-out.** `SEC-01`, `SEC-07`, `DB-01`, `CI-05`, `CI-10` and `CI-11` carry their fates in both reviews; the index's planned entry on secret management says what was taken and what was declined; the skills and rule files describe the runner; the digests regenerated; then the definition of done.
       **ADRs:** 0078, 0065 as carried.
       **Done when:** the definition of done below, every item.
+- [ ] **7. Row-level security, hardened.** Added 2026-09-30 on the operator's decision, after `D29.6`, from the Lows of the independent `security-reviewer` pass over `D29.4` (notes, §D29.4). Four changes: - **Every setting on every transaction.** The request-scope opener writes all four tenant settings on every transaction, with `''` for each one absent, so a session-level value never reaches a request. - **A boot refusal.** Outside development and test, the API refuses to start when its database role is superuser or BYPASSRLS, or owns a table in `TENANT_OWNED_TABLES`. `docs/deploy.md` names the requirement, and states the deploy order for `0019`: code first, then the migration. - **The invitation's column grant.** A new migration revokes UPDATE on `organization_invitations` from the application role and grants it on `accepted_at`, `declined_at`, `revoked_at` and `updated_at` only, with ADR-0061 §2's re-issue caveat. - **Principal setting in an organization-scoped transaction (tried).** The principal is left out of such a transaction. This is kept only if the integration tier stays green; otherwise it is logged as a residual in 0078 §4.
+      ADR-0078 §4 is amended in place, labelled `D29.7`. The design residuals (a staff role in place of a settable scope, staff seeing every tenant, the scope read from request storage, repository tests under `system`) become one `planned` ledger row.
+      **ADRs:** 0078 §4, 0061 §2, 0067 §5 as carried, 0019 as carried.
+      **Done when:** `tenant-scope.test.ts` case "a transaction clears every setting it does not place" is green. A `schema.int.test.ts` or `organizations.int.test.ts` case "a session-level scope does not reach a request transaction" is green, and red without the first change. The config or boot test case "the API refuses a role that bypasses row-level security" is green. `organizations.int.test.ts` case "an invitee cannot rewrite an invitation's organization or role" is green. The notes record the fourth change's fate. `security-reviewer` has read the diff. `pnpm db:migrate` against the dev database applies the new migration, then reports up to date. `pnpm rules:digest` writes nothing on a second run. The gate is green.
 
 ## Definition of done
 
-Run at `D29.6` and again by `/ship` on the committed tree.
+Run at `D29.6` (items 1, 3 and 8 again at `D29.7`) and again by `/ship` on the committed tree.
 
 1. The gate green, every task cold: `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`.
 2. `pnpm test:unit` twice, the second `FULL TURBO`.
