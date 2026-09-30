@@ -28,13 +28,6 @@ const repoRoot = path.resolve(
 
 const TEST_SUFFIX = "_test";
 
-/**
- * The longest slug this script writes. `machxi_` and `_test` take twelve of
- * the 63 bytes Postgres keeps, and the harness refuses a longer name than it
- * would keep rather than let the truncation cut the `_test` suffix off.
- */
-export const MAX_SLUG_LENGTH = 40;
-
 /** How many hex characters of the branch's hash end a truncated slug. */
 const HASH_LENGTH = 6;
 
@@ -42,16 +35,39 @@ const HASH_LENGTH = 6;
 export const MAX_DATABASE_NAME_BYTES = 63;
 
 /**
+ * The longest slug a lane of `testDatabase` can carry: whatever of the 63
+ * bytes Postgres keeps the base and the joining underscore leave. Derived
+ * from the base rather than fixed, so a fork whose product name is longer
+ * than the starter's still gets a lane database for an ordinary branch — the
+ * rename allows 32 characters — and the harness, which refuses only a name
+ * past the 63 bytes, accepts every slug this caps (ADR-0082 §3; ADR-0084
+ * §1, D36.1's review). A truncated slug ends in a hash, so the cap leaves
+ * room for at least a character and the hash.
+ */
+export function slugCap(testDatabase) {
+  const cap = MAX_DATABASE_NAME_BYTES - Buffer.byteLength(testDatabase) - 1;
+
+  if (cap < HASH_LENGTH + 2) {
+    throw new Error(
+      `db:lane: the test database ${JSON.stringify(testDatabase)} leaves ${String(Math.max(cap, 0))} of the ${String(MAX_DATABASE_NAME_BYTES)} bytes Postgres keeps for a lane; shorten the product name (ADR-0082 §3).`,
+    );
+  }
+
+  return cap;
+}
+
+/**
  * The lane's slug for a branch name: `lane/` dropped, lower-cased, every run
  * of anything but letters and digits one hyphen, trimmed. A slug longer than
  * the cap keeps its head and ends in a hash of the whole branch name, so two
  * branches that differ only past the cut — `…-v1` and `…-v2`, or a cloud
  * branch's random suffix — never share a database; a slug that fits carries
- * no hash, so `lane/D29` is `d29`. `main` is refused — its test database is
+ * no hash, so `lane/D29` is `d29`. `cap` is `slugCap` of the base the lane
+ * sits beside. `main` is refused — its test database is
  * `machxi_test` — and so are `lane/main`, which would slug to it, and no
  * branch at all.
  */
-export function slugBranch(branch) {
+export function slugBranch(branch, cap) {
   const name = branch.trim();
 
   if (name === "") {
@@ -84,15 +100,13 @@ export function slugBranch(branch) {
     );
   }
 
-  if (full.length <= MAX_SLUG_LENGTH) return full;
+  if (full.length <= cap) return full;
 
   const hash = createHash("sha1")
     .update(name)
     .digest("hex")
     .slice(0, HASH_LENGTH);
-  const head = full
-    .slice(0, MAX_SLUG_LENGTH - HASH_LENGTH - 1)
-    .replace(/-+$/, "");
+  const head = full.slice(0, cap - HASH_LENGTH - 1).replace(/-+$/, "");
 
   return `${head}-${hash}`;
 }
@@ -150,7 +164,6 @@ async function main() {
     cwd: repoRoot,
     encoding: "utf8",
   });
-  const slug = slugBranch(branch);
 
   const file = "packages/db/.env.test";
   const env = readEnvFile(file);
@@ -159,6 +172,7 @@ async function main() {
   const superuserUrl = required(env, "DATABASE_URL_TEST_SUPERUSER", file);
 
   const base = databaseOf(ownerUrl);
+  const slug = slugBranch(branch, slugCap(base));
   const name = laneDatabaseName(base, slug);
   const owner = roleOf(ownerUrl);
   const app = roleOf(appUrl);

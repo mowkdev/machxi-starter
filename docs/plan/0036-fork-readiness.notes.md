@@ -51,7 +51,7 @@ Built in a cloud session on the lane branch `claude/nifty-planck-bnxu4s` (Postgr
 
 The throwaway clones were under the session's scratchpad and are deleted.
 
-**Residual, not fixed here.** `db:lane` caps a slug at 40 characters (`MAX_SLUG_LENGTH`), which assumes a short product name. A product name longer than 17 characters puts a 40-character slug past the 63 bytes Postgres keeps. `db:lane` then refuses such a branch, loudly, and the derived length case fails with it. `rename.mjs` allows names up to 32 characters. A fix derives the cap from the base database's length, in `db-lane.mjs` and the harness's `laneDatabaseUrl`. That is outside this step and is offered to the operator as a follow-up.
+**Residual — fixed in the follow-up (finding 1 below).** `db:lane` capped a slug at 40 characters (`MAX_SLUG_LENGTH`), which assumes a short product name. A product name longer than 17 characters puts a 40-character slug past the 63 bytes Postgres keeps. `db:lane` then refuses such a branch, loudly, and the derived length case fails with it. `rename.mjs` allows names up to 32 characters. A fix derives the cap from the base database's length, in `db-lane.mjs` and the harness's `laneDatabaseUrl`. That is outside this step and is offered to the operator as a follow-up.
 
 **Step check.** `export TEST_DB_LANE=$(pnpm --silent db:lane)` printed "already there". Then `pnpm step:check`, never `--force`:
 
@@ -74,5 +74,54 @@ step:check ✓
 **Pending the operator.**
 
 - Nothing is browser-only.
-- The `db:lane` residual above waits on a decision.
+- ~~The `db:lane` residual above waits on a decision.~~ Fixed in the follow-up; see the review below.
 - `/bootstrap` still describes the reset as hand edits until `D36.5` rewrites it to run `pnpm bootstrap`.
+
+### D36.1 — the review, and its findings' fates
+
+The orchestrating session ran the one review: `code-reviewer` over `9ae2af52`, in a fresh context. On today's ledger `bootstrap` was correct. The reviewer ran it at `9ae2af52` and got a clean `docs:check` and Prettier, with only the two frozen-history links dropped. The findings are what fails silently once the starter's ledger changes, and one breaks a fork's gate. Each was verified against the code and all five are confirmed. The fixes are in `fix(scripts,db): D36.1 follow-up — the review's findings`.
+
+**The run read first.** `gate.yml` run 36780055856 on `9ae2af52` was `in_progress` when read. Run 36778178321 on `d50ae228` concluded `success`.
+
+1. **The length case fails in a fork whose product name has 18–32 characters (confirms the residual above). Fixed.** A lane name is the base's bytes, an underscore and the slug. With a fixed 40-character cap it fits 63 bytes only for a name of 17 characters or fewer, and the rename allows 32. The operator's decision: derive the cap from the base.
+   - `scripts/db-lane.mjs`: `slugCap(testDatabase)` is `63 − bytes(base) − 1`, and refuses a base that leaves no room for a hashed slug. `slugBranch(branch, cap)` truncates to it and keeps the sha1 suffix. `main` reads the base before slugging.
+   - `MAX_SLUG_LENGTH` is gone. For `machxi_test` the cap is 51, so this branch's slug and database are unchanged.
+   - The harness (`packages/db/src/tooling/test-database.ts`) already agreed: it checks only the slug's shape and the 63-byte total, so it accepts every slug `db:lane` derives. Its comment now says so.
+   - `scripts/db-lane.test.mjs`:
+     - every case asserts against `slugCap(BASE)`;
+     - the truncation cases are cap-relative;
+     - new cases: "is what the base and the joining underscore leave of 63 bytes", "a product name of 32 characters still gets a lane database for an ordinary branch" and "refuses a base that leaves no room for a hashed slug".
+   - `packages/db/src/__tests__/testing.test.ts`:
+     - "refuses a name longer than Postgres keeps" derives its length. It had hard-coded 52, which fits under a shorter fork name.
+     - New: "accepts every slug db:lane derives, shorter or longer than forty", covering 1, 40 and the cap, and a 32-character product at its cap and one past it.
+2. **Unknown ledger sections were dropped silently. Fixed.** `resetLedger` now refuses, instead of dropping:
+   - a `## ` heading that is neither kept (`Rules`, `The window`) nor journal. Journal is `JOURNAL_SECTION`, `/^## (How D\d|The window's history\b|Executing a step$)/`, read against every heading the ledger has today;
+   - a kept heading that appears twice;
+   - any non-blank line between the table and the first section.
+
+   Case: "a ledger section bootstrap does not know is refused, not dropped", covering a `## Numbering` section, a note under the table and a second `## Rules`.
+
+3. **The sentence split could delete a bold rule. Fixed.** `SENTENCE_BREAK` now splits after `.`, `?` or `!` when closed by `**`, `)`, `_` or a backtick. A sentence to be dropped that contains `**` is refused, not dropped. Case: "a bold rule before a dropped link is kept". `- **A rule, bold.** Then a note on [D8](0008-first.md).` keeps the rule, and a link inside the bold sentence itself is refused.
+   - Found while fixing this: the generated block's lane entries were read as prose before the block was replaced. That was harmless before, but the new bold refusal would have fired on the real ledger's own `- **Lane [D36](…)**` entry. The block is now replaced first.
+4. **A dropped paragraph left a double blank line. Fixed.** Runs of blank lines collapse to one after filtering. Case: "a paragraph dropped whole leaves the ledger as Prettier writes it". The fixture's window section gains a paragraph that is dropped whole, and the result passes `prettier.check` with no `\n\n\n`.
+5. **(Minor) `rename.mjs` stopped after three Prettier passes silently. Fixed.** When the third pass still changed the text, the file is written as the passes left it and a warning naming it goes to stderr. No test was added: no input is known that Prettier leaves unstable after three passes.
+
+The real ledger resets byte-identically to the output before these fixes.
+
+**Step check** over the follow-up, `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, never `--force`:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      format:check
+  skipped  size: no SPA is reached
+step:check ✓
+```
+
+- `check`: 39 tasks (4 cached), then `test:unit`'s 17 (15 cached), all successful.
+- `test:scripts`: 147 pass.
+- Integration: `@repo/db` 6 files / 128 tests and `api` 29 files / 847 tests. Every `db:migrate →` line is on `machxi_claude-nifty-planck-bnxu4s_test`.
+- The trigger is the root `package.json` (the `bootstrap` script), which the lane's diff carries from `D36.1`.
+- After the check, only this note was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.

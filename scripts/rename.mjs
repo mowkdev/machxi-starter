@@ -266,13 +266,26 @@ const formatFiles = async (root, relatives) => {
      * second.
      */
     let next = text;
+    let stable = false;
 
     for (let pass = 0; pass < MAX_FORMAT_PASSES; pass += 1) {
       const again = await prettier.format(next, options);
 
-      if (again === next) break;
+      if (again === next) {
+        stable = true;
+        break;
+      }
 
       next = again;
+    }
+
+    // Written anyway, as the closest the passes came, and named, so the
+    // operator's `format:check` failing on it is not a surprise.
+    if (!stable) {
+      write(
+        process.stderr,
+        `warning: ${relative} was still changing after ${String(MAX_FORMAT_PASSES)} Prettier passes; run \`pnpm format\` and read it`,
+      );
     }
 
     if (next === text) continue;

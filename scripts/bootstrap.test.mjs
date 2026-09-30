@@ -72,13 +72,16 @@ Tag prefix: \`starter\`
 ## Rules
 
 - **Steps are written \`D<n>.<step>\`.** [The window](#the-window) names every open lane.
+- **A rule, bold.** Then a note on [D8](0008-first.md).
 
 ## The window
 
 **One place to be right.** This section states the open lanes. [The history after this section](#the-windows-history-frozen-at-d344) is a record of earlier states.
 
+The starter's own story is told in [the frozen history](#the-windows-history-frozen-at-d344).
+
 - **The narrative** is in the \`How D<n>\` sections. The paragraph below states what the lane files say. Until \`D34.4\` it was written by hand; that paragraph is kept in [a section of its own](#the-windows-history-frozen-at-d344), and is never edited again.
-- **D8 shipped** as [its plan](0008-first.md) says, on the evidence in [How D8 closed](#how-d8-closed).
+- D8 shipped as [its plan](0008-first.md) says, on the evidence in [How D8 closed](#how-d8-closed).
 
 **Open lanes:**
 
@@ -302,6 +305,71 @@ One entry per **shipped deliverable**. Not per commit, and not semver: every ent
     );
   });
 
+  it("a bold rule before a dropped link is kept", async () => {
+    const { root, read } = clone();
+    await run(root);
+    const ledger = read("docs/plan/README.md");
+
+    assert.match(ledger, /^- \*\*A rule, bold\.\*\*$/m);
+    assert.doesNotMatch(ledger, /Then a note on/);
+
+    // A link inside the bold sentence itself is refused, not dropped with it.
+    const inRule = clone({
+      ...STARTER,
+      "docs/plan/README.md": LEDGER.replace(
+        "- **A rule, bold.** Then",
+        "- **A rule on [D8](0008-first.md).** Then",
+      ),
+    });
+    await assert.rejects(run(inRule.root), /from a bold rule/);
+  });
+
+  it("a paragraph dropped whole leaves the ledger as Prettier writes it", async () => {
+    const { root, read } = clone();
+    await run(root);
+    const ledger = read("docs/plan/README.md");
+
+    assert.doesNotMatch(ledger, /The starter's own story/);
+    assert.doesNotMatch(ledger, /\n\n\n/);
+    assert.ok(
+      await prettier.check(ledger, {
+        filepath: path.join(root, "docs/plan/README.md"),
+      }),
+    );
+  });
+
+  it("a ledger section bootstrap does not know is refused, not dropped", async () => {
+    const section = clone({
+      ...STARTER,
+      "docs/plan/README.md": LEDGER.replace(
+        "## The window\n",
+        "## Numbering\n\nRecords are numbered in order.\n\n## The window\n",
+      ),
+    });
+    await assert.rejects(run(section.root), /does not know, `## Numbering`/);
+
+    const note = clone({
+      ...STARTER,
+      "docs/plan/README.md": LEDGER.replace(
+        "\n## Rules\n",
+        "\nA note under the table.\n\n## Rules\n",
+      ),
+    });
+    await assert.rejects(
+      run(note.root),
+      /between its table and its first section/,
+    );
+
+    const twice = clone({
+      ...STARTER,
+      "docs/plan/README.md": LEDGER.replace(
+        "## Executing a step\n",
+        "## Rules\n\n- **Another.**\n\n## Executing a step\n",
+      ),
+    });
+    await assert.rejects(run(twice.root), /`## Rules` twice/);
+  });
+
   it("a tree that is not a fresh starter clone is refused", async () => {
     const refused = async (root, pattern, prefix = "acme") => {
       const before = snapshot(root);
@@ -333,7 +401,10 @@ One entry per **shipped deliverable**. Not per commit, and not semver: every ent
     await refused(clone(noLanes).root, /lanes\/README\.md is missing/);
     const noWindow = clone({
       ...STARTER,
-      "docs/plan/README.md": LEDGER.replace("## The window\n", "## A window\n"),
+      "docs/plan/README.md": LEDGER.replace(
+        "## The window\n",
+        "## How D0 closed\n",
+      ),
     });
     await refused(noWindow.root, /has no `## The window`/);
     const reworded = clone({

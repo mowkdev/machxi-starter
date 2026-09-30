@@ -29,7 +29,10 @@ const MAX_DATABASE_NAME_BYTES = 63;
 
 /**
  * A lane as `pnpm db:lane` prints it: the branch's slug — lower-case letters
- * and digits in runs joined by single hyphens.
+ * and digits in runs joined by single hyphens. Its length is not checked
+ * here: `db:lane` caps a slug at what the base leaves of the 63 bytes, and
+ * the one length refusal below is the same arithmetic, so every slug it
+ * derives is accepted whatever the product is called.
  */
 const LANE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

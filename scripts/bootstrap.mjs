@@ -46,8 +46,19 @@ export const STARTER_PREFIX = "starter";
 const PLAN_DIR = "docs/plan";
 const KEPT = new Set([LEDGER, `${LANES_DIR}/README.md`]);
 
-/** The ledger's sections a fork keeps, by heading; every other one goes. */
+/** The ledger's sections a fork keeps, by heading. */
 const KEPT_SECTIONS = ["## Rules", "## The window"];
+
+/**
+ * The ledger's sections that are the starter's journal, which a fork drops:
+ * each deliverable's `How D<n> …` history, the window's frozen history, and
+ * the note on executing a step that introduces the plans. Any other section
+ * is refused rather than dropped (D36.1's review): a rule the starter adds
+ * under a heading of its own must reach a fork, or this list must say it
+ * does not.
+ */
+const JOURNAL_SECTION =
+  /^## (How D\d|The window's history\b|Executing a step$)/;
 
 const USAGE = "usage: pnpm bootstrap --prefix <name>";
 
@@ -94,23 +105,35 @@ const ANCHOR_LINK = /\]\(#([^)\s]+)\)/g;
 const PLAN_LINK = /\]\((?:\.\/)?\d{4}-[^)\s]*\.md[^)\s]*\)/;
 
 /**
- * Sentence boundaries inside one line of prose: a full stop and a space before
- * a capital, emphasis, a link or code. Good enough for the ledger's prose,
- * which is all this reads, and only a sentence with a dropped link is removed.
+ * Sentence boundaries inside one line of prose: a full stop, question or
+ * exclamation mark — closed by emphasis, a parenthesis or code, as a bold
+ * rule's `**A rule.**` is — and a space before a capital, emphasis, a link,
+ * code or a parenthesis. Good enough for the ledger's prose, which is all
+ * this reads, and only a sentence with a dropped link is removed.
  */
-const SENTENCE_BREAK = /(?<=\.)\s+(?=[A-Z*[`])/;
+const SENTENCE_BREAK = /(?<=[.?!](?:\*\*|\)|_|`)?)\s+(?=[A-Z*[`_(])/;
 
 /**
  * The line with every sentence removed that links a section not in `anchors`
  * or one of the starter's plans, or the line unchanged when it links neither.
- * `null` when nothing of it is left.
+ * `null` when nothing of it is left. A sentence to drop that carries bold is
+ * refused rather than dropped: the ledger's rules lead with a bold sentence,
+ * and a rule is never removed because a note beside it links the journal.
  */
 function dropDanglingSentences(line, anchors) {
   const dangling = (text) =>
     PLAN_LINK.test(text) ||
     [...text.matchAll(ANCHOR_LINK)].some((m) => !anchors.has(m[1]));
   if (!dangling(line)) return line;
-  const kept = line.split(SENTENCE_BREAK).filter((s) => !dangling(s));
+  const sentences = line.split(SENTENCE_BREAK);
+  for (const sentence of sentences.filter(dangling)) {
+    if (sentence.includes("**")) {
+      refuse(
+        `${LEDGER} links the starter's journal from a bold rule, which the reset would drop: ${JSON.stringify(sentence.slice(0, 80))}; move the link out of the rule's sentence`,
+      );
+    }
+  }
+  const kept = sentences.filter((s) => !dangling(s));
   if (kept.length === 0) return null;
   // A list item whose opening sentence went keeps its marker.
   const marker = line.match(/^(\s*[-*] )/)?.[1] ?? "";
@@ -142,12 +165,34 @@ function emptyTable(header) {
  * plans, and the generated block as `pnpm lanes` writes it with no lane open.
  */
 export function resetLedger(text, prefix) {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  // The block first: its lane entries are the starter's, and are replaced
+  // whole rather than read as prose.
+  let emptied;
+  try {
+    emptied = applyBlock(text.replace(/\r\n/g, "\n"), renderLanes([]));
+  } catch (error) {
+    refuse(error.message);
+  }
+  const lines = emptied.split("\n");
   const firstSection = lines.findIndex((l) => l.startsWith("## "));
   const tableStart = lines.findIndex(
     (l, i) => l.startsWith("|") && (firstSection === -1 || i < firstSection),
   );
   if (tableStart === -1) refuse(`${LEDGER} has no table above its sections`);
+
+  // Nothing but blank lines between the table and the first section: a note
+  // there is neither the table nor a section, and would vanish unread.
+  const tableEnd = lines.findIndex(
+    (l, i) => i > tableStart && !l.startsWith("|"),
+  );
+  const between = lines
+    .slice(tableEnd, firstSection === -1 ? lines.length : firstSection)
+    .findIndex((l) => l.trim() !== "");
+  if (between !== -1) {
+    refuse(
+      `${LEDGER} has text between its table and its first section (line ${String(tableEnd + between + 1)}), which the reset would drop; move it above the table or into a section`,
+    );
+  }
 
   const header = lines.slice(0, tableStart);
   const prefixLines = header
@@ -161,10 +206,22 @@ export function resetLedger(text, prefix) {
 
   const sections = new Map();
   let current = null;
-  for (const line of lines.slice(firstSection)) {
+  for (const [index, line] of lines.entries()) {
+    if (firstSection === -1 || index < firstSection) continue;
     if (line.startsWith("## ")) {
-      current = KEPT_SECTIONS.includes(line) && !sections.has(line) ? [] : null;
-      if (current) sections.set(line, current);
+      if (KEPT_SECTIONS.includes(line)) {
+        if (sections.has(line)) {
+          refuse(`${LEDGER} has \`${line}\` twice (line ${String(index + 1)})`);
+        }
+        current = [];
+        sections.set(line, current);
+      } else if (JOURNAL_SECTION.test(line)) {
+        current = null;
+      } else {
+        refuse(
+          `${LEDGER} has a section the reset does not know, \`${line}\` (line ${String(index + 1)}); keep it (KEPT_SECTIONS) or name it as journal (JOURNAL_SECTION) in scripts/bootstrap.mjs`,
+        );
+      }
     }
     if (current) current.push(line);
   }
@@ -181,21 +238,19 @@ export function resetLedger(text, prefix) {
     const section = sections
       .get(heading)
       .map((line) => dropDanglingSentences(line, anchors))
-      .filter((line) => line !== null);
+      .filter((line) => line !== null)
+      // A paragraph dropped whole leaves its blank lines on either side;
+      // one blank line stays, as Prettier writes it.
+      .filter((line, i, all) => !(line === "" && all[i - 1] === ""));
     while (section.at(-1) === "") section.pop();
     return section.join("\n");
   });
 
-  const ledger = [
+  return `${[
     header.join("\n"),
     emptyTable(lines[tableStart]).join("\n"),
     ...body,
-  ].join("\n\n");
-  try {
-    return `${applyBlock(ledger, renderLanes([]))}\n`;
-  } catch (error) {
-    return refuse(error.message);
-  }
+  ].join("\n\n")}\n`;
 }
 
 /**

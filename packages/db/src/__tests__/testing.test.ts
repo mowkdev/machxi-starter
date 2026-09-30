@@ -61,8 +61,42 @@ describe("laneDatabaseUrl", () => {
     }
   });
 
+  /**
+   * The longest slug a lane beside `database` carries: what the base and the
+   * joining underscore leave of the 63 bytes Postgres keeps — the cap
+   * `pnpm db:lane` derives the same way (`scripts/db-lane.mjs`, `slugCap`).
+   * Derived rather than written, so the cases hold whatever the product is
+   * called (ADR-0084 §1).
+   */
+  const capFor = (database: string): number =>
+    63 - Buffer.byteLength(database) - 1;
+
   it("refuses a name longer than Postgres keeps", () => {
-    expect(() => laneDatabaseUrl(testUrl, "a".repeat(52))).toThrow(
+    const cap = capFor(databaseOf(testUrl));
+
+    expect(() => laneDatabaseUrl(testUrl, "a".repeat(cap + 1))).toThrow(
+      /longer than the 63 bytes/,
+    );
+  });
+
+  it("accepts every slug db:lane derives, shorter or longer than forty", () => {
+    const cap = capFor(databaseOf(testUrl));
+
+    for (const length of [1, 40, cap]) {
+      const url = laneDatabaseUrl(testUrl, "a".repeat(length));
+
+      expect(Buffer.byteLength(databaseOf(url))).toBeLessThanOrEqual(63);
+    }
+    // A product name of 32 characters, the longest the rename takes: the cap
+    // shrinks, and a slug at it is still a lane.
+    const longBase = `${"p".repeat(32)}_test`;
+    const longUrl = testUrl.replace(/[^/]+$/, longBase);
+    const longCap = capFor(longBase);
+
+    expect(databaseOf(laneDatabaseUrl(longUrl, "a".repeat(longCap)))).toBe(
+      `${"p".repeat(32)}_${"a".repeat(longCap)}_test`,
+    );
+    expect(() => laneDatabaseUrl(longUrl, "a".repeat(longCap + 1))).toThrow(
       /longer than the 63 bytes/,
     );
   });
