@@ -432,7 +432,7 @@ export const AREAS = [
       {
         topic: "Forking",
         records: ["0065"],
-        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` is this repository's journal and resets.",
+        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, marked `merge=ours`, and reset.",
       },
       {
         topic: "Upstreaming",
@@ -441,8 +441,8 @@ export const AREAS = [
       },
       {
         topic: "Versioning",
-        records: ["0065"],
-        text: "`/ship` tags the shipping commit `starter-D<n>` and writes one changelog entry per shipped deliverable. Not per commit, and not semver.",
+        records: ["0081", "0065"],
+        text: "`/ship` tags the shipping commit `<prefix>-D<n>` and writes one changelog entry per shipped deliverable — not per commit, and not semver. The prefix is the one `Tag prefix:` line of the ledger's header, which `pnpm docs:check` requires: `starter` in the starter, and the fork's own, never `starter`, once `/bootstrap` writes it, so a fetched starter tag never meets a fork's. Product release tags are `v<version>` and belong to the release tool the releasing repository chooses; the starter adopts none.",
       },
       {
         topic: "Citations that survive a fork",

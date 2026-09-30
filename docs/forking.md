@@ -19,6 +19,8 @@ git push -u origin main
 Run `/bootstrap`. It resets the journal and leaves the process skills working:
 
 - **`docs/plan/` resets.** The plans and the ledger narrative are the blueprint's journal — how _this_ repository got here. A fork writes its own from row one, and `.gitattributes` marks `docs/plan/ merge=ours` so the journal never travels in either direction.
+- **The tag prefix is the fork's own.** The ledger's header names it in one line, `` Tag prefix: `<prefix>` ``, and `/ship` tags each shipped deliverable `<prefix>-D<n>`. The starter's is `starter`; `/bootstrap` asks for the fork's and refuses `starter`, so the fork's D1 is `acme-D1` and never meets the starter's `starter-D1` ([ADR-0081](adr/0081-build-versions.md) §5, build versions). `pnpm docs:check` refuses a ledger with no prefix line.
+- **`docs/CHANGELOG.md` resets too.** It records one repository's shipped deliverables, so it is journal like `docs/plan/`: `/bootstrap` empties it to its preamble, and `.gitattributes` marks it `merge=ours`. The starter's history stays one command away: `git show starter/main:docs/CHANGELOG.md`.
 - **`docs/adr/` is carried.** The records are the decisions the code stands on; they come with the code. The fork's own records continue the numbering after the highest inherited one.
 - **`.claude/` is carried.** The rules, agents and skills are the machinery that applies the records. They are written to survive the trip: every citation carries a topic gloss, and no step number or date appears in them (`pnpm docs:check` enforces it).
 - **Some of `.claude/` is optional, and some is not.** A fork that does not run the process may delete the process skills (`/scope`, `/step`, `/steps`, `/ship`, `/new-adr`), the builder agents (`module-builder`, `ui-builder`, `db-migrator`, `test-engineer`, `adr-author`) and `gate-runner`: they are conveniences over the gate and the records, and nothing the gate runs depends on them. Other inherited documents still mention them by name — `CLAUDE.md` and `.claude/README.md` list them, a reviewer or a skill may recommend `/new-adr`, `docs/upstreaming.md` walks through `/scope`, `/step` and `/ship` — so a deletion leaves those mentions dangling unless the fork trims them too, and the process digest's header is trimmed in `scripts/rules-digest.mjs`, never in the generated file. It keeps `.claude/rules/`, the digests in `docs/rules/` and the three reviewers (`adr-reviewer`, `security-reviewer`, `code-reviewer`): the rules and digests are how the records reach a session that touches the code, and the reviewers are the one review pass a change gets. A deleted file comes back as a modify/delete conflict whenever the starter changes it; resolve it by deleting again.
@@ -40,11 +42,12 @@ Replace `LICENSE` with the project's own and set `name` and `license` in the roo
 
 ## 5. Which starter you are on
 
-Every shipped deliverable of the starter is an annotated tag `starter-D<n>` and one entry in [`CHANGELOG.md`](CHANGELOG.md). A fork records the tag it forked at, and then:
+Every shipped deliverable of the starter is an annotated tag `starter-D<n>` and one entry in the starter's `docs/CHANGELOG.md`. A fork's own deliverables are tagged under its own prefix and logged in its own changelog, so the two never meet: the fetched `starter-*` tags sit beside the fork's, and the starter's changelog is read from the remote rather than merged. A fork records the tag it forked at, and then:
 
 ```bash
 git fetch starter --tags
 git log starter-D13..starter/main --oneline    # what has landed since
+git show starter/main:docs/CHANGELOG.md        # what each of those deliverables was
 git merge starter/main
 ```
 
@@ -58,7 +61,16 @@ The runner is what makes that merge safe to apply. It applies every journal entr
 
 After the merge, run `pnpm db:generate` and read what it emits before committing anything: drizzle-kit diffs the schema against the newest snapshot, which is one side's.
 
-## 6. Diverging from an inherited decision
+## 6. Releasing the product
+
+The starter ships no product release, so it adopts no release tool. A fork that releases chooses its own versioning scheme, and the images already carry whatever it chooses ([ADR-0081](adr/0081-build-versions.md), build versions).
+
+- **Two build arguments name a build.** `APP_VERSION` is the release label, one value for all three apps and never parsed, so semver and calendar versions both work. `GIT_SHA` is the commit. The reference compose passes both to all three images at build; `/health` answers them, and both SPAs' sidebar footers show the label and the commit's first seven characters. Left unset, every app says `dev` and names no commit.
+- **Derive both from git on the machine that builds** — [`deploy.md`](deploy.md) has the commands. The commit is `git rev-parse HEAD`, and the label is the nearest release tag matching `v[0-9]*`, or `dev` when there is none. No file the build reads carries the version: no `package.json` `version` is read by anything.
+- **Recommended, not adopted: release-please in single-version mode.** One release-please package at the repository root, with the `simple` release type and no component in the tag, so it tags `v<version>` — the tag the label is derived from. It reads the conventional commits this repository already writes, opens a release pull request that bumps the version and writes release notes, and tags on merge. Its release notes are the product's, in the root `CHANGELOG.md` it writes; `docs/CHANGELOG.md` stays the deliverables' journal. A fork that deploys its apps apart, or prefers another tool, supersedes ADR-0081 in its own corpus.
+- **The two tag namespaces do not overlap.** `v<version>` tags are the release tool's; `<prefix>-D<n>` tags are `/ship`'s, one per deliverable. A release usually spans several deliverables, and a deliverable need not cut a release.
+
+## 7. Diverging from an inherited decision
 
 **A fork never edits an inherited record — it supersedes.** An edit turns the next merge from the blueprint into a conflict, and erases the record of which decision was deliberately dropped. Write a new record in the fork's own numbering, state the delta, and move the inherited one to `superseded by` in the fork's index — the same lifecycle the starter itself runs ([ADR-0050](adr/0050-adr-lifecycle-and-verification.md), the ADR lifecycle, as carried by [ADR-0065](adr/0065-starter-lifecycle.md)).
 
@@ -69,6 +81,8 @@ The same rule applies to `.claude/` and the digests: change them by writing the 
 | Path                                        | On a merge from `starter/main`                                           |
 | ------------------------------------------- | ------------------------------------------------------------------------ |
 | `docs/plan/`                                | never — `merge=ours` keeps the fork's journal                            |
+| `docs/CHANGELOG.md`                         | never — `merge=ours` keeps the fork's; `git show` reads the starter's    |
+| tags                                        | never — the fork tags `<prefix>-D<n>`, the starter `starter-D<n>`        |
 | `docs/adr/`                                 | only where the fork edited an inherited record, which is why it must not |
 | `docs/rules/`                               | generated; regenerate with `pnpm rules:digest` after the merge           |
 | `docs/specs/`                               | like code: where both sides changed one capability's behaviour           |

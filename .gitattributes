@@ -1,12 +1,14 @@
 # The blueprint's journal never travels in either direction (ADR-0065 §3, the
-# starter lifecycle). `docs/plan/` records how *this* repository got here: a
-# fork resets it to its own empty ledger, and a merge from `starter/main` must
-# not pull the blueprint's plan prose down over it. `merge=ours` keeps whatever
-# the current branch has.
+# starter lifecycle, as carried by ADR-0081 §5). `docs/plan/` and
+# `docs/CHANGELOG.md` record how *this* repository got here and what it
+# shipped: a fork resets both to its own, and a merge from `starter/main` must
+# not pull the blueprint's plan prose or changelog entries down over them.
+# `merge=ours` keeps whatever the current branch has.
 #
 # It needs the driver to be defined once per clone, which `/bootstrap` does:
 #   git config merge.ours.driver true
 docs/plan/** merge=ours
+docs/CHANGELOG.md merge=ours
 
 # `scripts/rules-digest.mjs` writes these with `endOfLine: "lf"` and compares the
 # result byte for byte against what is on disk. Under `core.autocrlf=true` a fresh

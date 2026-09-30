@@ -19,16 +19,21 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  LEDGER,
   LEDGER_WINDOW,
+  TAG_PREFIX_LINE,
   checkLanes,
   checkSpec,
+  checkTagPrefix,
   checkText,
   inheritedDocuments,
   isExcluded,
   parseLanes,
+  parseTagPrefix,
   scan,
   scanLanes,
   scanSpecs,
+  scanTagPrefix,
   specDocuments,
 } from "./docs-hygiene.mjs";
 
@@ -1889,6 +1894,88 @@ test("a ledger with nothing in progress and no open-lanes list has no lanes", ()
     inProgress: [],
   });
   assert.deepEqual(rules(checkLanes("l.md", text)), []);
+});
+
+// The tag prefix (ADR-0081 §5): one line of the ledger's header names the
+// namespace `/ship` tags in, so a fork's tags never meet the starter's.
+test("the ledger names the tag prefix /ship writes", async () => {
+  const text = await readFile(path.join(repoRoot, LEDGER), "utf8");
+  const { violations, prefix } = await scanTagPrefix();
+  assert.deepEqual(
+    violations.map((v) => `${v.file}:${v.line} [${v.rule}] ${v.found}`),
+    [],
+  );
+  assert.match(prefix, /^[a-z][a-z0-9-]*$/);
+
+  // Red with the line removed: a ledger that names no prefix is refused.
+  const without = text
+    .split(/\r?\n/)
+    .filter((line) => !TAG_PREFIX_LINE.test(line.trimEnd()))
+    .join("\n");
+  assert.notEqual(without, text.replace(/\r\n/g, "\n"));
+  assert.deepEqual(rules(checkTagPrefix(LEDGER, without)), [
+    "tag-prefix-missing",
+  ]);
+
+  // And `/ship` is what reads it: the skill names the line and the tag shape.
+  const ship = await readFile(
+    path.join(repoRoot, ".claude/skills/ship/SKILL.md"),
+    "utf8",
+  );
+  assert.ok(ship.includes("Tag prefix:"), "/ship names the ledger's line");
+  assert.ok(ship.includes("<prefix>-D<n>"), "/ship tags `<prefix>-D<n>`");
+});
+
+const headed = (header) => `# Ledger
+
+${header}
+
+| # | Title | Status | Scope |
+| - | ----- | ------ | ----- |
+
+## The window
+
+Tag prefix: \`below-the-header\`
+`;
+
+test("a tag prefix line that does not parse, or a second one, is refused", () => {
+  assert.deepEqual(
+    rules(checkTagPrefix("l.md", headed("Tag prefix: `acme`"))),
+    [],
+  );
+  assert.deepEqual(parseTagPrefix(headed("Tag prefix: `acme`")).prefixes, [
+    { line: 3, prefix: "acme" },
+  ]);
+  assert.deepEqual(
+    rules(checkTagPrefix("l.md", headed("Tag prefix: `Acme Corp`"))),
+    ["tag-prefix-malformed"],
+  );
+  assert.deepEqual(rules(checkTagPrefix("l.md", headed("Tag prefix: acme"))), [
+    "tag-prefix-malformed",
+  ]);
+  // `v2-D1` would match `v[0-9]*`, the release label's tag pattern.
+  assert.deepEqual(rules(checkTagPrefix("l.md", headed("Tag prefix: `v2`"))), [
+    "tag-prefix-malformed",
+  ]);
+  assert.deepEqual(
+    rules(checkTagPrefix("l.md", headed("Tag prefix: `vendor`"))),
+    [],
+  );
+  assert.deepEqual(
+    rules(
+      checkTagPrefix(
+        "l.md",
+        headed("Tag prefix: `acme`\n\nTag prefix: `starter`"),
+      ),
+    ),
+    ["tag-prefix-duplicate"],
+  );
+});
+
+test("a tag prefix below the header is not the ledger's", () => {
+  assert.deepEqual(rules(checkTagPrefix("l.md", headed("No prefix here."))), [
+    "tag-prefix-missing",
+  ]);
 });
 
 // The negative cases: each rule must actually fire on the text it exists for,

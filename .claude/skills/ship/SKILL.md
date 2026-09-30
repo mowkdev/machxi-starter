@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Close an in-progress deliverable — run its definition of done, regenerate the digests, sync the records, tag, changelog, move the ledger row to shipped, push — on `main`. Use as "/ship" when one deliverable is in progress and every step is ticked, or "/ship D<n>" to name the lane when more than one is.
+description: Close an in-progress deliverable — run its definition of done, regenerate the digests, sync the records, tag it with the ledger's prefix, changelog, move the ledger row to shipped, push — on `main`. Use as "/ship" when one deliverable is in progress and every step is ticked, or "/ship D<n>" to name the lane when more than one is.
 ---
 
 # Ship deliverable $ARGUMENTS
@@ -13,8 +13,8 @@ Runs the close-out of one lane. More than one deliverable may be in progress, ea
 4. **Records agree**: the deliverable's records read `accepted` with their amendments labelled; every superseded parent reads `superseded by` with its delta stated; the ADR index's topic table names the record now in force and its _Implemented_ cells name the steps; the plan's checkboxes are all ticked.
 5. **The sweep**: window and supersession state lives in one section, [the ledger](../../../docs/plan/README.md#the-window) — update it there, removing the lane's entry and leaving every other lane's untouched, then read (do not restate) everything that links to it: `.claude/**`, `CLAUDE.md`, `README.md`, `docs/README.md`, `docs/specs/**` and the ADR index. A document that states the status instead of linking to it is the defect this list exists to catch.
 6. **The ledger row** moves to `shipped YYYY-MM-DD` with a §How it closed note separating machine-verified from operator-accepted evidence.
-7. **Tag and changelog**: an annotated tag `starter-D<n>` on the shipping commit, and one entry in `docs/CHANGELOG.md` written from the plan's goal line — number, name, ship date, goal. One entry per deliverable; not per commit, and not semver. A fork reads the tag to say which starter it is on.
-8. **Push**: on `main`, commit by path, push, and push the tag (`git push origin starter-D<n>`). A lane's branch has nothing left to merge once `main` carries its last step; delete it.
+7. **Tag and changelog**: read the prefix from the ledger header's one `Tag prefix:` line (`pnpm docs:check` refuses a ledger without it) and put an annotated tag `<prefix>-D<n>` on the shipping commit — `starter-D<n>` in the starter, the fork's own prefix in a fork, so the two namespaces never meet ([ADR-0081](../../../docs/adr/0081-build-versions.md), build versions). If the tag already exists, locally or on a fetched remote, stop and say so rather than move it. Then write one entry in `docs/CHANGELOG.md` from the plan's goal line — number, name, ship date, goal — ending `Tag <prefix>-D<n>.` One entry per deliverable; not per commit, and not semver. The changelog is this repository's journal, like `docs/plan/`: it records this repository's deliverables only. Product release tags (`v<version>`) belong to whatever release tool the repository adopted, never to `/ship`.
+8. **Push**: on `main`, commit by path, push, and push the tag (`git push origin <prefix>-D<n>`). A lane's branch has nothing left to merge once `main` carries its last step; delete it.
 9. Offer `/scope` for the next `planned` row — opening it stays the operator's decision.
 
 Steps 4 to 7 happen together or the deliverable is not closed.

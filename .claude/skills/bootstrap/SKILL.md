@@ -1,6 +1,6 @@
 ---
 name: bootstrap
-description: Prepare a clone of this starter to be somebody's project — reset the journal to an empty ledger, add the `starter` remote and the merge attributes, and leave `/scope` and `/step` working on day one. Use as "/bootstrap" in a fresh fork, or "/bootstrap --empty" to start a corpus from nothing.
+description: Prepare a clone of this starter to be somebody's project — reset the journal to an empty ledger and changelog under the fork's own tag prefix, add the `starter` remote and the merge attributes, and leave `/scope` and `/step` working on day one. Use as "/bootstrap" in a fresh fork, "/bootstrap --prefix <name>" to name the fork's tag prefix up front, or "/bootstrap --empty" to start a corpus from nothing.
 ---
 
 # Bootstrap $ARGUMENTS
@@ -16,8 +16,10 @@ Run once, in a clone that is about to become a project. It makes the process ski
 
 ## 2. The journal resets, the corpus is carried
 
-- Delete every deliverable plan under `docs/plan/` and write a fresh `docs/plan/README.md`: the title, one sentence saying a deliverable is the unit of staged work, the empty table (`# | Title | Status | Scope in one line`), a **Rules** section, and a `## The window` section — the anchor every rule file, skill and agent links to (`docs/plan/README.md#the-window`). Copy the four rule bullets and the window section's shape from the starter's ledger; carry none of its narrative.
-- Keep `.gitattributes`' `docs/plan/** merge=ours` entry and define the driver in the clone — `git config merge.ours.driver true` — so a merge from `starter/main` never pulls the blueprint's journal down and the fork's journal never travels up. Git needs the driver defined per clone; without it the attribute is inert.
+- **Choose the fork's tag prefix first.** `/ship` tags each deliverable `<prefix>-D<n>`, and the prefix is the repository's own tag namespace ([ADR-0081](../../../docs/adr/0081-build-versions.md), build versions). Take it from the arguments (`/bootstrap --prefix acme`) or ask the operator, offering the name the rename below will use. It is a lowercase name — a letter, then letters, digits or hyphens — and never `v` followed by a digit, whose `v2-D1` would match the `v[0-9]*` release tags a build takes its label from. **Refuse `starter`**: that namespace is the starter's, and a fork tag of the same name collides with the one `git fetch starter --tags` brings down.
+- Delete every deliverable plan under `docs/plan/` and write a fresh `docs/plan/README.md`: the title, one sentence saying a deliverable is the unit of staged work, the header line `` Tag prefix: `<prefix>` `` alone on its line above the table (`pnpm docs:check` refuses a ledger without it), the empty table (`# | Title | Status | Scope in one line`), a **Rules** section, and a `## The window` section — the anchor every rule file, skill and agent links to (`docs/plan/README.md#the-window`). Copy the four rule bullets and the window section's shape from the starter's ledger; carry none of its narrative.
+- **Reset `docs/CHANGELOG.md`** to its title and preamble with no entries: name the fork's prefix where the preamble names `starter` as this repository's, and drop what it says about the starter's own older entries. The changelog records one repository's shipped deliverables, so the starter's entries are its journal, not the fork's; the fork reads them with `git show starter/main:docs/CHANGELOG.md`.
+- Keep `.gitattributes`' `docs/plan/** merge=ours` and `docs/CHANGELOG.md merge=ours` entries and define the driver in the clone — `git config merge.ours.driver true` — so a merge from `starter/main` never pulls the blueprint's journal down and the fork's journal never travels up. Git needs the driver defined per clone; without it the attribute is inert.
 - Leave `docs/adr/` alone in a fork. In `--empty` mode write `docs/adr/template.md` and a `docs/adr/README.md` holding the conventions, an empty topic table and an empty index.
 - Regenerate the digests: `pnpm rules:digest`. In `--empty` mode there are no records to cite yet, and the generator drops every rule whose records the corpus does not hold, so each area renders empty. The rule lines themselves live in `scripts/rules-digest.mjs`: a fork adds its own as it writes the records they come from.
 
@@ -29,7 +31,8 @@ Run once, in a clone that is about to become a project. It makes the process ski
 
 ## 4. Prove it works before handing back
 
-- `pnpm docs:check` and `pnpm test:scripts` green.
+- `pnpm docs:check` and `pnpm test:scripts` green; `docs:check` prints the fork's prefix, not `starter`.
+- `git check-attr merge docs/CHANGELOG.md docs/plan/README.md` prints `merge: ours` for both.
 - The gate (`CLAUDE.md` §Commands) green on the untouched clone.
 - `/scope` offers to scope the first row, and once the operator moves that row to `in progress`, `/step` starts its first step without an error. Say so explicitly in the report — that is the acceptance for this skill.
 

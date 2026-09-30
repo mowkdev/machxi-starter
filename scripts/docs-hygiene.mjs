@@ -17,7 +17,8 @@
 // (ADR-0079 §2), and two lanes may not share a record or both add migrations
 // (ADR-0079 §1, §3). The ledger itself is not an inherited document — it is
 // this repository's journal and carries dates by design — so only its lane
-// entries are read.
+// entries are read, and the one header line naming the tag prefix `/ship`
+// writes (ADR-0081 §5).
 //
 // Usage:
 //   node scripts/docs-hygiene.mjs        report violations, exit 1 if any
@@ -478,6 +479,72 @@ export function checkLanes(file, text) {
   return violations.sort((a, b) => a.line - b.line);
 }
 
+/**
+ * `Tag prefix: \`starter\`` — the one line of the ledger's header `/ship`
+ * reads to name a deliverable's tag, `<prefix>-D<n>` (ADR-0081 §5). A prefix
+ * is a lowercase name a git ref accepts; the line stands alone, so a reader
+ * and a script see the same fact. It never opens with `v` and a digit: a tag
+ * such as `v2-D1` matches `v[0-9]*`, the pattern a build derives its release
+ * label from (ADR-0081 §4), and the two namespaces would meet.
+ */
+export const TAG_PREFIX_LINE = /^Tag prefix: `((?!v\d)[a-z][a-z0-9-]*)`$/;
+
+/**
+ * Reads the tag prefix out of the ledger's header — every line above the
+ * table and the first section. A line in the header that opens `Tag prefix`
+ * but does not parse is returned as `malformed`, so a typo reads as a wrong
+ * line rather than as a missing one.
+ */
+export function parseTagPrefix(text) {
+  const prefixes = [];
+  const malformed = [];
+  for (const [index, raw] of text.split(/\r?\n/).entries()) {
+    const line = raw.trimEnd();
+    if (line.startsWith("|") || line.startsWith("## ")) break;
+    if (!/^tag prefix\b/i.test(line)) continue;
+    const m = line.match(TAG_PREFIX_LINE);
+    if (m) prefixes.push({ line: index + 1, prefix: m[1] });
+    else malformed.push({ line: index + 1, text: line.slice(0, 60) });
+  }
+  return { prefixes, malformed };
+}
+
+/** The ledger names the one prefix `/ship` tags with (ADR-0081 §5). */
+export function checkTagPrefix(file, text) {
+  const violations = [];
+  const { prefixes, malformed } = parseTagPrefix(text);
+  for (const m of malformed) {
+    violations.push({
+      file,
+      line: m.line,
+      rule: "tag-prefix-malformed",
+      found: m.text,
+      message:
+        "the tag prefix line reads `Tag prefix: `<name>`` — a lowercase name, alone on its line (ADR-0081 §5)",
+    });
+  }
+  if (prefixes.length === 0 && malformed.length === 0) {
+    violations.push({
+      file,
+      line: 1,
+      rule: "tag-prefix-missing",
+      found: "",
+      message:
+        "the ledger's header names the tag prefix `/ship` writes, as `Tag prefix: `<name>`` (ADR-0081 §5)",
+    });
+  }
+  for (const extra of prefixes.slice(1)) {
+    violations.push({
+      file,
+      line: extra.line,
+      rule: "tag-prefix-duplicate",
+      found: extra.prefix,
+      message: `the ledger already names \`${prefixes[0].prefix}\`; it names one tag prefix (ADR-0081 §5)`,
+    });
+  }
+  return violations;
+}
+
 export async function scanLanes(root = repoRoot) {
   const full = path.join(root, ...LEDGER.split("/"));
   // A corpus with no ledger yet (`/bootstrap --empty` before it writes one)
@@ -490,6 +557,17 @@ export async function scanLanes(root = repoRoot) {
   };
 }
 
+export async function scanTagPrefix(root = repoRoot) {
+  const full = path.join(root, ...LEDGER.split("/"));
+  // No ledger yet, no prefix to name: `/bootstrap` writes both together.
+  if (!existsSync(full)) return { violations: [], prefix: null };
+  const text = await readFile(full, "utf8");
+  return {
+    violations: checkTagPrefix(LEDGER, text),
+    prefix: parseTagPrefix(text).prefixes[0]?.prefix ?? null,
+  };
+}
+
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -497,7 +575,13 @@ if (
   const inherited = await scan();
   const specs = await scanSpecs();
   const lanes = await scanLanes();
-  const violations = [...inherited, ...specs, ...lanes.violations];
+  const tagPrefix = await scanTagPrefix();
+  const violations = [
+    ...inherited,
+    ...specs,
+    ...lanes.violations,
+    ...tagPrefix.violations,
+  ];
   for (const v of violations) {
     console.error(
       `${v.file}:${v.line}  [${v.rule}] ${JSON.stringify(v.found)} — ${v.message}`,
@@ -512,4 +596,5 @@ if (
     `behaviour specs: clean (${(await specDocuments()).length} files)`,
   );
   console.log(`open lanes: disjoint (${lanes.lanes} open)`);
+  if (tagPrefix.prefix) console.log(`tag prefix: ${tagPrefix.prefix}`);
 }

@@ -1,6 +1,8 @@
 # Changelog
 
-One entry per **shipped deliverable** — the unit of work this repository ships ([ADR-0025](adr/0025-deliverables.md), deliverables) — written by `/ship` from the plan's goal line. Not per commit, and not semver: a fork says which starter it is on by naming a tag, and from the deliverable that decided this on, every entry carries an annotated tag `starter-D<n>` on its shipping commit — the entries below predate it ([ADR-0065](adr/0065-starter-lifecycle.md) §2, the starter lifecycle).
+One entry per **shipped deliverable** — the unit of work this repository ships ([ADR-0025](adr/0025-deliverables.md), deliverables) — written by `/ship` from the plan's goal line. Not per commit, and not semver: every entry from the deliverable that decided this on carries an annotated tag `<prefix>-D<n>` on its shipping commit, the prefix named in the ledger's header — `starter` here — and the entries below that point predate it ([ADR-0065](adr/0065-starter-lifecycle.md) §2, the starter lifecycle, as carried by [ADR-0081](adr/0081-build-versions.md) §5).
+
+**This file is journal, like [`plan/`](plan/README.md).** It records this repository's deliverables and no one else's. `.gitattributes` marks it `merge=ours`, so a merge from the starter never brings the starter's entries into a fork's, and `/bootstrap` resets it to this preamble with the fork's own prefix. A fork reads the starter's history with `git show starter/main:docs/CHANGELOG.md`, and says which starter it is on by naming a `starter-D<n>` tag.
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
