@@ -28,7 +28,17 @@ export const migrateFreshTestDatabase = async (): Promise<DbClient> => {
   // nothing about production.
   await migrateFreshDatabase(readTestOwnerDatabaseUrl());
 
-  return createDb(readTestDatabaseUrl(), { max: 2, idleTimeout: 2 });
+  //
+  // Unscoped for the tenant policies, by name (ADR-0078 §4 as amended at
+  // `D29.4`): this tier asserts on the schema, the migrations and the seeders
+  // — tooling that acts across tenants — and not on the request's scope,
+  // which the API's integration tier proves. `schema.int.test.ts` opens a
+  // client without it for the one case that is about the scope.
+  return createDb(readTestDatabaseUrl(), {
+    max: 2,
+    idleTimeout: 2,
+    tenantUnscoped: "system",
+  });
 };
 
 /**

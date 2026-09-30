@@ -24,7 +24,8 @@ import type { Seeder } from "../../seeds/types.js";
  * tell "the seeder was given the transaction" from "the seeder was given the
  * pool" (`D28.4`, `DB-09`).
  */
-const TX = { transactionHandle: true } as unknown as Db;
+const execute = vi.fn(async () => Promise.resolve([]));
+const TX = { transactionHandle: true, execute } as unknown as Db;
 const transaction = vi.fn(async (work: (tx: Db) => Promise<void>) => work(TX));
 
 const noopContext = {
@@ -100,6 +101,23 @@ describe("runSeeders", () => {
     expect(order).toEqual(["a", "b"]);
     expect(write).toHaveBeenCalledWith("  a: hello\n");
     expect(write).toHaveBeenCalledWith("  b: hello\n");
+  });
+
+  it("places the tooling's named tenant scope on each seeder's transaction", async () => {
+    // The seeders run as the application role, which the tenant-owned tables'
+    // policies bind (ADR-0078 §4 as amended at `D29.4`); without the scope a
+    // seeder that writes an organization's members would be refused.
+    execute.mockClear();
+
+    await runSeeders(
+      [
+        { name: "a", run: () => Promise.resolve() },
+        { name: "b", run: () => Promise.resolve() },
+      ],
+      noopContext,
+    );
+
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 
   it("runs each seeder inside a transaction of its own (ADR-0067 §2)", async () => {

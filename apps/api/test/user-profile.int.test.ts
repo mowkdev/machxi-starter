@@ -515,10 +515,12 @@ describe("user profile", () => {
       // The membership survives — nothing cascades on a soft delete — which
       // is why every read of it joins `organizations` and filters
       // `deleted_at`.
-      const memberships = await harness.db.db
-        .select({ userId: organizationMemberships.userId })
-        .from(organizationMemberships)
-        .where(eq(organizationMemberships.organizationId, before?.id ?? ""));
+      const memberships = await harness.asTooling((tx) =>
+        tx
+          .select({ userId: organizationMemberships.userId })
+          .from(organizationMemberships)
+          .where(eq(organizationMemberships.organizationId, before?.id ?? "")),
+      );
 
       expect(memberships).toEqual([{ userId: id }]);
     });

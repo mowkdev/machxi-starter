@@ -94,6 +94,32 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 - **WHEN** a table with a foreign key to `organizations` is not in the tenant-owned enumeration
 - **THEN** the enumeration test fails naming it
 
+## Requirement: The database scopes a tenant-owned table by itself, and admits nothing by omission
+
+Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), the one invitation whose token hash the transaction holds, or the named `staff` and `system` widenings. Every transaction a service opens is placed in its request's scope, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. The wire is unchanged.
+Records: [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0061](../adr/0061-database-roles-and-append-only-enforcement.md)
+Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__tests__/schema.int.test.ts`, `apps/api/test/organizations.int.test.ts`, `apps/api/src/core/db/__tests__/tenant-scope.test.ts`
+
+### Scenario: A query that forgets its organization
+
+- **WHEN** the application role selects every membership with no organization in its `where`, outside a scoped transaction
+- **THEN** it reads no row, although several organizations' rows exist
+
+### Scenario: A member's request reads the table unscoped
+
+- **WHEN** a transaction opened in a member's request selects every membership
+- **THEN** it reads that organization's rows and the caller's own memberships elsewhere, and no other tenant's
+
+### Scenario: A write into another organization
+
+- **WHEN** a transaction scoped to one organization inserts a membership of another
+- **THEN** Postgres refuses it with `42501`
+
+### Scenario: A tenant-owned table without a policy
+
+- **WHEN** a table in the tenant-owned enumeration declares no policy
+- **THEN** the enumeration test fails naming it
+
 ## Requirement: Slugs are unique among live organizations and never impersonate a personal one
 
 An organization's slug is unique among organizations that are not soft-deleted, so a deleted organization releases its slug; the prefix reserved for personal organizations cannot be chosen for a team, so a personal organization cannot be shadowed by a squatted slug.

@@ -2,6 +2,12 @@ import type { List{{pascalCase plural}}Query } from "@repo/contracts";
 import { {{camelCase plural}}, type DbExecutor } from "@repo/db";
 import { {{#if organizationScoped}}and, {{/if}}count, eq } from "drizzle-orm";
 
+{{#if organizationScoped}}
+import {
+  withinTransaction,
+  type RunInTransaction,
+} from "../../core/db/index.js";
+{{/if}}
 import {
   applyListQuery,
   toSearchCondition,
@@ -18,6 +24,14 @@ import {
  *
  * Every function takes an optional `tx` so a service can compose several
  * repositories inside one transaction (ADR-0006); outside one it is the client.
+{{#if organizationScoped}}
+ *
+ * **Tenant-owned, so never the bare pool** (ADR-0078 §4 as amended at
+ * `D29.4`): the table's policies admit only what the transaction's settings
+ * name, so a function called without a transaction opens one of its own in
+ * the request's scope (`withinTransaction`) rather than reading an empty
+ * table.
+{{/if}}
  */
 
 /** A `{{snakeCase plural}}` row, whole. */
@@ -106,8 +120,17 @@ export const listColumns: ColumnMap = {
 /** What `q` searches. Exported with {@link listColumns} and for its reason. */
 export const searchColumns = [{{camelCase plural}}.name];
 
+{{#if organizationScoped}}
+export const create{{pascalCase plural}}Repository = (
+  transaction: RunInTransaction,
+) => {
+  const within = withinTransaction(transaction);
+
+  return {
+{{else}}
 export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
   ({
+{{/if}}
     /**
      * `GET /{{plural}}` (ADR-0014).
 {{#if organizationScoped}}
@@ -123,8 +146,9 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
       organizationId: string,
 {{/if}}
       query: List{{pascalCase plural}}Query,
-      tx: DbExecutor = db,
-    ): Promise<ListResult<{{pascalCase name}}Record>> => {
+      {{#if organizationScoped}}caller?: DbExecutor,{{else}}tx: DbExecutor = db,{{/if}}
+    ): Promise<ListResult<{{pascalCase name}}Record>> =>{{#if organizationScoped}}
+      within(caller, async (tx) => {{/if}} {
       const plan = applyListQuery(query, {
         columns: listColumns,
         tiebreaker: {{camelCase plural}}.id,
@@ -157,15 +181,15 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
         .where(plan.where);
 
       return { rows, total: counted?.total ?? 0 };
-    },
+    }{{#if organizationScoped}}){{/if}},
 
     findById: async (
 {{#if organizationScoped}}
       organizationId: string,
 {{/if}}
       id: string,
-      tx: DbExecutor = db,
-    ): Promise<{{pascalCase name}}Record | undefined> =>
+      {{#if organizationScoped}}caller?: DbExecutor,{{else}}tx: DbExecutor = db,{{/if}}
+    ): Promise<{{pascalCase name}}Record | undefined> =>{{#if organizationScoped}} within(caller, (tx) =>{{/if}}
       tx.query.{{camelCase plural}}.findFirst({
         columns: recordColumns,
 {{#if organizationScoped}}
@@ -176,12 +200,13 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
 {{else}}
         where: eq({{camelCase plural}}.id, id),
 {{/if}}
-      }),
+      }){{#if organizationScoped}}){{/if}},
 
     create: async (
       input: New{{pascalCase name}}Input,
-      tx: DbExecutor = db,
-    ): Promise<{{pascalCase name}}Record> => {
+      {{#if organizationScoped}}caller?: DbExecutor,{{else}}tx: DbExecutor = db,{{/if}}
+    ): Promise<{{pascalCase name}}Record> =>{{#if organizationScoped}}
+      within(caller, async (tx) => {{/if}} {
       const [created] = await tx
         .insert({{camelCase plural}})
         .values(input)
@@ -198,7 +223,7 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
       }
 
       return created;
-    },
+    }{{#if organizationScoped}}){{/if}},
 
     /**
      * Writes a patch.
@@ -215,8 +240,9 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
       id: string,
       patch: {{pascalCase name}}Patch,
       at: Date,
-      tx: DbExecutor = db,
-    ): Promise<{{pascalCase name}}Record | undefined> => {
+      {{#if organizationScoped}}caller?: DbExecutor,{{else}}tx: DbExecutor = db,{{/if}}
+    ): Promise<{{pascalCase name}}Record | undefined> =>{{#if organizationScoped}}
+      within(caller, async (tx) => {{/if}} {
       const [updated] = await tx
         .update({{camelCase plural}})
         .set({
@@ -239,7 +265,7 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
         .returning(returnedColumns);
 
       return updated;
-    },
+    }{{#if organizationScoped}}){{/if}},
 
     /** @returns `false` when no row has that id. */
     remove: async (
@@ -247,8 +273,9 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
       organizationId: string,
 {{/if}}
       id: string,
-      tx: DbExecutor = db,
-    ): Promise<boolean> => {
+      {{#if organizationScoped}}caller?: DbExecutor,{{else}}tx: DbExecutor = db,{{/if}}
+    ): Promise<boolean> =>{{#if organizationScoped}}
+      within(caller, async (tx) => {{/if}} {
       const deleted = await tx
         .delete({{camelCase plural}})
 {{#if organizationScoped}}
@@ -264,8 +291,13 @@ export const create{{pascalCase plural}}Repository = (db: DbExecutor) =>
         .returning({ id: {{camelCase plural}}.id });
 
       return deleted.length > 0;
-    },
+    }{{#if organizationScoped}}){{/if}},
+{{#if organizationScoped}}
+  } as const;
+};
+{{else}}
   }) as const;
+{{/if}}
 
 export type {{pascalCase plural}}Repository = ReturnType<
   typeof create{{pascalCase plural}}Repository

@@ -220,15 +220,17 @@ describe("user self-registration", () => {
       slug: personalOrganizationSlug(userId),
     });
 
-    const memberships = await harness.db.db
-      .select({
-        userId: organizationMemberships.userId,
-        role: organizationMemberships.role,
-      })
-      .from(organizationMemberships)
-      .where(
-        eq(organizationMemberships.organizationId, organization?.id ?? ""),
-      );
+    const memberships = await harness.asTooling((tx) =>
+      tx
+        .select({
+          userId: organizationMemberships.userId,
+          role: organizationMemberships.role,
+        })
+        .from(organizationMemberships)
+        .where(
+          eq(organizationMemberships.organizationId, organization?.id ?? ""),
+        ),
+    );
 
     expect(memberships).toEqual([{ userId, role: "owner" }]);
   });

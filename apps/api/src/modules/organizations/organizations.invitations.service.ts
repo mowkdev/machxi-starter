@@ -320,6 +320,12 @@ export const createOrganizationInvitationsService = ({
 
         if (consumed === undefined) throw invitationNotPending();
 
+        // The invitation is spent and names its organization, which is now
+        // the one this transaction acts in (ADR-0078 §4 as amended at
+        // `D29.4`): the principal-scoped policy reads a caller's memberships
+        // and writes none, so the join is placed as the tenant's.
+        await memberships.enterOrganization(invitation.organizationId, tx);
+
         // Already a member — of an organization that just invited them, which
         // an owner can produce by inviting an address and adding it before it
         // is accepted. The membership already there wins: this must not demote
@@ -459,6 +465,12 @@ export const createOrganizationInvitationsService = ({
         );
 
         if (consumed === undefined) throw invitationNotPending();
+
+        // The invitation is spent and names its organization, which is now
+        // the one this transaction acts in (ADR-0078 §4 as amended at
+        // `D29.4`): the principal-scoped policy reads a caller's memberships
+        // and writes none, so the join is placed as the tenant's.
+        await memberships.enterOrganization(invitation.organizationId, tx);
 
         // The membership the invitation named, unless one is already there —
         // `acceptInvitation`'s reasoning, and the same read-back below for the

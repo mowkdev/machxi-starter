@@ -335,17 +335,19 @@ describe("sign in with Google", () => {
         firstName: "Stella",
       });
 
-      const owned = await harness.db.db
-        .select({
-          kind: organizations.kind,
-          role: organizationMemberships.role,
-        })
-        .from(organizationMemberships)
-        .innerJoin(
-          organizations,
-          eq(organizations.id, organizationMemberships.organizationId),
-        )
-        .where(eq(organizationMemberships.userId, account?.id ?? ""));
+      const owned = await harness.asTooling((tx) =>
+        tx
+          .select({
+            kind: organizations.kind,
+            role: organizationMemberships.role,
+          })
+          .from(organizationMemberships)
+          .innerJoin(
+            organizations,
+            eq(organizations.id, organizationMemberships.organizationId),
+          )
+          .where(eq(organizationMemberships.userId, account?.id ?? "")),
+      );
 
       expect(owned).toEqual([{ kind: "personal", role: "owner" }]);
       expect(await identitiesOf(account?.id ?? "")).toEqual([

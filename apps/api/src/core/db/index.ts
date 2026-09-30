@@ -27,3 +27,9 @@ export {
   PG_DEADLOCK_DETECTED,
   type CreateTransactionDeps,
 } from "./transaction.js";
+export {
+  openInRequestScope,
+  tenantScopeOf,
+  withinTransaction,
+  type RunInTransaction,
+} from "./tenant-scope.js";

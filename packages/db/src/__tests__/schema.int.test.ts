@@ -1,11 +1,13 @@
 import { and, eq, exists, gt, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { DbClient } from "../client.js";
+import { createDb, type DbClient } from "../client.js";
 import {
   federatedIdentities,
   organizationInvitations,
+  organizationMemberships,
   organizations,
+  setTenantScope,
   sessions,
   staff,
   staffRoles,
@@ -13,6 +15,8 @@ import {
   userSettings,
   users,
 } from "../index.js";
+import { TENANT_OWNED_TABLES } from "../testing.js";
+import { readTestDatabaseUrl } from "../tooling/env.js";
 import { migrateFreshTestDatabase } from "./helpers.int.js";
 
 /**
@@ -1174,5 +1178,118 @@ describe("migration 0018 — the prune's predicates", () => {
 describe("ping", () => {
   it("resolves against a reachable database (ADR-0003, ADR-0016)", async () => {
     await expect(client.ping()).resolves.toBeUndefined();
+  });
+});
+
+describe("migration 0019 — row-level security on the tenant-owned tables", () => {
+  /**
+   * ADR-0067 §5's policies as Postgres holds them (ADR-0078 §4 as amended at
+   * `D29.4`). The unit suite proves every listed table *declares* a policy;
+   * this proves the migration turned row-level security on and that the
+   * application role is bound by it — through a second client on that role
+   * that places **no** setting, which is what every connection the API opens
+   * is until a transaction scopes it.
+   */
+  let scoped: DbClient;
+
+  beforeAll(() => {
+    scoped = createDb(readTestDatabaseUrl(), { max: 2, idleTimeout: 2 });
+  });
+
+  afterAll(async () => {
+    await scoped.close();
+  });
+
+  const tenant = async (label: string) => {
+    const [owner] = await client.db
+      .insert(users)
+      .values(userRow({ email: `rls-${label}@machxi.test` }))
+      .returning({ id: users.id });
+    const [organization] = await client.db
+      .insert(organizations)
+      .values({
+        slug: `rls-${label}`,
+        name: `RLS ${label}`,
+        kind: "team",
+        createdBy: owner?.id ?? "",
+      })
+      .returning({ id: organizations.id });
+
+    await client.db.insert(organizationMemberships).values({
+      organizationId: organization?.id ?? "",
+      userId: owner?.id ?? "",
+      role: "owner",
+    });
+
+    return { userId: owner?.id ?? "", organizationId: organization?.id ?? "" };
+  };
+
+  it("turns it on for every table in TENANT_OWNED_TABLES", async () => {
+    const rows = await rowsOf<{ relname: string; policies: number }>(sql`
+      select c.relname, count(p.polname)::int as policies
+        from pg_class c
+        left join pg_policy p on p.polrelid = c.oid
+       where c.relname in (${sql.join(
+         TENANT_OWNED_TABLES.map((name) => sql`${name}`),
+         sql`, `,
+       )})
+         and c.relrowsecurity
+       group by c.relname
+       order by c.relname`);
+
+    expect(rows.map((row) => row.relname)).toEqual(
+      [...TENANT_OWNED_TABLES].sort(),
+    );
+    expect(rows.every((row) => row.policies > 0)).toBe(true);
+  });
+
+  it("shows the application role nothing when no setting is placed", async () => {
+    const a = await tenant("omitted");
+
+    const [visible] = await scoped.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(organizationMemberships);
+
+    expect(visible?.total).toBe(0);
+
+    // And writes nothing: the insert is checked against the same expression.
+    const refused = await scoped.db
+      .insert(organizationMemberships)
+      .values({
+        organizationId: a.organizationId,
+        userId: a.userId,
+        role: "member",
+      })
+      .catch((caught: unknown) => caught);
+
+    expect((refused as { cause?: { code?: string } }).cause?.code).toBe(
+      "42501",
+    );
+  });
+
+  it("shows one organization's rows, and no other's, to a transaction scoped to it", async () => {
+    const a = await tenant("alpha");
+    const b = await tenant("beta");
+
+    const seen = await scoped.db.transaction(async (tx) => {
+      await setTenantScope(tx, { organizationId: a.organizationId });
+
+      return tx
+        .select({ organizationId: organizationMemberships.organizationId })
+        .from(organizationMemberships);
+    });
+
+    expect(seen.map((row) => row.organizationId)).toEqual([a.organizationId]);
+    expect(seen.map((row) => row.organizationId)).not.toContain(
+      b.organizationId,
+    );
+
+    // The setting is transaction-local: the next statement on the same pool
+    // is back to seeing nothing.
+    const [after] = await scoped.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(organizationMemberships);
+
+    expect(after?.total).toBe(0);
   });
 });

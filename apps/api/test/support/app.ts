@@ -12,7 +12,13 @@ import {
   type FakeOidcProvider,
 } from "../../src/core/oidc/index.js";
 import type { ErrorReporter } from "../../src/core/reporting/index.js";
-import { createDb, type DbClient } from "../../src/core/db/index.js";
+import { setTenantScope } from "@repo/db";
+
+import {
+  createDb,
+  type DbClient,
+  type DbExecutor,
+} from "../../src/core/db/index.js";
 
 /**
  * Builds a real app against the test database (ADR-0021).
@@ -60,6 +66,17 @@ export interface TestApp {
    * `code` and `state` the callback would receive.
    */
   readonly oidc: FakeOidcProvider;
+  /**
+   * Runs `fn` in a transaction on this app's own pool, scoped `system` for the
+   * tenant-owned tables' policies (ADR-0078 §4 as amended at `D29.4`).
+   *
+   * For a test's **own** reads and writes of those tables — fixtures and
+   * assertions, which act as tooling across tenants. The suite still runs as
+   * the application role, and the app itself never goes through this: every
+   * request's transactions are scoped by its guards, which is what the
+   * integration cases exercise.
+   */
+  readonly asTooling: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly close: () => Promise<void>;
 }
 
@@ -126,6 +143,12 @@ export const createTestApp = ({
     hasher: createArgon2Hasher(config.auth.argon2),
     mail,
     oidc,
+    asTooling: (fn) =>
+      db.db.transaction(async (tx) => {
+        await setTenantScope(tx, { unscoped: "system" });
+
+        return fn(tx);
+      }),
     close: db.close,
   } as const;
 };

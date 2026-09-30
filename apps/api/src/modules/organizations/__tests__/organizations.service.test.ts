@@ -185,6 +185,10 @@ const createFakeMemberships = (
 
       return Promise.resolve();
     },
+    // The tenant setting is Postgres's to enforce (ADR-0078 §4 as amended at
+    // `D29.4`); the service only has to place it, which the integration tier
+    // proves against the policies.
+    enterOrganization: () => Promise.resolve(),
   };
 
   return {

@@ -1,4 +1,8 @@
-import { organizationInvitations } from "@repo/db";
+import {
+  organizationInvitations,
+  organizationMemberships,
+  type DbExecutor,
+} from "@repo/db";
 import { eq } from "drizzle-orm";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -9,6 +13,12 @@ import {
   NEW_ACCOUNT_PASSWORD,
   type Tokens,
 } from "./support/actors.js";
+import {
+  createRequestContext,
+  runWithContext,
+  type RequestContext,
+} from "../src/core/context/index.js";
+import { openInRequestScope } from "../src/core/db/index.js";
 import { createTestApp, type TestApp } from "./support/app.js";
 import { lastMailTo, registerVerified, tokenFromMail } from "./support/mail.js";
 import {
@@ -504,10 +514,12 @@ describe("organizations on the user segment", () => {
         .send({ email: "token.probe@machxi.local", role: "member" })
         .expect(201);
 
-      const [row] = await harness.db.db
-        .select({ tokenHash: organizationInvitations.tokenHash })
-        .from(organizationInvitations)
-        .where(eq(organizationInvitations.id, created.body.data.id));
+      const [row] = await harness.asTooling((tx) =>
+        tx
+          .select({ tokenHash: organizationInvitations.tokenHash })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, created.body.data.id)),
+      );
 
       // The row carries one…
       expect(row?.tokenHash).toEqual(expect.any(String));
@@ -654,10 +666,12 @@ describe("organizations on the user segment", () => {
       // `expired` is a state no column holds and no sweeper writes: it becomes
       // true as the clock passes `expires_at`, so this moves the clock rather
       // than a status.
-      await harness.db.db
-        .update(organizationInvitations)
-        .set({ expiresAt: new Date(Date.now() - 1000) })
-        .where(eq(organizationInvitations.id, created.body.data.id));
+      await harness.asTooling((tx) =>
+        tx
+          .update(organizationInvitations)
+          .set({ expiresAt: new Date(Date.now() - 1000) })
+          .where(eq(organizationInvitations.id, created.body.data.id)),
+      );
 
       const pending = await request()
         .get(INVITATIONS)
@@ -880,10 +894,12 @@ describe("organizations on the user segment", () => {
         expect(message?.text.split("#token=")[0]).not.toContain(token);
 
         // And the database still holds only the hash, which nothing returns.
-        const [row] = await harness.db.db
-          .select({ tokenHash: organizationInvitations.tokenHash })
-          .from(organizationInvitations)
-          .where(eq(organizationInvitations.id, created.body.data.id));
+        const [row] = await harness.asTooling((tx) =>
+          tx
+            .select({ tokenHash: organizationInvitations.tokenHash })
+            .from(organizationInvitations)
+            .where(eq(organizationInvitations.id, created.body.data.id)),
+        );
 
         expect(row?.tokenHash).not.toBe(token);
         expect(JSON.stringify(created.body)).not.toContain(token);
@@ -943,10 +959,12 @@ describe("organizations on the user segment", () => {
 
         const expired = await invite(org.id, "expires.link@machxi.local");
 
-        await harness.db.db
-          .update(organizationInvitations)
-          .set({ expiresAt: new Date(Date.now() - 1000) })
-          .where(eq(organizationInvitations.id, expired.id));
+        await harness.asTooling((tx) =>
+          tx
+            .update(organizationInvitations)
+            .set({ expiresAt: new Date(Date.now() - 1000) })
+            .where(eq(organizationInvitations.id, expired.id)),
+        );
 
         await lookup(expired.token).expect(404);
       });
@@ -1037,6 +1055,127 @@ describe("organizations on the user segment", () => {
         .set("Authorization", bearer(member.tokens.accessToken))
         .send({ email: "nope@machxi.local", role: "member" })
         .expect(403);
+    });
+  });
+
+  /* ── row-level security (ADR-0067 §5, ADR-0078 §4 as amended at D29.4) ── */
+
+  describe("row-level security under the repositories", () => {
+    /**
+     * A request context as the guards leave it: `authenticate` places the
+     * principal and `requireMembership` the organization. The transaction
+     * opened inside it is the composition root's own `open`, so what these
+     * cases see is what every service's transaction sees.
+     */
+    const inRequest = <T>(
+      scope: {
+        readonly principal: RequestContext["principal"];
+        readonly organizationId?: string;
+      },
+      fn: (tx: DbExecutor) => Promise<T>,
+    ): Promise<T> => {
+      const ctx = createRequestContext({
+        requestId: "rls-case",
+        logger: harness.logger,
+      });
+
+      ctx.principal = scope.principal;
+      ctx.organization =
+        scope.organizationId === undefined
+          ? null
+          : { id: scope.organizationId, slug: "acme", role: "owner" };
+
+      return runWithContext(ctx, () => openInRequestScope(harness.db.db)(fn));
+    };
+
+    const userPrincipal = (id: string): RequestContext["principal"] => ({
+      kind: "user",
+      id,
+      roles: ["customer"],
+      sessionId: "rls-case",
+    });
+
+    /** Every membership row, with nothing in its `where` — the forgotten scope. */
+    const everyMembership = (tx: DbExecutor) =>
+      tx
+        .select({
+          organizationId: organizationMemberships.organizationId,
+          userId: organizationMemberships.userId,
+        })
+        .from(organizationMemberships);
+
+    it("a query that forgets its organization returns nothing", async () => {
+      // The rows are there: the seeders and this file's cases wrote several
+      // tenants' worth, and the tooling's scope reads them all.
+      const all = await harness.asTooling(everyMembership);
+
+      expect(all.length).toBeGreaterThan(1);
+      expect(
+        new Set(all.map((row) => row.organizationId)).size,
+      ).toBeGreaterThan(1);
+
+      // On the application role with no setting placed — any statement that
+      // did not go through a scoped transaction — the table reads empty.
+      expect(await everyMembership(harness.db.db)).toEqual([]);
+
+      // And inside a transaction opened with no request at all, the same.
+      expect(await inRequest({ principal: null }, everyMembership)).toEqual([]);
+    });
+
+    it("shows a member's request its organization and the caller's own rows, and no other tenant's", async () => {
+      const seen = await inRequest(
+        { principal: userPrincipal(ownerId), organizationId: orgId },
+        everyMembership,
+      );
+
+      expect(seen.some((row) => row.organizationId === orgId)).toBe(true);
+      // Every row is the organization's or the caller's own membership
+      // elsewhere (the principal-scoped class) — the stranger's personal
+      // organization, which is neither, is not among them.
+      expect(
+        seen.every(
+          (row) => row.organizationId === orgId || row.userId === ownerId,
+        ),
+      ).toBe(true);
+      expect(seen.some((row) => row.userId === strangerId)).toBe(false);
+    });
+
+    it("refuses a write into an organization the transaction is not scoped to", async () => {
+      const team = await createTeam(stranger.accessToken, "rls-elsewhere");
+
+      // The owner's request, scoped to acme, tries to put itself into the
+      // stranger's team: the insert names a row no placed setting admits.
+      const refused = await inRequest(
+        { principal: userPrincipal(strangerId), organizationId: orgId },
+        (tx) =>
+          tx.insert(organizationMemberships).values({
+            organizationId: team.id,
+            userId: ownerId,
+            role: "owner",
+          }),
+      ).catch((caught: unknown) => caught);
+
+      expect((refused as { cause?: { code?: string } }).cause?.code).toBe(
+        "42501",
+      );
+    });
+
+    it("lets the staff segment read every tenant, by the setting that names it", async () => {
+      const staffSeen = await inRequest(
+        {
+          principal: {
+            kind: "staff",
+            id: ownerId,
+            roles: ["super_admin"],
+            sessionId: "rls-case",
+          },
+        },
+        everyMembership,
+      );
+
+      expect(staffSeen).toHaveLength(
+        (await harness.asTooling(everyMembership)).length,
+      );
     });
   });
 });

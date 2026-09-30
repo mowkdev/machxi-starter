@@ -41,8 +41,11 @@ export const wireOrganizations = ({
   transaction,
 }: WireOrganizationsDeps) => {
   const repository = createOrganizationsRepository(db);
-  const memberships = createMembershipsRepository(db);
-  const invitations = createInvitationsRepository(db);
+  // Both tenant-owned repositories borrow the transaction helper, so a read
+  // outside a caller's transaction opens one in the request's scope rather
+  // than running on the bare pool (ADR-0078 §4 as amended at `D29.4`).
+  const memberships = createMembershipsRepository(db, transaction);
+  const invitations = createInvitationsRepository(db, transaction);
 
   const organizations = createOrganizationsService({
     repository,

@@ -2,10 +2,15 @@ import type { ListQuery, OrganizationRole } from "@repo/contracts";
 import {
   organizationInvitations,
   organizations,
+  setTenantScope,
   type DbExecutor,
 } from "@repo/db";
 import { and, count, desc, eq, exists, gt, isNull, sql } from "drizzle-orm";
 
+import {
+  withinTransaction,
+  type RunInTransaction,
+} from "../../core/db/index.js";
 import { internal } from "../../core/errors/index.js";
 import {
   applyListQuery,
@@ -129,7 +134,12 @@ const joinedColumns = {
   organizationName: organizations.name,
 } as const;
 
-export const createInvitationsRepository = (db: DbExecutor) => {
+export const createInvitationsRepository = (
+  db: DbExecutor,
+  transaction: RunInTransaction,
+) => {
+  const within = withinTransaction(transaction);
+
   /**
    * "Still pending at `at`" — no terminal stamp and not yet expired.
    *
@@ -180,51 +190,53 @@ export const createInvitationsRepository = (db: DbExecutor) => {
     create: async (
       organizationId: string,
       input: NewInvitationInput,
-      tx: DbExecutor = db,
-    ): Promise<InvitationRecord> => {
-      const [created] = await tx
-        .insert(organizationInvitations)
-        // The scope **last**, so a caller passing a wider object than
-        // `NewInvitationInput` — structural typing only excess-checks object
-        // literals — cannot spread an `organizationId` over the required
-        // parameter. On the one table where a wrong scope is a cross-tenant
-        // invitation, the required argument wins by construction.
-        .values({ ...input, organizationId })
-        .returning(recordColumns);
+      caller?: DbExecutor,
+    ): Promise<InvitationRecord> =>
+      within(caller, async (tx) => {
+        const [created] = await tx
+          .insert(organizationInvitations)
+          // The scope **last**, so a caller passing a wider object than
+          // `NewInvitationInput` — structural typing only excess-checks object
+          // literals — cannot spread an `organizationId` over the required
+          // parameter. On the one table where a wrong scope is a cross-tenant
+          // invitation, the required argument wins by construction.
+          .values({ ...input, organizationId })
+          .returning(recordColumns);
 
-      // The insert has no conflict target and no nullable returning path: a
-      // failure raises rather than resolving to `undefined`, so this cannot be
-      // `undefined` in practice and the assertion documents which invariant
-      // says so rather than hiding a branch — raised through the factory like
-      // every sibling repository's, because `AppError` is the only error type
-      // this code base has (ADR-0013; `D28.6`, `API-10`).
-      if (created === undefined) {
-        throw internal(
-          new Error("insert into organization_invitations returned no row"),
-        );
-      }
+        // The insert has no conflict target and no nullable returning path: a
+        // failure raises rather than resolving to `undefined`, so this cannot be
+        // `undefined` in practice and the assertion documents which invariant
+        // says so rather than hiding a branch — raised through the factory like
+        // every sibling repository's, because `AppError` is the only error type
+        // this code base has (ADR-0013; `D28.6`, `API-10`).
+        if (created === undefined) {
+          throw internal(
+            new Error("insert into organization_invitations returned no row"),
+          );
+        }
 
-      return created;
-    },
+        return created;
+      }),
 
     /** One invitation of one live organization, whatever its own state. */
     findById: async (
       organizationId: string,
       id: string,
-      tx: DbExecutor = db,
-    ): Promise<InvitationWithOrganization | undefined> => {
-      const [row] = await fromLiveOrganizations(tx)
-        .where(
-          and(
-            eq(organizationInvitations.organizationId, organizationId),
-            eq(organizationInvitations.id, id),
-            isNull(organizations.deletedAt),
-          ),
-        )
-        .limit(1);
+      caller?: DbExecutor,
+    ): Promise<InvitationWithOrganization | undefined> =>
+      within(caller, async (tx) => {
+        const [row] = await fromLiveOrganizations(tx)
+          .where(
+            and(
+              eq(organizationInvitations.organizationId, organizationId),
+              eq(organizationInvitations.id, id),
+              isNull(organizations.deletedAt),
+            ),
+          )
+          .limit(1);
 
-      return row;
-    },
+        return row;
+      }),
 
     /**
      * One invitation addressed to an **address**, by id — the invitee's read.
@@ -238,20 +250,21 @@ export const createInvitationsRepository = (db: DbExecutor) => {
     findForEmail: async (
       email: string,
       id: string,
-      tx: DbExecutor = db,
-    ): Promise<InvitationWithOrganization | undefined> => {
-      const [row] = await fromLiveOrganizations(tx)
-        .where(
-          and(
-            eq(organizationInvitations.id, id),
-            eq(organizationInvitations.email, email),
-            isNull(organizations.deletedAt),
-          ),
-        )
-        .limit(1);
+      caller?: DbExecutor,
+    ): Promise<InvitationWithOrganization | undefined> =>
+      within(caller, async (tx) => {
+        const [row] = await fromLiveOrganizations(tx)
+          .where(
+            and(
+              eq(organizationInvitations.id, id),
+              eq(organizationInvitations.email, email),
+              isNull(organizations.deletedAt),
+            ),
+          )
+          .limit(1);
 
-      return row;
-    },
+        return row;
+      }),
 
     /**
      * One **pending** invitation of a live organization, by the SHA-256 of the
@@ -277,20 +290,27 @@ export const createInvitationsRepository = (db: DbExecutor) => {
     findPendingByTokenHash: async (
       tokenHash: string,
       at: Date,
-      tx: DbExecutor = db,
-    ): Promise<InvitationWithOrganization | undefined> => {
-      const [row] = await fromLiveOrganizations(tx)
-        .where(
-          and(
-            eq(organizationInvitations.tokenHash, tokenHash),
-            pendingAt(at),
-            isNull(organizations.deletedAt),
-          ),
-        )
-        .limit(1);
+      caller?: DbExecutor,
+    ): Promise<InvitationWithOrganization | undefined> =>
+      within(caller, async (tx) => {
+        // The one setting this read is scoped by (ADR-0067 §5's secret-scoped
+        // class, ADR-0078 §4 as amended): the policies admit the row whose hash
+        // the transaction holds, and for the rest of the transaction — the
+        // accept path's consume lands on the same row.
+        await setTenantScope(tx, { invitationTokenHash: tokenHash });
 
-      return row;
-    },
+        const [row] = await fromLiveOrganizations(tx)
+          .where(
+            and(
+              eq(organizationInvitations.tokenHash, tokenHash),
+              pendingAt(at),
+              isNull(organizations.deletedAt),
+            ),
+          )
+          .limit(1);
+
+        return row;
+      }),
 
     /**
      * `GET /api/v1/user/orgs/:orgId/invitations` — the pending ones, paged
@@ -304,37 +324,38 @@ export const createInvitationsRepository = (db: DbExecutor) => {
       organizationId: string,
       query: ListQuery,
       at: Date,
-      tx: DbExecutor = db,
-    ): Promise<ListResult<InvitationWithOrganization>> => {
-      const plan = applyListQuery(query, {
-        columns: listColumns,
-        tiebreaker: organizationInvitations.id,
-        extraWhere: [
-          eq(organizationInvitations.organizationId, organizationId),
-          pendingAt(at),
-          isNull(organizations.deletedAt),
-        ],
-      });
+      caller?: DbExecutor,
+    ): Promise<ListResult<InvitationWithOrganization>> =>
+      within(caller, async (tx) => {
+        const plan = applyListQuery(query, {
+          columns: listColumns,
+          tiebreaker: organizationInvitations.id,
+          extraWhere: [
+            eq(organizationInvitations.organizationId, organizationId),
+            pendingAt(at),
+            isNull(organizations.deletedAt),
+          ],
+        });
 
-      const rows = await fromLiveOrganizations(tx)
-        .where(plan.where)
-        .orderBy(...plan.orderBy)
-        .limit(plan.limit)
-        .offset(plan.offset);
+        const rows = await fromLiveOrganizations(tx)
+          .where(plan.where)
+          .orderBy(...plan.orderBy)
+          .limit(plan.limit)
+          .offset(plan.offset);
 
-      if (!query.count) return { rows, total: null };
+        if (!query.count) return { rows, total: null };
 
-      const [counted] = await tx
-        .select({ total: count() })
-        .from(organizationInvitations)
-        .innerJoin(
-          organizations,
-          eq(organizations.id, organizationInvitations.organizationId),
-        )
-        .where(plan.where);
+        const [counted] = await tx
+          .select({ total: count() })
+          .from(organizationInvitations)
+          .innerJoin(
+            organizations,
+            eq(organizations.id, organizationInvitations.organizationId),
+          )
+          .where(plan.where);
 
-      return { rows, total: counted?.total ?? 0 };
-    },
+        return { rows, total: counted?.total ?? 0 };
+      }),
 
     /**
      * The pending invitations addressed to one **address** — the invitee's own
@@ -347,20 +368,22 @@ export const createInvitationsRepository = (db: DbExecutor) => {
     listPendingForEmail: async (
       email: string,
       at: Date,
-      tx: DbExecutor = db,
+      caller?: DbExecutor,
     ): Promise<readonly InvitationWithOrganization[]> =>
-      fromLiveOrganizations(tx)
-        .where(
-          and(
-            eq(organizationInvitations.email, email),
-            pendingAt(at),
-            isNull(organizations.deletedAt),
+      within(caller, (tx) =>
+        fromLiveOrganizations(tx)
+          .where(
+            and(
+              eq(organizationInvitations.email, email),
+              pendingAt(at),
+              isNull(organizations.deletedAt),
+            ),
+          )
+          .orderBy(
+            desc(organizationInvitations.createdAt),
+            desc(organizationInvitations.id),
           ),
-        )
-        .orderBy(
-          desc(organizationInvitations.createdAt),
-          desc(organizationInvitations.id),
-        ),
+      ),
 
     /**
      * Stamps one terminal column on a **pending** invitation, atomically.
@@ -381,23 +404,24 @@ export const createInvitationsRepository = (db: DbExecutor) => {
       id: string,
       stamp: "acceptedAt" | "declinedAt" | "revokedAt",
       at: Date,
-      tx: DbExecutor = db,
-    ): Promise<InvitationRecord | undefined> => {
-      const [consumed] = await tx
-        .update(organizationInvitations)
-        .set({ [stamp]: at, updatedAt: at })
-        .where(
-          and(
-            eq(organizationInvitations.organizationId, organizationId),
-            eq(organizationInvitations.id, id),
-            pendingAt(at),
-            organizationIsLive,
-          ),
-        )
-        .returning(recordColumns);
+      caller?: DbExecutor,
+    ): Promise<InvitationRecord | undefined> =>
+      within(caller, async (tx) => {
+        const [consumed] = await tx
+          .update(organizationInvitations)
+          .set({ [stamp]: at, updatedAt: at })
+          .where(
+            and(
+              eq(organizationInvitations.organizationId, organizationId),
+              eq(organizationInvitations.id, id),
+              pendingAt(at),
+              organizationIsLive,
+            ),
+          )
+          .returning(recordColumns);
 
-      return consumed;
-    },
+        return consumed;
+      }),
   } as const;
 };
 

@@ -61,6 +61,14 @@ export {
  * the seeders and by the API's organizations service so the two cannot drift.
  */
 export {
+  setTenantScope,
+  TENANT_SETTINGS,
+  tenantSetting,
+  type TenantScope,
+  type TenantUnscopedReason,
+} from "./tenancy.js";
+
+export {
   personalOrganizationName,
   personalOrganizationSlug,
   type PersonalOrganizationOwner,

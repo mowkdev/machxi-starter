@@ -295,6 +295,10 @@ export const createOrganizationsService = ({
         );
       }
 
+      // On a public route — registration, the federated callback — there is
+      // no principal and no guard, so the new tenant is placed by name before
+      // its first membership is written (ADR-0078 §4 as amended at `D29.4`).
+      await memberships.enterOrganization(organization.id, tx);
       await memberships.create(organization.id, owner.id, "owner", tx);
 
       ctx.logger.debug(
@@ -540,6 +544,10 @@ export const createOrganizationsService = ({
 
         if (organization === undefined) return undefined;
 
+        // The organization this transaction has just created is the tenant
+        // its first membership is written in (ADR-0078 §4 as amended at
+        // `D29.4`).
+        await memberships.enterOrganization(organization.id, tx);
         await memberships.create(organization.id, principal.id, "owner", tx);
 
         return organization;

@@ -134,6 +134,13 @@
       "when": 1790013623759,
       "tag": "0018_prune_predicate_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790757812175,
+      "tag": "0019_tenant_row_level_security",
+      "breakpoints": true
     }
   ]
 }

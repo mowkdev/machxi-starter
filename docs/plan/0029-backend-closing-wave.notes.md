@@ -111,3 +111,100 @@ Residual (named in 0078 §3): a password login takes no credential lock, so its 
 - Done-when cases, run verbose: `container.test.ts` "a deadlock victim is retried" and "a transaction that keeps losing surfaces the error" green (11/11 in the file); `federated-identity.int.test.ts` "an exchange racing a reset ends in one outcome and no deadlock" green, with both "waits holding nothing" cases (54/54 in the file).
 - So the earlier failures were the Windows machine's, as they looked: the worker-start crash, the `CONNECT_TIMEOUT`, and the impersonation mint that timed out when both lanes gated at once. None of them came back here. The residual that D29.2's notes named, both lanes gating against one Postgres, is still the operator's to route.
 - **Pending the operator:** the merge of this step to `lane/D29` and to `main`. The cloud session pushed only its own branch, `claude/keen-knuth-jwf8xb`, so the step is not closed until `main` carries it.
+
+## D29.4 — Spike: row-level security, one day (2026-09-30)
+
+**Result: green, and it landed.** Built inside the timebox in a worktree of its own (`.claude/worktrees/spike-d29-rls`, branch `spike/d29-rls`), with its own install and its own database, `machxi_d29_rls_test`, created with `machxi_test`'s grants and schema owner. The worktree's `apps/api/.env.test` pointed at that database as a local-only, `skip-worktree` edit that was not committed. The result was then brought onto the lane's branch as one commit, and the worktree was removed.
+
+**Built.**
+
+- **The policies, migration `0019`.** Both tables in `TENANT_OWNED_TABLES` declare `pgPolicy` entries in `packages/db/src/schema/organizations.ts`, and `drizzle-kit generate` wrote the migration, which is unedited apart from its lock note. Each setting that can admit a row has one permissive policy:
+  - `app.organization_id` (`*_tenant`): read and write.
+  - `app.user_id`:
+    - on memberships (`organization_memberships_principal`): **select only**.
+    - on invitations (`organization_invitations_invitee` and `_invitee_consume`): select and update. The address is read from `users`, never placed.
+  - `app.invitation_token_hash` (`organization_invitations_bearer` and `_bearer_consume`): select and update.
+  - `app.tenant_unscoped` set to `staff` or `system` (`*_unscoped`): read and write.
+
+  There is no `FORCE`, so the owner role is not bound.
+
+- **`packages/db/src/tenancy.ts`:** `TENANT_SETTINGS`, `tenantSetting` (a `nullif(current_setting(…, true), '')` expression) and `setTenantScope(tx, scope)`, which places the settings in one `set_config(…, true)` statement and makes no round trip when there is nothing to place. `createDb` gains `tenantUnscoped`, a session-level widening for tooling. The API never passes it.
+- **The API.**
+  - `core/db/tenant-scope.ts`: `tenantScopeOf(ctx)` maps a user principal to `userId` plus the organization `requireMembership` placed, a staff principal to `unscoped: "staff"`, and anything else to nothing.
+  - `openInRequestScope(db)` is now the `open` that `core/container.ts` hands the transaction helper, so every transaction a service opens carries its request's scope. A deadlock retry places the scope again on each attempt.
+  - `withinTransaction(transaction)`: the memberships and invitations repositories run on the caller's transaction or open one of their own, and never run on the bare pool.
+  - `findPendingByTokenHash` places the hash it reads by.
+  - `memberships.enterOrganization` places the tenant before a membership is written: on the personal organization (registration and the federated callback), on team create, and on both accept paths.
+- **Seeders, harness, generator.**
+  - `runSeeders` places `system` on each seeder's transaction.
+  - The API harness gains `asTooling` for a test's own reads of the two tables (11 call sites across 6 files).
+  - The `@repo/db` tier's pool is created with `tenantUnscoped: "system"`.
+  - The `api-module` generator's organization-scoped branch now emits the two policies, a repository over `withinTransaction`, and a `wire` that takes the transaction helper. Verified by generating a scoped `widgets` module in the worktree: `tsc -b` was clean and its 10 unit tests were green once the table was exported. The generated files were then discarded. Two things the generator already missed, and still misses, are out of this step: it does not add the new table to `packages/db/src/index.ts`, and the template throws a raw `Error`, which lint warns on.
+- **No request-wide transaction.** ADR-0067 §5 drew a request-wide transaction, and building one would break three rules in force:
+  - §3's retry reruns a transaction from its start, and a savepoint inside a longer transaction cannot do that honestly.
+  - Mail is sent after commit, which a transaction that outlives the service's cannot promise.
+  - The response would have to wait for a commit that the handler does not own.
+
+  What the spike needed was the request's scope on every transaction, and that is what was built.
+
+**Records.**
+
+- [ADR-0078](../adr/0078-backend-closing-wave.md) §4 was amended in place (`D29.4`) with the mechanism, what it cost and the residual. The header's supersedes list and the title now name 0067.
+- [ADR-0067](../adr/0067-organizations.md) moved to `superseded by` 0078, with its delta stated in the status line and a dated note.
+- The same move is recorded in the index rows for 0067 and 0078, the "Organizations and tenancy" topic row, the multi-tenancy entry and the ledger's running paragraph.
+- The digest gained the line "Row-level security" (0078, 0067), and the digests were regenerated.
+- `docs/specs/organizations.md` gained "The database scopes a tenant-owned table by itself, and admits nothing by omission", with four scenarios. The wire is unchanged.
+
+**Tests.**
+
+- `enumerations.test.ts` "every tenant-owned table carries a policy": green; **red with `organization_memberships`' policies removed** (it names the table); green again once they were restored. It also has a negative case in-file.
+- `schema.int.test.ts` "migration 0019": row-level security is on for every listed table; the application role with no setting sees nothing and an insert is refused `42501`; a transaction scoped to one organization reads its rows alone; the setting does not outlive the transaction.
+- `organizations.int.test.ts`:
+  - "**a query that forgets its organization returns nothing**" is green.
+  - "shows a member's request its organization and the caller's own rows, and no other tenant's".
+  - "refuses a write into an organization the transaction is not scoped to" (`42501`).
+  - "lets the staff segment read every tenant, by the setting that names it".
+- `tenant-scope.test.ts`: 5 cases. `seed-runner.test.ts`: the scope is placed on each seeder's transaction.
+
+**Integration tier's duration.**
+
+| Tier       | Before (tree at `c68e34d`) | After                                                   |
+| ---------- | -------------------------- | ------------------------------------------------------- |
+| `api`      | 75.88 s, 826 cases         | 74.40 s, 73.28 s and 75.97 s over three runs, 830 cases |
+| `@repo/db` | 9.45 s, 118 cases          | 9.39–9.76 s, 121 cases                                  |
+
+Both were measured against `machxi_d29_rls_test` on this container. No measurable cost: each tenant-owned read outside a caller's transaction adds a `BEGIN`, a `set_config` and a `COMMIT`, and they do not show at this scale.
+
+**Review.** One bounded security pass over the diff, against `.claude/agents/security-reviewer.md`'s checklist and the RLS surface. **It was run in-session by the builder, not by an independent `security-reviewer` subagent, because this cloud session had no tool to spawn one.** It found no Critical, High or Medium findings. What was verified:
+
+- Every setting is placed through bind parameters, and the policy SQL is built only from constant setting names.
+- The composition root has exactly one `.transaction(` in `src`, so no transaction escapes the scope.
+- `ctx.organization` is written only by `requireMembership`.
+- An impersonated session scopes as its user.
+- A retry re-places the scope.
+- The bearer setting only admits the row whose hash the caller holds.
+- `enterOrganization` is only reached after the invitation is spent, its address matched, or its organization created in the same transaction.
+
+Two findings, both **logged, not fixed**:
+
+1. **[Low]** `createDb({ tenantUnscoped })` can be reached from production code. Nothing but convention keeps the API's pool from passing it. The smallest fix is a lint selector in `packages/config-eslint/api.js` refusing the key under `apps/api/src`.
+2. **[Low]** The principal policy lets a user's request read that user's own memberships in every organization. A forgotten scope inside a user's request can therefore still return _their own_ rows elsewhere, but never another account's. This is named as a residual in 0078 §4.
+
+**Gate: green on the final run in the worktree.**
+
+- `lint` 22/22. `docs:check` reported: inherited documents clean, behaviour specs clean across 16 files, open lanes disjoint with 2 open.
+- `check-types` 17/17.
+- `test` 17/17:
+  - `api`: 814 unit and 830 integration.
+  - `@repo/db`: 107 unit and 121 integration.
+- `size` 4/4.
+- `format:check` clean.
+
+Earlier runs failed twice, each fixed before the green run. The first failed the lock-note hygiene case, because `0019` had no ADR-0060 §5 note; the note was added. The second failed only `format:check` on the generated snapshot, which prettier fixed.
+
+**Pending the operator.**
+
+- **An independent `security-reviewer` pass over this diff.** The done-when names that agent, and the pass above was the builder's own.
+- The merge of this step to `lane/D29` and to `main`. This session pushed only its own branch, `claude/keen-knuth-jwf8xb`.
+- **`pnpm db:migrate` against the dev database** before the running API takes this code. Code that places settings runs fine on a database without `0019`, but the tests assert the policies. After that, one walk of the organizations screens and an invitation accept on the dev stack.
+- `pnpm test:postman` has not run: no stack runs in this container. The wire is unchanged.

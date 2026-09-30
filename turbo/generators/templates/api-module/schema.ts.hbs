@@ -1,8 +1,12 @@
-import { index, pgTable, text{{#if organizationScoped}}, uuid{{/if}} } from "drizzle-orm/pg-core";
+{{#if organizationScoped}}
+import { sql } from "drizzle-orm";
+{{/if}}
+import { index, {{#if organizationScoped}}pgPolicy, {{/if}}pgTable, text{{#if organizationScoped}}, uuid{{/if}} } from "drizzle-orm/pg-core";
 
 import { primaryId, timestamps } from "./_shared.js";
 {{#if organizationScoped}}
 import { organizations } from "./organizations.js";
+import { TENANT_SETTINGS, tenantSetting } from "../tenancy.js";
 {{/if}}
 
 /**
@@ -93,5 +97,26 @@ export const {{camelCase plural}} = pgTable(
       "gin",
       table.name.op("gin_trgm_ops"),
     ),
+{{#if organizationScoped}}
+    /*
+     * Row-level security (ADR-0067 §5, ADR-0078 §4 as amended at `D29.4`): a
+     * row is visible and writable in the organization the request acts in,
+     * and to the staff segment and the tooling by the setting that names
+     * them — and to nothing by omission. The enumeration test refuses a table
+     * in `TENANT_OWNED_TABLES` that declares no policy.
+     */
+    pgPolicy("{{snakeCase plural}}_tenant", {
+      for: "all",
+      using: sql.raw(
+        `organization_id = ${tenantSetting(TENANT_SETTINGS.organizationId)}::uuid`,
+      ),
+    }),
+    pgPolicy("{{snakeCase plural}}_unscoped", {
+      for: "all",
+      using: sql.raw(
+        `${tenantSetting(TENANT_SETTINGS.unscoped)} in ('staff', 'system')`,
+      ),
+    }),
+{{/if}}
   ],
 );

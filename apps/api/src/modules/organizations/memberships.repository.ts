@@ -2,11 +2,16 @@ import type { ListQuery, OrganizationRole } from "@repo/contracts";
 import {
   organizationMemberships,
   organizations,
+  setTenantScope,
   users,
   type DbExecutor,
 } from "@repo/db";
 import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
 
+import {
+  withinTransaction,
+  type RunInTransaction,
+} from "../../core/db/index.js";
 import {
   applyListQuery,
   type ColumnMap,
@@ -102,8 +107,13 @@ export const listColumns: ColumnMap = {
  */
 const OWNER_INVARIANT_LOCK_CLASS = 67;
 
-export const createMembershipsRepository = (db: DbExecutor) =>
-  ({
+export const createMembershipsRepository = (
+  db: DbExecutor,
+  transaction: RunInTransaction,
+) => {
+  const within = withinTransaction(transaction);
+
+  return {
     /**
      * One membership, by the pair.
      *
@@ -113,14 +123,16 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     findFor: async (
       organizationId: string,
       userId: string,
-      tx: DbExecutor = db,
+      caller?: DbExecutor,
     ): Promise<MembershipRecord | undefined> =>
-      tx.query.organizationMemberships.findFirst({
-        where: and(
-          eq(organizationMemberships.organizationId, organizationId),
-          eq(organizationMemberships.userId, userId),
-        ),
-      }),
+      within(caller, (tx) =>
+        tx.query.organizationMemberships.findFirst({
+          where: and(
+            eq(organizationMemberships.organizationId, organizationId),
+            eq(organizationMemberships.userId, userId),
+          ),
+        }),
+      ),
 
     /**
      * The guard's read: the membership **and** the organization's slug, and
@@ -136,30 +148,31 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     resolveFor: async (
       organizationId: string,
       userId: string,
-      tx: DbExecutor = db,
-    ): Promise<ResolvedMembership | undefined> => {
-      const [row] = await tx
-        .select({
-          organizationId: organizationMemberships.organizationId,
-          slug: organizations.slug,
-          role: organizationMemberships.role,
-        })
-        .from(organizationMemberships)
-        .innerJoin(
-          organizations,
-          eq(organizations.id, organizationMemberships.organizationId),
-        )
-        .where(
-          and(
-            eq(organizationMemberships.organizationId, organizationId),
-            eq(organizationMemberships.userId, userId),
-            isNull(organizations.deletedAt),
-          ),
-        )
-        .limit(1);
+      caller?: DbExecutor,
+    ): Promise<ResolvedMembership | undefined> =>
+      within(caller, async (tx) => {
+        const [row] = await tx
+          .select({
+            organizationId: organizationMemberships.organizationId,
+            slug: organizations.slug,
+            role: organizationMemberships.role,
+          })
+          .from(organizationMemberships)
+          .innerJoin(
+            organizations,
+            eq(organizations.id, organizationMemberships.organizationId),
+          )
+          .where(
+            and(
+              eq(organizationMemberships.organizationId, organizationId),
+              eq(organizationMemberships.userId, userId),
+              isNull(organizations.deletedAt),
+            ),
+          )
+          .limit(1);
 
-      return row;
-    },
+        return row;
+      }),
 
     /**
      * The organizations this account belongs to, live ones only — whole rows,
@@ -177,42 +190,46 @@ export const createMembershipsRepository = (db: DbExecutor) =>
      */
     listForUser: async (
       userId: string,
-      tx: DbExecutor = db,
-    ): Promise<readonly MyOrganizationRecord[]> => {
-      const rows = await tx
-        .select({
-          id: organizations.id,
-          slug: organizations.slug,
-          name: organizations.name,
-          kind: organizations.kind,
-          createdBy: organizations.createdBy,
-          createdAt: organizations.createdAt,
-          updatedAt: organizations.updatedAt,
-          deletedAt: organizations.deletedAt,
-          role: organizationMemberships.role,
-        })
-        .from(organizationMemberships)
-        .innerJoin(
-          organizations,
-          eq(organizations.id, organizationMemberships.organizationId),
-        )
-        .where(
-          and(
-            eq(organizationMemberships.userId, userId),
-            isNull(organizations.deletedAt),
-          ),
-        )
-        .orderBy(
-          // `personal` before `team`, which is what these two labels do
-          // alphabetically — stated as the order wanted rather than left to be
-          // noticed, since a third kind would break the coincidence.
-          asc(organizations.kind),
-          asc(organizations.name),
-          asc(organizations.id),
-        );
+      caller?: DbExecutor,
+    ): Promise<readonly MyOrganizationRecord[]> =>
+      within(caller, async (tx) => {
+        const rows = await tx
+          .select({
+            id: organizations.id,
+            slug: organizations.slug,
+            name: organizations.name,
+            kind: organizations.kind,
+            createdBy: organizations.createdBy,
+            createdAt: organizations.createdAt,
+            updatedAt: organizations.updatedAt,
+            deletedAt: organizations.deletedAt,
+            role: organizationMemberships.role,
+          })
+          .from(organizationMemberships)
+          .innerJoin(
+            organizations,
+            eq(organizations.id, organizationMemberships.organizationId),
+          )
+          .where(
+            and(
+              eq(organizationMemberships.userId, userId),
+              isNull(organizations.deletedAt),
+            ),
+          )
+          .orderBy(
+            // `personal` before `team`, which is what these two labels do
+            // alphabetically — stated as the order wanted rather than left to be
+            // noticed, since a third kind would break the coincidence.
+            asc(organizations.kind),
+            asc(organizations.name),
+            asc(organizations.id),
+          );
 
-      return rows.map(({ role, ...organization }) => ({ organization, role }));
-    },
+        return rows.map(({ role, ...organization }) => ({
+          organization,
+          role,
+        }));
+      }),
 
     /**
      * One member of one organization, addressed by their **email**.
@@ -235,29 +252,30 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     findByEmail: async (
       organizationId: string,
       email: string,
-      tx: DbExecutor = db,
-    ): Promise<MembershipRecord | undefined> => {
-      const [row] = await tx
-        .select({
-          organizationId: organizationMemberships.organizationId,
-          userId: organizationMemberships.userId,
-          role: organizationMemberships.role,
-          createdAt: organizationMemberships.createdAt,
-          updatedAt: organizationMemberships.updatedAt,
-        })
-        .from(organizationMemberships)
-        .innerJoin(users, eq(users.id, organizationMemberships.userId))
-        .where(
-          and(
-            eq(organizationMemberships.organizationId, organizationId),
-            eq(users.email, email),
-            isNull(users.deletedAt),
-          ),
-        )
-        .limit(1);
+      caller?: DbExecutor,
+    ): Promise<MembershipRecord | undefined> =>
+      within(caller, async (tx) => {
+        const [row] = await tx
+          .select({
+            organizationId: organizationMemberships.organizationId,
+            userId: organizationMemberships.userId,
+            role: organizationMemberships.role,
+            createdAt: organizationMemberships.createdAt,
+            updatedAt: organizationMemberships.updatedAt,
+          })
+          .from(organizationMemberships)
+          .innerJoin(users, eq(users.id, organizationMemberships.userId))
+          .where(
+            and(
+              eq(organizationMemberships.organizationId, organizationId),
+              eq(users.email, email),
+              isNull(users.deletedAt),
+            ),
+          )
+          .limit(1);
 
-      return row;
-    },
+        return row;
+      }),
 
     /**
      * A live account, by id — its address and nothing else.
@@ -312,48 +330,49 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     list: async (
       organizationId: string,
       query: ListQuery,
-      tx: DbExecutor = db,
-    ): Promise<ListResult<MemberRecord>> => {
-      const plan = applyListQuery(query, {
-        columns: listColumns,
-        tiebreaker: organizationMemberships.userId,
-        extraWhere: [
-          eq(organizationMemberships.organizationId, organizationId),
-        ],
-      });
+      caller?: DbExecutor,
+    ): Promise<ListResult<MemberRecord>> =>
+      within(caller, async (tx) => {
+        const plan = applyListQuery(query, {
+          columns: listColumns,
+          tiebreaker: organizationMemberships.userId,
+          extraWhere: [
+            eq(organizationMemberships.organizationId, organizationId),
+          ],
+        });
 
-      const rows = await tx
-        .select({
-          organizationId: organizationMemberships.organizationId,
-          userId: organizationMemberships.userId,
-          email: users.email,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          role: organizationMemberships.role,
-          createdAt: organizationMemberships.createdAt,
-          updatedAt: organizationMemberships.updatedAt,
-        })
-        .from(organizationMemberships)
-        .innerJoin(users, eq(users.id, organizationMemberships.userId))
-        .where(plan.where)
-        .orderBy(...plan.orderBy)
-        .limit(plan.limit)
-        .offset(plan.offset);
+        const rows = await tx
+          .select({
+            organizationId: organizationMemberships.organizationId,
+            userId: organizationMemberships.userId,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            role: organizationMemberships.role,
+            createdAt: organizationMemberships.createdAt,
+            updatedAt: organizationMemberships.updatedAt,
+          })
+          .from(organizationMemberships)
+          .innerJoin(users, eq(users.id, organizationMemberships.userId))
+          .where(plan.where)
+          .orderBy(...plan.orderBy)
+          .limit(plan.limit)
+          .offset(plan.offset);
 
-      // A closed account's membership is still a membership and is listed as
-      // one — the members list is what an owner reads to decide who to remove,
-      // and hiding a row nobody can act on would be the worse answer. The
-      // invariant count is where a closed account is *not* an owner.
-      if (!query.count) return { rows, total: null };
+        // A closed account's membership is still a membership and is listed as
+        // one — the members list is what an owner reads to decide who to remove,
+        // and hiding a row nobody can act on would be the worse answer. The
+        // invariant count is where a closed account is *not* an owner.
+        if (!query.count) return { rows, total: null };
 
-      const [counted] = await tx
-        .select({ total: count() })
-        .from(organizationMemberships)
-        .innerJoin(users, eq(users.id, organizationMemberships.userId))
-        .where(plan.where);
+        const [counted] = await tx
+          .select({ total: count() })
+          .from(organizationMemberships)
+          .innerJoin(users, eq(users.id, organizationMemberships.userId))
+          .where(plan.where);
 
-      return { rows, total: counted?.total ?? 0 };
-    },
+        return { rows, total: counted?.total ?? 0 };
+      }),
 
     /**
      * Inserts a membership.
@@ -367,16 +386,17 @@ export const createMembershipsRepository = (db: DbExecutor) =>
       organizationId: string,
       userId: string,
       role: OrganizationRole,
-      tx: DbExecutor = db,
-    ): Promise<boolean> => {
-      const inserted = await tx
-        .insert(organizationMemberships)
-        .values({ organizationId, userId, role })
-        .onConflictDoNothing()
-        .returning({ userId: organizationMemberships.userId });
+      caller?: DbExecutor,
+    ): Promise<boolean> =>
+      within(caller, async (tx) => {
+        const inserted = await tx
+          .insert(organizationMemberships)
+          .values({ organizationId, userId, role })
+          .onConflictDoNothing()
+          .returning({ userId: organizationMemberships.userId });
 
-      return inserted.length > 0;
-    },
+        return inserted.length > 0;
+      }),
 
     /** @returns `false` when the pair has no membership to update. */
     updateRole: async (
@@ -384,21 +404,22 @@ export const createMembershipsRepository = (db: DbExecutor) =>
       userId: string,
       role: OrganizationRole,
       at: Date,
-      tx: DbExecutor = db,
-    ): Promise<boolean> => {
-      const updated = await tx
-        .update(organizationMemberships)
-        .set({ role, updatedAt: at })
-        .where(
-          and(
-            eq(organizationMemberships.organizationId, organizationId),
-            eq(organizationMemberships.userId, userId),
-          ),
-        )
-        .returning({ userId: organizationMemberships.userId });
+      caller?: DbExecutor,
+    ): Promise<boolean> =>
+      within(caller, async (tx) => {
+        const updated = await tx
+          .update(organizationMemberships)
+          .set({ role, updatedAt: at })
+          .where(
+            and(
+              eq(organizationMemberships.organizationId, organizationId),
+              eq(organizationMemberships.userId, userId),
+            ),
+          )
+          .returning({ userId: organizationMemberships.userId });
 
-      return updated.length > 0;
-    },
+        return updated.length > 0;
+      }),
 
     /**
      * Deletes a membership outright — the one row in this schema that is
@@ -414,20 +435,21 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     remove: async (
       organizationId: string,
       userId: string,
-      tx: DbExecutor = db,
-    ): Promise<boolean> => {
-      const deleted = await tx
-        .delete(organizationMemberships)
-        .where(
-          and(
-            eq(organizationMemberships.organizationId, organizationId),
-            eq(organizationMemberships.userId, userId),
-          ),
-        )
-        .returning({ userId: organizationMemberships.userId });
+      caller?: DbExecutor,
+    ): Promise<boolean> =>
+      within(caller, async (tx) => {
+        const deleted = await tx
+          .delete(organizationMemberships)
+          .where(
+            and(
+              eq(organizationMemberships.organizationId, organizationId),
+              eq(organizationMemberships.userId, userId),
+            ),
+          )
+          .returning({ userId: organizationMemberships.userId });
 
-      return deleted.length > 0;
-    },
+        return deleted.length > 0;
+      }),
 
     /**
      * How many owners this organization would still have if `exceptUserId`
@@ -451,23 +473,24 @@ export const createMembershipsRepository = (db: DbExecutor) =>
     countOwnersExcept: async (
       organizationId: string,
       exceptUserId: string,
-      tx: DbExecutor = db,
-    ): Promise<number> => {
-      const [counted] = await tx
-        .select({ total: sql<number>`count(*)::int` })
-        .from(organizationMemberships)
-        .innerJoin(users, eq(users.id, organizationMemberships.userId))
-        .where(
-          and(
-            eq(organizationMemberships.organizationId, organizationId),
-            eq(organizationMemberships.role, "owner"),
-            ne(organizationMemberships.userId, exceptUserId),
-            isNull(users.deletedAt),
-          ),
-        );
+      caller?: DbExecutor,
+    ): Promise<number> =>
+      within(caller, async (tx) => {
+        const [counted] = await tx
+          .select({ total: sql<number>`count(*)::int` })
+          .from(organizationMemberships)
+          .innerJoin(users, eq(users.id, organizationMemberships.userId))
+          .where(
+            and(
+              eq(organizationMemberships.organizationId, organizationId),
+              eq(organizationMemberships.role, "owner"),
+              ne(organizationMemberships.userId, exceptUserId),
+              isNull(users.deletedAt),
+            ),
+          );
 
-      return counted?.total ?? 0;
-    },
+        return counted?.total ?? 0;
+      }),
 
     /**
      * Serialises the edits that have to reason about *other* memberships of
@@ -487,6 +510,22 @@ export const createMembershipsRepository = (db: DbExecutor) =>
      * many tenants, so a whole-table gate here would make every organization's
      * membership edits queue behind every other's.
      */
+    /**
+     * Places `organizationId` as the transaction's tenant (ADR-0078 §4 as
+     * amended at `D29.4`) — for the one path that acts in an organization no
+     * guard resolved: one this transaction has just created (a personal
+     * organization on a public route with no principal, a team on the user
+     * segment), or the one a just-spent invitation names. The principal's own
+     * policy reads their memberships and writes none, so a membership is
+     * always written inside its organization's scope.
+     */
+    enterOrganization: async (
+      organizationId: string,
+      tx: DbExecutor,
+    ): Promise<void> => {
+      await setTenantScope(tx, { organizationId });
+    },
+
     lockOwnerInvariant: async (
       organizationId: string,
       tx: DbExecutor,
@@ -495,7 +534,8 @@ export const createMembershipsRepository = (db: DbExecutor) =>
         sql`select pg_advisory_xact_lock(${OWNER_INVARIANT_LOCK_CLASS}, hashtext(${organizationId}))`,
       );
     },
-  }) as const;
+  } as const;
+};
 
 export type MembershipsRepository = ReturnType<
   typeof createMembershipsRepository

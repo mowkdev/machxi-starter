@@ -103,6 +103,22 @@ const scopedTableNames = tableExports
   .map(([, table]) => getTableName(table));
 
 /**
+ * The names in `names` whose table declares no row-level-security policy, or
+ * which no exported table carries at all — a listed name the schema does not
+ * hold is reported rather than passed over.
+ */
+const unpolicedTables = (names: readonly string[]): string[] =>
+  names.filter((name) => {
+    const entry = tableExports.find(
+      ([, table]) => getTableName(table) === name,
+    );
+
+    return (
+      entry === undefined || getTableConfig(entry[1]).policies.length === 0
+    );
+  });
+
+/**
  * The physical names of every table carrying an expiry — a column whose
  * declared key ends in `expiresAt`, so `sessions.refreshTokenExpiresAt` is
  * caught beside the plain `expiresAt` of the token tables (`D28.4`, `DB-08`).
@@ -173,6 +189,23 @@ describe("the schema's tables", () => {
         scopedTableNames.includes(name),
       ).sort(),
     );
+  });
+
+  it("every tenant-owned table carries a policy", () => {
+    // ADR-0067 §5's row-level security, built at `D29.4` (ADR-0078 §4 as
+    // amended). A table in `TENANT_OWNED_TABLES` with no policy would have
+    // row-level security off — drizzle-kit enables it only on a table that
+    // declares one — and its rows would be the one place a query that forgot
+    // its organization still read every tenant's.
+    const unpoliced = unpolicedTables(TENANT_OWNED_TABLES);
+
+    expect(
+      unpoliced,
+      `declare pgPolicy entries on these tables in packages/db/src/schema: ${unpoliced.join(", ")}`,
+    ).toEqual([]);
+
+    // The negative case: a table that declares none is reported by name.
+    expect(unpolicedTables(["users"])).toEqual(["users"]);
   });
 
   it("every expiring table is pruned or excluded by name", () => {

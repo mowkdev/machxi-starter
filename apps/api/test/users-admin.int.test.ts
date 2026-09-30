@@ -389,15 +389,17 @@ describe("admin user administration", () => {
         slug: personalOrganizationSlug(created.id),
       });
 
-      const memberships = await harness.db.db
-        .select({
-          userId: organizationMemberships.userId,
-          role: organizationMemberships.role,
-        })
-        .from(organizationMemberships)
-        .where(
-          eq(organizationMemberships.organizationId, organization?.id ?? ""),
-        );
+      const memberships = await harness.asTooling((tx) =>
+        tx
+          .select({
+            userId: organizationMemberships.userId,
+            role: organizationMemberships.role,
+          })
+          .from(organizationMemberships)
+          .where(
+            eq(organizationMemberships.organizationId, organization?.id ?? ""),
+          ),
+      );
 
       expect(memberships).toEqual([{ userId: created.id, role: "owner" }]);
     });
@@ -844,10 +846,12 @@ describe("admin user administration", () => {
       // The membership survives the soft delete — nothing cascades on it —
       // which is why every read of it joins `organizations` and filters
       // `deleted_at` rather than trusting the row's absence.
-      const memberships = await harness.db.db
-        .select({ userId: organizationMemberships.userId })
-        .from(organizationMemberships)
-        .where(eq(organizationMemberships.organizationId, before?.id ?? ""));
+      const memberships = await harness.asTooling((tx) =>
+        tx
+          .select({ userId: organizationMemberships.userId })
+          .from(organizationMemberships)
+          .where(eq(organizationMemberships.organizationId, before?.id ?? "")),
+      );
 
       expect(memberships).toHaveLength(1);
     });

@@ -2,6 +2,7 @@ import { isNotNull, isNull, relations, sql } from "drizzle-orm";
 import {
   check,
   index,
+  pgPolicy,
   pgTable,
   primaryKey,
   text,
@@ -18,6 +19,37 @@ import {
   timestamps,
 } from "./_shared.js";
 import { users } from "./users.js";
+import { TENANT_SETTINGS, tenantSetting } from "../tenancy.js";
+
+/*
+ * Row-level security on the tenant-owned tables (ADR-0067 §5, ADR-0078 §4 as
+ * amended at `D29.4`). Each branch of what a transaction may see is a
+ * permissive policy of its own, named for the setting that admits it, so a
+ * row is visible when **any** placed setting names it and invisible when none
+ * does. The tenant and the unscoped branches are `for: "all"` with no separate
+ * `withCheck` — a write is checked against the same expression a read is, so
+ * a transaction cannot insert a row it could not then read. The principal
+ * and bearer branches read, and stamp an invitation, and write nothing else:
+ * a membership is always written inside its organization's scope.
+ *
+ * Written with physical column names rather than column objects: a policy is
+ * DDL, and the expression has to be the one Postgres stores whatever casing
+ * the client applies (ADR-0006).
+ */
+const policy = (expression: string) => sql.raw(expression);
+
+const byOrganization = policy(
+  `organization_id = ${tenantSetting(TENANT_SETTINGS.organizationId)}::uuid`,
+);
+const byInvitee = policy(
+  `email = (select u.email from users u where u.id = ${tenantSetting(TENANT_SETTINGS.userId)}::uuid and u.deleted_at is null)`,
+);
+const byBearer = policy(
+  `token_hash = ${tenantSetting(TENANT_SETTINGS.invitationTokenHash)}`,
+);
+const byUnscopedReason = policy(
+  `${tenantSetting(TENANT_SETTINGS.unscoped)} in ('staff', 'system')`,
+);
 
 /**
  * Organizations — the tenant (ADR-0067 §1, §2).
@@ -174,6 +206,27 @@ export const organizationMemberships = pgTable(
       table.role,
       table.userId,
     ),
+    /* The organization a request acts in, once `requireMembership` has resolved it. */
+    pgPolicy("organization_memberships_tenant", {
+      for: "all",
+      using: byOrganization,
+    }),
+    /*
+     * The principal-scoped class (ADR-0067 §5): a user's own memberships,
+     * whichever organization they are in — the switcher's read, and the guard's
+     * own read before it knows whether the caller belongs. **Read-only**: a
+     * membership is written inside its organization's scope, never by the
+     * account it names alone.
+     */
+    pgPolicy("organization_memberships_principal", {
+      for: "select",
+      using: policy(`user_id = ${tenantSetting(TENANT_SETTINGS.userId)}::uuid`),
+    }),
+    /* The staff segment and the tooling, each by a setting that names it. */
+    pgPolicy("organization_memberships_unscoped", {
+      for: "all",
+      using: byUnscopedReason,
+    }),
   ],
 );
 
@@ -311,6 +364,45 @@ export const organizationInvitations = pgTable(
       "gin",
       table.email.op("gin_trgm_ops"),
     ),
+    /* The organization a request acts in, once `requireMembership` has resolved it. */
+    pgPolicy("organization_invitations_tenant", {
+      for: "all",
+      using: byOrganization,
+    }),
+    /*
+     * The principal-scoped class (ADR-0067 §5): the invitations addressed to
+     * the signed-in user's own address. The address is read from `users`
+     * rather than placed as a setting, so it is the account's current one and
+     * no caller can place somebody else's; the subquery is uncorrelated, so
+     * Postgres evaluates it once per statement.
+     */
+    pgPolicy("organization_invitations_invitee", {
+      for: "select",
+      using: byInvitee,
+    }),
+    /* …and the invitee's accept and decline, which stamp the row and create nothing. */
+    pgPolicy("organization_invitations_invitee_consume", {
+      for: "update",
+      using: byInvitee,
+    }),
+    /*
+     * The secret-scoped read ADR-0067 §5 sanctions: the one invitation whose
+     * token's hash the transaction holds — read by the lookup, stamped by the
+     * accept, and nothing more.
+     */
+    pgPolicy("organization_invitations_bearer", {
+      for: "select",
+      using: byBearer,
+    }),
+    pgPolicy("organization_invitations_bearer_consume", {
+      for: "update",
+      using: byBearer,
+    }),
+    /* The staff segment and the tooling, each by a setting that names it. */
+    pgPolicy("organization_invitations_unscoped", {
+      for: "all",
+      using: byUnscopedReason,
+    }),
   ],
 );
 

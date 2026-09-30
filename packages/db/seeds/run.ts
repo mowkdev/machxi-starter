@@ -1,6 +1,6 @@
 import { createArgon2Hasher } from "@repo/crypto";
 
-import { createDb, type Db } from "../src/index.js";
+import { createDb, setTenantScope, type Db } from "../src/index.js";
 import { isEntryPoint } from "../src/tooling/entrypoint.js";
 import { readArgon2Params } from "../src/tooling/argon2.js";
 import {
@@ -97,6 +97,12 @@ export const runSeeders = async (
     // on earlier ones, and `Promise.all` would throw that away for a saving
     // measured in milliseconds.
     await ctx.db.transaction(async (tx) => {
+      // The tooling reads and writes across tenants, and says so by name
+      // (ADR-0078 §4 as amended at `D29.4`): the seeders run as the
+      // application role, which the tenant-owned tables' policies bind, and a
+      // seeder that creates an organization and its members acts in no
+      // request and under no principal.
+      await setTenantScope(tx, { unscoped: "system" });
       await seeder.run({
         ...ctx,
         db: tx,

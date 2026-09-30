@@ -2,7 +2,11 @@ import { createArgon2Hasher } from "@repo/crypto";
 import type { Logger } from "@repo/logger";
 
 import type { AppConfig } from "./config/index.js";
-import { createTransaction, type DbClient } from "./db/index.js";
+import {
+  createTransaction,
+  openInRequestScope,
+  type DbClient,
+} from "./db/index.js";
 import {
   createAuthCookies,
   createAuthenticate,
@@ -177,8 +181,14 @@ export const buildContainer = ({
   // the client. A deadlock victim is run again, a bounded number of times and
   // each retry logged (ADR-0078 §3) — `core/db/transaction.ts` says why that
   // is safe.
+  //
+  // Every transaction opens in the request's tenant scope (ADR-0078 §4 as
+  // amended at `D29.4`): the principal and the organization the guards placed
+  // on the context become the settings the tenant-owned tables' policies
+  // read, so a query that forgets its organization returns nothing rather
+  // than every tenant's rows.
   const transaction = createTransaction({
-    open: (fn) => db.db.transaction(fn),
+    open: openInRequestScope(db.db),
     logger,
   });
 

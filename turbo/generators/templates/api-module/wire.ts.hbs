@@ -1,4 +1,8 @@
+{{#if organizationScoped}}
+import type { RunInTransaction } from "../../core/db/index.js";
+{{else}}
 import type { DbExecutor } from "@repo/db";
+{{/if}}
 
 import { create{{pascalCase plural}}Controller } from "./{{kebabCase plural}}.controller.js";
 import { create{{pascalCase plural}}Repository } from "./{{kebabCase plural}}.repository.js";
@@ -6,7 +10,18 @@ import { create{{pascalCase plural}}Service } from "./{{kebabCase plural}}.servi
 
 /** What the composition root hands this module (ADR-0073 §10). */
 export interface Wire{{pascalCase plural}}Deps {
+{{#unless organizationScoped}}
   readonly db: DbExecutor;
+{{/unless}}
+{{#if organizationScoped}}
+  /**
+   * The root's transaction helper (ADR-0078 §3 and §4 as amended at `D29.4`):
+   * a tenant-owned repository borrows it so a read outside a caller's
+   * transaction opens one in the request's scope — and never the bare pool,
+   * which is why the module is handed no client.
+   */
+  readonly transaction: RunInTransaction;
+{{/if}}
 }
 
 /**
@@ -22,8 +37,8 @@ export interface Wire{{pascalCase plural}}Deps {
  * It is composition, not a layer, and the ESLint rule on `wire*` files keeps
  * it that way: no Express here, and no schema tables (ADR-0009).
  */
-export const wire{{pascalCase plural}} = ({ db }: Wire{{pascalCase plural}}Deps) => {
-  const repository = create{{pascalCase plural}}Repository(db);
+export const wire{{pascalCase plural}} = ({ {{#if organizationScoped}}transaction{{else}}db{{/if}} }: Wire{{pascalCase plural}}Deps) => {
+  const repository = create{{pascalCase plural}}Repository({{#if organizationScoped}}transaction{{else}}db{{/if}});
   const {{camelCase plural}} = create{{pascalCase plural}}Service({ repository });
 
   return {

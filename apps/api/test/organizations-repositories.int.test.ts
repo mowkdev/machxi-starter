@@ -101,8 +101,8 @@ describe("the organizations repositories", () => {
 
   const repositories = () => ({
     organizations: createOrganizationsRepository(harness.db.db),
-    memberships: createMembershipsRepository(harness.db.db),
-    invitations: createInvitationsRepository(harness.db.db),
+    memberships: createMembershipsRepository(harness.db.db, harness.asTooling),
+    invitations: createInvitationsRepository(harness.db.db, harness.asTooling),
   });
 
   /* ── organizations ──────────────────────────────────────────────────────── */
@@ -397,10 +397,12 @@ describe("the organizations repositories", () => {
     // The row itself outlives its organization's soft delete — nothing
     // cascades on one — which is the fact every read here is defending
     // against.
-    const [survivor] = await harness.db.db
-      .select({ id: organizationInvitations.id })
-      .from(organizationInvitations)
-      .where(eq(organizationInvitations.id, orphan.id));
+    const [survivor] = await harness.asTooling((tx) =>
+      tx
+        .select({ id: organizationInvitations.id })
+        .from(organizationInvitations)
+        .where(eq(organizationInvitations.id, orphan.id)),
+    );
 
     expect(survivor).toBeDefined();
 
@@ -420,13 +422,15 @@ describe("the organizations repositories", () => {
     // Leave the seeded fixtures as this file found them: the suite runs
     // serially, but a stray team organization would still show up in the next
     // file's counts.
-    await harness.db.db
-      .delete(organizationMemberships)
-      .where(
-        and(
-          eq(organizationMemberships.userId, memberId),
-          eq(organizationMemberships.role, "member"),
+    await harness.asTooling((tx) =>
+      tx
+        .delete(organizationMemberships)
+        .where(
+          and(
+            eq(organizationMemberships.userId, memberId),
+            eq(organizationMemberships.role, "member"),
+          ),
         ),
-      );
+    );
   });
 });
