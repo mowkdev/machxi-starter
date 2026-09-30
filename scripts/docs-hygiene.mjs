@@ -353,11 +353,14 @@ export function parseLanes(ledgerText, laneFiles) {
   const lanes = [];
   const malformed = [];
   const inProgress = [];
+  const rows = new Set();
   ledgerText.split(/\r?\n/).forEach((raw, index) => {
     const row = raw.trimEnd().match(TABLE_ROW);
-    if (row && row[2].trim() === "**in progress**") {
-      const id = row[1].match(/\bD\d+\b/);
-      if (id) inProgress.push({ line: index + 1, deliverable: id[0] });
+    const id = row?.[1].match(/\bD\d+\b/);
+    if (!id) return;
+    rows.add(id[0]);
+    if (row[2].trim() === "**in progress**") {
+      inProgress.push({ line: index + 1, deliverable: id[0] });
     }
   });
   for (const file of laneFiles) {
@@ -367,7 +370,7 @@ export function parseLanes(ledgerText, laneFiles) {
       malformed.push({ file: file.rel, ...m });
     }
   }
-  return { lanes, malformed, inProgress };
+  return { lanes, malformed, inProgress, rows };
 }
 
 /**
@@ -384,7 +387,7 @@ export function checkLanes({ ledger, laneFiles, readPlan }) {
   const violations = [];
   const push = (file, line, rule, found, message) =>
     violations.push({ file, line, rule, found, message });
-  const { lanes, malformed, inProgress } = parseLanes(ledger, laneFiles);
+  const { lanes, malformed, inProgress, rows } = parseLanes(ledger, laneFiles);
 
   for (const m of malformed) {
     push(m.file, m.line, "lane-malformed", m.found, `${m.why}; ${LANE_SHAPE}`);
@@ -409,8 +412,21 @@ export function checkLanes({ ledger, laneFiles, readPlan }) {
       );
     }
   }
+  // A lane file for a deliverable the ledger has no row for is another
+  // repository's: in a fork, one the starter merge added, since a merge takes a
+  // file added on one side without consulting any driver (docs/forking.md §5).
+  const foreign = lanes.filter((l) => !rows.has(l.deliverable));
+  for (const lane of foreign) {
+    push(
+      lane.file,
+      lane.fields.Deliverable,
+      "lane-foreign",
+      lane.deliverable,
+      "a lane file for a deliverable this ledger has no row for — in a fork, one the starter merge brought; `git rm` it rather than running `pnpm lanes` (docs/forking.md §5)",
+    );
+  }
   for (const lane of lanes) {
-    if (!open.has(lane.deliverable)) {
+    if (rows.has(lane.deliverable) && !open.has(lane.deliverable)) {
       push(
         lane.file,
         lane.fields.Deliverable,
@@ -491,8 +507,9 @@ export function checkLanes({ ledger, laneFiles, readPlan }) {
   }
 
   // The generated list and running paragraph (ADR-0082 §4). Not compared
-  // while a file does not parse: that file's violation is the one to fix.
-  if (malformed.length === 0) {
+  // while a file does not parse or is foreign: that file's violation is the
+  // one to fix, and `pnpm lanes` would write a foreign lane into the block.
+  if (malformed.length === 0 && foreign.length === 0) {
     const found = findBlock(ledger);
     const expected = renderLanes(lanes);
     const at = (offset) => ledger.slice(0, offset).split("\n").length;

@@ -41,6 +41,15 @@ const starterMergeConfig = starterMerge
       .filter((part) => part !== "-c")
   : [];
 
+/**
+ * The step after the starter merge, as `docs/forking.md` states it: every lane
+ * file the merge added is removed (ADR-0082 §4). A lane file is a new file, and
+ * a merge takes a file added on one side without consulting any driver.
+ */
+const DROP_LANES =
+  /^git diff --name-only --diff-filter=A ORIG_HEAD -- '[^']+' \| xargs -r git rm -q$/m;
+const dropLanes = forking.match(DROP_LANES)?.[0];
+
 /** Git with no global or system config, and nothing but what a case passes. */
 const gitEnv = {
   ...process.env,
@@ -298,6 +307,62 @@ describe("merge attributes", () => {
     assert.equal(repo.read(LEDGER), forkLedger);
     assert.equal(repo.read(CHANGELOG), forkChangelog);
     assert.equal(repo.read(NOTES), forkNotes);
+    assert.equal(repo.read("src/answer.ts"), "export const answer = 42;\n");
+  });
+
+  it("a starter merge adds the starter's lane file, which the documented step removes", () => {
+    assert.ok(
+      dropLanes,
+      "docs/forking.md states no step that removes the lane files the starter merge adds",
+    );
+    const bootstrap = readFileSync(
+      path.join(repoRoot, ".claude/skills/bootstrap/SKILL.md"),
+      "utf8",
+    );
+    assert.ok(
+      bootstrap.includes(dropLanes),
+      `/bootstrap does not name \`${dropLanes}\``,
+    );
+
+    const LANES_README = "docs/plan/lanes/README.md";
+    const repo = repository();
+    repo.commit("the starter at the fork point", {
+      [LEDGER]: ledgerBase,
+      [LANES_README]: "# Lanes\n\nOne file per open lane.\n",
+    });
+    repo.git("checkout", "--quiet", "-b", "starter");
+    repo.commit("the starter opens D40", {
+      [LEDGER]: ledgerBase.replace(
+        "| D2 | Second | planned |",
+        "| D2 | Second | planned |\n| D40 | Forty | in progress |",
+      ),
+      "docs/plan/lanes/D40.md":
+        "# Lane D40\n\n- Deliverable: [D40](../0040-x.md)\n",
+      "src/answer.ts": "export const answer = 42;\n",
+    });
+    repo.git("checkout", "--quiet", "main");
+    const forkLedger =
+      "# Deliverables\n\n| # | Title | Status |\n| --- | --- | --- |\n| D1 | Fork's first | in progress |\n";
+    const forkLane = "# Lane D1\n\n- Deliverable: [D1](../0001-x.md)\n";
+    repo.commit("the fork resets its journal and opens its first lane", {
+      [LEDGER]: forkLedger,
+      "docs/plan/lanes/D1.md": forkLane,
+    });
+
+    const result = repo.merge(starterMergeConfig, "starter");
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    // The attributes kept the fork's ledger, and could not keep the file out.
+    assert.equal(repo.read(LEDGER), forkLedger);
+    assert.match(repo.git("ls-files", "docs/plan/lanes"), /D40\.md/);
+
+    execFileSync("sh", ["-c", dropLanes], { cwd: repo.dir, env: gitEnv });
+    repo.git("commit", "--quiet", "-m", "drop the starter's open lanes");
+
+    assert.deepEqual(
+      repo.git("ls-files", "docs/plan/lanes").trim().split("\n"),
+      ["docs/plan/lanes/D1.md", LANES_README],
+    );
+    assert.equal(repo.read("docs/plan/lanes/D1.md"), forkLane);
     assert.equal(repo.read("src/answer.ts"), "export const answer = 42;\n");
   });
 });

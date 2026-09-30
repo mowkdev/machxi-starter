@@ -1836,7 +1836,7 @@ Preamble.
 
 ${block}
 
-### The running paragraph, frozen
+## The window's history, frozen
 
 History, never read.
 
@@ -1998,6 +1998,8 @@ test("a lane file that does not parse is refused, not skipped", () => {
     good.text.replace("`lane/D30`", "lane/D30"),
     // A date that is not one.
     good.text.replace("2026-09-29", "yesterday"),
+    // Another deliverable's plan, whose tier the check would read.
+    good.text.replace("(../0030-x.md)", "(../0031-x.md)"),
   ];
   for (const text of cases) {
     const violations = check([{ ...good, text }]);
@@ -2026,9 +2028,50 @@ test("a deliverable in progress with no file is refused, and so is a file for on
   assert.deepEqual(rules(check([], { rows: rowsFor(files) })), [
     "lane-missing",
   ]);
-  const stale = check(files, { rows: "" });
-  assert.deepEqual(rules(stale), ["lane-not-open"]);
-  assert.equal(stale[0].file, "docs/plan/lanes/D29.md");
+  const shipped = check(files, {
+    rows: "| [D29](x.md) | T | **shipped 2026-09-30** | x |",
+  });
+  assert.deepEqual(rules(shipped), ["lane-not-open"]);
+  assert.equal(shipped[0].file, "docs/plan/lanes/D29.md");
+});
+
+test("a lane file the ledger has no row for is foreign, and pnpm lanes is not the answer", () => {
+  // A fork's ledger names its own deliverables; the starter merge brought D40.
+  const ours = lane(29, ["0078"]);
+  const theirs = lane(40, ["0082"]);
+  const violations = check([ours, theirs], {
+    rows: rowsFor([ours]),
+    // The block as the fork wrote it, before the merge: not called stale,
+    // because regenerating it would write the starter's lane into it.
+    block: current([ours]),
+  });
+  assert.deepEqual(rules(violations), ["lane-foreign"]);
+  assert.equal(violations[0].file, "docs/plan/lanes/D40.md");
+  assert.match(violations[0].message, /git rm/);
+});
+
+test("an indented or nested line in a lane file is refused", () => {
+  const good = lane(30, ["0084"]);
+  const continued = good.text.replace(
+    /(- Records: .*)$/m,
+    "$1\n  [0079](../../adr/0079-x.md)",
+  );
+  const nested = good.text.replace(
+    /(- Records: .*)$/m,
+    "$1\n  - Records: [0082](../../adr/0082-x.md)",
+  );
+  const trailing = `${good.text}\n[0082](../../adr/0082-x.md)\n`;
+  for (const text of [continued, nested, trailing]) {
+    const parsed = parseLaneFile(good.name, text);
+    assert.equal(parsed.lane, undefined, text);
+    assert.deepEqual(
+      [...new Set(rules(check([{ ...good, text }])))],
+      ["lane-malformed"],
+      text,
+    );
+  }
+  // Prose above the first field is not read.
+  assert.ok(parseLaneFile(good.name, good.text).lane);
 });
 
 test("a lane whose plan is missing is refused", () => {
@@ -2047,6 +2090,7 @@ test("a ledger with nothing in progress, no lane files and no block has no lanes
     lanes: [],
     malformed: [],
     inProgress: [],
+    rows: new Set(),
   });
   assert.deepEqual(
     rules(checkLanes({ ledger: text, laneFiles: [], readPlan: () => null })),
@@ -2075,7 +2119,7 @@ test("pnpm lanes writes the block, and nothing on a second run", async () => {
     assert.equal(await readFile(ledgerPath, "utf8"), once);
     assert.ok(once.includes(current(files)));
     // Only the block changed: the frozen history below it is untouched.
-    assert.ok(once.includes("### The running paragraph, frozen\n\nHistory"));
+    assert.ok(once.includes("## The window's history, frozen\n\nHistory"));
 
     // A file that does not parse writes nothing.
     await writeFile(path.join(root, files[1].rel), "- Tier: api\n");

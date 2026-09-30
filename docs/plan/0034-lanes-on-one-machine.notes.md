@@ -357,3 +357,33 @@ step:check ✓
 ```
 
 `check`: 39 tasks and then `test:unit`'s 17 (all cached), all successful. The base is the lane's merge base, so `D34.1`'s harness change is still a trigger and both integration tiers ran whole: `@repo/db` 128 tests and `api` 847. `size`: 4 tasks cached. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+### D34.4 — the review, and its findings' fates
+
+**The one review** was run by the orchestrating session: `adr-reviewer` over `bfc52d3`, in a fresh context. It confirmed the history is kept byte for byte (`cmp`, 42 585 bytes against `3f8336c`), the `#the-window` anchor is intact, 0079's status line is right, and every old refusal still fires. It reported five findings. The builder checked each against the code: all five were confirmed, and all five are fixed in the follow-up commit `fix(docs,scripts,adr): D34.4 follow-up — the review's findings`.
+
+1. **[MAJOR] The starter merge brought the starter's open lane files into a fork. Confirmed; fixed both ways.** A lane file is a new file, and a merge takes a file added on one side without consulting a driver. `scripts/merge-attributes.test.mjs` "a starter merge adds the starter's lane file, which the documented step removes" shows it: after the merge with both drivers, the fork's ledger is its own and `docs/plan/lanes/D40.md` is present.
+   - **The documented step.** `docs/forking.md` §5's code block gains `git diff --name-only --diff-filter=A ORIG_HEAD -- 'docs/plan/lanes/D*.md' | xargs -r git rm -q`, which removes every lane file the merge added and leaves the fork's own, with a paragraph on why and when to commit it. `/bootstrap` names the same command. The case reads the command from `docs/forking.md`, requires `/bootstrap` to repeat it, runs it, and asserts that only the fork's `D1.md` and `lanes/README.md` remain.
+   - **The check.** `docs:check` gains `lane-foreign`: a lane file for a deliverable the ledger has no row for, with the `git rm` instruction. While one exists the block is not compared, so `lanes-stale` does not advise the `pnpm lanes` that would write the starter's lane into the fork's window. Case: "a lane file the ledger has no row for is foreign, and pnpm lanes is not the answer". A file for a row that is not `in progress` is still `lane-not-open`.
+2. **[MAJOR] A record link could parse and be ignored. Confirmed; fixed.** Reproduced: `- Records: [0084](…)` followed by an indented `[0079](…)` line parsed as records `[0084]` alone. `parseLaneFile` now refuses any indented line, and any non-blank line after the first field that is not a field; the title and prose above the first field are still not read. Case: "an indented or nested line in a lane file is refused" (a continued record, a nested `- Records:`, a bare link after the fields).
+3. **[MAJOR] ADR-0065 §5 was contradicted and not named. Confirmed; fixed.**
+   - 0082's Supersedes line gains 0065 §5, amended in place and labelled "**added 2026-09-30 (D34.4)**". The delta: the window section states the window's state alone, and window history is the ledger's `How D<n>` sections plus each record's status line and index row. 0082's head note says 0065 §5 moves at `D34.4`.
+   - 0065's status line gains the delta, with a second head note ("Superseded in part again … at `D34.4`"); its body is untouched.
+   - The index rows for 0065 and 0082 say so. `pnpm rules:digest` wrote 0 of 3: no digest line states §5's sentence.
+4. **[MINOR] Stale claims sat under the window section's authority clause. Confirmed; fixed as the orchestrating session decided.**
+   - The frozen paragraph moved out of the window section into its own `## The window's history, frozen at D34.4`, directly after it. It is still verbatim, checked against `3f8336c`, and its intro now says why it sits outside.
+   - The authority clause now covers the open lanes as the lane files and the generated block state them, the lane files being right; it says the history after the section states nothing in force.
+   - The narrative bullet links the new section. 0082 §4's `D34.4` amendment, 0079's head note and 0082's index row say where the history is.
+   - `/bootstrap` drops that section and the bullet's link to it.
+5. **[MINOR] Lane-file links were unchecked. Confirmed; fixed.**
+   - Reproduced: `[D36](../0035-….md)` parsed. The plan's file must now open with the deliverable's zero-padded number (`D34` → `0034-`); the "does not parse" case gains that fixture.
+   - `docs/plan/lanes/README.md` is added: one paragraph on what a lane file is and its shape. `readLaneFiles` skips it, and it keeps the directory and the window section's link when no lane is open. `/bootstrap` keeps it and deletes only `D<n>.md` files.
+
+**Checks after the fix**, with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, never `--force`. Only documents and scripts changed, so the whole gate was not re-run (the orchestrating session's instruction).
+
+- `pnpm test:scripts`: pass, 128 tests. `docs-hygiene.test.mjs` has 60, `merge-attributes.test.mjs` 7.
+- `pnpm docs:check`: clean, including "open lanes: disjoint, generated block current (1 open; package 1)" and "union journal: no passage twice".
+- `pnpm lanes` twice: unchanged both times.
+- `pnpm rules:digest` twice: 0 of 3 both times.
+- `pnpm format:check`: pass.
+- `pnpm check`: pass. 39 tasks (5 cached), then `test:unit`'s 17 (cached).

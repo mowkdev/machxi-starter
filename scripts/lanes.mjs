@@ -64,7 +64,10 @@ export const LANE_SHAPE =
 /**
  * Reads one lane file. Returns `{ lane }`, or `{ malformed }` naming each line
  * that does not parse — a typo refused rather than read as fewer records.
- * Lines that are not `- ` fields (the title, a sentence of prose) are not read.
+ * Above the first field the title and a sentence of prose are not read; from
+ * the first field on, every non-blank line is a field, and an indented line
+ * anywhere is refused, so a record continued or nested onto a line of its own
+ * cannot escape the disjointness check.
  */
 export function parseLaneFile(name, text) {
   const malformed = [];
@@ -78,7 +81,16 @@ export function parseLaneFile(name, text) {
   const fields = new Map();
   text.split(/\r?\n/).forEach((raw, index) => {
     const line = raw.trimEnd();
-    if (!line.startsWith("- ")) return;
+    if (line === "") return;
+    if (/^\s/.test(line)) {
+      bad(
+        index + 1,
+        line.trim(),
+        "an indented line; a lane file's lines start at the margin",
+      );
+      return;
+    }
+    if (!line.startsWith("- ") && fields.size === 0) return;
     const m = line.match(FIELD);
     if (!m || !FIELDS.includes(m[1])) {
       bad(index + 1, line, "not a field of the lane's shape");
@@ -97,11 +109,18 @@ export function parseLaneFile(name, text) {
 
   const at = (key) => fields.get(key);
   const deliverable = at("Deliverable").value.match(DELIVERABLE);
-  if (!deliverable || deliverable[1] !== file[1]) {
+  // The plan's file opens with the deliverable's number, zero-padded: `D34`
+  // links `0034-…`, so the tier is read from this lane's plan and no other.
+  const padded = file[1].slice(1).padStart(4, "0");
+  if (
+    !deliverable ||
+    deliverable[1] !== file[1] ||
+    !deliverable[2].startsWith(`${padded}-`)
+  ) {
     bad(
       at("Deliverable").line,
       at("Deliverable").value,
-      `names the deliverable its file is named for, ${file[1]}, and links its plan`,
+      `names the deliverable its file is named for, ${file[1]}, and links its plan, \`../${padded}-….md\``,
     );
   }
   const opened = at("Opened").value;
