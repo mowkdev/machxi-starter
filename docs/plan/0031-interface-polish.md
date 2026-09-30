@@ -40,7 +40,7 @@ These were recommended from the operator's list, and the operator confirmed them
 - **Pending states:**
   - a router pending component behind a measured threshold, with a minimum display time;
   - `AppLoader`'s delay once per page load;
-  - a static indicator in `index.html`;
+  - a static indicator in `index.html` (withdrawn at D31.4, operator);
   - skeletons stay.
   - Added at opening: the threshold and minimum are measured from the router's defaults, 1000 ms and 500 ms.
 - **Recorded, not asked:** the admin has no self-service email change, so item 4 is the customer's alone. The security page and its sign-in-methods rows are D29's record set (ADR-0072 §4) and are only copied, never edited.
@@ -82,18 +82,18 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
 - [x] **3. Every wait shows that it is waiting.** [ADR-0052](../adr/0052-grid-and-admin-followups.md)'s status line gains its delta at the head.
   - `@repo/app-kit` gains the pending component; both routers take it as their default, with a threshold and a minimum. The threshold is measured against the shell's indicator on the dev stack and recorded in the notes.
   - `AppLoader`'s delay runs once per page load.
-  - Both `index.html` files carry a static indicator in their root.
+  - Both `index.html` files carry a static indicator in their root (withdrawn at D31.4, operator: the roots are empty again).
 
   **ADRs:** 0080 §5, 0052 §"Felt navigation" and §Alternatives, 0046 (the loader above the i18n provider), 0074 §6.
   **Done when:**
   - `pnpm test --filter=@repo/app-kit` green, with cases "the pending state is visible and announced" and "a second boot gate shows the loader without a second delay";
   - `pnpm test:unit --filter admin` green, with case "a route whose loader outlasts the threshold shows the pending state", red with the default pending component removed;
-  - `scripts/size.test.mjs` green, with case "the built page's root carries the boot indicator and no inline style";
+  - `scripts/size.test.mjs` green, with case "the built page's root carries the boot indicator and no inline style" (renamed "the built page carries no inline style" at D31.4, when the indicator was withdrawn);
   - `pnpm size` green;
   - `pnpm test:e2e` green in both apps;
   - the gate green.
 
-- [ ] **4. Close-out.** `/frontend-conventions`, `/new-resource-ui` and the rule files describe the header's controls, the auth card and the pending state wherever they describe the old ones. Then regenerate the digests and run the definition of done.
+- [x] **4. Close-out.** `/frontend-conventions`, `/new-resource-ui` and the rule files describe the header's controls, the auth card and the pending state wherever they describe the old ones. Then regenerate the digests and run the definition of done.
       **ADRs:** 0080, 0065 as carried.
       **Done when:** the definition of done below, every item.
 

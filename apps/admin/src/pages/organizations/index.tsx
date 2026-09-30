@@ -25,8 +25,8 @@ import { Button } from "@/shared/ui";
 /**
  * The organizations screen — and the point of it is how little is here.
  *
- * A page is thin composition (ADR-0049): the columns, their sort arrows and
- * their filter controls come from `organizationResourceConfig`; the rows,
+ * A page is thin composition (ADR-0049): the columns, their sort and
+ * filter controls come from `organizationResourceConfig`; the rows,
  * the pager and the search box come from `AppGrid` reading the URL; the dialogs
  * and the row menu come from `features/organization-manage`. What this
  * file decides is the arrangement and one piece of state — which dialog, if

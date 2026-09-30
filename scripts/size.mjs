@@ -50,10 +50,8 @@
 // find the entry; it also refuses an inline `<script>`, any `<style>` element
 // and any `on*=` attribute there. It is stricter than the policy on styles
 // on purpose — `'unsafe-inline'` is Tailwind's runtime price, and the built
-// page does not spend it. Since `D31.3` (ADR-0080 §5) the page's root must
-// also open with the static boot indicator, and no element may carry a
-// `style` attribute, so the wait before the script runs is painted from the
-// stylesheet and never from the page.
+// page does not spend it. No element may carry a `style` attribute either
+// (ADR-0080 §5 as amended), the other road inline paint takes.
 //
 // **Every silent-pass path is closed, because this is a cached gate link.** A
 // check that can quietly measure nothing reports "ok" forever. So the entry is
@@ -177,40 +175,18 @@ export const inlinePageViolations = (source) => {
 };
 
 /**
- * What a built page's root must carry, and what the page may not (`D31.3`,
- * ADR-0080 §5): the static boot indicator, and no inline `style` attribute.
- * Returns one sentence per offence; an empty array is a page that shows a
- * wait before its script runs and spends none of the policy's
- * `'unsafe-inline'` doing it.
+ * What a built page may not carry beside {@link inlinePageViolations}' list
+ * (ADR-0074 §6; ADR-0080 §5 as amended): an inline `style` attribute. Returns
+ * one sentence per offence; an empty array is a page that spends none of the
+ * policy's `'unsafe-inline'`.
  *
- * The indicator is the element the root opens with, marked
- * `data-boot-indicator`, so a root emptied by an `index.html` edit or a
- * plugin fails here rather than quietly reverting to a blank page. It is
- * styled from the app's stylesheet, and a `style=` attribute anywhere on the
- * page is refused beside it: {@link inlinePageViolations} refuses style
- * *elements*, and an attribute is the other road inline paint takes. Comments
- * are dropped and quoted values blanked first, for the reasons given there.
+ * {@link inlinePageViolations} refuses style *elements*, and an attribute is
+ * the other road inline paint takes. Comments are dropped and quoted values
+ * blanked first, for the reasons given there.
  */
-export const bootIndicatorViolations = (source) => {
+export const inlineStyleViolations = (source) => {
   const found = [];
   const html = source.replace(/<!--[\s\S]*?-->/g, "");
-  const root =
-    /<div\b(?=[^>]*\sid\s*=\s*["']?root["'\s/>])[^>]*>\s*(<[a-z][\w-]*\b[^>]*>)?/i.exec(
-      html,
-    );
-
-  if (root === null) {
-    found.push('no `<div id="root">` for the app to render into');
-  } else if (
-    root[1] === undefined ||
-    !/[\s/]data-boot-indicator\b/i.test(
-      root[1].replace(/"[^"]*"|'[^']*'/g, '""'),
-    )
-  ) {
-    found.push(
-      "a root that does not open with the boot indicator (an element marked `data-boot-indicator`) — the page is blank until the script runs",
-    );
-  }
 
   for (const [tag, name] of html.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)) {
     if (/[\s/]style\s*=/i.test(tag.replace(/"[^"]*"|'[^']*'/g, '""'))) {
@@ -581,13 +557,13 @@ export const check = (appDir) => {
     );
   }
 
-  const boot = bootIndicatorViolations(builtPage);
+  const styles = inlineStyleViolations(builtPage);
 
-  if (boot.length > 0) {
+  if (styles.length > 0) {
     refuse(
       [
-        ...boot.map((sentence) => `dist/index.html carries ${sentence}.`),
-        "ADR-0080 §5: index.html's root opens with a static indicator styled from the app's stylesheet, which the first render replaces. Restore the markup in index.html, and move any inline paint into src/app/styles.css.",
+        ...styles.map((sentence) => `dist/index.html carries ${sentence}.`),
+        "ADR-0080 §5 (as amended at D31.4), beside ADR-0074 §6: the built page is styled from its stylesheet. Move any inline paint into src/app/styles.css.",
       ].join("\n"),
     );
   }

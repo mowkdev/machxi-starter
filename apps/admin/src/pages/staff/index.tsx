@@ -22,8 +22,8 @@ import { Button } from "@/shared/ui";
 /**
  * The staff screen (`D3.7`) — and the whole point of it is how little is here.
  *
- * A page is thin composition (ADR-0032): the columns, their sort arrows and
- * their filter controls come from `staffResourceConfig`; the rows, the pager
+ * A page is thin composition (ADR-0032): the columns, their sort and
+ * filter controls come from `staffResourceConfig`; the rows, the pager
  * and the search box come from `AppGrid` reading the URL; the dialogs and the
  * row menu come from `features/staff-manage`. What this file decides is the
  * arrangement and one piece of state — which dialog, if any, is open.

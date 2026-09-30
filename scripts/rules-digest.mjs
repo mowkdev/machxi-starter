@@ -270,7 +270,7 @@ export const AREAS = [
       {
         topic: "Every wait shows",
         records: ["0080", "0052"],
-        text: "The shell's indicator owns the first moments of every navigation. Both routers take `@repo/app-kit`'s pending component — a spinner and a localized sentence in a polite status region — with the kit's threshold and minimum, 1000 ms and 500 ms, so it replaces an outlet only when a chunk or loader outlasts the indicator, and never flickers. `AppLoader`'s delay counts from the page load, so boot gates in sequence read as one wait; each `index.html` root opens with a static indicator styled from the stylesheet, which `pnpm size` checks along with the absence of any inline style. Skeletons stay for content inside a rendered page.",
+        text: "The shell's indicator owns the first moments of every navigation. Both routers take `@repo/app-kit`'s pending component — a spinner and a localized sentence in a polite status region — with the kit's threshold and minimum, 1000 ms and 500 ms, so it replaces an outlet only when a chunk or loader outlasts the indicator, and never flickers. `AppLoader`'s delay counts from the page load, so boot gates in sequence read as one wait. There is no static indicator in `index.html`: a spinner shows only where data loads as a route gets ready, and `pnpm size` refuses any inline style on the built page. Skeletons stay for content inside a rendered page.",
       },
       {
         topic: "Server state",

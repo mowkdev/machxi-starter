@@ -29,14 +29,15 @@
     "THE ENTRY ROW CHANGED ITS FILE SET, not its meaning. Rolldown moves a module the entry shares with a lazy route into a common chunk that dist/index.html preloads, where Rollup kept it in the entry — so the entry *file* fell to about a quarter of what it was while nothing left the first paint. `scripts/size.mjs` now prices the module script plus every non-vendor chunk the page preloads (under Rollup the page preloaded only vendor chunks, so on a Vite 7 build the two definitions give the same number). The Vite 7 figure above is that single file; the rise is the price of the split — per-chunk import and export boilerplate and the runtime chunk, gzipped file by file.",
     "Every ceiling is set again at ~5% over the measurement beside it (4.7% to 5.7%), the rule this file has run at since D14.9 — most of them DOWN, because Rolldown's bundle is smaller and a ceiling left where it was would sit up to 14% over its baseline, one step from ADR-0073 §5's 15% cap and loose enough to hide real growth. Totals: js 399000 -> 393000, and entry 169000 -> 175000 — the one raise, because the new measurement left it 1.2% of headroom. Chunks: query 11500 -> 10700, react 73000 -> 70800, router 31000 -> 28500, table 15200 -> 14300. The 60%-of-js rule on the entry is nowhere near binding.",
     "RE-BASELINED at D21.7, D21's close-out, so that the baseline is the shipping commit's measurement (the plan's definition of done, item 5). Two cold builds of the close-out tree agree to the byte: js 374107 -> 374046 (-61 bytes), entry 167068 -> 167019 (-49 bytes); css and every vendor chunk unmoved to the byte. No app source and no runtime package moved after D21.3; the one input under the app that did is D21.5's `@repo/typescript-config` presets, which Vite 8's transform reads, and the cause was not isolated further. No ceiling changes: each ceiling now sits a few bytes further above its baseline (4.8% on entry, 5.1% on js), still far inside ADR-0073 §5's 15% cap.",
-    "RE-BASELINED at D22.4, D22's close-out, so that the baseline is the shipping commit's measurement (the plan's definition of done, item 3). D22 moved the session, the principal cache and the root's join into @repo/app-kit, added @repo/account, and at D22.4 gave the kit a sideEffects declaration naming only its testing/setup module: js 374046 -> 376664 (+2618 bytes), css 14900 -> 14890, entry 167019 -> 167061 (+42 bytes); chunks router 27102 -> 27029, table 13613 -> 13616, query and react unmoved to the byte. No ceiling changes: the js ceiling now sits 4.3% over its baseline and the entry ceiling 4.8%, far inside ADR-0073 §5's 15% cap."
+    "RE-BASELINED at D22.4, D22's close-out, so that the baseline is the shipping commit's measurement (the plan's definition of done, item 3). D22 moved the session, the principal cache and the root's join into @repo/app-kit, added @repo/account, and at D22.4 gave the kit a sideEffects declaration naming only its testing/setup module: js 374046 -> 376664 (+2618 bytes), css 14900 -> 14890, entry 167019 -> 167061 (+42 bytes); chunks router 27102 -> 27029, table 13613 -> 13616, query and react unmoved to the byte. No ceiling changes: the js ceiling now sits 4.3% over its baseline and the entry ceiling 4.8%, far inside ADR-0073 §5's 15% cap.",
+    "RE-BASELINED at D31.4, D31's close-out, so that the baseline is the shipping commit's measurement (the plan's definition of done, item 3). D31 moved the grid header's controls, the shell's drawer toggle, the auth card, the router's pending component and `AppLoader`'s once-per-load delay (D31.3's static boot indicator was withdrawn at D31.4, so its rules are not in this measurement): js 376664 -> 376979 (+315 bytes), css 14890 -> 15125 (+235 bytes), entry 167061 -> 167192 (+131 bytes); every vendor chunk unmoved to the byte. No ceiling changes: the js ceiling now sits 4.2% over its baseline, the entry ceiling 4.7% and the css ceiling 3.1%, far inside ADR-0073 §5's 15% cap."
   ],
   "baseline": {
-    "measuredAt": "2026-09-29",
-    "step": "D22.4",
-    "js": 376664,
-    "css": 14890,
-    "entry": 167061,
+    "measuredAt": "2026-09-30",
+    "step": "D31.4",
+    "js": 376979,
+    "css": 15125,
+    "entry": 167192,
     "chunks": {
       "query": 10123,
       "react": 67388,

@@ -107,3 +107,78 @@ The gate ran once with `main` merged in (up to date at 50e7b74), against `machxi
 - `pnpm test:e2e` in both apps is pending the coordinator's run on `main` after the fast-forward. The dev stack serves the main checkout, so the e2e sees this change only after the merge. The step is done when that passes. `e2e/navigation.spec.ts` holds a record's detail open for less than the threshold, so the bar and the list behind it should still hold.
 - Pending operator acceptance (browser-only): a cold load and a deep link to a record in both apps, showing the static indicator then `AppLoader` with no blank between, in both themes; and a navigation held past a second, showing the pending state in the outlet.
 - D31.2: the coordinator's `pnpm test:e2e` on `main` at 50e7b74 was green, with admin 38 passed and 1 skipped, and customer 12 passed.
+
+## D31.4 — Close-out (2026-09-30)
+
+**Built.**
+
+- `/frontend-conventions` describes what D31 changed wherever it described the old behaviour. The app-kit row names the pending component and its two numbers. "A header click writes the URL" now reads "the header's sort control". The grid section cites ADR-0039 as carried by ADR-0080 and gains a "header cell" bullet: the name is a label, the controls run sort then filter, and tests find sorting by `"Sort by <header>"`. A new section, "The shell, the auth card and the waits", covers the drawer toggle, the auth card, the email's row and the pending state.
+- `/new-resource-ui`: the page test finds sorting by `"Sort by <header>"`, and the columns note says `sortable` renders a sort button at the header cell's end.
+- The generator's page template and the admin's staff and organizations pages said "their sort arrows" in a comment; they now say "their sort and filter controls".
+- `.claude/rules/*.md` needed no change.
+- `main` was merged in twice: to 6cf7c96 (D29.3) and to c68e34d (D29.3's notes). Both were fast-forwards.
+
+**Corrected on the operator's decision: the static boot indicator is withdrawn.** The operator: "remove the spinner from index html files, looks ugly and unnecessary. We only meant spinners where we have data loading going on, whenever the route gets ready."
+
+- Both `index.html` roots are empty again, and both apps' `styles.css` lost the `.boot-indicator` rules. The four files now match their state before D31.3.
+- `scripts/size.mjs`: `bootIndicatorViolations` became `inlineStyleViolations`. It no longer requires the root to open with the indicator, and it still refuses any `style` attribute. `inlinePageViolations` (inline script and style elements, ADR-0074 §6) is unchanged.
+- `scripts/size.test.mjs`: the case is now "the built page carries no inline style". It keeps the style-attribute refusals, directly and through `check`, and the check that both apps' `index.html` pass.
+- ADR-0080 §5 was amended in place, labelled `D31.4`. The "Before the script" bullet is withdrawn, together with the `D31.3` amendment's static-indicator clauses. The index row, the plan's D31.3 lines, the "Every wait shows" digest line and `/frontend-conventions` all say so.
+- What stands: the route pending state (1000 ms threshold, 500 ms minimum, both routers' default), `AppLoader`'s delay once per page load, and skeletons.
+
+**Size re-baselined** (definition of done, item 3). Both `size-budget.json` baselines are this tree's measurement, taken from a fresh build after the indicator was removed, with a RE-BASELINED note in each. No ceiling changed.
+
+- Admin: js 376664 → 376979, css 14890 → 15125, entry 167061 → 167192.
+- Customer: js 319452 → 319471, css 14047 → 14272, entry 109078 → 109189.
+- Every vendor chunk is unchanged to the byte.
+
+**Net-new tests: 0.** The size script case was renamed and rewritten in place.
+
+**Definition of done.**
+
+1. **The gate.** The integration tiers — api (826) and @repo/db (118) — are accepted by the operator 2026-09-30 on the Linux evidence: the same API and db code as this tree passed both on Linux (c68e34d, D29.3's notes), and D31 changes no API or db code. On this Windows machine both tiers fail intermittently on `write CONNECT_TIMEOUT localhost:5432` against the Postgres container (four gates today), which is environmental and D29's lane measured too.
+   - The four gates, recorded rather than retried:
+     - Full gate at 6cf7c96: api integration 3 of 826 failed. The failures were the CONNECT_TIMEOUT, a `[200, 500]` in the concurrent handoff exchange, and the staff-delete race.
+     - Run A, the api integration tier alone at 6cf7c96: 824 of 826, with one 10 s 500 plus the CONNECT_TIMEOUT.
+     - Two gates at c68e34d: `@repo/db`'s `prune-sessions.int.test.ts` hit CONNECT_TIMEOUT, once at setup and once mid-file.
+   - The gate that closes the step ran with no Postgres-backed test: `pnpm lint --force --concurrency=2 && pnpm check-types --force --concurrency=2 && pnpm test:unit --force && pnpm size --force --concurrency=2 && pnpm format:check`. It exited 0, green:
+     - lint: 22 of 22, with the script tests at 69 of 69;
+     - check-types: 17 of 17;
+     - test:unit: 17 of 17;
+     - size: 4 of 4, with every figure `ok` (admin js 368.1 / 383.8 kB, css 14.8 / 15.2, entry 163.3 / 170.9; customer js 312.0 / 324.2 kB, css 13.9 / 14.5, entry 106.6 / 111.3);
+     - Prettier: clean.
+
+     An earlier attempt at the same gate failed only in `//#test:scripts` › "the committed digests are what the generator produces", because the digest source had been edited and `pnpm rules:digest` not yet re-run. Regenerating fixed it.
+2. **`pnpm test:unit` twice.** The gate's `pnpm test:unit --force` was the first run. The second was 17 of 17 cached, `FULL TURBO`.
+3. **Size.** Re-baselined as above and confirmed by the gate's `pnpm size`. A measurement of the gate's build afterwards equals both baselines to the byte.
+4. **`pnpm test:e2e` in both apps.** Pending the coordinator's run on `main` after the fast-forward.
+   - The coordinator's D31.3 e2e, on `main` at e73f8fb: a full run failed one test per app, and both passed when re-run alone.
+     - Admin: `onboarding.spec.ts` "an operator is invited, follows the link, and chooses their own password".
+     - Customer: `organizations.spec.ts:151` "an account registers, makes a team, invites somebody, and they join".
+   - Both are mail-link flows that ran after earlier e2e runs and the D31.3 measurement's logins. A rate-limit window or timing is the likely cause; that is unconfirmed.
+5. **The operator's walk, in both themes.** Pending the operator, by name:
+   - a grid header;
+   - the drawer toggle, wide and narrow;
+   - login, forgot password and reset password in both apps;
+   - the customer's profile;
+   - a cold load and a deep link to a record. Since the correction this means `AppLoader`, then the page, with no static indicator.
+6. **Digests and docs.** `pnpm rules:digest` wrote 1 of 3, then 0 of 3. `pnpm docs:check` is clean.
+7. **Test total.** **No opening total was taken when D31 opened.** That gap goes to the operator, to be accepted by name at `/ship`. The net-new tests the steps declared total 13: D31.1 4, D31.2 3, D31.3 6, and D31.4 0.
+   - The closing total is 3483: this gate's unit tier, 2539, plus the Linux integration counts, api 826 and `@repo/db` 118.
+   - The unit tier by package: api 809, admin 331, customer 282, contracts 246, grid 209, ui 103, account 110, db 105, app-kit 84, form 74, api-client 55, crypto 39, resource 31, logger 19, i18n 19, app-services 13, eslint-config 10.
+   - The repo's script tests, 69, run under lint and are not in that figure.
+   - With no opening total, the equation "opening + 13 = closing" cannot be checked.
+
+**Review** (`code-reviewer`, one pass). It confirmed:
+
+- the four restored files match their state before D31.3;
+- `inlineStyleViolations` still refuses `style=` on any tag, and the rewritten test's refusal comes from that check;
+- the baselines and headroom figures agree with the gate's measurement;
+- every claim in the skills matches the code.
+
+Two findings:
+
+1. The refusal message in `scripts/size.mjs` cited ADR-0074 §6 for the `style`-attribute rule, but that section covers only inline script, style elements and `on*` attributes. **Fixed**: it now cites ADR-0080 §5 as amended at D31.4, beside ADR-0074 §6, and `size.test.mjs`'s assertion matches.
+2. Removing the indicator check also removed the only refusal of a built page with no `<div id="root">`. **Logged, not fixed**: this is the state before D31.3, and the operator's correction asked for parity. A root-presence check would be a new rule for a later step to take if wanted.
+
+Re-verified after the fix with `node --test scripts/size.test.mjs` (15 of 15), then `pnpm lint --force --concurrency=2` (22 of 22) and `pnpm format:check`.
