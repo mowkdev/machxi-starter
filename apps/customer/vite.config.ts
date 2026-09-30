@@ -107,8 +107,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  /* The version constant (ADR-0054 §5). See `app-version.ts`. */
-  define: versionDefine,
+  /* The build's label and commit (ADR-0081 §2). See `app-version.ts`. */
+  define: versionDefine(process.env),
   build: {
     /*
      * **Emitted, and not referenced from the bundle** (ADR-0062 §4). A minified

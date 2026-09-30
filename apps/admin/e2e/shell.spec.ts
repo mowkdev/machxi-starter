@@ -91,12 +91,14 @@ test("the sidebar footer shows the build's version", async ({ app: page }) => {
   const footer = page.locator('[data-slot="sidebar-footer"]');
 
   /*
-   * The shape, not the number: the value is a `define` from
-   * `apps/admin/package.json` and the app's own suite asserts the provenance.
-   * What only a browser can say is that the substitution survived a
-   * production-shaped build rather than resolving to the literal `undefined`
-   * — the failure mode a missing `define` produces, and the one that looks
-   * fine in every jsdom assertion.
+   * The shape, not the value: the label is a `define` from the build's
+   * `APP_VERSION` (ADR-0081, `D32.2`) — `dev` on a stack nobody labelled —
+   * followed by the short commit when the build had one, and the app's own
+   * suite asserts both. What only a browser can say is that the substitution
+   * survived a production-shaped build rather than resolving to the literal
+   * `undefined` — the failure mode a missing `define` produces, and the one
+   * that looks fine in every jsdom assertion.
    */
-  await expect(footer).toHaveText(/^v\d+\.\d+\.\d+$/);
+  await expect(footer).toHaveText(/^\S+( · [0-9a-f]{7})?$/);
+  await expect(footer).not.toHaveText(/undefined/);
 });

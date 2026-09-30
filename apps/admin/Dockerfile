@@ -54,6 +54,23 @@ ENV VITE_API_URL=$VITE_API_URL \
 COPY . .
 
 RUN pnpm install --frozen-lockfile --offline
+
+# **The build's two facts, stamped into the bundle** (ADR-0081 §2): the release
+# label and the commit, under the names the API's image and `turbo.json` use —
+# no `VITE_`-named twin. Promoted to `ENV` because `app-version.ts` reads them
+# from the process environment and `turbo.json`'s `build` task passes them
+# through, as it does `VITE_*`. The sidebar footer shows both.
+#
+# Declared here, below the install, rather than beside the `VITE_*` arguments
+# above: the label changes with every release, where an API origin does not,
+# and a new label should rebuild the bundle and nothing under it. Omitted, both
+# arrive as empty strings, which `app-version.ts` reads as unset: the footer
+# says `dev` and shows no commit (ADR-0081 §1).
+ARG APP_VERSION
+ARG GIT_SHA
+ENV APP_VERSION=${APP_VERSION} \
+    GIT_SHA=${GIT_SHA}
+
 RUN pnpm turbo run build --filter=admin
 
 # **The web root is a copy of `dist/` with the sourcemaps taken out, and it is

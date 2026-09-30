@@ -1,48 +1,56 @@
-import { readFileSync } from "node:fs";
-
 /**
- * The version this app's chrome shows (ADR-0054 §5, `D12.1`).
+ * The build this app's chrome names (ADR-0081 §1–§3, the delta on ADR-0054
+ * §5; `D32.2`).
  *
- * The admin's `app-version.ts` verbatim in mechanism and separate by
- * construction: **a build-time constant from a tracked source, never a runtime
- * variable and never a git SHA.** An env var would make the version a
- * configuration surface and put it outside the bundle the browser already has;
- * a SHA is truthful at build time and a lie from a warm Turbo cache, and making
- * it a cache input would bust the cache on every commit.
- * `apps/customer/package.json`'s `version` is a file somebody edits on purpose,
- * and it sits inside this package — so it is part of `$TURBO_DEFAULT$` and a
- * bump invalidates the `build` task by itself, with nothing added to
- * `turbo.json` and nothing to remember.
+ * The admin's `app-version.ts` verbatim in mechanism. **Two facts, read from
+ * the process environment at build time, under the names every Dockerfile,
+ * the reference compose and `turbo.json` use.** `APP_VERSION` is the release
+ * label — one value for the whole product, in whatever scheme the owning
+ * repository chose, and never parsed. `GIT_SHA` is the commit the image was
+ * built from. Both are build arguments of this app's image, promoted to `ENV`
+ * in its build stage; nothing reads a `package.json` for either.
  *
- * **Duplicated rather than shared, and deliberately so** — which is why it is
- * argued here and not logged in the plan's §Findings. Extracting it would mean
- * a package that reads *its consumer's* `package.json`, a worse shape than
- * eighteen lines of a constant each app owns: the two versions are meant to
- * move independently, and the reason the value is a tracked file at all is that
- * it belongs to one buildable thing. The same reasoning covers the copied
- * `scripts/i18n.mjs`, which says so in its own header. (`scripts/size.mjs`
- * was the other copy until `D20.9` moved it to the repository root: its one
- * per-app line was a fact `package.json` already states, and a rule that lived
- * in two copies could not be tested — ADR-0073 §5.)
+ * `turbo.json`'s `build` task declares both names in its `env`, so a cached
+ * build cannot show another build's version: each value is part of the hash.
+ * Locally both are unset, and the footer says `dev`. Blank is unset, as in the
+ * API's `core/config`, because a Docker build that passes no `--build-arg`
+ * still declares the `ARG`.
  *
- * The obligation the record names comes with it: **bump the field or the
- * version lies.** It says `0.0.0` until the first release does.
+ * **Duplicated rather than shared, and deliberately so.** Extracting it would
+ * mean a package that reads *its consumer's* build configuration, for a dozen
+ * lines each app owns; the same reasoning covers the copied `scripts/i18n.mjs`,
+ * which says so in its own header.
  *
  * Read here rather than in each config because `vite.config.ts` and
- * `vitest.config.ts` both need it and Vitest reads only the latter — a
- * `define` written in one and not the other is a suite that asserts a global
- * the app does not ship, or a build that ships one no test ever saw.
+ * `vitest.config.ts` both install the `define` and Vitest reads only the
+ * latter — a `define` written in one and not the other is a suite that asserts
+ * a global the app does not ship, or a build that ships one no test ever saw.
  */
-const { version } = JSON.parse(
-  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-) as { version: string };
+interface BuildEnvironment {
+  readonly APP_VERSION?: string | undefined;
+  readonly GIT_SHA?: string | undefined;
+}
 
 /**
- * The `define` both configs install.
+ * A value as given, or `undefined` when it is absent or blank — the API's
+ * `optionalEnv` rule, so the footer and `/health` never disagree about a
+ * padded or empty build argument.
+ */
+const given = (value: string | undefined) =>
+  value !== undefined && value.trim() !== "" ? value : undefined;
+
+/**
+ * The `define` both configs install: `__APP_VERSION__`, the label or `dev`,
+ * and `__GIT_SHA__`, the commit or the empty string for none.
+ *
+ * `vite.config.ts` passes `process.env`; `vitest.config.ts` passes nothing
+ * set, so the suite is a pure function of the tree whatever the shell holds.
  *
  * `JSON.stringify`, because `define` performs a textual substitution: the raw
  * string would be spliced in as an identifier and fail to compile.
  */
-export const versionDefine = {
-  __APP_VERSION__: JSON.stringify(version),
-} as const;
+export const versionDefine = (environment: BuildEnvironment) =>
+  ({
+    __APP_VERSION__: JSON.stringify(given(environment.APP_VERSION) ?? "dev"),
+    __GIT_SHA__: JSON.stringify(given(environment.GIT_SHA) ?? ""),
+  }) as const;

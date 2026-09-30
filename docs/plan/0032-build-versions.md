@@ -57,7 +57,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm docs:check` clean;
   - the gate green.
 
-- [ ] **2. The SPAs' version.** [ADR-0054](../adr/0054-design-language-instrument.md)'s status line gains its delta at the head.
+- [x] **2. The SPAs' version.** [ADR-0054](../adr/0054-design-language-instrument.md)'s status line gains its delta at the head.
   - Both `app-version.ts` read `APP_VERSION` and `GIT_SHA` from the process environment instead of `package.json`, and install a define for each.
   - `turbo.json`'s `build` task declares both in `env`.
   - Both SPA Dockerfiles take both as `ARG`, promoted to `ENV` in the build stage, and compose passes them to both images.
@@ -67,7 +67,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   **Done when:**
   - `pnpm test:unit --filter admin` and `pnpm test:unit --filter customer` green, each with cases "the footer shows the release label and the short commit" and "the footer shows dev and no commit when unset";
   - `APP_VERSION=9.9.9 pnpm turbo run build --filter admin --dry=json` lists `APP_VERSION` among the task's environment variables;
-  - `docker build -f apps/admin/Dockerfile --build-arg APP_VERSION=9.9.9 --build-arg GIT_SHA=0123456789abcdef --build-arg VITE_API_URL=http://localhost:4000 -t machxi-d32-admin .` then `docker run --rm machxi-d32-admin grep -rlq 9.9.9 /usr/share/nginx/html/assets` exits `0`;
+  - `docker build -f apps/admin/Dockerfile --build-arg APP_VERSION=9.9.9 --build-arg GIT_SHA=0123456789abcdef --build-arg VITE_API_URL=http://localhost:4000 -t machxi-d32-admin .` then `docker run --rm machxi-d32-admin grep -rlqF 9.9.9 /usr/share/nginx/html/assets` exits `0`; **Amended 2026-09-30 (D32.2): `-F`.** Without it `9.9.9` is a pattern whose dots match any character, and it exited `0` on a bundle that carried `dev`, because some hash in the assets matched;
   - `pnpm i18n:check` green;
   - `pnpm size` green;
   - the gate green.
