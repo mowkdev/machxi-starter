@@ -426,7 +426,22 @@ Logged, not fixed: the builder's own `D29.4` Low 1 — `createDb({ tenantUnscope
 
 **Pending the operator.**
 
-- The independent `security-reviewer` pass over this step's diff.
-- The merge of this step to `main`: this session pushed only `claude/keen-knuth-jwf8xb`.
+- The independent `security-reviewer` pass: **done**, below.
+- The merge of this step to `main`: **done** on the operator's standing instruction, below.
 - `pnpm db:migrate` against the operator's own dev database (this container's `machxi` is migrated), and, for a real deployment, the upgrade order across `0019` that `docs/deploy.md` now states.
 - The boot refusal has not been exercised through `main.ts` itself (a production configuration needs the full variable set); the function it calls is proved against Postgres.
+
+**Independent `security-reviewer` pass (2026-09-30).** The orchestrating session ran the `security-reviewer` agent over `5fc9e78`. It found **no Critical, High or Medium findings**, three Lows and one informational point, all **logged, not fixed**, and routed to D34's row for its scoping. It confirmed that the four settings are replaced on every transaction and that `''` never matches a policy, that no request transaction inherits a session value, that the boot check fails closed and cannot be skipped by configuration, that `0020`'s post-condition counts PUBLIC and inherited grants, that `asOwner` cannot reach the production bundle, and that no organization-scoped path needs the principal.
+
+1. **The boot check reads only the connection role's own attributes.** A role that is a member of a superuser or BYPASSRLS role passes, one `SET ROLE` away. The smallest fix is a fourth reason, `member_of_bypassing`, in `rowLevelSecurityBypasses`.
+2. **The ownership probe counts only tables whose row-level-security flag is on.** On the code-first release across `0019`, an API wrongly connected as the owner boots, and it keeps serving if `0019` is then applied without a restart. The smallest fix is to refuse ownership of any ordinary or partitioned table outside the system schemas, whatever its flag.
+3. **The column grant cannot tell the stamps apart.** An invitee's or a bearer's transaction could set `revoked_at` or `accepted_at` without creating a membership. It widens nothing. A possible fix is a `WITH CHECK` on the two consume policies, or accepting the gap in D34.
+4. **(Info)** `main.ts` logs the same fatal message when the check's own query fails. It still fails closed. The fix is to branch the message on `isRowLevelSecurityRefusal(error)`.
+
+**Further residuals it named** (for D34):
+
+- The boot check is a snapshot taken at startup.
+- A `schema.int.test.ts` case should pin that the application role holds no table-wide UPDATE on `organization_invitations`, so the ADR-0061 §2 re-issue caveat is tested.
+- No generic pattern yet exists for column-level write limits on a future tenant table.
+
+**Merged to `main` (2026-09-30).**
