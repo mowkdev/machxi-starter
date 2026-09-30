@@ -422,7 +422,7 @@ Built in a cloud session on the lane branch `claude/nifty-planck-bnxu4s` (Postgr
 - "a plan with a close-out step is refused": green (`docs-hygiene.test.mjs` 63 of 63).
 - `pnpm docs:check`: clean.
 - `pnpm test:scripts`: green, 131 tests.
-- This step's commit pushed to the lane branch with the pull request's run green on it: recorded below once read.
+- This step's commit pushed to the lane branch with the pull request's run green on it: **green**. `b28fc19` was pushed to `claude/nifty-planck-bnxu4s`, and `gate.yml` run **92** on it (pull request #2, run id 36765300439) concluded **`success`** at 19:35:56Z. The GitHub tools read it: lint, check-types, test, size and format:check, each `success`. This is recorded in a notes-only commit after it.
 
 **`pnpm step:check` on the final tree** (everything above written but this paragraph), with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, base `d518b5938943` (`git merge-base origin/main HEAD`), never `--force`, exit 0:
 
@@ -445,3 +445,5 @@ step:check ✓
 - **Repository settings: not done by this session, pending.** The step asks for `main` protected with `gate` required, direct pushes kept for `/scope`'s documents-only commits, force pushes blocked. That is the operator's, and this session has no tool that reads or writes it. GitHub's branch protection for a private repository on a personal account needs a paid plan; where it is not available, the rule stays the convention the skills follow, as 0082 §1 says.
 - **Read `CLAUDE.md`'s diff**: rule 3 and three trims under the cap.
 - Nothing is browser-only.
+
+**CI read after the push.** Run 91 on `20df2ee` (`D34.4`'s follow-up), `in_progress` when this step began, concluded `success`. Run 92 on this step's commit `b28fc19` concluded `success`, the step's proof by the plan. This session read both with the GitHub tools, not `gh`, which it does not have. The notes-only commit that records them triggers a run of its own, which the next step reads first.
