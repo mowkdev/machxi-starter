@@ -12,6 +12,6 @@ Authz (ADR-0019): `authenticate(population)` at router level for `user`/`admin` 
 Input (ADR-0011/0014/0020): all params/query/body through zod, `.strict()` bodies, UUID params, string max lengths, sort/filter allow-lists, body size limit.
 Output (ADR-0012/0013): mappers strip `passwordHash` and internals; no stack traces/SQL in responses outside development; 5xx generic message; error `details` don't reveal existence of other accounts.
 Config/logging (ADR-0004/0005/0020): no secrets in code or logs; redaction paths cover new fields; `X-Request-Id` validated; CORS allow-list not `*` in production; helmet present; rate limits on login/refresh; `trust proxy` from config.
-DB: parameterised queries only (Drizzle/`sql` template); no string-built SQL.
+DB: parameterised queries only (Drizzle/`sql` template); no string-built SQL. Row-level security (ADR-0078 §4 as carried by ADR-0083, row-level security without widenings): no setting or policy branch widens a tenant-owned table; a staff route over tenant rows places the organization it names; only tooling and tests use the owner's connection, the one way to read every tenant; no hand-written policy, definer view or function, or rewrite rule; a committed or missing password on `DATABASE_URL` or `DATABASE_URL_OWNER` is refused in production.
 
 Output: findings ordered by severity `[CRITICAL|HIGH|MEDIUM|LOW] — path:line — issue — fix`, then residual risks worth a future ADR. If nothing is found say so and list what you verified.

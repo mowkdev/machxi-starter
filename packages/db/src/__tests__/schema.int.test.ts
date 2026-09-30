@@ -1,5 +1,10 @@
 import { and, eq, exists, gt, isNull, sql } from "drizzle-orm";
-import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
+import {
+  getTableConfig,
+  PgDialect,
+  type PgPolicyToOption,
+  type PgTable,
+} from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DbExecutor } from "../client.js";
@@ -1429,6 +1434,161 @@ describe("ADR-0083 §3 and §4 — the schema admits no bypass", () => {
         "organization_memberships.organization_memberships_by_hand SELECT PERMISSIVE",
       );
       expect(await policiesHeld(tx)).not.toEqual(policiesDeclared());
+    });
+  });
+
+  /**
+   * What a policy admits, as Postgres holds it: its roles, its `USING` and its
+   * `WITH CHECK`, deparsed. Name and command alone would pass an
+   * `ALTER POLICY … USING (true)` or a policy moved to another role (`D35.3`'s
+   * independent review).
+   */
+  const admits = async (
+    executor: DbExecutor,
+    table: string,
+    policy: string,
+  ): Promise<{ roles: string; qual: string | null; check: string | null }> => {
+    const [row] = await rowsIn<{
+      roles: string;
+      qual: string | null;
+      check: string | null;
+    }>(
+      executor,
+      sql`
+        select roles::text as roles, qual, with_check as check
+          from pg_policies
+         where schemaname = 'public' and tablename = ${table}
+           and policyname = ${policy}`,
+    );
+
+    return row ?? { roles: "", qual: null, check: null };
+  };
+
+  const dialect = new PgDialect();
+
+  /** The role names a policy's `to` option lists, nested lists flattened. */
+  const roleNames = (to: PgPolicyToOption): string[] =>
+    typeof to === "string"
+      ? [to]
+      : Array.isArray(to)
+        ? to.flatMap(roleNames)
+        : [to.name];
+
+  const rendered = (expression: Parameters<PgDialect["sqlToQuery"]>[0]) =>
+    dialect.sqlToQuery(expression).sql;
+
+  /**
+   * `table.policy` for every declared policy whose roles, `USING` or
+   * `WITH CHECK` differ from what Postgres holds under that name. The declared
+   * form is normalised by Postgres itself rather than pinned in a fixture: each
+   * declared policy is created again beside the held one under a probe name,
+   * from the schema's own expressions, and the two deparsed forms compared, so
+   * the comparison moves with the schema and with the server's deparser.
+   * Creates objects, so it runs inside a rolled-back transaction.
+   */
+  const policiesDiverging = async (executor: DbExecutor): Promise<string[]> => {
+    const diverging: string[] = [];
+
+    for (const table of tenantTables) {
+      const config = getTableConfig(table);
+
+      for (const policy of config.policies) {
+        const probe = `${policy.name}__declared`;
+        const roles = roleNames(policy.to ?? "public");
+        const using =
+          policy.using === undefined
+            ? ""
+            : ` using (${rendered(policy.using)})`;
+        const check =
+          policy.withCheck === undefined
+            ? ""
+            : ` with check (${rendered(policy.withCheck)})`;
+
+        await executor.execute(
+          sql.raw(
+            `create policy "${probe}" on "${config.name}" as ${policy.as ?? "permissive"} for ${policy.for ?? "all"} to ${roles.join(", ")}${using}${check}`,
+          ),
+        );
+
+        const held = await admits(executor, config.name, policy.name);
+        const declared = await admits(executor, config.name, probe);
+
+        if (JSON.stringify(held) !== JSON.stringify(declared)) {
+          diverging.push(`${config.name}.${policy.name}`);
+        }
+      }
+    }
+
+    return diverging;
+  };
+
+  it("the tenant-owned tables' policies admit exactly what the schema declares — roles, USING and WITH CHECK", async () => {
+    await inRolledBack(async (tx) => {
+      expect(await policiesDiverging(tx)).toEqual([]);
+    });
+
+    // A policy widened in place, and one moved to another role, each keep
+    // their name and command, which is all the case above compares.
+    await inRolledBack(async (tx) => {
+      await tx.execute(
+        sql.raw(
+          "alter policy organization_memberships_tenant on organization_memberships using (true)",
+        ),
+      );
+      await tx.execute(
+        sql.raw(
+          "alter policy organization_invitations_bearer_consume on organization_invitations with check (true)",
+        ),
+      );
+      await tx.execute(
+        sql.raw(
+          "alter policy organization_invitations_invitee on organization_invitations to machxi_owner",
+        ),
+      );
+
+      expect(await policiesDiverging(tx)).toEqual([
+        "organization_invitations.organization_invitations_invitee",
+        "organization_invitations.organization_invitations_bearer_consume",
+        "organization_memberships.organization_memberships_tenant",
+      ]);
+    });
+  });
+
+  /** Every rewrite rule outside the system schemas that is not a view's own. */
+  const rewriteRules = async (executor: DbExecutor): Promise<string[]> =>
+    (
+      await rowsIn<{ rule: string }>(
+        executor,
+        sql`
+          select format('%I.%I %I', n.nspname, c.relname, r.rulename) as rule
+            from pg_rewrite r
+            join pg_class c on c.oid = r.ev_class
+            join pg_namespace n on n.oid = c.relnamespace
+           where r.rulename <> '_RETURN'
+             and n.nspname not in ('pg_catalog', 'information_schema')
+             and n.nspname !~ '^pg_(toast|temp_)'
+           order by 1`,
+      )
+    ).map((row) => row.rule);
+
+  it("no rewrite rule exists outside the system schemas but a view's own", async () => {
+    // ADR-0083 §4 as amended at `D35.4` (`D35.3`'s independent review): a
+    // rule's action runs with the rights of the table's owner, whom no policy
+    // binds, so a rule on any table the application role writes could copy a
+    // tenant-owned table's rows wherever the role can read them. A view's
+    // `_RETURN` rule is the view itself, which the view case holds.
+    expect(await rewriteRules(client.db)).toEqual([]);
+
+    await inRolledBack(async (tx) => {
+      await tx.execute(
+        sql.raw(
+          "create rule rls_probe_rule as on update to public.user_settings do also select count(*) from organization_memberships",
+        ),
+      );
+
+      expect(await rewriteRules(tx)).toEqual([
+        "public.user_settings rls_probe_rule",
+      ]);
     });
   });
 

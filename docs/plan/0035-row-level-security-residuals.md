@@ -1,6 +1,6 @@
 # D35 — Row-level security, residuals
 
-- Status: **in progress** — **scoped in full 2026-09-30 by `/scope`**, from the ledger row written at `D29.7`, the day D29 shipped (ledger §How D35 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D32 (ledger §How D35 opened).
+- Status: **shipped 2026-09-30** (ledger §How D35 closed) — **scoped in full 2026-09-30 by `/scope`**, from the ledger row written at `D29.7`, the day D29 shipped (ledger §How D35 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D32 (ledger §How D35 opened).
 - Records: [ADR-0083](../adr/0083-row-level-security-without-widenings.md) (no setting widens anything, the staff segment scoped by its route, the consume policies' check, the login role and the schema's bypasses, the committed database password, the scope held in request storage by a test). Written `proposed` at scoping and accepted at the head of `D35.1`. It supersedes in part [ADR-0078](../adr/0078-backend-closing-wave.md), which moves at `D35.1`. Amends none.
 - Schema: yes
 - Ledger: [`docs/plan/README.md`](README.md)
@@ -40,7 +40,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
 - [x] **3. The login role, the schema's bypasses, the committed password.** The boot refusal gains 0083 §4's fifth reason, `session_user <> current_user`. A schema test refuses a view over a tenant-owned table that is not `security_invoker`, and any `SECURITY DEFINER` function outside the system schemas. In production, the config schema refuses a `DATABASE_URL` whose password is one this repository commits. `docs/deploy.md` states the three rules and that a grant made after boot is caught at the next restart.
       **ADRs:** 0083 §4 and §5, 0078 §2 and §4 as carried, 0004 as carried by 0075 (read only; not moved).
       **Done when:** - `role-check.test.ts` case "names a login role switched at connect time" is green. - `database-role.int.test.ts` case "refuses a connection whose session user is not its current user" is green, and red without the fifth reason. - `schema.int.test.ts` cases "no view reads a tenant-owned table without security_invoker" and "no SECURITY DEFINER function exists outside the system schemas" are green, each red with one such object created. - `config.test.ts` case "a committed database password is refused in production" is green. - `committed-secrets.test.ts` is green. - `security-reviewer` has read the diff; the gate is green.
-- [ ] **4. Close-out.** The D29 notes' routed residuals and the ledger row carry their fates. `docs/specs/organizations.md` states the staff segment's scope. The skills, the agents and the rule files name the owner's connection as the only way to read every tenant. The digests are regenerated. Then the definition of done.
+- [x] **4. Close-out.** The D29 notes' routed residuals and the ledger row carry their fates. `docs/specs/organizations.md` states the staff segment's scope. The skills, the agents and the rule files name the owner's connection as the only way to read every tenant. The digests are regenerated. Then the definition of done.
       **ADRs:** 0083, 0065 as carried.
       **Done when:** the definition of done below, every item.
 

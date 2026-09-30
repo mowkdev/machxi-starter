@@ -6,6 +6,36 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D35 — Row-level security, residuals · 2026-09-30
+
+Row-level security on the tenant-owned tables no longer depends on a setting that widens it:
+
+- **Staff scoped by the route.** A staff request sees the organization its route names and nothing else.
+- **Tooling as the owner.** Tooling and tests that need every tenant connect as the owner.
+- **Invitations end once.** The consume policies admit only an unended invitation and check the row they leave, and a constraint allows at most one ending stamp.
+- **More refusals at boot.** The API refuses a login role switched at connect time, and in production it refuses a committed or missing password in either database URL.
+- **Bypasses held by the schema tests.** Definer views, definer functions, rewrite rules and any drift in the declared policies are refused.
+
+Row-level security is recorded as a defence against a forgotten predicate, not against SQL injection.
+
+Tag `starter-D35`.
+
+## D32 — Build versions · 2026-09-30
+
+The API, the admin app and the customer app now name the build they came from:
+
+- **The release label** is stamped at image build as `APP_VERSION`. All three apps share it, and it reads `dev` when unset. No `package.json` version is read.
+- **The API** also takes `GIT_SHA`, and `/health` answers both.
+- **The SPA sidebar footer** shows the label alone.
+
+A fork:
+
+- tags its deliverables under the prefix its ledger states;
+- keeps `docs/CHANGELOG.md` as journal, with `merge=ours`, reset by `/bootstrap`;
+- is pointed at release-please for its product releases. The starter adopts no release tool.
+
+Tag `starter-D32`.
+
 ## D29 — Backend closing wave · 2026-09-30
 
 Closes what is expensive to retrofit on the backend before the starter is forked.

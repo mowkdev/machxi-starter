@@ -27,7 +27,7 @@ import { authenticatedAs } from "@/test/principals";
  */
 
 describe("the sidebar's version footer", () => {
-  it("the footer shows dev and no commit when unset", async () => {
+  it("the footer shows dev when unset", async () => {
     renderApp({ initialPath: "/", store: authenticatedAs() });
 
     /*
@@ -41,7 +41,7 @@ describe("the sidebar's version footer", () => {
     /*
      * Exactly the word, which is three claims at once: the label is `dev`
      * rather than a manifest's `0.0.0`, nothing decorates it (`vdev`), and no
-     * separator or commit follows it.
+     * separator or commit follows it — the footer never carries one (`D32.5`).
      */
     expect(footer?.textContent).toBe("dev");
   });

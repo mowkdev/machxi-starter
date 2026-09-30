@@ -11,8 +11,7 @@
     "name": "machxi",
     "product": "Administrēšana",
     "authTagline": "machxi administrēšana",
-    "version": "{{version}}",
-    "versionWithCommit": "{{version}} · {{commit}}"
+    "version": "{{version}}"
   },
   "nav": {
     "group": "Pārvaldība",

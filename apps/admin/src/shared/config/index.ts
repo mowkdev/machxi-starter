@@ -149,29 +149,26 @@ export const DEVICE_KEY_PREFIX = `${config.VITE_APP_ID}.${API_SEGMENT}`;
 
 /**
  * The build the sidebar footer names, substituted at compile time (ADR-0081
- * §1–§3, the delta on ADR-0054 §5; `D32.2`).
+ * §1–§3, the delta on ADR-0054 §5; `D32.2`, and `D32.5` for the label alone).
  *
- * `APP_VERSION` is the release label the image was built with, or `dev`;
- * `GIT_SHA` is the commit it was built from, or `undefined` when the build
- * named none. Both come from the build's own environment under those two
- * names, through the `define` `vite.config.ts` and `vitest.config.ts` install
- * from `app-version.ts`; no `package.json` is read.
+ * `APP_VERSION` is the release label the image was built with, or `dev`. It
+ * comes from the build's own environment under that name, through the
+ * `define` `vite.config.ts` and `vitest.config.ts` install from
+ * `app-version.ts`; no `package.json` is read. There is no commit: the footer
+ * shows the label alone, and the commit is the API's `/health` fact.
  *
  * **Not part of `config` above, and not in the schema.** `import.meta.env`
- * is the `VITE_*` configuration a deployment sets per environment; these two
- * are facts about the build, one pair for the whole product, and a
- * `VITE_`-named twin would be a second name for each (ADR-0081 §2). Putting
- * them in the zod object would also make an absent `.env` fail a build that
- * has everything it needs.
+ * is the `VITE_*` configuration a deployment sets per environment; the label
+ * is a fact about the build, one value for the whole product, and a
+ * `VITE_`-named twin would be a second name for it (ADR-0081 §2). Putting it
+ * in the zod object would also make an absent `.env` fail a build that has
+ * everything it needs.
  *
- * The `declare`s are the constants' only types: `define` substitutes text,
- * so nothing exists at runtime for a module to import. They are declared here
- * — the app's one configuration door — so that no component reaches for a
- * bare global.
+ * The `declare` is the constant's only type: `define` substitutes text, so
+ * nothing exists at runtime for a module to import. It is declared here — the
+ * app's one configuration door — so that no component reaches for a bare
+ * global.
  */
 declare const __APP_VERSION__: string;
-declare const __GIT_SHA__: string;
 
 export const APP_VERSION: string = __APP_VERSION__;
-
-export const GIT_SHA: string | undefined = __GIT_SHA__ || undefined;

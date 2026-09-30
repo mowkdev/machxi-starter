@@ -140,8 +140,64 @@ export const readDatabaseUrl = (): string => required("DATABASE_URL");
  * the migration fails on a `CREATE TABLE` it has no privilege for, or worse,
  * succeeds because somebody quietly gave the application role DDL back.
  */
-export const readOwnerDatabaseUrl = (): string =>
-  required("DATABASE_URL_OWNER");
+export const readOwnerDatabaseUrl = (): string => {
+  const url = required("DATABASE_URL_OWNER");
+
+  // ADR-0083 §5 as amended at `D35.4`: the owner is bound by no policy, so a
+  // committed password on it is worse than on the application role. Refused
+  // under `NODE_ENV=production`, which the migrate image sets, for the reason
+  // the API refuses one on `DATABASE_URL` — and a URL with no password is
+  // refused with it, because postgres.js would then read `PGPASSWORD`, which
+  // this check does not see. The message names the variable, never the value.
+  if (isProduction() && isRefusedProductionDatabaseUrl(url)) {
+    throw new Error(
+      "DATABASE_URL_OWNER carries a password committed in this repository, or none, and must not be used in production (ADR-0083 §5): set the owner role's own password in the URL itself.",
+    );
+  }
+
+  return url;
+};
+
+/**
+ * The database passwords this repository commits, mirrored from
+ * `apps/api/src/core/config/database-password.ts`
+ * (`KNOWN_PUBLIC_DATABASE_PASSWORDS`), which cannot be imported here —
+ * `@repo/db` must not depend on the API (ADR-0002). `env.test.ts` reads the
+ * committed files and fails when one is missing, as the API's own test does.
+ */
+export const knownPublicDatabasePasswords: readonly string[] = [
+  "machxi",
+  "machxi_app",
+  "machxi_owner",
+  "password",
+];
+
+/**
+ * The password a database URL carries, decoded — empty when it has none.
+ *
+ * Parsed as postgres.js parses it (`parseUrl`): a multi-host list
+ * (`h1:5432,h2:5432`) is cut to its first host first, since WHATWG `URL`
+ * refuses the list and would otherwise read no password at all (`D35.4`).
+ */
+export const databaseUrlPassword = (url: string): string => {
+  const authority = url.slice(url.indexOf("://") + 3).split(/[?/]/)[0] ?? "";
+  const hosts = authority.slice(authority.indexOf("@") + 1);
+  const password =
+    URL.parse(url.replace(hosts, hosts.split(",")[0] ?? ""))?.password ?? "";
+
+  try {
+    return decodeURIComponent(password);
+  } catch {
+    return password;
+  }
+};
+
+/** A URL production refuses: a committed password, or none (ADR-0083 §5). */
+const isRefusedProductionDatabaseUrl = (url: string): boolean => {
+  const password = databaseUrlPassword(url);
+
+  return password === "" || knownPublicDatabasePasswords.includes(password);
+};
 
 /**
  * The integration-test database (ADR-0021). Tooling-only — deliberately absent

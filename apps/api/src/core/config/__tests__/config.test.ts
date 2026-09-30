@@ -312,6 +312,24 @@ describe("envSchema", () => {
       expect(message).not.toContain("machxi_app@");
     });
 
+    it("a database URL with no password is refused in production", () => {
+      // ADR-0083 §5 as amended at `D35.4`: postgres.js reads PGPASSWORD when
+      // the URL carries none, and the schema cannot see that variable — so the
+      // committed password would pass beside the URL. The URL must carry it.
+      for (const url of [
+        "postgres://machxi_app@db.internal:5432/machxi",
+        "postgres://machxi_app:@db.internal:5432/machxi",
+        "postgres://db.internal/machxi",
+      ]) {
+        expect(() => parse({ ...production, DATABASE_URL: url })).toThrow(
+          /DATABASE_URL/,
+        );
+        expect(() =>
+          parse({ ...production, NODE_ENV: "development", DATABASE_URL: url }),
+        ).not.toThrow();
+      }
+    });
+
     it.each(KNOWN_PUBLIC_SECRETS)(
       "refuses the signing key committed as %s",
       (secret) => {

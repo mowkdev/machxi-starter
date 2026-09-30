@@ -11,7 +11,7 @@ description: Step-by-step checklist to create a new API feature module (routes/c
 pnpm turbo gen api-module
 ```
 
-It asks for the aggregate (singular, lower case), its plural, the route segment and whether the aggregate is owned by an organization (ADR-0067 §1 — the tenant column, its composite index, a required scope on every repository function, and the table's row-level policies with a repository that never runs on the bare pool, ADR-0078 §4, row-level security; answer `yes` only when it is, because retrofitting it is a rewrite).
+It asks for the aggregate (singular, lower case), its plural, the route segment and whether the aggregate is owned by an organization (ADR-0067 §1 — the tenant column, its composite index, a required scope on every repository function, and the table's row-level policies with a repository that never runs on the bare pool, ADR-0078 §4, row-level security; a staff route over it names its organization, never a widening, and only the owner's connection reads every tenant, ADR-0083, row-level security without widenings; answer `yes` only when it is, because retrofitting it is a rewrite).
 
 **The templates in `turbo/generators/templates/api-module/` are the description of a module** (ADR-0063 §3). When the shape changes, the template changes in the same step — a shape that lives only in this document decays, because nothing runs it.
 

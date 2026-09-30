@@ -231,3 +231,100 @@ It agreed with the builder's two Lows. Three new Lows, **routed to `D35.4`**:
 - Permissive UPDATE policies OR their `WITH CHECK` clauses across branches.
 
 **Merged to `main` (2026-09-30).**
+
+## D35.4 — Close-out (2026-09-30)
+
+Built in a cloud session on `claude/keen-knuth-jwf8xb` at `91e9a3d`, which equals `origin/main`. Two lanes are open (`docs:check`: "open lanes: disjoint (2 open)"). This step touches no record outside D35's two.
+
+**The routed items.** The orchestrator routed five items here: the last block of §D35.1 and the last block of §D35.3. Each was small. Each code item has a test that is red without its fix.
+
+1. **ADR-0083 §2 names the rule for a future staff surface.** A new bullet, labelled D35.4: a staff route over a tenant-owned table outside `/admin/organizations/:id` places the organization it names or takes a record of its own, never a widening. `docs/specs/organizations.md`'s staff requirement says the same and now cites 0083.
+2. **Rewrite rules.** `schema.int.test.ts` "no rewrite rule exists outside the system schemas but a view's own" lists every `pg_rewrite` row not named `_RETURN` outside `pg_catalog`, `information_schema` and the toast and temp schemas; `pg_catalog`'s own `pg_settings` rules are excluded that way. The case carries its negative: a rolled-back `CREATE RULE … ON UPDATE TO user_settings DO ALSO SELECT … FROM organization_memberships` is named. `docs/deploy.md`'s third rule now names rules, as ADR-0083 §4 does (amended, labelled D35.4).
+3. **The policy set compared on roles, `USING` and `WITH CHECK`.** `schema.int.test.ts` "the tenant-owned tables' policies admit exactly what the schema declares — roles, USING and WITH CHECK". **A committed fixture was not used.** Inside a rolled-back transaction, the case recreates each declared `pgPolicy` beside the held one, under a probe name, from the schema's own expressions (rendered by `PgDialect`) and `to` roles. It then compares the two `pg_policies` rows' `roles`, `qual` and `with_check`. Postgres normalises both, so the comparison needs no fixture, and it follows the schema and the server's deparser rather than breaking on either. The case carries its negative: `ALTER POLICY … USING (true)`, `… WITH CHECK (true)` and `… TO machxi_owner`, each on a different policy, each named. ADR-0083 §4's sentence is extended, not narrowed (labelled D35.4). It records the choice.
+4. **`PGPASSWORD`.** postgres.js 3.4.9's `parseOptions` reads `url.password || env.PGPASSWORD`. **Chosen: refuse a password-less `DATABASE_URL` in production.** Checking `PGPASSWORD` instead would mean declaring it in the config schema, a new variable under ADR-0004, which D32's lane holds. The refusal also needs no second place to read. `database-password.ts`'s `carriesCommittedPassword` became `isRefusedProductionDatabaseUrl` (a committed password, or none). The schema's message says both, never the value, and `schema.ts` stays at 995 lines. `config.test.ts` "a database URL with no password is refused in production" was red with the old predicate. The cost is written into ADR-0083 §5: a deployment keeps its password in the URL, not in `PGPASSWORD` or a peer-authenticated socket.
+5. **`DATABASE_URL_OWNER`.** `readOwnerDatabaseUrl` (`packages/db/src/tooling/env.ts`) refuses a committed password, or none, under `NODE_ENV=production`, which the migrate image sets. It uses a list mirrored from the API's, since `@repo/db` may not import the API (ADR-0002), the pattern the seed passwords already follow. `env.test.ts` "readOwnerDatabaseUrl" was red on five cases with the refusal disabled. Its last case reads every `DATABASE_URL*` password in the three committed env files, so the mirrored list cannot fall behind them. ADR-0083 §5 is amended in place, labelled D35.4. `docs/deploy.md` tells the local reference-stack trial to give `machxi_owner` its own password too.
+
+**The close-out's own work.**
+
+- **Fates.** D29's notes gain "Fates of the residuals routed to D35", one line per item, and the ledger's D35 row records where they are. Every residual is closed or accepted except one: D29.7's "no generic pattern for column-level write limits on a future tenant table" was never in D35's scope and stays open for a later record. D29's follow-up Info 2 (`MEMBER` counts a PG16 `INHERIT FALSE, SET FALSE` grant) was the one wording fix owed; `role-check.ts`'s doc comment now says it.
+- **Spec.** `docs/specs/organizations.md` states the staff segment's scope in both requirements. The RLS requirement and the "bypass in the schema" and "committed database password" scenarios are extended. A new scenario, "A committed owner password", is proved by `packages/db/src/__tests__/env.test.ts`.
+- **Skills, agents, rules.** Each now names the owner's connection as the only way to read every tenant, and no setting widens a policy:
+  - `/api-conventions`'s data line;
+  - `/new-api-module`'s organization-scoped answer, which also says a staff route names its organization;
+  - `/local-dev`'s "tenant-owned read returns nothing" row, where the table reflowed;
+  - `db-migrator`, which also names the hand-written objects the schema test refuses;
+  - `security-reviewer`, which gains a row-level security line in its DB checklist.
+
+  `.claude/rules/*.md` needed nothing: they load the digest.
+
+- **Digest.** The "Row-level security" line (`scripts/rules-digest.mjs`) gains the owner's refusal, the password-less refusal, rules, the compared policy fields and the staff-surface rule. `pnpm rules:digest` wrote 1 of 3, then 0 of 3.
+
+**Definition of done.**
+
+1. **The gate, every task cold.** `pnpm lint --force && pnpm check-types --force && pnpm test --force && pnpm size --force && pnpm format:check`:
+   - `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 832 unit and 847 integration; `@repo/db` 118 unit and 128 integration), `size` 4/4 all `ok`.
+   - `format:check` then failed on one file, `schema.int.test.ts`. `prettier --write` rewrapped it (formatting only), and `format:check` then read "All matched files use Prettier code style!". The final gate over the committed tree is below.
+2. **`pnpm test:unit` twice**: 17/17 (15 cached), then 17/17 cached, `FULL TURBO`.
+3. **The dev database.** `pnpm db:migrate` printed "up to date" twice. `pnpm db:seed -- --dev` ran twice with identical output apart from turbo's timing lines.
+4. **`pnpm test:postman`: pending the operator.** No dev stack runs in this container, and `CLAUDE.md` forbids starting one. The wire changed in no D35 step.
+5. **`pnpm test:e2e` in both apps: pending the operator**, for the same reason.
+6. **The operator's walk: pending the operator.** Admin: the organizations list, one organization's detail and members, adding and removing a member, creating one with its owner. Customer: a member's organization screens and an invitation accept. It exercises D35.1's route guard and D35.2–D35.3's consume policies on the dev stack. The operator's dev database needs `pnpm db:migrate` first, for `0021`–`0023`.
+7. **`pnpm audit --prod`**: "No known vulnerabilities found".
+8. **`pnpm rules:digest`** wrote 0 of 3 on the second run. **`pnpm docs:check`**: "inherited documents: clean", "behaviour specs: clean (16 files)", "open lanes: disjoint (2 open)".
+
+Items 4–6 are pending the operator, as at D29.6 and D31.4, which were ticked in the same state. Every machine item that can run here is green, so the step is ticked, and `/ship` runs the definition of done again on the committed tree.
+
+**Final gate over the tree as committed** (after the rewrap and these notes): `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited 0. `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 832 and 847, `@repo/db` 118 and 128), `size` 4/4, and "All matched files use Prettier code style!".
+
+**Review.** The builder had no Agent tool, so it did its own pass against `.claude/agents/security-reviewer.md`. **An independent `security-reviewer` pass is still owed; the orchestrating session runs it.** What it checked:
+
+- Both refusals name the variable and never the value, and tests assert it.
+- Outside production nothing changes, so the local compose, the harness and CI keep their committed passwords.
+- The schema cases' SQL is constant or built from the schema's own policy names.
+- Every probe object is created in a transaction that is rolled back.
+- The migrate bundle's `URL.parse` exists on the image's Node 24.
+
+**One finding, fixed.** `@repo/db`'s password parser used WHATWG `URL`, which refuses a multi-host list (`h1:5432,h2:5432`) that postgres.js accepts. So a multi-host owner URL would read as password-less: falsely refused if its password was real, and a committed one read as "none". It now cuts the list to its first host before parsing, as postgres.js's `parseUrl` does, and `env.test.ts` "reads a multi-host URL as postgres.js does, by its first host" covers it. The API's copy was left alone: its schema's `z.url()` already refuses a multi-host `DATABASE_URL`, which the source comment says.
+
+**Logged, not fixed:**
+
+- The two committed-password lists are mirrored, one per package. Each package's test reads the committed env files, so drift fails a test, but `00-roles.sql` and `POSTGRES_PASSWORD` are read by the API's test alone.
+- The password-less refusal refuses a peer-authenticated socket deployment in production. This is by decision (ADR-0083 §5).
+
+**Residuals carried to `/ship`**, not fixed here, as the earlier steps logged them:
+
+- `routeOrganizationId` stays on the context (§D35.1).
+- The committed list is an exact match (§D35.3's builder Low 2).
+- The schema guards read only the migration-built test database, and permissive UPDATE policies OR their checks across branches (§D35.3, "for a later record").
+- D29.7's column-level write pattern for a future tenant table.
+
+**Pending the operator:**
+
+- Items 4–6 above.
+- The independent `security-reviewer` pass.
+- The merge of this step to `main`. This session pushes only `claude/keen-knuth-jwf8xb`.
+- A deployment keeps its database passwords in the two URLs, both uncommitted, from this release.
+
+**Independent `security-reviewer` pass over `c43493c` (2026-09-30).** It found **no Critical, High or Medium findings**. It re-ran both new integration cases, 2/2 green. It confirmed:
+
+- The rule query spans every non-system schema.
+- The policy-equality case cannot pass vacuously: a failed probe throws, the probe name differs from the policy's, and its negative exercises roles, `USING` and `WITH CHECK` on three different policies.
+- Both password parsers agree with postgres.js 3.4.9 on the edge cases, and every unparseable URL fails closed.
+- Neither error echoes a value.
+- The migrate image and the owner CLIs run under `NODE_ENV=production`, and dev, CI and test are unaffected.
+- No earlier D35 guarantee is loosened.
+
+Three Lows, **logged, not fixed**, for `/ship` or a later record:
+
+1. **The two password lists could drift.** `@repo/db`'s test checks only the `DATABASE_URL*` lines, not `POSTGRES_PASSWORD` or `00-roles.sql`. The fix: the same checks there, or a test comparing the API list's literals with the mirror.
+2. **One comment in `database-password.ts` is inaccurate.** A multi-host URL without ports does parse, and its password is read correctly.
+3. **The rule query exempts any rule named `_RETURN`.** Only a view can hold one, so it is correct in practice. The hardening: tie the exemption to `relkind in ('v','m')`.
+
+**Residuals, for a later record:**
+
+- A production shell without `NODE_ENV` skips the owner check, by ADR-0075 §4.
+- `db:sessions:prune`'s `readDatabaseUrl` is not checked against the list.
+- Password-less authentication cannot pass the refusal, which is documented.
+- Objects created outside migrations are held by nothing at runtime.
+
+**Merged to `main` (2026-09-30).**

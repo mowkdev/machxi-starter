@@ -480,3 +480,25 @@ One new Low and two informational points, **logged, not fixed**, routed to D35:
 - `docker compose -f docker/prod/compose.yaml build` as committed, on a machine with IPv6 (item 6's remainder).
 
 **Renumbered (2026-09-30).** The residuals row written here as D34 is **D35**: D34 was taken on `main` the same day by "Lanes on one machine and one `main`".
+
+**Fates of the residuals routed to D35 (2026-09-30, at `D35.4`).** Each item this file routed to the D35 row, with what [D35](0035-row-level-security-residuals.md) did with it. The detail is in [D35's notes](0035-row-level-security-residuals.notes.md).
+
+- From `D29.4`'s independent review, "for a later record":
+  - **A session-settable `unscoped` value does not stop SQL injection.** Closed at `D35.2`: `app.tenant_unscoped`, both `_unscoped` policies and the `tenantUnscoped` pool option are gone ([ADR-0083](../adr/0083-row-level-security-without-widenings.md) §1). ADR-0083 §7 states that row-level security defends against a forgotten predicate, not injection. A separate staff role or pool and a signed `SECURITY DEFINER` setter were both declined by name.
+  - **Staff see every tenant at the database level.** Closed at `D35.1`: a staff request is scoped to the organization its route names, and to nothing else (§2).
+  - **The scope is read from AsyncLocalStorage.** Kept by decision, and held by the concurrency test written at `D35.1` (§6).
+  - **The repository-level tests run under `system`.** Closed at `D35.2`: they run under a tenant's scope, and cross-tenant fixtures use `asOwner`.
+- From `D29.4`'s builder pass: **`createDb({ tenantUnscoped })` is reachable from production code.** Closed at `D35.2`: the option no longer exists.
+- From `D29.7`'s independent review:
+  - **Low 3, the column grant cannot tell the stamps apart.** Closed at `D35.2` (the consume policies check the row they leave) and `D35.3` (they admit only an unended invitation, and an invitation carries at most one terminal stamp).
+  - **The boot check is a snapshot taken at startup.** Accepted and documented: `docs/deploy.md` says a grant made later is caught at the next restart (`D35.3`). A periodic re-check is named in "Not in D35".
+  - **A schema case pinning no table-wide UPDATE on `organization_invitations`.** Closed at `D35.2`.
+  - **No generic pattern for column-level write limits on a future tenant table.** Not in D35's scope, and still open for a later record.
+- From the follow-up's independent review:
+  - **Low 1, the check reads `current_user` and not `session_user`.** Closed at `D35.3`, by the fifth reason (§4).
+  - **Info 2, `MEMBER` counts a PG16 grant made `WITH INHERIT FALSE, SET FALSE`.** Accepted as a conservative refusal. `role-check.ts`'s doc comment says so from `D35.4`.
+  - **Info 3, the membership clause lists every role.** Accepted: it names roles only, and only in the fatal log.
+- "Residuals for D35", from the follow-up:
+  - **A committed `machxi_app` password is not refused in production.** Closed at `D35.3` (§5). `D35.4` extends the refusal to a password-less `DATABASE_URL` and to `DATABASE_URL_OWNER`.
+  - **An owner-owned view or `SECURITY DEFINER` function over a tenant table.** Closed at `D35.3` by schema tests. `D35.4` adds rewrite rules, and compares the policies on roles, `USING` and `WITH CHECK` (§4).
+  - **A grant made after boot goes unseen until the next restart.** As for the snapshot above.
