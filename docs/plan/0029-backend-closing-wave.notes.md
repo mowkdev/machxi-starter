@@ -401,7 +401,7 @@ Added after `D29.6` on the operator's decision, from the four Lows of the indepe
 **Records and derived documents.**
 
 - [ADR-0078](../adr/0078-backend-closing-wave.md) §4 amended in place, labelled `D29.7`, with the four changes and the residuals the ledger row now carries.
-- Ledger: **D34, "Row-level security, residuals", `planned`** — a staff role in place of a settable scope, staff seeing every tenant, the scope read from request storage, the repository tests under `system`. Inserted as one row; the table did not reflow.
+- Ledger: **D35, "Row-level security, residuals", `planned`** — a staff role in place of a settable scope, staff seeing every tenant, the scope read from request storage, the repository tests under `system`. Inserted as one row; the table did not reflow.
 - `docs/specs/organizations.md`: the RLS requirement restated (the organization as the only scope once placed, the stamps as the only updatable columns, the cleared settings, the boot refusal), the member's-request scenario tightened, and three scenarios added; `Proved by` gains `database-role.int.test.ts` and `role-check.test.ts`.
 - The "Row-level security" digest line in `scripts/rules-digest.mjs` says the same; `pnpm rules:digest` wrote `api-and-data.md` once and **0 of 3 on the second run**.
 
@@ -431,17 +431,52 @@ Logged, not fixed: the builder's own `D29.4` Low 1 — `createDb({ tenantUnscope
 - `pnpm db:migrate` against the operator's own dev database (this container's `machxi` is migrated), and, for a real deployment, the upgrade order across `0019` that `docs/deploy.md` now states.
 - The boot refusal has not been exercised through `main.ts` itself (a production configuration needs the full variable set); the function it calls is proved against Postgres.
 
-**Independent `security-reviewer` pass (2026-09-30).** The orchestrating session ran the `security-reviewer` agent over `5fc9e78`. It found **no Critical, High or Medium findings**, three Lows and one informational point, all **logged, not fixed**, and routed to D34's row for its scoping. It confirmed that the four settings are replaced on every transaction and that `''` never matches a policy, that no request transaction inherits a session value, that the boot check fails closed and cannot be skipped by configuration, that `0020`'s post-condition counts PUBLIC and inherited grants, that `asOwner` cannot reach the production bundle, and that no organization-scoped path needs the principal.
+**Independent `security-reviewer` pass (2026-09-30).** The orchestrating session ran the `security-reviewer` agent over `5fc9e78`. It found **no Critical, High or Medium findings**, three Lows and one informational point, all **logged, not fixed**, and routed to D35's row for its scoping. It confirmed that the four settings are replaced on every transaction and that `''` never matches a policy, that no request transaction inherits a session value, that the boot check fails closed and cannot be skipped by configuration, that `0020`'s post-condition counts PUBLIC and inherited grants, that `asOwner` cannot reach the production bundle, and that no organization-scoped path needs the principal.
 
-1. **The boot check reads only the connection role's own attributes.** A role that is a member of a superuser or BYPASSRLS role passes, one `SET ROLE` away. The smallest fix is a fourth reason, `member_of_bypassing`, in `rowLevelSecurityBypasses`.
-2. **The ownership probe counts only tables whose row-level-security flag is on.** On the code-first release across `0019`, an API wrongly connected as the owner boots, and it keeps serving if `0019` is then applied without a restart. The smallest fix is to refuse ownership of any ordinary or partitioned table outside the system schemas, whatever its flag.
-3. **The column grant cannot tell the stamps apart.** An invitee's or a bearer's transaction could set `revoked_at` or `accepted_at` without creating a membership. It widens nothing. A possible fix is a `WITH CHECK` on the two consume policies, or accepting the gap in D34.
-4. **(Info)** `main.ts` logs the same fatal message when the check's own query fails. It still fails closed. The fix is to branch the message on `isRowLevelSecurityRefusal(error)`.
+1. **[Fixed in the follow-up below] The boot check reads only the connection role's own attributes.** A role that is a member of a superuser or BYPASSRLS role passes, one `SET ROLE` away. The smallest fix is a fourth reason, `member_of_bypassing`, in `rowLevelSecurityBypasses`.
+2. **[Fixed in the follow-up below] The ownership probe counts only tables whose row-level-security flag is on.** On the code-first release across `0019`, an API wrongly connected as the owner boots, and it keeps serving if `0019` is then applied without a restart. The smallest fix is to refuse ownership of any ordinary or partitioned table outside the system schemas, whatever its flag.
+3. **The column grant cannot tell the stamps apart.** An invitee's or a bearer's transaction could set `revoked_at` or `accepted_at` without creating a membership. It widens nothing. A possible fix is a `WITH CHECK` on the two consume policies, or accepting the gap in D35.
+4. **(Info) [Fixed in the follow-up below]** `main.ts` logs the same fatal message when the check's own query fails. It still fails closed. The fix is to branch the message on `isRowLevelSecurityRefusal(error)`.
 
-**Further residuals it named** (for D34):
+**Further residuals it named** (for D35):
 
 - The boot check is a snapshot taken at startup.
 - A `schema.int.test.ts` case should pin that the application role holds no table-wide UPDATE on `organization_invitations`, so the ADR-0061 §2 re-issue caveat is tested.
 - No generic pattern yet exists for column-level write limits on a future tenant table.
 
 **Merged to `main` (2026-09-30).**
+
+**Follow-up: the two role-check Lows fixed (2026-09-30).** On the operator's instruction, the independent pass's Lows 1 and 2 and its informational point, amended in place in [ADR-0078](../adr/0078-backend-closing-wave.md) §4 under a `D29.7 (follow-up)` label. Low 3 (the column grant cannot tell the stamps apart) stays logged.
+
+- **Membership.** `readRoleRowLevelSecurity` also lists the superuser and `BYPASSRLS` roles the connection's role is a `MEMBER` of (itself excluded, and nothing listed for a superuser, which `pg_has_role` makes a member of everything); `rowLevelSecurityBypasses` gains the fourth reason, "is a member of … (superuser or BYPASSRLS)".
+- **Every owned table.** The ownership probe drops `relrowsecurity`: any `relkind in ('r','p')` table outside `pg_catalog`, `information_schema` and the `pg_toast*`/`pg_temp_*` schemas whose owner the role is a `MEMBER` of, schema-qualified. The refusal names three and counts the rest. Checked against `docs/deploy.md` and `00-roles.sql`: `machxi_app` owns nothing — `drizzle.__drizzle_migrations` and every `public` table are `machxi_owner`'s — and "lets the application role through" stays green.
+- **`main.ts`** logs a failed query while asking under its own fatal message; only a refusal is logged as one. Both still stop the process.
+- **Tests.** Unit: "names membership in a superuser or BYPASSRLS role…", "names three owned tables and counts the rest", "refuses a member of a bypassing role, and an owner of tables with no row-level security" — all three red against the previous `role-check.ts`. Integration (`database-role.int.test.ts`): "refuses a role that is only a member of a BYPASSRLS role" — red with the membership predicate removed; "refuses the owner of a table whose row-level security is not on yet" — red with `relrowsecurity` restored (as is the owner case, now asserting `public.users` and the migrations table). Both build their roles as the test cluster's superuser in a transaction that is rolled back, so no role, schema or table survives a case; the URL is a new harness-only variable, `DATABASE_URL_TEST_SUPERUSER` (the compose/CI `POSTGRES_USER`), committed in `apps/api/.env.test`, declared in `turbo.json` and `.env.example`, read on demand by that file alone.
+- `docs/deploy.md`, `docs/specs/organizations.md` and the "Row-level security" digest line say the same.
+
+**Independent `security-reviewer` pass over the follow-up (`444e194`, 2026-09-30).** It found **no Critical, High or Medium findings**. Both Lows are fixed correctly and `main.ts` still fails closed. The SQL was probed live on PostgreSQL 16.13, in rolled-back transactions. `machxi_app` passes on both `machxi` and `machxi_test`. `CREATE ROLE` is transactional, so the new cases leave nothing behind.
+
+The committed `DATABASE_URL_TEST_SUPERUSER` was judged **acceptable**: `machxi:machxi` is already public in `.env.example` and both workflows, the API never reads the variable, the production template does not carry it, and a production `DATABASE_URL` pointing at it would be refused by this very check.
+
+One new Low and two informational points, **logged, not fixed**, routed to D35:
+
+1. **(Low)** The check reads `current_user` and never `session_user`. A login role switched at connect time, by `ALTER ROLE … SET role` or `options=-c role=…`, passes while the privileged login stays one `SET ROLE NONE` away. The smallest fix is a fifth reason when `session_user <> current_user`.
+2. **(Info)** `MEMBER` also counts a PG16 grant made `WITH INHERIT FALSE, SET FALSE`. That is a conservative false refusal, and only the doc comment's wording needs a change.
+3. **(Info)** The membership clause lists every role, where ownership stops at three. It names roles only and goes to the fatal log, never to a response.
+
+**Residuals for D35:**
+
+- A committed `machxi_app` password is not refused in production.
+- A view or SECURITY DEFINER function owned by `machxi_owner` over a tenant table would bypass the policies unless it is `security_invoker`.
+- A membership or ownership granted after boot goes unseen until the next restart.
+
+**Merged to `main` (2026-09-30).**
+
+**Accepted by the operator (2026-09-30), reported green on their own machine:**
+
+- `pnpm db:migrate` on the operator's dev database, applying `0019` and `0020`, then a walk of the organizations screens and an invitation accept.
+- `pnpm test:e2e` in both apps against the running stack (definition-of-done item 4).
+- `pnpm test:postman` (item 5, owed since `D29.2`).
+- `docker compose -f docker/prod/compose.yaml build` as committed, on a machine with IPv6 (item 6's remainder).
+
+**Renumbered (2026-09-30).** The residuals row written here as D34 is **D35**: D34 was taken on `main` the same day by "Lanes on one machine and one `main`".

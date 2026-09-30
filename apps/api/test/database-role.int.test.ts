@@ -1,4 +1,9 @@
+import { randomBytes } from "node:crypto";
+
+import { sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
+
+import type { DbExecutor } from "@repo/db";
 
 import {
   assertRoleBoundByRowLevelSecurity,
@@ -8,15 +13,25 @@ import {
   type DbClient,
 } from "../src/core/db/index.js";
 import { loadConfig } from "../src/core/config/index.js";
-import { loadTestEnv } from "./setup/env.js";
+import { loadTestEnv, readTestSuperuserUrl } from "./setup/env.js";
 
 /**
  * The boot refusal against a real database (ADR-0078 §4 as amended at
  * `D29.7`): the check `main.ts` runs in production before the port opens,
  * asked as the two roles this repository has. The application role is what
  * the API connects as and the policies bind; the owner runs the migrations,
- * owns every table and is bound by none of them.
+ * owns every table and is bound by none of them. The follow-up's two cases
+ * build the roles a deployment could be handed by mistake — a member of a
+ * `BYPASSRLS` role, the owner of a table with no row-level security — as the
+ * cluster superuser, inside a transaction that is rolled back, so the roles,
+ * the schema and the table never outlive the case.
  */
+
+/** Rolls the probe's transaction back once its assertions have run. */
+const ROLLBACK = Symbol("rollback");
+
+/** A cluster-unique suffix: roles are cluster-wide, and runs may overlap. */
+const suffix = (): string => randomBytes(4).toString("hex");
 
 describe("the database role check at boot", () => {
   const opened: DbClient[] = [];
@@ -33,12 +48,36 @@ describe("the database role check at boot", () => {
     await Promise.all(opened.map((client) => client.close()));
   });
 
+  /**
+   * Runs `probe` as `role` — created by `setup` in the same superuser
+   * transaction, then `SET LOCAL ROLE` — and rolls everything back.
+   */
+  const asThrowawayRole = async (
+    setup: string[],
+    role: string,
+    probe: (tx: DbExecutor) => Promise<void>,
+  ): Promise<void> => {
+    const superuser = connect(readTestSuperuserUrl());
+
+    await superuser.db
+      .transaction(async (tx) => {
+        for (const statement of setup) await tx.execute(sql.raw(statement));
+        await tx.execute(sql.raw(`set local role ${role}`));
+        await probe(tx);
+        throw ROLLBACK;
+      })
+      .catch((caught: unknown) => {
+        if (caught !== ROLLBACK) throw caught;
+      });
+  };
+
   it("lets the application role through", async () => {
     const app = connect(loadConfig().db.url);
 
     await expect(readRoleRowLevelSecurity(app.db)).resolves.toMatchObject({
       superuser: false,
       bypassRls: false,
+      bypassingRolesHeld: [],
       ownedTables: [],
     });
     await expect(
@@ -56,8 +95,10 @@ describe("the database role check at boot", () => {
 
     expect(role.ownedTables).toEqual(
       expect.arrayContaining([
-        "organization_invitations",
-        "organization_memberships",
+        "drizzle.__drizzle_migrations",
+        "public.organization_invitations",
+        "public.organization_memberships",
+        "public.users",
       ]),
     );
 
@@ -67,7 +108,63 @@ describe("the database role check at boot", () => {
       refusal.catch((caught: unknown) => isRowLevelSecurityRefusal(caught)),
     ).resolves.toBe(true);
     await expect(refusal).rejects.toThrow(
-      /owns organization_invitations, organization_memberships.*refusing to start/,
+      /owns drizzle\.__drizzle_migrations, public\.account_tokens, public\.audit_events and \d+ more tables.*refusing to start/,
+    );
+  });
+
+  it("refuses a role that is only a member of a BYPASSRLS role", async () => {
+    // The attributes are not inherited, so the role's own row reads clean:
+    // what gives it away is the membership — one `SET ROLE` from skipping
+    // every policy.
+    const bypassing = `rls_probe_bypass_${suffix()}`;
+    const member = `rls_probe_member_${suffix()}`;
+
+    await asThrowawayRole(
+      [
+        `create role ${bypassing} nologin bypassrls`,
+        `create role ${member} nologin`,
+        `grant ${bypassing} to ${member}`,
+      ],
+      member,
+      async (tx) => {
+        await expect(readRoleRowLevelSecurity(tx)).resolves.toMatchObject({
+          role: member,
+          superuser: false,
+          bypassRls: false,
+          bypassingRolesHeld: [bypassing],
+          ownedTables: [],
+        });
+        await expect(assertRoleBoundByRowLevelSecurity(tx)).rejects.toThrow(
+          `"${member}" is a member of ${bypassing} (superuser or BYPASSRLS), so row-level security would not bind it`,
+        );
+      },
+    );
+  });
+
+  it("refuses the owner of a table whose row-level security is not on yet", async () => {
+    // The code-first release across `0019`: the owner's tables carry no flag
+    // yet, and an API connected as the owner must not boot on that account.
+    const owner = `rls_probe_owner_${suffix()}`;
+    const schema = `rls_probe_${suffix()}`;
+
+    await asThrowawayRole(
+      [
+        `create role ${owner} nologin`,
+        `create schema ${schema}`,
+        `create table ${schema}.ledger (id integer)`,
+        `alter table ${schema}.ledger owner to ${owner}`,
+      ],
+      owner,
+      async (tx) => {
+        await expect(readRoleRowLevelSecurity(tx)).resolves.toMatchObject({
+          role: owner,
+          bypassingRolesHeld: [],
+          ownedTables: [`${schema}.ledger`],
+        });
+        await expect(assertRoleBoundByRowLevelSecurity(tx)).rejects.toThrow(
+          `"${owner}" owns ${schema}.ledger, so row-level security would not bind it`,
+        );
+      },
     );
   });
 });
