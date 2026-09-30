@@ -540,3 +540,15 @@ step:check ✓
 6. **Draft PR #2's body is stale** (its step list unticked, its "Pending the operator" still asking for a PostgreSQL): `/ship` marks the pull request ready and may refresh the body to this list.
 
 **Nothing blocks `/ship` from this step**, beyond the run on this commit (and on the ship commit) and the review owed above.
+
+### D34.6 — the review, and its findings' fates
+
+**The one review** was run by the orchestrating session: `adr-reviewer` over `ab4d934`, in a fresh context. It found nothing that blocks `/ship`, one major wording fix for a `D34.6` follow-up commit, and three minors the orchestrating session folds into the ship commit.
+
+1. **[MAJOR] The tier bullet in `.claude/README.md` said the tier decides what the step check runs, and that a `package` lane "runs anywhere". Confirmed; fixed** in `fix(claude,adr): D34.6 follow-up — the review's findings`. `scripts/step-check.mjs` never reads the tier; it sizes itself from the diff, and D34, a `package` lane, ran both integration tiers and `size` on Postgres at every step since `D34.2`. The bullet now says the tier declares what the lane expects to need (`package`: no Postgres beyond a harness's own tests, no SPA build, `/scope`'s wording), that the step check still sizes itself to the diff, and that a lane touching a test harness or a package with an integration tier needs Postgres whatever its tier; "runs anywhere" is gone. [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) §5's "The tier names what the step check runs and which machine the lane can live on" is struck and amended in place, labelled `**Amended 2026-09-30 (D34.6).**`. The process digest's "Lane files and tiers" line said the same as §5's loose sentence, so its source in `scripts/rules-digest.mjs` takes `/scope`'s wording and the same clause; `pnpm rules:digest` wrote 1 of 3, then 0 of 3.
+2. **[MINOR] The ledger row's stale phrases.** Folded into the ship commit by the orchestrating session.
+3. **[MINOR] The index row's Implemented cell.** Folded into the ship commit by the orchestrating session.
+4. **[MINOR] The PostgreSQL pending item** (PR #2's body). Folded into the ship commit by the orchestrating session.
+5. **No action**: the plan was built as written.
+
+**Checks after the fix**: `pnpm docs:check` clean, `pnpm format:check` clean, `pnpm rules:digest` 1 of 3 then 0 of 3, `pnpm test:scripts` green. The step check was not re-run for a wording fix in documents and a digest line, on the orchestrating session's instruction.

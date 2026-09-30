@@ -57,7 +57,7 @@ Each open lane is a file, `docs/plan/lanes/D<n>.md`, in the shape ADR-0079 §2 g
 
 ### 5. Tiers of lane
 
-A plan's header carries `- Tier: package | api | schema` beside `- Schema:`. `schema` lanes are at most one (ADR-0079 §3, unchanged); `api` lanes each take a database under §3; `package` lanes need no Postgres and no build, and any number may be open. The tier names what the step check runs and which machine the lane can live on. `docs:check` reads it from the lane file.
+A plan's header carries `- Tier: package | api | schema` beside `- Schema:`. `schema` lanes are at most one (ADR-0079 §3, unchanged); `api` lanes each take a database under §3; `package` lanes need no Postgres and no build, and any number may be open. ~~The tier names what the step check runs and which machine the lane can live on.~~ **Amended 2026-09-30 (D34.6)**, replacing the struck sentence, which the step check does not bear out: `scripts/step-check.mjs` never reads the tier. The tier declares what the lane expects to need — `package`: no Postgres beyond a harness's own tests, no SPA build, as `/scope` words it — and the step check still sizes itself to the diff (§2), so a lane that touches a test harness or a package with an integration tier needs Postgres whatever its tier, and one that reaches an SPA runs `size`. `docs:check` reads it from the lane file.
 
 ### 6. What this record declines
 
