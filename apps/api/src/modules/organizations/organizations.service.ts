@@ -748,6 +748,11 @@ export const createOrganizationsService = ({
 
         if (organization === undefined) return undefined;
 
+        // A staff request places no tenant of its own (ADR-0083 §2), and this
+        // one is not under `/:id` — the organization it names is the one it
+        // has just created, so it enters it before writing the owner's
+        // membership, as the user segment's create does.
+        await memberships.enterOrganization(organization.id, tx);
         await memberships.create(organization.id, owner.id, "owner", tx);
 
         return organization;

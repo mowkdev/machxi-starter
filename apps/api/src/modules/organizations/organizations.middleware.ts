@@ -119,3 +119,34 @@ export const createRequireMembership = ({
 };
 
 export type RequireMembership = ReturnType<typeof createRequireMembership>;
+
+/** The route parameter every staff organization path names (ADR-0067 §3). */
+export const STAFF_ORGANIZATION_PARAM = "id";
+
+/**
+ * `placeRouteOrganization` — the staff segment's scope (ADR-0083 §2).
+ *
+ * Staff hold no membership (ADR-0067 §3), so `requireMembership` has nothing
+ * to resolve for them and must never run on this segment. What they do have is
+ * a route that names one organization, `/admin/organizations/:id/…`, and this
+ * guard puts that id on the context, where the transaction opener reads it and
+ * places it as `app.organization_id` exactly as it places a member's. A staff
+ * read or write of memberships and invitations then sees that organization
+ * alone, and a staff request under no such route places nothing at all — so a
+ * staff query that forgets its organization reads nothing, as a member's does.
+ *
+ * **It decides nothing.** Who may reach the route is `authenticate("staff")`
+ * and `authorize` at the mount; whether the organization exists is the
+ * service's read. This only tells Postgres which tenant the route is about.
+ *
+ * A malformed id places nothing and passes on: the route's own `validate`
+ * answers it as it always has, and a non-uuid never reaches the setting, where
+ * the policies' `::uuid` cast would turn it into a `500`.
+ */
+export const placeRouteOrganization: RequestHandler = (req, _res, next) => {
+  const parsed = idSchema.safeParse(req.params[STAFF_ORGANIZATION_PARAM]);
+
+  if (parsed.success) req.ctx.routeOrganizationId = parsed.data;
+
+  next();
+};

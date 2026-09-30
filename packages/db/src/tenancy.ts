@@ -29,14 +29,16 @@ export const TENANT_SETTINGS = {
   /** The one secret-scoped read ADR-0067 §5 sanctions: an invitation by its token's hash. */
   invitationTokenHash: "app.invitation_token_hash",
   /**
-   * An explicit, named widening: `staff` for the staff segment (ADR-0067 §3,
-   * staff are above tenants), `system` for the seeders and the tooling.
+   * An explicit, named widening: `system`, for the tooling. Nothing in the API
+   * places it — staff are scoped by their route's organization since `D35.1`
+   * (ADR-0083 §2) — and the setting goes with the rest of the widening at
+   * `D35.2` (§1).
    */
   unscoped: "app.tenant_unscoped",
 } as const;
 
 /** Who may read across tenants, and why — never implied, always named. */
-export type TenantUnscopedReason = "staff" | "system";
+export type TenantUnscopedReason = "system";
 
 /** What a transaction is scoped to. Every key is optional; an absent key places nothing. */
 export interface TenantScope {

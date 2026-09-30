@@ -1,6 +1,7 @@
 import {
   organizationInvitations,
   organizationMemberships,
+  users,
   type DbExecutor,
 } from "@repo/db";
 import { eq } from "drizzle-orm";
@@ -25,6 +26,7 @@ import {
   FIXTURE_PASSWORD,
   FIXTURE_USERS,
   resetAndSeed,
+  superAdmin,
 } from "./support/seed.js";
 
 /**
@@ -1071,6 +1073,8 @@ describe("organizations on the user segment", () => {
       scope: {
         readonly principal: RequestContext["principal"];
         readonly organizationId?: string;
+        /** What `placeRouteOrganization` leaves on a staff request (ADR-0083 §2). */
+        readonly routeOrganizationId?: string;
       },
       fn: (tx: DbExecutor) => Promise<T>,
     ): Promise<T> => {
@@ -1084,6 +1088,7 @@ describe("organizations on the user segment", () => {
         scope.organizationId === undefined
           ? null
           : { id: scope.organizationId, slug: "acme", role: "owner" };
+      ctx.routeOrganizationId = scope.routeOrganizationId ?? null;
 
       return runWithContext(ctx, () => openInRequestScope(harness.db.db)(fn));
     };
@@ -1264,22 +1269,237 @@ describe("organizations on the user segment", () => {
         .expect(204);
     });
 
-    it("lets the staff segment read every tenant, by the setting that names it", async () => {
-      const staffSeen = await inRequest(
-        {
-          principal: {
-            kind: "staff",
-            id: ownerId,
-            roles: ["super_admin"],
-            sessionId: "rls-case",
-          },
-        },
+    const staffPrincipal: RequestContext["principal"] = {
+      kind: "staff",
+      id: "00000000-0000-4000-8000-000000000067",
+      roles: ["super_admin"],
+      sessionId: "rls-case",
+    };
+
+    /** Every invitation row, with nothing in its `where`. */
+    const everyInvitation = (tx: DbExecutor) =>
+      tx
+        .select({ organizationId: organizationInvitations.organizationId })
+        .from(organizationInvitations);
+
+    it("a staff read of one organization's members sees no other organization's", async () => {
+      // ADR-0083 §2: no widening. The staff request under
+      // `/admin/organizations/:id` is scoped to that organization alone, so a
+      // query that forgot its predicate reads that organization's rows and no
+      // other tenant's.
+      const seen = await inRequest(
+        { principal: staffPrincipal, routeOrganizationId: orgId },
         everyMembership,
       );
 
-      expect(staffSeen).toHaveLength(
-        (await harness.asTooling(everyMembership)).length,
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((row) => row.organizationId === orgId)).toBe(true);
+      expect(seen).toHaveLength(
+        (
+          await harness.asOwner((tx) =>
+            everyMembership(tx).where(
+              eq(organizationMemberships.organizationId, orgId),
+            ),
+          )
+        ).length,
       );
+
+      // And on the wire: the guard on `/:id` is what places the scope, so the
+      // members list answers rows — with no widening, an unplaced scope would
+      // answer an empty page.
+      const staff = await login(harness.app, "staff", superAdmin());
+      const listed = await request()
+        .get(`/api/v1/admin/organizations/${orgId}/memberships`)
+        .set("Authorization", bearer(staff.accessToken))
+        .expect(200);
+      const rows = listed.body.data as { organizationId: string }[];
+
+      expect(rows.length).toBe(seen.length);
+      expect(rows.every((row) => row.organizationId === orgId)).toBe(true);
+    });
+
+    it("a staff request that names no organization reads no membership", async () => {
+      // Tenants' rows are there for the owner to see…
+      expect((await harness.asOwner(everyMembership)).length).toBeGreaterThan(
+        1,
+      );
+
+      // …and a staff request with no organization route places nothing: not
+      // a widening, and not its own id as a user's.
+      expect(
+        await inRequest({ principal: staffPrincipal }, everyMembership),
+      ).toEqual([]);
+      expect(
+        await inRequest({ principal: staffPrincipal }, everyInvitation),
+      ).toEqual([]);
+    });
+
+    it("staff create an organization with its owner", async () => {
+      // `POST /admin/organizations` is not under `/:id`, so nothing is placed
+      // for it; the service enters the organization it has just created
+      // before writing the owner's membership (ADR-0083 §2).
+      const staff = await login(harness.app, "staff", superAdmin());
+      const created = await request()
+        .post("/api/v1/admin/organizations")
+        .set("Authorization", bearer(staff.accessToken))
+        .send({
+          name: "Staff Made",
+          slug: "rls-staff-made",
+          ownerId: strangerId,
+        })
+        .expect(201);
+      const id = created.body.data.id as string;
+
+      expect(
+        await harness.asOwner((tx) =>
+          tx
+            .select({
+              userId: organizationMemberships.userId,
+              role: organizationMemberships.role,
+            })
+            .from(organizationMemberships)
+            .where(eq(organizationMemberships.organizationId, id)),
+        ),
+      ).toEqual([{ userId: strangerId, role: "owner" }]);
+
+      // The owner sees it among their own.
+      const mine = await request()
+        .get(ORGS)
+        .set("Authorization", bearer(stranger.accessToken))
+        .expect(200);
+
+      expect(
+        (mine.body.data as { id: string; role: string }[]).find(
+          (row) => row.id === id,
+        )?.role,
+      ).toBe("owner");
+    });
+
+    it("a staff deletion of a user removes their memberships by cascade", async () => {
+      // ADR-0083 §2: referential actions are not subject to row-level
+      // security, so a cascade needs no setting. No staff route hard-deletes
+      // a user today (ADR-0028 keeps accounts), so the property is held at
+      // the database: the application role, in a staff request's transaction
+      // that places nothing, deletes an account holding memberships in two
+      // organizations, and both go with it.
+      const second = await createTeam(stranger.accessToken, "rls-cascade");
+      const [account] = await harness.asOwner((tx) =>
+        tx
+          .insert(users)
+          .values({ email: "rls.cascade@machxi.local", status: "disabled" })
+          .returning({ id: users.id }),
+      );
+      const accountId = account!.id;
+
+      await harness.asOwner((tx) =>
+        tx.insert(organizationMemberships).values([
+          { organizationId: orgId, userId: accountId, role: "member" },
+          { organizationId: second.id, userId: accountId, role: "member" },
+        ]),
+      );
+
+      const deleted = await inRequest({ principal: staffPrincipal }, (tx) =>
+        tx
+          .delete(users)
+          .where(eq(users.id, accountId))
+          .returning({ id: users.id }),
+      );
+
+      expect(deleted).toEqual([{ id: accountId }]);
+      expect(
+        await harness.asOwner((tx) =>
+          everyMembership(tx).where(
+            eq(organizationMemberships.userId, accountId),
+          ),
+        ),
+      ).toEqual([]);
+    });
+
+    it("two concurrent requests in different organizations each see only their own", async () => {
+      // ADR-0083 §6: the opener reads the scope from request storage, and no
+      // request's continuation runs inside another's. Two requests meet at a
+      // barrier before their transactions open and again inside them, so
+      // each resumes from a promise the other settled while both are in
+      // flight — the interleaving a leak would show up in.
+      const team = await createTeam(stranger.accessToken, "rls-concurrent");
+
+      const barrier = () => {
+        let arrived = 0;
+        let release: () => void = () => undefined;
+        const open = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+
+        return async () => {
+          arrived += 1;
+          if (arrived === 2) release();
+          await open;
+        };
+      };
+      const beforeOpening = barrier();
+      const insideTransaction = barrier();
+
+      const concurrently = (principal: string, organizationId: string) => {
+        const ctx = createRequestContext({
+          requestId: `rls-concurrent-${organizationId}`,
+          logger: harness.logger,
+        });
+
+        ctx.principal = userPrincipal(principal);
+        ctx.organization = { id: organizationId, slug: "x", role: "owner" };
+
+        return runWithContext(ctx, async () => {
+          await beforeOpening();
+
+          return openInRequestScope(harness.db.db)(async (tx) => {
+            await insideTransaction();
+
+            return everyMembership(tx);
+          });
+        });
+      };
+
+      const [acmeSeen, teamSeen] = await Promise.all([
+        concurrently(ownerId, orgId),
+        concurrently(strangerId, team.id),
+      ]);
+
+      expect(acmeSeen.length).toBeGreaterThan(0);
+      expect(acmeSeen.every((row) => row.organizationId === orgId)).toBe(true);
+      expect(teamSeen.length).toBeGreaterThan(0);
+      expect(teamSeen.every((row) => row.organizationId === team.id)).toBe(
+        true,
+      );
+
+      // And on the wire, interleaved: each members list answers its own
+      // organization's rows, never an empty page from the other's scope.
+      const members = (token: string, id: string) =>
+        request()
+          .get(`${ORGS}/${id}/members`)
+          .set("Authorization", bearer(token))
+          .expect(200)
+          .then(
+            (response) => response.body.data as { organizationId: string }[],
+          );
+
+      const answers = await Promise.all(
+        Array.from({ length: 8 }, (_, at) =>
+          at % 2 === 0
+            ? members(owner.accessToken, orgId).then((rows) => ({
+                rows,
+                id: orgId,
+              }))
+            : members(stranger.accessToken, team.id).then((rows) => ({
+                rows,
+                id: team.id,
+              })),
+        ),
+      );
+
+      for (const { rows, id } of answers) {
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((row) => row.organizationId === id)).toBe(true);
+      }
     });
   });
 });

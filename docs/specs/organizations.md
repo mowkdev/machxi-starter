@@ -96,8 +96,8 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 
 ## Requirement: The database scopes a tenant-owned table by itself, and admits nothing by omission
 
-Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved — which, once placed, is the request's only scope — or, outside an organization, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), the one invitation whose token hash the transaction holds, or the named `staff` and `system` widenings. An invitation's stamps (`accepted_at`, `declined_at`, `revoked_at`, `updated_at`) are the only columns the application role may update. Every transaction a service opens is placed in its request's scope, with every setting the scope does not name cleared for that transaction, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. In production the API refuses to start as a role the policies do not bind. The wire is unchanged.
-Records: [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0061](../adr/0061-database-roles-and-append-only-enforcement.md)
+Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved — which, once placed, is the request's only scope — or, outside an organization, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), the one invitation whose token hash the transaction holds, or the named `system` widening, which only tooling places. A staff request carries no widening: under `/admin/organizations/:id` it is scoped to the organization the route names, and a staff request under no such route reads no tenant-owned row. A foreign key's cascade needs no setting. Two concurrent requests in different organizations each see only their own. An invitation's stamps (`accepted_at`, `declined_at`, `revoked_at`, `updated_at`) are the only columns the application role may update. Every transaction a service opens is placed in its request's scope, with every setting the scope does not name cleared for that transaction, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. In production the API refuses to start as a role the policies do not bind. The wire is unchanged.
+Records: [ADR-0083](../adr/0083-row-level-security-without-widenings.md), [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0061](../adr/0061-database-roles-and-append-only-enforcement.md)
 Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__tests__/schema.int.test.ts`, `apps/api/test/organizations.int.test.ts`, `apps/api/src/core/db/__tests__/tenant-scope.test.ts`, `apps/api/test/database-role.int.test.ts`, `apps/api/src/core/db/__tests__/role-check.test.ts`
 
 ### Scenario: A query that forgets its organization
@@ -109,6 +109,16 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 
 - **WHEN** a transaction opened in a member's request selects every membership
 - **THEN** it reads that organization's rows alone — not the caller's own memberships elsewhere, and no other tenant's
+
+### Scenario: A staff request reads the table unscoped
+
+- **WHEN** a transaction opened in a staff request under `/admin/organizations/:id` selects every membership
+- **THEN** it reads that organization's rows alone, and the same request under no organization route reads none
+
+### Scenario: Two requests at once
+
+- **WHEN** two requests in different organizations run concurrently, each resuming while the other is in flight
+- **THEN** each reads its own organization's rows and no other's
 
 ### Scenario: A scope already on the session
 

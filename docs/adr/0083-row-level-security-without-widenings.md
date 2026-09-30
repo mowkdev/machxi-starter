@@ -1,10 +1,10 @@
 # ADR-0083: Row-level security without widenings — staff scoped by the route, tooling as the owner (supersedes ADR-0078 in part — a delta)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-30
 - Supersedes (at the step that makes each delta true): [ADR-0078](0078-backend-closing-wave.md) (delta: §4's named widenings — `staff` and `system` — are removed, the staff segment is scoped by its route's organization, the consume policies gain a check on the row they leave, the boot refusal reads the login role as well, and §2's rule that a committed value is refused in production reaches the database password)
 
-> Written 2026-09-30 by `/scope` for D35 ([`docs/plan/0035-row-level-security-residuals.md`](../plan/0035-row-level-security-residuals.md)), the day D29 shipped, with D32 in progress, on the four decisions the operator took at scoping — writing is not opening, opening is not accepting. `proposed`; accepted at the head of `D35.1`.
+> Written 2026-09-30 by `/scope` for D35 ([`docs/plan/0035-row-level-security-residuals.md`](../plan/0035-row-level-security-residuals.md)), the day D29 shipped, with D32 in progress, on the four decisions the operator took at scoping — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-30 at the head of `D35.1`**, where [ADR-0078](0078-backend-closing-wave.md) moved to `superseded by` for the delta above; §2 and §6 are built at `D35.1`, §1 and §3 at `D35.2`, §4 and §5 at `D35.3`. Amendable in place, labelled, while D35 is `in progress` (ADR-0079 §1).
 
 ## Context
 
@@ -40,7 +40,7 @@ The staff segment keeps ADR-0067 §3's rule: staff are above tenants, never insi
 - **A route that names an organization places it.** A route under `/admin/organizations/:id` places that id as `app.organization_id` through a guard of its own — not `requireMembership`, since staff hold no membership. The request's opener places it exactly as it places a member's.
 - **A staff request places no principal setting**, so a staff read that forgets its organization returns nothing, as a member's does.
 - **Creating an organization** places the new organization before its owner's membership is written, as the user segment's paths already do.
-- **Cascades need no setting.** A staff deletion that removes memberships by a foreign key's cascade works without one, because referential actions are not subject to row-level security.
+- **Cascades need no setting.** A staff deletion that removes memberships by a foreign key's cascade works without one, because referential actions are not subject to row-level security. **Amended 2026-09-30 (D35.1).** No staff route removes memberships this way today: `DELETE /admin/users/:id` soft-deletes the account (ADR-0028), a closed account keeps its team memberships (ADR-0067 §2), and `organizations.created_by` would refuse a hard delete of any account that created an organization. The rule is therefore held at the database — the application role, in a staff request's transaction that places nothing, hard-deletes an account and its memberships in two organizations go with it — so a future hard-delete path inherits it.
 
 ### 3. The consume policies check the row they leave
 
