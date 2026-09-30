@@ -21,6 +21,7 @@
   },
   "loading": {
     "label": "Notiek ielāde",
+    "pending": "Notiek ielāde…",
     "starting": "Notiek startēšana…"
   },
   "nav": {

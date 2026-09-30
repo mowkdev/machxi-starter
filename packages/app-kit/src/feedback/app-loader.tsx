@@ -20,6 +20,16 @@ import { I18nContext } from "react-i18next";
  * appears for 80 ms reads as a flash of broken layout, so nothing is painted
  * for `delayMs` — but a *blank* is painted, at the app's background colour, so
  * the window does not flash white on a dark theme before React has an opinion.
+ *
+ * **The delay runs once per page load** (`D31.3`, ADR-0080 §5). It is counted
+ * from the moment the document started loading, `performance.now()`'s own
+ * origin, rather than from this component's mount. The two boot gates run in
+ * sequence, the session's and then the settings', and each used to wait its
+ * own quarter-second, so a slow boot read as a blank, a spinner, a blank and a
+ * spinner. Counted from the page, the second gate finds the delay spent and
+ * shows the loader at once, so the two waits read as one. `index.html`'s static
+ * indicator keeps the same quarter-second, so the markup the first render
+ * replaces and the loader that replaces it appear together.
  */
 const STARTING_KEY = "loading.starting";
 
@@ -33,21 +43,27 @@ export interface AppLoaderProps {
   readonly label?: string;
 }
 
+/** Milliseconds since this document started loading: the delay's clock. */
+const sincePageLoad = (): number => performance.now();
+
 export const AppLoader = ({ delayMs = 250, label }: AppLoaderProps) => {
   const context = useContext(I18nContext);
-  const [visible, setVisible] = useState(delayMs === 0);
+  const [visible, setVisible] = useState(() => sincePageLoad() >= delayMs);
 
   useEffect(() => {
-    if (delayMs === 0) return;
+    if (visible) return;
 
-    const timer = setTimeout(() => {
-      setVisible(true);
-    }, delayMs);
+    const timer = setTimeout(
+      () => {
+        setVisible(true);
+      },
+      Math.max(0, delayMs - sincePageLoad()),
+    );
 
     return () => {
       clearTimeout(timer);
     };
-  }, [delayMs]);
+  }, [delayMs, visible]);
 
   if (!visible) return <div className="min-h-svh bg-background" />;
 

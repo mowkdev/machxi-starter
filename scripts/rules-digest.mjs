@@ -268,6 +268,11 @@ export const AREAS = [
         text: "The shell renders its own drawer toggle rather than the generated `SidebarTrigger`, reading the sidebar's context — `open` on a wide screen, `openMobile` on a narrow one — and shows it twice: a panel-close icon while the drawer is open and a panel-open one while it is closed, and `aria-expanded`. Its accessible name stays the `UiStrings` sentence.",
       },
       {
+        topic: "Every wait shows",
+        records: ["0080", "0052"],
+        text: "The shell's indicator owns the first moments of every navigation. Both routers take `@repo/app-kit`'s pending component — a spinner and a localized sentence in a polite status region — with the kit's threshold and minimum, 1000 ms and 500 ms, so it replaces an outlet only when a chunk or loader outlasts the indicator, and never flickers. `AppLoader`'s delay counts from the page load, so boot gates in sequence read as one wait; each `index.html` root opens with a static indicator styled from the stylesheet, which `pnpm size` checks along with the absence of any inline style. Skeletons stay for content inside a rendered page.",
+      },
+      {
         topic: "Server state",
         records: ["0043", "0044"],
         text: "TanStack Query owns all server state through per-entity key factories — never an inline key. Outcomes are declared in typed mutation `meta` and delivered by one global handler; queries are silent and render their own failure panel. List state lives in the URL in the API's own query language through the shared codec; a record URL carries only the record, and the way back travels as history state.",

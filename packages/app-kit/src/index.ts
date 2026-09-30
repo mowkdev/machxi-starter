@@ -24,8 +24,9 @@
  * - **`feedback/`** — the boot loader both gates render, §2's top-level
  *   error boundary, which neither app had, and the factory of the reporter
  *   that boundary is handed (ADR-0066 §3).
- * - **`router/`** — the localized error and not-found components, and the
- *   crash surface the boundary falls back to.
+ * - **`router/`** — the localized error and not-found components, the crash
+ *   surface the boundary falls back to, and (`D31.3`) the pending component
+ *   with its threshold and minimum.
  * - **`i18n/`** — the app i18n factory of ADR-0046 §13.
  * - **`testing/`**, reached separately as `@repo/app-kit/testing` — the MSW
  *   server, the jsdom setup file, and (`D20.10`) the envelope builders and
@@ -120,6 +121,8 @@ export {
 } from "./feedback/error-reporting";
 
 export { AppCrash, AppError, AppNotFound } from "./router/defaults";
+
+export { AppPending, PENDING_MIN_MS, PENDING_MS } from "./router/pending";
 
 export {
   createAppI18nFactory,

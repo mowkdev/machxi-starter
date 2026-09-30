@@ -79,7 +79,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm test:e2e` green in both apps;
   - the gate green.
 
-- [ ] **3. Every wait shows that it is waiting.** [ADR-0052](../adr/0052-grid-and-admin-followups.md)'s status line gains its delta at the head.
+- [x] **3. Every wait shows that it is waiting.** [ADR-0052](../adr/0052-grid-and-admin-followups.md)'s status line gains its delta at the head.
   - `@repo/app-kit` gains the pending component; both routers take it as their default, with a threshold and a minimum. The threshold is measured against the shell's indicator on the dev stack and recorded in the notes.
   - `AppLoader`'s delay runs once per page load.
   - Both `index.html` files carry a static indicator in their root.

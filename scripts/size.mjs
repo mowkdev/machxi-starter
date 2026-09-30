@@ -50,7 +50,10 @@
 // find the entry; it also refuses an inline `<script>`, any `<style>` element
 // and any `on*=` attribute there. It is stricter than the policy on styles
 // on purpose — `'unsafe-inline'` is Tailwind's runtime price, and the built
-// page does not spend it.
+// page does not spend it. Since `D31.3` (ADR-0080 §5) the page's root must
+// also open with the static boot indicator, and no element may carry a
+// `style` attribute, so the wait before the script runs is painted from the
+// stylesheet and never from the page.
 //
 // **Every silent-pass path is closed, because this is a cached gate link.** A
 // check that can quietly measure nothing reports "ok" forever. So the entry is
@@ -166,6 +169,53 @@ export const inlinePageViolations = (source) => {
     if (handler !== null) {
       found.push(
         `an event-handler attribute \`${handler[1]}\` on <${name}> — inline code the policy refuses`,
+      );
+    }
+  }
+
+  return found;
+};
+
+/**
+ * What a built page's root must carry, and what the page may not (`D31.3`,
+ * ADR-0080 §5): the static boot indicator, and no inline `style` attribute.
+ * Returns one sentence per offence; an empty array is a page that shows a
+ * wait before its script runs and spends none of the policy's
+ * `'unsafe-inline'` doing it.
+ *
+ * The indicator is the element the root opens with, marked
+ * `data-boot-indicator`, so a root emptied by an `index.html` edit or a
+ * plugin fails here rather than quietly reverting to a blank page. It is
+ * styled from the app's stylesheet, and a `style=` attribute anywhere on the
+ * page is refused beside it: {@link inlinePageViolations} refuses style
+ * *elements*, and an attribute is the other road inline paint takes. Comments
+ * are dropped and quoted values blanked first, for the reasons given there.
+ */
+export const bootIndicatorViolations = (source) => {
+  const found = [];
+  const html = source.replace(/<!--[\s\S]*?-->/g, "");
+  const root =
+    /<div\b(?=[^>]*\sid\s*=\s*["']?root["'\s/>])[^>]*>\s*(<[a-z][\w-]*\b[^>]*>)?/i.exec(
+      html,
+    );
+
+  if (root === null) {
+    found.push('no `<div id="root">` for the app to render into');
+  } else if (
+    root[1] === undefined ||
+    !/[\s/]data-boot-indicator\b/i.test(
+      root[1].replace(/"[^"]*"|'[^']*'/g, '""'),
+    )
+  ) {
+    found.push(
+      "a root that does not open with the boot indicator (an element marked `data-boot-indicator`) — the page is blank until the script runs",
+    );
+  }
+
+  for (const [tag, name] of html.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)) {
+    if (/[\s/]style\s*=/i.test(tag.replace(/"[^"]*"|'[^']*'/g, '""'))) {
+      found.push(
+        `an inline \`style\` attribute on <${name}> — the built page is styled from its stylesheet`,
       );
     }
   }
@@ -519,15 +569,25 @@ export const check = (appDir) => {
 
   // `measure` has proved `index.html` exists; what it carries is the policy's
   // business before it is the budget's (ADR-0074 §6).
-  const inline = inlinePageViolations(
-    readFileSync(join(dist, "index.html"), "utf8"),
-  );
+  const builtPage = readFileSync(join(dist, "index.html"), "utf8");
+  const inline = inlinePageViolations(builtPage);
 
   if (inline.length > 0) {
     refuse(
       [
         ...inline.map((sentence) => `dist/index.html carries ${sentence}.`),
         "The Content-Security-Policy in nginx.conf serves scripts from 'self' only, and nothing but the production image sends it — so this page would break there and nowhere else (ADR-0074 §6). Find the plugin or the index.html edit that emitted it and move the code into a module.",
+      ].join("\n"),
+    );
+  }
+
+  const boot = bootIndicatorViolations(builtPage);
+
+  if (boot.length > 0) {
+    refuse(
+      [
+        ...boot.map((sentence) => `dist/index.html carries ${sentence}.`),
+        "ADR-0080 §5: index.html's root opens with a static indicator styled from the app's stylesheet, which the first render replaces. Restore the markup in index.html, and move any inline paint into src/app/styles.css.",
       ].join("\n"),
     );
   }
