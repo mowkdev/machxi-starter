@@ -21,6 +21,13 @@ export {
 } from "@repo/db";
 export { probeDatabase, type ProbeDatabaseOptions } from "./probe.js";
 export {
+  assertRoleBoundByRowLevelSecurity,
+  readRoleRowLevelSecurity,
+  isRowLevelSecurityRefusal,
+  rowLevelSecurityBypasses,
+  type RoleRowLevelSecurity,
+} from "./role-check.js";
+export {
   createTransaction,
   DEFAULT_TRANSACTION_ATTEMPTS,
   isDeadlock,

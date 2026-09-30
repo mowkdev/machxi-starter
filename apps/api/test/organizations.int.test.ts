@@ -18,7 +18,7 @@ import {
   runWithContext,
   type RequestContext,
 } from "../src/core/context/index.js";
-import { openInRequestScope } from "../src/core/db/index.js";
+import { createDb, openInRequestScope } from "../src/core/db/index.js";
 import { createTestApp, type TestApp } from "./support/app.js";
 import { lastMailTo, registerVerified, tokenFromMail } from "./support/mail.js";
 import {
@@ -666,7 +666,7 @@ describe("organizations on the user segment", () => {
       // `expired` is a state no column holds and no sweeper writes: it becomes
       // true as the clock passes `expires_at`, so this moves the clock rather
       // than a status.
-      await harness.asTooling((tx) =>
+      await harness.asOwner((tx) =>
         tx
           .update(organizationInvitations)
           .set({ expiresAt: new Date(Date.now() - 1000) })
@@ -959,7 +959,7 @@ describe("organizations on the user segment", () => {
 
         const expired = await invite(org.id, "expires.link@machxi.local");
 
-        await harness.asTooling((tx) =>
+        await harness.asOwner((tx) =>
           tx
             .update(organizationInvitations)
             .set({ expiresAt: new Date(Date.now() - 1000) })
@@ -1122,22 +1122,25 @@ describe("organizations on the user segment", () => {
       expect(await inRequest({ principal: null }, everyMembership)).toEqual([]);
     });
 
-    it("shows a member's request its organization and the caller's own rows, and no other tenant's", async () => {
+    it("shows a member's request its organization alone — not even the caller's own rows elsewhere", async () => {
+      // The caller has memberships elsewhere: their personal organization and
+      // the teams this file created.
+      const theirs = await harness.asTooling((tx) =>
+        everyMembership(tx).where(eq(organizationMemberships.userId, ownerId)),
+      );
+
+      expect(theirs.some((row) => row.organizationId !== orgId)).toBe(true);
+
       const seen = await inRequest(
         { principal: userPrincipal(ownerId), organizationId: orgId },
         everyMembership,
       );
 
-      expect(seen.some((row) => row.organizationId === orgId)).toBe(true);
-      // Every row is the organization's or the caller's own membership
-      // elsewhere (the principal-scoped class) — the stranger's personal
-      // organization, which is neither, is not among them.
-      expect(
-        seen.every(
-          (row) => row.organizationId === orgId || row.userId === ownerId,
-        ),
-      ).toBe(true);
-      expect(seen.some((row) => row.userId === strangerId)).toBe(false);
+      // D29.7: once the organization is placed the principal is not, so a
+      // forgotten scope reads that organization's rows and nothing else — the
+      // caller's own memberships elsewhere included.
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((row) => row.organizationId === orgId)).toBe(true);
     });
 
     it("refuses a write into an organization the transaction is not scoped to", async () => {
@@ -1158,6 +1161,107 @@ describe("organizations on the user segment", () => {
       expect((refused as { cause?: { code?: string } }).cause?.code).toBe(
         "42501",
       );
+    });
+
+    it("a session-level scope does not reach a request transaction", async () => {
+      // D29.7: a pool whose every connection starts widened — the tooling's
+      // `tenantUnscoped` startup parameter, which the API never passes — and
+      // a user's request opened on it. The opener writes `''` for each
+      // setting it does not place, so the session's `system` is shadowed for
+      // the transaction and the request sees what its own scope admits.
+      const widened = createDb(harness.config.db.url, {
+        max: 1,
+        idleTimeout: 1,
+        tenantUnscoped: "system",
+      });
+
+      try {
+        // The widening is really on the session: a bare statement sees
+        // every tenant.
+        expect(await everyMembership(widened.db)).toHaveLength(
+          (await harness.asTooling(everyMembership)).length,
+        );
+
+        const seen = await runWithContext(
+          Object.assign(
+            createRequestContext({
+              requestId: "rls-session",
+              logger: harness.logger,
+            }),
+            { principal: userPrincipal(strangerId), organization: null },
+          ),
+          () => openInRequestScope(widened.db)(everyMembership),
+        );
+
+        expect(seen.length).toBeGreaterThan(0);
+        expect(seen.every((row) => row.userId === strangerId)).toBe(true);
+
+        // And a request with no principal at all sees nothing.
+        expect(await openInRequestScope(widened.db)(everyMembership)).toEqual(
+          [],
+        );
+      } finally {
+        await widened.close();
+      }
+    });
+
+    it("an invitee cannot rewrite an invitation's organization or role", async () => {
+      // D29.7, migration `0020`: the consume policies admit the invitee's
+      // UPDATE by the row, and the column grant is what keeps that UPDATE to
+      // the stamps. Without it, a transaction that can see the invitation by
+      // its address could move it to another organization or raise its role
+      // while keeping the `email` it was admitted by.
+      const org = await createTeam(owner.accessToken, "rls-column-grant");
+      const elsewhere = await createTeam(stranger.accessToken, "rls-target");
+      const invitee = await freshAccount("rls.invitee@machxi.local");
+
+      const created = await request()
+        .post(`${ORGS}/${org.id}/invitations`)
+        .set("Authorization", bearer(owner.accessToken))
+        .send({ email: invitee.email, role: "member" })
+        .expect(201);
+      const id = created.body.data.id as string;
+
+      const asInvitee = <T>(fn: (tx: DbExecutor) => Promise<T>) =>
+        inRequest({ principal: userPrincipal(invitee.id) }, fn).catch(
+          (caught: unknown) =>
+            (caught as { cause?: { code?: string } }).cause?.code,
+        );
+
+      expect(
+        await asInvitee((tx) =>
+          tx
+            .update(organizationInvitations)
+            .set({ role: "admin" })
+            .where(eq(organizationInvitations.id, id)),
+        ),
+      ).toBe("42501");
+      expect(
+        await asInvitee((tx) =>
+          tx
+            .update(organizationInvitations)
+            .set({ organizationId: elsewhere.id })
+            .where(eq(organizationInvitations.id, id)),
+        ),
+      ).toBe("42501");
+
+      const [row] = await harness.asTooling((tx) =>
+        tx
+          .select({
+            organizationId: organizationInvitations.organizationId,
+            role: organizationInvitations.role,
+          })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id)),
+      );
+
+      expect(row).toEqual({ organizationId: org.id, role: "member" });
+
+      // The stamp the invitee's own path writes is still theirs to write.
+      await request()
+        .post(`${INVITATIONS}/${id}/decline`)
+        .set("Authorization", bearer(invitee.tokens.accessToken))
+        .expect(204);
     });
 
     it("lets the staff segment read every tenant, by the setting that names it", async () => {
