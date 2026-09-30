@@ -87,7 +87,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm docs:check` clean;
   - the gate green.
 
-- [ ] **4. Close-out.**
+- [x] **4. Close-out.**
   - Every parent's status line carries its delta.
   - The topic table's rows for configuration, health, the design language and forking name 0081.
   - The digests are regenerated.
