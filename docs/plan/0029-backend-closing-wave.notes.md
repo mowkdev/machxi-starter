@@ -453,3 +453,29 @@ Logged, not fixed: the builder's own `D29.4` Low 1 — `createDb({ tenantUnscope
 - **`main.ts`** logs a failed query while asking under its own fatal message; only a refusal is logged as one. Both still stop the process.
 - **Tests.** Unit: "names membership in a superuser or BYPASSRLS role…", "names three owned tables and counts the rest", "refuses a member of a bypassing role, and an owner of tables with no row-level security" — all three red against the previous `role-check.ts`. Integration (`database-role.int.test.ts`): "refuses a role that is only a member of a BYPASSRLS role" — red with the membership predicate removed; "refuses the owner of a table whose row-level security is not on yet" — red with `relrowsecurity` restored (as is the owner case, now asserting `public.users` and the migrations table). Both build their roles as the test cluster's superuser in a transaction that is rolled back, so no role, schema or table survives a case; the URL is a new harness-only variable, `DATABASE_URL_TEST_SUPERUSER` (the compose/CI `POSTGRES_USER`), committed in `apps/api/.env.test`, declared in `turbo.json` and `.env.example`, read on demand by that file alone.
 - `docs/deploy.md`, `docs/specs/organizations.md` and the "Row-level security" digest line say the same.
+
+**Independent `security-reviewer` pass over the follow-up (`444e194`, 2026-09-30).** It found **no Critical, High or Medium findings**. Both Lows are fixed correctly and `main.ts` still fails closed. The SQL was probed live on PostgreSQL 16.13, in rolled-back transactions. `machxi_app` passes on both `machxi` and `machxi_test`. `CREATE ROLE` is transactional, so the new cases leave nothing behind.
+
+The committed `DATABASE_URL_TEST_SUPERUSER` was judged **acceptable**: `machxi:machxi` is already public in `.env.example` and both workflows, the API never reads the variable, the production template does not carry it, and a production `DATABASE_URL` pointing at it would be refused by this very check.
+
+One new Low and two informational points, **logged, not fixed**, routed to D34:
+
+1. **(Low)** The check reads `current_user` and never `session_user`. A login role switched at connect time, by `ALTER ROLE … SET role` or `options=-c role=…`, passes while the privileged login stays one `SET ROLE NONE` away. The smallest fix is a fifth reason when `session_user <> current_user`.
+2. **(Info)** `MEMBER` also counts a PG16 grant made `WITH INHERIT FALSE, SET FALSE`. That is a conservative false refusal, and only the doc comment's wording needs a change.
+3. **(Info)** The membership clause lists every role, where ownership stops at three. It names roles only and goes to the fatal log, never to a response.
+
+**Residuals for D34:**
+
+- A committed `machxi_app` password is not refused in production.
+- A view or SECURITY DEFINER function owned by `machxi_owner` over a tenant table would bypass the policies unless it is `security_invoker`.
+- A membership or ownership granted after boot goes unseen until the next restart.
+
+**Merged to `main` (2026-09-30).**
+
+**Accepted by the operator (2026-09-30), reported green on their own machine:**
+
+- `pnpm db:migrate` on the operator's dev database, applying `0019` and `0020`, then a walk of the organizations screens and an invitation accept.
+- `pnpm test:e2e` in both apps against the running stack (definition-of-done item 4).
+- `pnpm test:postman` (item 5, owed since `D29.2`).
+- `docker compose -f docker/prod/compose.yaml build` as committed, on a machine with IPv6 (item 6's remainder).
+
