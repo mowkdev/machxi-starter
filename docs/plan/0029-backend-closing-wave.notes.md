@@ -208,3 +208,5 @@ Earlier runs failed twice, each fixed before the green run. The first failed the
 - The merge of this step to `lane/D29` and to `main`. This session pushed only its own branch, `claude/keen-knuth-jwf8xb`.
 - **`pnpm db:migrate` against the dev database** before the running API takes this code. Code that places settings runs fine on a database without `0019`, but the tests assert the policies. After that, one walk of the organizations screens and an invitation accept on the dev stack.
 - `pnpm test:postman` has not run: no stack runs in this container. The wire is unchanged.
+
+**Gate on the committed tree (2026-09-30).** After the worktree's commit was fast-forwarded onto `claude/keen-knuth-jwf8xb`, the gate was run again in the main checkout, against this container's `machxi_test`, and was green: `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 814 unit and 830 integration in 76.92 s; `@repo/db` 107 unit and 121 integration), `size` 4/4, `format:check` clean. The spike's worktree, its branch and `machxi_d29_rls_test` were then removed.
