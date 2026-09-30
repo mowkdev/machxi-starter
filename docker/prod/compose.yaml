@@ -133,6 +133,9 @@ services:
       # refuses one half without the other.
       - GOOGLE_CLIENT_ID
       - GOOGLE_CLIENT_SECRET
+      # The sign-in transaction's own key (ADR-0078 §2). Bare: unset derives
+      # it from JWT_ACCESS_SECRET, which is a complete configuration.
+      - OIDC_TRANSACTION_SECRET
       - FEDERATED_HANDOFF_TTL
       # The four link lifetimes (ADR-0071 §1). Bare keys: unset means the
       # schema's own 24h / 1h / 1h / 7d, which are sized by what the recipient
@@ -177,6 +180,9 @@ services:
       # of an endpoint that is not mounted.
       - FEATURE_USER_REGISTRATION
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      # The key ring (ADR-0078 §2). Bare: set only while a rotation is in
+      # flight, and unset is the ordinary state.
+      - JWT_ACCESS_SECRET_PREVIOUS
       # The exact browser origins the two SPAs answer on. `*` is refused here
       # (ADR-0020), and an origin that never matches is a startup failure
       # rather than a dead entry.

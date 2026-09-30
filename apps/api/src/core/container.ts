@@ -167,6 +167,7 @@ export const buildContainer = ({
 
   const tokens = createTokenService({
     secret: config.auth.accessSecret,
+    previousSecret: config.auth.previousAccessSecret,
     appId: config.app.id,
     issuer: config.auth.issuer,
     accessTtlSec: config.auth.accessTtlSec,

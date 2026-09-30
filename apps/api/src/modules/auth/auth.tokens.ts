@@ -7,7 +7,9 @@ import {
   type StaffRole,
   type UserRole,
 } from "@repo/contracts";
-import { SignJWT, jwtVerify } from "jose";
+import { createHmac } from "node:crypto";
+
+import { SignJWT, jwtVerify, type JWTHeaderParameters } from "jose";
 import { uuidv7 } from "uuidv7";
 import { z } from "zod";
 
@@ -21,8 +23,15 @@ import { tokenExpired, tokenInvalid } from "./auth.errors.js";
  * secret-rotation ADR needs — moving from HS256 to EdDSA changes the key, not
  * the call sites.
  *
- * The whole module is one factory over a secret, so a unit test signs and
- * verifies with its own key and its own clock without touching config.
+ * The whole module is one factory over a key ring, so a unit test signs and
+ * verifies with its own keys and its own clock without touching config.
+ *
+ * **The ring** (ADR-0078 §2): a token is signed under the current secret and
+ * names it in a `kid` header; verification picks the secret the `kid` names —
+ * the current one, or the previous one while a rotation is in flight — and
+ * refuses any other. A token with no `kid` is one a release before the ring
+ * signed, and is verified under the current secret alone, so a deployment
+ * takes the ring without signing anybody out.
  */
 
 /**
@@ -121,6 +130,20 @@ const narrowRoles = <P extends Population>(
   );
 };
 
+/**
+ * The label a key id is derived under. An HMAC under the secret itself, so the
+ * `kid` names the key without saying anything about it: a public header value
+ * that is a plain digest of the secret would be an offline oracle for it.
+ */
+const KID_LABEL = "access-token-kid";
+
+/** The key id a secret signs under — 16 base64url characters, stable per secret. */
+export const accessKeyId = (secret: string): string =>
+  createHmac("sha256", secret)
+    .update(KID_LABEL)
+    .digest("base64url")
+    .slice(0, 16);
+
 /** `jose` reports every failure as an error with a stable `code` string. */
 const errorCode = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "code" in error
@@ -128,8 +151,14 @@ const errorCode = (error: unknown): string | undefined =>
     : undefined;
 
 export interface TokenServiceDeps {
-  /** `JWT_ACCESS_SECRET` (ADR-0004); at least 32 characters. */
+  /** `JWT_ACCESS_SECRET` (ADR-0004); at least 32 characters. Signs every token. */
   readonly secret: string;
+  /**
+   * `JWT_ACCESS_SECRET_PREVIOUS` (ADR-0078 §2): the secret a rotation moved
+   * out, still verified for tokens that name it until it is removed — one
+   * access-token lifetime later. Never signs.
+   */
+  readonly previousSecret?: string | undefined;
   /** `APP_ID` (ADR-0064 §1) — the audience's leading word. */
   readonly appId: string;
   readonly issuer: string;
@@ -169,12 +198,40 @@ export interface IssuedAccessToken {
 
 export const createTokenService = ({
   secret,
+  previousSecret,
   appId,
   issuer,
   accessTtlSec,
   now = () => new Date(),
 }: TokenServiceDeps) => {
-  const key = new TextEncoder().encode(secret);
+  const encode = (value: string) => new TextEncoder().encode(value);
+  const key = encode(secret);
+  const kid = accessKeyId(secret);
+  // By key id. The previous secret joins only when it is a different key: the
+  // schema refuses the two being equal, and a ring of one is the same answer.
+  // The current key is set last, so it wins even if the two ids collided.
+  const ring = new Map<string, Uint8Array>();
+
+  if (previousSecret !== undefined && previousSecret !== secret) {
+    ring.set(accessKeyId(previousSecret), encode(previousSecret));
+  }
+
+  ring.set(kid, key);
+
+  /**
+   * The key a token's header names. Throwing here is what refuses an unknown
+   * `kid`: `jwtVerify` rejects with the thrown error, which `verify` answers
+   * as `AUTH_TOKEN_INVALID` like every other failure but expiry.
+   */
+  const keyFor = (header: JWTHeaderParameters): Uint8Array => {
+    if (header.kid === undefined) return key;
+
+    const named = ring.get(header.kid);
+
+    if (named === undefined) throw new Error("unknown key id");
+
+    return named;
+  };
 
   return {
     /**
@@ -210,7 +267,7 @@ export const createTokenService = ({
         roles: [...roles],
         ...(actorId === undefined ? {} : { act: { sub: actorId } }),
       })
-        .setProtectedHeader({ alg: ALGORITHM, typ: "JWT" })
+        .setProtectedHeader({ alg: ALGORITHM, typ: "JWT", kid })
         .setSubject(principalId)
         .setIssuer(issuer)
         .setAudience(audienceFor(appId, population))
@@ -238,7 +295,7 @@ export const createTokenService = ({
       let payload: unknown;
 
       try {
-        ({ payload } = await jwtVerify(token, key, {
+        ({ payload } = await jwtVerify(token, keyFor, {
           issuer,
           audience: audienceFor(appId, population),
           algorithms: [ALGORITHM],

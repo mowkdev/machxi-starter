@@ -215,6 +215,22 @@ Proved by: `apps/api/test/federated-identity.int.test.ts`, `apps/api/test/rate-l
 - **WHEN** one account asks for the set-password link more than `RATE_LIMIT_PASSWORD_RESET_MAX` times in an hour
 - **THEN** the next ask answers `429 RATE_LIMITED`, while `forgot` for the same address answers on its own budget
 
+## Requirement: The transaction cookie is signed under a key of its own
+
+The transaction cookie and the handoff binding are signed under `OIDC_TRANSACTION_SECRET` when it is set, and otherwise under a key derived from `JWT_ACCESS_SECRET` under a label of its own — never under the access token's key. A value signed under the access key opens to nothing, so it is answered as a callback this browser did not start. Changing either secret fails only the sign-ins in flight at that moment.
+Records: [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0072](../adr/0072-federated-identity-google-sign-in.md)
+Proved by: `apps/api/src/core/oidc/__tests__/transaction.test.ts`, `apps/api/src/core/config/__tests__/config.test.ts`
+
+### Scenario: A transaction under the access token's key
+
+- **WHEN** a cookie value is signed under `JWT_ACCESS_SECRET`, however well formed its claims
+- **THEN** the codec opens nothing, and the callback redirects with an error exactly as for a callback this browser did not start
+
+### Scenario: The codec's key stated
+
+- **WHEN** `OIDC_TRANSACTION_SECRET` is set equal to either access secret
+- **THEN** the API refuses to start, naming the variable
+
 ## Requirement: The start and the callback are rationed per source
 
 `start` and `callback` are each behind a limiter of their own on `RATE_LIMIT_LOGIN_MAX`'s number, keyed on the source address alone — there is no address in either request to key on — in counters apart from each other and from every other limiter keyed on the source, so none spends another's budget. A callback with a valid cookie costs a request to Google, which is why it has one. The exchange carries only the global limiter: the handoff's mint is where its budget belongs.

@@ -63,6 +63,11 @@ export interface AppConfig {
   readonly auth: {
     readonly issuer: string;
     readonly accessSecret: string;
+    /**
+     * `JWT_ACCESS_SECRET_PREVIOUS` — verified for tokens that name it while a
+     * rotation is in flight, never signed with (ADR-0078 §2).
+     */
+    readonly previousAccessSecret: string | undefined;
     /** Access-token lifetime in seconds, parsed from `JWT_ACCESS_TTL`. */
     readonly accessTtlSec: number;
     /** Refresh-token lifetime in seconds, parsed from `REFRESH_TOKEN_TTL`. */
@@ -126,6 +131,12 @@ export interface AppConfig {
      * stated once, in `docs/deploy.md`, for the provider's console.
      */
     readonly apiPublicUrl: string;
+    /**
+     * `OIDC_TRANSACTION_SECRET`, or `undefined` for the key derived from the
+     * access secret (ADR-0078 §2) — resolved by `oidcTransactionSecret` in
+     * `core/oidc`, never by reading `auth.accessSecret` in its place.
+     */
+    readonly transactionSecret: string | undefined;
     readonly google:
       | {
           readonly clientId: string;
@@ -264,6 +275,7 @@ export const toAppConfig = (env: Env): AppConfig =>
     auth: Object.freeze({
       issuer: env.JWT_ISSUER,
       accessSecret: env.JWT_ACCESS_SECRET,
+      previousAccessSecret: env.JWT_ACCESS_SECRET_PREVIOUS,
       accessTtlSec: env.JWT_ACCESS_TTL,
       refreshTtlSec: env.REFRESH_TOKEN_TTL,
       refreshRotationGraceSec: env.REFRESH_ROTATION_GRACE_SEC,
@@ -290,6 +302,7 @@ export const toAppConfig = (env: Env): AppConfig =>
     }),
     federated: Object.freeze({
       apiPublicUrl: env.API_PUBLIC_URL,
+      transactionSecret: env.OIDC_TRANSACTION_SECRET,
       // Both or neither is the schema's refinement; the conjunction is
       // restated here so the type follows the rule rather than trusting it.
       google:

@@ -95,6 +95,32 @@ Proved by: `apps/api/test/auth-segments.int.test.ts`, `apps/api/test/auth.int.te
 - **WHEN** the token verifies but its session has been revoked or has expired
 - **THEN** the answer is `401 AUTH_SESSION_REVOKED`
 
+## Requirement: The signing secret rotates without a sign-out
+
+An access token is signed under `JWT_ACCESS_SECRET` and names that key in its `kid` header. `JWT_ACCESS_SECRET_PREVIOUS`, when a deployment sets it, is the one other key a token may name and still verify; nothing is signed with it. A `kid` naming neither key is refused, and a token with no `kid` — one a release before the ring issued — verifies under the current secret alone. The two must differ, and a value committed in this repository is refused in production for each, as for every other secret.
+Records: [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md)
+Proved by: `apps/api/src/modules/auth/__tests__/auth.tokens.test.ts`, `apps/api/src/core/config/__tests__/config.test.ts`
+
+### Scenario: Mid-rotation
+
+- **WHEN** a token signed under the secret a rotation moved to `JWT_ACCESS_SECRET_PREVIOUS` is presented
+- **THEN** it verifies as before, and once the previous secret is removed it answers `401 AUTH_TOKEN_INVALID`
+
+### Scenario: A key the API does not hold
+
+- **WHEN** a token's `kid` names neither the current nor the previous secret, even though its signature is the current secret's
+- **THEN** the answer is `401 AUTH_TOKEN_INVALID`
+
+### Scenario: A token from before the ring
+
+- **WHEN** a token with no `kid` is presented
+- **THEN** it verifies under the current secret, and never under the previous one
+
+### Scenario: A committed secret in production
+
+- **WHEN** `NODE_ENV=production` and `JWT_ACCESS_SECRET`, `JWT_ACCESS_SECRET_PREVIOUS` or `OIDC_TRANSACTION_SECRET` holds a value committed in this repository
+- **THEN** the API refuses to start, naming the variable
+
 ## Requirement: Logout ends this session; logout-all ends every one
 
 `POST /auth/logout` revokes the session the access token names and answers `204`; `POST /auth/logout-all` revokes every live session of the principal. Both clear this population's cookies, whether or not the caller had any.

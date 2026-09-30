@@ -202,6 +202,47 @@ describe("envSchema", () => {
     expect(() => parse({ JWT_ACCESS_SECRET: "short" })).toThrow();
   });
 
+  describe("the key ring and the codec's key (ADR-0078 §2)", () => {
+    it("leaves both optional, and an empty value unset", () => {
+      const env = parse({
+        JWT_ACCESS_SECRET_PREVIOUS: "",
+        OIDC_TRANSACTION_SECRET: " ",
+      });
+
+      expect(env.JWT_ACCESS_SECRET_PREVIOUS).toBeUndefined();
+      expect(env.OIDC_TRANSACTION_SECRET).toBeUndefined();
+    });
+
+    it("holds each to the signing key's length", () => {
+      expect(() => parse({ JWT_ACCESS_SECRET_PREVIOUS: "short" })).toThrow(
+        /JWT_ACCESS_SECRET_PREVIOUS/,
+      );
+      expect(() => parse({ OIDC_TRANSACTION_SECRET: "short" })).toThrow(
+        /OIDC_TRANSACTION_SECRET/,
+      );
+    });
+
+    it("refuses a previous secret equal to the current one", () => {
+      // Rotation moves the current secret across and sets a new one; the same
+      // value in both means the second half never happened.
+      expect(() =>
+        parse({ JWT_ACCESS_SECRET_PREVIOUS: validEnv.JWT_ACCESS_SECRET }),
+      ).toThrow(/JWT_ACCESS_SECRET_PREVIOUS/);
+    });
+
+    it("refuses a codec key equal to either access secret", () => {
+      expect(() =>
+        parse({ OIDC_TRANSACTION_SECRET: validEnv.JWT_ACCESS_SECRET }),
+      ).toThrow(/OIDC_TRANSACTION_SECRET/);
+      expect(() =>
+        parse({
+          JWT_ACCESS_SECRET_PREVIOUS: "p".repeat(32),
+          OIDC_TRANSACTION_SECRET: "p".repeat(32),
+        }),
+      ).toThrow(/OIDC_TRANSACTION_SECRET/);
+    });
+  });
+
   describe("production guards", () => {
     // `TRUST_PROXY`, `MAIL_TRANSPORT`, `METRICS_TOKEN`, the two app URLs and
     // (since ADR-0072 §2) the API's own public origin are stated here, not
@@ -232,6 +273,43 @@ describe("envSchema", () => {
         ).toThrow(/JWT_ACCESS_SECRET/);
       },
     );
+
+    it.each([
+      "JWT_ACCESS_SECRET",
+      "JWT_ACCESS_SECRET_PREVIOUS",
+      "OIDC_TRANSACTION_SECRET",
+    ] as const)(
+      "a committed value is refused in production for every secret (%s)",
+      (variable) => {
+        // ADR-0078 §2: the ring's second secret still verifies tokens, and the
+        // codec's key forges a sign-in transaction, so a committed value in
+        // either is the same hole as a committed signing key. The current
+        // secret is stated real, so each refusal is its own variable's.
+        const real = { ...production, JWT_ACCESS_SECRET: "r".repeat(48) };
+
+        for (const secret of KNOWN_PUBLIC_SECRETS) {
+          expect(() => parse({ ...real, [variable]: secret })).toThrow(
+            new RegExp(variable),
+          );
+          // Outside production the same value is a working dev key.
+          expect(() =>
+            parse({ ...real, NODE_ENV: "development", [variable]: secret }),
+          ).not.toThrow();
+        }
+      },
+    );
+
+    it("accepts the ring and the codec's key stated for real in production", () => {
+      const env = parse({
+        ...production,
+        JWT_ACCESS_SECRET: "c".repeat(48),
+        JWT_ACCESS_SECRET_PREVIOUS: "p".repeat(48),
+        OIDC_TRANSACTION_SECRET: "o".repeat(48),
+      });
+
+      expect(env.JWT_ACCESS_SECRET_PREVIOUS).toBe("p".repeat(48));
+      expect(env.OIDC_TRANSACTION_SECRET).toBe("o".repeat(48));
+    });
 
     it('refuses TRUST_PROXY="true"', () => {
       // Express then takes the left-most X-Forwarded-For entry verbatim, which

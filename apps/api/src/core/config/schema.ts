@@ -372,6 +372,16 @@ export const envSchema = z
 
     JWT_ISSUER: z.string().min(1).default("machxi-api"),
     JWT_ACCESS_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
+    /**
+     * The secret a rotation moved out (ADR-0078 §2). Optional: set, a token
+     * whose `kid` names it still verifies; nothing is ever signed with it.
+     * Rotation is: move the current secret here, set a new
+     * `JWT_ACCESS_SECRET`, and remove this one after one `JWT_ACCESS_TTL` —
+     * `docs/deploy.md` has the procedure.
+     */
+    JWT_ACCESS_SECRET_PREVIOUS: optionalEnv(
+      z.string().min(MIN_JWT_SECRET_LENGTH),
+    ),
     // Seconds, not the string: the JWT's `exp`, the `accessTokenExpiresAt`
     // field of the response and the session's `refresh_token_expires_at` all
     // have to be derived from one number, and an unparseable duration must
@@ -695,6 +705,13 @@ export const envSchema = z
     GOOGLE_CLIENT_ID: optionalEnv(z.string().min(1)),
     GOOGLE_CLIENT_SECRET: optionalEnv(z.string().min(1)),
     /**
+     * The key the sign-in transaction cookie and the handoff binding are
+     * signed under (ADR-0078 §2). Optional: unset, the key is derived from
+     * `JWT_ACCESS_SECRET` under a label of its own, so the codec never shares
+     * the access token's key; stated, the two rotate independently.
+     */
+    OIDC_TRANSACTION_SECRET: optionalEnv(z.string().min(MIN_JWT_SECRET_LENGTH)),
+    /**
      * This API's own public origin, which it has never needed to know until
      * now: the OIDC redirect URI is `${API_PUBLIC_URL}/api/v1/public/auth/
      * google/callback`, registered in the provider's console and sent on every
@@ -809,6 +826,49 @@ export const envSchema = z
       path: ["JWT_ACCESS_SECRET"],
       message:
         "is a value committed in this repository and must not be used in production",
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      env.JWT_ACCESS_SECRET_PREVIOUS === undefined ||
+      !KNOWN_PUBLIC_SECRETS.includes(env.JWT_ACCESS_SECRET_PREVIOUS),
+    {
+      path: ["JWT_ACCESS_SECRET_PREVIOUS"],
+      message:
+        "is a value committed in this repository and must not be used in production (ADR-0078 §2): a token it signed would still verify",
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      env.OIDC_TRANSACTION_SECRET === undefined ||
+      !KNOWN_PUBLIC_SECRETS.includes(env.OIDC_TRANSACTION_SECRET),
+    {
+      path: ["OIDC_TRANSACTION_SECRET"],
+      message:
+        "is a value committed in this repository and must not be used in production (ADR-0078 §2): anyone could forge a sign-in transaction",
+    },
+  )
+  .refine(
+    (env) =>
+      env.JWT_ACCESS_SECRET_PREVIOUS === undefined ||
+      env.JWT_ACCESS_SECRET_PREVIOUS !== env.JWT_ACCESS_SECRET,
+    {
+      path: ["JWT_ACCESS_SECRET_PREVIOUS"],
+      message:
+        "must differ from JWT_ACCESS_SECRET (ADR-0078 §2): rotation moves the current secret here and sets a new one, and the same value in both means the new one was never set",
+    },
+  )
+  .refine(
+    (env) =>
+      env.OIDC_TRANSACTION_SECRET === undefined ||
+      (env.OIDC_TRANSACTION_SECRET !== env.JWT_ACCESS_SECRET &&
+        env.OIDC_TRANSACTION_SECRET !== env.JWT_ACCESS_SECRET_PREVIOUS),
+    {
+      path: ["OIDC_TRANSACTION_SECRET"],
+      message:
+        "must differ from the access token's secrets (ADR-0078 §2): the codec's key is its own, or unset to be derived",
     },
   )
   .refine(

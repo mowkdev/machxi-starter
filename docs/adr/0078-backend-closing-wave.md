@@ -34,6 +34,8 @@ A hash is taken over the file's bytes as committed; the migrations directory is 
 
 The OIDC transaction codec stops sharing the key. `OIDC_TRANSACTION_SECRET` is optional; unset, the codec's key is derived from the access secret under a label of its own, so the separation is structural in a default clone and the two rotate independently where a deployment states both. A committed value is refused in production for every secret here, as it is today for one.
 
+> **Amended 2026-09-30 (D29.2) — how the key id and the derived key are made, and what the schema refuses.** The `kid` is an HMAC-SHA256 of a fixed label under the secret, truncated to sixteen base64url characters: a plain digest of the secret in a public header would be an offline oracle for it, and the HMAC names the key without saying anything about it. The codec's derived key is HKDF-SHA256 over the access secret with a versioned label; changing the label is a rotation of that key, which fails the sign-ins in flight and nothing else. Beyond the production refusal of a committed value, the schema refuses `JWT_ACCESS_SECRET_PREVIOUS` equal to `JWT_ACCESS_SECRET` (a rotation whose second half never happened) and `OIDC_TRANSACTION_SECRET` equal to either (the sharing this section removes), in every environment.
+
 ### 3. Lock order, and a deadlock retried once
 
 The federated exchange takes its locks in an order that cannot deadlock against a credential event's sweeps, and a concurrent integration case proves it. The transaction helper at the composition root retries a transaction the database aborted as a deadlock victim (`40P01`), a bounded number of times; nothing inside a transaction has an effect outside the database, which is what makes the retry safe and is already the rule for mail.

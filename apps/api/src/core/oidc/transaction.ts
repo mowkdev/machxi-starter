@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, hkdfSync, timingSafeEqual } from "node:crypto";
 
 import { LOCALES, type Locale } from "@repo/contracts";
 import { sha256Base64url } from "@repo/crypto";
@@ -11,7 +11,9 @@ import type { OidcAuthorizationRequest } from "./oidc.types.js";
  * The transaction between a sign-in's start and its callback (ADR-0072 §2).
  *
  * Carried in the `__Host-<APP_ID>.oidc` cookie and nowhere else, as a compact
- * HS256 JWT signed with `jose` under `JWT_ACCESS_SECRET`. **Signed, not
+ * HS256 JWT signed with `jose` under a key of its own (ADR-0078 §2):
+ * `OIDC_TRANSACTION_SECRET`, or — unset — a key derived from
+ * `JWT_ACCESS_SECRET` under a label of its own. **Signed, not
  * encrypted, on purpose**: nothing in it is a secret from the browser that
  * owns it — the verifier is worthless without the authorization code Google
  * hands that same browser — and what the signature buys is that the API reads
@@ -19,11 +21,12 @@ import type { OidcAuthorizationRequest } from "./oidc.types.js";
  * one.
  *
  * **The audience is `<APP_ID>-oidc`**, beside the access token's
- * `<APP_ID>-staff` and `<APP_ID>-user` (ADR-0064 §1). The key is shared with
- * the access tokens, so the audience is what keeps the two kinds of token
- * from ever being mistaken for each other: an access token presented as a
- * transaction fails `aud`, and a transaction presented as a bearer token fails
- * it the other way round.
+ * `<APP_ID>-staff` and `<APP_ID>-user` (ADR-0064 §1). Until `D29.2` the key
+ * was the access tokens' and the audience alone kept the two kinds apart; the
+ * key is now the codec's own, so the separation is structural and the pinned
+ * audience is the second line rather than the only one. An access token
+ * presented as a transaction fails the signature and `aud`, and the reverse
+ * fails both too.
  *
  * A database row keyed by `state` was the alternative, and ADR-0072
  * §Alternatives says why not: nothing would bind the callback to the browser
@@ -35,6 +38,36 @@ import type { OidcAuthorizationRequest } from "./oidc.types.js";
  * provider — the cookie's `Max-Age` and the token's `exp` (ADR-0072 §2).
  */
 export const OIDC_TRANSACTION_TTL_SEC = 10 * 60;
+
+/**
+ * The HKDF label the codec's key is derived under when
+ * `OIDC_TRANSACTION_SECRET` is unset. Changing it is a key rotation: every
+ * sign-in in flight at deploy fails its callback once.
+ */
+const DERIVED_KEY_INFO = "oidc-transaction-key-v1";
+
+/**
+ * The codec's key when no secret of its own is configured (ADR-0078 §2): HKDF
+ * over the access secret under a label of its own, so the two never share a
+ * key even in a default clone, and a deployment that states
+ * `OIDC_TRANSACTION_SECRET` rotates the two independently.
+ */
+export const deriveOidcTransactionSecret = (accessSecret: string): string =>
+  Buffer.from(
+    hkdfSync("sha256", accessSecret, "", DERIVED_KEY_INFO, 32),
+  ).toString("base64url");
+
+/**
+ * The codec's key: its own secret when stated, derived otherwise. One
+ * function, so the composition root cannot hand the codec the access secret.
+ */
+export const oidcTransactionSecret = ({
+  transactionSecret,
+  accessSecret,
+}: {
+  readonly transactionSecret: string | undefined;
+  readonly accessSecret: string;
+}): string => transactionSecret ?? deriveOidcTransactionSecret(accessSecret);
 
 /** Pinned on verification, so a transaction cannot choose its own algorithm. */
 const ALGORITHM = "HS256";
@@ -128,7 +161,7 @@ const sameDigest = (a: string, b: string): boolean =>
   );
 
 export interface OidcTransactionCodecDeps {
-  /** `JWT_ACCESS_SECRET` (ADR-0004). */
+  /** The codec's own key — {@link oidcTransactionSecret}, never the access token's. */
   readonly secret: string;
   /** `APP_ID` (ADR-0064 §1) — the audience's leading word. */
   readonly appId: string;

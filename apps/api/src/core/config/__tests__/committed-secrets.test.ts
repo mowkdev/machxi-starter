@@ -56,6 +56,31 @@ describe("committed signing keys", () => {
     expect(new Set(secrets).size).toBe(secrets.length);
   });
 
+  it.each([".env.example", "apps/api/.env.test", "docker/prod/.env.example"])(
+    "lists any value %s commits for the ring or the codec's key",
+    (label) => {
+      // ADR-0078 §2: `JWT_ACCESS_SECRET_PREVIOUS` still verifies tokens and
+      // `OIDC_TRANSACTION_SECRET` signs the sign-in transaction, so a value
+      // committed for either is public exactly as a signing key is. The files
+      // ship both commented out; one that ships a value must list it.
+      const file =
+        label === "apps/api/.env.test"
+          ? resolve(apiDir, ".env.test")
+          : resolve(repoRoot, label);
+
+      for (const key of [
+        "JWT_ACCESS_SECRET_PREVIOUS",
+        "OIDC_TRANSACTION_SECRET",
+      ]) {
+        const value = readVariable(file, key);
+
+        if (value !== undefined && value !== "") {
+          expect(KNOWN_PUBLIC_SECRETS).toContain(value);
+        }
+      }
+    },
+  );
+
   it("only lists keys that would otherwise pass the length rule", () => {
     for (const secret of KNOWN_PUBLIC_SECRETS) {
       expect(secret.length).toBeGreaterThanOrEqual(32);

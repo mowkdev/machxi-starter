@@ -8,6 +8,7 @@ import {
   createGoogleOidcProvider,
   createOidcTransactionCodec,
   oidcRedirectUri,
+  oidcTransactionSecret,
   type OidcProvider,
 } from "../../core/oidc/index.js";
 import type { AccountTokens } from "../../core/tokens/index.js";
@@ -205,7 +206,12 @@ export const wireAuth = ({
               redirectUri: oidcRedirectUri(config.federated.apiPublicUrl),
             }),
           transactions: createOidcTransactionCodec({
-            secret: config.auth.accessSecret,
+            // The codec's own key, derived when unset — never the access
+            // token's (ADR-0078 §2).
+            secret: oidcTransactionSecret({
+              transactionSecret: config.federated.transactionSecret,
+              accessSecret: config.auth.accessSecret,
+            }),
             appId: config.app.id,
             issuer: config.auth.issuer,
           }),

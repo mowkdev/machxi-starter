@@ -1,10 +1,12 @@
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { describe, expect, it } from "vitest";
 
 import {
   OIDC_TRANSACTION_TTL_SEC,
   createAuthorizationRequest,
   createOidcTransactionCodec,
+  deriveOidcTransactionSecret,
+  oidcTransactionSecret,
 } from "../index.js";
 
 /**
@@ -120,10 +122,43 @@ describe("createOidcTransactionCodec", () => {
     expect(await codec(() => later).open(value)).toBeUndefined();
   });
 
+  it("the codec's key is not the access token's", async () => {
+    // ADR-0078 §2: unset, the key is derived from the access secret under a
+    // label of its own; stated, it is the codec's own. Either way a value the
+    // codec seals does not verify under the access secret, whatever the
+    // audience — the separation is the key's, not only the claim's.
+    const access = "the-access-token-secret-at-least-32-chars";
+    const derived = oidcTransactionSecret({
+      transactionSecret: undefined,
+      accessSecret: access,
+    });
+
+    expect(derived).not.toBe(access);
+    // Stable across calls, or a restart would fail every sign-in in flight.
+    expect(deriveOidcTransactionSecret(access)).toBe(derived);
+    expect(
+      oidcTransactionSecret({
+        transactionSecret: "the-codecs-own-secret-at-least-32-chars",
+        accessSecret: access,
+      }),
+    ).toBe("the-codecs-own-secret-at-least-32-chars");
+
+    const sealed = await codec(() => T0, derived).seal(transaction());
+
+    await expect(
+      jwtVerify(sealed, new TextEncoder().encode(access), {
+        currentDate: T0,
+      }),
+    ).rejects.toMatchObject({ code: "ERR_JWS_SIGNATURE_VERIFICATION_FAILED" });
+    expect(await codec(() => T0, access).open(sealed)).toBeUndefined();
+    expect(await codec(() => T0, derived).open(sealed)).toBeDefined();
+  });
+
   it("opens nothing that is an access token signed with the same key", async () => {
-    // The two share `JWT_ACCESS_SECRET`; the audience is what keeps them
-    // apart (`<APP_ID>-user` there, `<APP_ID>-oidc` here). The reverse
-    // direction is the auth module's to prove, beside its own verifier.
+    // Since ADR-0078 §2 the two never share a key in a running API; this
+    // case signs one under the codec's key regardless, to prove the audience
+    // (`<APP_ID>-user` there, `<APP_ID>-oidc` here) still keeps them apart on
+    // its own. The reverse direction is the auth module's to prove.
     const issuedAt = Math.floor(T0.getTime() / 1000);
     const access = await new SignJWT({
       st: "s",

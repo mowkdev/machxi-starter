@@ -80,6 +80,11 @@ export const AREAS = [
         text: "Two populations — `staff` and `user` — with separate tables and separate segments `/api/v1/{public,user,admin}`; `authenticate()` at router level and `authorize()` at the mount; `super_admin` bypasses staff role checks. Self-scoped resources carry no `authorize` because the subject is `ctx.principal`. An impersonated session is a `user` session minted by staff: it carries the actor, rotates without extending, and refuses credential operations.",
       },
       {
+        topic: "The key ring",
+        records: ["0078"],
+        text: "The access token is signed under `JWT_ACCESS_SECRET` and names it in a `kid` header; `JWT_ACCESS_SECRET_PREVIOUS`, when set, is verified for tokens that name it and never signs, a `kid` naming neither is refused, and a token with no `kid` verifies under the current secret alone. The OIDC transaction codec signs under `OIDC_TRANSACTION_SECRET`, or a key derived from the access secret under a label of its own when unset, and never under the access key. A committed value is refused in production for every secret.",
+      },
+      {
         topic: "Database",
         records: ["0006", "0008", "0061"],
         text: "Schema in `packages/db/src/schema`; migrations are generated with `drizzle-kit generate` and committed, never pushed; the API never auto-migrates; seeds are idempotent. The API connects as the application role (`DATABASE_URL`) with table privileges and no DDL, and every tooling connection is the owner role (`DATABASE_URL_OWNER`, required with no fallback).",

@@ -44,3 +44,35 @@ Supporting changes:
 **Which database the gate ran against.** The first gate run's API integration tier ran against the shared `machxi_test`, not `machxi_d29_test`. The cause is that the tracked `apps/api/.env.test` is loaded with `override: true`, so it wins over the worktree's root `.env`. That run failed 91 cases in 7 files on `40P01` deadlocks, colliding with D31's gate in the same window. The `/steps` coordinator then pointed the worktree's `apps/api/.env.test` at `machxi_d29_test`, as a local-only change marked `skip-worktree` and not committed. After that, the gate re-run twice against `machxi_d29_test` and was green both times. The `@repo/db` tier always ran against `machxi_d29_test`.
 
 **Residual, for the operator to route.** The lane's test-database isolation covers the API tier only through that local, uncommitted edit. The next lane that opens meets the same thing unless the harness gets a sanctioned override.
+
+## D29.2 — The key ring (2026-09-30)
+
+**Built.** [ADR-0018](../adr/0018-authentication-sessions-and-tokens.md) (its fifth partial successor) and [ADR-0072](../adr/0072-federated-identity-google-sign-in.md) moved to `superseded by` [ADR-0078](../adr/0078-backend-closing-wave.md) at the head of the step, each with its delta in the status line and a dated note; 0072's second half, the exchange's lock order, is `D29.3`'s. The index rows, both topic rows and the ledger's running paragraph say so. `scripts/rules-digest.mjs` gained the line "The key ring" (0078), and the digests were regenerated.
+
+- `modules/auth/auth.tokens.ts`: `createTokenService` takes `previousSecret`. Every token carries `kid` = `accessKeyId(secret)`, an HMAC-SHA256 of a fixed label under the secret, truncated to 16 base64url characters. Verification resolves the key from the header through `jwtVerify`'s key function: no `kid` means the current secret only, a known `kid` means its secret, and anything else throws. That throw is answered as `AUTH_TOKEN_INVALID`.
+- `core/oidc/transaction.ts`: `deriveOidcTransactionSecret` (HKDF-SHA256, label `oidc-transaction-key-v1`) and `oidcTransactionSecret({ transactionSecret, accessSecret })`. The composition in `modules/auth/wire.ts` hands the codec that key and never the access secret.
+- The schema gains `JWT_ACCESS_SECRET_PREVIOUS` and `OIDC_TRANSACTION_SECRET`, both optional with a minimum of 32 characters and blank read as unset. Each refuses a `KNOWN_PUBLIC_SECRETS` value in production. In every environment, the schema also refuses a previous secret equal to the current one and a codec key equal to either access secret. They reach the code as `config.auth.previousAccessSecret` and `config.federated.transactionSecret`.
+- Both `.env.example` files carry both variables commented out and empty. The production compose passes both as bare keys. `docs/deploy.md` gains "Rotating the signing secret": the three-move rotation, the leak variant and the codec's key. No `turbo.json` entry, because no task reads either variable (the API's tiers load `.env.test`).
+- Specs: `auth-sessions.md` gains "The signing secret rotates without a sign-out" and `federated-identity.md` gains "The transaction cookie is signed under a key of its own".
+
+**Amended in place (0078 §2, labelled `D29.2`).** It now records how the `kid` and the derived key are made (an HMAC rather than a digest, so the public header is no oracle; a versioned HKDF label, whose change is a rotation of the codec's key alone) and the two equality refusals.
+
+**Review.** One `security-reviewer` pass returned no Critical, High or Medium findings, and two Lows:
+
+1. **Nothing makes `JWT_ACCESS_SECRET_PREVIOUS` expire.** An operator who skips step 3 of the rotation keeps the old key verifying. This is operational, and the leak procedure in `docs/deploy.md` says to set no previous key at all. **Logged, not fixed**; a startup line naming the variable's presence is the smallest fix if the operator wants one.
+2. **A 96-bit `kid` collision would let the previous key replace the current one in the ring.** Theoretical. **Fixed**: the current key is inserted last, so it always wins.
+
+Risks the reviewer named for a later record: the no-`kid` path is permanent and could be retired one TTL after this release, there is still no redaction path for `*Secret` config keys (harmless while config is never logged), and HS256 stays the model with EdDSA as ADR-0018's named later step.
+
+**Done-when evidence.**
+
+- `auth.tokens.test.ts` cases "a token signed under the previous secret verifies", "a token naming an unknown key is refused" and "a token with no key id verifies under the current secret" are green. So are "signs under the current secret and names it" and "refuses a token that names one key and is signed under the other".
+- `transaction.test.ts` case "the codec's key is not the access token's" is green.
+- `config.test.ts` case "a committed value is refused in production for every secret" is green for all three variables, and so are four ring and codec-key cases.
+- `committed-secrets.test.ts` is green, with a new case per committed env file for the two new variables.
+- `auth.int.test.ts` is green inside the API integration tier (823 cases).
+- `security-reviewer` read the diff (above).
+- `pnpm test --filter=api` is green: 803 unit and 823 integration cases, against `machxi_d29_test`.
+- The gate was green on the first run, before the review fix: `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 803 unit and 823 integration), `size` 4/4, `format:check` clean.
+- **After the review fix, the gate went green on the fourth run.** The fix reorders two `Map.set` calls. Two full re-runs before this one each failed two API integration cases, a different pair each time, all in concurrency tests. The first run's pair was `account-tokens` "makes a second mint for the same pair wait" and `staff-delete` "survives two super admins deleting each other at once". The second run's pair was `impersonation` "refuses two concurrent exchanges of one handoff" and `federated-identity` "refuses the link start, unlink and the set-password link on an impersonated session", both answering `500` after about 10 s. The one cause the log names is `write CONNECT_TIMEOUT localhost:5432` from postgres.js, which is the database connection timing out under load. Under `/step`'s two-failures rule the step stopped, uncommitted, for the operator. The operator's one retry ran with D31 holding its gates and was green: `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 803 unit and 823 integration; `@repo/db` 105 unit and 118 integration), `size` 4/4, `format:check` clean. **Residual, for the operator to route:** the API's concurrency cases time out on connecting when both lanes gate against the one Postgres at once.
+- `pnpm test:postman` has not run. It needs the running API to carry this step, which happens only once the step is on `main`.

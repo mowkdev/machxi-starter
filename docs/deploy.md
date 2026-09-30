@@ -117,6 +117,18 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
    - **`MAIL_TRANSPORT=smtp` on its own is not a configured relay.** The whole `SMTP_*` group defaults to the local compose's Mailpit — `localhost:1025`, no TLS, no credentials — which is exactly right on a laptop and is nothing at all inside a container. `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` and, where the relay authenticates, `SMTP_USER` and `SMTP_PASSWORD` are stated in `docker/prod/.env.example` beside it; the schema does not refuse the development defaults here as it does for the two app URLs, because a relay reachable at `localhost` is a legitimate deployment (a sidecar) rather than a mistake. **`SMTP_SECURE=false` does not mean "upgrade to TLS", it means "do not start in TLS"**: the transport passes the flag to nodemailer and requires nothing, so on 587 the upgrade is opportunistic and a relay that fails to advertise STARTTLS gets the credential and a single-use account-takeover link in the clear, with a successful send and nothing in a log to say so. Use `SMTP_SECURE=true` on 465, or a relay on 587 you have confirmed advertises STARTTLS.
    - **`MAIL_FROM` is the envelope sender the relay will judge you by.** It defaults to `no-reply@machxi.local`, which no managed relay will accept and no recipient's spam filter will like; it must be an address on a domain whose SPF and DKIM records name the relay you are sending through. That is the half of "mail works" no request against this API can check for you.
 
+## Rotating the signing secret
+
+The access token is signed under `JWT_ACCESS_SECRET` and names the key in its header; `JWT_ACCESS_SECRET_PREVIOUS` is the one other key the API will still verify (ADR-0078 §2). Rotating is three moves, and nobody is signed out:
+
+1. **Move the current secret to `JWT_ACCESS_SECRET_PREVIOUS`, set a new `JWT_ACCESS_SECRET`, and redeploy.** New tokens are signed under the new key; tokens already issued name the old one and keep verifying. The two must differ — the API refuses to start otherwise — and a value committed in this repository is refused in production in either variable.
+2. **Wait one `JWT_ACCESS_TTL`** (`15m` unless you changed it). Every token signed under the old key has expired by then; refresh tokens are opaque rows, not signed, so they are untouched by any of this.
+3. **Remove `JWT_ACCESS_SECRET_PREVIOUS` and redeploy.** A token naming the old key is refused from then on.
+
+After a **leak**, skip the wait: set the new secret and deploy with no previous one at all. Every access token in flight is refused, each client refreshes once on its refresh token, and the leaked key signs nothing this API accepts. A token issued by a release before the ring carries no key id and verifies under the current secret alone, which is what lets a deployment take this release without signing anybody out.
+
+**The sign-in transaction has a key of its own.** `OIDC_TRANSACTION_SECRET` signs the cookie that carries a Google sign-in between its start and its callback. Unset, it is derived from `JWT_ACCESS_SECRET` under a label of its own, so it rotates when the access secret does; set, the two rotate independently. Either way, changing it fails only the sign-ins in flight at that moment — the person clicks "Continue with Google" again.
+
 ## Sign in with Google (optional)
 
 Customers can sign in, or create an account, through Google (ADR-0072). It is off until the API is given an OAuth client, and the API is the control: without one, the three sign-in routes are not mounted and answer `404`.

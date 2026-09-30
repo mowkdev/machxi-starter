@@ -1,4 +1,4 @@
-import { decodeJwt, decodeProtectedHeader } from "jose";
+import { SignJWT, decodeJwt, decodeProtectedHeader } from "jose";
 import { describe, expect, it } from "vitest";
 
 import { isAppError } from "../../../core/errors/index.js";
@@ -7,7 +7,11 @@ import {
   createAuthorizationRequest,
   createOidcTransactionCodec,
 } from "../../../core/oidc/index.js";
-import { audienceFor, createTokenService } from "../auth.tokens.js";
+import {
+  accessKeyId,
+  audienceFor,
+  createTokenService,
+} from "../auth.tokens.js";
 
 /**
  * ADR-0018 §Model: HS256, `aud` per population, `sid` and `roles` claims, and
@@ -206,9 +210,10 @@ describe("createTokenService", () => {
   });
 
   it("refuses a sign-in transaction signed with the same key (ADR-0072 §2)", async () => {
-    // The transaction cookie is signed under `JWT_ACCESS_SECRET` too; its
-    // audience, `<APP_ID>-oidc`, is what stops it being presented as a bearer
-    // token. The other direction is proved beside the codec.
+    // Since ADR-0078 §2 the codec has a key of its own; this case signs one
+    // under the access key regardless, to prove the pinned audience,
+    // `<APP_ID>-oidc`, still refuses it as a bearer token on its own. The
+    // other direction is proved beside the codec.
     const sealed = await createOidcTransactionCodec({
       secret: SECRET,
       appId: APP_ID,
@@ -227,5 +232,105 @@ describe("createTokenService", () => {
 
       expect(isAppError(refusal) && refusal.code).toBe("AUTH_TOKEN_INVALID");
     }
+  });
+});
+
+/*
+ * ADR-0078 §2: the access token is signed under a ring of two secrets and
+ * names its key, so a leaked secret can be retired without a sign-out.
+ */
+describe("the key ring", () => {
+  const PREVIOUS = "the-secret-a-rotation-moved-out-32-chars";
+  const NOW = at("2026-08-18T12:00:00.000Z");
+
+  const ring = (secret = SECRET, previousSecret?: string) =>
+    createTokenService({
+      secret,
+      previousSecret,
+      appId: APP_ID,
+      issuer: ISSUER,
+      accessTtlSec: 900,
+      now: NOW,
+    });
+
+  /** A token with the claims this API signs, under any key and header. */
+  const forge = (key: string, header: { kid?: string }) => {
+    const issuedAt = Math.floor(NOW().getTime() / 1000);
+
+    return new SignJWT({
+      pop: "staff",
+      sid: "22222222-2222-7222-8222-222222222222",
+      roles: ["admin"],
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT", ...header })
+      .setSubject("11111111-1111-7111-8111-111111111111")
+      .setIssuer(ISSUER)
+      .setAudience(audienceFor(APP_ID, "staff"))
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + 900)
+      .sign(new TextEncoder().encode(key));
+  };
+
+  it("signs under the current secret and names it", async () => {
+    const { token } = await issueStaff(ring(SECRET, PREVIOUS));
+
+    expect(decodeProtectedHeader(token).kid).toBe(accessKeyId(SECRET));
+    // The id says which key without saying anything about it.
+    expect(accessKeyId(SECRET)).not.toContain(SECRET.slice(0, 8));
+    expect(accessKeyId(SECRET)).not.toBe(accessKeyId(PREVIOUS));
+  });
+
+  it("a token signed under the previous secret verifies", async () => {
+    // Before the rotation: `PREVIOUS` was the current secret.
+    const { token } = await issueStaff(ring(PREVIOUS));
+    // After it: a new current secret, and the old one kept as previous.
+    const rotated = ring(SECRET, PREVIOUS);
+
+    await expect(rotated.verify(token, "staff")).resolves.toMatchObject({
+      sid: "22222222-2222-7222-8222-222222222222",
+    });
+
+    // And once the previous secret is removed, the token is refused.
+    await expect(ring(SECRET).verify(token, "staff")).rejects.toMatchObject({
+      code: "AUTH_TOKEN_INVALID",
+    });
+  });
+
+  it("a token naming an unknown key is refused", async () => {
+    // Signed under the current secret, so only the `kid` is wrong: the ring
+    // refuses what it cannot name rather than trying every key it holds.
+    const token = await forge(SECRET, { kid: "not-a-key-of-ours" });
+
+    const refusal: unknown = await ring(SECRET, PREVIOUS)
+      .verify(token, "staff")
+      .catch((error: unknown) => error);
+
+    expect(isAppError(refusal) && refusal.code).toBe("AUTH_TOKEN_INVALID");
+  });
+
+  it("refuses a token that names one key and is signed under the other", async () => {
+    const token = await forge(PREVIOUS, { kid: accessKeyId(SECRET) });
+
+    await expect(
+      ring(SECRET, PREVIOUS).verify(token, "staff"),
+    ).rejects.toMatchObject({ code: "AUTH_TOKEN_INVALID" });
+  });
+
+  it("a token with no key id verifies under the current secret", async () => {
+    // What every release before the ring signed: a deployment takes the ring
+    // without signing anybody out.
+    const legacy = await forge(SECRET, {});
+
+    expect(decodeProtectedHeader(legacy).kid).toBeUndefined();
+    await expect(
+      ring(SECRET, PREVIOUS).verify(legacy, "staff"),
+    ).resolves.toMatchObject({ pop: "staff" });
+
+    // Under the current secret only — never tried against the previous one.
+    const underPrevious = await forge(PREVIOUS, {});
+
+    await expect(
+      ring(SECRET, PREVIOUS).verify(underPrevious, "staff"),
+    ).rejects.toMatchObject({ code: "AUTH_TOKEN_INVALID" });
   });
 });

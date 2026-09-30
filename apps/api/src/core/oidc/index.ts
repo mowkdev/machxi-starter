@@ -21,6 +21,8 @@ export {
 export {
   OIDC_TRANSACTION_TTL_SEC,
   createOidcTransactionCodec,
+  deriveOidcTransactionSecret,
+  oidcTransactionSecret,
   type OidcIntent,
   type OidcTransaction,
   type OidcTransactionCodec,
