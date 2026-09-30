@@ -3,7 +3,7 @@
 - Status: **in progress** — **opened 2026-09-30**, alone, as one pull request (ledger §How D36 opened); **scoped in full 2026-09-30 by `/scope`**, the day D34 shipped, from the fork-readiness review and on the operator's decisions (ledger §How D36 was scoped). The last starter deliverable before the fork.
 - Records: [ADR-0084](../adr/0084-fork-readiness.md) (a scripted bootstrap and a rehearsed fork, the starter merge removing every journal file it brings, the commit behind the metrics token) — written `proposed` at scoping, accepted at the head of `D36.1`. Parents it supersedes in part: [ADR-0065](../adr/0065-starter-lifecycle.md), [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md), [ADR-0081](../adr/0081-build-versions.md). Amends none. **Adds no migration.**
 - Schema: no
-- Tier: api (`/health` and its integration tests; the fork rehearsal runs the script tier)
+- Tier: api (`/health` and its integration tests; the fork rehearsal runs uncached in the gate's `test` link, `pnpm test:fork`)
 - Ledger: [`docs/plan/README.md`](README.md)
 - Notes: [`0036-fork-readiness.notes.md`](0036-fork-readiness.notes.md)
 
@@ -73,7 +73,7 @@ Run by `/ship` on the lane's head with `main` merged in.
 
 1. The gate green by `gate.yml` on the pull request's head, and on the machine once under the lock: `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check`.
 2. `pnpm test:unit` twice, the second `FULL TURBO`.
-3. `pnpm rules:digest` and `pnpm lanes` each write nothing on a second run; `pnpm docs:check` clean; `pnpm test:scripts` green, the fork rehearsal among it.
+3. `pnpm rules:digest` and `pnpm lanes` each write nothing on a second run; `pnpm docs:check` clean; `pnpm test:scripts` green; `pnpm test:fork`, the fork rehearsal, green.
 4. `e2e.yml` dispatched on the lane's head, both apps green: the browser tier proven on the tree the fork will take.
 5. **Pending the operator, named:**
    - The tags `starter-D29`, `starter-D34` and `starter-D35` are on `origin`, pushed by the operator, because a cloud session's pushes of `refs/tags/` are cut off.

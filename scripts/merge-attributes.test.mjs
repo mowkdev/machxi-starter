@@ -46,12 +46,14 @@ const starterMergeConfig = starterMerge
  * journal file the merge brought under `docs/plan/` is removed (ADR-0084 §2, a
  * delta on ADR-0082 §4). A merge takes a file added on one side without
  * consulting any driver, and a file the fork deleted that the starter changed
- * comes back as a modify/delete conflict; neither is in `ORIG_HEAD`, the
- * fork's tree before the merge. `-f`, because a stopped merge has staged what
- * it added.
+ * comes back as a modify/delete conflict; both are in `starter/main` and
+ * neither is in `ORIG_HEAD`, the fork's tree before the merge. Two commits,
+ * never the working tree, so a merge that refuses to start over the fork's
+ * staged work lists none of it; `--no-renames`, or a near-identical file pairs
+ * as a rename. `-f`, because a stopped merge has staged what it added.
  */
 const DROP_JOURNAL =
-  /^git diff --name-only --diff-filter=A ORIG_HEAD -- docs\/plan \| xargs -r git rm -qf$/m;
+  /^git diff --name-only --no-renames --diff-filter=A ORIG_HEAD starter\/main -- docs\/plan \| xargs -r git rm -qf --ignore-unmatch$/m;
 const dropJournal = forking.match(DROP_JOURNAL)?.[0];
 
 /** Git with no global or system config, and nothing but what a case passes. */
@@ -352,6 +354,8 @@ describe("merge attributes", () => {
       [LEDGER]: forkLedger,
       "docs/plan/lanes/D1.md": forkLane,
     });
+    // The command names the fetched `starter/main`; here it is a branch.
+    repo.git("update-ref", "refs/remotes/starter/main", "starter");
 
     const result = repo.merge(starterMergeConfig, "starter");
     assert.equal(result.status, 0, result.stdout + result.stderr);
@@ -394,6 +398,8 @@ describe("merge attributes", () => {
       "# Deliverables\n\n| # | Title | Status |\n| --- | --- | --- |\n";
     repo.git("rm", "--quiet", PLAN);
     repo.commit("the fork resets its journal", { [LEDGER]: forkLedger });
+    // The command names the fetched `starter/main`; here it is a branch.
+    repo.git("update-ref", "refs/remotes/starter/main", "starter");
 
     const result = repo.merge(starterMergeConfig, "starter");
 
@@ -405,7 +411,7 @@ describe("merge attributes", () => {
     // Without `-f`, `git rm` refuses the files the stopped merge staged.
     const withoutForce = spawnSync(
       "sh",
-      ["-c", dropJournal.replace(/ git rm -qf$/, " git rm -q")],
+      ["-c", dropJournal.replace(/ git rm -qf /, " git rm -q ")],
       { cwd: repo.dir, env: gitEnv, encoding: "utf8" },
     );
     assert.notEqual(withoutForce.status, 0, "git rm -q removed staged files");

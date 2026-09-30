@@ -440,10 +440,20 @@ const decidesItsOwnResult = (rel, config, cached) => {
  * are excluded — they run as links, not through the first one — and so is the
  * step check, which runs the first link rather than inside it. A root check is
  * named in `lint`'s `dependsOn` as `//#<script>`, a workspace one by its bare
- * task name, which turbo resolves in each package that defines it.
+ * task name, which turbo resolves in each package that defines it. A root
+ * check that reads beyond the root package — the fork rehearsal — cannot be
+ * cached there (ADR-0026), so it is carried instead by the gate's uncached
+ * `test` link: named in `test`'s `dependsOn` with `cache: false` of its own
+ * (ADR-0084 §1, amended at D36.2).
  */
 const missingFirstLinkChecks = ({ turbo, root, workspaces, gate }) => {
-  const dependsOn = new Set(turbo.tasks?.lint?.dependsOn ?? []);
+  const uncached = (turbo.tasks?.test?.dependsOn ?? []).filter(
+    (task) => task.startsWith("//#") && turbo.tasks?.[task]?.cache === false,
+  );
+  const dependsOn = new Set([
+    ...(turbo.tasks?.lint?.dependsOn ?? []),
+    ...uncached,
+  ]);
   const isCheck = (name) => name.endsWith(":check");
   const wanted = new Set();
   for (const [name, command] of Object.entries(root.scripts ?? {})) {
@@ -522,7 +532,10 @@ test("the first link carries every check that can go red", async () => {
   const without = (task) => ({
     ...input,
     turbo: {
-      tasks: { lint: { dependsOn: dependsOn.filter((t) => t !== task) } },
+      tasks: {
+        ...input.turbo.tasks,
+        lint: { dependsOn: dependsOn.filter((t) => t !== task) },
+      },
     },
   });
   assert.deepEqual(missingFirstLinkChecks(without("i18n:check")), [
@@ -531,6 +544,15 @@ test("the first link carries every check that can go red", async () => {
   assert.deepEqual(missingFirstLinkChecks(without("//#docs:check")), [
     "//#docs:check",
   ]);
+  // The fork rehearsal rides in the uncached `test` link; cached there, it is
+  // a replayed green over a tree it did not read, and the case reddens.
+  const rehearsal = "//#test:fork";
+  assert.ok(input.turbo.tasks.test.dependsOn.includes(rehearsal));
+  const cached = {
+    ...input,
+    turbo: { tasks: { ...input.turbo.tasks, [rehearsal]: {} } },
+  };
+  assert.deepEqual(missingFirstLinkChecks(cached), [rehearsal]);
 });
 
 /**

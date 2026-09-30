@@ -181,3 +181,34 @@ step:check ✓
 **Review.** **Owed.** This builder ran as a subagent with no Agent tool. By ADR-0082 §2 its own reading is not a review, and none is recorded here. The step is record-heavy and adds a test script, so `adr-reviewer` or `code-reviewer` fits. The orchestrating session runs the one review over this step's commit. Confirmed findings land as `fix(scripts,docs): D36.2 follow-up — the review's findings`, with their fates in this file.
 
 **Pending the operator.** Nothing new from this step. D36.1's items stand.
+
+### D36.2 — the review, and its findings' fates
+
+The orchestrating session ran the one review: `code-reviewer` over `3dfcf28d`, in a fresh context. It ran on its third attempt: the first two were lost to container restarts before they reported. Four findings, each confirmed; the fixes are in `fix(scripts,docs): D36.2 follow-up — the review's findings`.
+
+1. **Stale greens from the cache (ADR-0026; confirms the residual above). Fixed.** `//#test:scripts` has no `inputs`, so it hashes the root package's files only, and `gate.yml` restores `.turbo/cache`, so CI replayed it too. The rehearsal now runs outside it:
+   - `package.json`: `test:scripts` globs `scripts/**/!(fork-rehearsal).test.mjs`; `test:fork` is `node --test scripts/fork-rehearsal.test.mjs`.
+   - `turbo.json`: `//#test:fork` with `cache: false`, and the `test` task depends on it. `pnpm test` runs it once, under the `tiers` lock, so the gate carries it with its command line unchanged.
+   - `scripts/step-check.mjs`: after `size` and before `format:check`, `pnpm test:fork` runs unless every changed path is a document under `docs/` other than `docs/forking.md` and `docs/upstreaming.md` (`rehearsalTrigger`). Three new cases in `step-check.test.mjs`.
+   - `scripts/docs-hygiene.test.mjs`: "the first link carries every check that can go red" accepts a root check the `test` task depends on with `cache: false` of its own, and reddens when the rehearsal's task is cached.
+   - ADR-0084 §1 amended in place, labelled; `README.md`, `docs/forking.md`, the plan's tier line and definition of done, and the process digest's source now say where it runs.
+2. **The cleanup deleted the fork's staged work when the merge refused to start. Fixed.** The command is now `git diff --name-only --no-renames --diff-filter=A ORIG_HEAD starter/main -- docs/plan | xargs -r git rm -qf --ignore-unmatch` in `docs/forking.md` §5, `docs/upstreaming.md` step 6, `/bootstrap` and the process digest; ADR-0084 §2 amended in place, labelled. `merge-attributes.test.mjs` reads it, and its two cases give their repository a `refs/remotes/starter/main`. The rehearsal now stages the fork's first lane, lets the starter ship, and runs the documented commands over it: new case "a fork's staged plan survives a merge that refuses to start". With the old command restored in `docs/forking.md` it is red ("docs/plan/0001-first-feature.md was unstaged by the command after the merge").
+3. **A `UD` conflict inside `docs/plan` was left unresolved. Fixed** in prose: §5 says a conflict on a journal file the fork already had keeps the fork's, `git checkout --ours -- <path> && git add <path>`; ADR-0084 §2's amendment says the same.
+4. **`gitEnv` inherited `GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`. Fixed:** the rehearsal drops every inherited `GIT_*` key before setting its own.
+
+**Tests.** `pnpm test:fork`: 7/7 in 16 s. `pnpm test:scripts`: 151 pass, 0 fail, the rehearsal no longer among them. `merge-attributes.test.mjs` 8/8, `step-check.test.mjs` 16/16. `pnpm rules:digest` wrote 1 of 3, then 0 of 3. `pnpm docs:check` clean.
+
+**Step check.** `export TEST_DB_LANE=$(pnpm --silent db:lane)` printed "already there". Then `pnpm step:check`, never `--force`, in 2 m 49 s:
+
+```
+step:check against 6b5dc792ccfddcee8e14826f0be14932b52fcf57
+  ran      check
+  ran      integration @repo/db (every file: package.json changed): 6 file(s)
+  ran      integration api (every file: package.json changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      test:fork (.claude/skills/bootstrap/SKILL.md changed)
+  ran      format:check
+step:check ✓
+```
+
+`size` ran because `turbo.json` is in the diff, which puts both SPAs in the affected filter. After the check, only this note was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.

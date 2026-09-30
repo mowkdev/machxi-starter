@@ -11,6 +11,7 @@ import {
   failedFiles,
   harnessTrigger,
   LOCK_NAME,
+  rehearsalTrigger,
   stepCheck,
   summary,
 } from "./step-check.mjs";
@@ -156,10 +157,65 @@ describe("step-check", () => {
     assert.equal(h.pnpm("size").length, 0);
     assert.deepEqual(
       h.calls
-        .filter(({ args }) => !(args[0] === "exec" && args[1] === "turbo"))
+        .filter(
+          ({ command, args }) =>
+            command !== "git" && !(args[0] === "exec" && args[1] === "turbo"),
+        )
         .map(({ command, args }) => [command, ...args].join(" ")),
       ["pnpm check", "pnpm format:check"],
     );
+    assert.equal(h.pnpm("test:fork").length, 0);
+  });
+
+  it("a change outside docs/ runs the fork rehearsal, uncached, before format:check", async () => {
+    const h = harness({
+      tasks: [DRY.grid, DRY.gridSize, DRY.admin, DRY.adminInt],
+      changed: [
+        "packages/grid/src/index.ts",
+        "docs/adr/0084-fork-readiness.md",
+      ],
+    });
+    const result = await check(h);
+
+    assert.deepEqual(result.failed, []);
+    assert.deepEqual(result.ran, [
+      "check",
+      "size (admin)",
+      "test:fork (packages/grid/src/index.ts changed)",
+      "format:check",
+    ]);
+  });
+
+  it("the fork rehearsal runs for the documents it reads its commands from, and only those", () => {
+    assert.equal(rehearsalTrigger(["docs/adr/0084-fork-readiness.md"]), null);
+    assert.equal(rehearsalTrigger(["docs/plan/0036-fork-readiness.md"]), null);
+    assert.equal(rehearsalTrigger([]), null);
+    for (const file of [
+      "docs/forking.md",
+      "docs/upstreaming.md",
+      "scripts/bootstrap.mjs",
+      "turbo.json",
+      "apps/api/src/main.ts",
+    ])
+      assert.equal(rehearsalTrigger(["docs/README.md", file]), file);
+  });
+
+  it("a red fork rehearsal stops the check before format:check", async () => {
+    const h = harness({ tasks: [], changed: ["scripts/rename.mjs"] });
+    const exec = async (command, args, options) =>
+      args[0] === "test:fork"
+        ? { code: 1, stdout: "" }
+        : h.exec(command, args, options);
+    const result = await stepCheck({
+      base,
+      root,
+      exec,
+      lock: h.lock,
+      log: () => undefined,
+    });
+
+    assert.deepEqual(result.failed, ["test:fork (scripts/rename.mjs changed)"]);
+    assert.equal(h.pnpm("format:check").length, 0);
   });
 
   it("a failed file that passes alone twice is reported as a flake", async () => {

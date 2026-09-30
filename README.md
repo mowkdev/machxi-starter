@@ -146,7 +146,10 @@ The first link carries more than eslint: `lint` depends on `pnpm test:scripts`,
 §6 as carried by ADR-0074 §1), so the checks that used to go red with nothing
 watching them fail the gate at its first step, here and in CI, without a
 CI-only script. A hygiene case keeps it that way: a new check the first link
-does not name is red.
+does not name is red. The one exception is the fork rehearsal
+(`pnpm test:fork`, ADR-0084 §1): it reads the whole tree, which a cached root
+task cannot hash, so it runs uncached in the `test` link, and `step:check` runs
+it after `check`.
 
 `test` includes the API's integration tier, so it needs Docker up; `size` builds
 each SPA and weighs the gzipped output against its own `size-budget.json`; and

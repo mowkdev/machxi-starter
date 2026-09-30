@@ -29,7 +29,7 @@ A feature that fails either is fork-specific **until somebody does the work to m
    ```bash
    git fetch starter --tags
    git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main
-   git diff --name-only --diff-filter=A ORIG_HEAD -- docs/plan | xargs -r git rm -qf
+   git diff --name-only --no-renames --diff-filter=A ORIG_HEAD starter/main -- docs/plan | xargs -r git rm -qf --ignore-unmatch
    ```
 
    Commit the merge as §5 says, then delete the fork's own implementation in favour of the upstream one — in one commit, so the fork's history says plainly which version it is on.

@@ -8,13 +8,21 @@
 // 2. The fork is a clone of it, with the remote renamed `starter`. It runs
 //    `node scripts/bootstrap.mjs --prefix acme` and `node scripts/rename.mjs`,
 //    commits each, and its `docs:check`, its script tests and Prettier's check
-//    over every file those two wrote must pass. It then opens its first lane.
+//    over every file those two wrote must pass. It then opens its first lane,
+//    staged and not yet committed.
 // 3. The starter ships: it edits a plan the fork deleted and its notes, opens
 //    a lane with a plan, notes and a lane file of its own, adds a changelog
 //    entry and a ledger row, and changes a file outside the journal.
 // 4. The fork runs `docs/forking.md` §5's commands — every line of the block
-//    that names no placeholder — commits the merge as the section says, and
-//    its journal must be what it was, and its `docs:check` clean.
+//    that names no placeholder — over its staged lane: the merge refuses to
+//    start, and the staged files must survive the command after it. It then
+//    commits the lane, runs the commands again, commits the merge as the
+//    section says, and its journal must be what it was, and its `docs:check`
+//    clean.
+//
+// It reads the whole tree, which a cached root task cannot hash, so it is not
+// in `test:scripts`: `pnpm test:fork` runs it, uncached, in the gate's `test`
+// link and in `pnpm step:check` (ADR-0084 §1, amended at D36.2).
 //
 // Git reads no global or system config, nothing here writes to this
 // repository, and nothing is installed: the fork reads this tree's root
@@ -76,14 +84,23 @@ const STARTER_MERGE =
 /** A placeholder the reader fills in, such as `starter-D<n>`. */
 const PLACEHOLDER = /<[^>\s]+>/;
 
-const gitEnv = {
-  ...process.env,
+/**
+ * Git with no global or system config. Every inherited `GIT_*` key goes first:
+ * a `GIT_DIR`, `GIT_INDEX_FILE` or `GIT_WORK_TREE` from a hook or a caller
+ * would point the rehearsal's git at another repository — this one — and
+ * `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT` would carry config past the
+ * two keys below.
+ */
+const gitEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+);
+Object.assign(gitEnv, {
   GIT_CONFIG_GLOBAL: os.devNull,
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_TERMINAL_PROMPT: "0",
   GIT_MERGE_AUTOEDIT: "no",
   GIT_EDITOR: "true",
-};
+});
 // The runner marks its children with this; a nested `node --test` that
 // inherited it would report to the outer runner instead of running its own.
 delete gitEnv.NODE_TEST_CONTEXT;
@@ -413,19 +430,38 @@ describe(
           "scripts/docs-hygiene.mjs",
         ]);
         git(fork, "add", "--all");
-        git(fork, "commit", "--quiet", "-m", "open D1");
-        seen.forkJournal = journal(fork);
 
         // 3. The starter ships.
         seen.shipped = starterShips(starter);
 
-        // 4. The documented commands, then the commit §5 describes.
-        seen.commands = documented
-          .filter((line) => !PLACEHOLDER.test(line))
-          .map((line) => ({
-            line,
-            ...run(fork, "sh", ["-c", line]),
-          }));
+        // 4. The documented commands over the staged lane, where the merge
+        //    refuses to start; then over the committed lane, and the commit §5
+        //    describes.
+        const runDocumented = () =>
+          documented
+            .filter((line) => !PLACEHOLDER.test(line))
+            .map((line) => ({
+              line,
+              ...run(fork, "sh", ["-c", line]),
+            }));
+        const staged = () =>
+          git(fork, "diff", "--cached", "--name-only", "--no-renames")
+            .trim()
+            .split("\n");
+        seen.refusal = { head: git(fork, "rev-parse", "HEAD").trim() };
+        seen.refusal.stagedBefore = staged();
+        seen.refusal.commands = runDocumented();
+        seen.refusal.headAfter = git(fork, "rev-parse", "HEAD").trim();
+        seen.refusal.mergeStarted = existsSync(
+          path.join(fork, ".git", "MERGE_HEAD"),
+        );
+        seen.refusal.stagedAfter = staged();
+
+        git(fork, "add", "--all");
+        git(fork, "commit", "--quiet", "-m", "open D1");
+        seen.forkJournal = journal(fork);
+
+        seen.commands = runDocumented();
         seen.mergeStopped = existsSync(path.join(fork, ".git", "MERGE_HEAD"));
         seen.unmerged = git(fork, "ls-files", "--unmerged");
         seen.commit = seen.mergeStopped
@@ -523,6 +559,27 @@ describe(
       assert.ok(FORK_NOTES in seen.forkJournal);
       assert.ok(FORK_LANE in seen.forkJournal);
       assert.deepEqual(journal(fork), seen.forkJournal);
+    });
+
+    it("a fork's staged plan survives a merge that refuses to start", () => {
+      const merge = seen.refusal.commands.find(({ line }) =>
+        STARTER_MERGE.test(line),
+      );
+      assert.ok(merge, "the rehearsal ran no starter merge");
+      assert.notEqual(merge.status, 0, merge.output);
+      assert.ok(!seen.refusal.mergeStarted, "the merge started");
+      assert.equal(seen.refusal.headAfter, seen.refusal.head);
+      for (const ran of seen.refusal.commands) {
+        if (ran !== merge) assert.equal(ran.status, 0, ran.output);
+      }
+      for (const rel of [FORK_PLAN, FORK_NOTES, FORK_LANE]) {
+        assert.ok(seen.refusal.stagedBefore.includes(rel), `${rel} not staged`);
+        assert.ok(
+          seen.refusal.stagedAfter.includes(rel),
+          `${rel} was unstaged by the command after the merge`,
+        );
+      }
+      assert.deepEqual(seen.refusal.stagedAfter, seen.refusal.stagedBefore);
     });
 
     it("the fork passes docs:check after the merge", () => {
