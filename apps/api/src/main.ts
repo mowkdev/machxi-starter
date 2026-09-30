@@ -3,7 +3,12 @@ import { createLogger, shouldPrettyPrint } from "@repo/logger";
 import { createApp } from "./app.js";
 import { loadConfig } from "./core/config/index.js";
 import { buildContainer } from "./core/container.js";
-import { createDb, probeDatabase } from "./core/db/index.js";
+import {
+  assertRoleBoundByRowLevelSecurity,
+  createDb,
+  isRowLevelSecurityRefusal,
+  probeDatabase,
+} from "./core/db/index.js";
 import { createRateLimitStore } from "./core/rate-limit/index.js";
 import { startServer } from "./server.js";
 
@@ -77,6 +82,34 @@ const main = async (): Promise<void> => {
     throw new Error(
       `Database unreachable after ${String(config.db.connectRetries)} attempt(s); refusing to start. See the preceding log line for the driver error.`,
     );
+  }
+
+  // Once the database answers, and before anything is built on it: in
+  // production, a role that row-level security does not bind — a superuser,
+  // BYPASSRLS, or the owner of a policed table — would keep every request
+  // working and isolate no tenant, so the process refuses rather than starts
+  // (ADR-0078 §4 as amended at `D29.7`). Development and test are exempt: a
+  // local database is the developer's own, and the suite proves the policies
+  // against the application role directly.
+  if (config.env === "production") {
+    try {
+      await assertRoleBoundByRowLevelSecurity(db.db);
+    } catch (error) {
+      logger.fatal(
+        { err: error },
+        "database role not bound by row-level security, refusing to start",
+      );
+      await db.close();
+
+      if (isRowLevelSecurityRefusal(error)) throw error;
+
+      // A driver error while asking: the sentence reaches stderr, the error
+      // the log line above (the same reasoning as the probe's).
+      // eslint-disable-next-line preserve-caught-error -- the cause is logged above, deliberately not rethrown
+      throw new Error(
+        "Could not read the database role's row-level security attributes; refusing to start. See the preceding log line for the driver error.",
+      );
+    }
   }
 
   // After the database probe and before the container, because the limiters

@@ -1,5 +1,5 @@
 import {
-  setTenantScope,
+  replaceTenantScope,
   type Db,
   type DbExecutor,
   type TenantScope,
@@ -17,8 +17,8 @@ import { tryGetContext, type RequestContext } from "../context/index.js";
  * restates, for Postgres, what the guards decided for the code:
  *
  * - a **user** principal admits their own memberships and the invitations
- *   addressed to them (the principal-scoped class), and, once the membership
- *   guard has run, the organization they are acting in;
+ *   addressed to them (the principal-scoped class) — until the membership
+ *   guard has run, when the organization they are acting in replaces it;
  * - a **staff** principal is above tenants (ADR-0067 §3) and says so by the
  *   named `staff` widening — staff never hold a membership, so there is
  *   nothing narrower to place;
@@ -32,10 +32,16 @@ export const tenantScopeOf = (ctx: RequestContext | undefined): TenantScope => {
 
   if (principal?.kind === "staff") return { unscoped: "staff" };
 
-  return {
-    userId: principal?.id,
-    organizationId: ctx?.organization?.id,
-  };
+  const organizationId = ctx?.organization?.id;
+
+  // Once the membership guard has placed an organization, the request acts
+  // in that organization alone, and the principal is left out (`D29.7`): with
+  // `app.user_id` still set, a query that forgot its organization could read
+  // — and stamp — the caller's own memberships and invitations in every other
+  // organization. Nothing an organization-scoped request does needs them.
+  if (organizationId !== undefined) return { organizationId };
+
+  return { userId: principal?.id, organizationId: undefined };
 };
 
 /**
@@ -47,12 +53,17 @@ export const tenantScopeOf = (ctx: RequestContext | undefined): TenantScope => {
  * The scope is read when the transaction opens, not when the helper is built:
  * the membership guard places the organization on the context mid-request,
  * and a transaction a service opens after it must see it.
+ *
+ * It **replaces** rather than adds (`D29.7`): every tenant setting the scope
+ * does not name is written `''` for the transaction, so a value left on the
+ * session — a startup parameter, a session-level `set_config` — never reaches
+ * a request's transaction.
  */
 export const openInRequestScope =
   (db: Db) =>
   <T>(fn: (tx: DbExecutor) => Promise<T>): Promise<T> =>
     db.transaction(async (tx) => {
-      await setTenantScope(tx, tenantScopeOf(tryGetContext()));
+      await replaceTenantScope(tx, tenantScopeOf(tryGetContext()));
 
       return fn(tx);
     });

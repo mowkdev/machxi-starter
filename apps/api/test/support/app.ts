@@ -14,6 +14,8 @@ import {
 import type { ErrorReporter } from "../../src/core/reporting/index.js";
 import { setTenantScope } from "@repo/db";
 
+import { loadTestEnv } from "../setup/env.js";
+
 import {
   createDb,
   type DbClient,
@@ -77,6 +79,14 @@ export interface TestApp {
    * integration cases exercise.
    */
   readonly asTooling: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
+  /**
+   * Runs `fn` in a transaction on a short-lived **owner** connection — for
+   * the one kind of fixture the application role is not granted at all, such
+   * as moving an invitation's `expires_at` into the past (migration `0020`
+   * grants it UPDATE on the terminal stamps alone, ADR-0078 §4 as amended at
+   * `D29.7`). The owner is bound by no policy and by no column grant.
+   */
+  readonly asOwner: <T>(fn: (tx: DbExecutor) => Promise<T>) => Promise<T>;
   readonly close: () => Promise<void>;
 }
 
@@ -149,6 +159,18 @@ export const createTestApp = ({
 
         return fn(tx);
       }),
+    asOwner: async (fn) => {
+      const owner = createDb(loadTestEnv().ownerDatabaseUrl, {
+        max: 1,
+        idleTimeout: 1,
+      });
+
+      try {
+        return await owner.db.transaction(fn);
+      } finally {
+        await owner.close();
+      }
+    },
     close: db.close,
   } as const;
 };

@@ -61,6 +61,7 @@ export {
  * the seeders and by the API's organizations service so the two cannot drift.
  */
 export {
+  replaceTenantScope,
   setTenantScope,
   TENANT_SETTINGS,
   tenantSetting,

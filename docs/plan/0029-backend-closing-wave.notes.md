@@ -291,3 +291,157 @@ Results:
 - **A platform whose proxy targets port 80 on the SPA containers must target 8080** from this release. Coolify reads `EXPOSE`, but a domain written with an explicit `:80` suffix breaks. `docs/deploy.md` says so.
 - `docker compose -f docker/prod/compose.yaml build` **as committed**, on a machine with IPv6: here the SPA images were built only without the `[::]` listen.
 - `pnpm test:postman` and `test:e2e` were not run: no dev stack runs in this container, and the wire is unchanged.
+
+## D29.6 — Close-out (2026-09-30)
+
+Built in a cloud session on `claude/keen-knuth-jwf8xb` at `cad4d09`, which equals `origin/main`. D29 is the only open lane (`docs:check`: "open lanes: disjoint (1 open)"), and `main` since D29.5 has brought in D31's ship and D32's scoping, both docs only. No code, schema or record changed in this step.
+
+**Built.**
+
+- **The six findings carry their fates in both reviews.**
+  - [2026-09-13](../reviews/2026-09-13-repo-review.md): each bullet keeps its routing suffix and gains a closing one. `DB-01` closed at `D29.1`, `SEC-01` at `D29.2`, `SEC-07` at `D29.4` and `CI-05` at `D29.5`, each with what closed it and what it left. `SEC-07` points at these notes for the four logged Lows. `CI-05` says the restart policies stand: `unless-stopped` on the four long-running services, `"no"` on `migrate`.
+  - [2026-09-21](../reviews/2026-09-21-repo-review.md): the §2 table's fate column reads "Routed D2x; closed `D29.n`" for `SEC-01`, `SEC-07`, `DB-01` and `CI-05`. `CI-07`'s residual, "packages keep the buildinfo under cached `dist-types/**`", is marked closed at `D29.5`, because it is ADR-0073 §6's residual that the plan's step 5 names. `CI-10` and `CI-11` are closed at `D29.5`. `CI-11` keeps one residual by name: the SPA stages still install the whole workspace, argon2 included.
+- **The index's planned entry on secret management** now says it was decided by ADR-0078, and not as the one decision the entry expected. It names what was taken and what was declined:
+  - Taken (§2, `D29.2`): the two-secret ring with a `kid`, and the codec's own key, derived when unset.
+  - Declined (§7): the argon2 pepper, and the credential epoch.
+  - Asymmetric signing stays ADR-0018's named later step.
+- **The skills and rule files describe the runner.** `/db-schema-change` already did, since `D29.1`. The following were brought into line with what D29 built:
+  - The `db-migrator` agent now cites ADR-0008 as carried by ADR-0078. It states the runner (by hash or journal timestamp, in journal order, under the advisory lock), the second lane and the tenant-owned table's policies.
+  - `/local-dev` gains two troubleshooting rows: "`db:migrate` sits waiting" (the polled lock) and "a tenant-owned read returns nothing" (row-level security working; use the helper, or `harness.asTooling` in a test).
+  - `/new-api-module`: the organization-scoped answer now includes the row-level policies. Services open transactions through the root's helper, never `db.transaction`.
+  - `/api-conventions`: the data line names the runner, the second lane, the helper's retry and scope, and row-level security.
+  - `.claude/rules/*.md` needed no change: they load the digest, and the digest carries the runner's line.
+- **The digests.** `pnpm rules:digest` wrote 0 of 3, twice. Every D29 line was written at its own step.
+
+**Definition of done.**
+
+1. **The gate, every task cold** — `pnpm lint --force && pnpm check-types --force && pnpm test --force && pnpm size --force && pnpm format:check`, exit `0`:
+   - `lint` 22/22: `test:scripts` 73/73; `docs:check` "inherited documents: clean", "behaviour specs: clean (16 files)", "open lanes: disjoint (1 open)".
+   - `check-types` 17/17.
+   - `test` 17/17: `api` 814 unit and 830 integration (75.15 s); `@repo/db` 107 unit and 121 integration; admin 331; customer 282; contracts 246; grid 209; account 110; ui 103; app-kit 84; form 74; api-client 55; crypto 39; resource 31; logger 19; i18n 19; app-services 13.
+   - `size` 4/4, every figure `ok`:
+     - admin: js 368.1 / 383.8 kB, css 14.8 / 15.2, entry 163.2 / 170.9;
+     - customer: js 312.0 / 324.2 kB, css 13.9 / 14.5, entry 106.6 / 111.3.
+   - `format:check`: "All matched files use Prettier code style!"
+
+   The integration tiers ran against this container's `machxi_test` (Postgres 16, local, no Docker).
+
+2. **`pnpm test:unit` twice**: 17/17 (16 cached), then 17/17 cached, `FULL TURBO`.
+3. **The dev database.** The first `pnpm db:migrate` applied `0019_tenant_row_level_security` to this container's `machxi` and printed `db:migrate ✓ applied 1, up to date`. The second printed `db:migrate ✓ up to date`.
+
+   `pnpm db:seed -- --dev` was run three times:
+   - The first run created the super admin, which this container's dev database did not hold.
+   - The second and third runs gave **identical output**, the super admin "already present — left unchanged".
+
+   **The operator's own dev database still needs this migrate before the running API takes D29.4's code** (D29.4's pending item, unchanged).
+
+4. **`pnpm test:e2e` in both apps against the local compose: pending the operator.** It was not run. No dev stack runs in this container, and `CLAUDE.md` forbids starting one. The only browser evidence in the lane is D29.5's `apps/admin/e2e/smoke.spec.ts` against the built admin image (1 passed).
+5. **`pnpm test:postman`: pending the operator**, for the same reason. It has not run anywhere in D29. The wire changed in no step, but `D29.2`'s done-when named it, so it is owed from that step too.
+6. **`docker compose -f docker/prod/compose.yaml`:**
+   - `config` rendered, exit `0`, with `logging` on all five services and a CPU and memory limit on each: api 1 / 1 GiB, migrate 1 / 512 MiB, prune 0.5 / 256 MiB, admin and customer 0.5 / 128 MiB.
+   - `build` with the SPA origins set (`VITE_ADMIN_API_URL`, `VITE_CUSTOMER_API_URL`, `VITE_CUSTOMER_APP_URL`; the Dockerfiles refuse a blank origin by design): the **API image (api, migrate, prune) built as committed**.
+   - Both SPA images **failed as committed on this kernel**: `nginx -t` gave `socket() [::]:8080 failed (97: Address family not supported by protocol)`. This is the no-IPv6 sandbox that D29.5 recorded.
+   - Built from a scratch copy of `HEAD` with only the `listen [::]:8080;` line removed from both `nginx.conf`, `build admin customer` succeeded.
+   - **`build` as committed, on a machine with IPv6, is pending the operator**, as it was at D29.5.
+7. **`pnpm audit --prod`**: "No known vulnerabilities found", exit `0`.
+8. **`pnpm rules:digest`** wrote 0 of 3 on both runs. **`pnpm docs:check`** is clean.
+
+**Sandbox accommodations, none in the repository.**
+
+- `dockerd` was started in the background for item 6 and stopped afterwards.
+- The base images were D29.5's, still in the daemon's store: pulled through `mirror.gcr.io` after Docker Hub's `429`, with `node:24-bookworm-slim` retagged locally with the proxy CA so `pnpm fetch` reaches the registry.
+- The SPA images were built from the scratch copy described in item 6.
+
+**Review — one bounded pass, `adr-reviewer`'s checklist over the diff.** This session has no tool to spawn a subagent, so the builder ran the pass inline, as D29.4 and D29.5 did. It checked each fate and skill claim against the code and the records. Three findings, all fixed:
+
+1. `CI-05`'s fate said the restart policy "stands as `unless-stopped`", but `migrate` is `restart: "no"`. It now names both policies and the four long-running services.
+2. `/new-api-module`'s new sentence, "a transaction opened around it has neither", was ambiguous. It now reads "a bare `db.transaction` does neither".
+3. `/api-conventions` cited "ADR-0078 §3–§4", a range. It now reads "§3 and §4" with its topic gloss, which is the `.claude/**` citation rule.
+
+After the fixes and this note were written, the gate ran again on the final tree, cached as it stands: exit `0`, with `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 814 and 830, `@repo/db` 107 and 121), `size` 4/4 and `format:check` clean.
+
+**Review fates the lane leaves for `/ship` and the operator.** Every one is logged, not fixed, and named in its step's notes above:
+
+- `D29.2`: nothing expires `JWT_ACCESS_SECRET_PREVIOUS`, which is operational, and `docs/deploy.md`'s leak procedure sets none.
+- `D29.4`, the builder's inline pass: `createDb({ tenantUnscoped })` is reachable from production code, with a lint selector as the smallest fix. The principal policy admits a user's own memberships in every organization.
+- `D29.4`, the independent `security-reviewer` pass over `710178f`, four Lows:
+  1. The consume policies pin no columns. The fix is a column-level `GRANT UPDATE`.
+  2. A session-level setting carries into every request transaction. The fix is for `openInRequestScope` to write all four settings.
+  3. No boot check confirms that the API's role is bound by the policies (not superuser, not BYPASSRLS, owns no tenant table).
+  4. `app.user_id` stays set inside an organization-scoped request, so a forgetful query reads the caller's own invitations in other organizations.
+
+  Two operational notes: `0019` takes its locks without a `lock_timeout`, and deploying code before migrating is the safe order.
+
+- `D29.5`: `conf.d/default.conf` is writable by uid 101. `listen [::]:8080` stops the SPA image starting on a kernel without IPv6, which was the old behaviour on the old port. The base images are tag-pinned, not digest-pinned.
+- Residuals for the operator to route, from `D29.1`–`D29.3`:
+  - The API tier's per-lane test database works only through a local, uncommitted `apps/api/.env.test` edit.
+  - The concurrency cases time out on connecting when two lanes gate against one Postgres.
+  - A password login takes no credential lock, so a login racing a reset's session sweep is left to the retry (ADR-0078 §3).
+- One pre-existing flaky case, logged at `D29.5`: `apps/admin` `settings-provider.test.tsx` "adopts the account's theme when the query resolves". It was green in this gate.
+
+**Pending the operator.**
+
+- Items 4 and 5 of the definition of done: `pnpm test:e2e` in both apps and `pnpm test:postman`, on the running stack once `main` carries D29.
+- `docker compose -f docker/prod/compose.yaml build` as committed, on a machine with IPv6 (item 6).
+- `pnpm db:migrate` against the operator's dev database before the running API takes D29.4's code, then one walk of the organizations screens and an invitation accept.
+- **A platform proxying the SPA containers on port 80 must target 8080** from this release (D29.5, `docs/deploy.md`).
+- The merge of this step to `main`. This session pushed only `claude/keen-knuth-jwf8xb`, so the step is not closed until `main` carries it. `/ship` then runs the definition of done again on the committed tree.
+
+## D29.7 — Row-level security, hardened (2026-09-30)
+
+Added after `D29.6` on the operator's decision, from the four Lows of the independent `security-reviewer` pass over `D29.4` (§D29.4 above). Built on `claude/keen-knuth-jwf8xb` in the main checkout, against this container's `machxi_test`; no dev stack ran and the wire did not change, so `test:postman` is not part of this step.
+
+**Built — the four changes.**
+
+1. **Every setting on every transaction.** `packages/db/src/tenancy.ts` gains `replaceTenantScope(tx, scope)`: one `select set_config(…, true), …` over all four settings, `''` for each the scope does not name, always one round trip — the empty scope included, since that is the case a session-level value would fill. `openInRequestScope` now calls it instead of `setTenantScope`, which still only adds and stays for the placements inside a transaction (`enterOrganization`, the token lookup), the seeders and `asTooling`.
+2. **A boot refusal.** `apps/api/src/core/db/role-check.ts`: `readRoleRowLevelSecurity` asks `pg_roles` for the connection's `rolsuper` and `rolbypassrls`, and lists every table with `relrowsecurity` whose owner it is or could become (`pg_has_role(current_user, relowner, 'MEMBER')`, in any schema); `rowLevelSecurityBypasses` turns that into reasons; `assertRoleBoundByRowLevelSecurity` throws a coded error naming the role and the reasons and nothing else. `main.ts` runs it after the database probe and before the rate-limit store, **when `config.env` is `production`** — development and test are exempt; a driver error while asking becomes a sentence on stderr and the error goes to the log line, as the probe does. **Read by the flag, not by `TENANT_OWNED_TABLES`**: that list lives in `@repo/db/testing`, the test tier's entry, and the `api-module` generator appends to it there by pattern, so moving it to production code would have been a generator change too; every listed table has the flag (`schema.int.test.ts` "migration 0019"). `docs/deploy.md` step 2 names the requirement (ordinary role, no `BYPASSRLS`, owns nothing, never a member of the owner), and step 5 states the upgrade order across `0019` — code first, then the migration — with the window the compose file's own order leaves and how to close it.
+3. **The invitation's column grant, migration `0020_invitation_column_grant.sql`.** Generated with `drizzle-kit generate --custom` (no push; no committed migration edited): `REVOKE UPDATE ON organization_invitations FROM machxi_app`, then `GRANT UPDATE (accepted_at, declined_at, revoked_at, updated_at)`, then a `DO` block asserting the post-condition as `0008` does. Its header carries the ADR-0061 §2 re-issue caveat and the ADR-0060 §5 lock note. The only UPDATE the API issues on the table stamps one terminal column and `updated_at`, so nothing in `src` changed. Two fixtures in `organizations.int.test.ts` moved an invitation's `expires_at` through `asTooling`, which runs as the application role; they now go through a new harness helper, `asOwner` (a short-lived owner connection).
+4. **The principal left out of an organization-scoped transaction — tried, and kept.** `tenantScopeOf` returns `{ organizationId }` alone once `requireMembership` has placed an organization. The integration tier stayed green (`api` 834/834, `@repo/db` 121/121) on the first run with it, so it is kept, and 0078 §4's residual narrows to the requests outside an organization.
+
+**Records and derived documents.**
+
+- [ADR-0078](../adr/0078-backend-closing-wave.md) §4 amended in place, labelled `D29.7`, with the four changes and the residuals the ledger row now carries.
+- Ledger: **D34, "Row-level security, residuals", `planned`** — a staff role in place of a settable scope, staff seeing every tenant, the scope read from request storage, the repository tests under `system`. Inserted as one row; the table did not reflow.
+- `docs/specs/organizations.md`: the RLS requirement restated (the organization as the only scope once placed, the stamps as the only updatable columns, the cleared settings, the boot refusal), the member's-request scenario tightened, and three scenarios added; `Proved by` gains `database-role.int.test.ts` and `role-check.test.ts`.
+- The "Row-level security" digest line in `scripts/rules-digest.mjs` says the same; `pnpm rules:digest` wrote `api-and-data.md` once and **0 of 3 on the second run**.
+
+**Tests — the done-when, by name.**
+
+- `apps/api/src/core/db/__tests__/tenant-scope.test.ts` "a transaction clears every setting it does not place": green (renders the opener's statement with `PgDialect` and reads the four `set_config` pairs), beside "still clears every setting when there is no request at all". "scopes a user to themselves…" now expects the organization alone.
+- `apps/api/test/organizations.int.test.ts` "a session-level scope does not reach a request transaction": green. It opens a pool with the `tenantUnscoped: "system"` startup parameter, shows a bare statement on it sees every tenant, then a user's request on it sees only their own rows and an anonymous one nothing. **Red with the opener reverted to `setTenantScope`** ("expected false to be true"), green again restored. Put in `organizations.int.test.ts` rather than `schema.int.test.ts` because it needs the API's opener and request context.
+- **The boot case lives in a new file**, `apps/api/test/database-role.int.test.ts` "the API refuses a role that bypasses row-level security": green, against the test database's owner role (the realistic mistake — neither superuser nor `BYPASSRLS`, it simply owns the policed tables), beside "lets the application role through". No config or boot test file existed that could reach a database, so the nearest fit was a new integration file; the decision half is unit-tested in `apps/api/src/core/db/__tests__/role-check.test.ts` (superuser and `BYPASSRLS` reasons, the refusal's sentence). The query was also run by hand under `SET ROLE` to a throwaway `BYPASSRLS` role (`f|t|{}`) and as the `postgres` superuser (`t|t|{organization_invitations,organization_memberships}`), both of which the check refuses.
+- `organizations.int.test.ts` "an invitee cannot rewrite an invitation's organization or role": green — both UPDATEs refused `42501`, the row unchanged, and the invitee's own decline still `204`.
+- "shows a member's request its organization alone — not even the caller's own rows elsewhere" replaces D29.4's "…and the caller's own rows…", for the fourth change.
+
+**`pnpm db:migrate` against the dev database (`machxi`):** `applied 0020_invitation_column_grant` / `applied 1, up to date`, then `up to date`.
+
+**Gate: green.** `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exit `0`: `lint` 22/22 (`docs:check`: inherited documents clean, behaviour specs clean across 16 files, open lanes disjoint with 2 open), `check-types` 17/17, `test` 17/17 (`api` 820 unit and 834 integration in 79.5 s; `@repo/db` 107 unit and 121 integration), `size` 4/4, `format:check` clean. The first `pnpm check` failed on one lint warning — an exported error class in `role-check.ts` (ADR-0009's no-classes rule) — replaced by a coded `Error` and `isRowLevelSecurityRefusal`.
+
+**Review.** The done-when asks for `security-reviewer` to have read the diff. **This session had no tool to spawn a subagent, so the pass was run in-session by the builder against `.claude/agents/security-reviewer.md` — an independent `security-reviewer` pass is still owed.** No Critical, High or Medium. Verified: every setting still goes through bind parameters and the names are constants; the refusal's sentence names the role and no host or credential, and a driver error reaches stderr as a sentence only; `replaceTenantScope` is called only by the opener, so the in-transaction placements (`enterOrganization`, the token lookup) still add rather than clear; `0020`'s post-condition fails the migration rather than committing a partial grant. Two findings, both **fixed** before commit:
+
+1. **[Low] The ownership probe was scoped to `current_schema()`.** A role whose `search_path` names another schema would have been checked against the wrong one. Now any schema.
+2. **[Low] `pg_has_role(…, 'USAGE')` missed a non-inheriting member of the owner**, which is one `SET ROLE` away from bypassing the policies. Now `'MEMBER'`.
+
+Logged, not fixed: the builder's own `D29.4` Low 1 — `createDb({ tenantUnscoped })` reachable from `apps/api/src` — is now harmless to a request's transactions (the opener shadows it, proved above), though a bare statement on such a pool would still be widened, so the lint selector is no longer needed for isolation; it stays a convention.
+
+**Pending the operator.**
+
+- The independent `security-reviewer` pass: **done**, below.
+- The merge of this step to `main`: **done** on the operator's standing instruction, below.
+- `pnpm db:migrate` against the operator's own dev database (this container's `machxi` is migrated), and, for a real deployment, the upgrade order across `0019` that `docs/deploy.md` now states.
+- The boot refusal has not been exercised through `main.ts` itself (a production configuration needs the full variable set); the function it calls is proved against Postgres.
+
+**Independent `security-reviewer` pass (2026-09-30).** The orchestrating session ran the `security-reviewer` agent over `5fc9e78`. It found **no Critical, High or Medium findings**, three Lows and one informational point, all **logged, not fixed**, and routed to D34's row for its scoping. It confirmed that the four settings are replaced on every transaction and that `''` never matches a policy, that no request transaction inherits a session value, that the boot check fails closed and cannot be skipped by configuration, that `0020`'s post-condition counts PUBLIC and inherited grants, that `asOwner` cannot reach the production bundle, and that no organization-scoped path needs the principal.
+
+1. **The boot check reads only the connection role's own attributes.** A role that is a member of a superuser or BYPASSRLS role passes, one `SET ROLE` away. The smallest fix is a fourth reason, `member_of_bypassing`, in `rowLevelSecurityBypasses`.
+2. **The ownership probe counts only tables whose row-level-security flag is on.** On the code-first release across `0019`, an API wrongly connected as the owner boots, and it keeps serving if `0019` is then applied without a restart. The smallest fix is to refuse ownership of any ordinary or partitioned table outside the system schemas, whatever its flag.
+3. **The column grant cannot tell the stamps apart.** An invitee's or a bearer's transaction could set `revoked_at` or `accepted_at` without creating a membership. It widens nothing. A possible fix is a `WITH CHECK` on the two consume policies, or accepting the gap in D34.
+4. **(Info)** `main.ts` logs the same fatal message when the check's own query fails. It still fails closed. The fix is to branch the message on `isRowLevelSecurityRefusal(error)`.
+
+**Further residuals it named** (for D34):
+
+- The boot check is a snapshot taken at startup.
+- A `schema.int.test.ts` case should pin that the application role holds no table-wide UPDATE on `organization_invitations`, so the ADR-0061 §2 re-issue caveat is tested.
+- No generic pattern yet exists for column-level write limits on a future tenant table.
+
+**Merged to `main` (2026-09-30).**

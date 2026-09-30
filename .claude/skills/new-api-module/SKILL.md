@@ -11,7 +11,7 @@ description: Step-by-step checklist to create a new API feature module (routes/c
 pnpm turbo gen api-module
 ```
 
-It asks for the aggregate (singular, lower case), its plural, the route segment and whether the aggregate is owned by an organization (ADR-0067 §1 — the tenant column, its composite index, a required scope on every repository function; answer `yes` only when it is, because retrofitting it is a rewrite).
+It asks for the aggregate (singular, lower case), its plural, the route segment and whether the aggregate is owned by an organization (ADR-0067 §1 — the tenant column, its composite index, a required scope on every repository function, and the table's row-level policies with a repository that never runs on the bare pool, ADR-0078 §4, row-level security; answer `yes` only when it is, because retrofitting it is a rewrite).
 
 **The templates in `turbo/generators/templates/api-module/` are the description of a module** (ADR-0063 §3). When the shape changes, the template changes in the same step — a shape that lives only in this document decays, because nothing runs it.
 
@@ -35,7 +35,7 @@ The table is generated; the SQL is not. `pnpm db:generate`, review, `pnpm db:mig
 - [ ] `<m>.errors.ts` — domain factories built on `core/errors` (`conflict('…', 'X_CODE')`), add codes to contracts `ErrorCode`.
 - [ ] `<m>.mapper.ts` — `to<X>Resource(row)`, pure; strips internals.
 - [ ] `<m>.repository.ts` — `create<X>Repository(db)`: `findById`, `findMany(listQuery)`→`Page<Row>` via `applyListQuery`, `insert`, `update`, … each with `tx: DbExecutor = db` last; map unique violations to domain errors.
-- [ ] `<m>.service.ts` — `create<X>Service({ repo, db, ... })`: `(ctx, ...)` functions; ownership/role policies via `core/auth/policies`; transactions via `db.transaction`.
+- [ ] `<m>.service.ts` — `create<X>Service({ repo, db, ... })`: `(ctx, ...)` functions; ownership/role policies via `core/auth/policies`; transactions via the root's transaction helper handed in through `wire.ts` (`deps.transaction`), never `db.transaction` — the helper places the request's tenant scope and retries a deadlock victim (ADR-0078 §3 and §4, the deadlock retry and row-level security), and a bare `db.transaction` does neither.
 - [ ] `<m>.controller.ts` — `create<X>Controller(svc)`: one function per endpoint; `respond.*` only.
 - [ ] `<m>.routes.ts` — `create<X>Router(c)`: `validate(schema)` per route; no logic.
 - [ ] `wire.ts` — **generated**: `wireX(deps)` returning `{ repositories, services, controllers }`; grow its deps as the module takes on another module's service, the audit writer or the mail port. No Express and no schema tables — the lint rule treats it as a service (ADR-0073, review hardening — the composition root wired per module).

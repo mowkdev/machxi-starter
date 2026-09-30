@@ -1,9 +1,12 @@
-import type { DbExecutor } from "@repo/db";
+import { TENANT_SETTINGS, type Db, type DbExecutor } from "@repo/db";
 import { createLogger } from "@repo/logger";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { createRequestContext } from "../../context/index.js";
+import { createRequestContext, runWithContext } from "../../context/index.js";
 import {
+  openInRequestScope,
   tenantScopeOf,
   withinTransaction,
   type RunInTransaction,
@@ -34,7 +37,7 @@ describe("tenantScopeOf", () => {
     });
   });
 
-  it("scopes a user to themselves, and to the organization the guard resolved", () => {
+  it("scopes a user to themselves, and then to the organization the guard resolved alone", () => {
     const ctx = context();
 
     ctx.principal = {
@@ -51,10 +54,9 @@ describe("tenantScopeOf", () => {
 
     ctx.organization = { id: "org-1", slug: "acme", role: "member" };
 
-    expect(tenantScopeOf(ctx)).toEqual({
-      userId: "user-1",
-      organizationId: "org-1",
-    });
+    // D29.7: the principal is left out once an organization is placed, so a
+    // forgotten scope cannot reach the caller's own rows elsewhere.
+    expect(tenantScopeOf(ctx)).toEqual({ organizationId: "org-1" });
   });
 
   it("names the staff segment's widening, and nothing narrower", () => {
@@ -68,6 +70,87 @@ describe("tenantScopeOf", () => {
     };
 
     expect(tenantScopeOf(ctx)).toEqual({ unscoped: "staff" });
+  });
+});
+
+describe("openInRequestScope", () => {
+  /**
+   * A pool whose transaction hands `fn` an executor that records what it was
+   * asked to run, rendered to the text and bind parameters Postgres receives.
+   */
+  const recordingDb = () => {
+    const ran: { sql: string; params: unknown[] }[] = [];
+    const dialect = new PgDialect();
+    const tx = {
+      execute: (query: SQL) => {
+        ran.push(dialect.sqlToQuery(query));
+
+        return Promise.resolve([]);
+      },
+    } as unknown as DbExecutor;
+    const db = {
+      transaction: <T>(fn: (inner: DbExecutor) => Promise<T>) => fn(tx),
+    } as unknown as Db;
+
+    return { db, ran };
+  };
+
+  /** The value each setting was given, by name, from `set_config`'s bind pairs. */
+  const placed = (params: readonly unknown[]): Record<string, unknown> => {
+    const pairs: Record<string, unknown> = {};
+
+    for (let at = 0; at < params.length; at += 2) {
+      pairs[String(params[at])] = params[at + 1];
+    }
+
+    return pairs;
+  };
+
+  it("a transaction clears every setting it does not place", async () => {
+    // D29.7: a value already on the session — a startup parameter, a
+    // session-level `set_config` — must not reach a request's transaction, so
+    // the opener writes all four settings, `''` for each one it does not
+    // place. A user acting in an organization names two of them.
+    const ctx = context();
+
+    ctx.principal = {
+      kind: "user",
+      id: "user-1",
+      roles: ["customer"],
+      sessionId: "s",
+    };
+    ctx.organization = { id: "org-1", slug: "acme", role: "member" };
+
+    const { db, ran } = recordingDb();
+
+    await runWithContext(ctx, () =>
+      openInRequestScope(db)(() => Promise.resolve()),
+    );
+
+    expect(ran).toHaveLength(1);
+    expect(ran[0]?.sql.match(/set_config\(/g)).toHaveLength(4);
+    expect(placed(ran[0]?.params ?? [])).toEqual({
+      [TENANT_SETTINGS.organizationId]: "org-1",
+      [TENANT_SETTINGS.userId]: tenantScopeOf(ctx).userId ?? "",
+      [TENANT_SETTINGS.invitationTokenHash]: "",
+      [TENANT_SETTINGS.unscoped]: "",
+    });
+  });
+
+  it("still clears every setting when there is no request at all", async () => {
+    // The empty scope is the case a session-level value would otherwise
+    // fill, so it is not skipped as "nothing to place".
+    const { db, ran } = recordingDb();
+
+    await openInRequestScope(db)(() => Promise.resolve());
+
+    expect(ran).toHaveLength(1);
+    expect(placed(ran[0]?.params ?? [])).toEqual({
+      [TENANT_SETTINGS.organizationId]: "",
+      [TENANT_SETTINGS.userId]: "",
+      [TENANT_SETTINGS.invitationTokenHash]: "",
+      [TENANT_SETTINGS.unscoped]: "",
+    });
   });
 });
 

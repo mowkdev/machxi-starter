@@ -89,3 +89,33 @@ export const setTenantScope = async (
 
   await tx.execute(sql`select ${sql.join(placed, sql`, `)}`);
 };
+
+/**
+ * Places `scope` on the transaction `tx` belongs to **and clears every setting
+ * it does not name**, in one round trip (ADR-0078 §4 as amended at `D29.7`).
+ *
+ * The opener of a request's transaction calls this rather than
+ * {@link setTenantScope}, which only adds: a value already on the session —
+ * the `tenantUnscoped` startup parameter, or a `set_config(…, false)` somebody
+ * ran on a pooled connection — would otherwise reach every transaction that
+ * did not place that name itself. Writing `''` transaction-locally shadows it
+ * until the transaction ends, and `tenantSetting` reads `''` as unset.
+ *
+ * Always makes the round trip, even for an empty scope: an empty scope is
+ * exactly the case a session-level value would otherwise fill.
+ */
+export const replaceTenantScope = async (
+  tx: DbExecutor,
+  scope: TenantScope,
+): Promise<void> => {
+  const placed = (
+    [
+      [TENANT_SETTINGS.organizationId, scope.organizationId],
+      [TENANT_SETTINGS.userId, scope.userId],
+      [TENANT_SETTINGS.invitationTokenHash, scope.invitationTokenHash],
+      [TENANT_SETTINGS.unscoped, scope.unscoped],
+    ] as const
+  ).map(([name, value]) => sql`set_config(${name}, ${value ?? ""}, true)`);
+
+  await tx.execute(sql`select ${sql.join(placed, sql`, `)}`);
+};
