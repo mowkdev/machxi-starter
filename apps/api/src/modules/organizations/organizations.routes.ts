@@ -7,7 +7,10 @@ import type {
   UserInvitationsController,
   UserOrganizationsController,
 } from "./organizations.controller.js";
-import type { RequireMembership } from "./organizations.middleware.js";
+import {
+  placeRouteOrganization,
+  type RequireMembership,
+} from "./organizations.middleware.js";
 import {
   acceptMyInvitationByTokenSchema,
   actOnMyInvitationSchema,
@@ -363,6 +366,11 @@ export const createPublicInvitationsRouter = ({
  * non-member to give. A staff member sees every organization, including
  * soft-deleted ones, which is what `GET /:id` answering a deleted row is for.
  *
+ * What stands in for it at the database is `placeRouteOrganization` over
+ * `/:id` (ADR-0083 §2): the organization the path names is the one tenant a
+ * staff request's transactions are scoped to. The cross-tenant list reads
+ * `organizations`, which carries no policy, and needs none.
+ *
  * `refuseImpersonated` is absent for a structural reason: only a customer
  * principal can carry an actor (ADR-0057 §4), so nothing reachable from the
  * admin segment can be impersonated.
@@ -381,6 +389,11 @@ export const createOrganizationsRouter = (
     validate(createOrganizationSchema),
     controller.create,
   );
+
+  // Every route below names one organization, and that one alone is the
+  // tenant its transactions act in (ADR-0083 §2): staff carry no widening,
+  // so a staff read of memberships or invitations is scoped by this path.
+  router.use("/:id", placeRouteOrganization);
 
   router.get("/:id", validate(getOrganizationSchema), controller.getById);
   router.patch(

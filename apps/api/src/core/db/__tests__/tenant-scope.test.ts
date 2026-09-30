@@ -59,7 +59,10 @@ describe("tenantScopeOf", () => {
     expect(tenantScopeOf(ctx)).toEqual({ organizationId: "org-1" });
   });
 
-  it("names the staff segment's widening, and nothing narrower", () => {
+  it("a staff principal places only its route's organization", () => {
+    // ADR-0083 §2: staff carry no widening. Under no organization route a
+    // staff request places nothing — not even its own id as a user's — and
+    // under `/admin/organizations/:id` it places that organization alone.
     const ctx = context();
 
     ctx.principal = {
@@ -69,7 +72,11 @@ describe("tenantScopeOf", () => {
       sessionId: "s",
     };
 
-    expect(tenantScopeOf(ctx)).toEqual({ unscoped: "staff" });
+    expect(tenantScopeOf(ctx)).toStrictEqual({ organizationId: undefined });
+
+    ctx.routeOrganizationId = "org-2";
+
+    expect(tenantScopeOf(ctx)).toStrictEqual({ organizationId: "org-2" });
   });
 });
 

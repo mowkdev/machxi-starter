@@ -84,6 +84,16 @@ export interface RequestContext {
    * they read.
    */
   organization: OrganizationContext | null;
+  /**
+   * The organization a **staff** route names, or `null` (ADR-0083 §2).
+   *
+   * Placed by `placeRouteOrganization` on `/admin/organizations/:id` and by
+   * nothing else. It is not a membership — staff hold none (ADR-0067 §3) — so
+   * it carries no slug and no role, and no service reads it: it exists so the
+   * transaction opener can tell Postgres which one organization a staff
+   * request acts in, and a staff request that names none places nothing.
+   */
+  routeOrganizationId: string | null;
   /** `'en'` until the i18n ADR lands. */
   readonly locale: string;
   readonly ip: string | undefined;
@@ -116,6 +126,7 @@ export const createRequestContext = ({
   logger,
   principal: null,
   organization: null,
+  routeOrganizationId: null,
   locale,
   ip,
   userAgent,

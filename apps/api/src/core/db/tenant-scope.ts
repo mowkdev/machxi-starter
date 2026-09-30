@@ -9,19 +9,23 @@ import { tryGetContext, type RequestContext } from "../context/index.js";
 
 /**
  * What the tenant-owned tables' policies are told about the current request
- * (ADR-0067 §5, ADR-0078 §4 as amended at `D29.4`).
+ * (ADR-0067 §5, ADR-0078 §4 as amended at `D29.4`, as carried by ADR-0083).
  *
  * Read from the request context, which is where the guards already put the
- * two facts: `authenticate` places the principal and `requireMembership` the
- * resolved organization (ADR-0067 §4). Nothing here decides anything — it
+ * facts: `authenticate` places the principal, `requireMembership` a member's
+ * resolved organization (ADR-0067 §4) and `placeRouteOrganization` the one a
+ * staff route names (ADR-0083 §2). Nothing here decides anything — it
  * restates, for Postgres, what the guards decided for the code:
  *
  * - a **user** principal admits their own memberships and the invitations
  *   addressed to them (the principal-scoped class) — until the membership
  *   guard has run, when the organization they are acting in replaces it;
- * - a **staff** principal is above tenants (ADR-0067 §3) and says so by the
- *   named `staff` widening — staff never hold a membership, so there is
- *   nothing narrower to place;
+ * - a **staff** principal places the organization its route names and
+ *   nothing else (ADR-0083 §2): staff are above tenants and hold no
+ *   membership (ADR-0067 §3), but every staff read or write of a tenant-owned
+ *   row is under `/admin/organizations/:id`, whose guard puts that id on the
+ *   context. No widening is placed, so a staff request that names no
+ *   organization reads no tenant-owned row;
  * - **no** context, or a context with no principal and no organization,
  *   places nothing, and the policies then admit nothing. A public route that
  *   reads a tenant-owned row places the one setting its read is scoped by
@@ -30,7 +34,9 @@ import { tryGetContext, type RequestContext } from "../context/index.js";
 export const tenantScopeOf = (ctx: RequestContext | undefined): TenantScope => {
   const principal = ctx?.principal ?? null;
 
-  if (principal?.kind === "staff") return { unscoped: "staff" };
+  if (principal?.kind === "staff") {
+    return { organizationId: ctx?.routeOrganizationId ?? undefined };
+  }
 
   const organizationId = ctx?.organization?.id;
 
