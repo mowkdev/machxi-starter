@@ -173,3 +173,23 @@ The reviewer verified the four status lines, the four topic rows and the absence
 - Still open from `D32.2`: the footer at 240px with a long label and a commit, in a browser.
 - Still open from `D32.1`: the security reviewer's residuals, namely the full commit on an unauthenticated `/health`, no length bound on either value, and whether Coolify injects compose variables over the baked `ENV`.
 - Every step is ticked. D32 is ready for `/ship`.
+
+## D32.5 — The footer shows the label alone (2026-09-30)
+
+**Added after `D32.4`, on the operator's decision.** The SPA footer shows the release label and no commit. The SPAs no longer take `GIT_SHA` anywhere: no define in either `app-version.ts`, no entry in either app's `turbo.json` `build` `env`, no `ARG` in either SPA Dockerfile, and no build argument on the `admin` or `customer` services in the reference compose. The commit is the API's `/health` fact alone. ADR-0081 §1–§3, its 0054 delta and §Alternatives are amended in place, labelled. The `versionWithCommit` string left both catalogues in `en` and `lv`. The footer tests, the `app-version.test.ts` cases, the admin e2e footer case, `docs/deploy.md`, `docs/forking.md`, both `.env.example` files, `docker/prod/.env.example` and 0081's digest lines follow.
+
+**Built partly by a `/step` agent the operator interrupted, and finished inline, on the operator's instruction** that a deliverable this small should not re-run the suites after every merge from the other lanes. There was no review agent, and no throwaway image builds, because the step only removes a value.
+
+**Checked once, on the finished tree:**
+
+- `turbo run lint check-types test:unit --filter=admin --filter=customer`: 32 of 33 tasks green. `admin#test:unit` failed while it shared the machine with the other tasks, then ran alone at 335 passed in 54 files.
+- `pnpm docs:check`, `pnpm i18n:check` and `rules-digest --check`: clean, and the digests are up to date.
+- Prettier: clean on the changed files.
+- Grep: no `GIT_SHA`, `__GIT_SHA__` or `versionWithCommit` left in either app.
+
+**Not run at this step:**
+
+- the full gate;
+- `pnpm size`;
+- `pnpm test:e2e`;
+- the `turbo --dry=json` and `docker compose config` done-whens.

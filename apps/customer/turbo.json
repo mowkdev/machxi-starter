@@ -22,15 +22,15 @@
         "VITE_FEATURE_USER_REGISTRATION",
         "VITE_FEATURE_GOOGLE_SIGN_IN",
         "VITE_ERROR_REPORTING_DSN",
-        // The build's two facts (ADR-0081 §2), under the names every
-        // Dockerfile and the reference compose use: `app-version.ts` reads them
-        // into the footer's `define`, so each is part of this task's hash and
-        // a build with another label is another build, never a cached replay.
-        // Here rather than in the root table: only the SPAs read them, and a
+        // The build's release label (ADR-0081 §2), under the name every
+        // Dockerfile and the reference compose use: `app-version.ts` reads it
+        // into the footer's `define`, so it is part of this task's hash and a
+        // build with another label is another build, never a cached replay.
+        // Here rather than in the root table: only the SPAs read it, and a
         // package's `env` replaces the root's rather than adding to it.
-        // Unset locally, so the local hash never moves.
-        "APP_VERSION",
-        "GIT_SHA"
+        // Unset locally, so the local hash never moves. No `GIT_SHA`: the
+        // footer shows the label alone, and the commit is the API's (D32.5).
+        "APP_VERSION"
       ]
     },
     "dev": {

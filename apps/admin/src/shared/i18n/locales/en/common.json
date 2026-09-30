@@ -11,8 +11,7 @@
     "name": "machxi",
     "product": "Admin",
     "authTagline": "machxi admin",
-    "version": "{{version}}",
-    "versionWithCommit": "{{version}} · {{commit}}"
+    "version": "{{version}}"
   },
   "nav": {
     "group": "Manage",

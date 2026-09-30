@@ -8,7 +8,7 @@
 
 ## Goal
 
-The API, the admin app and the customer app show the same release label and the commit they were built from. The values are stamped once, at image build, under two names, and nobody bumps a file. A fork gets this on day one, chooses its own versioning scheme and release tool, and tags and logs its own deliverables without colliding with the starter's.
+The API, the admin app and the customer app show the same release label and the commit they were built from. **Amended 2026-09-30 (D32.5):** the SPAs show the label alone, and the commit is the API's `/health` fact. The values are stamped once, at image build, under two names, and nobody bumps a file. A fork gets this on day one, chooses its own versioning scheme and release tool, and tags and logs its own deliverables without colliding with the starter's.
 
 ## Constraints
 
@@ -35,7 +35,7 @@ These were asked of the operator, who answered each with the recommended option:
 Recorded, not asked:
 
 - **Unset means `dev`.** It is not `0.0.0`.
-- **The footer shows the commit's first seven characters, and `/health` gives the full commit as passed.**
+- **The footer shows the commit's first seven characters, and `/health` gives the full commit as passed.** _Revised after `D32.4`, on the operator's decision:_ the footer shows the label alone, and the commit is `/health`'s alone (`D32.5`).
 
 ## Steps
 
@@ -100,7 +100,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm test:e2e` green in both apps;
   - the gate green.
 
-- [ ] **5. The footer shows the label alone.** Added 2026-09-30 after `D32.4`, on the operator's decision: the SPA footer shows the release label and no commit. The commit remains the API's `/health` fact alone. ADR-0081 §3 is amended in place, labelled, while D32 is in progress, and §2 is amended where it has the SPAs taking `GIT_SHA`.
+- [x] **5. The footer shows the label alone.** Added 2026-09-30 after `D32.4`, on the operator's decision: the SPA footer shows the release label and no commit. The commit remains the API's `/health` fact alone. ADR-0081 §3 is amended in place, labelled, while D32 is in progress, and §2 is amended where it has the SPAs taking `GIT_SHA`.
   - Both sidebar footers render the label alone. The `{{version}} · {{commit}}` string leaves both catalogues in `en` and `lv`.
   - The SPAs no longer take `GIT_SHA` anywhere. Each `app-version.ts` installs a define for the label only, each app's `turbo.json` `build` `env` drops it, each SPA Dockerfile drops its `ARG`, and compose passes it only to the API's build.
   - `docs/deploy.md`, `docker/prod/.env.example`, the SPA `.env.example` comments, `docs/forking.md` and 0081's digest line say the commit is the API's alone.
@@ -109,7 +109,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   **Done when:**
   - `pnpm test:unit --filter admin` and `pnpm test:unit --filter customer` green, each with cases "the footer shows the release label alone" and "the footer shows dev when unset", and each `app-version.test.ts` asserting no commit define;
   - `APP_VERSION=9.9.9 GIT_SHA=0123456789abcdef pnpm turbo run build --filter admin --dry=json` lists `APP_VERSION` and not `GIT_SHA` among `admin#build`'s environment variables;
-  - `docker compose -f docker/prod/compose.yaml config` renders `GIT_SHA` in the `migrate` and `api` images' build arguments only;
+  - `docker compose -f docker/prod/compose.yaml config` renders `GIT_SHA` in the `migrate` and `api` images' build arguments only; **Amended 2026-09-30 (D32.5): and `prune`'s.** All three services build the one API image from the shared `x-api-image` anchor, so the rendered config carries it on each; what the done-when excludes is the `admin` and `customer` builds;
   - `pnpm test:e2e` green in the admin, with the footer case "the sidebar footer shows the build's version";
   - `pnpm i18n:check` green;
   - `pnpm size` green;
