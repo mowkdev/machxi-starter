@@ -72,7 +72,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm size` green;
   - the gate green.
 
-- [ ] **3. A fork's tags, changelog and release.** [ADR-0065](../adr/0065-starter-lifecycle.md)'s status line gains its delta at the head.
+- [x] **3. A fork's tags, changelog and release.** [ADR-0065](../adr/0065-starter-lifecycle.md)'s status line gains its delta at the head.
   - The ledger's header states the tag prefix, `starter`, in one parseable line. `/ship` reads it and tags `<prefix>-D<n>`.
   - `.gitattributes` marks `docs/CHANGELOG.md merge=ours`, and the changelog's own preamble says it is journal.
   - `/bootstrap` resets the changelog and writes the fork's prefix. It refuses `starter`.

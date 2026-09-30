@@ -75,3 +75,62 @@ Checked clean: the mock cannot leak past its file, since per-file isolation is t
 - **The running dev servers.** `app-version.ts` is a dependency of each `vite.config.ts`, so on the merge to `main` Vite should restart its own dev server, and the footer should read `dev` on 3001 and 3002. No restart is needed from the operator. A dev server never shows a label, because the `dev` task does not pass these names through. The root `.env.example`'s "set them here only to see a label on a local run" is true of the API's `/health` alone, and `D32.4` sweeps that wording.
 - **Pending the operator's eye:** the footer at 240px with a long label and a commit. `truncate` clips it rather than wrapping, and jsdom cannot measure that.
 - `apps/*/src/app/routeTree.gen.ts` show as modified in the worktree with no content diff. That is line endings only, and they are left out of the commit.
+
+## D32.3 — A fork's tags, changelog and release (2026-09-30)
+
+**Head: [ADR-0065](../adr/0065-starter-lifecycle.md) moved to `superseded by` [ADR-0081](../adr/0081-build-versions.md)**, beside its 0068 and 0074 deltas, with a status delta and a header blockquote. The delta covers §2 and §3. Under §2 a tag namespace belongs to the repository that writes it, and `/ship` tags `<prefix>-D<n>` from the ledger's header. Under §3 `docs/CHANGELOG.md` joins the journal. Everything else 0065 decides stands. 0081's header, the index rows of both records, the topic table's forking row, the index's "starter as a starter" line and the ledger's window paragraph say so. No record amended.
+
+**Built.**
+
+- **The ledger's header** gains `` Tag prefix: `starter` `` alone on its line, above the table, and one sentence that says what reads it.
+- **`scripts/docs-hygiene.mjs`**:
+  - `parseTagPrefix` reads the header, meaning every line above the first table row or `## ` heading. `checkTagPrefix` then refuses three things:
+    - `tag-prefix-missing`: no line in the header.
+    - `tag-prefix-malformed`: a line in the header opens `Tag prefix` but does not parse.
+    - `tag-prefix-duplicate`: more than one line.
+  - A prefix is a lowercase name that git accepts as part of a tag name. It never opens with `v` and a digit (see the review).
+  - `scanTagPrefix` runs from the CLI beside the lane check and prints `tag prefix: starter`. A corpus with no ledger yet is exempt, as it is from the lane check.
+- **`scripts/docs-hygiene.test.mjs`**: the named case "the ledger names the tag prefix /ship writes" takes the committed ledger and checks three things:
+  - the ledger is clean and names a well-formed prefix;
+  - with the line removed, it is refused as `tag-prefix-missing`;
+  - `/ship`'s skill names the `Tag prefix:` line and the `<prefix>-D<n>` shape.
+
+  Two fixture cases cover the other rules: malformed, `v2`, duplicate, and a prefix below the header. **Red with the line removed** was also shown from the CLI: `node scripts/docs-hygiene.mjs` printed `docs/plan/README.md:1 [tag-prefix-missing]` and exited `1`, and restoring the ledger made it green again.
+
+- **`/ship`** step 7 reads the prefix and tags `<prefix>-D<n>`. It stops rather than move a tag that already exists, and it ends each entry `Tag <prefix>-D<n>.`. It says the changelog is journal and that `v<version>` tags belong to the release tool, never to `/ship`. Step 8 pushes `<prefix>-D<n>`.
+- **`/bootstrap`**:
+  - It chooses the prefix first, from `--prefix` or by asking the operator.
+  - It refuses `starter`, and it refuses a `v` followed by a digit.
+  - It writes the `Tag prefix:` line into the fresh ledger and resets `docs/CHANGELOG.md` to its preamble under the fork's prefix.
+  - It keeps both `merge=ours` entries, and its acceptance checks `git check-attr` on both.
+- **`.gitattributes`**: `docs/CHANGELOG.md merge=ours`, with the comment extended to the changelog.
+- **`docs/CHANGELOG.md`'s preamble**: the tag is `<prefix>-D<n>`, with the prefix named in the ledger. A new paragraph says the file is journal: `merge=ours`, reset by `/bootstrap`, and read in a fork with `git show starter/main:docs/CHANGELOG.md`.
+- **`docs/forking.md`**:
+  - §2 gains two bullets, one on the prefix and one on the changelog resetting.
+  - §5 says the two namespaces never meet and adds the `git show` line.
+  - A new §6, "Releasing the product", covers the two build arguments and deriving them from git (it points to `deploy.md` for the commands). It recommends, without adopting, release-please in single-version mode: the root package, the `simple` type, no component in the tag, so it tags `v<version>` and writes its own root `CHANGELOG.md`. It also says the `v<version>` and `<prefix>-D<n>` namespaces do not overlap. The old §6 is now §7; nothing linked to the section numbers.
+  - "What conflicts" gains a `docs/CHANGELOG.md` row and a tags row.
+- **`scripts/rules-digest.mjs`**:
+  - The process "Versioning" line now cites 0081 first and describes the prefix and the `v<version>` release tags.
+  - The "Forking" line names `docs/CHANGELOG.md` as journal.
+  - `pnpm rules:digest` wrote 1 of 3, and the 0065-carrying lines now read "as carried by 0068 and 0074 and 0081".
+- **Outside the named files, and why.** `docs/README.md`'s changelog row said "with its `starter-D<n>` tag", and the root `README.md` said `docs/CHANGELOG.md` tells a fork which starter it is on. In a fork, that file is now the fork's own. Both were reworded, each in one line. `docs/upstreaming.md`'s "tags `starter-D<n>`" is left as it is, because upstreaming ships in the starter.
+- **No spec.** This is process tooling, and no `docs/specs/` capability covers it.
+
+**Done-whens.**
+
+- `node --test scripts/docs-hygiene.test.mjs`: 51 pass, 0 fail. This includes "the ledger names the tag prefix /ship writes", which is red with the line removed, as above.
+- `git check-attr merge docs/CHANGELOG.md` prints `docs/CHANGELOG.md: merge: ours`.
+- `pnpm docs:check` clean: inherited documents clean, 16 specs, 2 lanes disjoint, `tag prefix: starter`.
+- **The gate: green.** `pnpm lint`, `pnpm check-types`, `pnpm test`, `pnpm size` and `pnpm format:check` all passed. As at `D32.1` and `D32.2`, the gate ran with `DATABASE_URL_TEST` and `DATABASE_URL_TEST_OWNER` exported from their committed values, against the shared `machxi_test`. After the review fixes, `pnpm lint` (which carries the script tests and `docs:check`) and `pnpm format:check` were re-run and passed. The fixes touched only scripts and documents.
+
+**Review: one bounded pass, `adr-reviewer`.** The diff conforms, with four Minor findings, all fixed:
+
+1. **The prefix check accepted `v2`.** Its `v2-D1` matches `v[0-9]*`, the pattern `deploy.md` derives the release label from, so a deliverable tag could have become `APP_VERSION`. `TAG_PREFIX_LINE` now refuses a `v` followed by a digit. There is a fixture case for `v2` (refused) and one for `vendor` (accepted), and `/bootstrap` states the rule.
+2. **0065's banner said §3 "left `docs/CHANGELOG.md` carried"**, but §3 names it in neither list. The banner now says it "named `docs/CHANGELOG.md` in neither list, so it travelled with every merge".
+3. **Two bullets in `forking.md` §6 disagreed.** One said "nothing is bumped in a file", while release-please's `simple` type bumps `version.txt`. That bullet now reads "no file the build reads carries the version".
+4. **The Forking digest line cited 0081 twice**, once in 0065's carriers and once on its own. That line now cites only 0065. The Versioning line keeps 0081 as its primary citation.
+
+The reviewer also noted, without calling it a finding, that `merge.ours.driver` is not defined in this clone. So on the lane→`main` merges here, `merge=ours` falls back to an ordinary merge, as `docs/plan/**` always has. How `merge=ours` behaves across lanes is D34's question.
+
+**For the operator.** Nothing needs a browser. The `/bootstrap` and `/ship` wording is exercised only when a fork bootstraps or the next deliverable ships. Neither skill was run here.

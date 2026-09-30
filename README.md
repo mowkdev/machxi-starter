@@ -22,8 +22,8 @@ records may still be amended in place.
 **This repository is meant to be cloned into a project and merged from
 afterwards.** [`docs/forking.md`](docs/forking.md) is the recipe,
 [`docs/upstreaming.md`](docs/upstreaming.md) is how a generic feature comes back,
-and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) plus the `starter-D<n>` tags say
-which starter a fork is on.
+and the `starter-D<n>` tags say which starter a fork is on, each one
+a deliverable in the starter's [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
 ## Requirements
 
