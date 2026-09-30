@@ -491,3 +491,52 @@ step:check ✓
 `check`: 39 tasks (5 cached; `test:scripts` and `docs:check` inside `lint`), then `test:unit`'s 17 (cached), all successful. Integration: `@repo/db` 128 tests and `api` 847, all 23 `db:migrate →` lines on `machxi_claude-nifty-planck-bnxu4s_test`. `size`: 4 tasks cached. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
 
 **CI on the follow-up**, read with the GitHub tools. Run 93, on the notes-only commit `e5f8226`: `success`. Run **94** (run id 36769169840, pull request #2), on the follow-up commit `8209bc4`: **`success`** at 20:06:20Z. This is recorded in a notes-only commit after it, whose own run the next step reads first.
+
+## D34.6 — Close-out — the last one (2026-09-30)
+
+Built in a cloud session on the lane branch `claude/nifty-planck-bnxu4s` (PostgreSQL 16 on localhost:5432, no Docker, no dev stack, no root `.env`), as one commit pushed there; nothing merged to or from `main`. The last close-out step any plan carries: D34 was scoped with it before [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) §2 withdrew them, and `docs:check` exempts it by the plan's date.
+
+**The run read first.** The GitHub tools list `gate.yml` runs for the branch (this session has no `gh`). The last push, `c17e00b` (`D34.5`'s notes-only commit), was run **95** (run id 36770333261), `in_progress` when the step began, so the step built without waiting; read again before the commit, it had concluded **`success`** at 20:17:50Z. Runs 93 and 94, on `e5f8226` and `8209bc4`, were `success`. Nothing was red, so no fix-forward commit. The pull request read `mergeable_state: unstable` (checks running, no conflict), base `d518b59` = `origin/main`, so `main` was not merged in.
+
+**Built.**
+
+- `.claude/README.md` gains a section, "How a lane runs — on one machine, and in the cloud", one bullet each for **the tier** (what the step check runs and which machine a lane can live on; `package` anywhere, `api` a database of its own, `schema` the one lane with migrations; what `docs:check` refuses), **the database** (`export TEST_DB_LANE=$(pnpm --silent db:lane)`; the shared container on one machine, the session's own Postgres and the committed `.env.test` files in the cloud; `main` and CI on `machxi_test`), **the step check** (the same command in both; sized against the merge base with `origin/main`, so fetch first; never `--force`; the shared turbo cache on one machine), **the lock** (the git common directory every worktree shares on one machine, takeover of a dead holder, a timeout that stops with the holder's name and is never cleared by the session; in the cloud the session's own), **the pull request** (the branch the lane file names, one draft pull request, a commit a step, never a force push; `lane/D<n>` in a worktree with `gh` locally, the session's branch with the GitHub tools in the cloud; a lane on a session's branch continues and ships only from a session given that branch or a local clone; where the session cannot push to `main`, `/scope`'s commits ride with the pull request, safe only with no other lane open), and **what neither runs** (the dev stack is the operator's, so the browser tier and the Postman run sit beside the gate for the operator). Citations carry their topic gloss; no step number, date or bare range (`docs:check`: inherited documents clean).
+- **The digests regenerated**: `pnpm rules:digest` wrote 0 of 3, and 0 of 3 again. `D34.5` had already rewritten the process digest's Lanes and Verification lines, and this step's diff is in `.claude/` alone, which no rule line reads.
+- No record, spec or skill changed; nothing amended against the plan.
+
+**The definition of done**, every item that can run before the merge, with `TEST_DB_LANE=claude-nifty-planck-bnxu4s` exported, never `--force`:
+
+1. **The gate, locally, under the lock: green.** `node scripts/with-lock.mjs tiers -- sh -c 'pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check'`, exit 0, over the tree with `.claude/README.md` final; the plan's tick and this note were written while or after it ran, and the step check below ran over the final tree. `lint` 22 tasks (2 cached; `test:scripts` 131 pass, `docs:check` inside it); `check-types` 17 (3 cached); `test` 17 tasks, 0 cached, 8m51s under the lock, which `MACHXI_LOCKS_HELD` let `pnpm test` and `pnpm size` reach without waiting on their parent — unit and integration together: `api` 836 unit and 847 integration (29 files), `@repo/db` 125 and 128 (6 files), `admin` 335, `customer` 287, `@repo/contracts` 246, `@repo/grid` 209, and every other package green; all 23 `db:migrate →` lines on `localhost:5432/machxi_claude-nifty-planck-bnxu4s_test`; `size` 4 tasks cached, `FULL TURBO`, every budget `ok`; `format:check` "All matched files use Prettier code style!". **By `gate.yml` on the pull request's head: green on `c17e00b`** (run 95), the head when this step began. This step's own commit starts a new run, which this step does not wait on; `/ship` reads it, and requires the run on its own ship commit green in any case.
+2. **`pnpm test:unit` twice: green, the second `FULL TURBO`.** Both runs were 17 of 17 cached, `FULL TURBO` (289 ms, then 72 ms): no unit task's inputs changed since the gate's `test` run and `D34.5`'s step check, because this step's diff touches `.claude/README.md` and the plan alone.
+3. **`pnpm rules:digest` twice: wrote 0 of 3, then 0 of 3. `pnpm lanes` twice: "unchanged docs/plan/README.md (1 open)", both runs. `pnpm docs:check`: clean** — inherited documents clean, 16 behaviour specs, open lanes disjoint with the generated block current (1 open; package 1), tag prefix `starter`, union journal no passage twice, close-out steps none (28 plans exempt by date). **`pnpm test:scripts`: 131 pass, 0 fail.**
+4. **Every step a commit on the lane branch, none merged to `main`: true.** `git log origin/main..HEAD` lists every step's commit and follow-up — `6d70e01`/`fb67bed` (`D34.1`), `12adf33` (`D34.2`), `87714e6`/`3f8336c` (`D34.3`), `bfc52d3`/`20df2ee` (`D34.4`), `b28fc19`/`e5f8226`/`8209bc4`/`c17e00b` (`D34.5`), and the opening and scoping commits under them — and `git branch -r --contains` names `origin/claude/nifty-planck-bnxu4s` alone for each, never `origin/main`. This step's commit is the same once pushed. **Owed to `/ship`, not runnable here:** the pull request merged with a merge commit, and `gate.yml` green on `main` after it.
+5. **A clean tree: true** after this step's commit (`git status --short` empty before the step's edits; the step's files are all in the commit). `/ship` checks it again after its own.
+
+**The step check**, `pnpm step:check`, over the final tree (everything above written but its output below):
+
+With `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, base `d518b5938943` (`git merge-base origin/main HEAD`), never `--force`, exit 0:
+
+```
+step:check against d518b5938943b56fafbb726ae37fa268a77b4efe
+  ran      check
+  ran      integration @repo/db (every file: apps/api/test/setup/env.test.ts changed): 6 file(s)
+  ran      integration api (every file: apps/api/test/setup/env.test.ts changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      format:check
+step:check ✓
+```
+
+`check`: 39 tasks (5 cached), then `test:unit`'s 17 (all cached), all successful. Integration: `@repo/db` 128 tests and `api` 847, on the lane database. `size`: 4 tasks cached. The base is the lane's merge base, so `D34.1`'s harness change is still a trigger and both integration tiers ran whole. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+**Review.** **Owed.** This builder session has no Agent tool, so by ADR-0082 §2 it does not review its own diff, and none is recorded here. The orchestrating session runs the one bounded review over this step's commit — `adr-reviewer` or `code-reviewer`, the diff being documents only — and a confirmed finding lands as a `D34.6` follow-up commit, noted below.
+
+**Pending the operator — every item gathered from `D34.1`–`D34.6`, in one place for `/ship` and the operator.**
+
+1. **Branch protection on `main`** (from `D34.5`): not done, and no tool in these sessions reads or writes it. Where the GitHub plan allows it, `main` protected with `gate` required, direct pushes kept for `/scope`'s documents-only commits, force pushes blocked; where it does not (a private repository on a personal account), the rule stays the convention the skills follow, as 0082 §1 says. Say which.
+2. **Read `CLAUDE.md`'s diff** (from `D34.2` and `D34.5`): §Commands names the step check beside the gate; rule 3 reads "A lane is a branch and one pull request, a step one commit to it: a step ends green on the step check, a lane on the gate; `main` moves at `/ship`"; and the trims that keep it under the 6 KB cap (the `test:int` comment, the running-stack and subagents paragraphs).
+3. **Read 0082 §4's `D34.3` amendment — the starter-merge command has two flags**: `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main`, where the plan named one, because a command-line driver runs only for a path whose attribute names it and the changelog's `union` would otherwise let the starter's entries into a fork; `docs/plan/** merge=ours` stays, inert in a lane merge; 0081 §5 joined the lane to say so.
+4. **Read 0082 §4's `D34.4` amendment — the running paragraph**: it is generated from the lane files and states only what they say, and the ledger's hand-written window history is frozen verbatim in its own section after the window section, never edited again.
+5. **The browser tier and the Postman run** were not run in this lane: no dev stack in these sessions, and D34 touches no endpoint and no SPA geometry. Nothing is browser-only.
+6. **Draft PR #2's body is stale** (its step list unticked, its "Pending the operator" still asking for a PostgreSQL): `/ship` marks the pull request ready and may refresh the body to this list.
+
+**Nothing blocks `/ship` from this step**, beyond the run on this commit (and on the ship commit) and the review owed above.
