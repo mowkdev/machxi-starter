@@ -489,3 +489,5 @@ step:check ✓
 ```
 
 `check`: 39 tasks (5 cached; `test:scripts` and `docs:check` inside `lint`), then `test:unit`'s 17 (cached), all successful. Integration: `@repo/db` 128 tests and `api` 847, all 23 `db:migrate →` lines on `machxi_claude-nifty-planck-bnxu4s_test`. `size`: 4 tasks cached. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+**CI on the follow-up**, read with the GitHub tools. Run 93, on the notes-only commit `e5f8226`: `success`. Run **94** (run id 36769169840, pull request #2), on the follow-up commit `8209bc4`: **`success`** at 20:06:20Z. This is recorded in a notes-only commit after it, whose own run the next step reads first.
