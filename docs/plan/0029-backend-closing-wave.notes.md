@@ -478,4 +478,3 @@ One new Low and two informational points, **logged, not fixed**, routed to D34:
 - `pnpm test:e2e` in both apps against the running stack (definition-of-done item 4).
 - `pnpm test:postman` (item 5, owed since `D29.2`).
 - `docker compose -f docker/prod/compose.yaml build` as committed, on a machine with IPv6 (item 6's remainder).
-
