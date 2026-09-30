@@ -19,7 +19,11 @@ import type { DbExecutor } from "@repo/db";
  * **silently**: the application would keep working and isolate nothing.
  *
  * So the process asks the database who it is before binding the port, and
- * refuses to start in production when the answer is any of them.
+ * refuses to start in production when the answer is any of them — or when
+ * the role it runs as is not the role it logged in as (ADR-0083 §4): a login
+ * role switched at connect time (`ALTER ROLE … SET role`, or
+ * `options=-c role=…`) leaves the login one `SET ROLE NONE` away, and the
+ * login is exactly what the other four questions were not asked about.
  * Development and test are exempt by the caller (`main.ts`), not here: the
  * check is a statement about a deployment.
  */
@@ -27,6 +31,12 @@ import type { DbExecutor } from "@repo/db";
 /** What the database says about the role this connection runs as. */
 export interface RoleRowLevelSecurity {
   readonly role: string;
+  /**
+   * The role the connection logged in as (`session_user`), which `SET ROLE
+   * NONE` returns to — the same as {@link role} unless the role was switched
+   * at connect time.
+   */
+  readonly loginRole: string;
   readonly superuser: boolean;
   readonly bypassRls: boolean;
   /**
@@ -72,15 +82,20 @@ export const rowLevelSecurityBypasses = (
         : `owns ${named}`,
     );
   }
+  if (role.loginRole !== role.role) {
+    reasons.push(
+      `was switched to from the login role "${role.loginRole}", one SET ROLE NONE away`,
+    );
+  }
 
   return reasons;
 };
 
 /**
- * Reads the connection's own role: its two attributes, the superuser and
- * `BYPASSRLS` roles it is a member of, and every ordinary or partitioned table
- * outside the system schemas whose owner it is or could become
- * (`pg_has_role(…, 'MEMBER')`).
+ * Reads the connection's own role: the role it logged in as, its two
+ * attributes, the superuser and `BYPASSRLS` roles it is a member of, and every
+ * ordinary or partitioned table outside the system schemas whose owner it is
+ * or could become (`pg_has_role(…, 'MEMBER')`).
  *
  * `MEMBER` rather than `USAGE`, in both places: Postgres honours an inherited
  * attribute or ownership, and a non-inheriting member is one `SET ROLE` away
@@ -104,6 +119,7 @@ export const readRoleRowLevelSecurity = async (
   const rows = (await db.execute(sql`
     select
       r.rolname::text as role,
+      session_user::text as login_role,
       r.rolsuper as superuser,
       r.rolbypassrls as bypass_rls,
       coalesce(
@@ -136,6 +152,7 @@ export const readRoleRowLevelSecurity = async (
     where r.rolname = current_user
   `)) as unknown as {
     role: string;
+    login_role: string;
     superuser: boolean;
     bypass_rls: boolean;
     bypassing_roles_held: string[];
@@ -150,6 +167,7 @@ export const readRoleRowLevelSecurity = async (
 
   return {
     role: row.role,
+    loginRole: row.login_role,
     superuser: row.superuser,
     bypassRls: row.bypass_rls,
     bypassingRolesHeld: row.bypassing_roles_held,

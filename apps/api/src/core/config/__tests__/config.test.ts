@@ -2,6 +2,7 @@ import { defaultArgon2Params, minArgon2Params } from "@repo/crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  KNOWN_PUBLIC_DATABASE_PASSWORDS,
   KNOWN_PUBLIC_SECRETS,
   LOCAL_ADMIN_APP_URL,
   LOCAL_API_PUBLIC_URL,
@@ -21,7 +22,9 @@ import {
 
 const validEnv = {
   NODE_ENV: "development",
-  DATABASE_URL: "postgres://machxi:machxi@localhost:5432/machxi",
+  // A password no committed file carries, so the production guards below
+  // each fail for their own reason rather than for ADR-0083 §5's as well.
+  DATABASE_URL: "postgres://machxi_app:not-committed@localhost:5432/machxi",
   JWT_ACCESS_SECRET: "a".repeat(32),
 } as const;
 
@@ -261,6 +264,53 @@ describe("envSchema", () => {
       ADMIN_APP_URL: "https://admin.example.com",
       API_PUBLIC_URL: "https://api.example.com",
     } as const;
+
+    it("a committed database password is refused in production", () => {
+      // ADR-0083 §5: ADR-0078 §2's rule reaches DATABASE_URL. Every password
+      // a committed file carries, whatever role and host it is written with,
+      // percent-encoded or not.
+      for (const password of KNOWN_PUBLIC_DATABASE_PASSWORDS) {
+        for (const url of [
+          `postgres://machxi_app:${password}@db.internal:5432/machxi`,
+          `postgresql://someone:${encodeURIComponent(password)}@10.0.0.5/app?sslmode=require`,
+        ]) {
+          expect(() => parse({ ...production, DATABASE_URL: url })).toThrow(
+            /DATABASE_URL/,
+          );
+          // Outside production it is the local compose's working password.
+          expect(() =>
+            parse({
+              ...production,
+              NODE_ENV: "development",
+              DATABASE_URL: url,
+            }),
+          ).not.toThrow();
+        }
+      }
+
+      // A password of the deployment's own passes, and the message names the
+      // variable and never the value.
+      expect(() =>
+        parse({
+          ...production,
+          DATABASE_URL: "postgres://machxi_app:r3al-S3cret@db.internal/machxi",
+        }),
+      ).not.toThrow();
+      let message = "";
+
+      try {
+        loadConfig({
+          ...validEnv,
+          ...production,
+          DATABASE_URL: "postgres://machxi_app:machxi_app@db.internal/machxi",
+        });
+      } catch (caught) {
+        message = (caught as Error).message;
+      }
+
+      expect(message).toContain("DATABASE_URL: carries a password committed");
+      expect(message).not.toContain("machxi_app@");
+    });
 
     it.each(KNOWN_PUBLIC_SECRETS)(
       "refuses the signing key committed as %s",

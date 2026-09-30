@@ -53,6 +53,17 @@ const byInviteeExpression = `email = (select u.email from users u where u.id = $
 const byInvitee = policy(byInviteeExpression);
 const byBearerExpression = `token_hash = ${tenantSetting(TENANT_SETTINGS.invitationTokenHash)}`;
 const byBearer = policy(byBearerExpression);
+/*
+ * An invitation no stamp has ended yet (ADR-0083 §3 as amended at `D35.3`).
+ * The consume policies admit only such a row, so a transaction that holds a
+ * bearer's hash or an invitee's principal can end an invitation once and
+ * never touch it again — never un-revoke it by clearing the stamp it carries.
+ * Expiry is deliberately not here: it is read against the application's
+ * clock (`pendingAt`), and a second clock in the policy would disagree with
+ * it at the edges.
+ */
+const unended =
+  "accepted_at is null and declined_at is null and revoked_at is null";
 
 /**
  * Organizations — the tenant (ADR-0067 §1, §2).
@@ -333,6 +344,17 @@ export const organizationInvitations = pgTable(
       sql`${table.role} <> 'owner'`,
     ),
     /*
+     * An invitation ends once (ADR-0083 §3 as amended at `D35.3`): at most one
+     * of the three terminal stamps. The consume writes one stamp on a row
+     * that carries none, and nothing else writes them; this makes the rule
+     * the database's rather than the repository's. Added `NOT VALID` and
+     * validated in a second-lane file (migrations `0022`, `0023`).
+     */
+    check(
+      "organization_invitations_one_terminal_stamp",
+      sql`num_nonnulls(${table.acceptedAt}, ${table.declinedAt}, ${table.revokedAt}) <= 1`,
+    ),
+    /*
      * Tenant-led, one per order the pending list offers (ADR-0067 §1), and no
      * bare pairs beside them.
      */
@@ -386,7 +408,7 @@ export const organizationInvitations = pgTable(
      */
     pgPolicy("organization_invitations_invitee_consume", {
       for: "update",
-      using: byInvitee,
+      using: policy(`(${byInviteeExpression}) and ${unended}`),
       withCheck: policy(`(${byInviteeExpression}) and revoked_at is null`),
     }),
     /*
@@ -401,7 +423,7 @@ export const organizationInvitations = pgTable(
     /* The bearer accepts and nothing else: never a decline, never a revoke (ADR-0083 §3). */
     pgPolicy("organization_invitations_bearer_consume", {
       for: "update",
-      using: byBearer,
+      using: policy(`(${byBearerExpression}) and ${unended}`),
       withCheck: policy(
         `(${byBearerExpression}) and revoked_at is null and declined_at is null`,
       ),

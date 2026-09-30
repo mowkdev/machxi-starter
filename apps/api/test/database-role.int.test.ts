@@ -25,6 +25,11 @@ import { loadTestEnv, readTestSuperuserUrl } from "./setup/env.js";
  * `BYPASSRLS` role, the owner of a table with no row-level security — as the
  * cluster superuser, inside a transaction that is rolled back, so the roles,
  * the schema and the table never outlive the case.
+ *
+ * `SET LOCAL ROLE` is itself the fifth reason (ADR-0083 §4): the throwaway
+ * role runs under the superuser's login, so every case built that way is
+ * refused for the switch as well, and the fifth reason's own case is a role
+ * that is clean in every other respect.
  */
 
 /** Rolls the probe's transaction back once its assertions have run. */
@@ -32,6 +37,10 @@ const ROLLBACK = Symbol("rollback");
 
 /** A cluster-unique suffix: roles are cluster-wide, and runs may overlap. */
 const suffix = (): string => randomBytes(4).toString("hex");
+
+/** The login the throwaway roles are switched to from — the cluster superuser. */
+const superuserLogin = (): string =>
+  decodeURIComponent(new URL(readTestSuperuserUrl()).username);
 
 describe("the database role check at boot", () => {
   const opened: DbClient[] = [];
@@ -74,6 +83,9 @@ describe("the database role check at boot", () => {
   it("lets the application role through", async () => {
     const app = connect(loadConfig().db.url);
 
+    const role = await readRoleRowLevelSecurity(app.db);
+
+    expect(role.loginRole).toBe(role.role);
     await expect(readRoleRowLevelSecurity(app.db)).resolves.toMatchObject({
       superuser: false,
       bypassRls: false,
@@ -135,7 +147,7 @@ describe("the database role check at boot", () => {
           ownedTables: [],
         });
         await expect(assertRoleBoundByRowLevelSecurity(tx)).rejects.toThrow(
-          `"${member}" is a member of ${bypassing} (superuser or BYPASSRLS), so row-level security would not bind it`,
+          `"${member}" is a member of ${bypassing} (superuser or BYPASSRLS), and was switched to from the login role "${superuserLogin()}", one SET ROLE NONE away, so row-level security would not bind it`,
         );
       },
     );
@@ -162,7 +174,34 @@ describe("the database role check at boot", () => {
           ownedTables: [`${schema}.ledger`],
         });
         await expect(assertRoleBoundByRowLevelSecurity(tx)).rejects.toThrow(
-          `"${owner}" owns ${schema}.ledger, so row-level security would not bind it`,
+          `"${owner}" owns ${schema}.ledger, and was switched to from the login role "${superuserLogin()}", one SET ROLE NONE away, so row-level security would not bind it`,
+        );
+      },
+    );
+  });
+
+  it("refuses a connection whose session user is not its current user", async () => {
+    // ADR-0083 §4's fifth reason. The role switched to is clean in every
+    // other respect — no attribute, no membership, no table — so this is the
+    // only reason it is refused; the login it came from (here the cluster
+    // superuser) is one `SET ROLE NONE` away, and none of the other four
+    // questions was asked about it.
+    const switched = `rls_probe_switched_${suffix()}`;
+
+    await asThrowawayRole(
+      [`create role ${switched} nologin`],
+      switched,
+      async (tx) => {
+        await expect(readRoleRowLevelSecurity(tx)).resolves.toMatchObject({
+          role: switched,
+          loginRole: superuserLogin(),
+          superuser: false,
+          bypassRls: false,
+          bypassingRolesHeld: [],
+          ownedTables: [],
+        });
+        await expect(assertRoleBoundByRowLevelSecurity(tx)).rejects.toThrow(
+          `The database role "${switched}" was switched to from the login role "${superuserLogin()}", one SET ROLE NONE away, so row-level security would not bind it`,
         );
       },
     );

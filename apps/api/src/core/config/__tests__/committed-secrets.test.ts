@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  KNOWN_PUBLIC_DATABASE_PASSWORDS,
+  databaseUrlPassword,
+} from "../database-password.js";
+import {
   KNOWN_PUBLIC_SECRETS,
   KNOWN_PUBLIC_SEED_PASSWORDS,
 } from "../schema.js";
@@ -109,6 +113,56 @@ describe("committed seed passwords", () => {
   it("only lists passwords that would otherwise pass the length rule", () => {
     for (const password of KNOWN_PUBLIC_SEED_PASSWORDS) {
       expect(password.length).toBeGreaterThanOrEqual(12);
+    }
+  });
+});
+
+/**
+ * The same rule for the database password (ADR-0083 §5, ADR-0078 §2's rule
+ * reaching `DATABASE_URL`).
+ *
+ * Every password a committed file writes for a database role — each
+ * `DATABASE_URL*` connection string, the local compose's `POSTGRES_PASSWORD`
+ * and the roles its init script creates — is listed, so a production
+ * `DATABASE_URL` assembled by copying one is refused at startup.
+ */
+describe("committed database passwords", () => {
+  const envFiles = [
+    [".env.example", resolve(repoRoot, ".env.example")],
+    ["apps/api/.env.test", resolve(apiDir, ".env.test")],
+    ["docker/prod/.env.example", resolve(repoRoot, "docker/prod/.env.example")],
+  ] as const;
+
+  it.each(envFiles)(
+    "lists every connection string's password in %s as publicly known",
+    (_label, file) => {
+      const passwords = [
+        ...readFileSync(file, "utf8").matchAll(/^DATABASE_URL\w*=(.*)$/gm),
+      ].map((match) => databaseUrlPassword((match[1] ?? "").trim()));
+
+      expect(passwords.length).toBeGreaterThan(0);
+      for (const password of passwords) {
+        expect(password).not.toBe("");
+        expect(KNOWN_PUBLIC_DATABASE_PASSWORDS).toContain(password);
+      }
+    },
+  );
+
+  it("lists the local compose's superuser and role passwords", () => {
+    const superuser = readVariable(
+      resolve(repoRoot, ".env.example"),
+      "POSTGRES_PASSWORD",
+    );
+    const roles = [
+      ...readFileSync(
+        resolve(repoRoot, "docker/local/postgres/init/00-roles.sql"),
+        "utf8",
+      ).matchAll(/PASSWORD '([^']*)'/g),
+    ].map((match) => match[1]);
+
+    expect(roles.length).toBeGreaterThan(0);
+    for (const password of [superuser, ...roles]) {
+      expect(KNOWN_PUBLIC_DATABASE_PASSWORDS).toContain(password);
     }
   });
 });

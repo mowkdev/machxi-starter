@@ -49,6 +49,14 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
    **`machxi_app` must be an ordinary role: not a superuser, without `BYPASSRLS`, a member of no role that is either, and owning no table** (ADR-0078 §4, row-level security). The tenant-owned tables carry row-level security policies (migration `0019`), and Postgres skips every one of them for a superuser, for a `BYPASSRLS` role and for a table's owner or a role that inherits the owner's privileges — so an API connected as any of those, or as a member of one (a `SET ROLE` away), would keep working and isolate no tenant. Ownership counts for every table outside the system schemas, whether or not its row-level security is on yet, so the check holds on the release before `0019` too. **The API refuses to start in production when its role is one of them**, with a line naming the role and the reason; the fix is a `DATABASE_URL` that names `machxi_app`, never a grant. A managed platform's default user is usually privileged, which is why the snippet above creates a role of its own rather than reusing it, and why the application role is never made a member of `machxi_owner`.
 
+   **Three more rules for the role and its database** (ADR-0083 §4 and §5):
+
+   - **Connect as `machxi_app` itself, not through a role switch.** The API also refuses to start when the role it runs as is not the role it logged in as — a login with `ALTER ROLE … SET role`, or a connection string carrying `options=-c role=…`. The login it came from is one `SET ROLE NONE` away, and none of the checks above was asked about it.
+   - **Give `machxi_app` a password of its own.** A `DATABASE_URL` whose password is one this repository commits — `machxi_app`, `machxi_owner` and `machxi` from the local compose, `password` from `docker/prod/.env.example` — is refused in production, like a committed signing key.
+   - **Create no view that reads a tenant-owned table unless it is `security_invoker`, and no `SECURITY DEFINER` function.** Either runs with its owner's rights, and the owner is bound by no policy, so it would hand the application role every tenant. A schema test refuses both in the repository's own migrations; a fork's hand-written migration is held by the same test, and an object created outside the migrations is held by nothing.
+
+   **The check runs at boot, once.** A membership, an attribute or an ownership granted while the API runs is an operator's act, and nothing notices it until the next restart, which then refuses to start. Grant nothing to `machxi_app` by hand; if something was, restart the API to find out.
+
    Table privileges are not granted here: migration `0008` grants them, and its `ALTER DEFAULT PRIVILEGES` is what makes every table a later migration creates usable without a grant nobody remembers to write. Copy both connection strings — the owner's is only ever used by the one-shot `migrate` service, and the API never receives it.
 
    **On an existing database** — one that already ran D1–D13 — the snippet above is not enough, and this is the one upgrade step that bites. `ALTER SCHEMA public OWNER` moves the schema; it does not move the **tables**, which are still owned by whatever role created them, and migration `0008` grants on tables. It fails loudly rather than quietly: on PostgreSQL 16 the `GRANT` raises `permission denied for table users` and the whole migration rolls back, and `0008` also asserts its own post-condition for the partial case Postgres answers with a warning instead. The fix, run once as the current administrative role:
@@ -159,14 +167,14 @@ Useful for checking the images before a real deploy, and the shape the definitio
 ```sh
 cp docker/prod/.env.example docker/prod/.env     # then edit the two DATABASE_URL* values
                                                 # and the key (the committed
-                                                # placeholder is refused)
+                                                # placeholders are refused)
 docker compose -f docker/prod/compose.yaml build
 docker compose -f docker/prod/compose.yaml up -d
 curl -s localhost:4000/health/ready
 curl -sI localhost:3002/ | grep -i content-security-policy   # the policy, with your API origin in connect-src
 ```
 
-Point both `DATABASE_URL*` values at the local compose Postgres with `host.docker.internal` rather than `localhost` — the API is in a container now, and `localhost` is the container. The published ports bind to `127.0.0.1`, so the stack is reachable from the host and from nowhere else; a platform routes to it over the compose network instead and needs no published port at all.
+Point both `DATABASE_URL*` values at the local compose Postgres with `host.docker.internal` rather than `localhost` — the API is in a container now, and `localhost` is the container. The images run with `NODE_ENV=production`, so the local roles' committed passwords are refused too: give `machxi_app` one of its own first (`ALTER ROLE machxi_app PASSWORD '…'` as the local superuser) and use it in `DATABASE_URL` — and in the root `.env`'s two application-role URLs, which the dev stack connects with, or set it back afterwards. The published ports bind to `127.0.0.1`, so the stack is reachable from the host and from nowhere else; a platform routes to it over the compose network instead and needs no published port at all.
 
 ## What this does not decide
 

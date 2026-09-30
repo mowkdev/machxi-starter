@@ -15,6 +15,7 @@ import type { DbExecutor } from "@repo/db";
 
 const BOUND: RoleRowLevelSecurity = {
   role: "machxi_app",
+  loginRole: "machxi_app",
   superuser: false,
   bypassRls: false,
   bypassingRolesHeld: [],
@@ -56,6 +57,17 @@ describe("rowLevelSecurityBypasses", () => {
     ]);
   });
 
+  it("names a login role switched at connect time", () => {
+    // ADR-0083 §4, the fifth reason: `ALTER ROLE … SET role` or
+    // `options=-c role=…` leaves every other question answered for the role
+    // switched to, while the login it came from is one `SET ROLE NONE` away.
+    expect(
+      rowLevelSecurityBypasses({ ...BOUND, loginRole: "postgres" }),
+    ).toEqual([
+      'was switched to from the login role "postgres", one SET ROLE NONE away',
+    ]);
+  });
+
   it("names three owned tables and counts the rest", () => {
     expect(
       rowLevelSecurityBypasses({
@@ -91,6 +103,7 @@ describe("assertRoleBoundByRowLevelSecurity", () => {
       assertRoleBoundByRowLevelSecurity(
         answering({
           role: "machxi_app",
+          login_role: "machxi_app",
           superuser: false,
           bypass_rls: false,
           bypassing_roles_held: [],
@@ -104,6 +117,7 @@ describe("assertRoleBoundByRowLevelSecurity", () => {
     const refusal = assertRoleBoundByRowLevelSecurity(
       answering({
         role: "postgres",
+        login_role: "postgres",
         superuser: true,
         bypass_rls: true,
         bypassing_roles_held: [],
@@ -124,6 +138,7 @@ describe("assertRoleBoundByRowLevelSecurity", () => {
       assertRoleBoundByRowLevelSecurity(
         answering({
           role: "api",
+          login_role: "api",
           superuser: false,
           bypass_rls: false,
           bypassing_roles_held: ["platform_admin"],

@@ -14,6 +14,7 @@ import {
 // (ADR-0064 §1), for the reason the two pool timeouts above are taken from
 // `createDb`: a default that exists in two places will one day exist in one.
 import { DEFAULT_APP_ID } from "../http/cookies.js";
+import { carriesCommittedPassword } from "./database-password.js";
 import { parseDurationSeconds } from "./duration.js";
 import { isProductionTrustProxy } from "./trust-proxy.js";
 
@@ -896,6 +897,16 @@ export const envSchema = z
       path: ["SEED_SUPER_ADMIN_PASSWORD"],
       message:
         "is a value committed in this repository and must not seed a production super admin",
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== "production" ||
+      !carriesCommittedPassword(env.DATABASE_URL),
+    {
+      path: ["DATABASE_URL"],
+      message:
+        "carries a password committed in this repository and must not be used in production (ADR-0083 §5): set the application role's own password",
     },
   )
   .refine(

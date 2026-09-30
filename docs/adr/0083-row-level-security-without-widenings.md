@@ -44,7 +44,7 @@ The staff segment keeps ADR-0067 §3's rule: staff are above tenants, never insi
 
 ### 3. The consume policies check the row they leave
 
-`organization_invitations_invitee_consume` gains `WITH CHECK (revoked_at IS NULL)`: an invitee accepts or declines and never revokes. `organization_invitations_bearer_consume` gains `WITH CHECK (revoked_at IS NULL AND declined_at IS NULL)`: a bearer accepts and nothing else. The tenant policy, which the organization's own admins revoke through, is unchanged. **Amended 2026-09-30 (D35.2).** Each check is the policy's own admitting expression **and** the stamp condition, not the stamp condition alone: a `WITH CHECK` replaces the `USING` a policy would otherwise reuse as its check, so the condition alone would stop requiring the stamped row to be one the branch admits. The column grant of `0020` already keeps the admitting columns unwritable; the conjunction keeps the policy true without leaning on it.
+`organization_invitations_invitee_consume` gains `WITH CHECK (revoked_at IS NULL)`: an invitee accepts or declines and never revokes. `organization_invitations_bearer_consume` gains `WITH CHECK (revoked_at IS NULL AND declined_at IS NULL)`: a bearer accepts and nothing else. The tenant policy, which the organization's own admins revoke through, is unchanged. **Amended 2026-09-30 (D35.2).** Each check is the policy's own admitting expression **and** the stamp condition, not the stamp condition alone: a `WITH CHECK` replaces the `USING` a policy would otherwise reuse as its check, so the condition alone would stop requiring the stamped row to be one the branch admits. The column grant of `0020` already keeps the admitting columns unwritable; the conjunction keeps the policy true without leaning on it. **Amended 2026-09-30 (D35.3).** Both consume policies' `USING` also requires the invitation to be unended — `accepted_at`, `declined_at` and `revoked_at` all null — so an invitee or a bearer never touches an invitation that has ended: the column grant admits all three stamps, and a check that forbids only the stamps a branch never writes would let it clear the `revoked_at` an admin wrote while stamping an accept. Reads are unaffected; the select policies are unchanged. An invitation carries at most one terminal stamp, as a check constraint (`num_nonnulls(…) <= 1`), added `NOT VALID` and validated in the runner's second lane. Expiry is left out of the policy: `pendingAt` reads it against the application's clock, and `now()` in a policy would be a second clock.
 
 ### 4. The boot refusal reads the login role, and the schema admits no bypass
 
@@ -52,6 +52,8 @@ The refusal of ADR-0078 §4 as amended at `D29.7` gains a fifth reason: it refus
 
 - a view that reads a tenant-owned table and is not `security_invoker`;
 - a `SECURITY DEFINER` function.
+
+**Amended 2026-09-30 (D35.3).** A view counts whether it reads the table directly or through another view, since an invoker view called from a definer view runs as the outer view's owner; a materialized view over a tenant-owned table is refused outright, since it stores what its owner could see. The same test holds that the tenant-owned tables carry exactly the policies the schema declares, so a policy written by hand in a migration is caught as well.
 
 `docs/deploy.md` states both rules. The refusal stays a check at boot. A membership or ownership granted while the API runs is an operator's act, and deploy.md says the next restart is what catches it.
 

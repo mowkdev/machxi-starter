@@ -96,9 +96,9 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 
 ## Requirement: The database scopes a tenant-owned table by itself, and admits nothing by omission
 
-Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved — which, once placed, is the request's only scope — or, outside an organization, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), or the one invitation whose token hash the transaction holds. No setting widens anything: whatever must see every tenant connects as the owner, which the policies do not bind. A staff request carries no widening: under `/admin/organizations/:id` it is scoped to the organization the route names, and a staff request under no such route reads no tenant-owned row. A foreign key's cascade needs no setting. Two concurrent requests in different organizations each see only their own. An invitation's stamps (`accepted_at`, `declined_at`, `revoked_at`, `updated_at`) are the only columns the application role may update. The invitee may accept or decline an invitation addressed to them and never revoke it; the bearer of its token may accept it and nothing else. Every transaction a service opens is placed in its request's scope, with every setting the scope does not name cleared for that transaction, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. In production the API refuses to start as a role the policies do not bind. The wire is unchanged.
+Every tenant-owned table carries row-level security, and the application role sees and writes a row only when a setting its transaction placed names it: the organization `requireMembership` resolved — which, once placed, is the request's only scope — or, outside an organization, the signed-in user's own memberships and the invitations addressed to them (read, and an invitation stamped, never a membership written), or the one invitation whose token hash the transaction holds. No setting widens anything: whatever must see every tenant connects as the owner, which the policies do not bind. A staff request carries no widening: under `/admin/organizations/:id` it is scoped to the organization the route names, and a staff request under no such route reads no tenant-owned row. A foreign key's cascade needs no setting. Two concurrent requests in different organizations each see only their own. An invitation's stamps (`accepted_at`, `declined_at`, `revoked_at`, `updated_at`) are the only columns the application role may update. The invitee may accept or decline an invitation addressed to them and never revoke it; the bearer of its token may accept it and nothing else. Neither touches an invitation that has ended — never clears the stamp that ended it — and an invitation carries at most one of the three terminal stamps. The tenant-owned tables hold exactly the policies the schema declares, and no view over one reads it with its owner's rights, nor does any `SECURITY DEFINER` function exist outside the system schemas. Every transaction a service opens is placed in its request's scope, with every setting the scope does not name cleared for that transaction, and a tenant-owned read outside one opens its own, so a query that forgets its organization returns nothing rather than every tenant's rows. In production the API refuses to start as a role the policies do not bind, or as a role switched to at connect time from another login, and refuses a `DATABASE_URL` whose password this repository commits. The wire is unchanged.
 Records: [ADR-0083](../adr/0083-row-level-security-without-widenings.md), [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0067](../adr/0067-organizations.md), [ADR-0061](../adr/0061-database-roles-and-append-only-enforcement.md)
-Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__tests__/schema.int.test.ts`, `apps/api/test/organizations.int.test.ts`, `apps/api/src/core/db/__tests__/tenant-scope.test.ts`, `apps/api/test/database-role.int.test.ts`, `apps/api/src/core/db/__tests__/role-check.test.ts`
+Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__tests__/schema.int.test.ts`, `apps/api/test/organizations.int.test.ts`, `apps/api/src/core/db/__tests__/tenant-scope.test.ts`, `apps/api/test/database-role.int.test.ts`, `apps/api/src/core/db/__tests__/role-check.test.ts`, `apps/api/src/core/config/__tests__/config.test.ts`
 
 ### Scenario: A query that forgets its organization
 
@@ -140,10 +140,30 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 - **WHEN** a transaction that holds an invitation's token hash and no principal stamps its `declined_at` or its `revoked_at`
 - **THEN** Postgres refuses each with `42501`, while the same transaction may stamp `accepted_at`
 
+### Scenario: A bearer or an invitee un-revokes an invitation
+
+- **WHEN** a transaction that holds a revoked invitation's token hash, or its invitee's principal, clears `revoked_at` while stamping an accept or a decline — or the invitee stamps an accept on an invitation they declined
+- **THEN** the update touches no row and the invitation stays as it ended
+
+### Scenario: Two terminal stamps
+
+- **WHEN** a revoked invitation is stamped `accepted_at` as well, even by the owner
+- **THEN** Postgres refuses it with `23514`
+
+### Scenario: A bypass in the schema
+
+- **WHEN** a policy the schema does not declare, a view over a tenant-owned table that is not `security_invoker`, or a `SECURITY DEFINER` function exists outside the system schemas
+- **THEN** the schema test fails naming it
+
 ### Scenario: A role the policies do not bind
 
-- **WHEN** the API starts in production connected as a superuser, a `BYPASSRLS` role, a member of either, or the owner of any table — whether or not row-level security is on for it yet
+- **WHEN** the API starts in production connected as a superuser, a `BYPASSRLS` role, a member of either, the owner of any table — whether or not row-level security is on for it yet — or a role its login switched to at connect time
 - **THEN** it refuses to start, naming the role and the reason
+
+### Scenario: A committed database password
+
+- **WHEN** the API starts in production with a `DATABASE_URL` whose password is one this repository commits
+- **THEN** it refuses to start, naming the variable and never the value
 
 ### Scenario: A write into another organization
 

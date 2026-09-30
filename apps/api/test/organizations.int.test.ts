@@ -1303,16 +1303,25 @@ describe("organizations on the user segment", () => {
         .expect(201);
       const id = created.body.data.id as string;
 
-      expect(
-        await outcome(
-          inRequest({ principal: userPrincipal(invitee.id) }, (tx) =>
-            tx
-              .update(organizationInvitations)
-              .set({ revokedAt: new Date(), updatedAt: new Date() })
-              .where(eq(organizationInvitations.id, id)),
-          ),
-        ),
-      ).toBe("42501");
+      const asInvitee = (stamp: "declinedAt" | "revokedAt") =>
+        inRequest({ principal: userPrincipal(invitee.id) }, async (tx) => {
+          const stamped = await tx
+            .update(organizationInvitations)
+            .set({ [stamp]: new Date(), updatedAt: new Date() })
+            .where(eq(organizationInvitations.id, id))
+            .returning({ id: organizationInvitations.id });
+
+          // Rolled back whatever happened, so the row stays as it was.
+          throw Object.assign(new Error("rolled back"), {
+            cause: { code: `stamped:${String(stamped.length)}` },
+          });
+        });
+
+      expect(await outcome(asInvitee("revokedAt"))).toBe("42501");
+      // The control (`D35.2`'s review, fixed at `D35.3`): the same
+      // transaction, as the same invitee, may decline — so the refusal above
+      // is the check's and not the scope's.
+      expect(await outcome(asInvitee("declinedAt"))).toBe("stamped:1");
 
       const [row] = await harness.asOwner((tx) =>
         tx
@@ -1393,6 +1402,146 @@ describe("organizations on the user segment", () => {
         declinedAt: null,
         revokedAt: null,
       });
+    });
+
+    it("a bearer cannot un-revoke an invitation", async () => {
+      // ADR-0083 §3 as amended at `D35.3`: the consume policies admit only an
+      // unended invitation. The column grant admits all three stamps, and the
+      // bearer's check forbids only the stamps it never writes — so without
+      // "unended" in the `USING`, clearing `revoked_at` while stamping
+      // `accepted_at` would pass both, and a revoked invitation would be
+      // accepted.
+      const org = await createTeam(owner.accessToken, "rls-bearer-unrevoke");
+
+      const created = await request()
+        .post(`${ORGS}/${org.id}/invitations`)
+        .set("Authorization", bearer(owner.accessToken))
+        .send({ email: "rls.unrevoke@machxi.local", role: "member" })
+        .expect(201);
+      const id = created.body.data.id as string;
+      const [held] = await harness.asOwner((tx) =>
+        tx
+          .select({ tokenHash: organizationInvitations.tokenHash })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id)),
+      );
+      const tokenHash = held!.tokenHash;
+
+      await request()
+        .delete(`${ORGS}/${org.id}/invitations/${id}`)
+        .set("Authorization", bearer(owner.accessToken))
+        .expect(204);
+
+      const unrevoked = await inRequest({ principal: null }, async (tx) => {
+        await setTenantScope(tx, { invitationTokenHash: tokenHash });
+
+        // Still readable by its hash: the select policy is unchanged, so what
+        // the update below misses it is the consume policy's `USING`.
+        const [readable] = await tx
+          .select({ id: organizationInvitations.id })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id));
+
+        expect(readable?.id).toBe(id);
+
+        return tx
+          .update(organizationInvitations)
+          .set({
+            revokedAt: null,
+            acceptedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(organizationInvitations.id, id))
+          .returning({ id: organizationInvitations.id });
+      });
+
+      expect(unrevoked).toEqual([]);
+
+      const [row] = await harness.asOwner((tx) =>
+        tx
+          .select({
+            acceptedAt: organizationInvitations.acceptedAt,
+            revokedAt: organizationInvitations.revokedAt,
+          })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.id, id)),
+      );
+
+      expect(row?.acceptedAt).toBeNull();
+      expect(row?.revokedAt).toBeInstanceOf(Date);
+    });
+
+    it("an invitee cannot un-revoke an invitation addressed to them", async () => {
+      // The invitee's equivalent: clearing the organization's `revoked_at`
+      // while stamping a decline or an accept touches no row, and neither
+      // does stamping an accept on an invitation the invitee declined.
+      const org = await createTeam(owner.accessToken, "rls-invitee-unrevoke");
+      const invitee = await freshAccount("rls.unrevoker@machxi.local");
+
+      const invite = async () => {
+        const created = await request()
+          .post(`${ORGS}/${org.id}/invitations`)
+          .set("Authorization", bearer(owner.accessToken))
+          .send({ email: invitee.email, role: "member" })
+          .expect(201);
+
+        return created.body.data.id as string;
+      };
+
+      const revoked = await invite();
+
+      await request()
+        .delete(`${ORGS}/${org.id}/invitations/${revoked}`)
+        .set("Authorization", bearer(owner.accessToken))
+        .expect(204);
+
+      const declined = await invite();
+
+      await request()
+        .post(`${INVITATIONS}/${declined}/decline`)
+        .set("Authorization", bearer(invitee.tokens.accessToken))
+        .expect(204);
+
+      const asInvitee = (
+        id: string,
+        set: Partial<typeof organizationInvitations.$inferInsert>,
+      ) =>
+        inRequest({ principal: userPrincipal(invitee.id) }, (tx) =>
+          tx
+            .update(organizationInvitations)
+            .set({ ...set, updatedAt: new Date() })
+            .where(eq(organizationInvitations.id, id))
+            .returning({ id: organizationInvitations.id }),
+        );
+
+      expect(
+        await asInvitee(revoked, { revokedAt: null, declinedAt: new Date() }),
+      ).toEqual([]);
+      expect(
+        await asInvitee(revoked, { revokedAt: null, acceptedAt: new Date() }),
+      ).toEqual([]);
+      expect(
+        await asInvitee(declined, { declinedAt: null, acceptedAt: new Date() }),
+      ).toEqual([]);
+
+      const rows = await harness.asOwner((tx) =>
+        tx
+          .select({
+            id: organizationInvitations.id,
+            acceptedAt: organizationInvitations.acceptedAt,
+            declinedAt: organizationInvitations.declinedAt,
+            revokedAt: organizationInvitations.revokedAt,
+          })
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.organizationId, org.id)),
+      );
+      const byId = new Map(rows.map((row) => [row.id, row]));
+
+      expect(byId.get(revoked)?.revokedAt).toBeInstanceOf(Date);
+      expect(byId.get(revoked)?.acceptedAt).toBeNull();
+      expect(byId.get(revoked)?.declinedAt).toBeNull();
+      expect(byId.get(declined)?.declinedAt).toBeInstanceOf(Date);
+      expect(byId.get(declined)?.acceptedAt).toBeNull();
     });
 
     const staffPrincipal: RequestContext["principal"] = {

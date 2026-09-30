@@ -155,6 +155,20 @@
       "when": 1790775368583,
       "tag": "0021_row_level_security_without_widenings",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790777346102,
+      "tag": "0022_invitation_ends_once",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790777351287,
+      "tag": "0023_invitation_ends_once_validate",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,8 @@
 import { and, eq, exists, gt, isNull, sql } from "drizzle-orm";
+import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type { DbExecutor } from "../client.js";
 
 import type { DbClient } from "../client.js";
 import {
@@ -1335,5 +1338,267 @@ describe("migration 0019 — row-level security on the tenant-owned tables", () 
       role: false,
       stamps: true,
     });
+  });
+});
+
+describe("ADR-0083 §3 and §4 — the schema admits no bypass", () => {
+  /**
+   * What `D35.3` adds to the schema's own guarantees. The unit suite reads the
+   * declared policies; these read what Postgres holds, so a policy, a view or
+   * a function written by hand in a migration — which the declared schema
+   * never sees — is caught as well. Each case carries its own negative: the
+   * object it refuses is created as the owner inside a transaction that is
+   * rolled back, and must be named.
+   */
+
+  /** Rolls a probe's transaction back once its assertions have run. */
+  const ROLLBACK = Symbol("rollback");
+
+  const inRolledBack = async (
+    probe: (tx: DbExecutor) => Promise<void>,
+  ): Promise<void> => {
+    await client.db
+      .transaction(async (tx) => {
+        await probe(tx);
+        throw ROLLBACK;
+      })
+      .catch((caught: unknown) => {
+        if (caught !== ROLLBACK) throw caught;
+      });
+  };
+
+  const rowsIn = async <T>(
+    executor: DbExecutor,
+    query: Parameters<DbExecutor["execute"]>[0],
+  ) => (await executor.execute(query)) as unknown as T[];
+
+  const tenantTableNames = sql.join(
+    TENANT_OWNED_TABLES.map((name) => sql`${name}`),
+    sql`, `,
+  );
+
+  /** `table.policy command permissiveness`, one line per policy, sorted. */
+  const policiesHeld = async (executor: DbExecutor): Promise<string[]> =>
+    (
+      await rowsIn<{ policy: string }>(
+        executor,
+        sql`
+          select format('%s.%s %s %s', tablename, policyname, cmd, permissive) as policy
+            from pg_policies
+           where schemaname = 'public' and tablename in (${tenantTableNames})`,
+      )
+    )
+      .map((row) => row.policy)
+      .sort();
+
+  const tenantTables: readonly PgTable[] = [
+    organizationInvitations,
+    organizationMemberships,
+  ];
+
+  const policiesDeclared = (): string[] =>
+    tenantTables
+      .flatMap((table) => {
+        const config = getTableConfig(table);
+
+        return config.policies.map(
+          (policy) =>
+            `${config.name}.${policy.name} ${(policy.for ?? "all").toUpperCase()} ${(policy.as ?? "permissive").toUpperCase()}`,
+        );
+      })
+      .sort();
+
+  it("the tenant-owned tables hold exactly the policies the schema declares", async () => {
+    // `D35.2`'s review: the widening detector reads the declared schema, so a
+    // policy written by hand in a migration passes it. Postgres's own list
+    // must equal the declared one, name and command.
+    expect(
+      tenantTables.map((table) => getTableConfig(table).name).sort(),
+    ).toEqual([...TENANT_OWNED_TABLES].sort());
+    expect(policiesDeclared().length).toBeGreaterThan(0);
+    expect(await policiesHeld(client.db)).toEqual(policiesDeclared());
+
+    await inRolledBack(async (tx) => {
+      await tx.execute(
+        sql.raw(
+          "create policy organization_memberships_by_hand on organization_memberships for select using (true)",
+        ),
+      );
+
+      expect(await policiesHeld(tx)).toContain(
+        "organization_memberships.organization_memberships_by_hand SELECT PERMISSIVE",
+      );
+      expect(await policiesHeld(tx)).not.toEqual(policiesDeclared());
+    });
+  });
+
+  /**
+   * Every view outside the system schemas that reads a tenant-owned table,
+   * directly or through another view, and would read it with its owner's
+   * rights: a view that is not `security_invoker`, or a materialized view,
+   * which stores what its owner could see.
+   */
+  const bypassingViews = async (executor: DbExecutor): Promise<string[]> =>
+    (
+      await rowsIn<{ view: string }>(
+        executor,
+        sql`
+          with recursive reads(view_oid, read_oid) as (
+            select r.ev_class, d.refobjid
+              from pg_rewrite r
+              join pg_depend d
+                on d.classid = 'pg_rewrite'::regclass
+               and d.objid = r.oid
+               and d.refclassid = 'pg_class'::regclass
+             where d.refobjid <> r.ev_class
+            union
+            select reads.view_oid, d.refobjid
+              from reads
+              join pg_rewrite r on r.ev_class = reads.read_oid
+              join pg_depend d
+                on d.classid = 'pg_rewrite'::regclass
+               and d.objid = r.oid
+               and d.refclassid = 'pg_class'::regclass
+             where d.refobjid <> r.ev_class
+          )
+          select distinct format('%I.%I', n.nspname, v.relname) as view
+            from reads
+            join pg_class v on v.oid = reads.view_oid
+            join pg_namespace n on n.oid = v.relnamespace
+            join pg_class t on t.oid = reads.read_oid
+           where v.relkind in ('v', 'm')
+             and t.relnamespace = 'public'::regnamespace
+             and t.relname in (${tenantTableNames})
+             and n.nspname not in ('pg_catalog', 'information_schema')
+             and n.nspname !~ '^pg_(toast|temp_)'
+             and (
+               v.relkind = 'm'
+               or not exists (
+                 select 1 from unnest(coalesce(v.reloptions, '{}'::text[])) o
+                  where lower(o) in (
+                    'security_invoker=true', 'security_invoker=on',
+                    'security_invoker=1', 'security_invoker=yes'
+                  )
+               )
+             )
+           order by 1`,
+      )
+    ).map((row) => row.view);
+
+  it("no view reads a tenant-owned table without security_invoker", async () => {
+    // ADR-0083 §4: a view runs its query with its owner's rights unless it is
+    // `security_invoker`, and the owner is bound by no policy — so a view over
+    // a tenant-owned table would hand the application role every tenant.
+    expect(await bypassingViews(client.db)).toEqual([]);
+
+    await inRolledBack(async (tx) => {
+      await tx.execute(
+        sql.raw(
+          "create view public.rls_probe_definer as select * from organization_memberships",
+        ),
+      );
+      await tx.execute(
+        sql.raw(
+          "create view public.rls_probe_invoker with (security_invoker) as select * from organization_invitations",
+        ),
+      );
+      // Through an invoker view is no better: the outer view's owner is the
+      // one the inner view is then invoked as.
+      await tx.execute(
+        sql.raw(
+          "create view public.rls_probe_outer as select * from public.rls_probe_invoker",
+        ),
+      );
+
+      expect(await bypassingViews(tx)).toEqual([
+        "public.rls_probe_definer",
+        "public.rls_probe_outer",
+      ]);
+    });
+  });
+
+  /** Every `SECURITY DEFINER` function outside the system schemas. */
+  const definerFunctions = async (executor: DbExecutor): Promise<string[]> =>
+    (
+      await rowsIn<{ fn: string }>(
+        executor,
+        sql`
+          select format('%I.%I(%s)', n.nspname, p.proname,
+                        pg_get_function_identity_arguments(p.oid)) as fn
+            from pg_proc p
+            join pg_namespace n on n.oid = p.pronamespace
+           where p.prosecdef
+             and n.nspname not in ('pg_catalog', 'information_schema')
+             and n.nspname !~ '^pg_(toast|temp_)'
+           order by 1`,
+      )
+    ).map((row) => row.fn);
+
+  it("no SECURITY DEFINER function exists outside the system schemas", async () => {
+    // ADR-0083 §4: a `SECURITY DEFINER` function runs as its owner, whom no
+    // policy binds, whatever the caller's settings — so any one of them is a
+    // way past row-level security for whoever may execute it.
+    expect(await definerFunctions(client.db)).toEqual([]);
+
+    await inRolledBack(async (tx) => {
+      await tx.execute(
+        sql.raw(
+          "create function public.rls_probe_definer(n integer) returns bigint language sql security definer as 'select count(*) from organization_memberships'",
+        ),
+      );
+
+      expect(await definerFunctions(tx)).toEqual([
+        "public.rls_probe_definer(n integer)",
+      ]);
+    });
+  });
+
+  it("an invitation carries at most one terminal stamp", async () => {
+    // ADR-0083 §3 as amended at `D35.3`: an invitation ends once. Migration
+    // `0022` adds the check `NOT VALID` and `0023` validates it.
+    const [constraint] = await rowsOf<{ validated: boolean }>(sql`
+      select convalidated as validated from pg_constraint
+       where conname = 'organization_invitations_one_terminal_stamp'`);
+
+    expect(constraint).toEqual({ validated: true });
+
+    const [owner] = await client.db
+      .insert(users)
+      .values(userRow({ email: "one-stamp-owner@machxi.test" }))
+      .returning({ id: users.id });
+    const [organization] = await client.db
+      .insert(organizations)
+      .values({
+        slug: "one-stamp",
+        name: "One stamp",
+        kind: "team",
+        createdBy: owner?.id ?? "",
+      })
+      .returning({ id: organizations.id });
+    const [row] = await client.db
+      .insert(organizationInvitations)
+      .values({
+        organizationId: organization?.id ?? "",
+        email: "one-stamp@machxi.test",
+        role: "member",
+        tokenHash: "one-stamp-token-hash",
+        invitedBy: owner?.id ?? "",
+        expiresAt: new Date(Date.now() + 86_400_000),
+      })
+      .returning({ id: organizationInvitations.id });
+    const id = row?.id ?? "";
+
+    await client.db
+      .update(organizationInvitations)
+      .set({ revokedAt: new Date() })
+      .where(eq(organizationInvitations.id, id));
+
+    const second = await client.db
+      .update(organizationInvitations)
+      .set({ acceptedAt: new Date() })
+      .where(eq(organizationInvitations.id, id))
+      .catch((caught: unknown) => caught);
+
+    expect((second as { cause?: { code?: string } }).cause?.code).toBe("23514");
   });
 });
