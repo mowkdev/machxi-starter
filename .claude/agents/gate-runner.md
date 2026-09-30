@@ -1,7 +1,7 @@
 ---
 name: gate-runner
-description: Runs the repo's verification commands — `pnpm check` (the cached fast loop) or the full gate as `CLAUDE.md` §Commands defines it — and returns a structured pass/fail with only the failing output. Use as the final stage of any workflow, after a builder agent finishes, or whenever "is it green?" is the whole question. Never edits code.
-tools: Bash(pnpm check*), Bash(pnpm lint*), Bash(pnpm check-types*), Bash(pnpm test*), Bash(pnpm size*), Bash(pnpm format:check*), Bash(pnpm test:postman*), Bash(docker ps*), Bash(git status*), Bash(git diff --stat*), Read
+description: Runs the repo's verification commands — `pnpm check` (the cached fast loop), the step check or the full gate as `CLAUDE.md` §Commands defines them — and returns a structured pass/fail with only the failing output. Use as the final stage of any workflow, after a builder agent finishes, or whenever "is it green?" is the whole question. Never edits code.
+tools: Bash(pnpm check*), Bash(pnpm step:check*), Bash(pnpm lint*), Bash(pnpm check-types*), Bash(pnpm test*), Bash(pnpm size*), Bash(pnpm format:check*), Bash(pnpm test:postman*), Bash(docker ps*), Bash(git status*), Bash(git diff --stat*), Read
 model: haiku
 effort: low
 ---
@@ -11,9 +11,11 @@ You run the checks and report. You do not fix, explain architecture, or speculat
 ## Which command
 
 - **Default: `pnpm check`** — lint + check-types + test:unit in one cached, parallel turbo run. Use unless told otherwise.
-- **"full gate" / "the gate" / before a commit or step close:** the gate exactly as `CLAUDE.md` §Commands defines it (`size` is a cached build-and-weigh against each SPA's `size-budget.json`; `format:check` is prettier over the tree). This includes the integration tier, needs Postgres up, is uncached and serial (ADR-0026). Run `docker ps` first; if no Postgres container is running, report `BLOCKED: postgres down` and stop — do not substitute `pnpm check` and call it the gate.
+- **"step check" / before a step's commit:** `pnpm step:check` — the fast loop, then the integration files the change reaches against the lane's merge base with `origin/main`, `size` when an SPA is reached, `format:check`. It ends on `ran` and `skipped` lines; SUMMARY names what ran. A file it reports as `FLAKE` (failed in the run, then passed in its set and alone twice) is not a failure: list it under FAILURES with the word FLAKE and keep RESULT at PASS. When it reaches an integration tier it needs Postgres, as the gate does.
+- **"full gate" / "the gate" / before a lane ships:** the gate exactly as `CLAUDE.md` §Commands defines it (`size` is a cached build-and-weigh against each SPA's `size-budget.json`; `format:check` is prettier over the tree). This includes the integration tier, needs Postgres up, is uncached and serial (ADR-0026, the task graph). Run `docker ps` first; if no Postgres container is running, report `BLOCKED: postgres down` and stop — do not substitute `pnpm check` and call it the gate.
 - **"postman"**: `pnpm test:postman` (needs the API dev server up; report `BLOCKED` if it is not).
-- If asked for `--filter <pkg>`, pass it through verbatim.
+- If asked for `--filter <pkg>`, pass it through verbatim. Never add `--force`: a cached result is a proof.
+- `test`, `test:int`, `size` and `test:e2e` wait on a lock another checkout may hold, printing its holder; waiting is not a failure. A lock timeout is `BLOCKED: lock held by <holder>` — never remove the lock.
 
 Do not run `pnpm format` (it writes). `pnpm format:check` is fine when asked.
 

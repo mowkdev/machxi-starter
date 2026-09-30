@@ -428,7 +428,8 @@ const decidesItsOwnResult = (rel, config, cached) => {
  * A check is a script that can go red without writing anything: at the root, a
  * script that is not a `turbo run` launcher and is named `*:check` or runs
  * `node --test`; in a workspace, a script named `*:check`. The gate's own links
- * are excluded — they run as links, not through the first one. A root check is
+ * are excluded — they run as links, not through the first one — and so is the
+ * step check, which runs the first link rather than inside it. A root check is
  * named in `lint`'s `dependsOn` as `//#<script>`, a workspace one by its bare
  * task name, which turbo resolves in each package that defines it.
  */
@@ -459,17 +460,28 @@ test("the first link carries every check that can go red", async () => {
   // than by memory: the next `*:check` a workspace defines is red here until
   // `lint` depends on it.
   const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
-  const gate = [
+  const claude = await read("CLAUDE.md");
+  const links = [
     .../pnpm lint && pnpm check-types[^\n`]*/
-      .exec(await read("CLAUDE.md"))[0]
+      .exec(claude)[0]
       .split("&&")
       .map((link) => link.trim().replace(/^pnpm\s+/, "")),
   ];
   assert.deepEqual(
-    gate,
+    links,
     ["lint", "check-types", "test", "size", "format:check"],
     "the gate as CLAUDE.md defines it",
   );
+  // The step check runs the first link; it is not one of its checks
+  // (ADR-0082 §2). Read from CLAUDE.md, where it is defined beside the gate.
+  const stepCheck =
+    /^# THE STEP CHECK\b[^\n]*\n(?:#[^\n]*\n)*pnpm\s+(\S+)/m.exec(claude)?.[1];
+  assert.equal(
+    stepCheck,
+    "step:check",
+    "the step check as CLAUDE.md defines it",
+  );
+  const gate = [...links, stepCheck];
 
   const workspaces = [];
   for (const group of ["apps", "packages"])
