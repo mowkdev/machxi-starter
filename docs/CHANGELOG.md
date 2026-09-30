@@ -4,6 +4,10 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D31 — Interface polish · 2026-09-30
+
+Five changes the operator named after using both SPAs. A grid header's name is now a plain label, and its sort and filter controls sit together at the cell's end: sort is an icon button of its own, named "Sort by <header>" and showing the direction it holds. The shell's drawer toggle shows and announces whether the drawer is open. The auth screens are one centred card on a gradient drawn between two existing tokens, with each screen's ways out inside the card. The customer's "Change email" sits on the email's own row. A navigation or deep link that takes longer than a second shows a pending state, held for at least half a second so it never flickers, and the boot loader's delay runs once per page load; a static indicator in `index.html` was tried and withdrawn. Frontend only, and the first deliverable built as a lane beside another. Tag `starter-D31`.
+
 ## D30 — Parallel lanes · 2026-09-29
 
 Deliverables whose records never meet can now be built at the same time, in separate sessions, without a second mutable copy of any record. The rule of one deliverable in progress gives way to a condition: no record belongs to two open lanes, and at most one lane adds migrations. The ledger's window section names every open lane in one shape, and `pnpm docs:check` refuses two lanes sharing a record, a second schema lane, and an entry that is malformed or missing. `/step`, `/steps` and `/ship` take the lane as their argument and refuse a bare call while more than one lane is open. A lane builds on its own branch, merging `main` in before each gate and out when green, or on `main` while it is the only lane; `/ship` runs on `main`. The rule travels with the records into a fork, and the ledger's lanes do not. Tag `starter-D30`.
