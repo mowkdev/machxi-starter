@@ -1,6 +1,6 @@
 # D32 — Build versions
 
-- Status: **planned** — **scoped in full 2026-09-30 by `/scope`**, on the operator's question about versioning before the fork, with D29 in progress (ledger §How D32 was scoped). Not opened; it opens after D29 ships, on the operator's decision.
+- Status: **in progress** — **scoped in full 2026-09-30 by `/scope`**, on the operator's question about versioning before the fork, with D29 in progress (ledger §How D32 was scoped). **Opened 2026-09-30** on the operator's decision, as a lane beside D29 once `D29.5` had landed, rather than after D29 ships as scoping recorded. It builds on `lane/D32` in a worktree of its own (ledger §How D32 opened).
 - Records: [ADR-0081](../adr/0081-build-versions.md) (one release label and a commit, stamped at image build; a fork's own tag namespace and changelog) — written `proposed` at scoping, accepted at the head of `D32.1`. Parents: [ADR-0004](../adr/0004-configuration-and-environment.md), [ADR-0016](../adr/0016-health-checks.md), [ADR-0054](../adr/0054-design-language-instrument.md), [ADR-0065](../adr/0065-starter-lifecycle.md). Amends none. **Adds no migration.**
 - Schema: no
 - Ledger: [`docs/plan/README.md`](README.md)
@@ -28,7 +28,7 @@ The API, the admin app and the customer app show the same release label and the 
 These were asked of the operator, who answered each with the recommended option:
 
 - **The API's values are baked into the image.** Compose stops passing them at run time.
-- **D32 opens after D29 ships.** `D29.5` rewrites both SPA Dockerfiles and the reference compose, and ADR-0059 is in D29's set.
+- **D32 opens after D29 ships.** `D29.5` rewrites both SPA Dockerfiles and the reference compose, and ADR-0059 is in D29's set. _Revised at opening, 2026-09-30:_ `D29.5` landed first, and the operator opened D32 as a lane beside D29.
 - **`docs/CHANGELOG.md` is journal.** It is marked `merge=ours` and reset by `/bootstrap`.
 - **The "new version available" prompt is not built here.** It is a planned ledger row of its own (D33).
 
