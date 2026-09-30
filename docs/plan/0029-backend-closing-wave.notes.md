@@ -204,9 +204,30 @@ Earlier runs failed twice, each fixed before the green run. The first failed the
 
 **Pending the operator.**
 
-- **An independent `security-reviewer` pass over this diff.** The done-when names that agent, and the pass above was the builder's own.
-- The merge of this step to `lane/D29` and to `main`. This session pushed only its own branch, `claude/keen-knuth-jwf8xb`.
+- The independent `security-reviewer` pass: **done**, below.
+- The merge of this step to `main`: **done** on the operator's instruction, below. `lane/D29` was not moved.
 - **`pnpm db:migrate` against the dev database** before the running API takes this code. Code that places settings runs fine on a database without `0019`, but the tests assert the policies. After that, one walk of the organizations screens and an invitation accept on the dev stack.
 - `pnpm test:postman` has not run: no stack runs in this container. The wire is unchanged.
 
 **Gate on the committed tree (2026-09-30).** After the worktree's commit was fast-forwarded onto `claude/keen-knuth-jwf8xb`, the gate was run again in the main checkout, against this container's `machxi_test`, and was green: `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 814 unit and 830 integration in 76.92 s; `@repo/db` 107 unit and 121 integration), `size` 4/4, `format:check` clean. The spike's worktree, its branch and `machxi_d29_rls_test` were then removed.
+
+**Independent `security-reviewer` pass (2026-09-30).** The orchestrating session ran the `security-reviewer` agent over `710178f`. It found **no Critical, High or Medium findings**, and four Lows, **logged and not fixed**. None of them lets a request reach another tenant's rows through the application as it stands.
+
+1. **The consume policies do not pin columns.** `invitee_consume` and `bearer_consume` are `FOR UPDATE` with `USING` only, so the check reuses that expression. A transaction that can see an invitation could rewrite `organization_id` or `role` while keeping `email` or `token_hash` unchanged. No path does this today. The smallest fix is a column-level `GRANT UPDATE (accepted_at, declined_at, revoked_at, updated_at)` to the application role, re-issued if the table is recreated, as ADR-0061 §2 does for `audit_events`.
+2. **A setting already on the session carries into every request transaction.** `setTenantScope` skips absent keys, so a session-level value (the `tenantUnscoped` startup parameter, or a `set_config(…, false)`) reaches every request transaction. This is the root of the builder's Low 1. The smallest fix: `openInRequestScope` sets all four settings on every transaction, writing `''` for an absent one.
+3. **Nothing at runtime checks that the policies bind the API's role.** No `FORCE`, and no boot check that the API's role is not superuser, not BYPASSRLS and owns no tenant table. That holds in this repository, but a fork on an owner role or a managed platform's default user would silently lose every policy. The smallest fix: a boot assertion outside development and test, plus a line in `docs/deploy.md`. The migration's reason for not forcing also names TRUNCATE, which row-level security never governs.
+4. **The builder's Low 2, slightly wider.** Inside an organization-scoped request, `app.user_id` stays set. A forgetful query can therefore also read, and stamp, invitations addressed to the caller in other organizations, but only ever the caller's own rows. A possible fix is to omit the user once the organization is placed, to be confirmed by the integration tier.
+
+**Two operational notes.**
+
+- `0019` takes its ACCESS EXCLUSIVE locks without a `lock_timeout`.
+- An old build against a migrated database fails closed: 404s on organization routes, and `42501` surfacing as a 500 on registration and team creation. Deploying code first and migrating second is the safe order.
+
+**Residuals for a later record.**
+
+- A session-settable `unscoped` value does not stop SQL injection. The alternatives are a separate role or pool for staff, or a SECURITY DEFINER setter.
+- Staff see every tenant at the database level.
+- The scope is read from AsyncLocalStorage rather than from `ctx`.
+- The repository-level tests run under `system`.
+
+**Merged to `main` (2026-09-30)** on the operator's instruction to merge each step as it lands. `main` was fast-forwarded to this commit.
