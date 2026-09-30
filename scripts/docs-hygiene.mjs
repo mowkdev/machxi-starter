@@ -13,12 +13,13 @@
 // exist, and has at least one scenario with a WHEN and a THEN — so a deleted
 // test reddens every spec that claimed it.
 //
-// The ledger's window section names every open lane with its records
-// (ADR-0079 §2), and two lanes may not share a record or both add migrations
-// (ADR-0079 §1, §3). The ledger itself is not an inherited document — it is
-// this repository's journal and carries dates by design — so only its lane
-// entries are read, and the one header line naming the tag prefix `/ship`
-// writes (ADR-0081 §5).
+// Each open lane is a file under `docs/plan/lanes/` (ADR-0082 §4, a delta on
+// ADR-0079 §2), and two lanes may not share a record or both add migrations
+// (ADR-0079 §1, §3); each carries the tier its plan names (ADR-0082 §5). The
+// ledger itself is not an inherited document — it is this repository's
+// journal and carries dates by design — so only its table's `in progress`
+// rows, the block `pnpm lanes` generates into its window section, and the one
+// header line naming the tag prefix `/ship` writes (ADR-0081 §5) are read.
 //
 // Usage:
 //   node scripts/docs-hygiene.mjs        report violations, exit 1 if any
@@ -27,6 +28,17 @@ import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+
+import {
+  LANES_DIR,
+  LANE_SHAPE,
+  LEDGER,
+  TIERS,
+  findBlock,
+  parseLaneFile,
+  readLaneFiles,
+  renderLanes,
+} from "./lanes.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -307,155 +319,118 @@ export async function scanSpecs(root = repoRoot) {
   return violations;
 }
 
-/** The ledger whose window section names the open lanes (ADR-0079 §2). */
-export const LEDGER = "docs/plan/README.md";
-
-/**
- * One open lane, in the one shape the window section writes it:
- * `- **Lane [D30](0030-….md)** — opened 2026-09-29 · records [0079](…), [0025](…) · schema: no`
- */
-const LANE_ENTRY =
-  /^- \*\*Lane \[(D\d+)\]\([^)]+\)\*\* — opened (\d{4}-\d{2}-\d{2}) · records (.+?) · schema: (yes|no)\s*$/;
-/**
- * `[0079](../adr/0079-….md)` — a record as a lane entry links it, the label
- * and the file agreeing. The records field is nothing but these, joined by
- * `, `: a record written any other way would escape the check.
- */
-const LANE_RECORD = /^\[(\d{4})\]\(\.\.\/adr\/(\d{4})-[^)]+\.md\)$/;
+/** The ledger whose window section links the open lanes (ADR-0079 §2). */
+export { LEDGER };
 
 /** `| [D30](…) | Title | **in progress** | …` — a ledger row that is open. */
 const TABLE_ROW = /^\|([^|]+)\|[^|]*\|([^|]+)\|/;
 
+/** `- Tier: package (…)` — the tier a plan's header names (ADR-0082 §5). */
+const PLAN_TIER = /^- Tier: (\S+)/;
+
 /**
- * Reads the open lanes out of the ledger's window section (ADR-0079 §2), and
- * the deliverables its table marks `in progress`.
- *
- * The entries are the list under `**Open lanes:**` inside `## The window`,
- * ending at the first unindented line that is neither blank nor a list item —
- * the running paragraph. A ledger with no such list (a fresh fork's, before
- * its first deliverable opens) has no open lanes; the table is what says
- * whether it should have some. A list item that does not parse, and an
- * indented line inside the list, are returned as `malformed` rather than
- * dropped, so a typo cannot hide a lane or a record from the check.
+ * The tier a plan's header names, or `null`: the first `- Tier:` line above
+ * the plan's first section.
  */
-export function parseLanes(text) {
+export function planTier(text) {
+  for (const raw of text.split(/\r?\n/)) {
+    if (raw.startsWith("## ")) break;
+    const m = raw.match(PLAN_TIER);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/**
+ * Reads the open lanes out of their files under `docs/plan/lanes/`
+ * (ADR-0082 §4, a delta on ADR-0079 §2), and the deliverables the ledger's
+ * table marks `in progress`. A file that does not parse is returned as
+ * `malformed` rather than dropped, so a typo cannot hide a lane or a record
+ * from the check. `laneFiles` is `[{ rel, name, text }]`, as
+ * `readLaneFiles` returns them.
+ */
+export function parseLanes(ledgerText, laneFiles) {
   const lanes = [];
   const malformed = [];
   const inProgress = [];
-  let inWindow = false;
-  let inList = false;
-  const bad = (n, line) => malformed.push({ line: n, text: line.slice(0, 60) });
-  text.split(/\r?\n/).forEach((raw, index) => {
-    const line = raw.trimEnd();
-    const n = index + 1;
-    const row = line.match(TABLE_ROW);
+  ledgerText.split(/\r?\n/).forEach((raw, index) => {
+    const row = raw.trimEnd().match(TABLE_ROW);
     if (row && row[2].trim() === "**in progress**") {
       const id = row[1].match(/\bD\d+\b/);
-      if (id) inProgress.push({ line: n, deliverable: id[0] });
+      if (id) inProgress.push({ line: index + 1, deliverable: id[0] });
     }
-    if (/^## /.test(line)) {
-      inWindow = line === "## The window";
-      inList = false;
-      return;
-    }
-    if (!inWindow) return;
-    if (line === "**Open lanes:**") {
-      inList = true;
-      return;
-    }
-    if (!inList || line === "") return;
-    if (/^\s/.test(line)) {
-      bad(n, line.trim());
-      return;
-    }
-    if (!line.startsWith("- ")) {
-      inList = false;
-      return;
-    }
-    const entry = line.match(LANE_ENTRY);
-    if (!entry) {
-      bad(n, line);
-      return;
-    }
-    const parts = entry[3].split(", ").map((p) => p.match(LANE_RECORD));
-    if (parts.some((m) => !m || m[1] !== m[2])) {
-      bad(n, line);
-      return;
-    }
-    const records = parts.map((m) => m[1]);
-    lanes.push({
-      line: n,
-      deliverable: entry[1],
-      opened: entry[2],
-      records,
-      schema: entry[4] === "yes",
-    });
   });
+  for (const file of laneFiles) {
+    const parsed = parseLaneFile(file.name, file.text);
+    if (parsed.lane) lanes.push({ ...parsed.lane, file: file.rel });
+    for (const m of parsed.malformed ?? []) {
+      malformed.push({ file: file.rel, ...m });
+    }
+  }
   return { lanes, malformed, inProgress };
 }
 
 /**
- * The condition two open lanes meet (ADR-0079 §1 and §3): no record belongs to
- * two of them, and at most one adds migrations — and the entries it is read
- * from are the table's `in progress` rows, one each (§2), so a list the parser
- * cannot find is a violation rather than zero lanes.
+ * The condition open lanes meet (ADR-0079 §1 and §3, ADR-0082 §4 and §5): no
+ * record belongs to two of them, at most one adds migrations, each carries the
+ * tier its plan names, the table's `in progress` rows and the files are one
+ * each, and the list and running paragraph the window section carries are
+ * what `pnpm lanes` renders from the files.
+ *
+ * `readPlan(rel)` returns a plan's text by its path under `docs/plan/`, or
+ * `null`; injected so the cases can run against text alone.
  */
-export function checkLanes(file, text) {
+export function checkLanes({ ledger, laneFiles, readPlan }) {
   const violations = [];
-  const push = (line, rule, found, message) =>
+  const push = (file, line, rule, found, message) =>
     violations.push({ file, line, rule, found, message });
-  const { lanes, malformed, inProgress } = parseLanes(text);
+  const { lanes, malformed, inProgress } = parseLanes(ledger, laneFiles);
 
-  const entered = new Set();
-  for (const lane of lanes) {
-    if (entered.has(lane.deliverable)) {
-      push(
-        lane.line,
-        "lane-duplicate",
-        lane.deliverable,
-        "a deliverable has one open-lane entry (ADR-0079 §2)",
-      );
-    }
-    entered.add(lane.deliverable);
+  for (const m of malformed) {
+    push(m.file, m.line, "lane-malformed", m.found, `${m.why}; ${LANE_SHAPE}`);
   }
+
   const open = new Set(inProgress.map((r) => r.deliverable));
+  const entered = new Set(lanes.map((l) => l.deliverable));
+  // A file that did not parse still names its deliverable, so its row is not
+  // also reported missing a lane.
+  for (const m of malformed) {
+    const id = m.file.match(/\/(D\d+)\.md$/);
+    if (id) entered.add(id[1]);
+  }
   for (const row of inProgress) {
     if (!entered.has(row.deliverable)) {
       push(
+        LEDGER,
         row.line,
         "lane-missing",
         row.deliverable,
-        "a deliverable `in progress` has an entry under `**Open lanes:**` in the window section (ADR-0079 §2)",
+        `a deliverable \`in progress\` has a lane file, \`${LANES_DIR}/${row.deliverable}.md\` (ADR-0082 §4)`,
       );
     }
   }
   for (const lane of lanes) {
     if (!open.has(lane.deliverable)) {
       push(
-        lane.line,
+        lane.file,
+        lane.fields.Deliverable,
         "lane-not-open",
         lane.deliverable,
-        "an open-lane entry names a deliverable the table does not mark `in progress`",
+        "a lane file names a deliverable the ledger's table does not mark `in progress`",
       );
     }
   }
 
-  for (const m of malformed) {
-    push(
-      m.line,
-      "lane-malformed",
-      m.text,
-      "an open-lane entry reads `- **Lane [D<n>](plan)** — opened YYYY-MM-DD · records [NNNN](../adr/…), … · schema: yes|no`",
-    );
-  }
-
   const owner = new Map();
-  for (const lane of lanes) {
-    for (const record of new Set(lane.records)) {
+  for (const lane of [...lanes].sort(
+    (a, b) => Number(a.deliverable.slice(1)) - Number(b.deliverable.slice(1)),
+  )) {
+    for (const record of new Set(lane.records.map((r) => r.id))) {
       const first = owner.get(record);
       if (first && first !== lane.deliverable) {
         push(
-          lane.line,
+          lane.file,
+          lane.fields.Records,
           "lane-shared-record",
           record,
           `ADR-${record} is already in ${first}'s lane; a record belongs to one open lane (ADR-0079 §1)`,
@@ -466,17 +441,94 @@ export function checkLanes(file, text) {
     }
   }
 
-  const schemaLanes = lanes.filter((l) => l.schema);
+  const schemaLanes = lanes
+    .filter((l) => l.schema)
+    .sort(
+      (a, b) => Number(a.deliverable.slice(1)) - Number(b.deliverable.slice(1)),
+    );
   for (const lane of schemaLanes.slice(1)) {
     push(
-      lane.line,
+      lane.file,
+      lane.fields.Schema,
       "lane-second-schema",
       lane.deliverable,
       `${schemaLanes[0].deliverable} already owns the schema; at most one open lane adds migrations (ADR-0079 §3)`,
     );
   }
 
-  return violations.sort((a, b) => a.line - b.line);
+  for (const lane of lanes) {
+    const plan = readPlan(lane.plan);
+    if (plan === null) {
+      push(
+        lane.file,
+        lane.fields.Deliverable,
+        "lane-plan-missing",
+        lane.plan,
+        "a lane file links its deliverable's plan, which exists",
+      );
+      continue;
+    }
+    const named = planTier(plan);
+    if (named !== lane.tier) {
+      push(
+        lane.file,
+        lane.fields.Tier,
+        "lane-tier",
+        lane.tier,
+        named === null
+          ? `the plan names no tier; its header carries \`- Tier: ${TIERS.join(" | ")}\` (ADR-0082 §5)`
+          : `the plan names tier \`${named}\`; a lane carries the tier its plan names (ADR-0082 §5)`,
+      );
+    } else if ((lane.tier === "schema") !== lane.schema) {
+      push(
+        lane.file,
+        lane.fields.Tier,
+        "lane-tier",
+        lane.tier,
+        "the `schema` tier is the lane that adds migrations, `Schema: yes`, and no other (ADR-0082 §5)",
+      );
+    }
+  }
+
+  // The generated list and running paragraph (ADR-0082 §4). Not compared
+  // while a file does not parse: that file's violation is the one to fix.
+  if (malformed.length === 0) {
+    const found = findBlock(ledger);
+    const expected = renderLanes(lanes);
+    const at = (offset) => ledger.slice(0, offset).split("\n").length;
+    if (found === null) {
+      if (lanes.length > 0 || inProgress.length > 0) {
+        push(
+          LEDGER,
+          1,
+          "lanes-stale",
+          "",
+          "the window section carries the block `pnpm lanes` writes, between its two markers (ADR-0082 §4)",
+        );
+      }
+    } else if (found.error) {
+      push(LEDGER, at(found.start ?? 0), "lanes-stale", "", found.error);
+    } else if (found.block !== expected) {
+      push(
+        LEDGER,
+        at(found.start),
+        "lanes-stale",
+        found.block.split("\n")[2]?.slice(0, 60) ?? "",
+        "the open lanes and the running paragraph are stale; run `pnpm lanes` (ADR-0082 §4)",
+      );
+    }
+  }
+
+  return violations.sort(
+    (a, b) => a.file.localeCompare(b.file) || a.line - b.line,
+  );
+}
+
+/** How many open lanes carry each tier (ADR-0082 §5). */
+export function countTiers(lanes) {
+  return Object.fromEntries(
+    TIERS.map((tier) => [tier, lanes.filter((l) => l.tier === tier).length]),
+  );
 }
 
 /**
@@ -614,11 +666,25 @@ export async function scanLanes(root = repoRoot) {
   const full = path.join(root, ...LEDGER.split("/"));
   // A corpus with no ledger yet (`/bootstrap --empty` before it writes one)
   // has no lanes to check.
-  if (!existsSync(full)) return { violations: [], lanes: 0 };
-  const text = await readFile(full, "utf8");
+  if (!existsSync(full)) return { violations: [], lanes: [] };
+  const ledger = await readFile(full, "utf8");
+  const laneFiles = await readLaneFiles(root);
+  const plans = new Map();
+  for (const name of await readdir(path.join(root, "docs", "plan"))) {
+    if (name.endsWith(".md")) {
+      plans.set(
+        name,
+        await readFile(path.join(root, "docs", "plan", name), "utf8"),
+      );
+    }
+  }
   return {
-    violations: checkLanes(LEDGER, text),
-    lanes: parseLanes(text).lanes.length,
+    violations: checkLanes({
+      ledger,
+      laneFiles,
+      readPlan: (rel) => plans.get(rel) ?? null,
+    }),
+    lanes: parseLanes(ledger, laneFiles).lanes,
   };
 }
 
@@ -662,7 +728,12 @@ if (
   console.log(
     `behaviour specs: clean (${(await specDocuments()).length} files)`,
   );
-  console.log(`open lanes: disjoint (${lanes.lanes} open)`);
+  const tiers = Object.entries(countTiers(lanes.lanes))
+    .filter(([, n]) => n > 0)
+    .map(([tier, n]) => `${tier} ${n}`);
+  console.log(
+    `open lanes: disjoint, generated block current (${lanes.lanes.length} open${tiers.length > 0 ? `; ${tiers.join(", ")}` : ""})`,
+  );
   if (tagPrefix.prefix) console.log(`tag prefix: ${tagPrefix.prefix}`);
   console.log("union journal: no passage twice");
 }

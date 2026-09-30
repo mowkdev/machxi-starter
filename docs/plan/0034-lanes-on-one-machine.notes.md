@@ -287,3 +287,73 @@ step:check ✓
 - `pnpm rules:digest`: 0 of 3 on two further runs.
 - `pnpm format:check`: pass.
 - `pnpm check`: pass. 39 tasks (0 cached; `test:scripts` and `docs:check` inside `lint`), then `test:unit`'s 17.
+
+## D34.4 — Lane entries as files; the running paragraph generated; tiers (2026-09-30)
+
+Built in a cloud session on the lane branch `claude/nifty-planck-bnxu4s` (PostgreSQL 16 on localhost:5432, no Docker, no dev stack, no root `.env`), committed and pushed there as one commit; not merged to `main` (plan §Constraints).
+
+**Moved at this step.** [ADR-0079](../adr/0079-parallel-lanes.md) → `superseded by` [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) for §2, with its delta on the status line and a head note; the body is untouched. §4's delta waits for `D34.5`, as 0082's header says. The index rows for 0079 and 0082 and the topic table's deliverables row ("with 0079 as carried by 0082") say so. The process digest's "The window" line now says the section links one file per open lane, and a new line, "Lane files and tiers" (0082, 0079), states the shape; `pnpm rules:digest` wrote 1 of 3, then 0 of 3.
+
+**Built.**
+
+- `docs/plan/lanes/D34.md`: D34's lane entry, moved out of the window section. Deliverable and plan, `Opened: 2026-09-30`, `Branch: claude/nifty-planck-bnxu4s` (0082 §1), `Tier: package` (the plan's `- Tier:` line), `Schema: no`, and the ten records the entry listed at `D34.3`'s close: 0082, 0079, 0059, 0050, 0026, 0021, 0007, 0004, 0065, 0081. D29 and D32 had shipped, so no other entry moved.
+- `scripts/lanes.mjs` (`pnpm lanes`):
+  - `parseLaneFile` reads one file's six `- Key: value` fields. A misspelt, missing or repeated field is refused, as are a deliverable that is not the one the file is named for, an undated `Opened`, an unquoted branch, a tier outside `package | api | schema`, and a record that is not a `[NNNN](../../adr/NNNN-….md)` link whose label matches its file. Prose lines are not read.
+  - `renderLanes` writes the block: one list item per lane, linking the plan and the lane file, and the running paragraph. The paragraph says which lanes are open, that their records are amendable and every other record closed, which lane owns the schema, and the lanes by tier. It is rendered from the files alone.
+  - The block sits between two HTML-comment markers in the window section. `pnpm lanes` rewrites only what is between them, writes nothing when it is current, and writes nothing at all when a lane file does not parse.
+- `scripts/docs-hygiene.mjs`: `parseLanes(ledger, laneFiles)` and `checkLanes({ ledger, laneFiles, readPlan })` read the files instead of the list.
+  - Kept: a shared record, a second schema lane, a file that does not parse, a table row `in progress` without a file (`lane-missing`) and a file for a row that is not (`lane-not-open`). A violation names the lane file and the field's line.
+  - New: `lane-tier` refuses a tier the plan's header does not name (or a plan with no `- Tier:` above its first section), and a `schema` tier on a lane without `Schema: yes` or the reverse. `lane-plan-missing` refuses a lane whose plan does not exist. `lanes-stale` refuses a missing, broken or stale generated block.
+  - `docs:check` prints `open lanes: disjoint, generated block current (1 open; package 1)`, the tiers counted. `checkUnionJournal` and `scanUnionJournal` are untouched and still run: "union journal: no passage twice".
+- The ledger's window section: the entry-shape bullet now describes the lane files, what generates the block and what `docs:check` refuses; the narrative bullet says where history is written. `**Open lanes:**` is replaced by the generated block.
+- `/scope` writes the `- Tier:` line and offers opening as **create the lane file**, with the file's shape, `pnpm lanes` and `pnpm docs:check`. `/ship` deletes the lane file and runs `pnpm lanes`. `/bootstrap` deletes the lane files, keeps the block's markers in the fork's window section, and runs `pnpm lanes`. `docs/forking.md` says a fork's lanes are its own lane files. The root `package.json` gains `lanes`.
+
+**The running paragraph: the reading taken, and the amendment.** 0082 §4 said the paragraph "is written by `pnpm lanes` from the files and refused by `docs:check` when stale", and said nothing of the ~42 KB of window history the hand-written paragraph carried. A lane file holds state, not history, so a paragraph generated from the files cannot carry that history, and deleting it would lose the ledger's record of every window since D14. The smallest reading that satisfies both:
+
+- The generated block holds the list and a paragraph of state only.
+- The hand-written paragraph is kept **verbatim** in the window section, under `### The running paragraph, frozen at D34.4` below the block, with one sentence saying why it is frozen, and is never edited again. It was checked byte for byte against `HEAD`'s line (42 272 characters).
+- From this step on, a window's history is written in the ledger's `How D<n> opened` / `How D<n> closed` sections and in the records' status lines and index rows — where it was already written as well.
+
+0082 §4 is amended in place with that reading, labelled `**Amended 2026-09-30 (D34.4).**`. The amendment also says the list is part of the generated block, so opening or shipping a lane touches its own file alone and a conflict in the block is resolved by running `pnpm lanes`. And it says a lane file names its branch and tier and what `docs:check` refuses about the tier.
+
+**Tests.** `scripts/docs-hygiene.test.mjs`, the lane cases rewritten against lane files (fixtures built in memory, the plan's tier injected through `readPlan`):
+
+- "one open lane reads as before", "two open lanes never share a record", "a second lane on the schema is refused" — the three kept cases, against lane files.
+- "a stale running paragraph is refused" — the block as it stood before a second lane's file, a hand edit inside the block, no block, one marker alone.
+- "a tier the plan does not name is refused" — a tier the plan contradicts, a plan with no tier in its header, a tier outside the vocabulary, and the `schema` tier without `Schema: yes` and the reverse.
+- "the tiers are counted, and the schema tier is at most one lane", "a lane file that does not parse is refused, not skipped" (six malformed files and a misnamed one), "a record not written as a matching link is refused", "a deliverable in progress with no file is refused, and so is a file for one that is not", "a lane whose plan is missing is refused", "a ledger with nothing in progress, no lane files and no block has no lanes".
+- "pnpm lanes writes the block, and nothing on a second run" (a temporary root; the frozen history below the block untouched; a file that does not parse writes nothing) and "the generated block survives prettier unchanged".
+- The live tree was also probed: with D34's tier edited to `api`, `pnpm docs:check` reported `lane-tier` on `docs/plan/lanes/D34.md:8` and `lanes-stale` on the ledger, and was clean again once the file was restored.
+
+**Done-whens.**
+
+- The three kept cases, "a stale running paragraph is refused" and "a tier the plan does not name is refused": green (`docs-hygiene.test.mjs` 58 of 58).
+- `pnpm lanes` twice after the block was first written: `lanes: unchanged docs/plan/README.md (1 open)` both times.
+- `pnpm docs:check`: clean.
+- `pnpm test:scripts`: green, 125 tests.
+
+**Gate**, over the whole diff, with `TEST_DB_LANE=claude-nifty-planck-bnxu4s` and nothing else exported, never `--force`:
+
+- `pnpm lint`: pass (22 tasks, 2 cached; `test:scripts` 125 tests and `docs:check` inside it).
+- `pnpm check-types`: pass (17 tasks, 3 cached).
+- `pnpm test`: pass (17 tasks, 0 cached, 8m41s, under the `tiers` lock). `api` 51 unit files / 836 tests and 29 int files / 847 tests; `@repo/db` 7 unit files / 125 tests and 6 int files / 128 tests; `admin` 54 files; `customer` 39 files. All 23 `db:migrate →` lines name `machxi_claude-nifty-planck-bnxu4s_test`.
+- `pnpm size`: pass (4 tasks).
+- `pnpm format:check`: pass.
+
+**Review.** **Owed.** This builder session has no Agent tool, so it could not run the one bounded review in a fresh context; by ADR-0082 §2 its own reading is not the review, and none is recorded here. The orchestrating session runs it over this step's commit — `adr-reviewer` fits, the step amending 0082 §4 and moving 0079 — and a confirmed finding is fixed in a `D34.4` follow-up commit, noted below.
+
+**Pending the operator.** Nothing is browser-only. CI state was not read (steps 1–4 close on the local gate); the pull request's `gate.yml` run on this push is its CI proof. **Read 0082 §4's `D34.4` amendment**: it is the reading taken of the running paragraph, with the ledger's history frozen in the window section rather than moved or dropped.
+
+**`pnpm step:check` on the committed tree** (`ea1bbee` before this paragraph was added), with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, base `d518b5938943` (`git merge-base origin/main HEAD`), exit 0:
+
+```
+step:check against d518b5938943b56fafbb726ae37fa268a77b4efe
+  ran      check
+  ran      integration @repo/db (every file: apps/api/test/setup/env.test.ts changed): 6 file(s)
+  ran      integration api (every file: apps/api/test/setup/env.test.ts changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      format:check
+step:check ✓
+```
+
+`check`: 39 tasks and then `test:unit`'s 17 (all cached), all successful. The base is the lane's merge base, so `D34.1`'s harness change is still a trigger and both integration tiers ran whole: `@repo/db` 128 tests and `api` 847. `size`: 4 tasks cached. After it only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.

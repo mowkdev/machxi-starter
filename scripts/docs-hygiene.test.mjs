@@ -27,6 +27,7 @@ import {
   checkTagPrefix,
   checkText,
   checkUnionJournal,
+  countTiers,
   inheritedDocuments,
   isExcluded,
   parseLanes,
@@ -38,6 +39,7 @@ import {
   scanUnionJournal,
   specDocuments,
 } from "./docs-hygiene.mjs";
+import { parseLaneFile, renderLanes, writeLanes } from "./lanes.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -1761,8 +1763,9 @@ test("a file with no requirement is caught", () => {
   ]);
 });
 
-// The open lanes (ADR-0079 §1–§3): the committed ledger's lanes are disjoint,
-// and each lane rule fires on the fixture it exists for.
+// The open lanes (ADR-0079 §1–§3, ADR-0082 §4–§5): one file each under
+// `docs/plan/lanes/`, the committed ones disjoint and the ledger's generated
+// block current, and each lane rule fires on the fixture it exists for.
 test("the committed ledger's open lanes are disjoint", async () => {
   const { violations } = await scanLanes();
   assert.deepEqual(
@@ -1771,143 +1774,332 @@ test("the committed ledger's open lanes are disjoint", async () => {
   );
 });
 
-const lane = (n, records, schema = "no") =>
-  `- **Lane [D${n}](00${n}-x.md)** — opened 2026-09-29 · records ${records
-    .map((r) => `[${r}](../adr/${r}-x.md)`)
-    .join(", ")} · schema: ${schema}`;
+/** A lane file's `{ rel, name, text }`, in the shape `/scope` writes. */
+const lane = (n, records, schema = "no", tier) => ({
+  rel: `docs/plan/lanes/D${n}.md`,
+  name: `D${n}.md`,
+  text: `# Lane D${n}
 
-// The table marks `in progress` every deliverable an entry names, unless a
-// case passes its own rows.
-const rowsFor = (entries) =>
-  [...new Set(entries.map((e) => e.match(/\[(D\d+)\]/)?.[1]).filter(Boolean))]
+An open lane.
+
+- Deliverable: [D${n}](../00${n}-x.md)
+- Opened: 2026-09-29
+- Branch: \`lane/D${n}\`
+- Tier: ${tier ?? (schema === "yes" ? "schema" : "package")}
+- Schema: ${schema}
+- Records: ${records.map((r) => `[${r}](../../adr/${r}-x.md)`).join(", ")}
+`,
+});
+
+/** Every plan names the tier its lane file carries, unless a case says not. */
+const plansFor = (files, tiers = {}) => {
+  const plans = new Map();
+  for (const file of files) {
+    const n = file.name.match(/^D(\d+)\.md$/)?.[1];
+    if (!n) continue;
+    const tier =
+      `D${n}` in tiers
+        ? tiers[`D${n}`]
+        : (file.text.match(/^- Tier: (\S+)/m)?.[1] ?? "package");
+    // A tier line below the header is not the plan's tier.
+    plans.set(
+      `00${n}-x.md`,
+      tier === null
+        ? `# D${n}\n\n- Schema: no\n\n## Goal\n\n- Tier: package\n`
+        : `# D${n}\n\n- Schema: no\n- Tier: ${tier} (why)\n\n## Goal\n`,
+    );
+  }
+  return (rel) => plans.get(rel) ?? null;
+};
+
+// The table marks `in progress` every deliverable a file names, unless a case
+// passes its own rows.
+const rowsFor = (files) =>
+  [...new Set(files.map((f) => f.name.match(/^(D\d+)\.md$/)?.[1]))]
+    .filter(Boolean)
     .map((d) => `| [${d}](x.md) | T | **in progress** | x |`)
     .join("\n");
 
-const ledger = (...entries) => ledgerWith(rowsFor(entries), entries);
-
-const ledgerWith = (rows, entries, heading = "**Open lanes:**") => `# Ledger
+/** The ledger around a block; `block` defaults to what `pnpm lanes` writes. */
+const ledgerWith = (rows, block) => `# Ledger
 
 | # | Title | Status | Scope |
 | - | ----- | ------ | ----- |
 | D2 | Old | **shipped 2026-01-01** | x |
 ${rows}
 
-## Rules
-
-- **Lane [D1](0001-x.md)** — not in the window section, never read
-
 ## The window
 
 Preamble.
 
-${heading}
+**Open lanes** — one file each:
 
-${entries.join("\n")}
+${block}
 
-The running paragraph, which is not a lane.
+### The running paragraph, frozen
 
-- A list after the paragraph is not a lane either.
+History, never read.
 
 ## Executing a step
 `;
 
+const current = (files) =>
+  renderLanes(
+    files.map((f) => parseLaneFile(f.name, f.text).lane).filter(Boolean),
+  );
+
+/** Checks lane files against a ledger whose block is current. */
+const check = (files, { rows = rowsFor(files), tiers, block } = {}) =>
+  checkLanes({
+    ledger: ledgerWith(rows, block ?? current(files)),
+    laneFiles: files,
+    readPlan: plansFor(files, tiers),
+  });
+
 test("one open lane reads as before", () => {
-  const text = ledger(lane(30, ["0079", "0025"]));
-  const { lanes, malformed } = parseLanes(text);
+  const files = [lane(30, ["0079", "0025"])];
+  const { lanes, malformed } = parseLanes(
+    ledgerWith(rowsFor(files), ""),
+    files,
+  );
   assert.deepEqual(malformed, []);
   assert.deepEqual(
-    lanes.map((l) => [l.deliverable, l.opened, l.records, l.schema]),
-    [["D30", "2026-09-29", ["0079", "0025"], false]],
+    lanes.map((l) => [
+      l.deliverable,
+      l.opened,
+      l.records.map((r) => r.id),
+      l.schema,
+      l.tier,
+      l.branch,
+      l.file,
+    ]),
+    [
+      [
+        "D30",
+        "2026-09-29",
+        ["0079", "0025"],
+        false,
+        "package",
+        "lane/D30",
+        "docs/plan/lanes/D30.md",
+      ],
+    ],
   );
-  assert.deepEqual(rules(checkLanes("l.md", text)), []);
+  assert.deepEqual(rules(check(files)), []);
 });
 
 test("two open lanes never share a record", () => {
-  const disjoint = ledger(
+  const disjoint = [
     lane(29, ["0078", "0018"], "yes"),
     lane(31, ["0080", "0062"]),
-  );
-  assert.deepEqual(rules(checkLanes("l.md", disjoint)), []);
+  ];
+  assert.deepEqual(rules(check(disjoint)), []);
 
-  const shared = ledger(lane(29, ["0078", "0018"]), lane(31, ["0080", "0018"]));
-  const violations = checkLanes("l.md", shared);
+  const shared = [lane(29, ["0078", "0018"]), lane(31, ["0080", "0018"])];
+  const violations = check(shared);
   assert.deepEqual(rules(violations), ["lane-shared-record"]);
   assert.equal(violations[0].found, "0018");
+  assert.equal(violations[0].file, "docs/plan/lanes/D31.md");
 });
 
 test("a second lane on the schema is refused", () => {
-  const text = ledger(
+  const files = [
     lane(29, ["0078"], "yes"),
     lane(31, ["0080"], "yes"),
     lane(32, ["0081"]),
-  );
-  const violations = checkLanes("l.md", text);
+  ];
+  const violations = check(files);
   assert.deepEqual(rules(violations), ["lane-second-schema"]);
   assert.equal(violations[0].found, "D31");
 });
 
-test("a lane entry that does not parse is refused, not skipped", () => {
-  const text = ledger(
-    lane(30, ["0079"]),
-    "- **Lane D31** — opened 2026-09-29 · records 0079 · schema: no",
+test("a stale running paragraph is refused", () => {
+  const files = [lane(29, ["0078"], "yes"), lane(31, ["0080"])];
+  // The block as it stood before D31's file was added.
+  const before = current([files[0]]);
+  const violations = check(files, { block: before });
+  assert.deepEqual(rules(violations), ["lanes-stale"]);
+  assert.equal(violations[0].file, LEDGER);
+
+  // A hand edit inside the block is stale too.
+  const handEdited = current(files).replace(
+    "D29 owns the schema",
+    "D29 owns the schema, for now",
   );
-  assert.deepEqual(rules(checkLanes("l.md", text)), ["lane-malformed"]);
+  assert.deepEqual(rules(check(files, { block: handEdited })), ["lanes-stale"]);
+
+  // A ledger with lanes open and no block at all.
+  assert.deepEqual(rules(check(files, { block: "Hand-written." })), [
+    "lanes-stale",
+  ]);
+  // One marker without the other.
+  assert.deepEqual(
+    rules(check(files, { block: current(files).split("\n")[0] })),
+    ["lanes-stale"],
+  );
+  // The block names what the files say, and nothing else.
+  assert.match(current(files), /\*\*Two lanes are open: D29 and D31\.\*\*/);
+  assert.match(current(files), /D29 owns the schema/);
+  assert.match(current(files), /By tier: `package` D31; `schema` D29\./);
+});
+
+test("a tier the plan does not name is refused", () => {
+  const files = [lane(30, ["0079"]), lane(31, ["0080"], "no", "api")];
+  assert.deepEqual(rules(check(files)), []);
+
+  // The plan says api; the lane file says package.
+  const differs = check(files, { tiers: { D30: "api" } });
+  assert.deepEqual(rules(differs), ["lane-tier"]);
+  assert.equal(differs[0].file, "docs/plan/lanes/D30.md");
+  assert.equal(differs[0].found, "package");
+
+  // A plan with no `- Tier:` line in its header names no tier.
+  assert.deepEqual(rules(check(files, { tiers: { D31: null } })), [
+    "lane-tier",
+  ]);
+
+  // A tier outside the vocabulary does not parse.
+  const unknown = [lane(30, ["0079"], "no", "frontend")];
+  assert.deepEqual(rules(check(unknown, { tiers: { D30: "frontend" } })), [
+    "lane-malformed",
+  ]);
+
+  // The schema tier is the lane that adds migrations, and no other.
+  const mismatch = [lane(29, ["0078"], "no", "schema")];
+  assert.deepEqual(rules(check(mismatch)), ["lane-tier"]);
+  const unmarked = [lane(29, ["0078"], "yes", "api")];
+  assert.deepEqual(rules(check(unmarked)), ["lane-tier"]);
+});
+
+test("the tiers are counted, and the schema tier is at most one lane", () => {
+  const files = [
+    lane(29, ["0078"], "yes"),
+    lane(30, ["0079"], "no", "api"),
+    lane(31, ["0080"]),
+    lane(32, ["0081"]),
+  ];
+  const { lanes } = parseLanes("", files);
+  assert.deepEqual(countTiers(lanes), { package: 2, api: 1, schema: 1 });
+  assert.deepEqual(rules(check(files)), []);
+});
+
+test("a lane file that does not parse is refused, not skipped", () => {
+  const good = lane(30, ["0079"]);
+  const cases = [
+    // A field misspelt.
+    good.text.replace("- Opened:", "- Open:"),
+    // A field missing.
+    good.text.replace(/^- Branch: .*\n/m, ""),
+    // A field twice.
+    `${good.text}- Tier: api\n`,
+    // The deliverable not the one the file is named for.
+    good.text.replace("[D30](", "[D31]("),
+    // The branch not backticked.
+    good.text.replace("`lane/D30`", "lane/D30"),
+    // A date that is not one.
+    good.text.replace("2026-09-29", "yesterday"),
+  ];
+  for (const text of cases) {
+    const violations = check([{ ...good, text }]);
+    assert.deepEqual([...new Set(rules(violations))], ["lane-malformed"], text);
+  }
+  const misnamed = { ...good, rel: "docs/plan/lanes/d30.md", name: "d30.md" };
+  assert.deepEqual(rules(check([misnamed], { rows: rowsFor([good]) })), [
+    "lane-malformed",
+    "lane-missing",
+  ]);
 });
 
 test("a record not written as a matching link is refused", () => {
-  const bare = ledger(
-    lane(29, ["0078"]).replace(" · schema", ", 0018 · schema"),
-    lane(31, ["0018"]),
-  );
-  // The refused entry is not a lane, so its row is also missing one.
-  assert.deepEqual(rules(checkLanes("l.md", bare)), [
+  const bare = lane(29, ["0078"]);
+  bare.text = bare.text.replace(/(- Records: .*)$/m, "$1, 0018");
+  assert.deepEqual(rules(check([bare, lane(31, ["0018"])])), [
+    "lane-malformed",
+  ]);
+  const mislabelled = lane(30, ["0079"]);
+  mislabelled.text = mislabelled.text.replace("[0079]", "[0080]");
+  assert.deepEqual(rules(check([mislabelled])), ["lane-malformed"]);
+});
+
+test("a deliverable in progress with no file is refused, and so is a file for one that is not", () => {
+  const files = [lane(29, ["0078"])];
+  assert.deepEqual(rules(check([], { rows: rowsFor(files) })), [
     "lane-missing",
-    "lane-malformed",
   ]);
-  const mislabelled = ledger(lane(30, ["0079"]).replace("[0079]", "[0080]"));
-  assert.deepEqual(rules(checkLanes("l.md", mislabelled)), [
-    "lane-missing",
-    "lane-malformed",
-  ]);
+  const stale = check(files, { rows: "" });
+  assert.deepEqual(rules(stale), ["lane-not-open"]);
+  assert.equal(stale[0].file, "docs/plan/lanes/D29.md");
 });
 
-test("an indented line inside the list is refused, and lanes after it are read", () => {
-  const text = ledger(
-    lane(29, ["0018"], "yes"),
-    "  a note under the entry",
-    lane(31, ["0018"], "yes"),
-  );
-  assert.deepEqual(rules(checkLanes("l.md", text)), [
-    "lane-malformed",
-    "lane-shared-record",
-    "lane-second-schema",
-  ]);
+test("a lane whose plan is missing is refused", () => {
+  const files = [lane(30, ["0079"])];
+  const violations = checkLanes({
+    ledger: ledgerWith(rowsFor(files), current(files)),
+    laneFiles: files,
+    readPlan: () => null,
+  });
+  assert.deepEqual(rules(violations), ["lane-plan-missing"]);
 });
 
-test("a deliverable in progress with no entry is refused, and so is an entry for one that is not", () => {
-  const misspelt = ledgerWith(
-    rowsFor([lane(29, ["0078"])]),
-    [lane(29, ["0078"])],
-    "**Open lanes**:",
-  );
-  assert.deepEqual(rules(checkLanes("l.md", misspelt)), ["lane-missing"]);
-  const stale = ledgerWith("", [lane(29, ["0078"])]);
-  assert.deepEqual(rules(checkLanes("l.md", stale)), ["lane-not-open"]);
-});
-
-test("a deliverable has one entry", () => {
-  const text = ledger(lane(30, ["0079"]), lane(30, ["0025"], "yes"));
-  assert.deepEqual(rules(checkLanes("l.md", text)), ["lane-duplicate"]);
-});
-
-test("a ledger with nothing in progress and no open-lanes list has no lanes", () => {
+test("a ledger with nothing in progress, no lane files and no block has no lanes", () => {
   const text = "# Ledger\n\n## The window\n\nNothing is open.\n";
-  assert.deepEqual(parseLanes(text), {
+  assert.deepEqual(parseLanes(text, []), {
     lanes: [],
     malformed: [],
     inProgress: [],
   });
-  assert.deepEqual(rules(checkLanes("l.md", text)), []);
+  assert.deepEqual(
+    rules(checkLanes({ ledger: text, laneFiles: [], readPlan: () => null })),
+    [],
+  );
+  // With the block, it says so.
+  assert.match(renderLanes([]), /\*\*No lane is open\.\*\*/);
+});
+
+test("pnpm lanes writes the block, and nothing on a second run", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "lanes-"));
+  try {
+    await mkdir(path.join(root, "docs", "plan", "lanes"), { recursive: true });
+    const files = [lane(29, ["0078"], "yes"), lane(31, ["0080"])];
+    for (const f of files) {
+      await writeFile(path.join(root, f.rel), f.text);
+    }
+    const ledgerPath = path.join(root, ...LEDGER.split("/"));
+    await writeFile(
+      ledgerPath,
+      ledgerWith(rowsFor(files), current([files[0]])),
+    );
+    assert.deepEqual(await writeLanes(root), { wrote: true, lanes: 2 });
+    const once = await readFile(ledgerPath, "utf8");
+    assert.deepEqual(await writeLanes(root), { wrote: false, lanes: 2 });
+    assert.equal(await readFile(ledgerPath, "utf8"), once);
+    assert.ok(once.includes(current(files)));
+    // Only the block changed: the frozen history below it is untouched.
+    assert.ok(once.includes("### The running paragraph, frozen\n\nHistory"));
+
+    // A file that does not parse writes nothing.
+    await writeFile(path.join(root, files[1].rel), "- Tier: api\n");
+    await assert.rejects(writeLanes(root), /D31\.md/);
+    assert.equal(await readFile(ledgerPath, "utf8"), once);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the generated block survives prettier unchanged", () => {
+  const files = [lane(29, ["0078", "0018"], "yes"), lane(31, ["0080"])];
+  const text = ledgerWith(rowsFor(files), current(files));
+  const run = spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "node_modules", "prettier", "bin", "prettier.cjs"),
+      "--stdin-filepath",
+      "docs/plan/README.md",
+    ],
+    { input: text, encoding: "utf8", cwd: repoRoot },
+  );
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes(current(files)));
 });
 
 // The tag prefix (ADR-0081 §5): one line of the ledger's header names the

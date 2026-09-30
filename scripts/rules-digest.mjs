@@ -382,7 +382,12 @@ export const AREAS = [
       {
         topic: "The window",
         records: ["0079", "0025"],
-        text: "An ADR may be amended in place only while the deliverable it belongs to is in progress; once that deliverable ships the record changes only by supersession, and opening a second lane reopens nothing. Which windows are open, and which records are in force, is stated in one place — the ledger's window section, one entry per open lane — and linked from everywhere else.",
+        text: "An ADR may be amended in place only while the deliverable it belongs to is in progress; once that deliverable ships the record changes only by supersession, and opening a second lane reopens nothing. Which windows are open, and which records are in force, is stated in one place — the ledger's window section, which links one file per open lane — and linked from everywhere else.",
+      },
+      {
+        topic: "Lane files and tiers",
+        records: ["0082", "0079"],
+        text: "Each open lane is a file, `docs/plan/lanes/D<n>.md`: the deliverable and its plan, the date it opened, its branch, its tier, whether it adds migrations, and its records. `/scope` creates it when a lane opens and `/ship` removes it. The window section's list of lanes and its running paragraph are generated from the files by `pnpm lanes`, never edited by hand, and a conflict in them is resolved by running it; the paragraph states only what the files say, and a window's history is the ledger's `How D<n> opened` and `How D<n> closed` sections. A plan's header names its tier beside `- Schema:` — `package` needs no Postgres and no build, `api` takes a lane database, `schema` is the one lane that adds migrations — and `pnpm docs:check` refuses a lane whose tier its plan does not name, and a stale generated block.",
       },
       {
         topic: "Lanes",
