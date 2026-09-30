@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { laneDatabaseUrl } from "./test-database.js";
+
 /**
  * The only place in `@repo/db` that reads `process.env` (ADR-0004).
  *
@@ -206,9 +208,13 @@ const isRefusedProductionDatabaseUrl = (url: string): boolean => {
  *
  * From step 7 on, `apps/api/.env.test` is the file the API's `globalSetup`
  * follows; the root value read here is what lets this package's own
- * integration tests run before that file exists.
+ * integration tests run before that file exists. Since ADR-0082 §3 this
+ * package's tier reads its own committed `packages/db/.env.test`, which
+ * `vitest.int.config.ts` loads, and a set `TEST_DB_LANE` points both test URLs
+ * at the lane's database.
  */
-export const readTestDatabaseUrl = (): string => required("DATABASE_URL_TEST");
+export const readTestDatabaseUrl = (): string =>
+  laneDatabaseUrl(required("DATABASE_URL_TEST"), readTestDbLane());
 
 /**
  * The integration-test database as the **owner** (ADR-0061 §1).
@@ -219,7 +225,15 @@ export const readTestDatabaseUrl = (): string => required("DATABASE_URL_TEST");
  * grant is ever found by a machine rather than by a deployment.
  */
 export const readTestOwnerDatabaseUrl = (): string =>
-  required("DATABASE_URL_TEST_OWNER");
+  laneDatabaseUrl(required("DATABASE_URL_TEST_OWNER"), readTestDbLane());
+
+/**
+ * The lane whose test database both URLs above name (ADR-0082 §3): the
+ * branch's slug as `pnpm db:lane` prints it, or unset for `machxi_test`.
+ * Tooling-only, like the URLs it rewrites; declared on `test` and `test:int`
+ * in `turbo.json`.
+ */
+export const readTestDbLane = (): string | undefined => read("TEST_DB_LANE");
 
 /**
  * `NODE_ENV`, with an unset value read as `development` (ADR-0075 §4).

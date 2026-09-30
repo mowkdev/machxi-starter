@@ -205,6 +205,11 @@ export const AREAS = [
         text: "Unit tests use fake repositories as plain objects; integration tests go through `createApp(buildContainer({ db: testDb }))` and supertest against the test database. Every new endpoint gets both, plus a Postman request.",
       },
       {
+        topic: "A test database per lane",
+        records: ["0082", "0021", "0007", "0004"],
+        text: "The integration tiers run on `machxi_test` when `TEST_DB_LANE` is unset and on `machxi_<lane>_test` when it is set, `<lane>` being the branch's slug. `pnpm --silent db:lane` creates the current branch's database with `machxi_test`'s owner and grants, idempotently, refuses `main`, and prints the value to export — a lane's database is never named by hand. Both harnesses rewrite their test URLs after the committed env files load — `apps/api/.env.test`, `packages/db/.env.test`, neither carrying `TEST_DB_LANE` — and the `_test` suffix guard holds on both sides of the rewrite. `TEST_DB_LANE` is declared on `test` and `test:int`.",
+      },
+      {
         topic: "Lint is the mechanical half",
         records: ["0002", "0062"],
         text: "`packages/config-eslint/api.js` already fails the build on classes, raw responses, `process.env` and layer-crossing imports. A rule a reviewer keeps repeating belongs there instead.",

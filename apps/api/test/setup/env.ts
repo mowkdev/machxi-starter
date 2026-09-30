@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { config as loadDotenv } from "dotenv";
 
+import { laneDatabaseUrl } from "@repo/db/testing";
+
 /**
  * Loads `apps/api/.env.test` for the integration run (ADR-0004 §File layout,
  * ADR-0021).
@@ -35,6 +37,20 @@ const read = (key: string): string => {
   return value;
 };
 
+/**
+ * A test URL, pointed at the lane's database when `TEST_DB_LANE` is set
+ * (ADR-0082 §3): `machxi_test` becomes `machxi_<lane>_test`, where the lane is
+ * the branch's slug as `pnpm db:lane` prints it. Applied **after** the file
+ * loads — the file names the family, the shell names the member — and never
+ * written back to the `_TEST` variables, so nothing downstream can stack the
+ * lane twice. `laneDatabaseUrl` keeps the `_test` suffix guard on both sides.
+ *
+ * `TEST_DB_LANE` is deliberately absent from `.env.test`: the `override: true`
+ * load below would otherwise pin every lane to one database.
+ */
+const readTestUrl = (key: string): string =>
+  laneDatabaseUrl(read(key), process.env.TEST_DB_LANE?.trim());
+
 let loaded = false;
 
 /**
@@ -64,13 +80,13 @@ export const loadTestEnv = (): {
     loaded = true;
   }
 
-  const databaseUrl = read("DATABASE_URL_TEST");
+  const databaseUrl = readTestUrl("DATABASE_URL_TEST");
   // The owner's connection (ADR-0061 §1). Read here rather than derived from
   // the one above, because the two differ by credentials and a derivation
   // would have to know how to rewrite them — which is exactly the kind of
   // guess that ends up pointing the harness at the application role and
   // reporting "permission denied for schema public" from `globalSetup`.
-  const ownerDatabaseUrl = read("DATABASE_URL_TEST_OWNER");
+  const ownerDatabaseUrl = readTestUrl("DATABASE_URL_TEST_OWNER");
 
   process.env.DATABASE_URL = databaseUrl;
   // Both, and the second is the one that matters more since `D14.4`. Anything
@@ -113,7 +129,9 @@ export const loadTestEnv = (): {
 export const readTestSuperuserUrl = (): string => {
   loadTestEnv();
 
-  return read("DATABASE_URL_TEST_SUPERUSER");
+  // On the lane's database too, so the superuser's cases read the schema the
+  // rest of the run built rather than `machxi_test`'s (ADR-0082 §3).
+  return readTestUrl("DATABASE_URL_TEST_SUPERUSER");
 };
 
 loadTestEnv();

@@ -9,6 +9,7 @@ import { createDb, type DbExecutor } from "./client.js";
 import { runMigrations } from "./migrate.js";
 import { resetSchema } from "./reset.js";
 import { isProduction } from "./tooling/env.js";
+import { assertTestDatabase } from "./tooling/test-database.js";
 
 /**
  * Test-database helpers (ADR-0021).
@@ -22,27 +23,11 @@ import { isProduction } from "./tooling/env.js";
  * imports `@repo/db` should be able to reach it by accident.
  */
 
-/**
- * The suffix a database must carry before this module will drop its schema.
- *
- * `resetSchema` takes whatever URL it is given, and the `NODE_ENV=production`
- * refusal lives in the `db:reset` CLI wrapper, which this path does not go
- * through. A `DATABASE_URL_TEST` copy-pasted from `DATABASE_URL` — the
- * likeliest way to get this wrong — would otherwise drop the developer's dev
- * schema on `pnpm test:int` (ADR-0008 §Environment guardrails).
- */
-export const TEST_DATABASE_SUFFIX = "_test";
-
-/** Throws unless `url` names a database whose name ends in `_test`. */
-export const assertTestDatabase = (url: string): void => {
-  const database = new URL(url).pathname.replace(/^\//, "");
-
-  if (!database.endsWith(TEST_DATABASE_SUFFIX)) {
-    throw new Error(
-      `Refusing to reset "${database}": the test database URL must name a database ending in "${TEST_DATABASE_SUFFIX}" (ADR-0007 creates machxi_test for exactly this).`,
-    );
-  }
-};
+export {
+  assertTestDatabase,
+  laneDatabaseUrl,
+  TEST_DATABASE_SUFFIX,
+} from "./tooling/test-database.js";
 
 /**
  * Drops schemas `public` and `drizzle`, then replays every committed migration
