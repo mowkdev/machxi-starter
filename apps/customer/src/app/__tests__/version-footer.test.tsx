@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe("the sidebar's version footer", () => {
-  it("the footer shows dev and no commit when unset", async () => {
+  it("the footer shows dev when unset", async () => {
     renderApp({ initialPath: "/", store: authenticated() });
 
     // The shell first: the session boots before anything renders (ADR-0033).

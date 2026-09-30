@@ -55,21 +55,20 @@ COPY . .
 
 RUN pnpm install --frozen-lockfile --offline
 
-# **The build's two facts, stamped into the bundle** (ADR-0081 §2): the release
-# label and the commit, under the names the API's image and `turbo.json` use —
-# no `VITE_`-named twin. Promoted to `ENV` because `app-version.ts` reads them
-# from the process environment and `turbo.json`'s `build` task passes them
-# through, as it does `VITE_*`. The sidebar footer shows both.
+# **The build's release label, stamped into the bundle** (ADR-0081 §2), under
+# the name the API's image and `turbo.json` use — no `VITE_`-named twin.
+# Promoted to `ENV` because `app-version.ts` reads it from the process
+# environment and `turbo.json`'s `build` task passes it through, as it does
+# `VITE_*`. The sidebar footer shows it alone. **No `GIT_SHA`** (`D32.5`): the
+# commit is the API's `/health` fact, and this image does not take it.
 #
 # Declared here, below the install, rather than beside the `VITE_*` arguments
 # above: the label changes with every release, where an API origin does not,
-# and a new label should rebuild the bundle and nothing under it. Omitted, both
-# arrive as empty strings, which `app-version.ts` reads as unset: the footer
-# says `dev` and shows no commit (ADR-0081 §1).
+# and a new label should rebuild the bundle and nothing under it. Omitted, it
+# arrives as the empty string, which `app-version.ts` reads as unset: the
+# footer says `dev` (ADR-0081 §1).
 ARG APP_VERSION
-ARG GIT_SHA
-ENV APP_VERSION=${APP_VERSION} \
-    GIT_SHA=${GIT_SHA}
+ENV APP_VERSION=${APP_VERSION}
 
 RUN pnpm turbo run build --filter=admin
 

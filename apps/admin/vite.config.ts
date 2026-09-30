@@ -99,9 +99,9 @@ export default defineConfig({
     tailwindcss(),
   ],
   /*
-   * The sidebar footer's build: the release label and the commit the image
-   * was built with (ADR-0081 §2, `D32.2`). See `app-version.ts` for why the
-   * build's environment rather than `package.json`, and why
+   * The sidebar footer's build: the release label the image was built with,
+   * and no commit (ADR-0081 §2, `D32.2`; `D32.5`). See `app-version.ts` for
+   * why the build's environment rather than `package.json`, and why
    * `vitest.config.ts` installs the same object with nothing set.
    */
   define: versionDefine(process.env),

@@ -1,18 +1,22 @@
 /**
  * The build this app's chrome names (ADR-0081 §1–§3, the delta on ADR-0054
- * §5; `D32.2`).
+ * §5; `D32.2`, and `D32.5` for the label alone).
  *
- * The admin's `app-version.ts` verbatim in mechanism. **Two facts, read from
- * the process environment at build time, under the names every Dockerfile,
- * the reference compose and `turbo.json` use.** `APP_VERSION` is the release
+ * The admin's `app-version.ts` verbatim in mechanism. **One fact, read from
+ * the process environment at build time, under the name every Dockerfile, the
+ * reference compose and `turbo.json` use.** `APP_VERSION` is the release
  * label — one value for the whole product, in whatever scheme the owning
- * repository chose, and never parsed. `GIT_SHA` is the commit the image was
- * built from. Both are build arguments of this app's image, promoted to `ENV`
- * in its build stage; nothing reads a `package.json` for either.
+ * repository chose, and never parsed. It is a build argument of this app's
+ * image, promoted to `ENV` in its build stage; nothing reads a `package.json`
+ * for it.
  *
- * `turbo.json`'s `build` task declares both names in its `env`, so a cached
- * build cannot show another build's version: each value is part of the hash.
- * Locally both are unset, and the footer says `dev`. Blank is unset, as in the
+ * **No commit.** The footer shows the label alone, on the operator's decision
+ * at `D32.5`: the commit is the API's `/health` fact, and this app does not
+ * take `GIT_SHA` at all — no `define`, no `turbo.json` `env` entry, no `ARG`.
+ *
+ * `turbo.json`'s `build` task declares `APP_VERSION` in its `env`, so a cached
+ * build cannot show another build's version: the value is part of the hash.
+ * Locally it is unset, and the footer says `dev`. Blank is unset, as in the
  * API's `core/config`, because a Docker build that passes no `--build-arg`
  * still declares the `ARG`.
  *
@@ -28,7 +32,6 @@
  */
 interface BuildEnvironment {
   readonly APP_VERSION?: string | undefined;
-  readonly GIT_SHA?: string | undefined;
 }
 
 /**
@@ -40,8 +43,7 @@ const given = (value: string | undefined) =>
   value !== undefined && value.trim() !== "" ? value : undefined;
 
 /**
- * The `define` both configs install: `__APP_VERSION__`, the label or `dev`,
- * and `__GIT_SHA__`, the commit or the empty string for none.
+ * The `define` both configs install: `__APP_VERSION__`, the label or `dev`.
  *
  * `vite.config.ts` passes `process.env`; `vitest.config.ts` passes nothing
  * set, so the suite is a pure function of the tree whatever the shell holds.
@@ -52,5 +54,4 @@ const given = (value: string | undefined) =>
 export const versionDefine = (environment: BuildEnvironment) =>
   ({
     __APP_VERSION__: JSON.stringify(given(environment.APP_VERSION) ?? "dev"),
-    __GIT_SHA__: JSON.stringify(given(environment.GIT_SHA) ?? ""),
   }) as const;

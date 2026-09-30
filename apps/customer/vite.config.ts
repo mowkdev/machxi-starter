@@ -107,7 +107,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  /* The build's label and commit (ADR-0081 §2). See `app-version.ts`. */
+  /* The build's label, and no commit (ADR-0081 §2). See `app-version.ts`. */
   define: versionDefine(process.env),
   build: {
     /*

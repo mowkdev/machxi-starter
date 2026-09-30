@@ -14,8 +14,7 @@
     "mark": "m",
     "name": "machxi",
     "product": "Konts",
-    "version": "{{version}}",
-    "versionWithCommit": "{{version}} · {{commit}}"
+    "version": "{{version}}"
   },
   "boot": {
     "unreachable": "Neizdodas sasniegt pakalpojumu. Pārbaudiet savienojumu vai mēģiniet pēc brīža."

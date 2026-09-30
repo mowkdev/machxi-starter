@@ -62,7 +62,7 @@ export const AREAS = [
       {
         topic: "Build versions",
         records: ["0081", "0004", "0016"],
-        text: "Two facts name a build, under the same two names in every Dockerfile, in compose and in `turbo.json`: `APP_VERSION`, the release label, one value for the whole product and never parsed, and `GIT_SHA`, the commit. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged.",
+        text: "Two facts name a build, each under one name everywhere it is taken: `APP_VERSION`, the release label, one value for the whole product and never parsed, stamped into all three images, and `GIT_SHA`, the commit, the API's image's alone. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged, and is the one place the commit is shown.",
       },
       {
         topic: "Loading env files",
@@ -339,7 +339,7 @@ export const AREAS = [
       {
         topic: "The build's version",
         records: ["0081", "0054"],
-        text: "The sidebar footer of both SPAs shows the release label and, when there is one, the commit's first seven characters — `dev` alone when unset, the label as given. Both are `APP_VERSION` and `GIT_SHA` from the build's environment, substituted through the `define` each `app-version.ts` builds, and declared in each app's `turbo.json` `build` `env`, so a cached build cannot show another build's version; each SPA image takes them as build arguments. No `package.json` `version` is read, there is no `VITE_`-named twin and no runtime fetch, and the unit suites build the `define` from nothing set.",
+        text: "The sidebar footer of both SPAs shows the release label alone, as given — `dev` when unset — and never a commit, which is the API's `/health` fact. It is `APP_VERSION` from the build's environment, substituted through the `define` each `app-version.ts` builds, and declared in each app's `turbo.json` `build` `env`, so a cached build cannot show another build's version; each SPA image takes it as a build argument. The SPAs take no `GIT_SHA` — no `define`, no `env` entry, no `ARG`. No `package.json` `version` is read, there is no `VITE_`-named twin and no runtime fetch, and the unit suites build the `define` from nothing set.",
       },
       {
         topic: "Budget headroom",
