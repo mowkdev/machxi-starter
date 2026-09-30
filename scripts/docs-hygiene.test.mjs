@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   appendFile,
   cp,
@@ -2463,6 +2464,25 @@ test("a plan with a close-out step is refused", () => {
   assert.deepEqual(report, { exempt: false, violations: [] });
 });
 
+/**
+ * D34's plan as it shipped, in the shape the check reads: its status line's
+ * dates — shipped, opened and scoped on the day the record withdrew
+ * close-outs — five build steps, and the last close-out any plan carries.
+ */
+const D34_PLAN = planWith(
+  `**shipped ${CLOSE_OUT_WITHDRAWN}** (ledger §How D34 closed); **opened ${CLOSE_OUT_WITHDRAWN}**, alone, as one pull request; **scoped in full ${CLOSE_OUT_WITHDRAWN} by \`/scope\`**, with D29 and D32 in progress.`,
+  [
+    ...[1, 2, 3, 4, 5].flatMap((n) => [
+      `- [x] **${n}. Build part ${n}.** The code, the spec, the digests regenerated.`,
+      "      **ADRs:** 0082.",
+      `      **Done when:** \`part-${n}.test.mjs\` case "it works" green.`,
+    ]),
+    "- [x] **6. Close-out — the last one.** `.claude/README.md` says how lanes run; the digests regenerated; then the definition of done.",
+    "      **ADRs:** 0082, 0065 as carried.",
+    "      **Done when:** the definition of done below, every item.",
+  ],
+);
+
 test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by its date", async () => {
   const closeOut = [
     ...buildStep,
@@ -2521,11 +2541,10 @@ test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by
   );
 
   // D34's own close-out stays allowed by its date, and is the step the check
-  // would catch in a plan written after it.
-  const d34 = await readFile(
-    path.join(repoRoot, "docs/plan/0034-lanes-on-one-machine.md"),
-    "utf8",
-  );
+  // would catch in a plan written after it. A fixture in D34's shape rather
+  // than the plan itself: the plan is the starter's journal, which a fork's
+  // bootstrap removes (ADR-0084 §1).
+  const d34 = D34_PLAN;
   assert.equal(checkCloseOut("d34", d34).exempt, true);
   const d34Later = d34.replaceAll(CLOSE_OUT_WITHDRAWN, "2026-10-01");
   const later = checkCloseOut("d34", d34Later);
@@ -2539,5 +2558,21 @@ test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by
 test("this repository's plans carry no close-out step past their date", async () => {
   const { violations, exempt } = await scanCloseOut();
   assert.deepEqual(violations, []);
-  assert.ok(exempt > 0);
+  // A plan dated on or before the withdrawal is counted exempt, so the scan
+  // is seen reading plans — when there are plans to read. A bootstrapped fork
+  // starts with none (ADR-0084 §1).
+  const plans = existsSync(path.join(repoRoot, "docs/plan"))
+    ? (await readdir(path.join(repoRoot, "docs/plan"))).filter((name) =>
+        /^\d{4}-[^/]+(?<!\.notes)\.md$/.test(name),
+      )
+    : [];
+  const dated = await Promise.all(
+    plans.map(async (name) =>
+      planDate(await readFile(path.join(repoRoot, "docs/plan", name), "utf8")),
+    ),
+  );
+  assert.equal(
+    exempt,
+    dated.filter((date) => date !== null && date <= CLOSE_OUT_WITHDRAWN).length,
+  );
 });

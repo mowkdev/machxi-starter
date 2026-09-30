@@ -23,6 +23,12 @@
  * matters: the token is lowercase everywhere it is load-bearing, and the
  * rendered brand is seeded separately below.
  *
+ * **What it rewrites, it formats** (ADR-0084 §1). A name of another length
+ * re-wraps a long line and widens a Markdown table, so each rewritten file of
+ * an extension `format:check` reads is passed through Prettier with the
+ * configuration and `.prettierignore` that check uses; a fork's first gate
+ * does not fail on files the fork never edited.
+ *
  * `--dry-run` lists what would change and writes nothing, which is also the
  * repository's own smoke test of this file: `machxi` is the placeholder here,
  * so a real run would rewrite the blueprint into something else.
@@ -41,10 +47,13 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 /** The placeholder identity this blueprint ships with (ADR-0064 §1). */
-const TOKEN = "machxi";
+export const TOKEN = "machxi";
 
 /**
  * The same grammar the API's `APP_ID` and both SPAs' `VITE_APP_ID` accept.
@@ -166,12 +175,12 @@ const isSkipped = (relative) =>
   SKIP_EXTENSIONS.has(path.extname(relative));
 
 /** Every candidate file, with the heavy directories pruned during the walk. */
-const walk = (directory, files = []) => {
+const walk = (root, directory = root, files = []) => {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (SKIP_DIRECTORIES.has(entry.name)) continue;
 
-      walk(path.join(directory, entry.name), files);
+      walk(root, path.join(directory, entry.name), files);
 
       continue;
     }
@@ -208,53 +217,80 @@ export const rewrite = (text, name) => text.split(TOKEN).join(name);
 const rewriteBrandMark = (text, name) =>
   text.replace(/("mark":\s*)"[^"]*"/, `$1"${markFor(name)}"`);
 
-const run = () => {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes("--dry-run");
-  const names = args.filter((arg) => !arg.startsWith("--"));
+/**
+ * The extensions `format:check` reads (the root manifest's glob). A rewritten
+ * file of one of them is formatted after the rewrite (ADR-0084 §1): a longer
+ * name re-wraps a line or widens a Markdown table, and a fork's first
+ * `format:check` would otherwise fail on files it never edited.
+ */
+const FORMATTED_EXTENSIONS = new Set([
+  ".css",
+  ".json",
+  ".md",
+  ".mjs",
+  ".ts",
+  ".tsx",
+]);
 
-  /*
-   * An unrecognised flag is a refusal, not a shrug.
-   *
-   * `--dryrun`, `--dry` or a typo would otherwise be filtered out as "not a
-   * name" and the rewrite would run for real, across hundreds of files, with
-   * no confirmation — which is the one mistake this script must not make
-   * quietly.
-   */
-  const unknown = args.filter(
-    (arg) => arg.startsWith("--") && arg !== "--dry-run",
-  );
+/**
+ * Formats each file as `format:check` would read it — the configuration it
+ * resolves, and `.prettierignore` at the root honoured — and returns the ones
+ * whose text changed. Prettier is the root manifest's own dev dependency.
+ */
+/** Prettier's passes over one file before its text is taken as stable. */
+const MAX_FORMAT_PASSES = 3;
 
-  if (unknown.length > 0) {
-    fail(
-      `unknown option: ${String(unknown[0])} (usage: node scripts/rename.mjs <name> [--dry-run])`,
-    );
+const formatFiles = async (root, relatives) => {
+  const prettier = await import("prettier");
+  const ignorePath = path.join(root, ".prettierignore");
+  const formatted = [];
 
-    return;
+  for (const relative of relatives) {
+    if (!FORMATTED_EXTENSIONS.has(path.extname(relative))) continue;
+
+    const absolute = path.join(root, relative);
+    const info = await prettier.getFileInfo(absolute, { ignorePath });
+
+    if (info.ignored || info.inferredParser === null) continue;
+
+    const text = readFileSync(absolute, "utf8");
+    const options = {
+      ...((await prettier.resolveConfig(absolute)) ?? {}),
+      filepath: absolute,
+    };
+
+    /*
+     * Until it is stable, a few passes at most: one pass is not always a fixed
+     * point — a member chain the rewrite lengthened is broken on the first
+     * pass and joined again on the second, and `format:check` reads the
+     * second.
+     */
+    let next = text;
+
+    for (let pass = 0; pass < MAX_FORMAT_PASSES; pass += 1) {
+      const again = await prettier.format(next, options);
+
+      if (again === next) break;
+
+      next = again;
+    }
+
+    if (next === text) continue;
+
+    writeFileSync(absolute, next);
+    formatted.push(relative);
   }
 
-  if (names.length !== 1) {
-    fail("usage: node scripts/rename.mjs <name> [--dry-run]");
+  return formatted;
+};
 
-    return;
-  }
-
-  const [name] = names;
-
-  if (!NAME_PATTERN.test(name) || name.length > MAX_NAME_LENGTH) {
-    fail(
-      `"${name}" is not a usable identifier: lowercase letters, digits and hyphens, starting and ending with a letter or digit, at most ${String(MAX_NAME_LENGTH)} characters. It becomes APP_ID and VITE_APP_ID, which name cookies.`,
-    );
-
-    return;
-  }
-
-  if (name === TOKEN) {
-    fail(`"${TOKEN}" is the placeholder this script removes; pick another.`);
-
-    return;
-  }
-
+/**
+ * Rewrites every candidate file under `root` from the placeholder to `name`,
+ * renames the files whose name carries it, and formats what it rewrote.
+ * `name` is taken as valid; the command line checks it. With `dryRun` nothing
+ * is written and nothing is formatted.
+ */
+export const renameTree = async ({ root, name, dryRun = false }) => {
   const brandCatalogues = new Set(BRAND_CATALOGUES);
   const changed = [];
 
@@ -317,6 +353,70 @@ const run = () => {
     if (!dryRun) renameSync(absolute, next);
   }
 
+  if (dryRun) return { changed, renamed, formatted: [] };
+
+  const movedTo = new Map(renamed.map(({ from, to }) => [from, to]));
+  const formatted = await formatFiles(
+    root,
+    changed.map(({ relative }) => movedTo.get(relative) ?? relative),
+  );
+
+  return { changed, renamed, formatted };
+};
+
+const run = async () => {
+  const args = process.argv.slice(2);
+  const dryRun = args.includes("--dry-run");
+  const names = args.filter((arg) => !arg.startsWith("--"));
+
+  /*
+   * An unrecognised flag is a refusal, not a shrug.
+   *
+   * `--dryrun`, `--dry` or a typo would otherwise be filtered out as "not a
+   * name" and the rewrite would run for real, across hundreds of files, with
+   * no confirmation — which is the one mistake this script must not make
+   * quietly.
+   */
+  const unknown = args.filter(
+    (arg) => arg.startsWith("--") && arg !== "--dry-run",
+  );
+
+  if (unknown.length > 0) {
+    fail(
+      `unknown option: ${String(unknown[0])} (usage: node scripts/rename.mjs <name> [--dry-run])`,
+    );
+
+    return;
+  }
+
+  if (names.length !== 1) {
+    fail("usage: node scripts/rename.mjs <name> [--dry-run]");
+
+    return;
+  }
+
+  const [name] = names;
+
+  if (!NAME_PATTERN.test(name) || name.length > MAX_NAME_LENGTH) {
+    fail(
+      `"${name}" is not a usable identifier: lowercase letters, digits and hyphens, starting and ending with a letter or digit, at most ${String(MAX_NAME_LENGTH)} characters. It becomes APP_ID and VITE_APP_ID, which name cookies.`,
+    );
+
+    return;
+  }
+
+  if (name === TOKEN) {
+    fail(`"${TOKEN}" is the placeholder this script removes; pick another.`);
+
+    return;
+  }
+
+  const { changed, renamed, formatted } = await renameTree({
+    root: repoRoot,
+    name,
+    dryRun,
+  });
+
   const total = changed.reduce((sum, file) => sum + file.occurrences, 0);
 
   for (const file of changed) {
@@ -359,14 +459,25 @@ const run = () => {
 
   write(
     process.stdout,
+    `formatted ${String(formatted.length)} of the rewritten files, as \`format:check\` reads them`,
+  );
+
+  write(
+    process.stdout,
     `your own .env files were left alone: set APP_ID=${name} in .env and VITE_APP_ID=${name} in apps/admin/.env and apps/customer/.env, run \`pnpm docker:reset\` (the volume's roles are named after the old identifier), then review the diff`,
   );
 };
 
-// `statSync` proves the root resolved to a directory before the walk; a bad
-// resolution would otherwise surface as a confusing ENOENT mid-walk.
-if (!statSync(root).isDirectory()) {
-  fail(`not a directory: ${root}`);
-} else {
-  run();
+// Run as a command, not when a test imports `renameTree`. `statSync` proves
+// the root resolved to a directory before the walk; a bad resolution would
+// otherwise surface as a confusing ENOENT mid-walk.
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  if (!statSync(repoRoot).isDirectory()) {
+    fail(`not a directory: ${repoRoot}`);
+  } else {
+    await run();
+  }
 }

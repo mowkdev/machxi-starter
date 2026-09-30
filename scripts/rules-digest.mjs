@@ -450,6 +450,11 @@ export const AREAS = [
         text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, reset by `/bootstrap`. The starter merge alone keeps the fork's journal, defining both drivers on its own command line — `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main` — and neither driver is defined in a clone's or a global config, so a lane merge conflicts on the ledger and the plans and keeps both sides of the notes and the changelog, which `.gitattributes` puts on `merge=union`. Those two are appended to; their existing text — the changelog's preamble, a notes file's earlier entries — is edited only by the lane that ships.",
       },
       {
+        topic: "The bootstrap and the rehearsal",
+        records: ["0084", "0065"],
+        text: "A fork's journal is reset by a script, `pnpm bootstrap --prefix <name>` (`scripts/bootstrap.mjs`), which the `/bootstrap` skill runs: it removes the starter's plans, notes and lane files and keeps `docs/plan/lanes/README.md`, writes the empty ledger under the fork's prefix with the window section's generated block and no link to the starter's frozen history, resets the changelog to its preamble, and refuses a tree that is not a fresh clone of the starter. A rehearsal in the script tier bootstraps a temporary clone, merges a simulated starter ship into it with the commands `docs/forking.md` states, and runs the fork's checks, so a change that breaks a fork breaks the starter's gate. A script test never depends on the starter's own journal: what it reads of one is a fixture. On a ledger with no rows, `/scope` writes the first row the operator names.",
+      },
+      {
         topic: "Upstreaming",
         records: ["0065"],
         text: "A generic feature travels back re-implemented as its own deliverable off `starter/main`, never as a cherry-pick: the fork's diff is the specification, not the patch. Generic has a test — no fork domain nouns, and no reference to the fork's own record numbers or plan steps.",

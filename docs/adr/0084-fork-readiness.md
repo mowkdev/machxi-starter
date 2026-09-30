@@ -1,10 +1,10 @@
 # ADR-0084: Fork readiness — a scripted bootstrap, a rehearsed starter merge, and the commit behind the metrics token (supersedes ADR-0082, 0065 and 0081 in part — deltas)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-30
 - Supersedes (at the step that makes each delta true): [ADR-0065](0065-starter-lifecycle.md) §3 and §5 (delta: a fork's journal is reset by a script, `pnpm bootstrap`, which the `/bootstrap` skill calls, and a rehearsal in the test suite proves the reset and the starter merge; `/scope` on a ledger with no rows writes the first row the operator names); [ADR-0082](0082-lanes-on-one-machine-and-one-main.md) §4 (delta: after the starter merge, every journal file the merge added under `docs/plan/` is removed, not only lane files, and a journal file the fork deleted that the starter changed is resolved by deleting it; the merge-down of `docs/upstreaming.md` uses the same commands); [ADR-0081](0081-build-versions.md) §3 (delta: `/health` answers `commit` only to a caller presenting the metrics token). Every parent stands for everything not named here.
 
-> Written 2026-09-30 by `/scope` for D36 ([`docs/plan/0036-fork-readiness.md`](../plan/0036-fork-readiness.md)), the day D34 shipped, on the operator's decisions from the fork-readiness review — writing is not opening, opening is not accepting. `proposed`; accepted at the head of `D36.1`.
+> Written 2026-09-30 by `/scope` for D36 ([`docs/plan/0036-fork-readiness.md`](../plan/0036-fork-readiness.md)), the day D34 shipped, on the operator's decisions from the fork-readiness review — writing is not opening, opening is not accepting. `proposed` at writing; **accepted 2026-09-30 at the head of `D36.1`**, where [ADR-0065](0065-starter-lifecycle.md) moved to `superseded by` for §3 and §5; [ADR-0082](0082-lanes-on-one-machine-and-one-main.md) moves at `D36.2` and [ADR-0081](0081-build-versions.md) at `D36.3`, the steps that make each delta true. Amendable in place, labelled, while D36 is `in progress` ([the ledger](../plan/README.md#the-window)).
 
 ## Context
 

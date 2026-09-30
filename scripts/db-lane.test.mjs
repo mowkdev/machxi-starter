@@ -88,11 +88,13 @@ describe("laneDatabaseName", () => {
       () => laneDatabaseName(base, "a".repeat(MAX_SLUG_LENGTH)),
       /longer than the 63 bytes/,
     );
+    // The longest slug on the product's own base, whatever the product is
+    // called: the base's bytes, the slug's and the one joining underscore. A
+    // fork's rename rewrites the base, never this sum (ADR-0084 §1).
+    const product = "machxi_test";
     assert.equal(
-      Buffer.byteLength(
-        laneDatabaseName("machxi_test", "a".repeat(MAX_SLUG_LENGTH)),
-      ),
-      MAX_SLUG_LENGTH + 12,
+      Buffer.byteLength(laneDatabaseName(product, "a".repeat(MAX_SLUG_LENGTH))),
+      Buffer.byteLength(product) + 1 + MAX_SLUG_LENGTH,
     );
   });
 
