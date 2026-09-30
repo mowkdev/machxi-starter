@@ -22,6 +22,7 @@
 - **"How do I add an endpoint / a module / a migration?"** → the skills in [`.claude/skills/`](../.claude/README.md); they encode the ADR checklists.
 - **"How do I add a screen / a resource / a component to the admin panel?"** → the frontend half of the same set: `/frontend-conventions`, `/new-resource-ui`, `/ui-component`.
 - **"What are we working on, and what is left?"** → the ledger [`plan/README.md`](plan/README.md), then the plan of each deliverable its window section lists as an open lane.
+- **"Is the lane green?"** → the `gate` run on the lane's pull request, for its last pushed commit; the step's note says which run it read.
 
 ## Conventions
 
@@ -29,15 +30,23 @@ ADRs are the source of truth for decisions; the plans, the digests and the
 Postman collection are derived from them. The specs are the source of truth for
 behaviour, and each one names the test that keeps it true.
 
-**Window, supersession and date history lives in exactly one place** — [the
-ledger's window section](plan/README.md#the-window) ([ADR-0065](adr/0065-starter-lifecycle.md)
-§5, the starter lifecycle, a delta on [ADR-0025](adr/0025-deliverables.md) for
-where that state is written). Which deliverables may amend their records in
-place — one entry per open lane, their records disjoint
-([ADR-0079](adr/0079-parallel-lanes.md)) — which records are frozen, and which
-supersession is a delta are all stated there and linked from everywhere else, including this file. When another
-document disagrees with that section, that section is right and the other is
-the defect.
+**Which deliverables are open, and so which records may still be amended in
+place, is stated in exactly one place** — [the ledger's window
+section](plan/README.md#the-window) ([ADR-0065](adr/0065-starter-lifecycle.md)
+§5, the starter lifecycle, as carried by
+[ADR-0082](adr/0082-lanes-on-one-machine-and-one-main.md)). Each open lane is a
+file under `plan/lanes/`, their records disjoint
+([ADR-0079](adr/0079-parallel-lanes.md)), and that section's list is generated
+from the files; which supersession is a delta is each record's own status line
+and index row. Everything else links there. When another document disagrees
+with that section, that section is right and the other is the defect.
+
+**A lane is one branch and one pull request; a step is one commit pushed to
+it** ([ADR-0082](adr/0082-lanes-on-one-machine-and-one-main.md), lanes on one
+machine and one `main`). A step ends green on the step check and CI proves the
+whole tree on every push; `main` takes a lane once, when `/ship` merges its
+pull request with a merge commit, and otherwise only the documents-only commits
+`/scope` writes.
 
 An ADR is accepted at the head of the step that builds it, so a step whose
 record is still `proposed` is gated and must not be started.

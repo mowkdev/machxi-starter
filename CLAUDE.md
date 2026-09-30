@@ -13,13 +13,13 @@ A blueprint monorepo (Turborepo + pnpm) for projects that need an API, an admin 
 
 ## Commands
 
-Setup: `README.md` §Quick start. The two checks are defined here, referenced by name elsewhere:
+Setup: `README.md` §Quick start. The two checks are defined here and cited by name:
 
 ```
 pnpm check                   # the inner loop, cached: lint (carrying the script
                              # tests, docs:check and i18n:check), check-types, test:unit
 pnpm dev --filter api        # 4000 · admin 3001 · customer 3002
-pnpm test:int --filter api   # the integration tier alone, against DATABASE_URL_TEST
+pnpm test:int --filter api   # the integration tier alone
 pnpm test:e2e                # Playwright over the dev stack — beside the gate, never in it
 pnpm test:postman            # newman over docs/postman
 pnpm rules:digest            # regenerate docs/rules
@@ -42,7 +42,7 @@ pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check
 
 ## The running stack is the operator's
 
-The operator keeps the dev stack running across sessions — `pnpm docker:up`, the three apps above, Mailpit on 8025. **Attach to it; never start, stop, kill or restart it.** Probe the port (`GET /health` on 4000) and use what answers; `.claude/launch.json`'s url-only entries attach the Browser pane the same way. A change that needs a restart (an `.env` edit, a port) is reported to the operator. `launch.json`'s `*:spawn` entries are for a machine where nothing runs. Measurements that need a clean rate-limit window (`test:e2e`, `test:postman` back to back) ask the operator for the restart.
+The operator keeps the dev stack running across sessions — `pnpm docker:up`, the three apps above, Mailpit on 8025. **Attach to it; never start, stop, kill or restart it.** Probe the port (`GET /health` on 4000) and use what answers; `.claude/launch.json`'s url-only entries attach the Browser pane the same way. A change that needs a restart (an `.env` edit, a port) goes to the operator. `*:spawn` entries are for a machine where nothing runs. Runs that need a clean rate-limit window (`test:e2e`, `test:postman` back to back) ask the operator for the restart.
 
 ## Search
 
@@ -52,11 +52,11 @@ Search with the Grep/Glob tools, even inside one known file. Through Bash, `grep
 
 1. Before implementing: load your area's digest, then open the records it names for what you are changing. A change that conflicts with a record amends it in place, labelled, while its deliverable is in progress, and otherwise proposes a superseding record.
 2. Use the skills — they encode the checklists. API and data: `/api-conventions`, `/new-api-module`, `/add-endpoint`, `/db-schema-change`, `/postman-sync`. SPAs: `/frontend-conventions`, `/new-resource-ui`, `/ui-component`. Process — the loop is **scope → step → ship** — `/scope`, `/step`, `/steps`, `/ship`, plus `/new-adr`, `/bootstrap` and `/local-dev`.
-3. A step ends green on the step check, a lane on the gate. New endpoints get integration tests and Postman requests; a new decision gets a record.
+3. A lane is a branch and one pull request, a step one commit to it: a step ends green on the step check, a lane on the gate; `main` moves at `/ship`. New endpoints get integration tests and Postman requests; a new decision gets a record.
 4. Keep the derived documents in sync: a new env var means a record entry, `.env.example` and `turbo.json` `env`; a new endpoint means Postman; a new record means an index row and a topic-table row; a behaviour change means its `docs/specs/` file.
 5. Conventional commits, by explicit path when another session may share the tree.
 6. Ask before: deleting migrations, changing the envelope or error shape, adding a runtime dependency to `@repo/contracts`, or introducing any auth library.
 
 ## Subagents
 
-The roster is `.claude/agents/` and `.claude/README.md` says what each is for — three read-only reviewers, the builders, `gate-runner`. There are **no orchestration workflows**: machines gate, review is one bounded pass over a diff.
+`.claude/README.md` says what each agent in `.claude/agents/` is for — three read-only reviewers, the builders, `gate-runner`. **No orchestration workflows**: machines gate, review is one bounded pass over a diff.

@@ -21,6 +21,10 @@
 // rows, the block `pnpm lanes` generates into its window section, and the one
 // header line naming the tag prefix `/ship` writes (ADR-0081 §5) are read.
 //
+// A plan carries no close-out step (ADR-0082 §2): its last step builds, and
+// `/ship` runs the definition of done. Plans scoped or shipped by the day the
+// record withdrew the close-out are exempt by that date.
+//
 // Usage:
 //   node scripts/docs-hygiene.mjs        report violations, exit 1 if any
 
@@ -679,6 +683,98 @@ export async function scanUnionJournal(root = repoRoot) {
   return violations;
 }
 
+/**
+ * The day ADR-0082 §2 withdrew the close-out step: a deliverable's last step
+ * builds, and what a close-out carried — the routed residuals, the skills and
+ * rule files, the digests, the definition of done — is the last build step's
+ * done-when or `/ship`'s. A plan scoped or shipped on or before this day is
+ * exempt by its date; D34 was scoped with one before the record withdrew it
+ * and keeps it as the last.
+ */
+export const CLOSE_OUT_WITHDRAWN = "2026-09-30";
+
+/** `- [ ] **6. Close-out — the last one.**` — a step line and its title. */
+const STEP_LINE = /^- \[[ xX]\] \*\*(\d+)\.\s*(.*?)\*\*/;
+const CLOSE_OUT_TITLE = /\bclose[- ]?out\b/i;
+/** `**Done when:** the definition of done …` — a step that is the checklist. */
+const DONE_WHEN_DOD = /\*\*Done when:\*\*\s*the definition of done\b/i;
+/** `shipped 2026-09-21`, `scoped in full 2026-09-14` — a plan's own dates. */
+const PLAN_DATE =
+  /\b(?:shipped|scoped(?: in full)?)\*{0,2}\s+(\d{4}-\d{2}-\d{2})\b/g;
+
+/**
+ * The date a plan's header gives it, or `null`: the earliest `scoped` or
+ * `shipped` date above its first section. Other dates in a header — a row
+ * inserted, a decision recorded — say nothing about when the plan was written.
+ */
+export function planDate(text) {
+  let earliest = null;
+  for (const raw of text.split(/\r?\n/)) {
+    if (raw.startsWith("## ")) break;
+    for (const m of raw.matchAll(PLAN_DATE)) {
+      if (earliest === null || m[1] < earliest) earliest = m[1];
+    }
+  }
+  return earliest;
+}
+
+/**
+ * A plan carries no close-out step (ADR-0082 §2): no step whose title names a
+ * close-out, and none whose done-when is the definition of done, which
+ * `/ship` runs. A plan dated on or before `CLOSE_OUT_WITHDRAWN` is exempt.
+ */
+export function checkCloseOut(file, text) {
+  const date = planDate(text);
+  if (date !== null && date <= CLOSE_OUT_WITHDRAWN) {
+    return { exempt: true, violations: [] };
+  }
+  const violations = [];
+  let step = null;
+  const flag = (why) => {
+    if (step.flagged) return;
+    step.flagged = true;
+    violations.push({
+      file,
+      line: step.line,
+      rule: "close-out-step",
+      found: `${step.number}. ${step.title}`.slice(0, 60),
+      message: `${why}; a plan has no close-out step — what one carried goes in the last build step's done-when and in \`/ship\` (ADR-0082 §2)`,
+    });
+  };
+  for (const [index, raw] of text.split(/\r?\n/).entries()) {
+    if (raw.startsWith("## ")) {
+      step = null;
+      continue;
+    }
+    const m = raw.match(STEP_LINE);
+    if (m) {
+      step = { line: index + 1, number: m[1], title: m[2], flagged: false };
+      if (CLOSE_OUT_TITLE.test(m[2])) flag("a step titled as a close-out");
+    }
+    if (step && DONE_WHEN_DOD.test(raw)) {
+      flag("a step whose done-when is the definition of done");
+    }
+  }
+  return { exempt: false, violations };
+}
+
+/** A plan file under `docs/plan/`: `NNNN-slug.md`, never its notes. */
+const PLAN_FILE = /^\d{4}-[^/]+(?<!\.notes)\.md$/;
+
+export async function scanCloseOut(root = repoRoot) {
+  const dir = path.join(root, "docs", "plan");
+  const names = existsSync(dir) ? await readdir(dir) : [];
+  const violations = [];
+  let exempt = 0;
+  for (const name of names.filter((n) => PLAN_FILE.test(n)).sort()) {
+    const text = await readFile(path.join(dir, name), "utf8");
+    const result = checkCloseOut(`docs/plan/${name}`, text);
+    if (result.exempt) exempt += 1;
+    violations.push(...result.violations);
+  }
+  return { violations, exempt };
+}
+
 export async function scanLanes(root = repoRoot) {
   const full = path.join(root, ...LEDGER.split("/"));
   // A corpus with no ledger yet (`/bootstrap --empty` before it writes one)
@@ -725,12 +821,14 @@ if (
   const lanes = await scanLanes();
   const tagPrefix = await scanTagPrefix();
   const unionJournal = await scanUnionJournal();
+  const closeOut = await scanCloseOut();
   const violations = [
     ...inherited,
     ...specs,
     ...lanes.violations,
     ...tagPrefix.violations,
     ...unionJournal,
+    ...closeOut.violations,
   ];
   for (const v of violations) {
     console.error(
@@ -753,4 +851,7 @@ if (
   );
   if (tagPrefix.prefix) console.log(`tag prefix: ${tagPrefix.prefix}`);
   console.log("union journal: no passage twice");
+  console.log(
+    `close-out steps: none (${closeOut.exempt} plan(s) exempt by date)`,
+  );
 }

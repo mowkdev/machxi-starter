@@ -387,3 +387,61 @@ step:check ✓
 - `pnpm rules:digest` twice: 0 of 3 both times.
 - `pnpm format:check`: pass.
 - `pnpm check`: pass. 39 tasks (5 cached), then `test:unit`'s 17 (cached).
+
+## D34.5 — Every lane a branch and a pull request; every step a commit (2026-09-30)
+
+Built in a cloud session on the lane branch `claude/nifty-planck-bnxu4s` (PostgreSQL 16 on localhost:5432, no Docker, no dev stack, no root `.env`), as one commit pushed there; not merged to `main`. This is the first step that closes the new way: on `pnpm step:check`, with the pull request's `gate.yml` run as its proof.
+
+**The run read first.** The GitHub tools list `gate.yml` runs for the branch (this session has no `gh`). The last push, `20df2ee` (`D34.4`'s follow-up), was run 91, `in_progress` when the step began. Run 90 on `bfc52d3` was `cancelled` by that push, and runs 87–89 on `D34.2`'s and `D34.3`'s commits were `success`. Nothing was red, so the step built without a fix-forward commit.
+
+**Moved at this step.** [ADR-0079](../adr/0079-parallel-lanes.md) → `superseded by` [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) for §4 and for the alternative §Alternatives declined (lanes that merge to `main` only at ship). [ADR-0059](../adr/0059-ci-containers-and-deployment.md) → `superseded by` 0082 for §1 and §2. Each has its delta on the status line and a head note; the bodies are untouched. The index rows for 0059, 0079 and 0082 and the topic table's CI row say so. The process digest's "Lanes" line is rewritten to the one shape and now cites 0082 first, and its "Verification" line gains the one review in a fresh context and the withdrawn close-out step; `pnpm rules:digest` wrote 1 of 3, then 0 of 3.
+
+**Built.**
+
+- `/step`: one commit pushed to the lane's pull request. It begins by reading the last push's `gate.yml` run — `gh run list --branch <lane branch> --workflow gate.yml` locally, the GitHub tools in a cloud session. Green, it builds; red or unfinished, it fixes forward first in a commit of its own; still running, it builds without waiting; unreadable, it says so in the note and builds. It works on the branch the lane file names and sets `TEST_DB_LANE` from `pnpm db:lane`. It ends on `pnpm step:check`, re-run after a review fix, never `--force`. One review in a fresh context; a builder without a reviewer never reviews its own diff, says the review is owed, and the orchestrating session's pass is the one review, landing as a follow-up commit. It never merges to or pushes to `main`, and merges `main` in only when the plan needs it or GitHub reports a conflict, regenerating a conflicted generated file (`pnpm lanes`, `pnpm rules:digest`).
+- `/steps`: the same loop, each step in a subagent whose prompt carries the lane branch and the new rules. It never waits on CI, because each step reads the last run first. It states the pattern for builders without an Agent tool: the orchestrator runs the one review over the pushed commit and dispatches one fix subagent for confirmed findings. It never runs a check itself.
+- `/ship`: on the lane's head, never on `main`. It merges `main` in, runs the definition of done with the gate held under one `tiers` lock across its links (`node scripts/with-lock.mjs tiers -- sh -c '<the gate>'`, which `MACHXI_LOCKS_HELD` lets reach the nested locks), then regenerates, syncs the records, removes the lane file and runs `pnpm lanes`, moves the ledger row and writes the changelog. It pushes the ship commit and waits for the pull request's run on it, the one wait in a lane. It merges with a merge commit (`gh pr merge --merge`, or the GitHub tools' `merge` method), never squash or rebase, and tags the merge commit after confirming its second parent is the ship commit. A session that cannot push a tag names the commands for the operator.
+- `/scope`: the header names its `scoped in full YYYY-MM-DD` date, which `docs:check` reads. Every step builds, and none is a close-out: residuals, spec, skills and rule files go in the last build step's done-when, and the digests, the definition of done, the merge and the tag go to `/ship`. Opening is the lane file, a documents-only opening commit pushed to `main`, the lane branch cut (or the session's branch named), and the draft pull request by `gh pr create --draft` or the GitHub tools. A session limited to its own branch says so and lets the opening commit ride with the pull request, safe only while no other lane is open — as D34's own opening did (ledger §How D34 opened).
+- `scripts/docs-hygiene.mjs`: `checkCloseOut` and `scanCloseOut` refuse a plan step whose title names a close-out, or whose done-when is the definition of done (`close-out-step`, ADR-0082 §2). A plan whose header gives a `scoped` or `shipped` date on or before `CLOSE_OUT_WITHDRAWN` (2026-09-30, 0082's date) is exempt, so D34's own step 6 stays allowed. The date is read from `scoped` and `shipped` alone, because a header's other dates — "from the row inserted 2026-09-14" — say nothing about when the plan was written. `docs:check` prints `close-out steps: none (28 plan(s) exempt by date)`.
+- `gate.yml`: comments only. The header says what a pull-request run proves: the whole tree over the merge ref, one run per burst of pushes, read by the next step and required green by `/ship`. The `on:` comment names the commits that still reach `main` directly — `/scope`'s documents-only commits — beside a lane's merge. What the workflow runs is unchanged (`git diff` shows only `#` lines).
+- `CLAUDE.md` rule 3: "A lane is a branch and one pull request, a step one commit to it: a step ends green on the step check, a lane on the gate; `main` moves at `/ship`." To stay under the 6 KB cap (6134 bytes), the `test:int` comment loses "against DATABASE_URL_TEST", which a lane rewrites anyway, and the running-stack and subagents paragraphs are shortened without losing a rule.
+- `.claude/README.md`: the lanes bullet states the one shape and says the skills use `gh` locally and the GitHub tools in a cloud session. The process bullet says what `/step`, `/steps` and `/ship` now do, and the reviewers' bullet says who runs the one review. The fuller account of lanes on one machine and in the cloud is step 6's, by the plan.
+- `docs/README.md`: the conventions paragraph says the open lanes are lane files, stated once in the window section, where it had said all window and date history lives there, which `D34.4` ended. A paragraph states the one shape, and a "Is the lane green?" entry points at the pull request's run.
+- Also brought to the one shape: the ledger's "Executing a step", `code-reviewer`'s opening line (the step check has run, not the gate), and `/new-resource-ui`'s closing check (the step check, not the gate).
+
+**Amended against the plan, labelled.** Step 5's done-when said "pushed to `lane/D34`". It now reads "the lane branch its lane file names", labelled `**Amended 2026-09-30 (D34.5).**`, as the Constraints and the definition of done already read: D34 builds on `claude/nifty-planck-bnxu4s`.
+
+**Tests.** `scripts/docs-hygiene.test.mjs`:
+
+- "a plan with a close-out step is refused": a clean plan passes. It refuses a step titled `Close-out.`, one titled "…, and close-out" and one whose done-when is the definition of done, each flagged once with its line. An undated plan is not exempt.
+- "a plan scoped or shipped by the day close-outs were withdrawn is exempt by its date": shipped, scoped and shipped-only headers on or before the date are exempt. A header's "row inserted" date is not read, nor a date below the header. D34's own plan is exempt, and with its dates moved a day later its step 6 is the one step refused.
+- "this repository's plans carry no close-out step past their date": the live tree.
+
+**Done-whens.**
+
+- "a plan with a close-out step is refused": green (`docs-hygiene.test.mjs` 63 of 63).
+- `pnpm docs:check`: clean.
+- `pnpm test:scripts`: green, 131 tests.
+- This step's commit pushed to the lane branch with the pull request's run green on it: recorded below once read.
+
+**`pnpm step:check` on the final tree** (everything above written but this paragraph), with `TEST_DB_LANE=claude-nifty-planck-bnxu4s`, base `d518b5938943` (`git merge-base origin/main HEAD`), never `--force`, exit 0:
+
+```
+step:check against d518b5938943b56fafbb726ae37fa268a77b4efe
+  ran      check
+  ran      integration @repo/db (every file: apps/api/test/setup/env.test.ts changed): 6 file(s)
+  ran      integration api (every file: apps/api/test/setup/env.test.ts changed): 29 file(s)
+  ran      size (admin, customer)
+  ran      format:check
+step:check ✓
+```
+
+`check`: 39 tasks (5 cached), then `test:unit`'s 17 (all cached), all successful; `test:scripts` 131 and `docs:check` inside `lint`. The base is the lane's merge base, so `D34.1`'s harness change is still a trigger and both integration tiers ran whole: `@repo/db` 6 files / 128 tests, `api` 29 files / 847 tests, all 23 `db:migrate →` lines on `machxi_claude-nifty-planck-bnxu4s_test`. `size`: 4 tasks cached. An earlier run over a tree still being edited was stopped by this session partway through its integration tier. That left the `tiers` lock with a dead holder, and this run took it over, printing the holder, as `with-lock` is built to do. After this run, only this paragraph was written; `pnpm format:check` and `pnpm docs:check` were re-run over it.
+
+**Review.** **Owed.** This builder session has no Agent tool, so by ADR-0082 §2 — and the rewritten `/step` — it does not review its own diff, and none is recorded here. The orchestrating session runs the one bounded review over this step's commit, `adr-reviewer` fitting a record- and skill-heavy step, and a confirmed finding lands as a `D34.5` follow-up commit, noted below.
+
+**Pending the operator.**
+
+- **Repository settings: not done by this session, pending.** The step asks for `main` protected with `gate` required, direct pushes kept for `/scope`'s documents-only commits, force pushes blocked. That is the operator's, and this session has no tool that reads or writes it. GitHub's branch protection for a private repository on a personal account needs a paid plan; where it is not available, the rule stays the convention the skills follow, as 0082 §1 says.
+- **Read `CLAUDE.md`'s diff**: rule 3 and three trims under the cap.
+- Nothing is browser-only.

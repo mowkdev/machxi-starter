@@ -19,9 +19,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  CLOSE_OUT_WITHDRAWN,
   LEDGER,
   LEDGER_WINDOW,
   TAG_PREFIX_LINE,
+  checkCloseOut,
   checkLanes,
   checkSpec,
   checkTagPrefix,
@@ -32,7 +34,9 @@ import {
   isExcluded,
   parseLanes,
   parseTagPrefix,
+  planDate,
   scan,
+  scanCloseOut,
   scanLanes,
   scanSpecs,
   scanTagPrefix,
@@ -2372,4 +2376,131 @@ test("a notes file with a duplicated section heading is refused", () => {
 
 test("this repository's changelog and notes repeat no passage", async () => {
   assert.deepEqual(await scanUnionJournal(), []);
+});
+
+// ADR-0082 §2: a deliverable has no close-out step; plans dated on or before
+// the day the record withdrew them are exempt.
+const planWith = (status, steps) =>
+  [
+    "# D40 — Something",
+    "",
+    `- Status: ${status}`,
+    "- Schema: no",
+    "- Tier: package",
+    "",
+    "## Steps",
+    "",
+    ...steps,
+    "",
+    "## Definition of done",
+    "",
+    "1. The gate green.",
+    "",
+  ].join("\n");
+
+const buildStep = [
+  "- [ ] **1. Build the thing.** The code, the spec, the digests regenerated.",
+  "      **ADRs:** 0090.",
+  '      **Done when:** `thing.test.ts` case "it works" green; `pnpm docs:check` clean.',
+];
+
+test("a plan with a close-out step is refused", () => {
+  const later = "planned — **scoped in full 2026-10-02 by `/scope`**";
+  assert.deepEqual(checkCloseOut("p.md", planWith(later, buildStep)), {
+    exempt: false,
+    violations: [],
+  });
+
+  // Titled as a close-out, the D30 shape.
+  const titled = checkCloseOut(
+    "p.md",
+    planWith(later, [
+      ...buildStep,
+      "- [ ] **2. Close-out.** The digests regenerated; then the definition of done.",
+      "      **Done when:** `pnpm rules:digest` writes nothing on a second run.",
+    ]),
+  );
+  assert.deepEqual(rules(titled.violations), ["close-out-step"]);
+  assert.equal(titled.violations[0].line, 12);
+  assert.equal(titled.violations[0].found, "2. Close-out.");
+
+  // Named otherwise, but its done-when is the checklist `/ship` runs; flagged once.
+  const checklist = checkCloseOut(
+    "p.md",
+    planWith(later, [
+      ...buildStep,
+      "- [ ] **2. The browser tier, and close-out.** Then the definition of done.",
+      "      **Done when:** the definition of done below, every item.",
+      "- [ ] **3. Wrap up.** Routed residuals.",
+      "      **Done when:** the definition of done, top to bottom.",
+    ]),
+  );
+  assert.deepEqual(rules(checklist.violations), [
+    "close-out-step",
+    "close-out-step",
+  ]);
+  assert.deepEqual(
+    checklist.violations.map((v) => v.line),
+    [12, 14],
+  );
+
+  // A plan with no scoping or shipping date is not exempt.
+  const undated = checkCloseOut(
+    "p.md",
+    planWith("planned", [...buildStep, "- [ ] **2. Close-out.**"]),
+  );
+  assert.deepEqual(rules(undated.violations), ["close-out-step"]);
+});
+
+test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by its date", async () => {
+  const closeOut = [
+    ...buildStep,
+    "- [x] **2. Close-out.** Then the definition of done.",
+  ];
+  for (const status of [
+    "**shipped 2026-09-21** — **scoped in full 2026-09-14 by `/scope`**",
+    `in progress — **scoped in full ${CLOSE_OUT_WITHDRAWN} by \`/scope\`**`,
+    "**shipped 2026-08-18**",
+  ]) {
+    assert.deepEqual(checkCloseOut("p.md", planWith(status, closeOut)), {
+      exempt: true,
+      violations: [],
+    });
+  }
+  // Another date in the header — a row inserted — is not the plan's.
+  assert.equal(
+    planDate(
+      planWith(
+        "planned — **scoped in full 2026-10-02 by `/scope`**, from the row inserted 2026-09-14",
+        [],
+      ),
+    ),
+    "2026-10-02",
+  );
+  // A date below the header is not the plan's either.
+  assert.equal(
+    planDate(`${planWith("planned", [])}\nshipped 2026-01-01\n`),
+    null,
+  );
+
+  // D34's own close-out stays allowed by its date, and is the step the check
+  // would catch in a plan written after it.
+  const d34 = await readFile(
+    path.join(repoRoot, "docs/plan/0034-lanes-on-one-machine.md"),
+    "utf8",
+  );
+  assert.equal(checkCloseOut("d34", d34).exempt, true);
+  const d34Later = d34.replaceAll(CLOSE_OUT_WITHDRAWN, "2026-10-01");
+  const later = checkCloseOut("d34", d34Later);
+  assert.equal(later.exempt, false);
+  assert.deepEqual(
+    later.violations.map((v) => v.found.slice(0, 12)),
+    ["6. Close-out"],
+  );
+});
+
+test("this repository's plans carry no close-out step past their date", async () => {
+  const { violations, exempt } = await scanCloseOut();
+  assert.deepEqual(violations, []);
+  assert.ok(exempt > 0);
 });

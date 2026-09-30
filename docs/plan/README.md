@@ -81,7 +81,7 @@ Until `D34.4` the paragraph under the lane entries was written by hand, and it c
 
 ## Executing a step
 
-`/step` builds the next unchecked step of an in-progress deliverable (`/step D8.3` for a specific one; `/step D<n>` names the lane when more than one row is in progress, and a bare call is refused then): it reads the step, reads the ADRs it names, implements, ends green on the gate, takes one bounded diff review, and commits (ADR-0050). Every step below names the ADRs that govern it precisely so that it can be handed to an agent without further context.
+`/step` builds the next unchecked step of an in-progress deliverable (`/step D8.3` for a specific one; `/step D<n>` names the lane when more than one row is in progress, and a bare call is refused then): it reads the last push's `gate.yml` run and fixes forward if it is red, reads the step, reads the ADRs it names, implements, ends green on the step check, takes one bounded diff review, and pushes one commit to the lane's branch and pull request, never to `main` ([ADR-0050](../adr/0050-adr-lifecycle-and-verification.md) as carried by [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md) §1–§2); `main` takes the lane when `/ship` merges the pull request. Every step below names the ADRs that govern it precisely so that it can be handed to an agent without further context.
 
 ## How D3 opened
 

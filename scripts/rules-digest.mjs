@@ -391,8 +391,8 @@ export const AREAS = [
       },
       {
         topic: "Lanes",
-        records: ["0079"],
-        text: "A lane builds on a branch named for its deliverable, `lane/D<n>`, merges `main` in before a step's gate and merges to `main` when the step is green; a step is not closed while `main` does not carry it, and `/ship` runs on `main`. A lane that is the only one open may build on `main` itself, and cuts its branch when a second opens. Deliverable and record numbers are reserved by scoping on `main`. The shared surfaces merge by the row, and a conflicted digest is regenerated, never hand-merged. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
+        records: ["0082", "0079"],
+        text: "Every lane builds on a branch of its own from its first step — `lane/D<n>`, or the branch a cloud session was given, as its lane file names — with one draft pull request to `main`. A step is one commit pushed to it: it begins by reading the last push's `gate.yml` run and fixes forward when that is red, or says in its note that it could not read it; it ends on the step check and one review; it never merges to `main` and never waits on CI. `main` is merged into a lane only when the lane needs something `main` has or GitHub reports a conflict, and a conflicted generated file is regenerated, never hand-merged. `main` takes the documents-only commits `/scope` writes — the scoping, a lane's opening — and each lane once, when `/ship`, on the lane's head, merges its pull request with a merge commit and tags the merge commit. Deliverable and record numbers are reserved by scoping on `main`. `/step`, `/steps` and `/ship` take the deliverable while more than one row is in progress and refuse a bare call then.",
       },
       {
         topic: "Acceptance at the head",
@@ -411,8 +411,8 @@ export const AREAS = [
       },
       {
         topic: "Verification",
-        records: ["0050"],
-        text: "Machines are the gate; review is one bounded pass over the diff per step — no refutation rounds and no zero-finding requirement. Uncertain mechanics get a timeboxed spike in a worktree rather than a debate.",
+        records: ["0050", "0082"],
+        text: "Machines are the gate; review is one bounded pass over the diff per step, in a fresh context — no refutation rounds and no zero-finding requirement. Where the builder cannot run a reviewer, the orchestrating session's pass is that one review; the builder's own reading is not a review. A deliverable has no close-out step: its last step builds, and `/ship` runs the definition of done — `pnpm docs:check` refuses a close-out step in a plan dated after the record withdrew them. Uncertain mechanics get a timeboxed spike in a worktree rather than a debate.",
       },
       {
         topic: "The gate",
