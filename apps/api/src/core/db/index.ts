@@ -20,3 +20,10 @@ export {
   type Transaction,
 } from "@repo/db";
 export { probeDatabase, type ProbeDatabaseOptions } from "./probe.js";
+export {
+  createTransaction,
+  DEFAULT_TRANSACTION_ATTEMPTS,
+  isDeadlock,
+  PG_DEADLOCK_DETECTED,
+  type CreateTransactionDeps,
+} from "./transaction.js";

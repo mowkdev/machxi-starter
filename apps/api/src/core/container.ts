@@ -1,9 +1,8 @@
 import { createArgon2Hasher } from "@repo/crypto";
-import type { DbExecutor } from "@repo/db";
 import type { Logger } from "@repo/logger";
 
 import type { AppConfig } from "./config/index.js";
-import type { DbClient } from "./db/index.js";
+import { createTransaction, type DbClient } from "./db/index.js";
 import {
   createAuthCookies,
   createAuthenticate,
@@ -175,9 +174,13 @@ export const buildContainer = ({
 
   // The one place that knows how to open a transaction. Repositories take a
   // `DbExecutor` (ADR-0006), so a service composes them without ever importing
-  // the client.
-  const transaction = <T>(fn: (tx: DbExecutor) => Promise<T>): Promise<T> =>
-    db.db.transaction(fn);
+  // the client. A deadlock victim is run again, a bounded number of times and
+  // each retry logged (ADR-0078 §3) — `core/db/transaction.ts` says why that
+  // is safe.
+  const transaction = createTransaction({
+    open: (fn) => db.db.transaction(fn),
+    logger,
+  });
 
   // The audit writer (ADR-0058). Core rather than a feature module: the
   // mechanism is infrastructure every module borrows, like the logger and the

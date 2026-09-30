@@ -145,6 +145,11 @@ export const AREAS = [
         text: "One `supersedeAll(ctx, principal, tx)` in `core/tokens` spends every outstanding account link, and every credential event calls it — an administrative or staff reset, a password or address change, an account deletion — rather than a per-purpose loop copied into a service. A purpose that should survive a credential event says so where it is declared.",
       },
       {
+        topic: "Lock order, and the deadlock retry",
+        records: ["0078"],
+        text: "A credential event sweeps its token rows under the principal's credential lock (`supersedeAll` takes it after the `reset_password` rows) and then locks the account; the federated exchange takes the same lock, then the account row, then claims its handoff, and the Google callback takes it before the account row it mints behind — so none holds what another waits for. The composition root's transaction helper runs a deadlock victim (`40P01`) again, three runs in all, logging each retry, and passes every other failure through at once; nothing inside a transaction has an effect outside the database, which is what makes that safe.",
+      },
+      {
         topic: "The impersonation exchange ends what it replaces",
         records: ["0070"],
         text: "When `POST /user/auth/impersonate` arrives with a refresh cookie that resolves to a live impersonated session, the exchange revokes that session and writes its `impersonation.ended` row, marked replaced, in the transaction that mints the new one. A cookie resolving to a real customer session is left alive in the database, and one resolving to nothing is ignored.",

@@ -7,7 +7,7 @@ import { internal } from "../errors/index.js";
 /**
  * Every statement against `account_tokens` (ADR-0009, ADR-0071 §1).
  *
- * Four, and deliberately no more: the mint takes a lock on its principal and
+ * Four that act, and deliberately no more: the mint takes a lock on its principal and
  * purpose, stamps whatever was live for that pair, and inserts a row; the
  * consume claims one. There is **no `findByTokenHash`**, for the
  * reason `impersonation_handoffs` has none (ADR-0057 §2): a read followed by
@@ -15,6 +15,11 @@ import { internal } from "../errors/index.js";
  * both succeed, and "strictly single-use" would then be a property of how fast
  * an attacker can replay rather than a property of the database. The consume
  * is one `update … where consumed_at is null` whose `returning` is the read.
+ *
+ * {@link AccountTokensRepository.holderOf} is a read by the hash, and it is
+ * not that shape: it answers **whom** a live token names so a caller can take
+ * its locks in order before it claims (ADR-0078 §3), and it decides nothing —
+ * the consume after it is still the one statement that spends the token.
  *
  * It sits in `core/` rather than in a feature module because the mechanism is
  * infrastructure five flows borrow — the audit writer's argument exactly
@@ -84,7 +89,42 @@ export interface SupersedeAccountTokensInput {
   readonly at: Date;
 }
 
+/** Whose credentials a lock serialises: the `sessions` discriminator shape. */
+export interface CredentialHolder {
+  readonly principalType: Population;
+  readonly principalId: string;
+}
+
 export interface AccountTokensRepository {
+  /**
+   * Serialises the credential events of one principal against a flow that
+   * must hold the account row before it claims a token, for the length of the
+   * caller's transaction (ADR-0078 §3).
+   *
+   * A credential event sweeps the account's token rows and then locks the
+   * account; the federated exchange locks the account and then claims its
+   * handoff. Those two orders meet on the handoff's row, and this lock is what
+   * keeps them from meeting half-way: both take it before either the account
+   * row or the handoff, so the second to arrive waits holding nothing the
+   * first needs. Keyed on the principal alone and apart from
+   * {@link AccountTokensRepository.lockPrincipalPurpose}'s space by its
+   * prefix.
+   *
+   * `tx` is required, for that lock's reason.
+   */
+  readonly lockCredentials: (
+    holder: CredentialHolder,
+    tx: DbExecutor,
+  ) => Promise<void>;
+  /**
+   * Whom a live token of this purpose and population names, **without
+   * claiming or locking it** — the principal to lock before the consume, and
+   * nothing else. `undefined` for every case the consume would refuse.
+   */
+  readonly holderOf: (
+    input: ConsumeAccountTokenInput,
+    tx: DbExecutor,
+  ) => Promise<CredentialHolder | undefined>;
   /**
    * Serialises concurrent mints for one principal and purpose, for the length
    * of the caller's transaction.
@@ -177,6 +217,36 @@ export const createAccountTokensRepository = (
       await tx.execute(
         raw`select pg_advisory_xact_lock(hashtextextended(${`${input.principalType}:${input.principalId}:${input.purpose}`}, 0))`,
       );
+    },
+
+    lockCredentials: async (holder, tx) => {
+      // `lockPrincipalPurpose`'s key scheme, under a prefix of its own so the
+      // two spaces cannot be mistaken for each other by construction; a hash
+      // collision costs an unrelated request a moment's wait and nothing else.
+      await tx.execute(
+        raw`select pg_advisory_xact_lock(hashtextextended(${`credentials:${holder.principalType}:${holder.principalId}`}, 0))`,
+      );
+    },
+
+    holderOf: async (input, tx) => {
+      const [row] = await tx
+        .select({
+          principalType: accountTokens.principalType,
+          principalId: accountTokens.principalId,
+        })
+        .from(accountTokens)
+        .where(
+          and(
+            eq(accountTokens.tokenHash, input.tokenHash),
+            eq(accountTokens.purpose, input.purpose),
+            eq(accountTokens.principalType, input.principalType),
+            isNull(accountTokens.consumedAt),
+            gt(accountTokens.expiresAt, input.at),
+          ),
+        )
+        .limit(1);
+
+      return row;
     },
 
     insert: async (row, tx = db) => {

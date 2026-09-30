@@ -141,6 +141,15 @@ export interface AccountTokens {
    * minted *behind* the account's lock — the federated handoff — is swept
    * again after it by the flows that take that lock.
    *
+   * **It takes the principal's credential lock** (ADR-0078 §3), after the
+   * `reset_password` rows and before every other: the federated exchange takes
+   * the same lock before the account row and its handoff
+   * ({@link AccountTokens.lockHolderOf}), so a sweep and an exchange of one
+   * account take turns instead of each holding what the other waits for. After
+   * `reset_password`, because the reset by mail arrives here already holding
+   * the row it claimed, and a second sweep of the account must queue on that
+   * row holding nothing — `SWEEP_ORDER`'s reason, which the lock must not undo.
+   *
    * `tx` is required, for {@link AccountTokens.supersede}'s reason.
    *
    * @returns how many live rows were stamped, across every purpose.
@@ -150,6 +159,33 @@ export interface AccountTokens {
     principal: TokenPrincipal,
     tx: DbExecutor,
   ) => Promise<number>;
+  /**
+   * Takes this principal's credential lock for the rest of the caller's
+   * transaction (ADR-0078 §3) — the lock {@link AccountTokens.supersedeAll}
+   * takes, for a flow that goes on to lock the account row and then touch its
+   * handoff rows: the Google callback, which mints behind that row.
+   */
+  readonly lockCredentials: (
+    principal: TokenPrincipal,
+    tx: DbExecutor,
+  ) => Promise<void>;
+  /**
+   * Takes the credential lock of the principal a live token names, **without
+   * claiming the token**, and says who that is (ADR-0078 §3).
+   *
+   * For a consume that must hold the account row before it claims — the
+   * federated exchange, whose handoff is minted behind that row's lock and
+   * swept again behind it by a credential event. The caller takes this, then
+   * the account row, then {@link AccountTokens.consume}: the order a credential
+   * event reaches the handoff in, with {@link AccountTokens.supersedeAll}'s
+   * lock at the head of both. `undefined` — and no lock — for every token the
+   * consume would refuse; the caller still consumes, and is refused there.
+   */
+  readonly lockHolderOf: (
+    ctx: RequestContext,
+    input: ConsumeTokenInput,
+    tx: DbExecutor,
+  ) => Promise<TokenPrincipal | undefined>;
   /**
    * Claims the token for this purpose and population, once.
    *
@@ -323,7 +359,15 @@ export const createAccountTokens = ({
       // it is the statement the mint and `supersede` already run, so there is
       // one supersession in the repository and not two. Sequential, on one
       // executor — a transaction is one connection.
-      for (const purpose of SWEEP_ORDER) {
+      for (const [index, purpose] of SWEEP_ORDER.entries()) {
+        // The credential lock after the first purpose — see the interface.
+        if (index === 1) {
+          await repository.lockCredentials(
+            { principalType: principal.type, principalId: principal.id },
+            tx,
+          );
+        }
+
         superseded += await repository.supersedeLive(
           {
             purpose,
@@ -349,6 +393,30 @@ export const createAccountTokens = ({
       }
 
       return superseded;
+    },
+
+    lockCredentials: (principal, tx) =>
+      repository.lockCredentials(
+        { principalType: principal.type, principalId: principal.id },
+        tx,
+      ),
+
+    lockHolderOf: async (_ctx, { purpose, principalType, token }, tx) => {
+      const holder = await repository.holderOf(
+        {
+          purpose,
+          principalType,
+          tokenHash: sha256Base64url(token),
+          at: now(),
+        },
+        tx,
+      );
+
+      if (holder === undefined) return undefined;
+
+      await repository.lockCredentials(holder, tx);
+
+      return { type: holder.principalType, id: holder.principalId } as const;
     },
 
     consume: async (ctx, { purpose, principalType, token }, tx) => {

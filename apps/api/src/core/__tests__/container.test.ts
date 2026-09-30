@@ -1,9 +1,15 @@
 import { createLogger } from "@repo/logger";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { DbExecutor } from "@repo/db";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { loadConfig } from "../config/index.js";
 import { buildContainer } from "../container.js";
-import { createDb, type DbClient } from "../db/index.js";
+import {
+  createDb,
+  createTransaction,
+  DEFAULT_TRANSACTION_ATTEMPTS,
+  type DbClient,
+} from "../db/index.js";
 import type { MailSender } from "../mail/index.js";
 
 /**
@@ -214,5 +220,86 @@ describe("buildContainer", () => {
     expect(build().rateLimiters.principalHash).not.toBe(
       build().rateLimiters.principalHash,
     );
+  });
+});
+
+/**
+ * The transaction helper the root hands every service (ADR-0078 §3), driven
+ * through a fake `open` — the deadlock itself is the integration tier's to
+ * produce; what is pinned here is what the helper does with one.
+ */
+describe("the root's transaction helper", () => {
+  const TX = { id: "tx" } as unknown as DbExecutor;
+
+  /** What postgres.js throws, wrapped the way Drizzle wraps a failed query. */
+  const deadlock = () =>
+    Object.assign(new Error("Failed query: update …"), {
+      cause: Object.assign(new Error("deadlock detected"), { code: "40P01" }),
+    });
+
+  const helper = (outcomes: readonly unknown[]) => {
+    const logger = createLogger({ level: "silent", name: "container-test" });
+    const warn = vi.spyOn(logger, "warn");
+    let attempts = 0;
+
+    const transaction = createTransaction({
+      open: <T>(fn: (tx: DbExecutor) => Promise<T>): Promise<T> => {
+        const outcome = outcomes[attempts];
+
+        attempts += 1;
+
+        return outcome === undefined ? fn(TX) : Promise.reject(outcome);
+      },
+      logger,
+    });
+
+    return { transaction, warn, attempts: () => attempts } as const;
+  };
+
+  it("a deadlock victim is retried", async () => {
+    const { transaction, warn, attempts } = helper([deadlock()]);
+
+    await expect(
+      transaction((tx) => Promise.resolve(tx === TX ? "committed" : "wrong")),
+    ).resolves.toBe("committed");
+
+    expect(attempts()).toBe(2);
+    // Each retry logged, fields first, naming the attempt that lost.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ attempt: 1, sqlState: "40P01" }),
+      expect.any(String),
+    );
+  });
+
+  it("a transaction that keeps losing surfaces the error", async () => {
+    const losses = Array.from({ length: DEFAULT_TRANSACTION_ATTEMPTS }, () =>
+      deadlock(),
+    );
+    const { transaction, warn, attempts } = helper(losses);
+
+    await expect(transaction(() => Promise.resolve("never"))).rejects.toBe(
+      losses.at(-1),
+    );
+
+    // Bounded: the first run and its retries, then the last loss as it was.
+    expect(attempts()).toBe(DEFAULT_TRANSACTION_ATTEMPTS);
+    expect(warn).toHaveBeenCalledTimes(DEFAULT_TRANSACTION_ATTEMPTS - 1);
+  });
+
+  it("passes any other failure through on the first attempt", async () => {
+    // A refusal a service threw to roll back, or a unique violation, is an
+    // answer — running it again would only repeat it, or worse, succeed.
+    const refusal = Object.assign(new Error("duplicate key"), {
+      code: "23505",
+    });
+    const { transaction, warn, attempts } = helper([refusal]);
+
+    await expect(transaction(() => Promise.resolve("never"))).rejects.toBe(
+      refusal,
+    );
+
+    expect(attempts()).toBe(1);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

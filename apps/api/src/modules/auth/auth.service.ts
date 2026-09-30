@@ -768,12 +768,30 @@ export const createAuthService = (deps: AuthServiceDeps) => {
 
       const at = now();
 
+      const handoff = {
+        purpose: "federated_login",
+        principalType: population,
+        token,
+      } as const;
+
       return transaction(async (tx) => {
-        const claimed = await accountTokens.consume(
-          ctx,
-          { purpose: "federated_login", principalType: population, token },
-          tx,
-        );
+        // **The locks in a credential event's order** (ADR-0078 §3): the
+        // account's credential lock, then its row, then the handoff. A reset
+        // reaches this handoff twice — in its sweep, under the credential
+        // lock, and again behind the account row, because the callback mints
+        // behind that row — so an exchange that claimed first and wrote the
+        // account second held the one row the reset's second sweep waited for
+        // while waiting for the account the reset held. Taken in this order,
+        // whichever arrives second waits holding nothing: an exchange behind
+        // a reset finds its handoff spent, and a reset behind an exchange ends
+        // the session it issued.
+        const holder = await accountTokens.lockHolderOf(ctx, handoff, tx);
+
+        if (holder !== undefined) {
+          await federated?.lockAccount(holder.id, tx);
+        }
+
+        const claimed = await accountTokens.consume(ctx, handoff, tx);
 
         if (claimed === undefined) throw federatedHandoffInvalid();
 

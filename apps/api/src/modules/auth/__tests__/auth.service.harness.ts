@@ -534,6 +534,23 @@ const createFakeAccountTokens = () => {
         consumedAt: new Date(clock),
       });
     },
+    lockCredentials: () => Promise.resolve(),
+    /** Who a live token names; the fake has no locks to take (ADR-0078 §3). */
+    lockHolderOf: (_ctx, { purpose, principalType, token }) => {
+      const row = minted.find(
+        (candidate) =>
+          candidate.token === token &&
+          candidate.purpose === purpose &&
+          candidate.principalType === principalType &&
+          !candidate.consumed,
+      );
+
+      return Promise.resolve(
+        row === undefined
+          ? undefined
+          : ({ type: row.principalType, id: row.principalId } as const),
+      );
+    },
     /** The mint's side effect without a replacement (`D18.9`). */
     supersede: (_ctx, { purpose, principal }) => {
       let superseded = 0;

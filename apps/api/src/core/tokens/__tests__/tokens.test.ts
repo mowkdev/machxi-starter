@@ -35,7 +35,12 @@ const OWN_TX = { id: "own-tx" } as unknown as DbExecutor;
 
 interface Recorded {
   readonly name:
-    "insert" | "consume" | "supersedeLive" | "lockPrincipalPurpose";
+    | "insert"
+    | "consume"
+    | "supersedeLive"
+    | "lockPrincipalPurpose"
+    | "lockCredentials"
+    | "holderOf";
   readonly input: Record<string, unknown>;
   readonly tx: DbExecutor | undefined;
 }
@@ -69,6 +74,23 @@ const createFakeRepository = (consumed?: AccountTokenRow) => {
       calls.push({ name: "lockPrincipalPurpose", input: { ...input }, tx });
 
       return Promise.resolve();
+    },
+    lockCredentials: (input, tx) => {
+      calls.push({ name: "lockCredentials", input: { ...input }, tx });
+
+      return Promise.resolve();
+    },
+    holderOf: (input, tx) => {
+      calls.push({ name: "holderOf", input: { ...input }, tx });
+
+      return Promise.resolve(
+        consumed === undefined
+          ? undefined
+          : {
+              principalType: consumed.principalType,
+              principalId: consumed.principalId,
+            },
+      );
     },
   };
 
@@ -313,10 +335,15 @@ describe("supersedeAll", () => {
     // event spends links and mints none (ADR-0074 §5). Asserted against the
     // enum rather than a list, so a sixth purpose is covered here the day it
     // is declared — or this case says which one was left out.
-    expect(calls.map((call) => call.name)).toEqual(
-      TOKEN_PURPOSES.map(() => "supersedeLive"),
-    );
-    const swept = calls.map((call) => call.input.purpose as string);
+    const sweeps = calls.filter((call) => call.name === "supersedeLive");
+
+    expect(sweeps).toHaveLength(TOKEN_PURPOSES.length);
+    expect(
+      calls.every((call) =>
+        ["supersedeLive", "lockCredentials"].includes(call.name),
+      ),
+    ).toBe(true);
+    const swept = sweeps.map((call) => call.input.purpose as string);
 
     expect([...swept].sort()).toEqual([...TOKEN_PURPOSES].sort());
     // `reset_password` first: the reset by mail sweeps while holding the row
@@ -324,7 +351,7 @@ describe("supersedeAll", () => {
     // locks any other (`D28.5`'s `security-reviewer`).
     expect(swept[0]).toBe("reset_password");
     expect(
-      calls.every(
+      sweeps.every(
         (call) =>
           call.tx === CALLER_TX &&
           call.input.principalType === "user" &&
@@ -339,5 +366,81 @@ describe("supersedeAll", () => {
       expect.objectContaining({ superseded: TOKEN_PURPOSES.length }),
       expect.any(String),
     );
+  });
+
+  it("takes the principal's credential lock after the reset links and before every other", async () => {
+    // ADR-0078 §3: the federated exchange takes the same lock before the
+    // account row and its handoff, so a sweep must hold it before it reaches
+    // the handoff — and only after `reset_password`, whose row the reset by
+    // mail already holds when it gets here.
+    const { repository, calls } = createFakeRepository();
+    const { ctx } = createContext();
+
+    await build(repository).supersedeAll(ctx, principal, CALLER_TX);
+
+    const lock = calls.findIndex((call) => call.name === "lockCredentials");
+
+    expect(calls.filter((call) => call.name === "lockCredentials")).toEqual([
+      {
+        name: "lockCredentials",
+        input: { principalType: "user", principalId: "user-1" },
+        tx: CALLER_TX,
+      },
+    ]);
+    expect(calls.slice(0, lock).map((call) => call.input.purpose)).toEqual([
+      "reset_password",
+    ]);
+    expect(
+      calls
+        .slice(lock + 1)
+        .map((call) => call.input.purpose as string)
+        .includes("federated_login"),
+    ).toBe(true);
+  });
+});
+
+describe("lockHolderOf", () => {
+  it("locks the credentials of the principal a live token names, and claims nothing", async () => {
+    const { repository, calls } = createFakeRepository({
+      id: "token-row-id",
+      purpose: "federated_login",
+      principalType: "user",
+      principalId: "user-1",
+      payload: null,
+    });
+    const { ctx } = createContext();
+
+    const holder = await build(repository).lockHolderOf(
+      ctx,
+      {
+        purpose: "federated_login",
+        principalType: "user",
+        token: "the-raw-token",
+      },
+      CALLER_TX,
+    );
+
+    expect(holder).toEqual({ type: "user", id: "user-1" });
+    expect(calls.map((call) => call.name)).toEqual([
+      "holderOf",
+      "lockCredentials",
+    ]);
+    // By the hash, never the token, and on the caller's transaction.
+    expect(calls[0]?.input.tokenHash).not.toBe("the-raw-token");
+    expect(calls.every((call) => call.tx === CALLER_TX)).toBe(true);
+  });
+
+  it("takes no lock for a token nobody holds", async () => {
+    const { repository, calls } = createFakeRepository();
+    const { ctx } = createContext();
+
+    const holder = await build(repository).lockHolderOf(
+      ctx,
+      { purpose: "federated_login", principalType: "user", token: "dead" },
+      CALLER_TX,
+    );
+
+    expect(holder).toBeUndefined();
+    expect(calls.map((call) => call.name)).toEqual(["holderOf"]);
   });
 });

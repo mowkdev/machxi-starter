@@ -275,6 +275,16 @@ export const createFederatedSignInService = ({
       // a reset that starts after this lock waits for this commit and then
       // supersedes the handoff it mints. Refused as a sign-in that did not
       // work — the next attempt resolves afresh.
+      //
+      // **The credential lock first** (ADR-0078 §3, `D29.3`'s
+      // `security-reviewer`): the mint below supersedes an older live
+      // handoff, and a credential event holds that row from its sweep while it
+      // waits for this account — so the callback queues where the event
+      // queued, before the row, and nothing it holds is what the event awaits.
+      await accountTokens.lockCredentials(
+        { type: "user", id: principal.id },
+        tx,
+      );
       await accounts.lockAccount(principal.id, tx);
 
       if (!(await accounts.touchLogin(known.identityId, at, tx))) {
@@ -336,6 +346,8 @@ export const createFederatedSignInService = ({
       // The link callback's lock, for its reason (§3, amended after
       // `D19.4`): this inserts an identity into an existing account, and a
       // reset of that account must see it or come after it — never between.
+      // The credential lock ahead of it, for the branch above's reason.
+      await accountTokens.lockCredentials({ type: "user", id: holder.id }, tx);
       await accounts.lockAccount(holder.id, tx);
 
       const linked = await accounts.link(

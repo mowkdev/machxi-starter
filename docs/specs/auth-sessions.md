@@ -121,6 +121,27 @@ Proved by: `apps/api/src/modules/auth/__tests__/auth.tokens.test.ts`, `apps/api/
 - **WHEN** `NODE_ENV=production` and `JWT_ACCESS_SECRET`, `JWT_ACCESS_SECRET_PREVIOUS` or `OIDC_TRANSACTION_SECRET` holds a value committed in this repository
 - **THEN** the API refuses to start, naming the variable
 
+## Requirement: A request that loses a deadlock is answered as if it had not
+
+A write that the database aborts as a deadlock victim (`40P01`) is run again from its start, inside the API, up to three runs in all, and each retry is logged with the request id; nothing a transaction does reaches outside the database, so the client sees one answer — the one the winning run gives. A request that loses on every run is answered `500 INTERNAL_ERROR`, as any failure the API did not expect is. Any other failure inside a transaction is answered on the first run, never retried.
+Records: [ADR-0078](../adr/0078-backend-closing-wave.md), [ADR-0013](../adr/0013-error-model.md)
+Proved by: `apps/api/src/core/__tests__/container.test.ts`, `apps/api/test/federated-identity.int.test.ts`
+
+### Scenario: A deadlock victim
+
+- **WHEN** a request's transaction is aborted as a deadlock victim and its next run commits
+- **THEN** the client receives that run's answer, and one warning names the lost attempt
+
+### Scenario: A request that keeps losing
+
+- **WHEN** every run of a request's transaction is aborted as a deadlock victim
+- **THEN** the answer is `500 INTERNAL_ERROR` after the third run
+
+### Scenario: A refusal is not a deadlock
+
+- **WHEN** a transaction fails for any other reason — a refusal the API threw, a unique violation
+- **THEN** it is answered at once, and the transaction is not run again
+
 ## Requirement: Logout ends this session; logout-all ends every one
 
 `POST /auth/logout` revokes the session the access token names and answers `204`; `POST /auth/logout-all` revokes every live session of the principal. Both clear this population's cookies, whether or not the caller had any.

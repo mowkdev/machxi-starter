@@ -1,4 +1,5 @@
 import {
+  accountTokens,
   auditEvents,
   federatedIdentities,
   organizationMemberships,
@@ -12,6 +13,7 @@ import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { FakeOidcClaims } from "../src/core/oidc/index.js";
+import { createAccountTokensRepository } from "../src/core/tokens/index.js";
 import {
   NEW_ACCOUNT_PASSWORD,
   bearer,
@@ -1321,6 +1323,210 @@ describe("sign in with Google", () => {
       expect(await trailOf(account.id, "account.identity_unlinked")).toEqual([
         { data: { provider: "google", via: "reset" }, actorId: account.id },
       ]);
+    });
+    /* an exchange and a reset of one account take turns (ADR-0078 §3) */
+
+    /**
+     * Plays a credential event's locks in a transaction of the suite's own —
+     * `head` takes what the event holds when the exchange arrives — starts the
+     * exchange, waits until it is observed waiting, and then runs `tail`, the
+     * rest of the event, **under a lock timeout shorter than Postgres's
+     * deadlock timeout**.
+     *
+     * The timeout is the proof. An exchange that held something the event's
+     * tail needs would make the tail wait on it while it waits on the event:
+     * the tail's statement then fails on the timeout, and the case with it,
+     * before the deadlock detector gets to choose a victim — so a retry at the
+     * composition root cannot hide an inverted order here. The waiting is read
+     * from `pg_locks`, scoped to this database, rather than assumed from a
+     * sleep, for {@link whileTheRowIsHeld}'s reason.
+     */
+    const whileAnEventHoldsTheAccount = async <T>(
+      begin: () => Promise<T>,
+      head: (tx: DbExecutor) => Promise<void>,
+      tail: (tx: DbExecutor) => Promise<void>,
+    ): Promise<T> => {
+      let pending: Promise<T> | undefined;
+
+      await harness.db.db.transaction(async (tx) => {
+        await head(tx);
+
+        pending = begin();
+
+        for (let attempt = 0; ; attempt += 1) {
+          const [row] = await tx.execute<{ waiting: number }>(
+            sql`select count(*)::int as waiting
+                  from pg_locks l
+                  join pg_stat_activity a on a.pid = l.pid
+                 where not l.granted and a.datname = current_database()`,
+          );
+
+          if ((row?.waiting ?? 0) > 0) break;
+          if (attempt === 200) {
+            throw new Error("the exchange never came to wait on the event");
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+
+        await tx.execute(sql`set local lock_timeout = '500ms'`);
+        await tail(tx);
+      });
+
+      if (pending === undefined) throw new Error("the exchange never began");
+
+      return pending;
+    };
+
+    /** The credential lock every sweep takes — the app's own statement. */
+    const lockCredentialsOf = (userId: string, tx: DbExecutor) =>
+      createAccountTokensRepository(harness.db.db).lockCredentials(
+        { principalType: "user", principalId: userId },
+        tx,
+      );
+
+    /** A sweep of the account's live Google handoffs, as a reset runs it. */
+    const sweepHandoffs = (userId: string, tx: DbExecutor) =>
+      tx
+        .update(accountTokens)
+        .set({ consumedAt: new Date(), updatedAt: new Date() })
+        .where(
+          and(
+            eq(accountTokens.principalId, userId),
+            eq(accountTokens.purpose, "federated_login"),
+            sql`${accountTokens.consumedAt} is null`,
+          ),
+        );
+
+    /** Every session of the account ends, as a reset ends them. */
+    const endSessions = (userId: string, tx: DbExecutor) =>
+      tx
+        .update(sessions)
+        .set({ revokedAt: new Date(), revokedReason: "password_reset" })
+        .where(eq(sessions.principalId, userId));
+
+    const liveSessionsOf = async (userId: string) =>
+      (
+        await harness.db.db
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(
+            and(
+              eq(sessions.principalId, userId),
+              sql`${sessions.revokedAt} is null`,
+            ),
+          )
+      ).length;
+
+    it("an exchange racing a reset ends in one outcome and no deadlock", async () => {
+      // The race `D28.5` logged: the callback minted this handoff behind the
+      // account row while a reset waited for that row, so the reset's first
+      // sweep missed it and its second — behind the row — is the one that
+      // reaches it. An exchange that claimed the handoff first and reached
+      // for the account second held what that second sweep waits on.
+      const email = "exchange.races.reset@gmail.test";
+      const account = await linkedPasswordAccount(
+        email,
+        "sub-exchange-races-reset",
+      );
+      const landing = await signIn(hosted("sub-exchange-races-reset", email));
+
+      expect(landing.fragment.get("token")).not.toBeNull();
+
+      const response = await whileAnEventHoldsTheAccount(
+        () => redeem(landing).then((answer) => answer),
+        // The reset past its first sweep: the credential lock, then the row.
+        async (tx) => {
+          await lockCredentialsOf(account.id, tx);
+          await tx.execute(
+            sql`select id from ${users} where id = ${account.id} for update`,
+          );
+        },
+        // Its second sweep, and its session sweep.
+        async (tx) => {
+          await sweepHandoffs(account.id, tx);
+          await endSessions(account.id, tx);
+        },
+      );
+
+      // One outcome: the reset won, so the handoff is spent and the exchange
+      // is the refusal it would have been had it come a second later.
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe("UNAUTHENTICATED");
+      expect(await liveSessionsOf(account.id)).toBe(0);
+    });
+
+    it("an exchange racing a reset's first sweep waits holding nothing", async () => {
+      // The other half of the order: the reset's first sweep reaches a live
+      // handoff before it takes the account row, so an exchange that held the
+      // account row while it reached for the handoff would be the mirror of
+      // the case above. The credential lock is what makes it wait first.
+      const email = "exchange.races.sweep@gmail.test";
+      const account = await linkedPasswordAccount(
+        email,
+        "sub-exchange-races-sweep",
+      );
+      const landing = await signIn(hosted("sub-exchange-races-sweep", email));
+
+      const response = await whileAnEventHoldsTheAccount(
+        () => redeem(landing).then((answer) => answer),
+        async (tx) => {
+          await lockCredentialsOf(account.id, tx);
+          await sweepHandoffs(account.id, tx);
+        },
+        // Then the account row, and the sessions.
+        async (tx) => {
+          await tx.execute(
+            sql`select id from ${users} where id = ${account.id} for update`,
+          );
+          await endSessions(account.id, tx);
+        },
+      );
+
+      expect(response.status).toBe(401);
+      expect(await liveSessionsOf(account.id)).toBe(0);
+    });
+
+    it("a sign-in racing a reset's first sweep waits holding nothing", async () => {
+      // `D29.3`'s `security-reviewer`: the callback locks the account and then
+      // mints, and the mint supersedes the older live handoff the event's
+      // sweep already holds. The callback takes the credential lock before the
+      // account row, so it waits where the event's other racers wait.
+      const email = "signin.races.sweep@gmail.test";
+      const account = await linkedPasswordAccount(
+        email,
+        "sub-signin-races-sweep",
+      );
+
+      // The older handoff, live when the event sweeps it.
+      await signIn(hosted("sub-signin-races-sweep", email));
+
+      const { authorizationUrl, cookie } = await start();
+      const { code, state } = harness.oidc.consent(
+        authorizationUrl,
+        hosted("sub-signin-races-sweep", email),
+      );
+
+      const response = await whileAnEventHoldsTheAccount(
+        () =>
+          callback({ code, state }, cookie)
+            .expect(302)
+            .then((answer) => answer),
+        async (tx) => {
+          await lockCredentialsOf(account.id, tx);
+          await sweepHandoffs(account.id, tx);
+        },
+        async (tx) => {
+          await tx.execute(
+            sql`select id from ${users} where id = ${account.id} for update`,
+          );
+          await endSessions(account.id, tx);
+        },
+      );
+
+      // One outcome: the event left the identity, so the sign-in that waited
+      // for it completes after it, with a handoff of its own.
+      expect(landingOf(response).fragment.get("token")).not.toBeNull();
     });
   });
 

@@ -128,6 +128,7 @@ const build = (provider: Partial<OidcProvider> = {}) => {
     accountTokens: {
       mint: () =>
         Promise.resolve({ token: "a-handoff", expiresAt: new Date() }),
+      lockCredentials: () => Promise.resolve(),
     } as unknown as AccountTokens,
     audit: { record } as unknown as Audit,
     registrationOpen: true,
