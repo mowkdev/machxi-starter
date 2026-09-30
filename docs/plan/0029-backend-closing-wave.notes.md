@@ -291,3 +291,98 @@ Results:
 - **A platform whose proxy targets port 80 on the SPA containers must target 8080** from this release. Coolify reads `EXPOSE`, but a domain written with an explicit `:80` suffix breaks. `docs/deploy.md` says so.
 - `docker compose -f docker/prod/compose.yaml build` **as committed**, on a machine with IPv6: here the SPA images were built only without the `[::]` listen.
 - `pnpm test:postman` and `test:e2e` were not run: no dev stack runs in this container, and the wire is unchanged.
+
+## D29.6 — Close-out (2026-09-30)
+
+Built in a cloud session on `claude/keen-knuth-jwf8xb` at `cad4d09`, which equals `origin/main`. D29 is the only open lane (`docs:check`: "open lanes: disjoint (1 open)"), and `main` since D29.5 has brought in D31's ship and D32's scoping, both docs only. No code, schema or record changed in this step.
+
+**Built.**
+
+- **The six findings carry their fates in both reviews.**
+  - [2026-09-13](../reviews/2026-09-13-repo-review.md): each bullet keeps its routing suffix and gains a closing one. `DB-01` closed at `D29.1`, `SEC-01` at `D29.2`, `SEC-07` at `D29.4` and `CI-05` at `D29.5`, each with what closed it and what it left. `SEC-07` points at these notes for the four logged Lows. `CI-05` says the restart policies stand: `unless-stopped` on the four long-running services, `"no"` on `migrate`.
+  - [2026-09-21](../reviews/2026-09-21-repo-review.md): the §2 table's fate column reads "Routed D2x; closed `D29.n`" for `SEC-01`, `SEC-07`, `DB-01` and `CI-05`. `CI-07`'s residual, "packages keep the buildinfo under cached `dist-types/**`", is marked closed at `D29.5`, because it is ADR-0073 §6's residual that the plan's step 5 names. `CI-10` and `CI-11` are closed at `D29.5`. `CI-11` keeps one residual by name: the SPA stages still install the whole workspace, argon2 included.
+- **The index's planned entry on secret management** now says it was decided by ADR-0078, and not as the one decision the entry expected. It names what was taken and what was declined:
+  - Taken (§2, `D29.2`): the two-secret ring with a `kid`, and the codec's own key, derived when unset.
+  - Declined (§7): the argon2 pepper, and the credential epoch.
+  - Asymmetric signing stays ADR-0018's named later step.
+- **The skills and rule files describe the runner.** `/db-schema-change` already did, since `D29.1`. The following were brought into line with what D29 built:
+  - The `db-migrator` agent now cites ADR-0008 as carried by ADR-0078. It states the runner (by hash or journal timestamp, in journal order, under the advisory lock), the second lane and the tenant-owned table's policies.
+  - `/local-dev` gains two troubleshooting rows: "`db:migrate` sits waiting" (the polled lock) and "a tenant-owned read returns nothing" (row-level security working; use the helper, or `harness.asTooling` in a test).
+  - `/new-api-module`: the organization-scoped answer now includes the row-level policies. Services open transactions through the root's helper, never `db.transaction`.
+  - `/api-conventions`: the data line names the runner, the second lane, the helper's retry and scope, and row-level security.
+  - `.claude/rules/*.md` needed no change: they load the digest, and the digest carries the runner's line.
+- **The digests.** `pnpm rules:digest` wrote 0 of 3, twice. Every D29 line was written at its own step.
+
+**Definition of done.**
+
+1. **The gate, every task cold** — `pnpm lint --force && pnpm check-types --force && pnpm test --force && pnpm size --force && pnpm format:check`, exit `0`:
+   - `lint` 22/22: `test:scripts` 73/73; `docs:check` "inherited documents: clean", "behaviour specs: clean (16 files)", "open lanes: disjoint (1 open)".
+   - `check-types` 17/17.
+   - `test` 17/17: `api` 814 unit and 830 integration (75.15 s); `@repo/db` 107 unit and 121 integration; admin 331; customer 282; contracts 246; grid 209; account 110; ui 103; app-kit 84; form 74; api-client 55; crypto 39; resource 31; logger 19; i18n 19; app-services 13.
+   - `size` 4/4, every figure `ok`:
+     - admin: js 368.1 / 383.8 kB, css 14.8 / 15.2, entry 163.2 / 170.9;
+     - customer: js 312.0 / 324.2 kB, css 13.9 / 14.5, entry 106.6 / 111.3.
+   - `format:check`: "All matched files use Prettier code style!"
+
+   The integration tiers ran against this container's `machxi_test` (Postgres 16, local, no Docker).
+
+2. **`pnpm test:unit` twice**: 17/17 (16 cached), then 17/17 cached, `FULL TURBO`.
+3. **The dev database.** The first `pnpm db:migrate` applied `0019_tenant_row_level_security` to this container's `machxi` and printed `db:migrate ✓ applied 1, up to date`. The second printed `db:migrate ✓ up to date`.
+
+   `pnpm db:seed -- --dev` was run three times:
+   - The first run created the super admin, which this container's dev database did not hold.
+   - The second and third runs gave **identical output**, the super admin "already present — left unchanged".
+
+   **The operator's own dev database still needs this migrate before the running API takes D29.4's code** (D29.4's pending item, unchanged).
+
+4. **`pnpm test:e2e` in both apps against the local compose: pending the operator.** It was not run. No dev stack runs in this container, and `CLAUDE.md` forbids starting one. The only browser evidence in the lane is D29.5's `apps/admin/e2e/smoke.spec.ts` against the built admin image (1 passed).
+5. **`pnpm test:postman`: pending the operator**, for the same reason. It has not run anywhere in D29. The wire changed in no step, but `D29.2`'s done-when named it, so it is owed from that step too.
+6. **`docker compose -f docker/prod/compose.yaml`:**
+   - `config` rendered, exit `0`, with `logging` on all five services and a CPU and memory limit on each: api 1 / 1 GiB, migrate 1 / 512 MiB, prune 0.5 / 256 MiB, admin and customer 0.5 / 128 MiB.
+   - `build` with the SPA origins set (`VITE_ADMIN_API_URL`, `VITE_CUSTOMER_API_URL`, `VITE_CUSTOMER_APP_URL`; the Dockerfiles refuse a blank origin by design): the **API image (api, migrate, prune) built as committed**.
+   - Both SPA images **failed as committed on this kernel**: `nginx -t` gave `socket() [::]:8080 failed (97: Address family not supported by protocol)`. This is the no-IPv6 sandbox that D29.5 recorded.
+   - Built from a scratch copy of `HEAD` with only the `listen [::]:8080;` line removed from both `nginx.conf`, `build admin customer` succeeded.
+   - **`build` as committed, on a machine with IPv6, is pending the operator**, as it was at D29.5.
+7. **`pnpm audit --prod`**: "No known vulnerabilities found", exit `0`.
+8. **`pnpm rules:digest`** wrote 0 of 3 on both runs. **`pnpm docs:check`** is clean.
+
+**Sandbox accommodations, none in the repository.**
+
+- `dockerd` was started in the background for item 6 and stopped afterwards.
+- The base images were D29.5's, still in the daemon's store: pulled through `mirror.gcr.io` after Docker Hub's `429`, with `node:24-bookworm-slim` retagged locally with the proxy CA so `pnpm fetch` reaches the registry.
+- The SPA images were built from the scratch copy described in item 6.
+
+**Review — one bounded pass, `adr-reviewer`'s checklist over the diff.** This session has no tool to spawn a subagent, so the builder ran the pass inline, as D29.4 and D29.5 did. It checked each fate and skill claim against the code and the records. Three findings, all fixed:
+
+1. `CI-05`'s fate said the restart policy "stands as `unless-stopped`", but `migrate` is `restart: "no"`. It now names both policies and the four long-running services.
+2. `/new-api-module`'s new sentence, "a transaction opened around it has neither", was ambiguous. It now reads "a bare `db.transaction` does neither".
+3. `/api-conventions` cited "ADR-0078 §3–§4", a range. It now reads "§3 and §4" with its topic gloss, which is the `.claude/**` citation rule.
+
+After the fixes and this note were written, the gate ran again on the final tree, cached as it stands: exit `0`, with `lint` 22/22, `check-types` 17/17, `test` 17/17 (`api` 814 and 830, `@repo/db` 107 and 121), `size` 4/4 and `format:check` clean.
+
+**Review fates the lane leaves for `/ship` and the operator.** Every one is logged, not fixed, and named in its step's notes above:
+
+- `D29.2`: nothing expires `JWT_ACCESS_SECRET_PREVIOUS`, which is operational, and `docs/deploy.md`'s leak procedure sets none.
+- `D29.4`, the builder's inline pass: `createDb({ tenantUnscoped })` is reachable from production code, with a lint selector as the smallest fix. The principal policy admits a user's own memberships in every organization.
+- `D29.4`, the independent `security-reviewer` pass over `710178f`, four Lows:
+  1. The consume policies pin no columns. The fix is a column-level `GRANT UPDATE`.
+  2. A session-level setting carries into every request transaction. The fix is for `openInRequestScope` to write all four settings.
+  3. No boot check confirms that the API's role is bound by the policies (not superuser, not BYPASSRLS, owns no tenant table).
+  4. `app.user_id` stays set inside an organization-scoped request, so a forgetful query reads the caller's own invitations in other organizations.
+
+  Two operational notes: `0019` takes its locks without a `lock_timeout`, and deploying code before migrating is the safe order.
+
+- `D29.5`: `conf.d/default.conf` is writable by uid 101. `listen [::]:8080` stops the SPA image starting on a kernel without IPv6, which was the old behaviour on the old port. The base images are tag-pinned, not digest-pinned.
+- Residuals for the operator to route, from `D29.1`–`D29.3`:
+  - The API tier's per-lane test database works only through a local, uncommitted `apps/api/.env.test` edit.
+  - The concurrency cases time out on connecting when two lanes gate against one Postgres.
+  - A password login takes no credential lock, so a login racing a reset's session sweep is left to the retry (ADR-0078 §3).
+- One pre-existing flaky case, logged at `D29.5`: `apps/admin` `settings-provider.test.tsx` "adopts the account's theme when the query resolves". It was green in this gate.
+
+**Pending the operator.**
+
+- Items 4 and 5 of the definition of done: `pnpm test:e2e` in both apps and `pnpm test:postman`, on the running stack once `main` carries D29.
+- `docker compose -f docker/prod/compose.yaml build` as committed, on a machine with IPv6 (item 6).
+- `pnpm db:migrate` against the operator's dev database before the running API takes D29.4's code, then one walk of the organizations screens and an invitation accept.
+- **A platform proxying the SPA containers on port 80 must target 8080** from this release (D29.5, `docs/deploy.md`).
+- The merge of this step to `main`. This session pushed only `claude/keen-knuth-jwf8xb`, so the step is not closed until `main` carries it. `/ship` then runs the definition of done again on the committed tree.

@@ -49,7 +49,7 @@ Types: `export type XService = ReturnType<typeof createXService>`. Wire in the m
 
 ## DB (ADR-0006/0008) · Contracts (ADR-0023)
 
-- Drizzle + postgres.js, `casing: 'snake_case'`; uuid v7 ids; `created_at/updated_at`; enums from `@repo/contracts` arrays; migrations generated + committed; seeds idempotent; API never auto-migrates.
+- Drizzle + postgres.js, `casing: 'snake_case'`; uuid v7 ids; `created_at/updated_at`; enums from `@repo/contracts` arrays; migrations generated + committed and applied by hash in journal order, with a second lane outside the transaction for concurrent index builds (ADR-0078 §1, migrations applied by hash); seeds idempotent; API never auto-migrates. Services open transactions through the root's helper, which retries `40P01` and places the request's tenant scope; tenant-owned tables are under row-level security (ADR-0078 §3 and §4, the deadlock retry and row-level security).
 - `@repo/contracts`: zod schemas, resource types, enums, envelope/error types; depends only on zod.
 
 ## Tests (ADR-0021)
