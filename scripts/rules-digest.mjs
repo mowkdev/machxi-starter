@@ -238,6 +238,11 @@ export const AREAS = [
         text: "Colour, radius, type and spacing come from tokens; a raw hex or an arbitrary `oklch()` in a component is the defect. The neutrals and the primary sit on one hue at low chroma, borders are solid rather than alpha in dark, and four tokens extend shadcn's set.",
       },
       {
+        topic: "The auth card",
+        records: ["0080", "0054"],
+        text: "`@repo/app-kit`'s auth layout is one card, centred on both axes on a gradient ground between `--background` and `--primary-tint`, holding the brand line, the heading, the lede and the page's body — its controls, then its ways out. A page under it draws no card of its own, and the ground carries no inline paint.",
+      },
+      {
         topic: "Generated versus written UI",
         records: ["0047", "0074"],
         text: 'Primitives under `packages/ui/src/components/` and `src/hooks/` stay byte-identical to the CLI output and are prettier-exempt; an edit to one earns itself with a comment naming the rule that forced it. Hand-written compositions live in `src/compositions/` under the ordinary regime and are presentation-only: no contracts import, no routing, no forms, no session — and no `"use client"` directive, which a consumer that needs one reintroduces by its own record.',

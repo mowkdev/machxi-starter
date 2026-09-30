@@ -1,6 +1,6 @@
 # ADR-0054: Design language "Instrument" — tokens, band chrome, and the surfaces
 
-- Status: accepted
+- Status: superseded by [ADR-0080](0080-interface-polish.md) (delta: §7's login — one centred card on a gradient ground between `--background` and `--primary-tint`, with the `D11.7` amendment's left-aligned column and hairline ground retired)
 - Date: 2026-08-30
 - Supersedes: [ADR-0037](0037-grid-viewport-layout.md) (delta: the grid's visual frame); [ADR-0048](0048-app-shell-and-record-surfaces.md) (delta: the shell's chrome geometry — its second partial successor, beside [0052](0052-grid-and-admin-followups.md)'s); [ADR-0052](0052-grid-and-admin-followups.md) (delta: the applied-filters bar's presentation); [ADR-0038](0038-grid-selection-and-capabilities.md) (delta: where Create and the Columns control are drawn); [ADR-0041](0041-grid-preferences.md) (delta: the same, for the Columns menu) — the last two at `D11.12`
 

@@ -26,3 +26,34 @@ The per-step build record of [D31](0031-interface-polish.md). It holds what was 
 - The merge to `main` and `pnpm test:e2e` in the admin are the coordinator's. The dev stack serves the main checkout, so the e2e sees this change only after the merge. The step is done when that passes.
 - Pending operator acceptance (browser-only geometry): the grid header, and the drawer toggle wide and narrow, in both themes.
 - The commit `docs(plan): open D29` (7bb1f06) landed on `lane/D31` rather than `main` before the worktree move, and reaches `main` with this lane's merge.
+
+## D31.2 — The auth card and the email's row (2026-09-30)
+
+**Built.** [ADR-0054](../adr/0054-design-language-instrument.md) moved to `superseded by` [ADR-0080](../adr/0080-interface-polish.md) at the head, with its delta stated: §7's login is one centred card on a gradient ground, and the `D11.7` column and hairline ground retire. The topic table's design-language row and the ledger's window paragraph say so. 0054 has no row of its own in the index's tables, only its D11 history bullet, so no status column moved; that gap predates this step. `scripts/rules-digest.mjs` gains "The auth card" line (0080, 0054), and "Tokens" now reads 0054 as carried by 0080.
+
+- `@repo/app-kit`'s `AuthLayout` renders one `Card` at §7's 400px cap, with `p-5 gap-4` over the primitive's `py-6 gap-6` through `cn`. The card holds the brand line, the heading, the lede and the page's body (`data-slot="auth-body"`, a block, so the pages' `mt-4` ways out keep their spacing). The card is centred on both axes on `bg-background bg-linear-to-br from-background to-primary-tint`. The inline hairline `style` is gone.
+- Every page under the layout dropped its own `Card`: admin login, forgot-password, reset-password and onboarding; customer login, register, forgot-password, reset-password, verify-email, confirm-email, impersonate, auth-google and accept-invitation. Where the card carried `flex flex-col gap-4` (with `items-start` on impersonate), a plain `div` keeps it. Comments that placed the ways out "under the card" now say "under the form".
+- The customer profile's "Change email" left the card header (`CardAction`) for the email's own row (`data-slot="account-email-row"`). The row is flex and `justify-between`, with the address in a `<dl>` of its own at the start and the `outline` button at the end. It is still offered only when `hasPassword` is true. Member-since and last sign-in keep the two-column `<dl>` below it.
+- Both apps' auth-layout suites and the admin's `e2e/login.spec.ts` assert the new geometry. The spec checks a 400px card whose centre is within 1px of the ground's on both axes, one `linear-gradient` with neither stop transparent, and the unchanged 38px controls, 28/34 title and 13px control type.
+
+**Amended.** ADR-0080 §3, labelled `D31.2`: the card is the layout's. The pages' ways out (sign in, recovery, sign-up, Continue with Google) sit under the controls inside the one card, because with the heading in the card the `D11.7` reading "a card holds only the controls" no longer divides anything. The card keeps §7's 400/20/16 rungs, and the gradient runs to the bottom right over `--background`.
+
+**Net-new tests: 3.** `@repo/app-kit` gained two: "the auth layout centres one card on a gradient drawn from tokens", which was checked red with the `D11.7` hairline layout restored, and "renders no lede element when the screen has none". The customer gained one: "the email's change action sits on the email's row". The admin's three auth-layout cases and the customer's four were rewritten in place with the same counts.
+
+**Gate.** `pnpm check` was green, 17 of 17. The first full gate ran with `main` merged in (up to date at 25938db), against `machxi_d31_test`: `pnpm lint && pnpm check-types && pnpm test && pnpm size && pnpm format:check` exited 0. Size was `ok` on every figure: admin js 368.1 / 383.8 kB and entry 163.2 / 170.9 kB; customer js 311.9 / 324.2 kB and entry 106.5 / 111.3 kB. Prettier was clean.
+
+`main` moved twice before the step could close: to 71c1504 (D29.1), then to 0bbc47e (D29.2). Each was merged in, and the conflicts were resolved by the row: the ledger's window paragraph both times, and the index's design-language topic row the second time. `pnpm rules:digest` wrote 0 of 3 both times. **The gate that closes the step ran over 0bbc47e plus this diff**, against `machxi_d31_test`, with the turbo tasks at `--concurrency=2` to ease memory: `pnpm lint --concurrency=2 && pnpm check-types --concurrency=2 && pnpm test && pnpm size --concurrency=2 && pnpm format:check`. It exited 0: lint 22 of 22, check-types 17 of 17, test 17 of 17, and size 4 of 4 with the same figures as above (admin css 14.8 / 15.2 kB, customer css 13.9 / 14.5 kB). Prettier was clean.
+
+**Flakes on the way to it, recorded rather than fixed** (none is in code this step touches):
+
+- The first re-run over 71c1504 was killed by the harness under memory pressure. The partial log showed `@repo/resource#lint` exiting with 0xC0000142, a Windows process-start failure.
+- The retry failed one API case: `staff-delete.int.test.ts` › "survives two super admins deleting each other at once". Exactly one delete landed, but the loser's status was neither `409` nor `401`, and the log did not say what it was. Run alone five times in a row, the file passed every time, 10 of 10.
+- Two runs over 0bbc47e failed in `@repo/db`'s `prune-sessions.int.test.ts` with `write CONNECT_TIMEOUT localhost:5432`. The first failed on `resetSchema`'s first query. The second got past setup and one test, then timed out on the owner client's per-test truncate. D29 saw the same timeout in its own lane, including on a gate it ran alone. The operator restarted Docker, and the next run was the green one above. So the timeouts read as the one Postgres container going bad, not as either lane's code, and the staff-delete loss is plausibly the same pressure.
+
+**Review** (`code-reviewer`, one pass): no correctness defects. One low, uncertain test-strength finding was fixed: the e2e did not prove both gradient stops were generated, because a missing `from-*`/`to-*` falls back to transparent and still serialises as a `linear-gradient`. It now also asserts that the gradient contains no `rgba(0, 0, 0, 0)`.
+
+**Pending.**
+
+- `pnpm test:e2e` in both apps is pending the coordinator's run on `main` after the fast-forward. The dev stack serves the main checkout, so the e2e sees this change only after the merge. The step is done when that passes.
+- Pending operator acceptance (browser-only geometry): login, forgot password and reset password in both apps, and the customer's profile email row, in both themes.
+- D31.1: the coordinator's admin `pnpm test:e2e` on `main` at 25938db was green, 38 passed and 1 skipped (the built-image smoke).

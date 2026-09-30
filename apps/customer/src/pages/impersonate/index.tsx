@@ -4,7 +4,7 @@ import { useRedeemHandoff, type HandoffStatus } from "@/features/impersonation";
 
 import { useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
-import { AuthLayout, Card } from "@/shared/ui";
+import { AuthLayout } from "@/shared/ui";
 
 /**
  * The sentence per state, as a table rather than an interpolated key.
@@ -62,7 +62,7 @@ export const ImpersonatePage = () => {
 
   return (
     <AuthLayout description={undefined} title={title}>
-      <Card className="flex flex-col items-start gap-4 p-5">
+      <div className="flex flex-col items-start gap-4">
         {/*
          * A live region (`D28.8`, the review's `FE-11`): `pending` becomes a
          * refusal without a navigation, so a screen reader hears the change
@@ -97,7 +97,7 @@ export const ImpersonatePage = () => {
             {t("exchange.signIn")}
           </Link>
         )}
-      </Card>
+      </div>
     </AuthLayout>
   );
 };

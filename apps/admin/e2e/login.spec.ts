@@ -1,13 +1,14 @@
 import { expect, test } from "./support/fixtures";
 
 /**
- * The login screen, measured (`D11.7`, ADR-0054 §7).
+ * The login screen, measured (`D11.7`, ADR-0054 §7; redrawn at `D31.2` as one
+ * centred card on a gradient ground, ADR-0080 §3).
  *
- * The component tier asserts the class strings and the ground's inline paint;
- * none of that proves a pixel — Tailwind still has to have *generated*
- * `max-w-[400px]` and `h-[38px]`, and `tailwind-merge` still has to have
- * dropped `Input`'s own `h-9` rather than losing to it on source order. This
- * is the tier where those become values.
+ * The component tier asserts the class strings; none of that proves a pixel —
+ * Tailwind still has to have *generated* `max-w-[400px]`, `h-[38px]` and the
+ * gradient's two stops, and `tailwind-merge` still has to have dropped
+ * `Input`'s own `h-9` rather than losing to it on source order. This is the
+ * tier where those become values.
  *
  * **It takes `page`, not `app`** — the worker-scoped fixture signs in, and
  * this is the one screen that only exists signed *out*. That costs one
@@ -21,7 +22,7 @@ import { expect, test } from "./support/fixtures";
  * browser reports fractional box heights and asserting an integer to the pixel
  * would be asserting a rounding mode.
  */
-test("is a 400px column of 38px controls on a 48px hairline ground", async ({
+test("is one 400px card of 38px controls, centred on a gradient ground", async ({
   page,
 }) => {
   await page.goto("/login");
@@ -38,23 +39,36 @@ test("is a 400px column of 38px controls on a 48px hairline ground", async ({
 
   const geometry = await page.evaluate(() => {
     const ground = document.querySelector('[data-slot="auth-ground"]');
-    const column = document.querySelector('[data-slot="auth-column"]');
+    const card = document.querySelector("h1")?.closest('[data-slot="card"]');
     const email = document.querySelector("#email");
     const submit = document.querySelector('button[type="submit"]');
     const title = document.querySelector("h1");
 
-    const box = (node: Element | null) => node?.getBoundingClientRect();
+    const box = (node: Element | null | undefined) =>
+      node?.getBoundingClientRect();
+    const cardBox = box(card);
+    const groundBox = box(ground);
 
     return {
-      backgroundSize:
-        ground === null ? "" : getComputedStyle(ground).backgroundSize,
-      column: Math.round(box(column)?.width ?? 0),
+      backgroundImage:
+        ground === null ? "" : getComputedStyle(ground).backgroundImage,
+      card: Math.round(cardBox?.width ?? 0),
       /*
-       * The column's distance from the viewport's left edge — the half of
-       * "left-aligned" a width cannot say. `md:px-24` is two 48px modules, so
-       * the column's left edge lands on a grid line rather than near one.
+       * The card's centre against the ground's, on both axes — the half of
+       * "centred" a width cannot say.
        */
-      columnLeft: Math.round(box(column)?.left ?? 0),
+      offsetX: Math.round(
+        (cardBox === undefined || groundBox === undefined
+          ? Number.NaN
+          : cardBox.left + cardBox.width / 2) -
+          ((groundBox?.left ?? 0) + (groundBox?.width ?? 0) / 2),
+      ),
+      offsetY: Math.round(
+        (cardBox === undefined || groundBox === undefined
+          ? Number.NaN
+          : cardBox.top + cardBox.height / 2) -
+          ((groundBox?.top ?? 0) + (groundBox?.height ?? 0) / 2),
+      ),
       email: Math.round(box(email)?.height ?? 0),
       submit: Math.round(box(submit)?.height ?? 0),
       titleSize: title === null ? "" : getComputedStyle(title).fontSize,
@@ -71,10 +85,18 @@ test("is a 400px column of 38px controls on a 48px hairline ground", async ({
     };
   });
 
-  // Two gradients, each tiled on the same 48px module.
-  expect(geometry.backgroundSize).toBe("48px 48px, 48px 48px");
-  expect(geometry.column).toBe(400);
-  expect(geometry.columnLeft).toBe(96);
+  // One gradient, and no tiled hairline grid beside it.
+  expect(geometry.backgroundImage).toMatch(/^linear-gradient\(/);
+  expect(geometry.backgroundImage).not.toContain("), linear-gradient(");
+  /*
+   * Both stops generated: a missing `from-*` or `to-*` utility falls back to
+   * Tailwind's transparent `@property` initial value, and neither token is
+   * transparent.
+   */
+  expect(geometry.backgroundImage).not.toContain("rgba(0, 0, 0, 0)");
+  expect(geometry.card).toBe(400);
+  expect(Math.abs(geometry.offsetX)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.offsetY)).toBeLessThanOrEqual(1);
   expect(geometry.email).toBe(38);
   expect(geometry.submit).toBe(38);
   expect(geometry.titleSize).toBe("28px");

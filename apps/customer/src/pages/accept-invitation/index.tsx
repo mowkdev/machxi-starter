@@ -8,7 +8,6 @@ import { useRouteTitle } from "@/shared/lib/route-meta";
 import {
   AuthLayout,
   Button,
-  Card,
   FieldError,
   Separator,
   Spinner,
@@ -89,7 +88,7 @@ export const AcceptInvitationPage = () => {
 
   return (
     <AuthLayout description={undefined} title={title}>
-      <Card className="flex flex-col gap-4 p-5">
+      <div className="flex flex-col gap-4">
         {/*
          * The pending sentence is a status and the two failures below are
          * alerts (`D28.8`, the review's `FE-11`): each replaces the last
@@ -240,7 +239,7 @@ export const AcceptInvitationPage = () => {
                  * Absent where the deployment has closed sign-ups, so this is
                  * not the one screen that re-opens a disabled affordance; the
                  * sentence above changes with it, and the sign-in link under
-                 * the card is then the only way forward — which is the truth
+                 * the controls is then the only way forward — which is the truth
                  * on such a deployment.
                  */}
                 {features.userRegistration ? (
@@ -253,15 +252,14 @@ export const AcceptInvitationPage = () => {
             ) : null}
           </>
         )}
-      </Card>
+      </div>
 
       {status === "stranger" ? (
         <p className="mt-4 text-center text-[13px] text-muted-foreground">
           {/*
-           * The way out, under the card rather than in it — the sign-up
-           * screen's shape and for its reason: ADR-0054 §7 lists a card's
-           * contents as the controls, and "I already have an account" is not
-           * one of them.
+           * The way out, under the controls in the card's small type — the
+           * sign-up screen's shape and for its reason: "I already have an
+           * account" is a way out, not a control.
            */}
           <Link
             className="underline underline-offset-4"

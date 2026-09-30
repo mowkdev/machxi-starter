@@ -4,7 +4,7 @@ import { useConfirmEmail, type EmailChangeStatus } from "@/features/auth";
 
 import { useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
-import { AuthLayout, Card } from "@/shared/ui";
+import { AuthLayout } from "@/shared/ui";
 
 /**
  * The sentence per state, as a table rather than an interpolated key.
@@ -60,16 +60,14 @@ export const ConfirmEmailPage = () => {
 
   return (
     <AuthLayout description={undefined} title={title}>
-      <Card className="p-5">
-        <p className="text-[14px] leading-5 text-muted-foreground">
-          {t(MESSAGE_KEY[status])}
-        </p>
-      </Card>
+      <p className="text-[14px] leading-5 text-muted-foreground">
+        {t(MESSAGE_KEY[status])}
+      </p>
       {/*
        * Offered on every state but `pending`, where a control would invite
        * somebody to leave a screen that is one response away from answering.
-       * Under the card rather than in it — ADR-0054 §7 lists a card's contents
-       * as the controls, and "take me to sign in" is not one of them.
+       * Under the sentence in the card's small type: "take me to sign in" is
+       * a way out, not a control.
        */}
       {status === "pending" ? null : (
         <p className="mt-4 text-center text-[13px] text-muted-foreground">

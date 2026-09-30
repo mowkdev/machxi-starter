@@ -65,7 +65,7 @@ Each step: implement, gate green, one bounded diff review, commit (ADR-0050). AD
   - `pnpm test:e2e` green in the admin;
   - the gate green.
 
-- [ ] **2. The auth card and the email's row.** [ADR-0054](../adr/0054-design-language-instrument.md)'s status line gains its delta at the head.
+- [x] **2. The auth card and the email's row.** [ADR-0054](../adr/0054-design-language-instrument.md)'s status line gains its delta at the head.
   - `@repo/app-kit`'s auth layout becomes one centred card on the token gradient, per ADR-0080 §3; the hairline ground and its inline style go.
   - Both apps' auth-layout suites and the admin's `login.spec.ts` assert the new geometry.
   - The customer profile's "Change email" moves onto the email's row, per §4.

@@ -9,7 +9,7 @@ import {
 
 import { useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
-import { AuthLayout, Button, Card } from "@/shared/ui";
+import { AuthLayout, Button } from "@/shared/ui";
 
 /**
  * The sentence per state, as a table rather than an interpolated key.
@@ -73,7 +73,7 @@ export const VerifyEmailPage = () => {
 
   return (
     <AuthLayout description={undefined} title={title}>
-      <Card className="flex flex-col gap-4 p-5">
+      <div className="flex flex-col gap-4">
         <p className="text-[14px] leading-5 text-muted-foreground">
           {t(MESSAGE_KEY[status])}
         </p>
@@ -100,14 +100,13 @@ export const VerifyEmailPage = () => {
         {status === "refused" || status === "awaiting" ? (
           <ResendVerificationForm email={awaited} />
         ) : null}
-      </Card>
+      </div>
       {status === "refused" || status === "awaiting" ? (
         <p className="mt-4 text-center text-[13px] text-muted-foreground">
           {/*
-           * The way back, under the card rather than in it — the sign-up
-           * screen's shape, and for its reason: ADR-0054 §7 lists a card's
-           * contents as the controls, and "I have confirmed already" is not
-           * one of them.
+           * The way back, under the controls in the card's small type — the
+           * sign-up screen's shape, and for its reason: "I have confirmed
+           * already" is a way out, not a control.
            */}
           <Link
             className="underline underline-offset-4"

@@ -1,7 +1,7 @@
 import { OnboardingForm } from "@/features/auth";
 
 import { useRouteTitle } from "@/shared/lib/route-meta";
-import { AuthLayout, Card } from "@/shared/ui";
+import { AuthLayout } from "@/shared/ui";
 
 /**
  * `/onboarding` — where an invited operator's link lands (ADR-0071 §8).
@@ -23,11 +23,12 @@ import { AuthLayout, Card } from "@/shared/ui";
  *
  * **No lede under the heading**: this screen has two states and one of them is
  * a dead link, so a sentence fixed on the route would be an instruction to
- * choose a password printed above a card explaining there is nothing to choose
+ * choose a password printed above a notice explaining there is nothing to choose
  * one for. The card says the whole of what there is to say.
  *
  * A page is thin composition (ADR-0049): the feature owns the link, the form
- * and both states, and this is the shell and the card around them.
+ * and both states, and this is the shell around them, whose one card holds
+ * the heading and the form alike (ADR-0080 §3).
  */
 export const OnboardingPage = () => {
   /*
@@ -40,9 +41,7 @@ export const OnboardingPage = () => {
 
   return (
     <AuthLayout description={undefined} title={title}>
-      <Card className="p-5">
-        <OnboardingForm />
-      </Card>
+      <OnboardingForm />
     </AuthLayout>
   );
 };

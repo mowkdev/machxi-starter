@@ -344,6 +344,28 @@ describe("a passwordless account's current-password ceremonies", () => {
     expect(screen.queryByText(SET_PASSWORD_FIRST)).toBeNull();
   });
 
+  it("the email's change action sits on the email's row", async () => {
+    open("/account/profile");
+
+    /*
+     * ADR-0080 §4: the fact at the start, the action at the end, one row —
+     * not the card's header, where `D18.9` first put it. The row is found
+     * from the address it shows, so the claim is "beside this address"
+     * rather than "somewhere in the card".
+     */
+    const action = await screen.findByRole("button", { name: "Change email" });
+    const summary = screen.getByRole("region", { name: "Your details" });
+    const address = within(summary).getByText(PROFILE.email);
+    const emailRow = address.closest('[data-slot="account-email-row"]');
+
+    expect(emailRow).not.toBeNull();
+    expect(emailRow).toContainElement(action);
+    expect(emailRow).toHaveClass("flex", "justify-between");
+    // The address first, the action last.
+    expect(emailRow?.lastElementChild).toBe(action);
+    expect(action.closest('[data-slot="card-header"]')).toBeNull();
+  });
+
   it("replaces Delete account with the sentence and the control", async () => {
     withProfile(googleOnlyProfile());
     open();

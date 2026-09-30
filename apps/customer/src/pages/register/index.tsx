@@ -3,23 +3,19 @@ import { Link, useRouteContext } from "@tanstack/react-router";
 import { ContinueWithGoogle, RegisterForm } from "@/features/auth";
 
 import { useT } from "@/shared/i18n";
-import { Card } from "@/shared/ui";
 
 /**
- * The sign-up screen (`D15.6`, ADR-0067 §6), inside the shell of ADR-0054 §7.
+ * The sign-up screen (`D15.6`, ADR-0067 §6), inside the auth shell (ADR-0080
+ * §3 over ADR-0054 §7).
  *
- * The sign-in screen's twin: the shell supplies the brand line, the heading and
- * the lede from the route's `staticData`, and what is left here is the card the
- * reference draws around the controls, carrying §3's 20px padding over the
- * primitive's 24 through `className` so `packages/ui/src/components/` stays
- * byte-identical (ADR-0047).
+ * The sign-in screen's twin: the shell supplies the one card, the brand line,
+ * the heading and the lede from the route's `staticData`, and what is left here
+ * is the order of the card's body.
  *
- * The way back is under the card rather than in it. ADR-0054 §7 lists a card's
- * contents as the controls, and "I already have an account" is not one of them;
- * it is also the only navigation on this screen, so putting it outside the card
- * keeps the card a form.
+ * The way back is under the form, in the card's small type: "I already have an
+ * account" is the only navigation on this screen, not a control of the form.
  *
- * **"Continue with Google" is under the card behind both flags** (ADR-0072
+ * **"Continue with Google" is under the form behind both flags** (ADR-0072
  * §4). Registration's is already true on this screen — its route answers
  * not-found otherwise — and is read again here anyway, so the condition says
  * what the record says rather than what the route happens to guarantee:
@@ -32,9 +28,7 @@ export const RegisterPage = () => {
 
   return (
     <>
-      <Card className="p-5">
-        <RegisterForm />
-      </Card>
+      <RegisterForm />
       {features.userRegistration && features.googleSignIn ? (
         <div className="mt-4">
           <ContinueWithGoogle />

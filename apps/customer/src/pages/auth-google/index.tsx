@@ -4,7 +4,7 @@ import { useGoogleLanding, type GoogleLandingStatus } from "@/features/auth";
 
 import { useT } from "@/shared/i18n";
 import { useRouteTitle } from "@/shared/lib/route-meta";
-import { AuthLayout, Button, Card } from "@/shared/ui";
+import { AuthLayout, Button } from "@/shared/ui";
 
 /**
  * The sentence per state, as a table rather than an interpolated key — the
@@ -86,7 +86,7 @@ export const AuthGooglePage = () => {
 
   return (
     <AuthLayout description={undefined} title={title}>
-      <Card className="flex flex-col gap-4 p-5">
+      <div className="flex flex-col gap-4">
         {/*
          * A live region, because the sentence changes under the reader without
          * a navigation — `pending` to a refusal is the whole of what this
@@ -111,13 +111,12 @@ export const AuthGooglePage = () => {
             {t("google.confirm")}
           </Button>
         ) : null}
-      </Card>
+      </div>
       {STRANDED.has(status) ? (
         <p className="mt-4 text-center text-[13px] text-muted-foreground">
           {/*
-           * Under the card rather than in it, `/verify-email`'s shape: a
-           * card's contents are its controls (ADR-0054 §7), and "go back to
-           * sign in" is navigation.
+           * Under the controls in the card's small type, `/verify-email`'s
+           * shape: "go back to sign in" is navigation, not a control.
            */}
           <Link
             className="underline underline-offset-4"

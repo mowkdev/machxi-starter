@@ -5,7 +5,7 @@ import { renderApp } from "@/test/render";
 
 /**
  * The login shell's structure and the values it is drawn with (`D11.7`,
- * ADR-0054 §7).
+ * ADR-0054 §7; redrawn at `D31.2` as one centred card, ADR-0080 §3).
  *
  * Rendered through `renderApp` rather than by mounting `AuthLayout` with
  * props, because half of what is under test is a **wiring** claim: the lede is
@@ -14,39 +14,52 @@ import { renderApp } from "@/test/render";
  * quietly declared nothing.
  *
  * jsdom lays nothing out, so — the D8 precedent — the geometry is asserted as
- * the class strings and the inline paint that produce it, and
- * `e2e/login.spec.ts` is where those become measured pixels. The pair is the
- * point: a class Tailwind never generated passes here and fails there.
+ * the class strings that produce it, and `e2e/login.spec.ts` is where those
+ * become measured pixels. The pair is the point: a class Tailwind never
+ * generated passes here and fails there.
  */
 describe("the login shell", () => {
-  it("is a 400px column on a 48px hairline ground", async () => {
+  it("is one 400px card, centred on a gradient ground drawn from tokens", async () => {
     renderApp({ initialPath: "/login" });
 
-    await screen.findByRole("heading", { name: "Sign in", level: 1 });
+    const heading = await screen.findByRole("heading", {
+      name: "Sign in",
+      level: 1,
+    });
 
     const ground = document.querySelector('[data-slot="auth-ground"]');
-    const column = document.querySelector('[data-slot="auth-column"]');
+    const card = heading.closest('[data-slot="card"]');
 
-    expect(ground).toHaveClass("min-h-svh", "items-center", "bg-background");
     /*
-     * The ground's own paint, read off the inline style: the 48px module and
-     * the fact that its colour is the `--border` token rather than a literal
-     * — §2's rule, which a hex here would break silently.
+     * Centred on both axes, and this is the assertion that says so: the
+     * `D11.7` column sat at the ground's left with no `justify-*`, and a lost
+     * `justify-center` would bring it back with nothing else noticing.
      */
-    expect(ground).toHaveStyle({ backgroundSize: "48px 48px" });
-    expect(ground?.getAttribute("style")).toContain("var(--border)");
+    expect(ground).toHaveClass(
+      "min-h-svh",
+      "items-center",
+      "justify-center",
+      "bg-background",
+    );
     /*
-     * Left-aligned, and this is the assertion that says so: the ground is a
-     * flex row with no `justify-*`, so the column sits at flex-start. A
-     * `justify-center` added later would restore the centred `login-01`
-     * composition this step replaced, and nothing else here would notice.
+     * The ground's paint is a gradient between two tokens, named as classes —
+     * and no inline style, which is where the hairline grid lived.
      */
-    expect(ground?.className).not.toContain("justify-");
+    expect(ground).toHaveClass(
+      "bg-linear-to-br",
+      "from-background",
+      "to-primary-tint",
+    );
+    expect(ground).not.toHaveAttribute("style");
 
-    expect(column).toHaveClass("max-w-[400px]");
+    // One card, the ground's only child, holding the heading.
+    expect(card).not.toBeNull();
+    expect(card?.parentElement).toBe(ground);
+    expect(ground?.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
+    expect(card).toHaveClass("max-w-[400px]");
   });
 
-  it("stacks the brand line, the 28/34 heading and the route's lede above the card", async () => {
+  it("stacks the brand line, the 28/34 heading and the route's lede above the form, in the card", async () => {
     renderApp({ initialPath: "/login" });
 
     const heading = await screen.findByRole("heading", {
@@ -86,27 +99,34 @@ describe("the login shell", () => {
     // page-header band uses — §7's own distinction, applied here.
     expect(lede).toHaveClass("text-[14px]", "leading-5");
     /*
-     * And it is outside the card, which is the move this step made. A `p`
-     * still inside `CardHeader` would render identically and read identically;
-     * only its ancestry says which composition shipped.
+     * Inside the one card with the form (ADR-0080 §3), and above it: the card
+     * holds everything the screen says, in reading order.
      */
-    expect(lede.closest('[data-slot="card"]')).toBeNull();
+    const email = screen.getByLabelText("Email");
+    const card = lede.closest('[data-slot="card"]');
+
+    expect(card).not.toBeNull();
+    expect(card).toContainElement(email);
+    expect(
+      lede.compareDocumentPosition(email) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
-  it("gives the card §3's 20px padding and its controls the 38px login rung", async () => {
+  it("gives the card §3's 20px padding and 16px stack, and its controls the 38px login rung", async () => {
     renderApp({ initialPath: "/login" });
 
     const email = await screen.findByLabelText("Email");
     const card = email.closest('[data-slot="card"]');
 
     /*
-     * `p-5`, and no `py-6` left behind it: `cn` merges through
-     * `tailwind-merge`, so the primitive's own padding has to have been
-     * *removed* rather than merely followed. Two competing paddings would let
-     * source order decide the geometry.
+     * `p-5` and `gap-4`, and neither of the primitive's own left behind them:
+     * `cn` merges through `tailwind-merge`, so the primitive's `py-6` and
+     * `gap-6` have to have been *removed* rather than merely followed. Two
+     * competing values would let source order decide the geometry.
      */
-    expect(card).toHaveClass("p-5");
+    expect(card).toHaveClass("p-5", "gap-4");
     expect(card).not.toHaveClass("py-6");
+    expect(card).not.toHaveClass("gap-6");
 
     for (const control of [
       email,

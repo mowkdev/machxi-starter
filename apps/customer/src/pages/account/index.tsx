@@ -205,38 +205,6 @@ export const AccountProfileSection = () => {
       <CardHeader>
         <CardTitle id="account-summary-title">{t("account.title")}</CardTitle>
         <CardDescription>{t("account.description")}</CardDescription>
-        {/*
-         * `D18.9`: the one control on this screen that opens a ceremony rather
-         * than editing a field (ADR-0071 §6, ADR-0040).
-         *
-         * It sits in the card's header, beside the summary it acts on, rather
-         * than under the details form below — the form writes names and cannot
-         * carry an address at all, because `updateProfileBody` deliberately
-         * has no such field. Putting the trigger inside the form would suggest
-         * the two are saved together, and they are not: names change on
-         * submit, an address changes when a link in a mailbox is followed.
-         *
-         * `outline`, which is the security section's spelling for "opens a
-         * ceremony": the destructive variant is reserved for the one control
-         * on this whole area that cannot be undone.
-         *
-         * **Offered only once `hasPassword` says there is a current password
-         * to ask for** (ADR-0072 §3, amended between `D19.2` and `D19.3`):
-         * a passwordless account reads "set a password first" in the card
-         * instead, and nothing is offered while the account is still loading.
-         */}
-        {profile.data?.hasPassword === true ? (
-          <CardAction>
-            <Button
-              onClick={() => {
-                setChangingEmail(true);
-              }}
-              variant="outline"
-            >
-              {t("email.action")}
-            </Button>
-          </CardAction>
-        ) : null}
       </CardHeader>
 
       <CardContent>
@@ -260,14 +228,52 @@ export const AccountProfileSection = () => {
         ) : (
           <>
             {/*
+             * The email's own row (ADR-0080 §4): the fact at the start, its
+             * change action at the end — the shape the security section's
+             * sign-in-methods rows have. Its own `<dl>` beside the button,
+             * because a `<dl>`'s groups may hold only `<dt>` and `<dd>`.
+             *
+             * `D18.9`'s control is the one on this screen that opens a
+             * ceremony rather than editing a field (ADR-0071 §6, ADR-0040),
+             * and it stays out of the details form below: the form writes
+             * names and cannot carry an address at all, because
+             * `updateProfileBody` deliberately has no such field, and the two
+             * are not saved together — names change on submit, an address
+             * when a link in a mailbox is followed. `outline`, the security
+             * section's spelling for "opens a ceremony".
+             *
+             * **Offered only once `hasPassword` says there is a current
+             * password to ask for** (ADR-0072 §3, amended between `D19.2` and
+             * `D19.3`): a passwordless account reads "set a password first"
+             * below instead, and nothing is offered while the account loads.
+             */}
+            <div
+              className="flex flex-wrap items-center justify-between gap-3"
+              data-slot="account-email-row"
+            >
+              <dl className="min-w-0 break-words">
+                <AccountSummary label={t("summary.email")}>
+                  {profile.data.email}
+                </AccountSummary>
+              </dl>
+              {profile.data.hasPassword ? (
+                <Button
+                  onClick={() => {
+                    setChangingEmail(true);
+                  }}
+                  variant="outline"
+                >
+                  {t("email.action")}
+                </Button>
+              ) : null}
+            </div>
+
+            {/*
              * Two columns rather than three, and the cap is why: the content
              * pane is 720px wide (ADR-0054 §7), and three columns inside 720
-             * would put an email address in 220px.
+             * would crowd the facts.
              */}
-            <dl className="grid gap-6 sm:grid-cols-2">
-              <AccountSummary label={t("summary.email")}>
-                {profile.data.email}
-              </AccountSummary>
+            <dl className="mt-6 grid gap-6 sm:grid-cols-2">
               <AccountSummary label={t("summary.memberSince")}>
                 {dateTime(profile.data.createdAt)}
               </AccountSummary>
