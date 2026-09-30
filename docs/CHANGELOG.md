@@ -6,6 +6,18 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D34 — Lanes on one machine and one `main` · 2026-09-30
+
+Lanes stop competing for one database, one CPU and one `main`:
+
+- **A lane is one pull request; a step is one commit to it.** `main` moves once per lane, when `/ship` merges the pull request with a merge commit.
+- **The step check.** A step ends green on `pnpm step:check`: the cached fast loop, the integration files the change reaches, `size` when an SPA is reached. CI proves the whole tree on every push, and the whole gate runs on the machine once, at ship.
+- **Nothing re-runs what is proved.** A moved `main` re-runs nothing, a flake re-runs its file, `--force` is never passed, and a step gets one review.
+- **A test database per lane**, derived from the branch by `pnpm db:lane`, and a lock around the tiers that contend on one machine.
+- **Shared documents that do not conflict.** Open lanes are files, the window's paragraph is generated, notes and the changelog merge by union, and the starter merge defines its drivers on its own command line.
+
+Tag `starter-D34`.
+
 ## D35 — Row-level security, residuals · 2026-09-30
 
 Row-level security on the tenant-owned tables no longer depends on a setting that widens it:
