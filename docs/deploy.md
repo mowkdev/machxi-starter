@@ -9,14 +9,16 @@ The reference deployment is [`docker/prod/compose.yaml`](../docker/prod/compose.
 | `migrate`  | `apps/api/Dockerfile`      | One-shot. Applies the committed migrations and exits. The release gate.  |
 | `api`      | `apps/api/Dockerfile`      | Express 5 on Node 24, port 4000. Starts only after `migrate` exits zero. |
 | `prune`    | `apps/api/Dockerfile`      | The retention sweep, on a loop. Deletes rows nothing can use any more.   |
-| `admin`    | `apps/admin/Dockerfile`    | Static SPA on nginx, port 80. Built per environment.                     |
-| `customer` | `apps/customer/Dockerfile` | Static SPA on nginx, port 80. Built per environment.                     |
+| `admin`    | `apps/admin/Dockerfile`    | Static SPA on unprivileged nginx, port 8080. Built per environment.      |
+| `customer` | `apps/customer/Dockerfile` | Static SPA on unprivileged nginx, port 8080. Built per environment.      |
 
-Three facts to have in mind before the click path:
+The facts to have in mind before the click path:
 
 - **Postgres and Redis are not in the compose file.** They are managed resources on the platform, so their backups, restores, upgrades and monitoring are the platform's; the deployment is handed `DATABASE_URL`, `DATABASE_URL_OWNER` and `REDIS_URL`. Since `D14.6` the last of those is read: it is the rate limiters' shared store (ADR-0066 §4).
 - **The two SPA images are environment-specific.** Vite inlines `VITE_*` at build time, so they are build arguments, not environment variables. Changing an API URL means rebuilding, and an image built for staging cannot be promoted to production. That is a property of the tool.
 - **Both SPA images send a `Content-Security-Policy`** (ADR-0073 §9): `script-src 'self'`, `frame-ancestors 'none'`, and a `connect-src` that names the API origin — the same `VITE_*_API_URL` the bundle was built with, read a second time by the image's runtime stage, so there is nothing extra to set. An origin the bundle must reach beyond the API — an error reporter's ingest address, if you wire one (ADR-0066 §3) — is added to `connect-src` in that app's `nginx.conf`, and the build refuses an image whose origin is empty.
+- **Every service states its limits and a bounded log** (ADR-0078 §5). The compose file gives each one a CPU and memory limit under `deploy.resources.limits` — 1 CPU and 1 GiB for the API, sized by argon2 (`ARGON2_MEMORY_KIB` times `AUTH_MAX_CONCURRENT_HASHES`, beside the heap), half a CPU and 128 MiB for each SPA — and the `json-file` log driver capped at three files of 10 MB per container. They are starting points, not measurements of your traffic: raise the API's memory with either argon2 variable and its CPU with the concurrent hashes, and if the platform ships logs elsewhere, the cap is how much stays on the host. Coolify and `docker compose` both honour the limits; a platform that sets its own replaces them.
+- **Nothing in the three images runs as root.** The API runs as `node`, and the two SPA images run nginx's unprivileged image as uid 101, which is why they listen on 8080 rather than 80 — a platform's proxy that pointed at port 80 on the SPA containers points at 8080 from `D29.5`. Each image declares a `HEALTHCHECK`: the API's polls `/health/live`, each SPA's polls `/healthz`, which nginx answers itself.
 - **Rolling back means rolling back the image.** It does not mean rolling back a migration: migrations are forward-only and hand-written (ADR-0008). A release that has to be undone is undone by deploying the previous commit, and by writing a new migration if the schema has to move back.
 
 ## Before the first deploy
@@ -88,7 +90,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
    **`TRUST_PROXY` is required and both constants are refused** (ADR-0059 §7). `true` makes Express take the left-most `X-Forwarded-For` entry verbatim, so `req.ip` becomes attacker-controlled; `false` behind a proxy makes every request report the proxy's address, so the login limiter, the refresh limiter and the audit trail collapse onto one key. Neither failure shows up in a response, which is why the API refuses to start rather than guess.
 
-4. **Domains**, one per service: the API's on `api`, the admin's on `admin`, the customer's on `customer`. Coolify's proxy terminates TLS and forwards to the container port each service exposes (4000, 80, 80).
+4. **Domains**, one per service: the API's on `api`, the admin's on `admin`, the customer's on `customer`. Coolify's proxy terminates TLS and forwards to the container port each service exposes (4000, 8080, 8080 — the SPA images moved off 80 at `D29.5`, so a domain that names the port states 8080).
 
 5. **Deploy.** The order is enforced by the compose file, not by you: `migrate` runs `node dist/migrate.js`, takes a `pg_advisory_lock` so two overlapping releases serialise, applies whatever is pending and exits; `api` starts only once it has exited zero. A failed migration therefore fails the deploy with the old API still running.
 

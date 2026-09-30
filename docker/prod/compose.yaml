@@ -29,6 +29,21 @@
 # platform, the same names are injected as environment variables instead.
 name: machxi
 
+# **Every service states its log driver and its limits** (ADR-0078 §5).
+#
+# The log driver is bounded: `json-file` is what `docker logs` and every
+# platform's log view read, and on its own it grows without end — the one
+# default in this file that fills a disk. Three files of ten megabytes per
+# container is a bound, not a retention policy: how far back it reaches depends
+# on the traffic, and a deployment that needs more history ships its logs
+# elsewhere (`docs/deploy.md`, "what is not here") and keeps it there, not on
+# the host.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-api-image: &api-image
   # One image for both services, built once: `migrate` is the same artefact
   # with a different command, which is what keeps the migration that runs and
@@ -46,6 +61,14 @@ services:
     # Never restarted: a migration run that failed must be looked at, not
     # retried in a loop against a database it may have half-changed.
     restart: "no"
+    logging: *logging
+    # A migration run is one Node process and one connection. The memory is
+    # the headroom for a large file's statements, not a working set.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     environment:
       - NODE_ENV=production
       # The **owner's** connection (ADR-0061 §1). Migrating is DDL, and the
@@ -64,6 +87,18 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    logging: *logging
+    # Sized by argon2, which is where the memory goes: each hash takes
+    # `ARGON2_MEMORY_KIB` and `AUTH_MAX_CONCURRENT_HASHES` of them run at once,
+    # beside the heap and the pool. Raise the memory with either of those, and
+    # the CPU with `AUTH_MAX_CONCURRENT_HASHES` — a hash holds a core for its
+    # whole duration, so four of them under one core each take four times as
+    # long, and that is the login latency a user sees.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
     # List form, not the mapping, so the two optional variables can be written
     # as bare keys: a bare key is passed through only when it is actually set,
     # where `GIT_SHA: ${GIT_SHA:-}` would inject an empty string — and an empty
@@ -268,6 +303,13 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    logging: *logging
+    # Batched deletes and a sleep: the smallest of the three commands.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     environment:
       - NODE_ENV=production
       # The **application** role, like the API and unlike `migrate`
@@ -301,9 +343,18 @@ services:
         VITE_CUSTOMER_APP_URL: ${VITE_CUSTOMER_APP_URL}
     container_name: machxi-admin
     restart: unless-stopped
-    # Loopback, for the reason the API's is.
+    logging: *logging
+    # nginx serving a few megabytes of static files; the policy substitution
+    # happened at build time, so nothing here computes at run time.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    # Loopback, for the reason the API's is. The container's side is 8080,
+    # where the unprivileged nginx listens (ADR-0078 §5, `nginx.conf`).
     ports:
-      - "127.0.0.1:${ADMIN_PORT:-3001}:80"
+      - "127.0.0.1:${ADMIN_PORT:-3001}:8080"
     networks: [machxi]
 
   customer:
@@ -332,9 +383,18 @@ services:
         VITE_FEATURE_GOOGLE_SIGN_IN: ${VITE_FEATURE_GOOGLE_SIGN_IN:-false}
     container_name: machxi-customer
     restart: unless-stopped
-    # Loopback, for the reason the API's is.
+    logging: *logging
+    # nginx serving a few megabytes of static files; the policy substitution
+    # happened at build time, so nothing here computes at run time.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    # Loopback, for the reason the API's is. The container's side is 8080,
+    # where the unprivileged nginx listens (ADR-0078 §5, `nginx.conf`).
     ports:
-      - "127.0.0.1:${CUSTOMER_PORT:-3002}:80"
+      - "127.0.0.1:${CUSTOMER_PORT:-3002}:8080"
     networks: [machxi]
 
 networks:

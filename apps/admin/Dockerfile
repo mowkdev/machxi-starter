@@ -17,6 +17,23 @@ ENV PNPM_HOME="/pnpm" \
 RUN corepack enable
 WORKDIR /repo
 
+# **The dependencies are fetched from the lockfile alone, before the source is
+# copied** (ADR-0078 §5). `pnpm fetch` reads nothing but `pnpm-lock.yaml` and
+# fills the store, so this layer is rebuilt when a dependency moves and at no
+# other time; the `COPY . .` below is what every source edit invalidates, and
+# the install after it links from the store with `--offline` rather than
+# downloading the tree again. The root `package.json` rides along only for its
+# `packageManager` field, which is how Corepack picks the pinned pnpm, and
+# `pnpm-workspace.yaml` for the settings pnpm 12 reads there and nowhere else
+# — `overrides`, `allowBuilds`, and the cooldown with the `trustLockfile` that
+# keeps it from refusing a lockfile committed today.
+#
+# It sits above the build arguments, too: an `ARG` promoted to `ENV` is part of
+# every later layer's cache key, and a fetch that re-ran for each environment's
+# API origin would be the waste this layer exists to remove.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
+
 # Declared and immediately promoted to ENV, because Vite reads `VITE_*` from
 # the process environment as well as from `.env` files — and `turbo.json`'s
 # `build` task lists `VITE_*` in its `env`, without which Turborepo's strict
@@ -36,7 +53,7 @@ ENV VITE_API_URL=$VITE_API_URL \
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --offline
 RUN pnpm turbo run build --filter=admin
 
 # **The web root is a copy of `dist/` with the sourcemaps taken out, and it is
@@ -55,7 +72,18 @@ RUN pnpm turbo run build --filter=admin
 # release pipeline can still take the maps from there.
 RUN cp -r apps/admin/dist /web && find /web -name '*.map' -delete
 
-FROM nginx:1.29-alpine AS runtime
+# **nginx's unprivileged image, not the stock one** (ADR-0078 §5). The stock
+# image starts its master process as root so that it can bind port 80 and then
+# drops the workers to `nginx`; this one is built to run as uid 101 from the
+# first instruction, with its pid file and temp paths under `/tmp` and its
+# port at 8080 — above 1024, which is why nothing here needs root at all.
+# `nginx.conf` listens there, and the compose file maps it.
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
+
+# Stated even though it is the base image's own default, so that a `USER root`
+# added above a later instruction cannot leak into the running container
+# unnoticed: the hygiene case reads the last `USER` of this stage.
+USER 101
 
 COPY apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /web /usr/share/nginx/html
@@ -83,4 +111,12 @@ RUN printf '%s' "$VITE_API_URL" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$'
     && ! grep -q "__API_ORIGIN__" /etc/nginx/conf.d/default.conf \
     && nginx -t
 
-EXPOSE 80
+EXPOSE 8080
+
+# Liveness of the server, answered by `nginx.conf`'s `/healthz` location and
+# nothing else: a static file server has no dependency whose blip should
+# restart it, so the question is only whether nginx still answers. BusyBox's
+# `wget` rather than `curl`, because it is part of the Alpine base itself —
+# nothing is installed to run the check.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD ["wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]

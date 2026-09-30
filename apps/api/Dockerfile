@@ -33,9 +33,22 @@ RUN corepack enable
 FROM base AS build
 WORKDIR /repo
 
+# **The dependencies are fetched from the lockfile alone, before the source is
+# copied** (ADR-0078 §5). `pnpm fetch` reads nothing but `pnpm-lock.yaml` and
+# fills the store, so this layer is rebuilt when a dependency moves and at no
+# other time; the `COPY . .` below is what every source edit invalidates, and
+# the install after it links from the store with `--offline` rather than
+# downloading the tree again. The root `package.json` rides along only for its
+# `packageManager` field, which is how Corepack picks the pinned pnpm, and
+# `pnpm-workspace.yaml` for the settings pnpm 12 reads there and nowhere else
+# — `overrides`, `allowBuilds`, and the cooldown with the `trustLockfile` that
+# keeps it from refusing a lockfile committed today.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
+
 COPY . .
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --offline
 
 # `@repo/db` for the migration runner (§5), `api` for the server bundle. Turbo
 # builds each package's dependencies first, so one command covers the graph.

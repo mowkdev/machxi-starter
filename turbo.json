@@ -87,9 +87,19 @@
     },
     "//#test:scripts": {},
     "//#docs:check": {},
+    // Uncached, so that nothing restores a package's compiler memory
+    // (ADR-0078 §6). A composite package's `dist-types/` holds its emit and
+    // its buildinfo together, and a cache hit that restored them after an
+    // edit told `tsc -b` there was nothing to do — a green over a type error.
+    // The emit cached without the buildinfo was measured and refused: a
+    // consumer's `tsc -b` then rebuilds every reference missing one, writing
+    // into the package's directory from another task (ADR-0062 §3). So each
+    // package's own `tsc -b` runs every time and is incremental on its own
+    // state; the three apps opt back into caching in their own `turbo.json`,
+    // where there is no output to restore.
     "check-types": {
       "dependsOn": ["^check-types"],
-      "outputs": ["dist-types/**"]
+      "cache": false
     },
     "i18n:check": {
       "dependsOn": []

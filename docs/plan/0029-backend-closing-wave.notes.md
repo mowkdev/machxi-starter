@@ -231,3 +231,63 @@ Earlier runs failed twice, each fixed before the green run. The first failed the
 - The repository-level tests run under `system`.
 
 **Merged to `main` (2026-09-30)** on the operator's instruction to merge each step as it lands. `main` was fast-forwarded to this commit.
+
+## D29.5 — The reference images, the compose, and the compiler's memory (2026-09-30)
+
+**Head: [ADR-0059](../adr/0059-ci-containers-and-deployment.md) and [ADR-0073](../adr/0073-review-hardening.md) moved to `superseded by` [ADR-0078](../adr/0078-backend-closing-wave.md)**. 0059 moved for §4's images and install layer and §6's limits and log driver; 0073 moved for §6's residual. Each got a status delta, a header blockquote, and its index row, and the two topic rows name 0078. ADR-0078 §5 and §6 are **amended in place** with what was built and measured. `pnpm rules:digest` wrote 3 of 3: "The first link runs every check" states the decision, and a new "The reference images" line was added. The second run wrote 0 of 3.
+
+**Built.**
+
+- **The SPA images** now run `nginxinc/nginx-unprivileged:1.29-alpine` as uid 101, and the runtime stage states `USER 101`. `nginx.conf` listens on 8080, the image exposes 8080, and the compose file maps loopback to 8080. The `HEALTHCHECK` runs BusyBox `wget --spider` against `/healthz`, an exact-match location. It is unlogged, answers `200 ok`, and inherits the server's headers. Renovate's base-image rule now names the new image.
+- **The fetch layer**, in all three Dockerfiles: `COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./`, then `RUN pnpm fetch`, both before `COPY . .`, and then `pnpm install --frozen-lockfile --offline`. In the SPA images the fetch sits above the `ARG`/`ENV` block. `pnpm fetch` takes no `--frozen-lockfile`, since it reads the lockfile alone.
+- **The compose file** has one `x-logging` anchor (`json-file`, `max-size: 10m`, `max-file: 3`) on all five services. Each service also has `deploy.resources.limits`: api 1 CPU / 1G, migrate 1 / 512M, prune 0.5 / 256M, each SPA 0.5 / 128M. `docs/deploy.md` states the limits, the non-root images and the port move, including the Coolify domain port (4000, 8080, 8080).
+- **`check-types`**: the root task is `cache: false` with no outputs. Each app's `turbo.json` adds `cache: true` beside its existing `outputs: []`. The three app `tsconfig.json` comments are in the past tense.
+- **Hygiene cases** in `scripts/docs-hygiene.test.mjs`:
+  - "the SPA images run unprivileged with a health check" checks the unprivileged base, a non-root last `USER`, and one port agreed by `listen`, `EXPOSE`, the health-check URL and the compose target, with the health path a `location =`.
+  - "every image fetches from the lockfile before the source is copied".
+  - "every service in the reference deployment states its limits and a bounded log".
+  - "a package's restored buildinfo cannot mask its own error": `D20.12`'s experiment, run on a scratch copy of `@repo/config-vitest`, the composite package with no references, for every effective `check-types` shape the packages resolve to.
+  - "no tsconfig writes its buildinfo into a cached output" now skips `cache: false` entries and asserts that a `check-types` task was read, in place of "declares cached outputs".
+  - All four new cases were **red on the tree before the change**: the three image cases with the old Dockerfiles, `nginx.conf` and compose stashed; the masking case with the old `turbo.json` files, where it names all fourteen packages and "restoring … `dist-types/tsconfig.tsbuildinfo` exits 0 over a type error". All four are green after.
+
+**The masked error, reproduced first.** On the committed tree, `packages/logger`: I saved `dist-types/`, appended a type error, restored the copy, and ran `tsc -b`: exit `0`. With the marker removed: `TS2322`, exit `2`.
+
+**The decision, by measurement** (ADR-0078 §6 amendment carries the numbers). `pnpm check-types`, 17 tasks, 4 cores:
+
+| run                                                            | before              | after             |
+| -------------------------------------------------------------- | ------------------- | ----------------- |
+| `--force` cold (no `dist-types/`, no app buildinfo)            | 10.8 s, 10.4 s      | 11.9 s, 10.8 s    |
+| `--force` warm                                                 | 1.65 s, 1.61 s      | 1.58 s, 1.71 s    |
+| no `--force`, unchanged tree                                   | 0.22 s (FULL TURBO) | 1.43 s (3 cached) |
+| CI shape: cache kept, fresh tree, one file added to `apps/api` | 1.9 s (16 cached)   | 7.1 s (2 cached)  |
+
+The emit-without-buildinfo candidate (`outputs: ["dist-types/**", "!dist-types/**/*.tsbuildinfo"]`) took 2.8 s in the CI shape. Afterwards, `config-vitest`, `contracts`, `crypto`, `db` and `logger` each held a buildinfo that `apps/api`'s task had written, which is ADR-0062 §3's cross-package write. `tsc -b --verbose` shows the cause: "out of date because output file '…/dist-types/tsconfig.tsbuildinfo' does not exist". That candidate is refused.
+
+**Docker, in this container.** The daemon was started here (`dockerd`, containerd snapshotter). The sandbox needed three accommodations, and **none of them is in the repository**:
+
+1. Docker Hub answered `429` to anonymous pulls, so both base images were pulled through `mirror.gcr.io` and retagged locally.
+2. The egress proxy re-terminates TLS, so `node:24-bookworm-slim` was retagged locally as the upstream image plus the proxy CA (`NODE_EXTRA_CA_CERTS`), for `pnpm fetch` inside the build.
+3. The sandbox kernel has **no IPv6** (`/proc/net/if_inet6` absent, `socket(AF_INET6)` gives `EAFNOSUPPORT`). The committed `listen [::]:8080;` therefore fails `nginx -t` here, as the old `[::]:80` would have. The SPA images were built from a scratch copy of the tree with only that line removed.
+
+Results:
+
+- `docker compose -f docker/prod/compose.yaml config` rendered, with logging and limits on all five services.
+- `build migrate` (the API image) **succeeded as committed**. In the image, argon2 loads, there is one `pino`, and it runs as `uid=1000(node)`.
+- `build admin customer` succeeded from the scratch copy. Both containers reported `healthy` (5/5 probes exit 0), and nginx runs as `nginx` (uid 101) for master and workers. The web root is root-owned and not writable by the runtime user.
+- A rebuild after a source edit showed the `COPY package.json …` and `RUN pnpm fetch` layers `CACHED`. The offline install took 0.7 s, against 4.8 s for the fetch.
+- `apps/admin/e2e/smoke.spec.ts` with `E2E_BASE_URL=http://127.0.0.1:3101` against the built admin image: **1 passed**.
+
+**Gate.** Green: `lint` 22/22 (FULL TURBO after a `pnpm check` run), `check-types` 17/17 (3 cached, the apps), `test` 17/17 (`api` 814 unit + 830 integration, `@repo/db` 107 + 121, admin 331, customer 282), `size` 4/4, `format:check` clean. The first `pnpm check` went red on **one pre-existing flaky case**, `apps/admin` `settings-provider.test.tsx` "adopts the account's theme when the query resolves". `findByTestId` resolves on the element's first render, and `toHaveTextContent("dark")` is not retried, so under load it reads `system`. The file passed three times in isolation and in the gate's `test` link. It has been unchanged since D22.2, and nothing in this step touches it; it is logged here, not fixed.
+
+**Review — one bounded pass, security-reviewer's checklist over the diff.** This session has no subagent tool, so I ran the pass inline, over the deployment surfaces: images, compose, nginx and the turbo config. There were no Critical, High or Medium findings.
+
+- **Fixed.** Two inaccurate compose comments: "nginx serving files it has in memory" (nginx does not cache files in memory by default), and a log-cap claim about "the last day of an idle API", an estimate nobody measured. Both were rewritten. The masking case's `symlink` type is now `"junction"`, so the case runs on Windows without privilege.
+- **Low, logged.** After the build-time substitution, `/etc/nginx/conf.d/default.conf` is owned by uid 101, and the base image leaves `conf.d` group-writable for that user anyway. A process running as 101 could rewrite it and signal the master. Code execution as 101 could equally bind its own server on 8080, so root ownership would buy nothing here.
+- **Low, logged, pre-existing.** `listen [::]:8080` stops the image starting on a kernel without IPv6. That is the old behaviour on the new port. The stock image's entrypoint handles this for its own default config only.
+- **Residual.** The base images are tag-pinned under the named Renovate rule, not digest-pinned (ADR-0073 §7 as it stands).
+
+**Pending the operator.**
+
+- **A platform whose proxy targets port 80 on the SPA containers must target 8080** from this release. Coolify reads `EXPOSE`, but a domain written with an explicit `:80` suffix breaks. `docs/deploy.md` says so.
+- `docker compose -f docker/prod/compose.yaml build` **as committed**, on a machine with IPv6: here the SPA images were built only without the `[::]` listen.
+- `pnpm test:postman` and `test:e2e` were not run: no dev stack runs in this container, and the wire is unchanged.

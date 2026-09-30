@@ -5,8 +5,12 @@
     // §3), and `tsc -b`'s incremental state is deliberately kept outside
     // `dist-types/` (ADR-0073 §6, and `tsconfig.json` beside this file), so
     // there is nothing here for the cache to restore — least of all the note
-    // that would tell the compiler the check had already been done.
+    // that would tell the compiler the check had already been done. Cached
+    // all the same, unlike the packages' task in the root table (ADR-0078
+    // §6): a hit replays a green for inputs that were checked, and restores
+    // nothing the compiler reads.
     "check-types": {
+      "cache": true,
       "outputs": []
     },
     "build": {

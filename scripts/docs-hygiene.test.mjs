@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  appendFile,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
   stat,
+  symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -953,7 +957,7 @@ test("every migration from 0011 on opens with its lock note", async () => {
 
 test("no tsconfig writes its buildinfo into a cached output", async () => {
   // CI-07, and the same species as CI-01 and CI-02: a link of the gate that
-  // ran without checking anything. `check-types` caches `dist-types/**`, and
+  // ran without checking anything. `check-types` cached `dist-types/**`, and
   // the three apps kept `tsc -b`'s incremental state inside it. An app emits
   // no declarations (ADR-0062 §3), so that directory held the marker and
   // nothing else — restore it and the compiler reads "nothing to do" and exits
@@ -1007,13 +1011,27 @@ test("no tsconfig writes its buildinfo into a cached output", async () => {
       ).flatMap((turbo) =>
         Object.entries(turbo.tasks ?? {})
           .filter(([task]) => task.replace(/^.*#/, "") === "check-types")
+          .filter(([, task]) => task.cache !== false)
           .flatMap(([, task]) => task.outputs ?? [])
           .filter((glob) => !glob.startsWith("!"))
           .map(cachedDir),
       ),
     ),
   ];
-  assert.ok(cached.length > 0, "`check-types` declares no cached outputs");
+  // Since `D29.5` no `check-types` entry restores anything — a package's task
+  // is uncached, an app's caches no output (ADR-0078 §6) — so the union is
+  // empty and the walk below is the guard for the day one opts back in. What
+  // must still be true is that the task table was read at all.
+  assert.ok(
+    (
+      await Promise.all(
+        turboFiles.map(async (rel) =>
+          parseJsonc(await readFile(path.join(repoRoot, rel), "utf8")),
+        ),
+      )
+    ).some((turbo) => turbo.tasks?.["check-types"] !== undefined),
+    "no `check-types` task read from any `turbo.json`",
+  );
   assert.ok(
     turboFiles.length > 1,
     "no workspace `turbo.json` read — per-package outputs would be invisible",
@@ -1065,6 +1083,214 @@ test("no tsconfig writes its buildinfo into a cached output", async () => {
   assert.equal(
     fires({ compilerOptions: { tsBuildInfoFile: "tsconfig.tsbuildinfo" } }),
     null,
+  );
+});
+
+/**
+ * The `check-types` entry Turborepo runs for one workspace: the root task
+ * table's, with the workspace's own `turbo.json` laid over it key by key —
+ * which is how `extends: ["//"]` resolves.
+ */
+const checkTypesTaskOf = async (workspace) => {
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const root = parseJsonc(await read("turbo.json")).tasks?.["check-types"];
+  const own = await read(`${workspace}/turbo.json`).then(
+    (text) => parseJsonc(text).tasks?.["check-types"] ?? {},
+    () => ({}),
+  );
+  return { ...root, ...own };
+};
+
+/** What a cache hit on that task writes back — nothing, when it is uncached. */
+const restoredGlobs = (task) =>
+  task.cache === false ? [] : (task.outputs ?? []);
+
+/** One Turborepo output glob as a matcher over workspace-relative paths. */
+const globToRegExp = (glob) => {
+  let source = "";
+  for (let i = 0; i < glob.length; i += 1) {
+    const ch = glob[i];
+    if (ch === "*" && glob[i + 1] === "*") {
+      const slash = glob[i + 2] === "/";
+      source += slash ? "(?:.*/)?" : ".*";
+      i += slash ? 2 : 1;
+    } else if (ch === "*") source += "[^/]*";
+    else if (ch === "?") source += "[^/]";
+    else source += ch.replace(/[.+^${}()|[\]\\/]/g, "\\$&");
+  }
+  return new RegExp(`^${source}$`);
+};
+
+/** Turborepo's reading of an `outputs` list: any inclusion, no exclusion. */
+const restoresPath = (globs) => {
+  const include = globs.filter((g) => !g.startsWith("!")).map(globToRegExp);
+  const exclude = globs
+    .filter((g) => g.startsWith("!"))
+    .map((g) => globToRegExp(g.slice(1)));
+  return (rel) =>
+    include.some((re) => re.test(rel)) && !exclude.some((re) => re.test(rel));
+};
+
+/**
+ * `D20.12`'s two commands, on a scratch copy of one composite package: warm
+ * the compiler, keep what a cache hit on `check-types` would write back, put a
+ * type error in a source file, write the kept files back **after** it — which
+ * is what a restore does, and why its files are newer than every source — and
+ * run `tsc -b` again. The second compile's exit status is the answer. The
+ * timestamps are set rather than waited for, so the order is exact on any
+ * filesystem's clock resolution.
+ */
+const maskExperiment = async (workspace, globs) => {
+  const source = path.join(repoRoot, workspace);
+  const scratch = await mkdtemp(path.join(tmpdir(), "restored-buildinfo-"));
+  try {
+    await cp(source, scratch, {
+      recursive: true,
+      filter: (from) =>
+        !/(?:^|[\\/])(?:node_modules|dist|dist-types|coverage|\.turbo)$/.test(
+          path.relative(source, from),
+        ),
+    });
+    await symlink(
+      path.join(source, "node_modules"),
+      path.join(scratch, "node_modules"),
+      "junction",
+    );
+    const typescript = path.join(source, "node_modules/typescript");
+    const manifest = JSON.parse(
+      await readFile(path.join(typescript, "package.json"), "utf8"),
+    );
+    const tsc = path.join(
+      typescript,
+      typeof manifest.bin === "string" ? manifest.bin : manifest.bin.tsc,
+    );
+    const compile = () =>
+      spawnSync(process.execPath, [tsc, "-b"], {
+        cwd: scratch,
+        encoding: "utf8",
+      });
+    const files = async () =>
+      (await readdir(scratch, { recursive: true }))
+        .map(posix)
+        .filter((rel) => !under(rel, "node_modules"));
+
+    const warm = compile();
+    assert.equal(warm.status, 0, `${workspace}: ${warm.stdout}${warm.stderr}`);
+
+    const matches = restoresPath(globs);
+    const kept = new Map();
+    for (const rel of (await files()).filter(matches)) {
+      const abs = path.join(scratch, rel);
+      if ((await stat(abs)).isFile()) kept.set(rel, await readFile(abs));
+    }
+
+    const victim = (await files())
+      .filter((rel) => /\.tsx?$/.test(rel) && !/\.d\.ts$/.test(rel))
+      .filter((rel) => !rel.startsWith("dist-types/"))
+      .sort()[0];
+    assert.ok(victim, `${workspace}: no source file to break`);
+    const now = Date.now() / 1000;
+    await appendFile(
+      path.join(scratch, victim),
+      '\nexport const restoredBuildinfoProbe: number = "not a number";\n',
+    );
+    await utimes(path.join(scratch, victim), now + 10, now + 10);
+    for (const [rel, bytes] of kept) {
+      await writeFile(path.join(scratch, rel), bytes);
+      await utimes(path.join(scratch, rel), now + 20, now + 20);
+    }
+
+    const second = compile();
+    return {
+      status: second.status,
+      output: `${second.stdout}${second.stderr}`,
+      restored: [...kept.keys()].sort(),
+    };
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+};
+
+test("a package's restored buildinfo cannot mask its own error", async () => {
+  // ADR-0073 §6's residual, which ADR-0078 §6 decides. The case above keeps a
+  // buildinfo out of any cached output unless its emit sits with it — and that
+  // exception is the hole: a composite package's `dist-types/` is its emit and
+  // its compiler's memory together, so a cache hit that restored it after an
+  // edit told `tsc -b` there was nothing to do, and the task exited `0` over a
+  // type error in that package (`D20.12`, on `@repo/logger`; the same on
+  // TypeScript 7, `D21.6`). This case runs the experiment itself, for every
+  // shape of `check-types` entry a composite package resolves to, on a scratch
+  // copy of the one package with no references — the experiment's outcome
+  // depends on what is restored and on the compiler, not on the package.
+  //
+  // What makes it green is decided in ADR-0078 §6: a package's `check-types`
+  // is uncached, so nothing is restored and the compiler's memory is only ever
+  // its own. The other candidate, the emit cached without its buildinfo, also
+  // passes this case — and fails ADR-0062 §3 instead, because a consumer's
+  // `tsc -b` then finds a reference with no buildinfo and rebuilds it into the
+  // package's directory; the record carries that measurement.
+  const packages = [];
+  for (const entry of await readdir(path.join(repoRoot, "packages"), {
+    withFileTypes: true,
+  })) {
+    if (!entry.isDirectory()) continue;
+    const workspace = `packages/${entry.name}`;
+    const text = await readFile(
+      path.join(repoRoot, workspace, "tsconfig.json"),
+      "utf8",
+    ).catch(() => null);
+    if (text === null) continue;
+    const config = parseJsonc(text);
+    if (!emits(config)) continue;
+    packages.push({
+      workspace,
+      config,
+      restored: restoredGlobs(await checkTypesTaskOf(workspace)),
+    });
+  }
+  assert.ok(packages.length > 10, `only ${packages.length} packages read`);
+
+  const leaf = packages.find(
+    ({ config }) => (config.references ?? []).length === 0,
+  );
+  assert.ok(leaf, "no composite package without references to copy");
+
+  const shapes = new Map();
+  for (const { workspace, restored } of packages) {
+    const key = JSON.stringify(restored);
+    shapes.set(key, [...(shapes.get(key) ?? []), workspace]);
+  }
+
+  const masked = [];
+  for (const [key, workspaces] of shapes) {
+    const run = await maskExperiment(leaf.workspace, JSON.parse(key));
+    if (run.status === 0)
+      masked.push(
+        `${workspaces.join(", ")}: restoring ${run.restored.join(", ")} exits 0 over a type error`,
+      );
+  }
+  assert.deepEqual(masked, []);
+
+  // And the experiment still reproduces what it exists for, or "clean" above
+  // means only that the compiler changed: the shape the packages had until
+  // `D29.5` masks the error, and restoring nothing reports it.
+  const before = await maskExperiment(leaf.workspace, ["dist-types/**"]);
+  assert.equal(
+    before.status,
+    0,
+    "restoring `dist-types/**` no longer masks the error — this case proves nothing until the experiment is rebuilt",
+  );
+  assert.ok(before.restored.some((rel) => rel.endsWith(".tsbuildinfo")));
+  const nothing = await maskExperiment(leaf.workspace, []);
+  assert.notEqual(nothing.status, 0);
+  assert.match(nothing.output, /TS2322/);
+  assert.deepEqual(
+    [
+      "dist-types/tsconfig.tsbuildinfo",
+      "dist-types/src/index.d.ts",
+      "src/index.ts",
+    ].filter(restoresPath(["dist-types/**", "!dist-types/**/*.tsbuildinfo"])),
+    ["dist-types/src/index.d.ts"],
   );
 });
 
@@ -1149,6 +1375,187 @@ test("both SPA images send the policy, and the same one", async () => {
     policies.customer,
     "the two images' policies have drifted apart",
   );
+});
+
+/**
+ * A Dockerfile as its stages, each the list of its instructions with line
+ * continuations joined and comments dropped — `FROM` opens a stage.
+ */
+const dockerStages = (text) => {
+  const instructions = text
+    .replace(/\\\r?\n/g, " ")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => {
+      const [, keyword, rest] = /^(\S+)\s*(.*)$/.exec(line);
+      return { keyword: keyword.toUpperCase(), rest };
+    });
+  const stages = [];
+  for (const instruction of instructions) {
+    if (instruction.keyword === "FROM") stages.push([]);
+    stages.at(-1)?.push(instruction);
+  }
+  return stages;
+};
+
+test("the SPA images run unprivileged with a health check", async () => {
+  // CI-05 (ADR-0078 §5, a delta on ADR-0059 §4). The stock nginx image starts
+  // its master process as root to bind port 80; the unprivileged one runs as
+  // uid 101 from the start, which moves the port above 1024. Four files have
+  // to agree on that number — `nginx.conf`'s `listen`, the Dockerfile's
+  // `EXPOSE` and `HEALTHCHECK`, and the compose file's mapping — and a drift
+  // between any two is an image that builds, starts and answers nothing, so
+  // the case reads all four rather than trusting one.
+  const read = (rel) => readFile(path.join(repoRoot, rel), "utf8");
+  const compose = await read("docker/prod/compose.yaml");
+
+  for (const app of ["admin", "customer"]) {
+    const where = `apps/${app}/Dockerfile`;
+    const runtime = dockerStages(await read(where)).at(-1);
+    const of = (keyword) => runtime.filter((i) => i.keyword === keyword);
+
+    assert.match(
+      of("FROM")[0].rest,
+      /^nginxinc\/nginx-unprivileged:\S+/,
+      `${where}: the runtime stage is the unprivileged nginx image`,
+    );
+    const user = of("USER").at(-1)?.rest;
+    assert.ok(user, `${where}: the runtime stage states its user`);
+    assert.doesNotMatch(user, /^(?:root|0)(?::|$)/, `${where}: USER ${user}`);
+
+    const conf = await read(`apps/${app}/nginx.conf`);
+    const ports = [
+      ...new Set(
+        [...conf.matchAll(/^\s*listen\s+(?:\[::\]:)?(\d+)\b/gm)].map(
+          (m) => m[1],
+        ),
+      ),
+    ];
+    assert.equal(ports.length, 1, `apps/${app}/nginx.conf listens on ${ports}`);
+    const [port] = ports;
+    assert.ok(Number(port) >= 1024, `apps/${app}/nginx.conf: port ${port}`);
+
+    assert.deepEqual(
+      of("EXPOSE").map((i) => i.rest),
+      [port],
+      `${where}: EXPOSE ${port}`,
+    );
+
+    const health = of("HEALTHCHECK");
+    assert.equal(health.length, 1, `${where}: one HEALTHCHECK`);
+    assert.doesNotMatch(health[0].rest, /^NONE\b/);
+    const url = /https?:\/\/(?:127\.0\.0\.1|localhost):(\d+)(\/[^\s"]*)/.exec(
+      health[0].rest,
+    );
+    assert.ok(url, `${where}: the health check polls the server itself`);
+    assert.equal(url[1], port, `${where}: the health check's port`);
+    assert.match(
+      conf,
+      new RegExp(
+        `location\\s*=\\s*${url[2].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{`,
+      ),
+      `apps/${app}/nginx.conf answers ${url[2]} in a location of its own`,
+    );
+
+    const mapping = new RegExp(
+      `\\$\\{${app.toUpperCase()}_PORT:-\\d+\\}:(\\d+)"`,
+    ).exec(compose);
+    assert.ok(mapping, `docker/prod/compose.yaml maps the ${app} port`);
+    assert.equal(mapping[1], port, `docker/prod/compose.yaml: ${app}'s target`);
+  }
+});
+
+test("every image fetches from the lockfile before the source is copied", async () => {
+  // CI-10 (ADR-0078 §5). An install after `COPY . .` downloads the whole
+  // dependency tree on every source edit, because that copy is the layer an
+  // edit invalidates. `pnpm fetch` reads the lockfile alone, so the layer it
+  // fills is rebuilt when a dependency moves; the install after the copy
+  // links from the store `--offline`, which is also what proves nothing was
+  // left for it to download. No `ARG` above the fetch: a build argument is
+  // part of every later layer's key, and the SPA images take one per
+  // environment.
+  for (const app of ["api", "admin", "customer"]) {
+    const where = `apps/${app}/Dockerfile`;
+    const stages = dockerStages(
+      await readFile(path.join(repoRoot, where), "utf8"),
+    );
+    const build = stages.find((stage) =>
+      stage.some((i) => i.keyword === "COPY" && /^\.\s+\.$/.test(i.rest)),
+    );
+    assert.ok(build, `${where}: no stage copies the source`);
+    const at = (predicate) => build.findIndex(predicate);
+
+    const source = at((i) => i.keyword === "COPY" && /^\.\s+\.$/.test(i.rest));
+    const lockfile = at(
+      (i) =>
+        i.keyword === "COPY" &&
+        i.rest.split(/\s+/).includes("pnpm-lock.yaml") &&
+        !i.rest.split(/\s+/).includes("."),
+    );
+    const fetch = at(
+      (i) => i.keyword === "RUN" && /\bpnpm fetch\b/.test(i.rest),
+    );
+    const install = at(
+      (i) => i.keyword === "RUN" && /\bpnpm install\b/.test(i.rest),
+    );
+
+    assert.ok(lockfile >= 0, `${where}: the lockfile is copied on its own`);
+    assert.ok(fetch > lockfile, `${where}: \`pnpm fetch\` follows it`);
+    assert.ok(source > fetch, `${where}: the source is copied after the fetch`);
+    assert.ok(install > source, `${where}: the install follows the source`);
+    assert.match(build[install].rest, /--offline\b/, `${where}: --offline`);
+    assert.match(build[install].rest, /--frozen-lockfile\b/, where);
+    assert.equal(
+      build.slice(0, fetch).filter((i) => i.keyword === "ARG").length,
+      0,
+      `${where}: no build argument above the fetch`,
+    );
+  }
+});
+
+test("every service in the reference deployment states its limits and a bounded log", async () => {
+  // CI-11 (ADR-0078 §5, a delta on ADR-0059 §6). `docker compose config` is
+  // what renders them; this reads the file for the two facts that make them
+  // mean something — every service carries both, and the log driver the
+  // services share is bounded, since `json-file` alone grows until the disk
+  // is full.
+  const compose = await readFile(
+    path.join(repoRoot, "docker/prod/compose.yaml"),
+    "utf8",
+  );
+  const services = compose.slice(compose.search(/^services:\s*$/m));
+  const end = services.search(/\n(?=\S)/);
+  const body = end === -1 ? services : services.slice(0, end + 1);
+  const blocks = body
+    .split(/^ {2}(?=[\w-]+:\s*$)/m)
+    .slice(1)
+    .map((block) => ({ name: /^([\w-]+):/.exec(block)[1], block }));
+  assert.deepEqual(blocks.map(({ name }) => name).sort(), [
+    "admin",
+    "api",
+    "customer",
+    "migrate",
+    "prune",
+  ]);
+  for (const { name, block } of blocks) {
+    assert.match(block, /^ {4}logging: \*logging\s*$/m, `${name}: logging`);
+    assert.match(
+      block,
+      /^ {4}deploy:\n {6}resources:\n {8}limits:\n(?: {10}\w+: .+\n)*? {10}memory: \S+/m,
+      `${name}: a memory limit`,
+    );
+    assert.match(
+      block,
+      /^ {8}limits:\n(?: {10}\w+: .+\n)*? {10}cpus: \S+/m,
+      `${name}: a CPU limit`,
+    );
+  }
+  const anchor = /^x-logging: &logging\n((?: {2}.*\n)+)/m.exec(compose);
+  assert.ok(anchor, "the shared log driver is one anchor");
+  assert.match(anchor[1], /driver: json-file/);
+  assert.match(anchor[1], /max-size: "\d+[kmg]"/);
+  assert.match(anchor[1], /max-file: "\d+"/);
 });
 
 /**

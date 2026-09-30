@@ -401,13 +401,18 @@ export const AREAS = [
       },
       {
         topic: "The first link runs every check",
-        records: ["0073", "0074"],
-        text: "`lint`'s `dependsOn` carries every root and app check the repository defines — `test:scripts`, `docs:check`, `i18n:check` — and a hygiene case refuses a check it does not name, so a new one joins by predicate. A cached task's restored outputs must not decide its own result: a buildinfo sits under a cached output only beside the emit it belongs to. Coverage is reported with no threshold — on every run in the node suites, and in the jsdom suites only on `--coverage`, which keeps the slowest link a quarter shorter; `pnpm audit --prod` runs nightly beside the browser tier, reported and never gating.",
+        records: ["0073", "0074", "0078"],
+        text: "`lint`'s `dependsOn` carries every root and app check the repository defines — `test:scripts`, `docs:check`, `i18n:check` — and a hygiene case refuses a check it does not name, so a new one joins by predicate. A cached task's restored outputs must not decide its own result: a buildinfo sits under a cached output only beside the emit it belongs to, and a package's `check-types` is uncached — the root table says `cache: false` and the apps opt back in with no output — so no restored buildinfo reaches a package's `tsc -b`. Coverage is reported with no threshold — on every run in the node suites, and in the jsdom suites only on `--coverage`, which keeps the slowest link a quarter shorter; `pnpm audit --prod` runs nightly beside the browser tier, reported and never gating.",
       },
       {
         topic: "Pinning, holds and the cooldown",
         records: ["0073", "0074"],
         text: "Caret ranges by default and exact for the runtime framework and the compiler; any other exact pin is named with its reason in `renovate.json`'s pinning register. A version many workspaces declare lives in the `catalog:`; GitHub Actions are pinned by digest and the base images carry a named Renovate rule. A dependency held below a version is one `overrides` entry in `pnpm-workspace.yaml`, not a pin per workspace. `minimumReleaseAge` is one day for pnpm and for Renovate alike, with the one-install override for a younger security fix written beside pnpm's setting, and a lockfile through review installs under `trustLockfile`.",
+      },
+      {
+        topic: "The reference images",
+        records: ["0059", "0078"],
+        text: "Three images from the repository root: the API's runs as `node` with a `HEALTHCHECK` on `/health/live`, and each SPA's runs `nginxinc/nginx-unprivileged` as uid 101 on port 8080 with a `HEALTHCHECK` on `/healthz` — `nginx.conf`'s `listen`, the Dockerfile's `EXPOSE` and health check, and the compose mapping name one port. Every build stage copies the lockfile alone and runs `pnpm fetch` before `COPY . .`, then installs `--offline`; no `ARG` sits above the fetch. Every service in `docker/prod/compose.yaml` states a CPU and memory limit and the shared, size-capped `json-file` log driver.",
       },
       {
         topic: "The compiler",

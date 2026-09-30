@@ -52,10 +52,15 @@
       "allowedVersions": "<25"
     },
     {
-      "description": "ADR-0073 §7: the base images the Dockerfiles and the compose files pin — `node` (three Dockerfiles), `nginx` (both SPA images), `postgres` (both compose files and the two workflows' service container) and `axllent/mailpit` (local compose and the e2e workflow). The default managers detect them; without this rule they arrive ungrouped and unlabelled, which is how a base image quietly stops being read. A major here is a runtime floor move (ADR-0073 §4) and stays its own pull request — which is why this rule names its update types rather than matching everything: Renovate applies `packageRules` in order and the last match wins per field, so an unrestricted rule here would have re-grouped the majors the rule above deliberately un-groups.",
+      "description": "ADR-0073 §7: the base images the Dockerfiles and the compose files pin — `node` (three Dockerfiles), `nginxinc/nginx-unprivileged` (both SPA images, since `D29.5`: the stock `nginx` image starts as root, ADR-0078 §5), `postgres` (both compose files and the two workflows' service container) and `axllent/mailpit` (local compose and the e2e workflow). The default managers detect them; without this rule they arrive ungrouped and unlabelled, which is how a base image quietly stops being read. A major here is a runtime floor move (ADR-0073 §4) and stays its own pull request — which is why this rule names its update types rather than matching everything: Renovate applies `packageRules` in order and the last match wins per field, so an unrestricted rule here would have re-grouped the majors the rule above deliberately un-groups.",
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "matchPackageNames": ["node", "nginx", "postgres", "axllent/mailpit"],
+      "matchPackageNames": [
+        "node",
+        "nginxinc/nginx-unprivileged",
+        "postgres",
+        "axllent/mailpit"
+      ],
       "groupName": "base images",
       "groupSlug": "base-images"
     }
