@@ -122,7 +122,7 @@ Proved by: `packages/db/src/__tests__/enumerations.test.ts`, `packages/db/src/__
 
 ### Scenario: A role the policies do not bind
 
-- **WHEN** the API starts in production connected as a superuser, a `BYPASSRLS` role, or the owner of a policed table
+- **WHEN** the API starts in production connected as a superuser, a `BYPASSRLS` role, a member of either, or the owner of any table — whether or not row-level security is on for it yet
 - **THEN** it refuses to start, naming the role and the reason
 
 ### Scenario: A write into another organization
