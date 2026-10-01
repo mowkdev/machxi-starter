@@ -1,6 +1,6 @@
 # D36 — Fork readiness
 
-- Status: **in progress** — **opened 2026-09-30**, alone, as one pull request (ledger §How D36 opened); **scoped in full 2026-09-30 by `/scope`**, the day D34 shipped, from the fork-readiness review and on the operator's decisions (ledger §How D36 was scoped). The last starter deliverable before the fork.
+- Status: **shipped 2026-10-01** (ledger §How D36 closed); **opened 2026-09-30**, alone, as one pull request (ledger §How D36 opened); **scoped in full 2026-09-30 by `/scope`**, the day D34 shipped, from the fork-readiness review and on the operator's decisions (ledger §How D36 was scoped). The last starter deliverable before the fork.
 - Records: [ADR-0084](../adr/0084-fork-readiness.md) (a scripted bootstrap and a rehearsed fork, the starter merge removing every journal file it brings, the commit behind the metrics token) — written `proposed` at scoping, accepted at the head of `D36.1`. Parents it supersedes in part: [ADR-0065](../adr/0065-starter-lifecycle.md), [ADR-0082](../adr/0082-lanes-on-one-machine-and-one-main.md), [ADR-0081](../adr/0081-build-versions.md). Amends none. **Adds no migration.**
 - Schema: no
 - Tier: api (`/health` and its integration tests; the fork rehearsal runs uncached in the gate's `test` link, `pnpm test:fork`)
