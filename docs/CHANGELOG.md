@@ -6,6 +6,19 @@ One entry per **shipped deliverable** — the unit of work this repository ships
 
 The ledger in [`plan/README.md`](plan/README.md) carries the full story of each — how it opened, what moved in its window, and on what evidence it closed.
 
+## D36 — Fork readiness · 2026-10-01
+
+A fork of the starter works on its first day, and a test proves it on every push:
+
+- **`pnpm bootstrap`** resets a fork's journal to an empty ledger and changelog under the fork's own prefix. It refuses a tree it does not recognise rather than guess.
+- **A fork rehearsal** runs inside `pnpm test`, uncached. It bootstraps and renames a temporary copy of the tree, merges a simulated starter ship into it with the commands read from `docs/forking.md`, and runs the fork's checks.
+- **The starter merge** removes every journal file it brings, and never touches the fork's own work.
+- **`/health`** answers the commit only to a caller presenting the metrics token, compared at a fixed width.
+- **The carry-overs are closed:** `main`'s runs are grouped by commit, the actions are off the deprecated runtime with credentials not persisted, the SPA images start on IPv4-only hosts, and the admin theme flake is fixed.
+- **Fork-day documents.** A fork-day checklist opens `docs/forking.md`, and `docs:check` refuses a broken link in any document a fork carries.
+
+Tag `starter-D36`.
+
 ## D34 — Lanes on one machine and one `main` · 2026-09-30
 
 Lanes stop competing for one database, one CPU and one `main`:

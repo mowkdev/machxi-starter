@@ -62,7 +62,7 @@ export const AREAS = [
       {
         topic: "Build versions",
         records: ["0081", "0004", "0016"],
-        text: "Two facts name a build, each under one name everywhere it is taken: `APP_VERSION`, the release label, one value for the whole product and never parsed, stamped into all three images, and `GIT_SHA`, the commit, the API's image's alone. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged, and is the one place the commit is shown.",
+        text: "Two facts name a build, each under one name everywhere it is taken: `APP_VERSION`, the release label, one value for the whole product and never parsed, stamped into all three images, and `GIT_SHA`, the commit, the API's image's alone. Both are stamped at image build as build arguments — never passed to a running container, never read from a `package.json`. Unset, the label is `dev` and the commit is absent, and an empty string is unset. `/health` answers them as `version` and `commit`, its shape unchanged, and is the one place the commit is shown — to a request carrying the metrics token alone, by `/metrics`'s constant-time check; none configured, nobody.",
       },
       {
         topic: "Loading env files",
@@ -446,8 +446,13 @@ export const AREAS = [
       },
       {
         topic: "Forking",
-        records: ["0065", "0082"],
-        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, reset by `/bootstrap`. The starter merge alone keeps the fork's journal, defining both drivers on its own command line — `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main` — and neither driver is defined in a clone's or a global config, so a lane merge conflicts on the ledger and the plans and keeps both sides of the notes and the changelog, which `.gitattributes` puts on `merge=union`. Those two are appended to; their existing text — the changelog's preamble, a notes file's earlier entries — is edited only by the lane that ships.",
+        records: ["0065", "0082", "0084"],
+        text: "A fork is a clone that keeps history, adds this repository as the `starter` remote and merges from it. A fork never edits an inherited record — it supersedes, because an edit turns the next merge into a conflict and erases which decision was deliberately dropped. `docs/adr/` and `.claude/` are carried into a fork; `docs/plan/` and `docs/CHANGELOG.md` are this repository's journal, reset by `/bootstrap`. The starter merge alone keeps the fork's journal, defining both drivers on its own command line — `git -c merge.ours.driver=true -c merge.union.driver=true merge starter/main` — and then removes every journal file the merge brought, which no attribute keeps out: `git diff --name-only --no-renames --diff-filter=A ORIG_HEAD starter/main -- docs/plan | xargs -r git rm -qf --ignore-unmatch` takes the plans, notes files and lane files the starter added and those the fork deleted that come back as a modify/delete conflict — two commits, never the working tree, so a merge that refuses to start leaves the fork's staged work alone — a conflict on a journal file the fork already had keeps the fork's side, and `docs/upstreaming.md`'s merge-down runs the same commands. Neither driver is defined in a clone's or a global config, so a lane merge conflicts on the ledger and the plans and keeps both sides of the notes and the changelog, which `.gitattributes` puts on `merge=union`. Those two are appended to; their existing text — the changelog's preamble, a notes file's earlier entries — is edited only by the lane that ships.",
+      },
+      {
+        topic: "The bootstrap and the rehearsal",
+        records: ["0084", "0065"],
+        text: "`docs/forking.md` opens with the fork-day checklist, in order, ending on `/scope` writing the first row of the empty ledger. A fork's journal is reset by a script, `pnpm bootstrap --prefix <name>` (`scripts/bootstrap.mjs`), which the `/bootstrap` skill runs and ends on `pnpm docs:check` and the script tests green: it removes the starter's plans, notes and lane files and keeps `docs/plan/lanes/README.md`, writes the empty ledger under the fork's prefix with the window section's generated block and no link to the starter's frozen history, resets the changelog to its preamble, and refuses a tree that is not a fresh clone of the starter. A rehearsal, `pnpm test:fork`, uncached in the gate's `test` link and in the step check because it reads the whole tree, bootstraps a temporary clone, merges a simulated starter ship into it with the commands `docs/forking.md` states, and runs the fork's checks, so a change that breaks a fork breaks the starter's gate. A script test never depends on the starter's own journal: what it reads of one is a fixture. On a ledger with no rows, `/scope` writes the first row the operator names.",
       },
       {
         topic: "Upstreaming",
@@ -461,8 +466,8 @@ export const AREAS = [
       },
       {
         topic: "Citations that survive a fork",
-        records: ["0065"],
-        text: "In `.claude/**` every record citation carries a topic gloss and never a bare range, and no step numbers or dates appear. Source-code comments keep their step references — they are the reasoning attached to the code that carries it.",
+        records: ["0065", "0084"],
+        text: "In `.claude/**` every record citation carries a topic gloss and never a bare range, and no step numbers or dates appear. Source-code comments keep their step references — they are the reasoning attached to the code that carries it. `pnpm docs:check` refuses a relative link to a file that is not there in every Markdown file a fork carries — everything outside `docs/plan/`, plus the ledger and `docs/plan/lanes/README.md` — resolved from the file that holds it. A link into a plan from a record, the ADR index or a review is history, read at `starter/main`, and is exempt; a broken link a frozen record carries is allowed by name, with its reason, and the entry is refused once the link works.",
       },
       {
         topic: "The digests",

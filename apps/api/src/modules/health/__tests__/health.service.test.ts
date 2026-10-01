@@ -62,12 +62,18 @@ describe("live", () => {
   });
 
   it("reports version, commit, uptime and a timestamp", () => {
-    expect(service([]).live(ctx)).toMatchObject({
+    expect(service([]).live(ctx, { commit: true })).toMatchObject({
       version: "1.4.2",
       commit: "a1b2c3d",
       uptimeSeconds: 12_346,
       timestamp: "2026-08-18T10:00:00.000Z",
     });
+  });
+
+  it("answers no commit unless the caller is shown it (ADR-0084 §3)", async () => {
+    expect("commit" in service([]).live(ctx)).toBe(false);
+    expect("commit" in service([]).live(ctx, { commit: false })).toBe(false);
+    expect("commit" in (await service([okIndicator()]).ready(ctx))).toBe(false);
   });
 });
 

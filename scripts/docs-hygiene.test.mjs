@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   appendFile,
   cp,
@@ -23,20 +24,26 @@ import {
   LEDGER,
   LEDGER_WINDOW,
   TAG_PREFIX_LINE,
+  KNOWN_BROKEN_LINKS,
+  applyKnownBroken,
   checkCloseOut,
   checkLanes,
+  checkLinks,
   checkSpec,
   checkTagPrefix,
   checkText,
   checkUnionJournal,
   countTiers,
   inheritedDocuments,
+  isCarriedLinkDocument,
+  isHistoryLink,
   isExcluded,
   parseLanes,
   parseTagPrefix,
   planDate,
   scan,
   scanCloseOut,
+  scanLinks,
   scanLanes,
   scanSpecs,
   scanTagPrefix,
@@ -277,6 +284,109 @@ test("every workflow action is pinned to a commit digest", async () => {
   assert.deepEqual(offenders, []);
 });
 
+test("every checkout step sets persist-credentials: false", async () => {
+  // No workflow here pushes, so a checkout that persisted `GITHUB_TOKEN` would
+  // only hand it to every install and test script that runs after it (D36.4's
+  // review). The step is read up to the next `- ` item at its own indent.
+  const dir = path.join(repoRoot, ".github", "workflows");
+  const files = (await readdir(dir)).filter((f) => /[.]ya?ml$/.test(f));
+  const offenders = [];
+  let checkouts = 0;
+  for (const file of files) {
+    const lines = (await readFile(path.join(dir, file), "utf8")).split(/\r?\n/);
+    lines.forEach((line, index) => {
+      const m = /^(\s*)-\s*uses:\s*actions\/checkout@/.exec(line);
+      if (!m) return;
+      checkouts += 1;
+      const body = [];
+      for (const next of lines.slice(index + 1)) {
+        const indent = /^(\s*)\S/.exec(next)?.[1].length;
+        if (indent !== undefined && indent <= m[1].length) break;
+        body.push(next);
+      }
+      if (!body.some((l) => /^\s*persist-credentials:\s*false\s*$/.test(l)))
+        offenders.push(`.github/workflows/${file}:${index + 1}`);
+    });
+  }
+  assert.ok(checkouts > 0, "no checkout step found");
+  assert.deepEqual(offenders, []);
+});
+
+test("a gate.yml run on main is grouped by commit", async () => {
+  // A run on `main` must never share a group with another run on `main`: a
+  // group holds one running and one pending run, and a third push replaces
+  // the pending one, so its commit never gets the required check (ADR-0059
+  // §2). Pull requests keep one group per ref and cancel in progress. The two
+  // expressions are evaluated rather than matched as text, over the subset of
+  // the Actions expression language they may use: the three context values,
+  // `==`, `!=`, `&&`, `||` and `format`. Anything else refuses to evaluate.
+  const text = await readFile(
+    path.join(repoRoot, ".github", "workflows", "gate.yml"),
+    "utf8",
+  );
+  const block = /^concurrency:\n((?:[ \t]+\S.*\n)+)/m.exec(text);
+  assert.ok(block, "gate.yml has no top-level concurrency block");
+  const field = (name) => {
+    const m = new RegExp(`^\\s+${name}:\\s*(.+)$`, "m").exec(block[1]);
+    assert.ok(m, `gate.yml's concurrency has no ${name}`);
+    return m[1].trim();
+  };
+
+  const evaluate = (value, ctx) => {
+    const expr = /^\$\{\{(.*)\}\}$/.exec(value)?.[1];
+    if (expr === undefined) return value;
+    const js = expr
+      .replace(/github\.(event_name|ref|sha)\b/g, (_, k) => `ctx.${k}`)
+      .replace(/\bformat\(/g, "fmt(")
+      .replace(/([!=])=(?!=)/g, "$1==");
+    assert.match(
+      js,
+      /^(?:\s|ctx\.\w+|fmt\(|'[^']*'|[(),]|===|!==|&&|\|\|)*$/,
+      `an expression outside the evaluated subset: ${expr}`,
+    );
+    const fmt = (template, ...args) =>
+      template.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)]));
+    return new Function("ctx", "fmt", `return (${js});`)(ctx, fmt);
+  };
+
+  const push = (sha) => ({ event_name: "push", ref: "refs/heads/main", sha });
+  const pr = (sha) => ({
+    event_name: "pull_request",
+    ref: "refs/pull/4/merge",
+    sha,
+  });
+  const group = (ctx) => evaluate(field("group"), ctx);
+  const cancel = (ctx) => String(evaluate(field("cancel-in-progress"), ctx));
+
+  const a = "a".repeat(40);
+  const b = "b".repeat(40);
+  assert.notEqual(
+    group(push(a)),
+    group(push(b)),
+    "two commits on main share a group",
+  );
+  assert.ok(
+    String(group(push(a))).includes(a),
+    "main's group does not name its commit",
+  );
+  assert.equal(cancel(push(a)), "false", "a run on main can be cancelled");
+  assert.equal(
+    group(pr(a)),
+    group(pr(b)),
+    "a pull request's pushes do not share a group",
+  );
+  assert.equal(
+    cancel(pr(a)),
+    "true",
+    "a pull request's run is not cancelled by the next push",
+  );
+  assert.notEqual(
+    group(pr(a)),
+    group(push(a)),
+    "a pull request shares a group with main",
+  );
+});
+
 test("one Node major, stated in every place that states one", async () => {
   // `.nvmrc`, the root `engines`, both workflows and the three Dockerfiles are
   // the runtime floor written down seven times, and the failure is always the
@@ -439,10 +549,20 @@ const decidesItsOwnResult = (rel, config, cached) => {
  * are excluded — they run as links, not through the first one — and so is the
  * step check, which runs the first link rather than inside it. A root check is
  * named in `lint`'s `dependsOn` as `//#<script>`, a workspace one by its bare
- * task name, which turbo resolves in each package that defines it.
+ * task name, which turbo resolves in each package that defines it. A root
+ * check that reads beyond the root package — the fork rehearsal — cannot be
+ * cached there (ADR-0026), so it is carried instead by the gate's uncached
+ * `test` link: named in `test`'s `dependsOn` with `cache: false` of its own
+ * (ADR-0084 §1, amended at D36.2).
  */
 const missingFirstLinkChecks = ({ turbo, root, workspaces, gate }) => {
-  const dependsOn = new Set(turbo.tasks?.lint?.dependsOn ?? []);
+  const uncached = (turbo.tasks?.test?.dependsOn ?? []).filter(
+    (task) => task.startsWith("//#") && turbo.tasks?.[task]?.cache === false,
+  );
+  const dependsOn = new Set([
+    ...(turbo.tasks?.lint?.dependsOn ?? []),
+    ...uncached,
+  ]);
   const isCheck = (name) => name.endsWith(":check");
   const wanted = new Set();
   for (const [name, command] of Object.entries(root.scripts ?? {})) {
@@ -521,7 +641,10 @@ test("the first link carries every check that can go red", async () => {
   const without = (task) => ({
     ...input,
     turbo: {
-      tasks: { lint: { dependsOn: dependsOn.filter((t) => t !== task) } },
+      tasks: {
+        ...input.turbo.tasks,
+        lint: { dependsOn: dependsOn.filter((t) => t !== task) },
+      },
     },
   });
   assert.deepEqual(missingFirstLinkChecks(without("i18n:check")), [
@@ -530,6 +653,15 @@ test("the first link carries every check that can go red", async () => {
   assert.deepEqual(missingFirstLinkChecks(without("//#docs:check")), [
     "//#docs:check",
   ]);
+  // The fork rehearsal rides in the uncached `test` link; cached there, it is
+  // a replayed green over a tree it did not read, and the case reddens.
+  const rehearsal = "//#test:fork";
+  assert.ok(input.turbo.tasks.test.dependsOn.includes(rehearsal));
+  const cached = {
+    ...input,
+    turbo: { tasks: { ...input.turbo.tasks, [rehearsal]: {} } },
+  };
+  assert.deepEqual(missingFirstLinkChecks(cached), [rehearsal]);
 });
 
 /**
@@ -2463,6 +2595,25 @@ test("a plan with a close-out step is refused", () => {
   assert.deepEqual(report, { exempt: false, violations: [] });
 });
 
+/**
+ * D34's plan as it shipped, in the shape the check reads: its status line's
+ * dates — shipped, opened and scoped on the day the record withdrew
+ * close-outs — five build steps, and the last close-out any plan carries.
+ */
+const D34_PLAN = planWith(
+  `**shipped ${CLOSE_OUT_WITHDRAWN}** (ledger §How D34 closed); **opened ${CLOSE_OUT_WITHDRAWN}**, alone, as one pull request; **scoped in full ${CLOSE_OUT_WITHDRAWN} by \`/scope\`**, with D29 and D32 in progress.`,
+  [
+    ...[1, 2, 3, 4, 5].flatMap((n) => [
+      `- [x] **${n}. Build part ${n}.** The code, the spec, the digests regenerated.`,
+      "      **ADRs:** 0082.",
+      `      **Done when:** \`part-${n}.test.mjs\` case "it works" green.`,
+    ]),
+    "- [x] **6. Close-out — the last one.** `.claude/README.md` says how lanes run; the digests regenerated; then the definition of done.",
+    "      **ADRs:** 0082, 0065 as carried.",
+    "      **Done when:** the definition of done below, every item.",
+  ],
+);
+
 test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by its date", async () => {
   const closeOut = [
     ...buildStep,
@@ -2521,11 +2672,10 @@ test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by
   );
 
   // D34's own close-out stays allowed by its date, and is the step the check
-  // would catch in a plan written after it.
-  const d34 = await readFile(
-    path.join(repoRoot, "docs/plan/0034-lanes-on-one-machine.md"),
-    "utf8",
-  );
+  // would catch in a plan written after it. A fixture in D34's shape rather
+  // than the plan itself: the plan is the starter's journal, which a fork's
+  // bootstrap removes (ADR-0084 §1).
+  const d34 = D34_PLAN;
   assert.equal(checkCloseOut("d34", d34).exempt, true);
   const d34Later = d34.replaceAll(CLOSE_OUT_WITHDRAWN, "2026-10-01");
   const later = checkCloseOut("d34", d34Later);
@@ -2539,5 +2689,268 @@ test("a plan scoped or shipped by the day close-outs were withdrawn is exempt by
 test("this repository's plans carry no close-out step past their date", async () => {
   const { violations, exempt } = await scanCloseOut();
   assert.deepEqual(violations, []);
-  assert.ok(exempt > 0);
+  // A plan dated on or before the withdrawal is counted exempt, so the scan
+  // is seen reading plans — when there are plans to read. A bootstrapped fork
+  // starts with none (ADR-0084 §1).
+  const plans = existsSync(path.join(repoRoot, "docs/plan"))
+    ? (await readdir(path.join(repoRoot, "docs/plan"))).filter((name) =>
+        /^\d{4}-[^/]+(?<!\.notes)\.md$/.test(name),
+      )
+    : [];
+  const dated = await Promise.all(
+    plans.map(async (name) =>
+      planDate(await readFile(path.join(repoRoot, "docs/plan", name), "utf8")),
+    ),
+  );
+  assert.equal(
+    exempt,
+    dated.filter((date) => date !== null && date <= CLOSE_OUT_WITHDRAWN).length,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Relative links in the carried documents (ADR-0084, fork readiness).
+
+test("a broken relative link in a carried document is refused", () => {
+  const present = new Set([
+    "docs/adr/0084-fork-readiness.md",
+    "docs/forking.md",
+    "docs/plan/README.md",
+  ]);
+  const exists = (rel) => present.has(rel);
+  const text = [
+    "[forking](forking.md) and [a record](adr/0084-fork-readiness.md#decision)",
+    "[the window](plan/README.md#the-window), [web](https://example.com), [here](#top)",
+    "[a starter plan](plan/0001-api-foundation.md)",
+    "`[in code](plan/0002-missing.md)` is not a link",
+    "```",
+    "[in a fence](plan/0003-missing.md)",
+    "```",
+    "[outside the tree](../../elsewhere.md)",
+  ].join("\n");
+  const violations = checkLinks("docs/deploy.md", text, exists);
+  assert.deepEqual(
+    violations.map(({ line, rule, found }) => ({ line, rule, found })),
+    [
+      { line: 3, rule: "broken-link", found: "plan/0001-api-foundation.md" },
+      { line: 8, rule: "broken-link", found: "../../elsewhere.md" },
+    ],
+  );
+  // A skill's links resolve from the skill's own directory.
+  assert.deepEqual(
+    checkLinks(
+      ".claude/skills/scope/SKILL.md",
+      "[forking](../../../docs/forking.md) [wrong](../../docs/forking.md)",
+      exists,
+    ).map(({ found }) => found),
+    ["../../docs/forking.md"],
+  );
+});
+
+test("a link from a record to a plan is not a carried document's", () => {
+  // Every Markdown file outside docs/plan/ is scanned, records included, with
+  // the ledger and the lanes' README; plans and notes are not.
+  for (const rel of [
+    "README.md",
+    "CLAUDE.md",
+    "docs/forking.md",
+    "docs/adr/0084-fork-readiness.md",
+    "docs/adr/README.md",
+    "docs/reviews/2026-09-21-repository-review.md",
+    "docs/postman/README.md",
+    "docs/plan/README.md",
+    "docs/plan/lanes/README.md",
+    ".claude/skills/scope/SKILL.md",
+    "apps/api/README.md",
+  ]) {
+    assert.equal(isCarriedLinkDocument(rel), true, rel);
+  }
+  for (const rel of [
+    "docs/plan/0036-fork-readiness.md",
+    "docs/plan/0036-fork-readiness.notes.md",
+    "docs/plan/lanes/D36.md",
+    ".claude/worktrees/x/README.md",
+  ]) {
+    assert.equal(isCarriedLinkDocument(rel), false, rel);
+  }
+  // What a record's link into a plan is: history, by target.
+  assert.equal(
+    isHistoryLink(
+      "docs/adr/0084-fork-readiness.md",
+      "docs/plan/0036-fork-readiness.md",
+    ),
+    true,
+  );
+  assert.equal(
+    isHistoryLink("docs/reviews/r.md", "docs/plan/0001-api-foundation.md"),
+    true,
+  );
+  assert.equal(
+    isHistoryLink("docs/adr/README.md", "docs/plan/README.md"),
+    false,
+  );
+  assert.equal(
+    isHistoryLink("docs/forking.md", "docs/plan/0001-api-foundation.md"),
+    false,
+  );
+});
+
+const noPlans = (present) => (rel) => present.has(rel);
+
+test("a record's link into a plan is history and exempt", () => {
+  const exists = noPlans(new Set(["docs/plan/README.md"]));
+  assert.deepEqual(
+    checkLinks(
+      "docs/adr/0084-fork-readiness.md",
+      "[the plan](../plan/0036-fork-readiness.md) [notes](../plan/0036-fork-readiness.notes.md#d365)",
+      exists,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    checkLinks(
+      "docs/reviews/r.md",
+      "[a plan](../plan/0001-api-foundation.md)",
+      exists,
+    ),
+    [],
+  );
+  // The same link from a document that is not history is refused.
+  assert.deepEqual(
+    checkLinks(
+      "docs/forking.md",
+      "[a plan](plan/0001-api-foundation.md)",
+      exists,
+    ).map(({ found }) => found),
+    ["plan/0001-api-foundation.md"],
+  );
+});
+
+test("a record's link to a missing record is refused", () => {
+  const exists = noPlans(
+    new Set(["docs/adr/0050-adr-lifecycle-and-verification.md"]),
+  );
+  assert.deepEqual(
+    checkLinks(
+      "docs/adr/0022-frontend-apps.md",
+      "[ADR-0050](0050-adr-lifecycle-and-verification.md) [ADR-0050](0050-adr-lifecycle.md) [the window](../plan/README.md#the-window)",
+      exists,
+    ).map(({ rule, found }) => `${rule} ${found}`),
+    [
+      "broken-link 0050-adr-lifecycle.md",
+      "broken-link ../plan/README.md#the-window",
+    ],
+  );
+});
+
+test("the ADR index's plan links are exempt, its other links are checked", () => {
+  const exists = noPlans(
+    new Set(["docs/adr/0084-fork-readiness.md", "docs/plan/README.md"]),
+  );
+  const text = [
+    "| [0084](0084-fork-readiness.md) | Fork readiness | [D36](../plan/0036-fork-readiness.md) |",
+    "| [0085](0085-missing.md) | [the ledger](../plan/README.md) [lanes](../plan/lanes/README.md) |",
+  ].join("\n");
+  assert.deepEqual(
+    checkLinks("docs/adr/README.md", text, exists).map(
+      ({ line, found }) => `${line} ${found}`,
+    ),
+    ["2 0085-missing.md", "2 ../plan/lanes/README.md"],
+  );
+});
+
+test("a reference definition's target is checked", () => {
+  const exists = noPlans(new Set(["docs/deploy.md"]));
+  assert.deepEqual(
+    checkLinks(
+      "docs/forking.md",
+      'See [deploy][d] and [gone][g].\n\n[d]: deploy.md\n[g]: <gone.md> "Gone"\n  [h]: https://example.com',
+      exists,
+    ).map(({ line, found }) => `${line} ${found}`),
+    ["4 gone.md"],
+  );
+});
+
+test("an angle-bracketed target with a space is checked", () => {
+  const exists = noPlans(new Set(["docs/a b.md"]));
+  assert.deepEqual(
+    checkLinks(
+      "docs/forking.md",
+      '[here](<a b.md>) [there](<c d.md> "title") [enc](a%20b.md)',
+      exists,
+    ).map(({ found }) => found),
+    ["c d.md"],
+  );
+});
+
+test("a backtick fence line inside a tilde fence does not hide later links", () => {
+  const exists = noPlans(new Set());
+  const text = [
+    "~~~markdown",
+    "```",
+    "[inside](gone-inside.md)",
+    "~~~",
+    "[after](gone-after.md)",
+    "````",
+    "```",
+    "[still inside](gone-too.md)",
+    "````",
+    "[last](gone-last.md)",
+  ].join("\n");
+  assert.deepEqual(
+    checkLinks("docs/forking.md", text, exists).map(({ found }) => found),
+    ["gone-after.md", "gone-last.md"],
+  );
+});
+
+test("a malformed percent escape is reported, not thrown", () => {
+  const violations = checkLinks(
+    "docs/forking.md",
+    "[bad](100%-sure.md)",
+    () => true,
+  );
+  assert.deepEqual(
+    violations.map(({ rule, found }) => `${rule} ${found}`),
+    ["malformed-link 100%-sure.md"],
+  );
+});
+
+test("a known broken link in a frozen record is allowed, and refused once it works", () => {
+  const known = [
+    {
+      file: "docs/adr/0022-frontend-apps.md",
+      target: "0050-adr-lifecycle.md",
+      reason: "closed",
+    },
+  ];
+  const broken = {
+    file: "docs/adr/0022-frontend-apps.md",
+    line: 6,
+    rule: "broken-link",
+    found: "0050-adr-lifecycle.md",
+    message: "",
+  };
+  const other = { ...broken, found: "0099-missing.md" };
+  const present = () => true;
+  assert.deepEqual(applyKnownBroken([broken, other], known, present), [other]);
+  // The link was fixed, or the file no longer has it: the entry is stale.
+  assert.deepEqual(
+    applyKnownBroken([], known, present).map(
+      ({ rule, found }) => `${rule} ${found}`,
+    ),
+    ["stale-known-broken 0050-adr-lifecycle.md"],
+  );
+  // A fork whose corpus lacks the file carries the entry harmlessly.
+  assert.deepEqual(
+    applyKnownBroken([], known, () => false),
+    [],
+  );
+  // Every committed entry names its reason.
+  for (const entry of KNOWN_BROKEN_LINKS) assert.ok(entry.reason, entry.file);
+});
+
+test("this repository's carried documents have no broken link", async () => {
+  const { violations, documents } = await scanLinks(repoRoot);
+  assert.deepEqual(violations, []);
+  assert.ok(documents > 0, "the scan read no carried document");
 });

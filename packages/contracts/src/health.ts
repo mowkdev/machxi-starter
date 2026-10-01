@@ -27,7 +27,10 @@ export interface HealthResource {
   readonly status: HealthStatus;
   /** The image's `APP_VERSION`, or `dev` when the build set none (ADR-0081). */
   readonly version: string;
-  /** The image's `GIT_SHA`; absent when unset or empty (ADR-0081). */
+  /**
+   * The image's `GIT_SHA`; absent when unset or empty (ADR-0081), and absent
+   * unless the request carried the metrics token (ADR-0084 §3).
+   */
   readonly commit?: string;
   readonly uptimeSeconds: number;
   readonly timestamp: IsoDateTime;

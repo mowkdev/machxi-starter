@@ -20,7 +20,12 @@
 //      failing alone makes it the step's defect.
 //   3. `pnpm size` only when an SPA is in that filter — a platform package
 //      reaches both SPAs through it. The script takes the lock itself.
-//   4. `pnpm format:check` over the tree.
+//   4. `pnpm test:fork`, the fork rehearsal (ADR-0084 §1, amended at D36.2),
+//      uncached, unless every changed path is a document under `docs/` it
+//      does not read its commands from (`docs/forking.md`,
+//      `docs/upstreaming.md`): it reads the whole tree, so no cached task
+//      carries it, and `pnpm check` does not run it.
+//   5. `pnpm format:check` over the tree.
 //
 // `<base>` is `git merge-base origin/main HEAD`, the point the lane branched
 // from; `--base <ref>` overrides it. Both turbo's filter and vitest's
@@ -66,6 +71,21 @@ export const INTEGRATION_TRIGGERS = [
   /^packages\/db\/src\/(testing|migrate|reset|client)\.ts$/,
   /^packages\/db\/src\/tooling\//,
 ];
+
+/** The documents the fork rehearsal reads its commands from. */
+export const REHEARSAL_DOCUMENTS = ["docs/forking.md", "docs/upstreaming.md"];
+
+/**
+ * The first changed path the fork rehearsal reads, or `null`: anything but a
+ * document under `docs/`, or a document it takes its commands from.
+ */
+export function rehearsalTrigger(files) {
+  return (
+    files.find(
+      (file) => !file.startsWith("docs/") || REHEARSAL_DOCUMENTS.includes(file),
+    ) ?? null
+  );
+}
 
 /** The first changed path that makes `--changed` blind, or `null`. */
 export function harnessTrigger(files) {
@@ -182,11 +202,12 @@ export async function stepCheck({
   }
 
   const { integration, size } = affectedTiers(JSON.parse(dry.stdout));
+  const changed = await changedFiles({ base, root, exec });
 
   if (integration.length === 0) {
     result.skipped.push("integration: no package with a test:int is reached");
   } else {
-    const trigger = harnessTrigger(await changedFiles({ base, root, exec }));
+    const trigger = harnessTrigger(changed);
     const reports = mkdtempSync(path.join(os.tmpdir(), "step-check-"));
 
     try {
@@ -212,6 +233,16 @@ export async function stepCheck({
   if (size.length === 0) {
     result.skipped.push("size: no SPA is reached");
   } else if (!(await step(`size (${size.join(", ")})`, "pnpm", ["size"]))) {
+    return result;
+  }
+
+  const rehearsal = rehearsalTrigger(changed);
+
+  if (rehearsal === null) {
+    result.skipped.push("test:fork: no path the fork rehearsal reads changed");
+  } else if (
+    !(await step(`test:fork (${rehearsal} changed)`, "pnpm", ["test:fork"]))
+  ) {
     return result;
   }
 

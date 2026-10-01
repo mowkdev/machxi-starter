@@ -17,7 +17,8 @@
     "test:int": "node scripts/with-lock.mjs tiers -- turbo run test:int --concurrency=1",
     "test:watch": "turbo run test:watch",
     "test:postman": "node --no-deprecation scripts/postman.mjs",
-    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+    "test:scripts": "node --test \"scripts/**/!(fork-rehearsal).test.mjs\"",
+    "test:fork": "node --test scripts/fork-rehearsal.test.mjs",
     "rules:digest": "node scripts/rules-digest.mjs",
     "docs:check": "node scripts/docs-hygiene.mjs",
     "lanes": "node scripts/lanes.mjs",
@@ -35,7 +36,8 @@
     "db:setup": "turbo run db:setup",
     "db:reset": "turbo run db:reset",
     "db:studio": "turbo run db:studio",
-    "db:lane": "node scripts/db-lane.mjs"
+    "db:lane": "node scripts/db-lane.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs"
   },
   "devDependencies": {
     "@turbo/gen": "^2.11.2",

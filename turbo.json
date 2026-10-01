@@ -16,9 +16,12 @@
         "!.next/dev/**"
       ]
     },
+    // The fork rehearsal (ADR-0084 §1, amended at D36.2) reads the whole tree,
+    // which a root task's default inputs do not hash, so it is uncached and
+    // rides in the gate's `test` link rather than in `test:scripts`.
     "test": {
       "cache": false,
-      "dependsOn": [],
+      "dependsOn": ["//#test:fork"],
       "env": [
         "APP_ID",
         "DATABASE_URL",
@@ -90,6 +93,9 @@
       "dependsOn": ["^lint", "//#test:scripts", "//#docs:check", "i18n:check"]
     },
     "//#test:scripts": {},
+    "//#test:fork": {
+      "cache": false
+    },
     "//#docs:check": {},
     // Uncached, so that nothing restores a package's compiler memory
     // (ADR-0078 §6). A composite package's `dist-types/` holds its emit and

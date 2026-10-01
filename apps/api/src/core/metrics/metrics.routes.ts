@@ -1,11 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
-
-import { Router, type Request, type RequestHandler } from "express";
+import { Router, type RequestHandler } from "express";
 
 import { unauthenticated } from "../errors/index.js";
 import { sendText } from "../http/index.js";
 import { noStore } from "../middleware/index.js";
 import type { Metrics } from "./metrics.js";
+import { carriesMetricsToken } from "./metrics.token.js";
 
 /**
  * `GET /metrics` (ADR-0066 §2) — unversioned, beside `/health`, and mounted
@@ -18,39 +17,10 @@ import type { Metrics } from "./metrics.js";
  * unauthenticated and says nothing; a scrape is an unbounded body of counters
  * that **names every route the API has**, which is a map of the attack surface
  * — so it is behind a bearer token whenever one is configured, and
- * `NODE_ENV=production` refuses an unset one at startup.
+ * `NODE_ENV=production` refuses an unset one at startup. The token is read
+ * and compared, in constant time, by `carriesMetricsToken`, which `/health`
+ * shares to decide whether to answer its commit (ADR-0084 §3).
  */
-
-/**
- * The bearer token, or `undefined`.
- *
- * Deliberately only the `Bearer` scheme, and the comparison below is
- * constant-time: a token compared with `===` leaks its prefix to anyone who can
- * time the endpoint, which is the same argument ADR-0018 makes about session
- * tokens.
- */
-const bearerToken = (req: Request): string | undefined => {
-  const header = req.get("authorization");
-
-  if (header === undefined) return undefined;
-
-  const [scheme, ...rest] = header.split(" ");
-
-  return scheme?.toLowerCase() === "bearer" && rest.length > 0
-    ? rest.join(" ")
-    : undefined;
-};
-
-/** Constant-time equality over two UTF-8 strings of any length. */
-const matches = (presented: string, expected: string): boolean => {
-  const a = Buffer.from(presented, "utf8");
-  const b = Buffer.from(expected, "utf8");
-
-  // `timingSafeEqual` throws on a length mismatch, which would itself be the
-  // oracle: hash both sides to a fixed width first by comparing equal-length
-  // buffers, and fold the length check into the result.
-  return a.length === b.length && timingSafeEqual(a, b);
-};
 
 export interface MetricsRouterDeps {
   readonly metrics: Metrics;
@@ -74,13 +44,11 @@ export const createMetricsRouter = ({
       return;
     }
 
-    const presented = bearerToken(req);
-
     // `unauthenticated()`, so the refusal is the ADR-0013 envelope with a
     // request id like every other refusal — a scraper's misconfiguration shows
     // up in the same log line as everything else.
     next(
-      presented !== undefined && matches(presented, token)
+      carriesMetricsToken(req, token)
         ? undefined
         : unauthenticated("Metrics token required"),
     );

@@ -96,6 +96,18 @@ export const aggregateStatus = (
   return degraded ? "degraded" : "ok";
 };
 
+/**
+ * What a caller is shown beyond the public view. `commit` maps an instance to
+ * its exact source, so it is answered only to a caller the controller has
+ * established carries the metrics token (ADR-0084 §3); the default shows it to
+ * nobody.
+ */
+export interface HealthDisclosure {
+  readonly commit: boolean;
+}
+
+const PUBLIC: HealthDisclosure = { commit: false };
+
 export const createHealthService = ({
   indicators,
   config,
@@ -106,10 +118,13 @@ export const createHealthService = ({
   const baseResource = (
     status: HealthStatus,
     checks: Record<string, HealthCheckResource>,
+    disclosure: HealthDisclosure,
   ): HealthResource => ({
     status,
     version: config.app.version,
-    ...(config.app.commit === undefined ? {} : { commit: config.app.commit }),
+    ...(!disclosure.commit || config.app.commit === undefined
+      ? {}
+      : { commit: config.app.commit }),
     uptimeSeconds: Math.round(uptimeSeconds()),
     timestamp: now().toISOString(),
     checks,
@@ -117,7 +132,10 @@ export const createHealthService = ({
 
   return {
     /** Process is up and the event loop answered. No dependency is touched. */
-    live: (_ctx: RequestContext): HealthResource => baseResource("ok", {}),
+    live: (
+      _ctx: RequestContext,
+      disclosure: HealthDisclosure = PUBLIC,
+    ): HealthResource => baseResource("ok", {}, disclosure),
 
     /**
      * Every indicator, in parallel, each bounded by `checkTimeoutMs`.
@@ -126,7 +144,10 @@ export const createHealthService = ({
      *   is down; `details` names the indicator and carries its sanitised
      *   reason (ADR-0016).
      */
-    ready: async (ctx: RequestContext): Promise<HealthResource> => {
+    ready: async (
+      ctx: RequestContext,
+      disclosure: HealthDisclosure = PUBLIC,
+    ): Promise<HealthResource> => {
       const results = await Promise.all(
         indicators.map(async (indicator) => ({
           indicator,
@@ -155,7 +176,7 @@ export const createHealthService = ({
         );
       }
 
-      return baseResource(status, checks);
+      return baseResource(status, checks, disclosure);
     },
   } as const;
 };

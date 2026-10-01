@@ -108,8 +108,8 @@ Logout, `sessions/revoke` and `change-password` answer `204` with nothing in it.
 Authentication is a JWT access token (15 minutes by default) plus an opaque
 rotating refresh token stored hashed in `sessions` (ADR-0018); `authorize()`
 guards the admin resources by role and `super_admin` bypasses those checks
-(ADR-0019). The full endpoint list is in
-[`docs/plan/0001-api-foundation.md`](docs/plan/0001-api-foundation.md), and every endpoint
+(ADR-0019). The full endpoint list is the segment routers,
+`apps/api/src/routes/{public,user,admin}.router.ts`, and every endpoint
 has a Postman request — most carry a description of why the API answers the way
 it does, and the ones that turn on a decision name the ADR.
 
@@ -146,7 +146,10 @@ The first link carries more than eslint: `lint` depends on `pnpm test:scripts`,
 §6 as carried by ADR-0074 §1), so the checks that used to go red with nothing
 watching them fail the gate at its first step, here and in CI, without a
 CI-only script. A hygiene case keeps it that way: a new check the first link
-does not name is red.
+does not name is red. The one exception is the fork rehearsal
+(`pnpm test:fork`, ADR-0084 §1): it reads the whole tree, which a cached root
+task cannot hash, so it runs uncached in the `test` link, and `step:check` runs
+it after `check`.
 
 `test` includes the API's integration tier, so it needs Docker up; `size` builds
 each SPA and weighs the gzipped output against its own `size-budget.json`; and
@@ -194,8 +197,8 @@ a deployment ends up migrating as its application role and never finding out.
   app over the user segment. The same records as `apps/admin`, applied through
   its **own** `shared/` doors, its own dictionary and its own bundle budget: it
   is the second consumer the platform packages were extracted for, and anything
-  it cannot build from them without changing them is recorded as a finding in
-  `docs/plan/0012-customer-app.md`.
+  it cannot build from them without changing them is a finding against them
+  ([ADR-0055](docs/adr/0055-customer-app.md)).
 
 The marketing site is the one app that is not here yet: it is Next.js, marketing
 only (ADR-0055 narrowed ADR-0022's roster), and the last deliverable in the ledger

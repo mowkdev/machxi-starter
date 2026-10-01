@@ -1,10 +1,10 @@
 # Postman
 
 The manual/smoke tier of ADR-0021, and the API's living documentation until
-OpenAPI is generated. Built in implementation step 10 (see
-`../plan/0001-api-foundation.md`).
+OpenAPI is generated. Every endpoint has a request here, added in the same
+change as the endpoint (`/postman-sync`).
 
-- `machxi-api.postman_collection.json` — 212 requests and 646 assertions in 18
+- `machxi-api.postman_collection.json` — 213 requests and 652 assertions in 18
   folders: `Health`, `Metrics`,
   `Admin Auth`, `Admin › Staff`, `Admin › Users`, `Admin › Role guards`,
   `Admin › Profile`, `Admin › Settings`, `User Auth`, `User › Profile`,
@@ -13,7 +13,10 @@ OpenAPI is generated. Built in implementation step 10 (see
   `Teardown`.
 - `local.postman_environment.json` — `baseUrl` and the dev fixture addresses.
   `superAdminEmail` / `superAdminPassword` are **empty on purpose**: they come
-  from `SEED_SUPER_ADMIN_*` in your `.env` and are not committed.
+  from `SEED_SUPER_ADMIN_*` in your `.env` and are not committed. So does
+  `metricsToken`, from `METRICS_TOKEN`: the `Health (with the metrics token)`
+  request carries it, and `/health` answers the commit to it alone (ADR-0084
+  §3). Unset, as it usually is locally, no request is answered the commit.
 
 ## Run it
 
