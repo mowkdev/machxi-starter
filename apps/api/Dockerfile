@@ -23,7 +23,7 @@
 # Debian rather than Alpine: `argon2` is a native addon, and glibc is the
 # platform its prebuilt binaries target. The saving from musl is not worth
 # discovering the difference in production.
-FROM node:24-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm" \
     PATH="/pnpm:$PATH" \
     CI=true
