@@ -47,7 +47,7 @@ services:
   # No volume: a development inbox is scratch data by definition, and keeping
   # it across a `docker compose down` would only be a thing to explain.
   mailpit:
-    image: axllent/mailpit:v1.31.0
+    image: axllent/mailpit:v1.33.1
     container_name: machxi-mailpit
     restart: unless-stopped
     environment:
