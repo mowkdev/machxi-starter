@@ -106,7 +106,7 @@ RUN cp -r apps/customer/dist /web && find /web -name '*.map' -delete
 # first instruction, with its pid file and temp paths under `/tmp` and its
 # port at 8080 — above 1024, which is why nothing here needs root at all.
 # `nginx.conf` listens there, and the compose file maps it.
-FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 
 # Stated even though it is the base image's own default, so that a `USER root`
 # added above a later instruction cannot leak into the running container

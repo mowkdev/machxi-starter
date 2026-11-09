@@ -59,7 +59,7 @@ jobs:
       # servers it already waits for. Both ports are published because both are
       # used from the host: the API sends on 1025 and the tier reads on 8025.
       mailpit:
-        image: axllent/mailpit:v1.31.0
+        image: axllent/mailpit:v1.33.1
         env:
           MP_SMTP_AUTH_ACCEPT_ANY: "true"
           MP_SMTP_AUTH_ALLOW_INSECURE: "true"
