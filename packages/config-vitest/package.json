@@ -12,7 +12,7 @@
     "check-types": "tsc -b"
   },
   "dependencies": {
-    "@vitest/coverage-v8": "5.0.1"
+    "@vitest/coverage-v8": "5.1.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
