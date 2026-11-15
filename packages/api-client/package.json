@@ -23,7 +23,7 @@
     "@types/react": "^19.3.0",
     "eslint": "catalog:",
     "jsdom": "30.0.1",
-    "msw": "^2.15.0",
+    "msw": "^3.0.0",
     "react": "^19.3.0",
     "typescript": "catalog:",
     "vite": "catalog:",
